@@ -1,0 +1,36 @@
+# 复制成 .dev.vars 再填（它在 .gitignore 里）。
+# 线上要另外用 `npx wrangler secret put <名字>` 各设一次——.dev.vars 只管本地。
+
+# LLM。任何 OpenAI 兼容服务的 key。
+LLM_API_KEY=
+
+# Telegram bot token（不用 Telegram 就留空）。找 @BotFather 拿。
+TELEGRAM_BOT_TOKEN=
+# 自己随便编一个字符串，设置 webhook 时用同一个值传给 secret_token。
+# 也是 /run/{triage,synthesize,draft,backfill} 这几个调试端点的口令。
+TELEGRAM_WEBHOOK_SECRET=
+
+# 飞书自建应用（不用飞书就留空）。开放平台 → 凭证与基础信息。
+LARK_APP_SECRET=
+# 事件订阅的加密策略里生成的。留空＝不加密，代码两种都认。
+LARK_ENCRYPT_KEY=
+# 事件订阅里的 Verification Token。填了就会校验来源。
+LARK_VERIFY_TOKEN=
+
+# 归档进 Obsidian vault 用的 GitHub token（不用就留空）。
+# Fine-grained token，只需要对那个仓库的 Contents: Read and write。
+GITHUB_TOKEN=
+
+# creator-workbench 调 /wb/* 用的口令，和 Telegram 那个分开。
+# 自己编一个，同一个值也要填进 workbench/.env 的 WORKER_KEY。
+WORKBENCH_KEY=
+
+# 抓文章正文用（可选，不填走无 key 的免费额度）。
+JINA_API_KEY=
+
+# ── 只有从 Notion 迁移时才需要（scripts/migrate-from-notion.mjs）──
+NOTION_TOKEN=
+NOTION_INBOX_DB_ID=
+NOTION_MATERIALS_DB_ID=
+NOTION_TOPICS_DB_ID=
+NOTION_DRAFTS_DB_ID=

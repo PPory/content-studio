@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Xenho 网页助手",
+  "description": "随手划取网页内容，直接批注、提问、对话或保存到辛禾创作工作台。",
+  "version": "0.1.4",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["http://127.0.0.1:5180/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "打开 Xenho 网页助手",
+    "default_icon": {
+      "16": "icons/icon-64.png",
+      "32": "icons/icon-64.png",
+      "48": "icons/icon-64.png",
+      "128": "icons/icon-64.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-64.png",
+    "32": "icons/icon-64.png",
+    "48": "icons/icon-64.png",
+    "128": "icons/icon-64.png"
+  },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "_": "social-insights 的源清单。改这里就改了下次抓什么，不用动脚本。",
+
+  "reddit": {
+    "_": "subreddit 发现。关键词发现噪音大得多（搜索会捞回一堆转述帖）且额外计费，默认空。",
+    "subreddits": [
+      "https://www.reddit.com/r/LocalLLaMA/",
+      "https://www.reddit.com/r/ClaudeAI/",
+      "https://www.reddit.com/r/AI_Agents/",
+      "https://www.reddit.com/r/LLMDevs/",
+      "https://www.reddit.com/r/MachineLearning/",
+      "https://www.reddit.com/r/OpenAI/",
+      "https://www.reddit.com/r/singularity/"
+    ],
+    "keywords": [],
+    "_sortBy": "Hot / New / Top。默认 Hot——Top 的时间范围不可控，可能给出历史最高赞的老帖。真正的时间过滤在脚本里按 date_posted 做。实测：API 只认首字母大写，文档写的小写是错的；脚本会自动纠正。",
+    "sortBy": "Hot"
+  },
+
+  "x": {
+    "_": "X 没有关键词搜索，只能按账号。所以这份名单就是 X 的全部『关注领域』配置。",
+    "_名单纪律": "跑一两轮之后按『这个账号有几条真进了报告』来砍，别靠直觉。预计 20 个里有 5-8 个是纯噪音。",
+    "accounts": [
+      "dotey",
+      "op7418",
+      "oran_ge",
+      "xiaohu",
+      "karpathy",
+      "swyx",
+      "steipete",
+      "amasad",
+      "rauchg",
+      "danshipper",
+      "petergyang",
+      "ryolu_",
+      "bcherny",
+      "_catwu",
+      "alexalbert__",
+      "AmandaAskell",
+      "joshwoodward",
+      "garrytan",
+      "levie",
+      "zarazhangrui"
+    ]
+  },
+
+  "aihot": {
+    "_": "AI HOT 日报。公开只读免 key，不花 Bright Data 额度。补的是中文事实层和覆盖面——Reddit 那 7 个英文社区看不到千问、Seedance 这类中国生态的事。",
+    "_产量": "很不稳：实测 8/11 有 5 个分区 20 条，8/10 只有 1 个分区 4 条。所以按周聚合，不按天看。"
+  }
+}

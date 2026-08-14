@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "domains": [
+    {
+      "name": "AI 与 Agent",
+      "words": [
+        "/\\bAI\\b/",
+        "AIGC",
+        "人工智能",
+        "大模型",
+        "/\\bagent\\b/",
+        "智能体",
+        "/\\bMCP\\b/",
+        "/\\bLLM\\b/",
+        "Claude",
+        "GPT",
+        "Gemini",
+        "OpenAI",
+        "Anthropic",
+        "!招聘",
+        "!广告"
+      ]
+    },
+    {
+      "name": "内容创作",
+      "words": [
+        "写作",
+        "创作者",
+        "公众号",
+        "小红书",
+        "自媒体",
+        "短视频",
+        "播客",
+        "内容平台",
+        "!招聘"
+      ]
+    },
+    {
+      "name": "知识管理",
+      "words": [
+        "知识库",
+        "笔记",
+        "Obsidian",
+        "Notion",
+        "/\\bRAG\\b/",
+        "检索增强",
+        "第二大脑",
+        "知识管理"
+      ]
+    },
+    {
+      "name": "独立开发",
+      "words": [
+        "独立开发",
+        "开源",
+        "SaaS",
+        "Cloudflare",
+        "Vercel",
+        "出海",
+        "副业"
+      ]
+    }
+  ],
+  "limits": {
+    "perDomain": 12
+  }
+}

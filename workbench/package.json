@@ -1,0 +1,46 @@
+{
+  "name": "creator-workbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "node scripts/check.mjs",
+    "test": "node tests/smoke.mjs",
+    "test:unit": "node tests/unit.mjs",
+    "test:extension": "node tests/extension.mjs",
+    "shots": "node tests/shots.mjs",
+    "app:icon": "node scripts/make-icon.mjs",
+    "app:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
+    "app:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/lexend": "^5.3.0",
+    "@fontsource/literata": "^5.3.0",
+    "@fontsource/noto-sans-sc": "^5.2.8",
+    "@fontsource/source-sans-3": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "@lezer/highlight": "^1.2.3",
+    "@mozilla/readability": "^0.6.0",
+    "@tabler/icons-react": "^3.34.1",
+    "dompurify": "^3.4.13",
+    "fflate": "^0.8.3",
+    "linkedom": "^0.18.13",
+    "marked": "^18.0.9",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "undici": "^8.10.0",
+    "unpdf": "^1.8.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.1"
+  }
+}

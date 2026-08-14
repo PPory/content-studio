@@ -1,0 +1,34 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 临时文件、测试截图、dev server 日志
+tmp/
+*.log
+
+# playwright CLI 每跑一次就落一份带时间戳的 console/page 快照，是运行产物不是代码
+.playwright-cli/
+# 扩展回归跑出来的持久化浏览器 profile 也落在这儿。里面有 Chrome 自己占着的
+# 文件（Network/Cookies），`git add` 会直接报 Permission denied——不是权限配错了，
+# 是这些东西压根不该进版本库。
+output/
+
+# ⚠️ 密钥。这个项目的 .env 里有 Worker、DeepL、Firecrawl 的 key，
+# 而前端无鉴权、服务只绑 127.0.0.1——密钥一旦进 git 就等于把这条防线拆了。
+# 要加新变量，同步更新 .env.example（那份不带值，是给「换台机器怎么配」看的）。
+.env
+.env.local
+
+# 平台数据：抖音/小红书/公众号的导出文件和聚合出来的 posts.csv / metrics.csv。
+# 是账号数据不是代码，而且 data/inbox/ 里躺的是原始导出表。
+data/
+
+# 生成物：scripts/make-icon.mjs 画出来的图标（形状坐标写死在脚本里，
+# 不依赖仓库外的设计素材，换台机器 npm run app:install 会重新生成）。
+scripts/xenho-os.ico
+scripts/xenho-os-64.png
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
+desktop.ini

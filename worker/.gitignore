@@ -1,0 +1,9 @@
+.env
+.dev.vars
+node_modules/
+.wrangler/
+tmp/
+
+# 你自己的配置。从 wrangler.example.jsonc 复制过来填，里面有 database_id、
+# chat_id、飞书 App ID 这些跟具体账号绑定的值，不该进版本库。
+wrangler.jsonc

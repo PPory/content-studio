@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xenho 网页助手</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/icon-64.png" alt="" />
+        <div><strong>Xenho OS</strong><span>网页助手 <em>· WEB ASSIST</em></span></div>
+      </div>
+      <button id="connection" class="connection" type="button" title="点击重新连接">
+        <i></i><span>连接中</span>
+      </button>
+    </header>
+
+    <section id="empty" class="empty-state">
+      <div class="empty-mark">X</div>
+      <h1>先在网页上划一句</h1>
+      <p>选中文字后点开小图标，就能批注、提问、对话或选择入库位置。</p>
+    </section>
+
+    <div id="workspace" hidden>
+      <section class="capture-card">
+        <div class="source-line">
+          <span id="site"></span>
+          <a id="source-link" target="_blank" rel="noreferrer">查看原文 ↗</a>
+        </div>
+        <h1 id="page-title"></h1>
+        <blockquote id="selection"></blockquote>
+      </section>
+
+      <nav class="tabs" aria-label="功能">
+        <button type="button" data-tab="annotate" aria-selected="true">批注</button>
+        <button type="button" data-tab="ask">提问</button>
+        <button type="button" data-tab="chat">对话</button>
+      </nav>
+
+      <main>
+        <section class="panel active" data-panel="annotate">
+          <div class="section-head">
+            <div><span class="eyebrow">ANNOTATE</span><h2>留下你的判断</h2></div>
+            <span id="note-count" class="count">0 条</span>
+          </div>
+          <label class="composer annotation-composer">
+            <span class="sr-only">批注内容</span>
+            <textarea id="annotation-input" rows="5" maxlength="8000" placeholder="这段话让我想到……"></textarea>
+            <span class="composer-foot"><small><kbd>Ctrl + Enter</kbd> 保存</small><button id="save-note" class="primary" type="button">保存批注</button></span>
+          </label>
+          <div id="notes-status" class="inline-status"></div>
+          <div id="notes-list" class="stack"></div>
+        </section>
+
+        <section class="panel" data-panel="ask">
+          <div class="section-head">
+            <div><span class="eyebrow">UNDERSTAND</span><h2>把这段话想明白</h2></div>
+            <button id="stop-ask" class="text-button" type="button" hidden>停止</button>
+          </div>
+          <div class="modes" role="group" aria-label="提问方式">
+            <button type="button" data-mode="解释" aria-label="解释：它在说什么" title="它在说什么">解释</button>
+            <button type="button" data-mode="展开" aria-label="展开：继续往下讲" title="继续往下讲">展开</button>
+            <button type="button" data-mode="反驳" aria-label="反驳：从对立面审视" title="从对立面审视">反驳</button>
+            <button type="button" data-mode="选题" aria-label="选题：变成内容方向" title="变成内容方向">选题</button>
+          </div>
+          <div id="ask-empty" class="hint-block">选择一种方式。结果会留在这里，切换方式不会覆盖。</div>
+          <div id="ask-list" class="stack"></div>
+        </section>
+
+        <section class="panel chat-panel" data-panel="chat">
+          <div class="section-head chat-head">
+            <div><span class="eyebrow">DIALOGUE</span><h2>围绕这段话深聊</h2></div>
+            <button id="new-chat" class="new-chat" type="button" aria-label="新对话" title="新对话">+</button>
+          </div>
+          <div class="chat-options">
+            <div class="engine" role="group" aria-label="对话引擎">
+              <button type="button" data-engine="claude" aria-pressed="true">Claude Code</button>
+              <button type="button" data-engine="codex" aria-pressed="false">Codex</button>
+            </div>
+            <label class="context-toggle"><input id="include-context" type="checkbox" /> 附带选区附近正文</label>
+          </div>
+          <div id="chat-log" class="chat-log"></div>
+          <label class="composer chat-composer">
+            <span class="sr-only">对话内容</span>
+            <textarea id="chat-input" rows="3" maxlength="8000" placeholder="你怎么看这段话？"></textarea>
+            <span class="composer-foot"><small><kbd>Ctrl + Enter</kbd> 发送</small><span><button id="stop-chat" class="secondary" type="button" hidden>停止</button><button id="send-chat" class="primary" type="button">发送</button></span></span>
+          </label>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
