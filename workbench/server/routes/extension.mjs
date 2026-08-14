@@ -27,7 +27,9 @@ export const extensionRoutes = [
       json(res, {
         ok: true,
         name: "Xenho 网页助手",
-        version: 1,
+        version: 2,
+        product: "content-studio",
+        protocolVersion: 2,
         pairToken: extensionToken,
         ready: vault && !!String(env.WORKER_URL || "").trim() && !!String(env.WORKBENCH_KEY || "").trim(),
         services: { vault, pipeline: !!String(env.WORKER_URL || "").trim() && !!String(env.WORKBENCH_KEY || "").trim() },

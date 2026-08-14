@@ -1,4 +1,4 @@
-// /api/pipe/* → 转发 content-pipeline Worker 的 /wb/* 端点。
+// /api/pipe/* → 转发 content-studio Worker 的 /wb/* 端点。
 //
 // 为什么不让浏览器直连 Worker：WORKBENCH_KEY 得留在服务端。前端拿到 key 就等于
 // 把它写进了浏览器可读的地方，而且 Worker 也就必须开 CORS。
@@ -14,7 +14,7 @@ import { callWorker } from "../lib/worker.mjs";
  */
 function withDeployHint(data) {
   if (data?.ok === false && /unknown endpoint/i.test(data.error || "")) {
-    return { ...data, error: "流水线 Worker 上还没有这个接口", hint: "在 content-pipeline 里跑 npx wrangler deploy 更新 Worker" };
+    return { ...data, error: "流水线 Worker 上还没有这个接口", hint: "在 content-studio/worker 里跑 npx wrangler deploy 更新 Worker" };
   }
   return data;
 }
@@ -111,7 +111,7 @@ export const pipeRoutes = [
     handler: ({ env, req, res }) => forwardPost(env, req, res, "publish"),
   },
   {
-    // 删除 = 归档进 Notion 废纸篓，30 天内可恢复。界面上照实说，别写成「永久删除」
+    // 删除走 Worker 的统一归档规则，界面不要写成「永久删除」。
     method: "POST",
     path: "/api/pipe/delete",
     handler: ({ env, req, res }) => forwardPost(env, req, res, "delete"),

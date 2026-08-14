@@ -1,9 +1,11 @@
 const API = "http://127.0.0.1:5180";
+const PRODUCT = "content-studio";
+const PROTOCOL_VERSION = 2;
+const CONNECTION_KEY = "workbenchConnection";
 const ALLOWED_ACTIONS = new Set(["annotate", "ask", "chat", "topic"]);
 const INTAKE_TARGETS = new Set(["material", "inbox"]);
 const MAX_SELECTION = 4000;
-let pairToken = "";
-let serviceStatus = null;
+let connectionRequest = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -36,25 +38,50 @@ async function setCapture(context, action) {
   await chrome.storage.session.set({ currentCapture: { ...context, action } });
 }
 
-async function status(force = false) {
-  if (pairToken && serviceStatus && !force) return serviceStatus;
-  let response;
-  try {
-    response = await fetch(`${API}/api/extension/status`, { headers: { "X-Xenho-Extension": "1" } });
-  } catch {
-    throw new Error("工作台未启动，请先打开 Xenho OS");
-  }
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data?.ok || !data.pairToken) throw new Error(data?.error || "扩展无法连接工作台");
-  pairToken = data.pairToken;
-  serviceStatus = data;
-  await chrome.storage.session.set({ workbenchStatus: { ...data, pairToken: undefined } });
-  return data;
+async function cachedConnection() {
+  const stored = await chrome.storage.session.get(CONNECTION_KEY);
+  const connection = stored[CONNECTION_KEY];
+  if (!connection?.pairToken || connection?.status?.product !== PRODUCT || connection?.status?.protocolVersion !== PROTOCOL_VERSION) return null;
+  return connection;
 }
 
-async function api(path, { method = "GET", body, signal } = {}) {
-  await status();
-  const headers = { "X-Xenho-Extension": "1", "X-Xenho-Token": pairToken };
+async function clearConnection() {
+  await chrome.storage.session.remove(CONNECTION_KEY);
+}
+
+async function connect(force = false) {
+  if (!force) {
+    const cached = await cachedConnection();
+    if (cached) return cached;
+  }
+  if (connectionRequest) return connectionRequest;
+  connectionRequest = (async () => {
+    let response;
+    try {
+      response = await fetch(`${API}/api/extension/status`, { headers: { "X-Xenho-Extension": "1" } });
+    } catch {
+      throw new Error("工作台未启动，请先打开 Xenho OS");
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.ok || !data.pairToken) throw new Error(data?.error || "扩展无法连接工作台");
+    if (data.product !== PRODUCT || data.protocolVersion !== PROTOCOL_VERSION) {
+      throw new Error("检测到旧版工作台，请启动 content-studio 中的 Xenho OS");
+    }
+    const { pairToken, ...status } = data;
+    const connection = { pairToken, status };
+    await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
+    return connection;
+  })();
+  try {
+    return await connectionRequest;
+  } finally {
+    connectionRequest = null;
+  }
+}
+
+async function api(path, { method = "GET", body, signal } = {}, canRetry = true) {
+  const connection = await connect();
+  const headers = { "X-Xenho-Extension": "1", "X-Xenho-Token": connection.pairToken };
   if (body !== undefined) headers["content-type"] = "application/json";
   let response;
   try {
@@ -67,11 +94,10 @@ async function api(path, { method = "GET", body, signal } = {}) {
   } catch {
     throw new Error("工作台未启动，请先打开 Xenho OS");
   }
-  if (response.status === 401) {
-    pairToken = "";
-    serviceStatus = null;
-    await status(true);
-    return api(path, { method, body, signal });
+  if (response.status === 401 && canRetry) {
+    await clearConnection();
+    await connect(true);
+    return api(path, { method, body, signal }, false);
   }
   return response;
 }
@@ -114,9 +140,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "XENHO_STATUS") {
-    status().then((data) => sendResponse({
+    connect(true).then(({ status }) => sendResponse({
       ok: true,
-      status: { name: data.name, version: data.version, ready: data.ready, services: data.services },
+      status,
     })).catch((error) => sendResponse({ ok: false, error: error.message || "连接失败" }));
     return true;
   }

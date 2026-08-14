@@ -19,7 +19,7 @@ export const aiRoutes = [
         return json(res, { ok: false, error: e.message }, 400);
       }
 
-      // LLM 生成比 Notion 查询慢，给 120 秒；流式下只要持续有字节到达就不会超时
+      // LLM 生成比 D1 查询慢，给 120 秒；流式下只要持续有字节到达就不会超时
       const { res: workerRes, configError, done } = await callWorkerRaw(env, "explain", {
         method: "POST",
         body,
@@ -39,7 +39,7 @@ export const aiRoutes = [
             data = { ok: false, error: `AI 返回了非预期内容（HTTP ${workerRes.status}）：${text.slice(0, 200)}` };
           }
           if (!data.hint && /LLM \d+/.test(data.error || "")) {
-            data.hint = "LLM 代理不可用。检查 content-pipeline 的 LLM_BASE_URL 是否还有效";
+            data.hint = "LLM 代理不可用。检查 content-studio/worker 的 LLM_BASE_URL 是否还有效";
           }
           return json(res, data, workerRes.status === 200 ? 502 : workerRes.status);
         }

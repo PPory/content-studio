@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Xenho 网页助手",
-  "description": "随手划取网页内容，直接批注、提问、对话或保存到辛禾创作工作台。",
-  "version": "0.1.4",
+  "description": "随手划取网页内容，直接批注、提问、对话或保存到辛禾内容工作室。",
+  "version": "0.2.0",
   "minimum_chrome_version": "116",
   "permissions": ["sidePanel", "storage"],
   "host_permissions": ["http://127.0.0.1:5180/*"],
