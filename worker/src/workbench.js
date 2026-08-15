@@ -25,7 +25,7 @@ import {
   stableTaskKey,
   topicStatusFromDrafts,
 } from "./lib/integrity.js";
-import { normalizeCreationRequest, buildMaterialStarter } from "./lib/creation.js";
+import { normalizeCreationRequest } from "./lib/creation.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -518,9 +518,8 @@ async function createContent(env, input) {
   }
 
   if (body.kind === "draft") {
-    // 素材模式进入编辑器后允许用户自由删改，因此有正文时以用户最终保存的版本为准；
-    // 旧客户端没传正文时仍由服务端根据真实素材生成起稿，不能信任客户端伪造素材内容。
-    const draftBody = body.mode === "material" && !body.body.trim() ? buildMaterialStarter(body.title, materials) : body.body;
+    // 素材只作为稿件依据保持关联；正文完全以编辑器保存结果为准，空稿也不自动回填素材。
+    const draftBody = body.body;
     const evidence = evidenceId ? [{ type: "个人经历", note: body.interviewEvidence }] : [];
     if (body.mode === "interview") assertGroundedGeneratedText(draftBody, [...materials.map((m) => ({ ...m, note: m.content })), ...evidence]);
 

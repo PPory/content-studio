@@ -33,21 +33,3 @@ export function normalizeCreationRequest(body = {}) {
     materialIds,
   };
 }
-
-export function buildMaterialStarter(title, materials = []) {
-  const cards = materials.map((material) => {
-    const body = String(material.content || "").trim().split("\n").map((line) => `> ${line}`).join("\n");
-    return `### ${material.title || "未命名素材"}\n\n${body || "> （这条素材没有正文）"}`;
-  });
-  return [
-    `# ${title}`,
-    "",
-    "<!-- 以下是本次起稿选中的素材。写完后可删掉这一段。 -->",
-    "## 写作素材",
-    "",
-    cards.join("\n\n"),
-    "",
-    "---",
-    "",
-  ].join("\n");
-}

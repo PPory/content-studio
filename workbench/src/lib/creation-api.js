@@ -58,6 +58,45 @@ export async function interviewStream({ signal, sessionId, message, title, platf
   return full.trim();
 }
 
+export async function materialDraftStream({ signal, title, platform, viewpoint, audience, materials, onChunk }) {
+  const response = await fetch("/api/agent/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      workflow: "material-draft",
+      agent: "claude",
+      draftTitle: title,
+      platform,
+      viewpoint,
+      audience,
+      materials: (materials || []).map(({ id, title: materialTitle, type, note, verificationStatus, link }) => ({
+        id,
+        title: materialTitle,
+        type,
+        note,
+        verificationStatus,
+        link,
+      })),
+    }),
+    signal,
+  });
+  const type = response.headers.get("content-type") || "";
+  if (!response.ok || type.includes("application/json")) {
+    const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw Object.assign(new Error(data.error || "AI 起稿服务没有响应"), { hint: data.hint });
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let full = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+    onChunk?.(full);
+  }
+  return full.trim();
+}
+
 export function cleanGeneratedDraft(text) {
   const value = String(text || "").trim();
   const fenced = value.match(/```(?:markdown|md)?\s*\n([\s\S]*?)```/i);
@@ -78,17 +117,9 @@ export function deriveDraftTitle(title, markdown) {
     .slice(0, 60) || "未命名稿";
 }
 
-export function buildMaterialDraft(title, materials = []) {
-  const cards = materials.map((material) => {
-    const body = String(material.note || "").trim().split("\n").map((line) => `> ${line}`).join("\n");
-    return `### ${material.title || "未命名素材"}\n\n${body || "> （这条素材没有正文）"}`;
-  });
-  return [
-    title?.trim() ? `# ${title.trim()}` : "",
-    "<!-- 以下是本次起稿选中的素材。写完后可删掉这一段。 -->",
-    "## 写作素材",
-    cards.join("\n\n"),
-    "---",
-    "",
-  ].filter((part, index) => part || index === 5).join("\n\n");
+export function formatMaterialQuote(material = {}) {
+  const note = String(material.note || "").trim();
+  if (!note) return "";
+  const quote = note.split(/\r?\n/).map((line) => `> ${line}`).join("\n");
+  return `${quote}\n>\n> —— 素材：${String(material.title || "未命名素材").trim()}`;
 }

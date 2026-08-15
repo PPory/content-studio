@@ -137,7 +137,7 @@ function insertBlock(view, text) {
 
 const HEADINGS = ["正文", "标题 1", "标题 2", "标题 3"];
 
-export function MarkdownEditor({ value, onChange, ariaLabel = "正文" }) {
+export function MarkdownEditor({ value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled }) {
   const host = useRef(null);
   const view = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -184,6 +184,21 @@ export function MarkdownEditor({ value, onChange, ariaLabel = "正文" }) {
       v.dispatch({ changes: { from: 0, to: cur.length, insert: value } });
     }
   }, [value]);
+
+  useEffect(() => {
+    const v = view.current;
+    const text = String(insertRequest?.text || "").trim();
+    if (!v || !insertRequest?.id || !text) return;
+    const { from, to } = v.state.selection.main;
+    const before = v.state.sliceDoc(0, from);
+    const after = v.state.sliceDoc(to);
+    const lead = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+    const tail = after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
+    const insert = `${lead}${text}${tail}`;
+    v.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length - tail.length } });
+    v.focus();
+    onInsertHandled?.(insertRequest.id);
+  }, [insertRequest, onInsertHandled]);
 
   const html = useMemo(() => (preview ? renderMarkdown(value || "") : ""), [preview, value]);
   const cmd = (fn) => () => view.current && fn(view.current);
