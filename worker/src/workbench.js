@@ -518,7 +518,9 @@ async function createContent(env, input) {
   }
 
   if (body.kind === "draft") {
-    const draftBody = body.mode === "material" ? buildMaterialStarter(body.title, materials) : body.body;
+    // 素材模式进入编辑器后允许用户自由删改，因此有正文时以用户最终保存的版本为准；
+    // 旧客户端没传正文时仍由服务端根据真实素材生成起稿，不能信任客户端伪造素材内容。
+    const draftBody = body.mode === "material" && !body.body.trim() ? buildMaterialStarter(body.title, materials) : body.body;
     const evidence = evidenceId ? [{ type: "个人经历", note: body.interviewEvidence }] : [];
     if (body.mode === "interview") assertGroundedGeneratedText(draftBody, [...materials.map((m) => ({ ...m, note: m.content })), ...evidence]);
 

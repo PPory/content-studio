@@ -63,3 +63,32 @@ export function cleanGeneratedDraft(text) {
   const fenced = value.match(/```(?:markdown|md)?\s*\n([\s\S]*?)```/i);
   return (fenced ? fenced[1] : value).trim();
 }
+
+export function deriveDraftTitle(title, markdown) {
+  const explicit = String(title || "").trim();
+  if (explicit) return explicit.slice(0, 200);
+  const lines = String(markdown || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const heading = lines.find((line) => /^#{1,6}\s+/.test(line));
+  const source = heading || lines[0] || "未命名稿";
+  return source
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^[-*>\d.)\s]+/, "")
+    .replace(/[*_`~\[\]]/g, "")
+    .trim()
+    .slice(0, 60) || "未命名稿";
+}
+
+export function buildMaterialDraft(title, materials = []) {
+  const cards = materials.map((material) => {
+    const body = String(material.note || "").trim().split("\n").map((line) => `> ${line}`).join("\n");
+    return `### ${material.title || "未命名素材"}\n\n${body || "> （这条素材没有正文）"}`;
+  });
+  return [
+    title?.trim() ? `# ${title.trim()}` : "",
+    "<!-- 以下是本次起稿选中的素材。写完后可删掉这一段。 -->",
+    "## 写作素材",
+    cards.join("\n\n"),
+    "---",
+    "",
+  ].filter((part, index) => part || index === 5).join("\n\n");
+}

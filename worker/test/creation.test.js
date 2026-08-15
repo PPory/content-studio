@@ -20,3 +20,15 @@ test("素材正文只使用服务端查到的内容", () => {
   assert.match(text, /> 第一行\n> 第二行/);
   assert.match(text, /写完后可删掉/);
 });
+
+test("素材稿保存用户在编辑器中修改后的正文", () => {
+  const value = normalizeCreationRequest({
+    kind: "draft",
+    mode: "material",
+    title: "测试",
+    platform: "公众号",
+    materialIds: ["01K2YQ0PVG6TP8H9Q4VJ3M7N5R"],
+    body: "修改后的正文",
+  });
+  assert.equal(value.body, "修改后的正文");
+});
