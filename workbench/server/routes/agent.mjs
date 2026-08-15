@@ -19,11 +19,21 @@
 //    vault 很香，但那意味着一句话就能改你的知识库。结论要留下时走界面上的「存为笔记」。
 
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { json, readJsonBody } from "../lib/http.mjs";
 import { vaultRoot } from "../lib/vault.mjs";
 import { DEFAULT_PROMPTS, chatSystem, loadPrompts } from "../lib/prompts.mjs";
 
 const MAX_TURNS = "12"; // 兜住失控的多轮工具调用
+const WORKBENCH_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+export function interviewPromptParts(body = {}, sessionId = "") {
+  return [
+    !sessionId ? "/interview-to-draft" : "",
+    `【工作台起稿信息】\n暂定标题：${String(body.draftTitle || "未命名").slice(0, 200)}\n目标平台：${String(body.platform || "").slice(0, 20)}\n当前阶段：${String(body.phase || "interviewing").slice(0, 30)}`,
+  ].filter(Boolean);
+}
 
 /**
  * 系统提示词。**角色设定用户可改（设置面板），安全约束是常量、永远拼在最后。**
@@ -128,14 +138,22 @@ export const agentRoutes = [
       const message = String(body.message || "").trim();
       if (!message) return json(res, { ok: false, error: "message 不能为空" }, 400);
 
-      // 白名单取引擎，认不出的就退回 claude——不要拿用户传来的字符串去 spawn
-      const engine = ENGINES[String(body.agent || "")] || ENGINES.claude;
+      const interview = body.workflow === "interview";
+      // 访谈起稿必须走 Claude：这个入口调用的是项目内 interview-to-draft skill，
+      // Codex 通道不认识 Claude Code 的 skill。普通对话仍按白名单选择引擎。
+      const engine = interview ? ENGINES.claude : ENGINES[String(body.agent || "")] || ENGINES.claude;
 
       let cwd;
-      try {
-        cwd = vaultRoot(env);
-      } catch (e) {
-        return json(res, { ok: false, error: e.message, hint: e.hint }, 503);
+      if (interview) {
+        // cwd 放在 workbench 根目录，Claude Code 才会发现 `.claude/skills/interview-to-draft`。
+        // 访谈不读 vault，所以即使用户还没配置 Obsidian 也能正常起稿。
+        cwd = WORKBENCH_ROOT;
+      } else {
+        try {
+          cwd = vaultRoot(env);
+        } catch (e) {
+          return json(res, { ok: false, error: e.message, hint: e.hint }, 503);
+        }
       }
 
       // 续聊：session id 由前一轮的响应头带回前端，再原样传回来。
@@ -154,15 +172,17 @@ export const agentRoutes = [
       });
 
       // 当前在读的东西作为上下文，和问题一起从 stdin 进去
-      const prompt = engine.prompt(
-        [
+      const parts = [
+          ...(interview ? interviewPromptParts(body, sessionId) : []),
           body.docTitle ? `【我正在读】${body.docTitle}` : "",
           body.sourceUrl ? `【网页】${String(body.sourceUrl).slice(0, 2048)}` : "",
           body.selection ? `【选中的片段】\n${String(body.selection).slice(0, 4000)}` : "",
           body.pageContext ? `【选区附近正文】\n${String(body.pageContext).slice(0, 6000)}` : "",
           body.docPath ? `【文件】${body.docPath}` : "",
-          `【我的问题】\n${message}`,
-        ].filter(Boolean),
+          `${interview ? "【本轮输入】" : "【我的问题】"}\n${message}`,
+        ].filter(Boolean);
+      const prompt = engine.prompt(
+        parts,
         system
       );
       child.stdin.end(prompt, "utf8");

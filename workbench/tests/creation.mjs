@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { interviewPromptParts } from "../server/routes/agent.mjs";
+import { cleanGeneratedDraft } from "../src/lib/creation-api.js";
+
+assert.equal(cleanGeneratedDraft("```markdown\n# 标题\n\n正文\n```"), "# 标题\n\n正文");
+assert.equal(cleanGeneratedDraft("# 标题\n\n正文"), "# 标题\n\n正文");
+console.log("✓ 访谈初稿能去掉 Markdown 围栏");
+
+const firstTurn = interviewPromptParts({
+  draftTitle: "一篇待访谈文章",
+  platform: "公众号",
+  phase: "interviewing",
+});
+assert.equal(firstTurn[0], "/interview-to-draft");
+assert.match(firstTurn[1], /暂定标题：一篇待访谈文章/);
+assert.match(firstTurn[1], /目标平台：公众号/);
+
+const resumedTurn = interviewPromptParts({ draftTitle: "续聊" }, "123e4567-e89b-12d3-a456-426614174000");
+assert.equal(resumedTurn.some((part) => part === "/interview-to-draft"), false);
+console.log("✓ 访谈首轮调用工作台 skill，续聊沿用既有会话");

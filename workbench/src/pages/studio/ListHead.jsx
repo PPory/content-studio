@@ -6,7 +6,7 @@
 // 书架和洞察的新增各有各的入口，混进来只会让这颗按钮的含义随页面变。
 import { IconLayoutGrid, IconLayoutKanban, IconPlus, IconSearch } from "../../components/icons.jsx";
 
-export function ListHead({ source, list, searchRef, query, setQuery, canBoard, layout, setLayout, isPipeline, sourceKey, onIntake }) {
+export function ListHead({ source, list, searchRef, query, setQuery, canBoard, layout, setLayout, isPipeline, sourceKey, onIntake, onCreate }) {
   return (
     <div className="panel-head">
       <div className="panel-head__main">
@@ -40,9 +40,16 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
           </div>
         ) : null}
         {isPipeline ? (
-          <button className="btn btn-primary btn-sm" onClick={() => onIntake({ target: sourceKey === "inbox" ? "inbox" : "material" })}>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => sourceKey === "topics"
+              ? onCreate("topic")
+              : sourceKey === "drafts"
+                ? onCreate("choose")
+                : onIntake({ target: sourceKey === "inbox" ? "inbox" : "material" })}
+          >
             <IconPlus aria-hidden="true" stroke={2} />
-            新增
+            {sourceKey === "topics" ? "选题" : sourceKey === "drafts" ? "新稿" : "入库"}
           </button>
         ) : null}
       </div>

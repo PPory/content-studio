@@ -11,7 +11,7 @@ import {
   getRow, updateRow, insertRow, deleteRow as dbDeleteRow, listPage, upsertByTaskKey,
   materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic,
   tagsOf, setTags, addComment, listComments as dbListComments,
-  all, first, now,
+  all, first, now, newId, batch, stmt,
 } from "./lib/db.js";
 import { TOPIC_STATUS, DRAFT_STATUS, VERIFICATION } from "./lib/values.js";
 import { pipelineCounts } from "./lib/status.js";
@@ -25,6 +25,7 @@ import {
   stableTaskKey,
   topicStatusFromDrafts,
 } from "./lib/integrity.js";
+import { normalizeCreationRequest, buildMaterialStarter } from "./lib/creation.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -208,6 +209,8 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (pageMatch && request.method === "GET") return await pageDetail(env, pageMatch[1], url.searchParams.get("view"));
 
     if (path === "intake" && request.method === "POST") return await intake(env, ctx, await request.json());
+
+    if (path === "create" && request.method === "POST") return await createContent(env, await request.json());
 
     if (path === "comment" && request.method === "POST") {
       const { pageId, text, view } = await request.json();
@@ -483,6 +486,69 @@ async function intake(env, ctx, body) {
     tags: r.tags,
     topicTitles: r.topicTitles,
     autoTagPending: !!r.needsAutoTag,
+  });
+}
+
+// 工作台统一创建入口：选题和手写稿都在这里落库。手写稿用 manual:* task_key，
+// 和自动成稿的 draft-platform:* 永远不会撞唯一约束；父选题直接标为已成稿，避免 cron
+// 把同一选题再次领走生成一篇重复稿。
+async function createContent(env, input) {
+  const body = normalizeCreationRequest(input);
+  let materials = [];
+  if (body.materialIds.length) {
+    const holes = body.materialIds.map(() => "?").join(",");
+    materials = await all(env, `SELECT id, title, content, type, verification FROM materials WHERE id IN (${holes})`, ...body.materialIds);
+    if (materials.length !== body.materialIds.length) return json({ ok: false, error: "有素材已经不存在，请重新选择" }, 409);
+  }
+
+  const topicId = newId();
+  const draftId = body.kind === "draft" ? newId() : "";
+  const evidenceId = body.kind === "draft" && body.mode === "interview" && body.interviewEvidence ? newId() : "";
+  const ts = now();
+  const topicStatus = body.kind === "draft" ? TOPIC_STATUS.DRAFTED : TOPIC_STATUS.TODO;
+  const ops = [stmt(
+    env,
+    `INSERT INTO topics (id, title, viewpoint, audience, platform, priority, status, task_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, '中', ?, ?, ?, ?)`,
+    topicId, body.title, body.viewpoint, body.audience, body.platform, topicStatus, `manual-topic:${topicId}`, ts, ts
+  )];
+
+  for (const material of materials) {
+    ops.push(stmt(env, "INSERT OR IGNORE INTO topic_materials (topic_id, material_id) VALUES (?, ?)", topicId, material.id));
+  }
+
+  if (body.kind === "draft") {
+    const draftBody = body.mode === "material" ? buildMaterialStarter(body.title, materials) : body.body;
+    const evidence = evidenceId ? [{ type: "个人经历", note: body.interviewEvidence }] : [];
+    if (body.mode === "interview") assertGroundedGeneratedText(draftBody, [...materials.map((m) => ({ ...m, note: m.content })), ...evidence]);
+
+    ops.push(stmt(
+      env,
+      `INSERT INTO drafts (id, topic_id, headline, summary, body, platform, status, task_key, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      draftId, topicId, body.title, body.viewpoint, draftBody, body.platform,
+      DRAFT_STATUS.TODO, `manual:${draftId}`, ts, ts
+    ));
+
+    if (evidenceId) {
+      ops.push(stmt(
+        env,
+        `INSERT INTO materials
+         (id, title, content, type, verification, verification_note, draft_id, task_key, created_at, updated_at)
+         VALUES (?, ?, ?, '个人经历', '已核验', ?, ?, ?, ?, ?)`,
+        evidenceId, `访谈记录｜${body.title}`.slice(0, 200), body.interviewEvidence,
+        "用户在工作台访谈中逐轮提供，并在起稿前确认共识。", draftId, `manual-interview:${draftId}`, ts, ts
+      ));
+      ops.push(stmt(env, "INSERT INTO topic_materials (topic_id, material_id) VALUES (?, ?)", topicId, evidenceId));
+    }
+  }
+
+  await batch(env, ops);
+  return json({
+    ok: true,
+    topic: { id: topicId, title: body.title, status: topicStatus, platform: body.platform },
+    draft: draftId ? { id: draftId, title: body.title, status: DRAFT_STATUS.TODO, platform: body.platform, topicId } : null,
+    linkedMaterials: materials.length + (evidenceId ? 1 : 0),
   });
 }
 

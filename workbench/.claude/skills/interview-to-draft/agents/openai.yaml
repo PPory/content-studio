@@ -1,0 +1,7 @@
+interface:
+  display_name: "访谈起稿"
+  short_description: "逐轮挖掘真实想法，确认共识后生成可编辑文章初稿"
+  default_prompt: "Use $interview-to-draft to interview me one question at a time and prepare a grounded draft."
+
+policy:
+  allow_implicit_invocation: true

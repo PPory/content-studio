@@ -92,6 +92,11 @@ export const pipeRoutes = [
   },
   {
     method: "POST",
+    path: "/api/pipe/create",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "create"),
+  },
+  {
+    method: "POST",
     path: "/api/pipe/comment",
     handler: ({ env, req, res }) => forwardPost(env, req, res, "comment"),
   },

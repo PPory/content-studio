@@ -17,7 +17,7 @@ import { SOURCES, PIPELINE, summarizeDraftReconcile } from "../lib/sources.js";
 import { api } from "../lib/api.js";
 import { contextOf } from "../lib/reading.js";
 import { noteOpened } from "../lib/recent.js";
-import { takeOpenTarget } from "../lib/open-target.js";
+import { setOpenTarget, takeOpenTarget } from "../lib/open-target.js";
 import { useAiRuns } from "../lib/use-ai-runs.js";
 import { agentName } from "../lib/chat-agent.js";
 import { useDocChat } from "../lib/use-doc-chat.js";
@@ -26,6 +26,8 @@ import { ACTIONS } from "../components/Reader.jsx";
 import { PlatformGate } from "../components/PlatformGate.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { MaterialVerificationPanel } from "../components/MaterialVerificationPanel.jsx";
+import { CreationDialog } from "../components/CreationDialog.jsx";
+import { IconPlus } from "../components/icons.jsx";
 // 展示件搬进 pages/studio/。**页面只留组合和状态边界。**
 // 这三样搬走之后，`Board` / `Empty` / `Select` / 那一排图标也跟着不在这儿用了——
 // 死 import 留着不报错，但它会让人以为这个文件还在管那些事。
@@ -57,6 +59,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
 
   const [gate, setGate] = useState(null);   // { item, next } 等待选平台
   const [toast, setToast] = useState(null); // { text, undo? }
+  const [creation, setCreation] = useState(null); // choose | topic | blank
 
   const [railMode, setRailMode] = useState("notes");
   const [outline, setOutline] = useState([]);   // 正文的小标题，画在阅读区左栏
@@ -499,7 +502,16 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
 
   return (
     <>
-      <PageHeader eyebrow={source.eyebrowCn || "个人内容运营"} title={source.label} desc={source.sub} />
+      <PageHeader
+        eyebrow={source.eyebrowCn || "个人内容运营"}
+        title={source.label}
+        desc={source.sub}
+        aside={isPipeline ? (
+          <button className="btn btn-primary" onClick={() => setCreation("choose")}>
+            <IconPlus aria-hidden="true" stroke={2} />新建
+          </button>
+        ) : null}
+      />
 
       {/* 流水线四段做成一排 tab：它们是**一条链的四段**，不是四个不相干的页面。
           摊成 tab 才看得出「东西是从左往右走的」，侧栏里排四行反而把这层关系藏了。 */}
@@ -533,6 +545,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           isPipeline={isPipeline}
           sourceKey={sourceKey}
           onIntake={onIntake}
+          onCreate={setCreation}
         />
 
         {/* 筛选条**只占一行**：状态是芯片（互斥的分流，一眼看全），平台是下拉（选项会变多）。
@@ -665,6 +678,23 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           onConfirm={confirmGate}
         />
       ) : null}
+
+      <CreationDialog
+        open={!!creation}
+        preset={creation}
+        onClose={() => setCreation(null)}
+        onCreated={(draft) => {
+          setOpenTarget("drafts", draft.id);
+          onChanged?.();
+          onGo("drafts", "");
+        }}
+        onTopicCreated={(topic) => {
+          onChanged?.();
+          setToast({ text: `选题《${topic.title}》已建立` });
+          if (sourceKey === "topics") reload();
+          else onGo("topics", "待写");
+        }}
+      />
 
       <Toast text={toast?.text} onUndo={toast?.undo} onClose={() => setToast(null)} />
     </>
