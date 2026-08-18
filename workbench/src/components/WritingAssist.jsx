@@ -8,7 +8,7 @@ import "./writing-assist.css";
  * 写作推动是一张临时卡片，不是聊天窗：一次只给一个结果，下一次必须由用户再点。
  * “想一想”是默认状态；“帮我写”只在明确切换后才会生成正文，而且生成结果不会自动落笔。
  */
-export function WritingAssist({ title, body, platform, onInsert }) {
+export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("think");
   const [result, setResult] = useState(null);
@@ -41,6 +41,7 @@ export function WritingAssist({ title, body, platform, onInsert }) {
         mode: nextMode,
         title,
         content: body,
+        cursor: Math.max(0, Math.min(body.length, Number(getCursor?.()) || 0)),
         platform,
       }, ac.signal);
       setResult({ mode: nextMode, kind: response.kind, text: response.text });
@@ -79,8 +80,8 @@ export function WritingAssist({ title, body, platform, onInsert }) {
 
   return (
     <div className="writing-assist">
-      <button className="writing-assist__trigger" onClick={show} aria-expanded={open} title="卡住时给我一个小推动">
-        <IconBulb aria-hidden="true" />推动一下
+      <button className="writing-assist__trigger" onClick={show} aria-expanded={open} aria-busy={busy} title="围绕当前光标给我一个小推动">
+        {busy ? <IconLoader2 aria-hidden="true" /> : <IconBulb aria-hidden="true" />}推动一下
       </button>
       {open ? (
         <section className="writing-assist__card" aria-label="写作推动" aria-live="polite">
@@ -93,12 +94,12 @@ export function WritingAssist({ title, body, platform, onInsert }) {
           </header>
 
           {busy ? (
-            <div className="writing-assist__wait"><IconLoader2 className="spin" aria-hidden="true" /><span>{mode === "think" ? "正在找最值得追问的一步…" : "正在顺着你的上文往下写…"}</span></div>
+            <div className="writing-assist__wait"><IconLoader2 aria-hidden="true" /><span>{mode === "think" ? "正在围绕当前光标找最值得追问的一步…" : "正在围绕当前光标接着写…"}</span></div>
           ) : error ? (
             <div className="writing-assist__error"><strong>{error.message}</strong>{error.hint ? <small>{error.hint}</small> : null}<button onClick={() => mode === "think" ? ask("nudge") : setError(null)}>重试</button></div>
           ) : mode === "write" && !result ? (
             <div className="writing-assist__choice">
-              <p>根据标题和已有上文生成候选，确认后才会插进正文。</p>
+              <p>结合全文理解主题，围绕当前光标生成候选，确认后才会插进正文。</p>
               <div>
                 <button onClick={() => ask("paragraph")}>续写一段</button>
                 <button onClick={() => ask("finish")}>完成全文</button>
@@ -109,7 +110,7 @@ export function WritingAssist({ title, body, platform, onInsert }) {
               <small>{result.kind}</small>
               <p>{result.text}</p>
               <footer>
-                <span>{result.mode === "starter" ? `来自 ${STARTING_LINE_COUNT.toLocaleString("en-US")} 条内置起始句` : result.mode === "nudge" ? "只给一步，不替你下笔" : `候选 ${result.text.length} 字`}</span>
+                <span>{result.mode === "starter" ? `内置组合库 · ${STARTING_LINE_COUNT.toLocaleString("en-US")} 种` : result.mode === "nudge" ? "围绕光标，只给一步" : `候选 ${result.text.length} 字`}</span>
                 <div>
                   <button onClick={() => result.mode === "starter" ? localStarter() : ask(result.mode)}>{result.mode === "starter" ? "换一句" : "再来一个"}</button>
                   {result.mode !== "nudge" ? <button className="is-primary" onClick={insert}>{result.mode === "starter" ? "用这句开头" : "插入光标处"}</button> : null}

@@ -3,8 +3,9 @@
 .writing-assist__trigger:hover, .writing-assist__trigger[aria-expanded="true"] { border-color: var(--text-1); color: var(--text-1); }
 .writing-assist__trigger[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
 .writing-assist__trigger svg { width: 15px; height: 15px; }
-.writing-assist__card { position: absolute; z-index: 40; top: 40px; right: 0; width: min(470px, calc(100vw - 110px)); padding: 13px 14px 14px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: 15px; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
-.writing-assist__card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.writing-assist__trigger[aria-busy="true"] svg, .writing-assist__wait svg { animation: writing-assist-spin .72s linear infinite; }
+.writing-assist__card { position: fixed; z-index: 120; top: clamp(72px, 9vh, 110px); left: 50%; right: auto; transform: translateX(-50%); width: min(560px, calc(100vw - 48px)); max-height: min(460px, calc(100vh - 140px)); display: flex; flex-direction: column; overflow: hidden; padding: 13px 14px 14px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: 15px; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
+.writing-assist__card > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writing-assist__modes { display: inline-flex; gap: 3px; padding: 3px; border-radius: 9px; background: color-mix(in srgb, var(--on-accent) 10%, transparent); }
 .writing-assist__modes button, .writing-assist__close, .writing-assist__result button, .writing-assist__choice button, .writing-assist__error button { border: 0; background: transparent; color: inherit; font: 600 11px/1 var(--font); cursor: pointer; }
 .writing-assist__modes button { padding: 6px 9px; border-radius: 7px; color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
@@ -14,11 +15,10 @@
 .writing-assist__close svg { width: 15px; }
 .writing-assist__wait { min-height: 86px; display: flex; align-items: center; gap: 9px; color: color-mix(in srgb, var(--on-accent) 78%, transparent); font-size: 12.5px; }
 .writing-assist__wait svg { width: 17px; }
-.writing-assist__result { padding-top: 12px; }
+.writing-assist__result { min-height: 0; display: flex; flex: 1; flex-direction: column; padding-top: 12px; }
 .writing-assist__result > small { color: color-mix(in srgb, var(--on-accent) 56%, transparent); font: 600 9.5px/1 var(--font-mono); letter-spacing: .12em; }
-.writing-assist__result > p { margin: 8px 0 13px; white-space: pre-wrap; color: var(--on-accent); font-size: 15px; line-height: 1.65; }
-.writing-assist__result[data-long="true"] > p { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
-.writing-assist__result footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.writing-assist__result > p { min-height: 0; max-height: min(300px, calc(100vh - 270px)); margin: 8px 0 13px; padding-right: 5px; overflow-y: auto; white-space: pre-wrap; color: var(--on-accent); font-size: 15px; line-height: 1.65; scrollbar-color: color-mix(in srgb, var(--on-accent) 38%, transparent) transparent; }
+.writing-assist__result footer { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writing-assist__result footer > span { color: color-mix(in srgb, var(--on-accent) 52%, transparent); font-size: 10.5px; }
 .writing-assist__result footer > div { flex: none; display: flex; gap: 6px; }
 .writing-assist__result footer button, .writing-assist__choice button, .writing-assist__error button { min-height: 30px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--on-accent) 26%, transparent); border-radius: 9px; }
@@ -32,3 +32,11 @@
 .writing-assist__error strong { font-size: 12.5px; }
 .writing-assist__error small { color: color-mix(in srgb, var(--on-accent) 65%, transparent); font-size: 11px; line-height: 1.5; }
 .writing-assist__error button { justify-self: start; margin-top: 7px; }
+
+@keyframes writing-assist-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .writing-assist__card { top: 64px; width: calc(100vw - 24px); max-height: calc(100vh - 88px); }
+  .writing-assist__result footer { align-items: flex-end; }
+  .writing-assist__result footer > span { max-width: 120px; }
+}

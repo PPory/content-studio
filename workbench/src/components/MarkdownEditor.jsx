@@ -200,6 +200,7 @@ export function MarkdownEditor({
   citations, onCitations, onCiteClick, revealRequest,
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
+  onCursorChange,                 // 当前光标是写作推动的锚点；不改变正文，只上报位置
 }) {
   const host = useRef(null);
   const view = useRef(null);
@@ -209,6 +210,8 @@ export function MarkdownEditor({
   onCiteClickRef.current = onCiteClick;
   const onCitationsRef = useRef(onCitations);
   onCitationsRef.current = onCitations;
+  const onCursorChangeRef = useRef(onCursorChange);
+  onCursorChangeRef.current = onCursorChange;
   const [preview, setPreview] = useState(false);
 
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
@@ -246,6 +249,7 @@ export function MarkdownEditor({
           }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
+            if (u.selectionSet || u.docChanged) onCursorChangeRef.current?.(u.state.selection.main.head);
             // 标注的**当下**状态（位置挪过、stale 重算过）回给右侧面板。
             // 面板要靠它说「已用 2 处」和「有 1 处改过了」——那两句话必须跟着编辑走，
             // 而位置只有编辑器这一份是准的。字段没变时是同一个对象，比较引用就够。
@@ -256,6 +260,7 @@ export function MarkdownEditor({
       }),
     });
     view.current = v;
+    onCursorChangeRef.current?.(v.state.selection.main.head);
     return () => {
       v.destroy();
       view.current = null;
@@ -310,11 +315,12 @@ export function MarkdownEditor({
     const text = String(insertRequest?.text || "").trim();
     if (!v || !insertRequest?.id || !text) return;
     const { from, to } = v.state.selection.main;
-    const before = v.state.sliceDoc(0, from);
-    const after = v.state.sliceDoc(to);
-    const lead = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
-    const tail = after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
-    const insert = `${lead}${text}${tail}`;
+    const exact = insertRequest.spacing === "exact";
+    const before = exact ? "" : v.state.sliceDoc(0, from);
+    const after = exact ? "" : v.state.sliceDoc(to);
+    const lead = !exact && before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+    const tail = !exact && after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
+    const insert = exact ? text : `${lead}${text}${tail}`;
     v.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length - tail.length } });
     v.focus();
     onInsertHandled?.(insertRequest.id);

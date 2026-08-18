@@ -481,7 +481,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
             platform={platform} setPlatform={setPlatform} materials={selected} writingMode={materialWritingMode} notice={draftNotice}
             insertRequest={insertRequest} onInsertHandled={() => setInsertRequest(null)}
             onInsertMaterial={(item) => setInsertRequest({ id: `${item.id}-${Date.now()}`, text: formatMaterialQuote(item) })}
-            onInsertWriting={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text })}
+            onInsertWriting={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact" })}
             citations={numberedCitations} citeState={citeState} onCiteState={setCiteState}
             citeBusy={citeBusy} onRecheck={recheckCitations}
             active={active} onActivate={onBodyCite}
@@ -896,6 +896,7 @@ function DraftEditor({
   citations, citeState, onCiteState, citeBusy, onRecheck, reveal, onReveal, active, onActivate,
   busy, autosave, onSave,
 }) {
+  const writingCursor = useRef(0);
   const note = mode === "blank" ? "标题留空时，会用正文第一条标题或首句命名。" : mode === "material" ? `${materials.length} 条参考素材会与稿件保持关联。` : "已确认的访谈内容会作为真实素材随稿保存。";
   const words = countWords(body);
   const stats = readStats(body);
@@ -927,8 +928,9 @@ function DraftEditor({
           </div>
         ) : null}
         <MarkdownEditor value={body} onChange={setBody} ariaLabel="新稿正文" insertRequest={insertRequest} onInsertHandled={onInsertHandled}
+          onCursorChange={(position) => { writingCursor.current = position; }}
           citations={citations} onCitations={onCiteState} onCiteClick={onActivate} revealRequest={reveal}
-          toolbarExtra={<WritingAssist title={title} body={body} platform={platform} onInsert={onInsertWriting} />} />
+          toolbarExtra={<WritingAssist title={title} body={body} platform={platform} getCursor={() => writingCursor.current} onInsert={onInsertWriting} />} />
         <div className="creation-editor__foot">
           <div><span>{note}</span></div>
           <div className="creation-editor__status">

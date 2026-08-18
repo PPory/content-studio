@@ -963,7 +963,10 @@ async function writingAssist(env, raw) {
     `【模式】${input.mode}`,
     input.title ? `【标题或主题】${input.title}` : "",
     input.platform ? `【目标平台】${input.platform}` : "",
-    input.content ? `【已有正文】\n${input.content}` : "【已有正文】（还没有正文）",
+    input.overview ? `【全文开头（仅用于理解主题）】\n${input.overview}` : "",
+    `【光标前文】\n${input.before || "（光标在文首）"}`,
+    "【当前光标】← 本次提问或续写必须以这里为中心",
+    `【光标后文】\n${input.after || "（光标在文末）"}`,
   ].filter(Boolean).join("\n\n");
 
   // “完成全文”可能持续一两分钟，但任何字在外显前都必须先收齐并过真实性闸门。

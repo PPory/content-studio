@@ -380,6 +380,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [saved, setSaved] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
+  const writingCursor = useRef(0);
   const armedDel = useConfirmGuard(confirmDel);
 
   useEffect(() => {
@@ -470,13 +471,15 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           ariaLabel="正文（Markdown）"
           revealText={reveal}
           insertRequest={insertRequest}
+          onCursorChange={(position) => { writingCursor.current = position; }}
           onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
           toolbarExtra={(
             <WritingAssist
               title={title}
               body={draft}
               platform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
-              onInsert={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text })}
+              getCursor={() => writingCursor.current}
+              onInsert={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact" })}
             />
           )}
         />
