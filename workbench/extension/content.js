@@ -7,7 +7,7 @@
     ask: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M8.4 14.6A6 6 0 1 1 15.6 14.6C14.5 15.5 14 16.2 14 18h-4c0-1.8-.5-2.5-1.6-3.4Z"/>',
     chat: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/>',
     topic: '<path d="m15 4 5 5L7 22l-5 1 1-5Z"/><path d="m14 6 5 5"/><path d="M6 4V2"/><path d="M5 3h2"/><path d="M19 17v-2"/><path d="M18 16h2"/>',
-    intake: '<path d="M4 4h16v5H4z"/><path d="M6 9v11h12V9"/><path d="M10 13h4"/>',
+    intake: '<path d="M4 5h16l-2 14H6Z"/><path d="M4 13h4l2 3h4l2-3h4"/><path d="M12 3v7"/><path d="m9 7 3 3 3-3"/>',
     "intake-menu": '<path d="m8 10 4 4 4-4"/>',
   };
   const actions = [
@@ -15,8 +15,8 @@
     ["ask", "提问", "解释、展开或反驳"],
     ["chat", "对话", "带着选区连续聊"],
     ["topic", "选题", "把片段变成内容方向"],
-    ["intake", "收藏", "直接存入收件箱"],
-    ["intake-menu", "更多入库", "选择灵感库或素材库"],
+    ["intake", "收件箱", "点击直接收藏"],
+    ["intake-menu", "选择入库位置", "收件箱、灵感库或素材库"],
   ];
   const host = document.createElement("div");
   host.id = "xenho-selection-assistant";
@@ -41,14 +41,12 @@
       .tip{pointer-events:none;position:absolute;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);display:none;white-space:nowrap;background:#fff;color:#111318;border:1px solid #ded9cc;border-radius:7px;padding:7px 9px;font-size:11px;line-height:1.25;box-shadow:0 8px 22px rgba(0,0,0,.18)}
       .tip b{display:block;font-size:12px;margin-bottom:2px}.action:hover .tip,.action:focus-visible .tip{display:block}
       .wrap.fresh .tip,.wrap.choosing .action>.tip{display:none!important}
-      .intake-menu{position:absolute;z-index:3;right:3px;top:calc(100% + 9px);padding:3px;display:none;grid-template-columns:repeat(2,30px);gap:2px;background:#fbfaf7;color:#3f4148;border:1px solid #d9d5ca;border-radius:9px;box-shadow:0 7px 16px rgba(0,0,0,.16)}
+      .intake-menu{position:absolute;z-index:3;right:3px;top:calc(100% + 9px);width:118px;padding:4px;display:none;grid-template-columns:1fr;gap:2px;background:#fbfaf7;color:#3f4148;border:1px solid #d9d5ca;border-radius:9px;box-shadow:0 7px 16px rgba(0,0,0,.16)}
       .intake-menu::before{content:"";position:absolute;right:13px;top:-5px;width:8px;height:8px;transform:rotate(45deg);background:#fbfaf7;border-top:1px solid #d9d5ca;border-left:1px solid #d9d5ca}
       .wrap.choosing .intake-menu{display:grid}.wrap.menu-up .intake-menu{top:auto;bottom:calc(100% + 7px)}
       .wrap.menu-up .intake-menu::before{top:auto;bottom:-5px;transform:rotate(225deg)}
-      .intake-choice{position:relative;width:30px;height:30px;border-radius:6px;transition:background .12s,color .12s}
-      .intake-choice:hover{background:#efede7;color:#111318}.intake-choice:focus-visible{background:#f8e5b8;color:#111318;outline:1px solid #e3ad40;outline-offset:-1px}.intake-choice svg{width:15px;height:15px}
-      .choice-tip{pointer-events:none;position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);display:none;white-space:nowrap;background:#fff;color:#111318;border:1px solid #ded9cc;border-radius:7px;padding:6px 8px;font-size:11px;line-height:1.3;box-shadow:0 8px 22px rgba(0,0,0,.18)}
-      .intake-choice:hover .choice-tip,.intake-choice:focus-visible .choice-tip{display:block}.wrap.menu-up .choice-tip{top:auto;bottom:calc(100% + 8px)}
+      .intake-choice{position:relative;width:100%;height:32px;border-radius:6px;display:flex;align-items:center;gap:8px;padding:0 9px;font-size:12px;line-height:1;transition:background .12s,color .12s}
+      .intake-choice:hover{background:#efede7;color:#111318}.intake-choice:focus-visible{background:#f8e5b8;color:#111318;outline:1px solid #e3ad40;outline-offset:-1px}.intake-choice svg{flex:0 0 auto;width:15px;height:15px}.choice-label{display:block;white-space:nowrap}
       .toast{display:none;max-width:260px;background:#111318;color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:9px 12px;font-size:12px;line-height:1.45}.wrap.toast-on .seed,.wrap.toast-on .bar{display:none}.wrap.toast-on .toast{display:block}
       svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
       @media (prefers-reduced-motion:reduce){.wrap.on{animation:none}}
@@ -83,13 +81,17 @@
   intakeMenu.setAttribute("role", "menu");
   intakeMenu.setAttribute("aria-label", "选择入库位置");
   intakeMenu.innerHTML = `
-    <button class="intake-choice" type="button" role="menuitem" data-target="material" aria-label="存入素材库">
-      ${svg('<path d="M4 4h16v5H4z"/><path d="M6 9v11h12V9"/><path d="M10 13h4"/>')}
-      <span class="choice-tip">素材库</span>
+    <button class="intake-choice" type="button" role="menuitem" data-target="collection" aria-label="收藏到收件箱">
+      ${svg('<path d="M4 5h16l-2 14H6Z"/><path d="M4 13h4l2 3h4l2-3h4"/><path d="M12 3v7"/><path d="m9 7 3 3 3-3"/>')}
+      <span class="choice-label">收件箱</span>
     </button>
     <button class="intake-choice" type="button" role="menuitem" data-target="inbox" aria-label="存入灵感库">
-      ${svg('<path d="M4 5h16l-2 14H6Z"/><path d="M4 13h4l2 3h4l2-3h4"/>')}
-      <span class="choice-tip">灵感库</span>
+      ${svg('<path d="M12 3a6 6 0 0 0-3.7 10.7c.9.7 1.2 1.4 1.2 2.3h5c0-.9.3-1.6 1.2-2.3A6 6 0 0 0 12 3Z"/><path d="M10 20h4"/>')}
+      <span class="choice-label">灵感库</span>
+    </button>
+    <button class="intake-choice" type="button" role="menuitem" data-target="material" aria-label="存入素材库">
+      ${svg('<path d="M4 4h16v5H4z"/><path d="M6 9v11h12V9"/><path d="M10 13h4"/>')}
+      <span class="choice-label">素材库</span>
     </button>`;
   bar.appendChild(intakeMenu);
 

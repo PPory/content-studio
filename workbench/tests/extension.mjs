@@ -25,19 +25,21 @@ const panelCss = await fs.readFile(path.join(ROOT, "extension", "sidepanel.css")
 const panelJs = await fs.readFile(path.join(ROOT, "extension", "sidepanel.js"), "utf8");
 
 check("扩展使用 Manifest V3", manifest.manifest_version === 3);
-check("迁移后的扩展版本已升级", manifest.version === "0.2.0", manifest.version);
+check("收件箱入口版本已升级", manifest.version === "0.2.1", manifest.version);
 check("扩展只连接本机工作台", manifest.host_permissions?.join() === "http://127.0.0.1:5180/*", manifest.host_permissions?.join());
 check("没有申请多余的高危权限", manifest.permissions?.join() === "sidePanel,storage", manifest.permissions?.join());
 check("普通网页才注入划词入口", manifest.content_scripts?.[0]?.matches?.join() === "http://*/*,https://*/*", manifest.content_scripts?.[0]?.matches?.join());
 check("工具条没有高亮和翻译", !content.includes('"highlight"') && !content.includes('"translate"'));
 check("工具条保留五个入口", ["annotate", "ask", "chat", "topic", "intake"].every((key) => content.includes(`[\"${key}\"`)));
-check("工具条入库提供两个工作台去处", [
+check("工具条入库明确提供三个工作台去处", [
+  'data-target="collection"',
   'data-target="material"',
   'data-target="inbox"',
+  "收件箱",
   "素材库",
   "灵感库",
 ].every((token) => content.includes(token)));
-check("入库选择使用紧凑双图标次级工具条", content.includes("grid-template-columns:repeat(2,30px)") && content.includes("width:30px;height:30px") && content.includes('class="choice-tip"'));
+check("入库菜单直接显示三个去处名称", content.includes("grid-template-columns:1fr") && content.includes("width:118px") && content.includes('class="choice-label"'));
 check("入库次级工具条与主工具条有明确层级", content.includes("background:#fbfaf7;color:#3f4148") && content.includes(".intake-menu::before") && content.includes("box-shadow:0 7px 16px rgba(0,0,0,.16)"));
 check("提问入口使用灯泡图标", content.includes('ask: \'<path d="M9 18h6"/><path d="M10 22h4"/>'));
 check("扩展后台只接受既定入库去处", background.includes('new Set(["collection", "material", "inbox"])') && background.includes("INTAKE_TARGETS.has(target)"));
