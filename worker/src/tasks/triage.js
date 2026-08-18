@@ -7,11 +7,12 @@ import { fetchArticle } from "../lib/reader.js";
 import {
   assertGroundedGeneratedText,
   findSpecificPersonalClaims,
+  normalizeStoredText,
   stableTaskKey,
   verificationForMaterial,
 } from "../lib/integrity.js";
 import {
-  getRow, updateRow, listByStatus, upsertByTaskKey, setTags,
+  getRow, updateRow, upsertByTaskKey, setTags,
 } from "../lib/db.js";
 import {
   normMaterialType, INBOX_STATUS, VALUE_JUDGMENT, STATUS_BY_VALUE,
@@ -86,6 +87,7 @@ async function triageOne(env, row) {
     system: TRIAGE_PROMPT,
     user: JSON.stringify({ 类型: row.kind, 一句话原文: row.title, 正文: body, 来源: row.source, 链接: row.link }),
     maxTokens: 8000,
+    task: "triage",
   });
 
   const sourceText = [row.title, body].filter(Boolean).join("\n");
@@ -129,6 +131,17 @@ async function triageOne(env, row) {
   const newMaterials = [];
   for (const [index, m] of materials.entries()) {
     if (!m?.title || !m?.note) continue;
+    /**
+     * ⚠️ **素材正文要过一遍 `normalizeStoredText`。**
+     *
+     * 模型往 JSON 里写 `\n` 双重转义时，`parseLooseJson` 会忠实地解成「反斜杠 + n」
+     * 两个字符，于是库里存的是 `Step 1 …\nStep 2 …`。**四个下游全都不报错**：
+     * 素材卡片、vault 里的 md、成稿提示词、Bot 回执，只是各自显示一串 `\n`。
+     *
+     * **这是全流程里唯一由模型生成素材正文的地方**（另外三处写素材的入口——两个
+     * Bot 命令和 /推——存的都是用户自己的文字），所以只在这儿归一化就够。
+     */
+    const note = normalizeStoredText(m.note);
     const matType = normMaterialType(m.type);
     const llmSourceUrl = /^https?:\/\//i.test(m.source || "") ? m.source : "";
     // 只有模型给出的出处与本次实际抓取的原始链接完全一致时，才能把原文正文拿来逐字核验。
@@ -137,7 +150,7 @@ async function triageOne(env, row) {
     const comparableSource = sourceUrl && row.link && sourceUrl === row.link ? fetchedSourceText : "";
     const verification = verificationForMaterial({
       type: matType,
-      note: m.note,
+      note,
       sourceUrl,
       sourceText: comparableSource,
       origin: "auto-extract",
@@ -149,7 +162,7 @@ async function triageOne(env, row) {
       {
         title: m.title.slice(0, 200),
         type: matType,
-        content: m.note,
+        content: note,
         source_url: /^https?:\/\//i.test(sourceUrl) ? sourceUrl : "",
         inbox_id: row.id,
         verification: verification.status,
@@ -159,7 +172,7 @@ async function triageOne(env, row) {
     if (tags.length && saved.created) await setTags(env, "material", saved.id, tags);
     if (saved.created) {
       newMaterials.push({
-        id: saved.id, title: m.title.slice(0, 200), type: matType, content: m.note,
+        id: saved.id, title: m.title.slice(0, 200), type: matType, content: note,
         source_url: /^https?:\/\//i.test(sourceUrl) ? sourceUrl : "",
         verification: verification.status, created_at: row.created_at,
       });

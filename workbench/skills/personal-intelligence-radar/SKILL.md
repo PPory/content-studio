@@ -17,7 +17,19 @@ description: 把每周的 Reddit / X / AI 日报 Markdown 材料转成一份有�
 - 为核实关键事实而主动取得的网页或原始来源
 - 可选的创作者兴趣、知识背景或内容定位说明
 
-不要读取 `creator-workbench/tmp/*-raw-*.json`，除非用户在当前任务中明确改变输入契约。不要把抓取、筛选、外部核实和分析混为一层。
+不要读取 `<workbench>/tmp/*-raw-*.json`，除非用户在当前任务中明确改变输入契约。不要把抓取、筛选、外部核实和分析混为一层。
+
+## `<workbench>` 指哪里
+
+下文所有命令里的 `<workbench>` 都是 **content-studio 仓库下的 `workbench/` 目录**
+（本机在 `04--vibecoding/content-studio/workbench`）。脚本、`.env`、`tmp/` 全在那儿。
+
+⚠️ **不要用「本 Skill 目录往上两级」去推它。** 这个 Skill 是通过 `~/.claude/skills/` 下的
+junction 调用的，从链接路径往上两级是 `~/.claude/`——`..` 在多数 API 里是文本解析，
+不穿透 junction。**必须显式定位工作台目录。**
+
+⚠️ **`creator-workbench/` 已于 2026-08-14 废弃**（根目录有 `_已迁移_请勿在此开发.md`）。
+在那里改代码不生效，还会和新仓库分叉。踩过。
 
 ## 先加载这些参考文件
 
@@ -44,16 +56,29 @@ Skill 版本记录在根目录 `VERSION`。
 
 不要因为当前日期不同而擅自替换用户指定的历史周。
 
+**确定周次之后，第一件事是读上一周的挂账：**
+
+```bash
+# 上一周的 registry，看 pending_actions 里有没有 status: "open" 的
+cat <workbench>/tmp/insight-work/<上一周>/candidate-registry.json
+```
+
+那里记着上次没做完、说好这次先补的动作（契约见 `references/run-artifacts.md` §3.1）。
+没有上一周的 registry 就跳过。
+
+**这一步不能省。** 上一轮的挂账只写在报告正文里，它生效纯粹是因为下次跑的人正好读到了那段话——
+**换个人跑、或者跳着读，那条就掉了。**
+
 ### 2. 检查材料；必要时编排抓取器
 
 先检查三份预期 Markdown 是否存在且非空。
 
 若材料齐全，直接进入预处理。
 
-若材料缺失，抓取器就在本 Skill 目录里，**在 `creator-workbench` 根目录下跑**：
+若材料缺失，抓取器就在本 Skill 目录里，**在 `<workbench>` 目录下跑**：
 
 ```bash
-cd <creator-workbench>
+cd <workbench>
 node skills/personal-intelligence-radar/fetch-material.mjs
 node skills/personal-intelligence-radar/fetch-material.mjs --go
 node skills/personal-intelligence-radar/fetch-material.mjs --go --only aihot
@@ -70,7 +95,7 @@ node skills/personal-intelligence-radar/fetch-material.mjs --go --only aihot
 1. **默认先 dry run**。抓取要花钱，预算表看过再决定。
 2. 仅在用户明确要求生成本期报告时启动付费抓取。日报源免费，缺它可以直接补。
 3. 网络中途断了别重抓——先看日志里的 `snapshot <id>`，用 `--snapshot` 取回，钱已经花过了。
-4. 只想改筛选或排版、不需要新数据时，用 `--from creator-workbench/tmp/<源>-raw-*.json` 离线重放。
+4. 只想改筛选或排版、不需要新数据时，用 `--from <workbench>/tmp/<源>-raw-*.json` 离线重放。
 5. 抓取失败时报告具体脚本错误，**不要用较差的报告掩盖采集故障**。
 6. 三个源独立失败：X 挂了不影响另外两个，照常出报告并在覆盖说明里写清缺了哪一个。
 
@@ -81,7 +106,7 @@ node skills/personal-intelligence-radar/fetch-material.mjs --go --only aihot
 运行：
 
 ```bash
-cd <creator-workbench>
+cd <workbench>
 python -X utf8 skills/personal-intelligence-radar/scripts/prepare_materials.py \
   --vault "$VAULT_ROOT" \
   --week "<YYYY-Www>" \
@@ -90,7 +115,7 @@ python -X utf8 skills/personal-intelligence-radar/scripts/prepare_materials.py \
 
 **`--output` 必须显式给，不要用默认值。** 脚本默认写到 `<vault>/99 - 个人工作台/02 - 洞察/_work/<week>/`，会让 Obsidian 索引派生 chunk；chunk 归 `tmp/`。
 
-`VAULT_ROOT` 在 `creator-workbench/.env` 里。Windows 上必须用 `python -X utf8`；不要使用应用商店空壳 `python3`。
+`VAULT_ROOT` 在 `<workbench>/.env` 里。Windows 上必须用 `python -X utf8`；不要使用应用商店空壳 `python3`。
 
 读取输出的 `manifest.json`、`manifest.md` 和 `chunks/*.md`。预处理只允许检查、索引和无损分块，不允许过滤、重写或总结原文。
 
@@ -201,7 +226,7 @@ python -X utf8 skills/personal-intelligence-radar/scripts/prepare_materials.py \
 #### 6.2 用 Brave Search 发现来源
 
 ```bash
-cd <creator-workbench>
+cd <workbench>
 node skills/personal-intelligence-radar/scripts/web_research.mjs search \
   --queue "tmp/insight-work/<week>/verification-queue.json" \
   --output "tmp/insight-work/<week>/web"
@@ -243,7 +268,7 @@ node skills/personal-intelligence-radar/scripts/web_research.mjs fetch \
 - 若没有替代工具，则明确保留 Unverified，不要补全；
 - 承重事实未核实时，把 `Write` 降为 `Learn → Write` 或 `Explore → Write`。
 
-#### 6.5 内容供给审计
+#### 6.5 内容供给审计（供给面）
 
 只有完成目标语言、公开 Web、时间窗口和最接近竞争内容的定向搜索后，才能写：
 
@@ -252,7 +277,29 @@ node skills/personal-intelligence-radar/scripts/web_research.mjs fetch \
 - “没人讲清楚”
 - “内容空白”
 
-若只检查了三份周材料，只能写“本周材料中未见”。微信、小红书等平台内供给未被公开 Web 完整覆盖时，必须在 `coverage_limit` 中说明。
+若只检查了三份周材料，只能写“本周材料中未见”。措辞必须跟着实际检索范围走，对照表见
+`references/verification-protocol.md` §8。**微信站内至今拿不到**，声称「中文侧没有」之前先问一句微信呢。
+
+#### 6.6 需求证据（需求面）——**和供给审计是两件事**
+
+供给审计答「这个位置被占了没」，需求证据答「有人要吗、卡在哪」。
+**后者推导不出前者，前者也代替不了后者。**
+
+上一轮真栽过：只看到「AI 检测」的供给量级比「AI 水印」大一个数量级，就把机会判成
+「该换个话题」；补上评论之后才发现原话题的**解释层根本是空的，而读者正在评论区反复问**。
+**只做供给审计会系统性地把你推向「更热的话题」，而不是「更该由你来写的话题」。**
+
+需求证据的来源，按可得性排：
+
+1. 材料里的评论（Reddit Top-8 评论、X 的回复）——**注意上游只给了前 N 条**
+2. 中文站内探针的评论（`--merge` 之后 json 里的 `comments`）——按
+   `references/verification-protocol.md` 的四类表分类（求助 / 反驳 / 经验 / 共鸣），
+   它们去的**不是同一节**
+3. 读者直接提问、后台留言等他手上的一手材料（有就用，没有别编）
+
+**硬约束：Insight Card 的「读者问题」字段必须能指到上面某一条。**
+指不到就写 `Not assessed`，**不要凭领域常识替读者编一个问题**——
+那是整份报告里最容易混进假货的一格。
 
 ### 7. 评分、校准和晋级
 
@@ -333,9 +380,11 @@ python -X utf8 skills/personal-intelligence-radar/scripts/lint_report.py \
 4. Top Cards 均通过 75 分晋级线，且有可追溯证据、独立性判断和四轴校准。
 5. 承重事实已核实或明确标为未核实；重要解释已做反向搜索。
 6. Write Queue 前列选题已做内容供给审计，或明确标为 Needs research。
-7. Learn Queue、Write Queue 和 Watchlist 能直接指导下一步，且状态来自同一 Registry。
-8. 每个重要判断区分事实、模式、解释和假设。
-9. 报告通过 `lint_report.py`，没有占位符、伪造精度、行动计数冲突或版本哈希错误。
+7. **每个 `Write` 选题的「读者问题」都能指到一条具体证据**（材料评论 / 站内探针评论 / 一手读者反馈），指不到的写 `Not assessed` 并降为 `Explore → Write`。
+8. **上一周的 `pending_actions` 已逐条处理**：结掉的标 `resolved` 并写 `resolved_week`，没结的说明为什么；本次新产生的挂账已写进 registry**并在报告里露面**。
+9. Learn Queue、Write Queue 和 Watchlist 能直接指导下一步，且状态来自同一 Registry。
+10. 每个重要判断区分事实、模式、解释和假设。
+11. 报告通过 `lint_report.py`，没有占位符、伪造精度、行动计数冲突或版本哈希错误。
 
 ## 资源
 

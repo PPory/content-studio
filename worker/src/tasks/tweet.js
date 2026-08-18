@@ -18,7 +18,7 @@ import {
   stableTaskKey,
   verificationForMaterial,
 } from "../lib/integrity.js";
-import { upsertByTaskKey, searchSupplementary, setTags, tagsOf } from "../lib/db.js";
+import { upsertByTaskKey, searchSupplementary, setTags, tagsOf, personalEvidence } from "../lib/db.js";
 import { DRAFT_STATUS } from "../lib/values.js";
 
 export const TWEET_USAGE = [
@@ -100,6 +100,7 @@ export async function runTweetJob(env, { to, argStr }) {
       相关素材: supp,
     }),
     maxTokens: 8000,
+    task: "tweet",
   });
   const out = formatTweetResult(json);
   if (!out) {
@@ -109,7 +110,8 @@ export async function runTweetJob(env, { to, argStr }) {
   const sourceType = mode === "想法" && findSpecificPersonalClaims(content).length
     ? "个人经历"
     : (mode === "文章" ? "案例/故事" : "核心观点");
-  const evidence = [{ type: sourceType, note: content }, ...supp];
+  // 本次输入现给一条，其余走整库口径——否则 /推 会拒掉一段你早就录进素材库的真事。
+  const evidence = await personalEvidence(env, [{ type: sourceType, note: content }, ...supp]);
   assertGroundedPersonalNarrative(out, evidence);
   await notifyLong(env, to, out);
 

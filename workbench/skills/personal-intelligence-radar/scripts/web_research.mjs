@@ -133,7 +133,7 @@ async function loadEnvironment(projectRoot, explicitEnvFile) {
 }
 
 async function resolveFetch(projectRoot) {
-  // The user's creator-workbench already provides proxyFetch for unstable networks.
+  // The workbench already provides proxyFetch for unstable networks.
   // Prefer it when available; keep a global-fetch fallback for portability and tests.
   const proxyPath = path.resolve(projectRoot, "server/lib/fetch.mjs");
   try {

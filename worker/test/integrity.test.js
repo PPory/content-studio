@@ -8,6 +8,7 @@ import {
   findSpecificPersonalClaims,
   isMaterialEligibleForDraft,
   isValidHttpSource,
+  normalizeStoredText,
   sourceContainsVerbatim,
   stableTaskKey,
   primaryPlatform,
@@ -15,6 +16,15 @@ import {
   verificationForMaterial,
   workflowInstanceId,
 } from "../src/lib/integrity.js";
+
+test("字面的 \\n 在存进库之前还原成真换行", () => {
+  // 模型双重转义的产物：库里存的是「反斜杠 + n」两个字符，四个下游全都不报错、只是显示成一串 \n
+  assert.equal(normalizeStoredText("Step 1 提出问题。\\nStep 2 拆解问题。"), "Step 1 提出问题。\nStep 2 拆解问题。");
+  assert.equal(normalizeStoredText("甲\\r\\n乙"), "甲\n乙");
+  // 真换行原样留着，别的转义不碰
+  assert.equal(normalizeStoredText("甲\n乙\\t丙"), "甲\n乙\\t丙");
+  assert.equal(normalizeStoredText(""), "");
+});
 
 test("有效来源且原文可逐字比对时自动标记已核验", () => {
   assert.equal(isValidHttpSource("https://example.com/report"), true);

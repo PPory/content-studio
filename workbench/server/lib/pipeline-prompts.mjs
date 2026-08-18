@@ -1,11 +1,12 @@
-// 流水线的提示词：`<content-pipeline>/prompt/**/*.md`。
+// 流水线的提示词：`worker/prompt/**/*.md`。
 //
 // 这些是**另一个项目的文件**，而且是 Worker 的编译输入（`prompts.js` 用 wrangler 的
 // Text 模块 import 进去）。所以：**改完必须 `npx wrangler deploy` 才生效**，
 // 而忘了部署的表现是「改了没反应」——Worker 那边照旧按老提示词跑，不报错、
 // 界面上也看不出来。这是这一段最大的坑，界面必须一直把它顶在前面。
 //
-// ⚠️ **工作台在这里写的是别的项目的文件**，这是这个项目里唯一一处这样的能力。
+// ⚠️ **工作台在这里写的是 workbench 之外的文件**（合仓之后是同一个仓的 worker/，
+// 但仍然是另一个包、另一套部署），这是这个项目里唯一一处这样的能力。
 // 四条防护，一条都不能省：
 //
 //  1. **认清单 id，不认路径。** 客户端提交的是我们自己列出来那份清单里的 id
@@ -17,21 +18,21 @@
 //  4. **写前留快照**（落工作台自己的 `data/.snapshots/pipeline-prompt/`），写走
 //     `atomicWrite`。别人的项目被我们写坏了，得能退回去。
 //     快照**不进导出包**（`backup.mjs` 的 `DATA_FILES` 里没有它），理由和 `.env` 一样：
-//     那个 zip 是「工作台的数据」，不该悄悄夹带另一个项目的源文件。
+//     那个 zip 是「工作台的数据」，不该悄悄夹带 worker/ 的源文件。
 
 import path from "node:path";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { atomicWrite, pruneSnapshots, snapshotFile, snapshotKeepDays } from "./safe-write.mjs";
-import { pipelineDir } from "./settings-schema.mjs";
+import { workerDir } from "./settings-schema.mjs";
 
 export const SNAPSHOT_KEY = "pipeline-prompt";
 
 /** 部署命令。**界面上要照着显示并给复制按钮**，别让人去别处找。 */
 export const DEPLOY_CMD = "npx wrangler deploy";
 
-/** 提示词根目录。不存在时调用方给引导，不报错——没 clone content-pipeline 不是错。 */
-export const promptRoot = (env) => path.join(pipelineDir(env), "prompt");
+/** 提示词根目录。不存在时调用方给引导，不报错——没有 worker/ 也不影响工作台其余部分。 */
+export const promptRoot = (env) => path.join(workerDir(env), "prompt");
 
 const idOf = (rel) => createHash("sha1").update(rel).digest("hex").slice(0, 16);
 
@@ -124,14 +125,14 @@ export async function readPipelinePrompt(env, id) {
   const { abs, item } = await resolveById(env, id);
   const text = await fs.readFile(abs, "utf8");
   const s = await fs.stat(abs);
-  // stamp 是乐观锁：这些文件在 content-pipeline 那边也可能被直接编辑
+  // stamp 是乐观锁：这些文件在 worker/ 那边也可能被直接编辑
   return { ...item, text, stamp: String(s.mtimeMs) };
 }
 
 export async function writePipelinePrompt(env, id, text, stamp = "") {
   const { abs, item } = await resolveById(env, id);
   const before = await fs.stat(abs);
-  // 对不上就 409 让人刷新，不硬覆盖——这些文件的主编辑器其实在 content-pipeline 那边
+  // 对不上就 409 让人刷新，不硬覆盖——这些文件在编辑器里直接改也是常事
   if (stamp && String(before.mtimeMs) !== String(stamp)) {
     throw Object.assign(new Error("这个文件在别处被改过了"), {
       status: 409,

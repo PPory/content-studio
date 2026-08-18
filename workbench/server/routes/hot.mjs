@@ -16,7 +16,7 @@
 
 import { json, fail, readJsonBody } from "../lib/http.mjs";
 import { fetchAiHot, fetchModels } from "../lib/aihot.mjs";
-import { fetchBoards } from "../lib/sixty.mjs";
+import { fetchBoards, sixtyConfigured } from "../lib/sixty.mjs";
 import { vaultRoot, readFileOrEmpty, writeVaultFile, listFiles, cleanupSnapshots } from "../lib/vault.mjs";
 import { traceLinks } from "../lib/trace.mjs";
 import { loadAttention, compileDomain, matchDomain } from "../lib/attention.mjs";
@@ -30,6 +30,10 @@ const KEEP_DAYS = 30;
 // AI 精选上游自己就按 15 分钟缓存，这里比它长一点没意义。
 // 模型榜按天变，抓一次管很久——而且它是解析页面来的，抓得越少越不打扰人家
 const TTL = { boards: 10 * 60_000, ai: 30 * 60_000, models: 6 * 60 * 60_000 };
+// 全挂之后的冷静期。**失败也要缓存**：不缓存的话每切一次 tab 就重抓一遍六个榜，
+// 每个榜等满 10 秒超时，用户看到的是「打开热点页要转十几秒然后还是旧数据」。
+// 手动点刷新会清掉缓存，所以这条不挡「我现在就想重试」。
+const FAIL_TTL = 60_000;
 const cache = { boards: null, ai: null, models: null };
 
 function today() {
@@ -80,6 +84,13 @@ async function buildBoards(env) {
   };
 }
 
+// 六个榜挂掉的原因往往是同一个（整个实例连不上）。**去重后只说前两种**：
+// 逐榜铺一遍就是同一句话印六遍，而那句提示只有一行的位置。
+function topReasons(boards) {
+  const seen = [...new Set(boards.filter((b) => !b.ok).map((b) => b.reason || b.error).filter(Boolean))];
+  return seen.slice(0, 2).join("、") + (seen.length > 2 ? " 等" : "");
+}
+
 async function buildAi() {
   const r = await fetchAiHot();
   // 新的排前面。上游给的顺序不保证按时间，而「最新」是这一页最重要的信号。
@@ -122,21 +133,45 @@ function groupByDay(items) {
   return [...map.entries()].map(([day, list]) => ({ day, items: list }));
 }
 
+/**
+ * @param fallbackMsg 一句「为什么没有新数据 + 下一步」。可以是函数，**参数是这次失败的
+ *   payload**——「没配地址」和「上游全挂」得说不同的话，而只有拿到 payload 才分得出来。
+ *   ⚠️ **这句话里不要再说一遍「显示的是上一次成功的快照」**：界面上那条提示的标题
+ *   已经在说这件事了，两句叠在一起就是同一句话印两遍（踩过，截图上一眼就能看见）。
+ */
 async function serve(res, { key, root, build, fallbackMsg, decorate }) {
-  const fresh = cache[key] && Date.now() - cache[key].at < TTL[key];
-  let payload = fresh ? cache[key].payload : null;
+  const hit = cache[key];
+  // 失败的缓存活得短得多：上游多半几分钟就回来了，不该让它锁住十分钟
+  const fresh = hit && Date.now() - hit.at < (hit.failed ? FAIL_TTL : TTL[key]);
+  let payload = fresh ? hit.payload : null;
+  let failed = fresh ? hit.failed : false;
+  let checkedAt = fresh ? hit.at : Date.now();
 
   if (!payload) {
     payload = await build();
-    const anyOk = key === "boards" ? payload.boards.some((b) => b.ok) : payload.ok;
-    if (anyOk) {
-      cache[key] = { at: Date.now(), payload };
-      await saveSnapshot(root, key, payload).catch(() => {});
-    } else {
-      // 全挂了就退回最近一次成功的快照，并如实标注
-      const fb = await latestSnapshot(root, key);
-      if (fb) return json(res, { ok: true, ...decorate(fb), stale: true, staleHint: fallbackMsg });
+    failed = key === "boards" ? !payload.boards.some((b) => b.ok) : !payload.ok;
+    checkedAt = Date.now();
+    cache[key] = { at: checkedAt, payload, failed };
+    if (!failed) await saveSnapshot(root, key, payload).catch(() => {});
+  }
+
+  if (failed) {
+    // 全挂了就退回最近一次成功的快照，并如实标注。**`checkedAt` 不能省**：
+    // 快照自己的 `fetchedAt` 是「这份数据多老」，而用户还要知道「刚才试过没有」——
+    // 少了后半句，一份 23 小时前的快照看着就像「工作台一天没干活」
+    const fb = await latestSnapshot(root, key);
+    const hint = typeof fallbackMsg === "function" ? fallbackMsg(payload) : fallbackMsg;
+    if (fb) {
+      return json(res, {
+        ok: true,
+        ...decorate(fb),
+        stale: true,
+        staleHint: hint,
+        checkedAt: new Date(checkedAt).toISOString(),
+      });
     }
+    // 一份快照都没有：把这次失败原样交出去，界面据此画空态（它要读每个源的失败原因）
+    return json(res, { ok: true, ...decorate(payload), stale: false, staleHint: hint, cached: fresh });
   }
   json(res, { ok: true, ...decorate(payload), stale: false, cached: fresh });
 }
@@ -171,8 +206,16 @@ export const hotRoutes = [
           key: "boards",
           root: vaultRoot(env),
           build: () => buildBoards(env),
-          fallbackMsg: "六个榜今天都没抓到，显示的是上一次成功的快照",
-          decorate: (p) => p,
+          // 不写「六个榜」：BOARDS 加一行这句话就悄悄成了假话。这里干脆不提数量——
+          // 「一个都没读到」已经把话说完了，而数量在界面上本来就写着
+          fallbackMsg: (p) =>
+            sixtyConfigured(env)
+              ? `刚才一个榜都没读到（${topReasons(p.boards)}）。这类免费聚合接口随时会挂，过一会儿再点刷新。`
+              : "还没填热榜的数据源地址（SIXTY_SECONDS_API_BASE_URL）。去设置面板「能力 → 可选能力 → 热榜数据源」填上你那个 60s API 实例的地址，这一栏才会有今天的数据。",
+          // ⚠️ **`configured` 在这儿盖上去，不写进 payload。** 写进 payload 就等于写进快照，
+          // 而 `decorate` 也作用在**读回来的快照**上——那份说的是「上次成功那天配没配」。
+          // 这一栏整个 bug 的根源就是拿旧事实当现状用，别在修它的代码里再种一个。
+          decorate: (p) => ({ ...p, configured: sixtyConfigured(env) }),
         });
       } catch (e) {
         fail(res, e.message, { status: e.status || 500, hint: e.hint });
@@ -192,7 +235,7 @@ export const hotRoutes = [
           key: "ai",
           root: vaultRoot(env),
           build: buildAi,
-          fallbackMsg: "AI HOT 这次没抓到，显示的是上一次成功的快照",
+          fallbackMsg: (p) => `AI HOT 这次没抓到${p.error ? `（${p.error}）` : ""}，过一会儿再点刷新。`,
           decorate: (p) => {
             const matched = applyAttention(p.items, attention);
             const shown = showAll ? p.items.map((it) => ({ ...it, hits: [] })) : matched;
@@ -230,7 +273,7 @@ export const hotRoutes = [
           // 补上抓取时间：`serve` 把 payload 原样缓存并回给前端，
           // 而页头那句「检查于」要靠它——不补的话永远显示「尚未抓取」
           build: async () => ({ ...(await fetchModels({ limit: 20 })), date: today(), fetchedAt: new Date().toISOString() }),
-          fallbackMsg: "模型榜这次没抓到，显示的是上一次成功的快照",
+          fallbackMsg: "模型榜这次没解析出来。它是解析 AI HOT 的页面来的，对方改版就会失效。",
           decorate: (p) => p,
         });
       } catch (e) {

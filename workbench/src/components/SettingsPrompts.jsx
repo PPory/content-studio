@@ -187,10 +187,10 @@ export function PipelinePrompts() {
 
   if (!list) return <div className="field-hint">读取中…</div>;
 
-  // 找不到 content-pipeline **不是错**：没 clone 它的人一样能用工作台的其余部分
+  // 找不到 worker/ **不是错**：只单独跑 workbench 的人一样能用其余部分
   if (!list.exists) {
     return (
-      <Note title="没找到 content-pipeline 的提示词目录">
+      <Note title="没找到 Worker 的提示词目录">
         期望在 <code>{list.root}</code>。{list.hint}
       </Note>
     );
@@ -205,7 +205,7 @@ export function PipelinePrompts() {
           <div className="set-deploy__body">
             <b>{pending.length} 个提示词改过了，但还没生效</b>
             <p>
-              它们打包在 Worker 里，要在 content-pipeline 目录跑一次部署才算数。改过的：
+              它们打包在 Worker 里，要在 worker/ 目录跑一次部署才算数。改过的：
               {pending.join("、")}
             </p>
             <div className="set-deploy__acts">
@@ -252,7 +252,7 @@ export function PipelinePrompts() {
             <div className="set-pp__empty">
               <p>左边挑一个提示词。</p>
               <span className="field-hint">
-                这些是 content-pipeline 的文件，初筛 / 每日整理 / 成稿 / 划词 AI 全按它们跑。
+                这些是 worker/ 的文件，初筛 / 每日整理 / 成稿 / 划词 AI 全按它们跑。
                 改完要部署一次才生效，界面会提醒你。
               </span>
             </div>
@@ -273,7 +273,7 @@ export function PipelinePrompts() {
                  * 按钮上就没法把话说准。
                  */}
                 <button className="btn btn-sm btn-primary" onClick={save} disabled={!dirty || !!busy}>
-                  {busy === "save" ? "写入中…" : dirty ? `保存到 content-pipeline` : "没有改动"}
+                  {busy === "save" ? "写入中…" : dirty ? "保存到 worker/" : "没有改动"}
                 </button>
               </div>
               <div className="set-pp__editor">

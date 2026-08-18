@@ -10,7 +10,7 @@
 import {
   getRow, updateRow, insertRow, deleteRow as dbDeleteRow, listPage, upsertByTaskKey,
   LIST_ORDER, cursorClause, encodeCursor,
-  materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic,
+  materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic, personalEvidence,
   tagsOf, setTags, addComment, listComments as dbListComments,
   all, first, now, newId, batch, stmt,
 } from "./lib/db.js";
@@ -18,15 +18,17 @@ import { TOPIC_STATUS, DRAFT_STATUS, VERIFICATION } from "./lib/values.js";
 import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
-import { chat } from "./lib/llm.js";
-import { EXPLAIN_PROMPT } from "./prompts.js";
+import { chat, chatJson } from "./lib/llm.js";
+import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT } from "./prompts.js";
 import {
   assertGroundedGeneratedText,
   auditPersonalNarrative,
+  isMaterialEligibleForDraft,
   stableTaskKey,
   topicStatusFromDrafts,
 } from "./lib/integrity.js";
-import { normalizeCreationRequest } from "./lib/creation.js";
+import { citeText } from "./lib/cite.js";
+import { normalizeCreationRequest, keepRealPicks } from "./lib/creation.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
 import {
   applyCollectionOrganize,
@@ -224,9 +226,12 @@ async function enrich(env, viewKey, rows) {
 }
 
 // 行 → 列表项。editedAt 保持 ISO 串（前端一直按这个格式渲染）。
-// notionUrl 保留字段名给 null：库已经不是 Notion，但删字段会让前端拿到 undefined。
+//
+// 迁到 D1 之后这里曾经保留过一个恒为 null 的 `notionUrl`，怕删掉字段前端拿到 undefined。
+// 现在工作台那侧「在 Notion 打开」的按钮连同这个字段一起撤了，所以这里也不再回它——
+// **一个永远是 null 的字段，比没有这个字段更容易让人以为它有一天会有值。**
 function decorate(items, rows) {
-  return items.map((item, i) => ({ ...item, editedAt: iso(rows[i].updated_at), notionUrl: null }));
+  return items.map((item, i) => ({ ...item, editedAt: iso(rows[i].updated_at) }));
 }
 
 export async function handleWorkbench(request, env, ctx, url) {
@@ -292,7 +297,13 @@ export async function handleWorkbench(request, env, ctx, url) {
 
     if (path === "explain" && request.method === "POST") return await explain(env, await request.json());
 
-    // 每个环节用哪个模型：知识卡片和现有环节共用同一份 D1 设置。
+    if (path === "pick/materials" && request.method === "POST") return await pickMaterials(env, await request.json());
+
+    if (path === "draft/material" && request.method === "POST") return await draftFromMaterials(env, await request.json());
+
+    if (path === "cite" && request.method === "POST") return await citeDraft(env, await request.json());
+
+    // 每个环节用哪个模型。**真源在库里**（`lib/models.js`），工作台的设置面板整个从这儿渲染
     if (path === "models" && request.method === "GET") {
       const [values, available] = await Promise.all([readModelMap(env), availableModels(env)]);
       return json({ ok: true, tasks: MODEL_TASKS, values, fallback: env.LLM_MODEL || "", available });
@@ -321,9 +332,24 @@ export async function handleWorkbench(request, env, ctx, url) {
     return json({ ok: false, error: `unknown endpoint: ${path}` }, 404);
   } catch (e) {
     console.error(`workbench ${path} failed:`, e.message);
+    /**
+     * ⚠️ **「表不存在」要直接给出那条命令。**
+     *
+     * `schema.sql` 加了新表、但线上库还没跑过迁移时，用户在工作台上看到的是
+     * `D1_ERROR: no such table: settings` 加一句「回终端看 npm run dev 的日志」——
+     * 那句通用兜底在这儿是**指错了方向**（问题不在本机日志里），而真正的下一步只有一条命令。
+     * 按本项目的错误契约：报错要带下一步动作，而不是让人自己去猜是哪一步没做。
+     */
+    const missing = /no such table:\s*(\w+)/i.exec(e.message);
     // 留够 800 字：SQLite 的约束报错会指明是哪个 CHECK 挂了，那正是排查
     // 「状态值对不上」时唯一有用的信息。截到 300 字刚好把它切掉。
-    return json({ ok: false, error: e.message.slice(0, 800) }, 500);
+    return json({
+      ok: false,
+      error: missing ? `流水线的库里还没有 ${missing[1]} 这张表` : e.message.slice(0, 800),
+      hint: missing
+        ? "在 content-studio/worker 里跑一次：npx wrangler d1 execute content-pipeline --remote --file=schema.sql（建表语句都是 IF NOT EXISTS，重跑安全）"
+        : undefined,
+    }, 500);
   }
 }
 
@@ -382,19 +408,23 @@ async function listRows(env, url, viewKey) {
 
   let rows, nextCursor;
   if (values.length > 1) {
-    // 分组筛选（灵感库的「处理中」等）：listPage 只支持单值，多值走一条 IN 查询
+    // 分组筛选（灵感库的「处理中」等）：listPage 只支持单值，多值走一条 IN 查询。
+    // ⚠️ 排序和游标**必须复用 db.js 那一份**（`LIST_ORDER` / `cursorClause` / `encodeCursor`）。
+    // 这三处曾经各写各的 `ORDER BY id DESC`，而 id 有 UUID / ULID 两种格式、字典序不是时间序，
+    // 于是新建的行整体沉底。抄第二份的话，改对了一处、另外两处照旧，**而且不报错**。
     const holes = values.map(() => "?").join(",");
     const params = [...values];
     let clause = `WHERE status IN (${holes})`;
-    if (cursor) { clause += " AND id < ?"; params.push(cursor); }
+    const cur = cursorClause(cursor);
+    if (cur.sql) { clause += ` AND ${cur.sql}`; params.push(...cur.params); }
     const fetched = await all(
       env,
-      `SELECT * FROM ${view.table} ${clause} ORDER BY id DESC LIMIT ?`,
+      `SELECT * FROM ${view.table} ${clause} ${LIST_ORDER} LIMIT ?`,
       ...params, pageSize + 1
     );
     const hasMore = fetched.length > pageSize;
     rows = hasMore ? fetched.slice(0, pageSize) : fetched;
-    nextCursor = hasMore ? rows[rows.length - 1].id : null;
+    nextCursor = hasMore ? encodeCursor(rows[rows.length - 1]) : null;
   } else {
     ({ results: rows, nextCursor } = await listPage(env, view.table, {
       status: values[0] || "", cursor, pageSize,
@@ -438,9 +468,11 @@ async function searchRows(env, url, viewKey) {
     clause += ` AND ${statusColumn} IN (${values.map(() => "?").join(",")})`;
     params.push(...values);
   }
+  // 搜索结果也是最新的在前，和列表同一份规则——两边顺序不一样的话，
+  // 搜一下再清掉搜索框，同一批东西会重新洗一次牌。
   const rows = await all(
     env,
-    `SELECT * FROM ${view.table} ${clause} ORDER BY id DESC LIMIT ?`,
+    `SELECT * FROM ${view.table} ${clause} ${LIST_ORDER} LIMIT ?`,
     ...params, limit
   );
 
@@ -476,8 +508,7 @@ async function pageDetail(env, id, viewKey) {
   }
 
   if (viewKey === "drafts") {
-    const materials = row.topic_id ? await materialsForTopic(env, row.topic_id) : [];
-    const audit = auditPersonalNarrative(text, materials);
+    const audit = auditPersonalNarrative(text, await personalEvidence(env));
     if (audit.ungrounded.length) {
       detail.warning = {
         title: "有内容缺少真实素材支撑",
@@ -500,11 +531,6 @@ async function titlesOf(env, table, ids = []) {
   return rows.map((r) => ({ id: r.id, title: r.title || "未命名" }));
 }
 
-async function materialsForTopic(env, topicId) {
-  const rows = await materialsOfTopic(env, topicId);
-  return rows.map((r) => ({ id: r.id, type: r.type, title: r.title, note: r.content }));
-}
-
 /**
  * 删除一行。
  *
@@ -514,6 +540,14 @@ async function materialsForTopic(env, topicId) {
  *
  * 仍然要求传 view：id 是从工作台某个列表点出来的，view 对不上说明前端串台了，
  * 这时候宁可 400 也不要照着一个可能来路不明的 id 删东西。
+ *
+ * ⚠️ **必须回 `vaultPath`——而且必须在删之前把它读出来。**
+ * 这一行删掉的同时 `vault_path` 那一列也就没了，而 vault 里那个归档文件还在。
+ * 不回这个字段的话，那个文件当场变成孤儿：**连「它对应哪条」都反查不回来**
+ * （只剩 frontmatter 里的 id 能做差集）。真正去动文件的是工作台那侧——
+ * 这儿只有 GitHub API、没有读也没有删，更够不着你本机的 `.trash/`。
+ * 这是 `/wb/*` 契约里唯一一个 vault 路径字段，别在列表端点上也顺手加：
+ * 列表要的是「有什么」，只有删除这一刻需要知道「那份归档在哪」。
  */
 async function deleteRowEndpoint(env, body) {
   const view = VIEWS[body?.view];
@@ -522,16 +556,17 @@ async function deleteRowEndpoint(env, body) {
   if (!isId(pageId)) return json({ ok: false, error: "pageId 不合法" }, 400);
 
   const row = await getRow(env, view.table, pageId);
+  const vaultPath = row?.vault_path || "";
   const affectedTopicIds = body.view === "drafts" && row?.topic_id ? [row.topic_id] : [];
   const deleted = await dbDeleteRow(env, view.table, pageId);
   if (!deleted) return json({ ok: false, error: "not found" }, 404);
-  if (body.view !== "drafts") return json({ ok: true, archived: pageId });
+  if (body.view !== "drafts") return json({ ok: true, archived: pageId, vaultPath });
 
   const reconcileTopics = [];
   for (const topicId of affectedTopicIds) {
     reconcileTopics.push(await reconcileTopicDraftState(env, topicId));
   }
-  return json({ ok: true, archived: pageId, affectedTopicIds, reconciled: true, reconcileTopics });
+  return json({ ok: true, archived: pageId, vaultPath, affectedTopicIds, reconciled: true, reconcileTopics });
 }
 
 // 显式按仍存在的稿件修复父选题终态。既被删除流程调用，也可经
@@ -651,7 +686,10 @@ async function createContent(env, input) {
     // 素材只作为稿件依据保持关联；正文完全以编辑器保存结果为准，空稿也不自动回填素材。
     const draftBody = body.body;
     const evidence = evidenceId ? [{ type: "个人经历", note: body.interviewEvidence }] : [];
-    if (body.mode === "interview") assertGroundedGeneratedText(draftBody, [...materials.map((m) => ({ ...m, note: m.content })), ...evidence]);
+    // 访谈稿还没落库，它自己那条经历要现给（`evidence`）；其余证据一律走 personalEvidence。
+    if (body.mode === "interview") {
+      assertGroundedGeneratedText(draftBody, await personalEvidence(env, [...materials.map((m) => ({ ...m, note: m.content })), ...evidence]));
+    }
 
     ops.push(stmt(
       env,
@@ -846,9 +884,7 @@ async function replaceContent(env, body) {
   if (!view) return json({ ok: false, error: `unknown view: ${body?.view}` }, 400);
 
   if (body?.view === "drafts") {
-    const draft = await getRow(env, "drafts", pageId);
-    const materials = draft?.topic_id ? await materialsForTopic(env, draft.topic_id) : [];
-    assertGroundedGeneratedText(markdown, materials);
+    assertGroundedGeneratedText(markdown, await personalEvidence(env));
   }
 
   const COLUMN = { inbox: "body", materials: "content", topics: "notes", drafts: "body" }[body.view];
@@ -886,6 +922,7 @@ async function explain(env, body) {
     system: EXPLAIN_PROMPT,
     user,
     maxTokens: MAX_TOKENS[mode] || 1000,
+    task: "explain",
   });
   // 划词内容可能来自书、文章或他人的稿件，不能把其中的“我”冒认为用户本人。
   assertGroundedGeneratedText(content, []);
@@ -896,6 +933,225 @@ async function explain(env, body) {
       "cache-control": "no-cache, no-transform",
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// 按素材起稿（工作台创作弹层的「让 AI 生成初稿」）
+//
+// **原来这条走工作台本机的 claude CLI**，撤了。它既不读 vault 也不调 skill——素材全在提示词
+// 里，CLI 只是被当成一个要十几秒冷启动的 API 客户端在用。搬来这边拿到三样：秒级、没装 CLI
+// 也能用、吃得到各环节模型设置。但真正的理由是第四样：
+//
+// ⚠️ **真实性硬闸在这一侧。** 在 CLI 那条路上，「不许编造个人经历」只是提示词里的一句叮嘱；
+// 到了这儿它是 `assertGroundedGeneratedText`——找不到依据就整篇拒绝，一个字都不落到编辑器里。
+// 这正是项目红线三说的「真实性是代码层面的闸门，不是提示词里的叮嘱」。
+//
+// ⚠️ **素材必须按 id 从库里读，不能收工作台传过来的那份。** 闸门拿「个人经历」类素材当证据，
+// 而证据要是客户端给的，编一条假的「个人经历」就能把闸门整个绕开——**那道闸就等于没有**。
+
+const DRAFT_MAX_TOKENS = 16000;
+
+/** 模型爱把整篇裹进 ```markdown 围栏里；落进编辑器的应该是正文本身。 */
+function unfence(text) {
+  const value = String(text || "").trim();
+  const fenced = value.match(/```(?:markdown|md)?\s*\n([\s\S]*?)```/i);
+  return (fenced ? fenced[1] : value).trim();
+}
+
+async function draftFromMaterials(env, body) {
+  const ids = [...new Set((Array.isArray(body?.materialIds) ? body.materialIds : []).map((v) => String(v || "")).filter(isId))].slice(0, 30);
+  if (!ids.length) return json({ ok: false, error: "至少选择一条素材" }, 400);
+  const viewpoint = String(body?.viewpoint || "").trim();
+  if (!viewpoint) return json({ ok: false, error: "先写清这篇的方向", hint: "AI 只按你给的方向和素材写，方向空着它只能自己猜" }, 400);
+
+  const holes = ids.map(() => "?").join(",");
+  const rows = await all(env, `SELECT * FROM materials WHERE id IN (${holes})`, ...ids);
+  if (!rows.length) return json({ ok: false, error: "选中的素材在库里找不到了", hint: "回上一步重新搜一次" }, 404);
+
+  /**
+   * **待核验的金句和数据不进稿**，判据复用 `isMaterialEligibleForDraft`（流水线成稿用的是同一条）。
+   * ⚠️ 但**必须把剔掉的告诉用户**：他明明挑了 5 条、稿子只用了 3 条，不说的话他会以为
+   * 模型漏用了——而真正的原因是那两条还没核验。悄悄剔除比不剔除更糟。
+   */
+  const usable = rows.filter((r) => isMaterialEligibleForDraft({ type: r.type, verificationStatus: r.verification }));
+  const skipped = rows
+    .filter((r) => !usable.includes(r))
+    .map((r) => ({ id: r.id, title: r.title, type: r.type, verificationStatus: r.verification }));
+  if (!usable.length) {
+    return json({
+      ok: false,
+      error: "选中的素材都还没核验，不能拿来起稿",
+      hint: "金句/原话和数据/事实要先核对原文与出处、把核验状态改成「已核验」",
+      skipped,
+    }, 422);
+  }
+
+  const evidence = await personalEvidence(env, usable.map((r) => ({ type: r.type, note: r.content })));
+  let remaining = 36_000;
+  const brief = usable.map((r, index) => {
+    const note = String(r.content || "").trim().slice(0, Math.max(0, Math.min(6000, remaining)));
+    remaining -= note.length;
+    return [
+      `【素材 ${index + 1}】`,
+      `标题：${r.title}`,
+      `类型：${r.type}`,
+      `核验：${r.verification}`,
+      r.source_url ? `来源：${r.source_url}` : "",
+      `正文：\n${note || "（无正文）"}`,
+    ].filter(Boolean).join("\n");
+  });
+
+  const user = [
+    [
+      "【写作简报】",
+      `暂定标题：${String(body?.draftTitle || "未定").slice(0, 200)}`,
+      `目标平台：${String(body?.platform || "").slice(0, 20)}`,
+      `目标读者：${String(body?.audience || "未指定").slice(0, 500)}`,
+      `写作方向：${viewpoint.slice(0, 2000)}`,
+    ].join("\n"),
+    `【可用素材】\n${brief.join("\n\n")}`,
+  ].join("\n\n");
+
+  /**
+   * ⚠️ **一边生成一边发心跳换行。**
+   *
+   * 闸门要求「先收齐再放行」，于是这个响应会挂住整个生成过程（几十秒到两三分钟）。
+   * 中间一个字节都不发的话，这条连接会被 Cloudflare 当成卡死的请求掐掉——现象是
+   * 「起稿失败」，而模型其实好好地写完了。心跳是纯换行，`JSON.parse` 会忽略前导空白，
+   * 所以调用方照旧当一份 JSON 读，不需要另写解析。
+   */
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const beat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode("\n"));
+        } catch {
+          /* 客户端已经走了 */
+        }
+      }, 10_000);
+      const send = (payload) => controller.enqueue(encoder.encode(JSON.stringify(payload)));
+      try {
+        const { content } = await chat(env, {
+          system: MATERIAL_DRAFT_PROMPT,
+          user,
+          maxTokens: DRAFT_MAX_TOKENS,
+          task: "draft",
+        });
+        const draft = unfence(content);
+        // 一个字都还没进编辑器之前先过闸：过不了就整篇不给，不是给了再提醒
+        assertGroundedGeneratedText(draft, evidence);
+        // 引用标注在这儿是白拿的：两边文本都在手上，纯字符串比对，不多花一次调用。
+        // 用户改完正文再核对走 /wb/cite，两条路是同一个 `citeText`。
+        send({
+          ok: true,
+          body: draft,
+          used: usable.length,
+          skipped,
+          citations: citeText(draft, usable.map((r) => ({ id: r.id, text: r.content }))),
+        });
+      } catch (e) {
+        const ungrounded = e?.code === "UNGROUNDED_PERSONAL_EXPERIENCE";
+        send({
+          ok: false,
+          error: ungrounded ? "这一版里有编出来的亲身经历，已经拦下" : String(e?.message || "起稿失败").slice(0, 800),
+          hint: ungrounded
+            ? `${(e.claims || []).slice(0, 2).join("；")}——再生成一次多半就好；确实要写这段经历的话，先把它存成一条「个人经历」素材再来`
+            : undefined,
+          skipped,
+        });
+      } finally {
+        clearInterval(beat);
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-cache, no-transform" },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 正文里哪一句来自哪条素材（工作台编辑器的引用标注）
+//
+// **对齐算法必须在这一侧**（`lib/cite.js`），不能挪去工作台：它和闸门共用同一套
+// 归一化和二字组判据。分成两份实现的话，某天一边改了阈值或全角处理，就会出现
+// 「闸门放行了、却一条引用都标不出来」这种没人看得懂的现象。规则跟着数据走。
+//
+// ⚠️ **素材原文按 id 从库里读，不收客户端传来的正文**——和起稿同一条。这儿虽然
+// 不产生新内容，但标注是给用户「这句有出处」的信号；证据由客户端给的话，
+// 那个信号就可以被伪造。
+
+async function citeDraft(env, body) {
+  const text = String(body?.body || "");
+  const ids = [...new Set((Array.isArray(body?.materialIds) ? body.materialIds : []).map((v) => String(v || "")).filter(isId))].slice(0, 30);
+  if (!text.trim() || !ids.length) return json({ ok: true, citations: [] });
+
+  const holes = ids.map(() => "?").join(",");
+  const rows = await all(env, `SELECT id, content FROM materials WHERE id IN (${holes})`, ...ids);
+  return json({ ok: true, citations: citeText(text, rows.map((r) => ({ id: r.id, text: r.content }))) });
+}
+
+// ---------------------------------------------------------------------------
+// 按意思挑素材（工作台创作弹层：关键词搜不到时的第二条路）
+//
+// **这一步必须在 Worker 这侧做**，不是在工作台那侧：候选清单是整库素材，而库就在这儿。
+// 放到工作台去做的话，要么先把几百条素材拉过去（一次大往返 + 工作台开始持有数据规则），
+// 要么在本机 spawn 一个 CLI（十几秒，而这只是一次搜索）。这里一次 LLM 调用就够，秒级。
+//
+// D1 查询用了 4 条（候选 1 + 命中行 1 + enrich 2），离每次调用 50 条的上限很远。
+
+const PICK_LIMIT = 6;     // 再多就不是「挑」而是「又给了一屏要读的东西」
+const PICK_SCAN = 300;    // 候选上限：一条摘要掐到 160 字，300 条约 1.5 万字，塞得进上下文
+
+async function pickMaterials(env, body) {
+  const want = String(body?.want || "").trim();
+  if (!want) return json({ ok: false, error: "want 不能为空" }, 400);
+
+  /**
+   * **关键词已经搜出来的那些，直接从候选里拿掉。**
+   *
+   * 这一步补的是「关键词搜不到」那个缺口——它挑出来的东西要是用户上面已经看见了，
+   * 那条推荐就是纯噪音，而且它占掉了 6 个名额里的一个。在候选阶段就排除，
+   * 比拿回结果再让前端过滤好：过滤只是不显示，排除才能让模型腾出名额去挑别的。
+   */
+  const seen = new Set((Array.isArray(body?.exclude) ? body.exclude : []).map((v) => String(v || "")).filter(isId));
+
+  // 只取模型判断需要的三列：整行拉回来（含正文全文）几百条会把提示词撑爆。
+  // ⚠️ 排序同样走 `LIST_ORDER`（按 updated_at）：`PICK_SCAN` 截断时留下的应该是**最近的**那批，
+  // 而按 id 排的话（UUID / ULID 两种格式混着，字典序不是时间序）截出来的是任意一批。
+  // 素材还没到 300 条之前这条看不出任何差别——**等看得出来的时候，症状是「新存的素材推荐里从来不出现」**。
+  const scanned = await all(
+    env,
+    `SELECT id, title, type, substr(content, 1, 160) AS brief FROM materials ${LIST_ORDER} LIMIT ?`,
+    PICK_SCAN
+  );
+  const candidates = scanned.filter((c) => !seen.has(c.id));
+  if (!candidates.length) return json({ ok: true, items: [], scanned: scanned.length });
+
+  const user = [
+    `【用户想找】${want.slice(0, 300)}`,
+    body?.viewpoint ? `【这篇文章的方向】${String(body.viewpoint).slice(0, 800)}` : "",
+    body?.platform ? `【目标平台】${String(body.platform).slice(0, 20)}` : "",
+    `【候选清单】\n${candidates
+      .map((c) => `id=${c.id} | ${c.type} | ${c.title}${c.brief ? ` | ${String(c.brief).replace(/\s+/g, " ")}` : ""}`)
+      .join("\n")}`,
+  ].filter(Boolean).join("\n\n");
+
+  const { json: out } = await chatJson(env, { system: PICK_MATERIALS_PROMPT, user, maxTokens: 800, task: "pick" });
+  const picks = keepRealPicks(out?.picks, candidates, PICK_LIMIT);
+  // 一条都没挑出来是**正常结果**，不是错误：库里确实可能没有相关的东西。
+  // 报成错误的话，界面会显示一句红的「失败」，而它工作得好好的。
+  if (!picks.length) return json({ ok: true, items: [], scanned: scanned.length });
+
+  const holes = picks.map(() => "?").join(",");
+  const rows = await all(env, `SELECT * FROM materials WHERE id IN (${holes})`, ...picks.map((p) => p.id));
+  const items = decorate(await enrich(env, "materials", rows), rows);
+  const byId = new Map(items.map((item) => [item.id, item]));
+  // **顺序按模型给的相关度**，不是 SQL 回来的 id 序——排在第一条的那个理由最强
+  const ordered = picks.map((p) => (byId.has(p.id) ? { ...byId.get(p.id), why: p.why } : null)).filter(Boolean);
+  return json({ ok: true, items: ordered, scanned: scanned.length });
 }
 
 function json(data, status = 200) {

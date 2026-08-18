@@ -58,17 +58,17 @@ function stripLegacyDraftWarnings(text) {
  */
 export const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"];
 
-// ---- Notion 四个库共用的实现 ----------------------------------------------
+// ---- 流水线四个库共用的实现 ------------------------------------------------
 
 /**
  * ⚠️ 新增配置项**必须同时加进参数解构和返回对象**。
  *
  * 踩过一次，代价不小：`askPlatformsOn` 只写进了 TOPICS 的配置、没进这个函数的解构，
  * 于是 `source.askPlatformsOn` 恒为 undefined，「改成撰写中先弹平台选择」这道闸门
- * 整个失效——状态被直接写回 Notion，Worker 五分钟内就领走选题、按三个平台跑了三遍 LLM。
+ * 整个失效——状态被直接写回库里，Worker 五分钟内就领走选题、按三个平台跑了三遍 LLM。
  * 这类漏字段不会报错，只会安静地少一个功能。
  */
-function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true }) {
+function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true }) {
   return {
     key,
     label,
@@ -82,11 +82,11 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
     defaultState,
     board,
     // 分面：按条目自身的某个属性筛（素材库按类型）。**在已加载的条目里筛**，
-    // 因为素材库在 Notion 侧根本没有状态字段，服务端过滤不了（Worker 的 statusProp 是 null）。
+    // 因为素材库在库里根本没有状态列（`materials` 表没有 status），服务端过滤不了。
     facet,
     pendingKey,   // 对应 /wb/status 的计数键，挂在 tab 上当待办角标
     emptyHint,
-    kind: "notion",
+    kind: "pipeline",
 
     async list({ state, cursor } = {}) {
       const r = await api.list(key, { state, cursor, pageSize: 30 });
@@ -136,7 +136,6 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
         format: "markdown",
         editable,
         status: item.raw.status || "",
-        notionUrl: item.raw.notionUrl,
       };
     },
 
@@ -150,11 +149,14 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
       };
     },
 
-    // 编辑器上的字**由源来说**：这一套界面书架也在用，写死「Notion」就是句假话
+    // 编辑器上的字**由源来说**：这一套界面书架也在用，写死一个具体的库名就是句假话
     edit: {
-      target: "NOTION",
-      save: "保存到 Notion",
-      hint: "整篇替换正文；Notion 里删掉的块可从页面历史找回",
+      target: "流水线",
+      save: "保存到流水线",
+      // ⚠️ **原来这句写的是「Notion 里删掉的块可从页面历史找回」——换 D1 之后它成了假话。**
+      // 库里没有逐行的版本历史，一条 UPDATE 覆盖过去就没了。承诺「能找回」的提示，
+      // 会让人放心地覆盖掉找不回来的东西，和删除按钮那条是同一个道理。
+      hint: "整篇替换正文；库里没有版本历史，存下去就是覆盖",
     },
 
     // 编辑：标题/状态走属性接口，正文走整体替换
@@ -165,27 +167,39 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
       if (markdown != null) await api.saveContent(key, item.key, markdown);
     },
 
-    // 删除是**真删除，删了就没了**。Notion 时代这里是 archived:true——进废纸篓、
-    // 30 天可恢复，所以按钮上写的是「移到 Notion 废纸篓」；换成 D1 之后那一层没了，
-    // 关联表靠 ON DELETE CASCADE 一起清掉。
-    // 界面必须照实说：一个承诺「可恢复」的按钮会让人放心地删掉找不回来的东西。
+    /**
+     * 删除**两件事，可恢复性正好相反**，所以回执必须两件都说到
+     * （`summarizeArchiveTrash` 负责后半句）：
+     *
+     * 1. D1 那一行**真删除，删了就没了**。Notion 时代这里是 archived:true——进废纸篓、
+     *    30 天可恢复，所以按钮上写的是「移到 Notion 废纸篓」；换成 D1 之后那一层没了，
+     *    关联表靠 ON DELETE CASCADE 一起清掉。
+     * 2. vault 里那份归档**移进 `.trash/`，能捞回来**。由本地的
+     *    `/api/pipe/delete` 做，不是 Worker——它够不着你本机。
+     *
+     * **按钮上的字只说第 1 件。** 要点两下的那个动作，写的必须是最不可逆的那部分；
+     * 「归档能捞回来」是好消息，放回执里说。一个承诺「可恢复」的按钮，
+     * 会让人放心地删掉找不回来的东西。
+     */
     remove: removable ? (item) => api.removePage(key, item.key) : undefined,
     removeLabel: "永久删除",
 
     /**
-     * Notion 源**不支持高亮**。高亮是「划在一份文件上的记号」，靠原文文本锚定，
-     * 落点是 vault 里的一个同名 `.highlights.md`；Notion 页面没有这样一个文件，
-     * 硬做的话要么另建一张表（工作台就有状态了，违反红线），要么塞进评论（那是批注）。
+     * 流水线源**不支持高亮**。高亮是「划在一份文件上的记号」，靠原文文本锚定，
+     * 落点是 vault 里的一个同名 `.highlights.md`；库里的一行没有这样一个文件，
+     * 硬做的话要么另建一张表（工作台就有状态了，违反红线），要么塞进批注（那是另一件事）。
      * 所以这里返回空——划词工具条会据此不画那个按钮，而不是画一个点了报错的按钮。
      */
     highlightPath: () => "",
 
-    annotateLabel: "批注写成 Notion 评论，在 Notion 客户端里能看到",
+    // ⚠️ 同样是换库之后成了假话的一句：批注现在写进流水线自己的 comments 表，
+    // 没有第二个客户端能看到它。`annotateLabel` 的职责就是如实说明东西落在哪。
+    annotateLabel: "批注存进流水线，只在这个工作台里看得到",
     sourceOf: (item) => item.raw.link || item.title,
   };
 }
 
-export const COLLECTIONS = notionSource({
+export const COLLECTIONS = pipelineSource({
   key: "collections",
   label: "收件箱",
   eyebrow: "inbox",
@@ -219,7 +233,7 @@ export const COLLECTIONS = notionSource({
   }),
 });
 
-export const INBOX = notionSource({
+export const INBOX = pipelineSource({
   key: "inbox",
   label: "灵感库",
   eyebrow: "ideas",
@@ -262,8 +276,24 @@ function relationSummary(items, ids) {
 }
 
 /**
- * 素材证据契约：Worker 把 Notion 的「核验状态 / 核验说明 / 来源灵感 / 关联选题」
- * 映射成 verificationStatus / verificationNote / inspirationIds / topicIds。
+ * 紧凑卡片上，核验状态该不该说出来。
+ *
+ * 「不适用」的完整意思是「这条不是金句/数据，无需逐字核验」——跟着字段名「核验状态」
+ * 时读得懂，但在卡片上它孤零零跟在类型后面，就被读成**「这条素材不适用」**，
+ * 于是「核心观点 · 不适用」和「已用 1 处」并排出现，看着自相矛盾。
+ *
+ * **只说「这一栏跟我无关」的值，在紧凑视图里就是噪音。** 挡路的（待核验，意味着
+ * 这条进不了稿）和值得表扬的（已核验）才说。完整状态在素材详情页里带着字段名显示，
+ * 那儿一个字都不省——这里省的是上下文足够、说了反而误导的那一份。
+ */
+export function verificationBadge(status) {
+  const value = String(status || "").trim();
+  return value === "待核验" || value === "已核验" ? value : "";
+}
+
+/**
+ * 素材证据契约：Worker 把库里的「核验状态 / 核验说明 / 来源灵感 / 关联选题」
+ * 压平成 verificationStatus / verificationNote / inspirationIds / topicIds。
  * 金句和数据缺少核验字段时一律按待核验处理，绝不把“没数据”猜成“已核验”。
  */
 export function materialEvidence(item = {}) {
@@ -332,7 +362,7 @@ export function mapMaterial(item) {
   };
 }
 
-export const MATERIALS = notionSource({
+export const MATERIALS = pipelineSource({
   key: "materials",
   label: "素材库",
   eyebrow: "materials",
@@ -353,7 +383,7 @@ export const MATERIALS = notionSource({
   mapItem: mapMaterial,
 });
 
-export const TOPICS = notionSource({
+export const TOPICS = pipelineSource({
   key: "topics",
   label: "选题库",
   eyebrow: "topics",
@@ -361,11 +391,12 @@ export const TOPICS = notionSource({
   sub: "改成「撰写中」就开始成稿——先选一个主平台，只生成一个版本。",
   pendingKey: "选题待写",
   /**
-   * ⚠️ 这几个字符串必须和 Notion 库里的**状态选项逐字一致**，一个字都不能差。
-   * 反查真实选项：故意传一个不存在的状态，Notion 的报错里会列全 `Available options`。
+   * ⚠️ 这几个字符串必须和库里的**状态取值逐字一致**，一个字都不能差，对不上就是 400。
    *
-   * （「搁置」原来叫「搬置」，2026-08-11 在 Notion 界面里改的名——API 改不了 status
-   * 类型的选项，只能手点。改完旧名就摘掉了，别再往回加。）
+   * **真源是 `worker/schema.sql` 里 topics.status 的 CHECK 约束，直接去那儿看。**
+   * （Notion 时代要靠故意传一个非法状态、从报错的 `Available options` 里读出来——
+   * 那套反查手法连同 Notion 一起退役了，别再照着做。「搁置」原来叫「搬置」，
+   * 改完旧名就摘掉了，别再往回加。）
    */
   states: ["待写", "撰写中", "已成稿", "已发布", "搁置"],
   // 改成这个状态之前先问主平台：一进「撰写中」，Worker 五分钟内就会生成主稿。
@@ -409,7 +440,7 @@ export const TOPICS = notionSource({
   }),
 });
 
-export const DRAFTS = notionSource({
+export const DRAFTS = pipelineSource({
   key: "drafts",
   label: "稿件库",
   eyebrow: "drafts",
@@ -425,7 +456,7 @@ export const DRAFTS = notionSource({
    * 「小红书 0 篇」和「小红书不存在」**，而前者才是这一刻你想知道的事。
    * 这里写死不违反「选项从真实数据里现算」那条：`PLATFORMS` 本来就是整套系统的单一真源
    * （必须和 content-pipeline 的 draft.js 逐字一致），不是为这个下拉另抄的一张表。
-   * 素材库的「类型」没有这样一份名单（选项在 Notion 那边随时会加），所以那边照旧现算。
+   * 素材库的「类型」没有这样一份名单（库里随时会多出新类型），所以那边照旧现算。
    */
   facet: { key: "platform", label: "平台", all: PLATFORMS },
   quietStates: ["已弃用"],
@@ -505,6 +536,35 @@ export function summarizeDraftReconcile(result = {}) {
       ? `父选题已重新计算：${labels.join("、")}`
       : `已重新计算 ${count} 个父选题`,
   };
+}
+
+/**
+ * 归档清理结果 → 回执上的**第二句**（`archive` 字段由本地 `/api/pipe/delete` 补上）。
+ *
+ * **删除是两件事**：D1 那一行永久删除（不可恢复），vault 里那份归档移进 `.trash/`
+ *（可恢复）。回执必须把两件都说到——只说前半句，用户会以为 Obsidian 里还留着一份；
+ * 只说后半句，又会以为整件事都能捞回来。
+ *
+ * ⚠️ **回的是独立一句，不是拿分号接在主句屁股后面。** 接成一句的结果是一条
+ * 六十多字、在回执条里折成两行的长句，两件可恢复性相反的事糊在一起，
+ * 读的人得自己找断点。`Toast` 的 `detail` 槽会把它排成一行淡色小字。
+ *
+ * ⚠️ **`none` 回空串，不回「没有归档」。** 绝大多数条目本来就没归档过
+ * （`vault_path` 为空），每次删都附一句「没有归档要清理」是**每个都说的话，
+ * 等于没说**——和信源芯片上不写「已刷新」是同一条。
+ *
+ * ⚠️ **`failed` 必须带下一步。** 这是唯一一种「屏幕上不说就永远没人知道」的情况：
+ * 孤儿文件会一直攒着，而下次你数 Obsidian 里的文件时又对不上了。
+ */
+export function summarizeArchiveTrash(archive) {
+  const status = archive?.status;
+  if (status === "trashed") return "Obsidian 里的归档已移进 .trash，能捞回来";
+  if (status === "missing") return "Obsidian 里那份归档早就不在了";
+  if (status === "failed") {
+    return `Obsidian 里的归档没能清掉（${archive.error}），${archive.hint || "去 Obsidian 里手动删掉"}`;
+  }
+  // none，以及旧 Worker 不回 vaultPath 时的 undefined，都保持安静
+  return "";
 }
 
 // ---- vault 里的两个源 ------------------------------------------------------
@@ -625,7 +685,7 @@ export const SHELF = {
   },
 
   // 批注能不能就地改/删，取决于这个源的批注是不是 vault 里的一份 Markdown。
-  // Notion 源的「批注」是评论，Notion API 本身就不支持改评论，所以那边不给这两个口子。
+  // 流水线源的批注是库里的一行，Worker 侧只开了写和读两个端点，所以那边不给这两个口子。
   notePath: (item) => item.raw.notePath || "",
 
   annotateLabel: "批注追加到 notes.md，Obsidian 里能直接搜到",

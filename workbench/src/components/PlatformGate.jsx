@@ -20,7 +20,7 @@ export function PlatformGate({ item, initial = [], done = [], onCancel, onConfir
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  // 跑起来之后 Esc 不生效：这一步已经在往 Notion 写了，半路撤不回来。
+  // 跑起来之后 Esc 不生效：这一步已经在往库里写了，半路撤不回来。
   // 传 undefined 而不是一个空函数——那样 useDialog 会以为「有人管 Esc」。
   const boxRef = useDialog(true, busy ? undefined : onCancel);
 

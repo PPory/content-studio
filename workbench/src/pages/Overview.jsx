@@ -1,14 +1,18 @@
-// 今日页回答两个问题，顺序不能反：
+// 总览页从上往下回答三个问题，顺序不能反：
 //
-//   1. **有没有新活** —— 等你动手的两个数字（选题待写 / 初稿待修改）。流水线自己会消化的
-//      那三个队列（待初筛 / 待整理 / 撰写中）压成一条细横条：它们的 0 是正常态，
-//      和「等你动手」的 0 含义正好相反，摊成一排同样大的卡片会让首屏大半在展示「没有事」。
-//   2. **我上次干到哪了** —— 接着读的书、最近改过的稿、今天值得看的情报。
+//   1. **我今天答应自己要做什么** —— 你手写的清单（`05 - 计划/<日期>.md`）。它排在最前面
+//      是因为这是**你自己定的承诺**，其余几块都只是素材。
+//   2. **手上还欠着什么** —— 一排三张卡。左边两张是「等你动手」的两档，每张给
+//      **数量 + 最该先做的那几条 + 逐条加进清单**；右边一张收着流水线自己会消化的
+//      三个队列。**两组不能画成一样重**：后者的 0 是正常态，和「等你动手」的 0 含义
+//      正好相反，摊成三个同样大的数字会让首屏大半在展示「没有事」。
+//      「数量」和「该先做哪条」原来是两个独立区块，那是同一件事说了两遍——合并见 `TodoCard`。
+//   3. **我上次干到哪了** —— 接着读的书、最近改过的稿、今天值得看的情报。
 //
-// 每一块独立取数、独立失败：Notion 慢或 AI HOT 挂掉都只让那一块自己安静下去，
+// 每一块独立取数、独立失败：Worker 慢或 AI HOT 挂掉都只让那一块自己安静下去，
 // 不能拖着整页转圈，更不能白屏。
 
-import { useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_CARDS, TODO_CARDS } from "../lib/views.js";
 import { SOURCES } from "../lib/sources.js";
 import { api } from "../lib/api.js";
@@ -21,7 +25,6 @@ import {
   IconBook2,
   IconCategory,
   IconCircleDashed,
-  IconExternalLink,
   IconFileText,
   IconFilter,
   IconFolder,
@@ -30,16 +33,14 @@ import {
   IconSparkles,
   IconDatabase,
   IconSettings,
+  IconCheck,
+  IconPlus,
+  IconTrash,
+  IconClipboardList,
 } from "../components/icons.jsx";
 import { BackupDrawer } from "../components/BackupDrawer.jsx";
+import { CreationDialog } from "../components/CreationDialog.jsx";
 import { setOpenTarget } from "../lib/open-target.js";
-
-const DECISION_QUEUES = [
-  { view: "drafts", state: "待修改", action: "先完成主稿", why: "离发布最近" },
-  { view: "drafts", state: "待发布", action: "确认并发布", why: "内容已经准备好" },
-  { view: "topics", state: "待写", action: "选择今天要写的题", why: "决定今天产出什么" },
-  { view: "inbox", state: "需处理", action: "处理异常灵感", why: "避免有价值的输入卡住" },
-];
 
 /**
  * 流水线三段各自的图标。**按那一步在做什么选，不按状态选**——筛、归类、写，
@@ -53,136 +54,580 @@ const AUTO_ICONS = {
   选题撰写中: IconPencil,
 };
 
+/**
+ * 一张待办卡里最多列几条。
+ *
+ * ⚠️ **超出的不列，也不在卡里开滚动区。** 这个项目明确否决过「为了少一条滚动条去套
+ * `max-height`」——那只会把一栏切成两半，鼠标在哪滚的是哪（引用块、看板列、左栏目录
+ * 都踩过）。卡片上那个数字已经说了总共几条，「去看看」就是看全部的路。
+ */
+const TOP_N = 3;
+
 export function Overview({ config, status, statusError, statusLoading, onGo, onIntake, onSettings }) {
   const workerReady = config?.worker?.configured;
-  const [decisions, setDecisions] = useState(null);
+  /**
+   * 每一档**最该先做的那几条**（列表最前面的 `TOP_N` 条）。
+   *
+   * 这原本是一个独立的「系统建议」区块，和下面的计数卡分开摆——而它们说的是同一件事的
+   * 两个层次：一个报「这一档有几条」，一个报「其中该先做哪条」。**分开摆就是同一件事
+   * 说了两遍**，还各占一整块。现在第二层直接长在第一层那张卡里。
+   */
+  const [tops, setTops] = useState(null);
   useEffect(() => {
     if (!workerReady) return;
     let active = true;
-    Promise.all(DECISION_QUEUES.map(async (queue) => {
+    Promise.all(TODO_CARDS.map(async (c) => {
       try {
-        const result = await SOURCES[queue.view].list({ state: queue.state });
-        return result.items[0] ? { ...queue, item: result.items[0] } : null;
+        const result = await SOURCES[c.view].list({ state: c.state });
+        return [c.key, result.items.slice(0, TOP_N)];
       } catch {
-        return null;
+        return [c.key, []]; // 一档取不到不能拖着另一档，更不能白屏
       }
-    })).then((rows) => active && setDecisions(rows.filter(Boolean).slice(0, 3)));
+    })).then((rows) => active && setTops(Object.fromEntries(rows)));
     return () => { active = false; };
   }, [workerReady, status?.ts]);
   // **只数等你动手的**。把 Worker 正在跑的活也算进「待处理」，会让人以为自己欠着事。
   const pending = TODO_CARDS.reduce((n, c) => n + (status?.counts?.[c.key] ?? 0), 0);
+  const plan = usePlan(config?.vault?.configured);
+  // 「新建」和侧栏常驻的「入库」不是一回事：入库是**存一条素材**（已经有的东西），
+  // 新建是**开一篇新的**（还不存在的东西）。同一个动作两个入口才该合并，这是两个动作。
+  const [creation, setCreation] = useState(null);
 
   return (
     <>
+      {/* **不写 desc。** 原来那句是在解释这一页的段落顺序（先清单、再建议、再队列），
+          而顺序本身在屏幕上就摆着——需要一句话说明才看得懂的版面，说明是白写的。
+          省下的两行高度直接换成「接着上次」能不能进首屏。 */}
       <PageHeader
-        eyebrow="TODAY"
-        title="今日决策"
-        desc="先决定今天推进哪一篇；数据库和自动队列退到后面，需要时再看。"
+        eyebrow="OVERVIEW"
+        title="总览"
         aside={
-          status ? (
-            <div className="conn" style={{ border: 0, padding: 0 }}>
-              <span className={`dot ${pending ? "dot-accent" : "dot-ok"}`} />
-              {pending ? `${pending} 件事等你` : "手上没有待办"}
-            </div>
-          ) : null
+          <>
+            {status ? (
+              <div className="conn" style={{ border: 0, padding: 0 }}>
+                <span className={`dot ${pending ? "dot-accent" : "dot-ok"}`} />
+                {pending ? `${pending} 件事等你` : "手上没有待办"}
+              </div>
+            ) : null}
+            {/* 和「创作」页右上角是**同一个按钮、同一个弹层**（`preset` 不传就是选择页）。
+                复制一份简化版的话，以后加一种创建方式会漏掉这一处。 */}
+            {workerReady ? (
+              <button className="btn btn-primary" onClick={() => setCreation("choose")}>
+                <IconPlus aria-hidden="true" stroke={2} />新建
+              </button>
+            ) : null}
+          </>
         }
       />
 
       {!workerReady && <SetupGuide onSettings={onSettings} />}
 
-      {workerReady ? (
-        <section className="today-decisions">
-          <SectionHead eyebrow="NEXT BEST ACTION" title="今天先做什么" desc="按离发布的距离排序，最多只给三件事。" />
-          {decisions === null ? <Loading rows={3} /> : decisions.length ? (
-            <div className="today-decisions__list">
-              {decisions.map(({ view, state, action, why, item }, index) => (
-                <button key={`${view}:${item.key}`} className="today-decision" onClick={() => {
-                  setOpenTarget(view, item.key);
-                  onGo(view, state);
-                }}>
-                  <span className="today-decision__rank">0{index + 1}</span>
-                  <span className="today-decision__body">
-                    <strong>{action}</strong>
-                    <b>{item.title}</b>
-                    <small>{why} · {SOURCES[view].label} / {state}</small>
-                  </span>
-                  <IconArrowRight aria-hidden="true" stroke={1.8} />
-                </button>
-              ))}
-            </div>
-          ) : <Note tone="success" title="今天的关键队列已经清空">可以去灵感库收集新输入，或在数据页复盘已发布内容。</Note>}
-        </section>
-      ) : null}
+      {/* 流水线状态排在最前面，但**只占一行**：位置靠前是为了每次打开一眼扫到（它是唯一
+          能看出流水线卡住了的地方），只占一行是为了不跟你自己的清单抢主位——
+          **「显眼」和「安静」是两件事，位置管前者，视觉重量管后者。** */}
+      {workerReady && status ? <PipeFlow status={status} onGo={onGo} /> : null}
+      {workerReady && status ? <CollectionReminder collections={status.collections} onGo={onGo} /> : null}
+
+      <DayPlan plan={plan} />
 
       {workerReady && (
         <>
           <ErrorNote error={statusError} what="读取流水线状态" />
-          {status ? <CollectionReminder collections={status.collections} onGo={onGo} /> : null}
           {statusLoading && !status ? (
             <Loading rows={2} />
           ) : status ? (
-            <div className="todo-grid">
-              {TODO_CARDS.map((c) => {
-                const n = status.counts?.[c.key] ?? 0;
-                return (
-                  <button key={c.key} className="todo-card" data-empty={!n} onClick={() => onGo(c.view, c.state)}>
-                    <span className="todo-card__label">{c.label}</span>
-                    <span className="todo-card__value">{n}</span>
-                    <span className="todo-card__hint">{n ? c.hint : "这一档清空了"}</span>
-                    <span className="todo-card__go">
-                      去看看
-                      <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
-                    </span>
-                  </button>
-                );
-              })}
-
-              {/* 流水线自己在跑的三段，占第三格。**外壳和左边两张卡一样**（同样的边框、
-                  圆角、内边距、同一行的标题），层次靠内容拉开：那边是一个 46px 的数字，
-                  这边是三行小字。同一排里一张卡有壳、一张没壳，看着像那格没加载出来。
-                  机制说明（几分钟跑一轮）留在 title 里：那种话第一天有用，之后每天都在读同一句。 */}
-              <div className="auto-card">
-                <span className="auto-card__label">流水线在跑</span>
-                <div className="auto-card__list">
-                  {AUTO_CARDS.map((c) => {
-                    const n = status.counts?.[c.key] ?? 0;
-                    const Icon = AUTO_ICONS[c.key] || IconCircleDashed;
-                    return (
-                      <button key={c.key} className="auto-card__item" title={c.hint} onClick={() => onGo(c.view, c.state)}>
-                        <Icon size={16} stroke={1.7} aria-hidden="true" />
-                        <span className="auto-card__name">{c.label}</span>
-                        <span className={n ? "auto-card__n" : "auto-card__n is-zero"}>{n}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="overview-block">
+              <div className="todo-grid">
+                {TODO_CARDS.map((c) => (
+                  <TodoCard
+                    key={c.key}
+                    card={c}
+                    n={status.counts?.[c.key] ?? 0}
+                    items={tops === null ? undefined : tops[c.key]}
+                    plan={plan}
+                    onGo={onGo}
+                  />
+                ))}
               </div>
             </div>
           ) : null}
         </>
       )}
 
-      <SectionHead icon={IconHistory} title="接着上次" />
-      <div className="resume-grid">
-        <ResumeBook onGo={onGo} />
-        {workerReady ? <RecentDrafts onGo={onGo} /> : null}
-        <TodayIntel onGo={onGo} />
-      </div>
+      {/* 包一层是为了让这一页的段间距能整体收窄（`.overview-block`）：四段各带 42px 上边距，
+          光是段与段之间的空白就把「接着上次」顶到了首屏之外 */}
+      <section className="overview-block">
+        <SectionHead icon={IconHistory} title="接着上次" />
+        <div className="resume-grid">
+          <ResumeBook onGo={onGo} />
+          {workerReady ? <RecentDrafts onGo={onGo} /> : null}
+          <TodayIntel onGo={onGo} />
+        </div>
+      </section>
 
       <SystemRow config={config} workerReady={workerReady} onIntake={onIntake} onSettings={onSettings} />
+
+      {/* 建完直接跳去那一条。**不留在总览**：新建完最想做的是接着写，
+          而总览上那几个计数要等下一轮心跳才会变，留在这儿看着像没建成功。 */}
+      <CreationDialog
+        open={!!creation}
+        preset={creation}
+        onClose={() => setCreation(null)}
+        onCreated={(draft) => {
+          setOpenTarget("drafts", draft.id);
+          onGo("drafts", "");
+        }}
+        onTopicCreated={(topic) => {
+          setOpenTarget("topics", topic.id);
+          onGo("topics", "");
+        }}
+      />
     </>
   );
 }
+
 function CollectionReminder({ collections, onGo }) {
   if (!collections) return null;
-  const oldestDays = collections.oldestPendingAt
-    ? Math.floor((Date.now() - Date.parse(collections.oldestPendingAt)) / 86400_000)
-    : 0;
+  const oldestDays = collections.oldestPendingAt ? Math.floor((Date.now() - Date.parse(collections.oldestPendingAt)) / 86400_000) : 0;
   if (collections.pending < 20 && oldestDays <= 7) return null;
   return <Note tone="warning" title={`收件箱有 ${collections.pending} 条待整理`}>
     最早一条已放了 {oldestDays} 天。系统不会在后台替你自动分流。
     <button className="btn btn-sm" onClick={() => onGo("collections", "待整理")}>去整理 Inbox</button>
   </Note>;
+}
+
+// ---- 计数 ------------------------------------------------------------------
+
+/**
+ * 流水线自己在跑的三段，画成**一条有三个节点的流程线**，摆在两张卡底下。
+ *
+ * **画成流程线不是加装饰，是把真实存在的顺序显出来**：灵感进来先「待初筛」，筛完成为
+ * 「待整理」，整理成选题之后「撰写中」——它们本来就是一条链的三段，前一段的产出就是
+ * 后一段的输入。摊成一排各不相干的数字，这层关系是看不出来的。
+ * （这也是流水线四段在「创作」页做成 tab 而不是四个侧栏项的同一条理由。）
+ *
+ * ⚠️ **不能删掉这一块。** 这是首页上唯一一处能看出「流水线卡住了」的地方：Worker 挂了、
+ * LLM key 过期了，表现就是「待初筛」一路往上涨。删了的话，坏掉是**看不见**的。
+ *
+ * **摆在页头正下方**，因为它是唯一能看出流水线卡住的地方，得每次打开都扫得到；
+ * 但**只占一行、视觉安静**——「显眼」和「安静」是两件事，位置管前者，视觉重量管后者。
+ *
+ * **0 的时候节点是空心的**——它们的 0 是正常态，给正常态加视觉重量，等于每天都在提醒你
+ * 一件不用做的事。堆了东西才变成实心黑点，那时它才该抢你一眼。
+ */
+function PipeFlow({ status, onGo }) {
+  return (
+    <div className="pipe-flow">
+      {/* **不写「流水线在跑」这个标题**：三个节点名（待初筛 / 待整理 / 撰写中）加上
+          它们串成一条线，已经把「这是一条流水线」说完了。标题在这儿是句多余的话，
+          而它占的是整行最左边、最值钱的位置。 */}
+      <div className="pipe-flow__track">
+        {AUTO_CARDS.map((c, i) => {
+          const n = status.counts?.[c.key] ?? 0;
+          return (
+            <Fragment key={c.key}>
+              {/* 连接线是节点之间的**兄弟元素**，不是节点的 ::before——用伪元素的话
+                  第一个节点前面会多出半截线，还得再写一条规则去掉它 */}
+              {i ? <span className="pipe-flow__line" aria-hidden="true" /> : null}
+              <button
+                className="pipe-flow__node"
+                data-busy={!!n}
+                title={c.hint}
+                aria-label={`${c.label} ${n} 条`}
+                onClick={() => onGo(c.view, c.state)}
+              >
+                <span className="pipe-flow__dot">{n}</span>
+                <span className="pipe-flow__name">{c.label}</span>
+              </button>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 「等你动手」的一档：**数量 + 最该先做的那几条 + 逐条加进清单**。
+ *
+ * 这张卡是两块东西合并来的。原来是「系统建议」区块和这张计数卡各占一块，而它们说的是
+ * 同一件事的两个层次——一个报「这一档有几条」，一个报「其中该先做哪条」。**分开摆就是
+ * 同一件事说了两遍**，还多一个段头、多一整块高度；而且建议那份的四条队列里有两条引的
+ * 状态在 D1 里根本不存在（见 `views.js` 的注释），永远取不到东西也永远不报错。
+ *
+ * ⚠️ **加进清单的那条不从这里移除，只打个记号。**
+ *
+ *   **卡片是库的镜子，清单是你的承诺。镜子不能因为你许了愿就改。**
+ *
+ * 「选题待写 2」数的是库里真实处于「待写」的条数——你把它抄进今天的清单，那条选题
+ * 还是待写。移掉它，上面那个 2 和下面的列表当场对不上，等于谎报库存。它真正消失的
+ * 时机是**库里状态变了**（选题 → 撰写中、稿件 → 已发布），那时计数自己会减 1、
+ * 列表自己会少一条，不需要任何额外机制。清单里打勾同理：那是你对自己说「做完了」，
+ * 不是库里的事实。
+ *
+ * ⚠️ **卡片外壳不是 button**：里面有好几个按钮，button 套 button 是非法结构。
+ *
+ * `items === undefined` 是「还在取」，`[]` 是「取到了但这一档是空的」。**两者不能混**：
+ * 混了的话加载中的那一瞬间会先闪一次「这一档清空了」。
+ */
+function TodoCard({ card, n, items, plan, onGo }) {
+  const dayLabel = plan.data && plan.data.date === plan.data.tomorrow ? "明天" : "今天";
+  const tasks = plan.data?.tasks || [];
+  const rest = items ? n - items.length : 0;
+
+  return (
+    <div className="todo-card" data-empty={!n}>
+      <span className="todo-card__label">{card.label}</span>
+      <span className="todo-card__value">{n}</span>
+
+      {items === undefined ? (
+        <span className="todo-card__hint">正在读…</span>
+      ) : items.length ? (
+        <ul className="todo-card__list">
+          {items.map((it) => {
+            const text = `${card.action}：${it.title}`;
+            const already = tasks.some((t) => t.text === text);
+            return (
+              <li key={it.key} className="todo-card__row" data-on={already}>
+                {/* 标题点下去开**那一条**，不是它所在的那一页 */}
+                <button
+                  className="todo-card__top"
+                  title={it.title}
+                  onClick={() => {
+                    setOpenTarget(card.view, it.key);
+                    onGo(card.view, card.state);
+                  }}
+                >
+                  {it.title}
+                </button>
+                {plan.enabled && plan.data ? (
+                  <button
+                    className="todo-card__add"
+                    disabled={already || plan.busy}
+                    title={already ? `已经在${dayLabel}的清单里了` : `把这条加进${dayLabel}的清单`}
+                    aria-label={already ? `「${it.title}」已在清单里` : `把「${it.title}」加进${dayLabel}的清单`}
+                    onClick={() => plan.add(text)}
+                  >
+                    {already ? <IconCheck size={13} stroke={2.4} aria-hidden="true" /> : <IconPlus size={13} stroke={2.2} aria-hidden="true" />}
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <span className="todo-card__hint">这一档清空了</span>
+      )}
+
+      {/* 动作行贴着卡片底边，三张卡的按钮才落在同一条线上 */}
+      <span className="todo-card__acts">
+        {/* 没列全的时候照实说还剩几条——**列表被截断这件事必须写在屏幕上**，
+            否则「选题待写 5」配着三行会被读成「另外两条不见了」 */}
+        <span className="todo-card__rest">{rest > 0 ? `还有 ${rest} 条` : ""}</span>
+        <button className="todo-card__go" onClick={() => onGo(card.view, card.state)}>
+          去看看
+          <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+// ---- 今天的清单 ------------------------------------------------------------
+
+/**
+ * 每日计划的取数与改写。
+ *
+ * **清单落 vault 的 `05 - 计划/<日期>.md`，不落 localStorage**：手写的任务是你自己的字，
+ * 是内容，而红线写着「不用 localStorage 存内容」。落 vault 换来的是——打钩就是把
+ * `- [ ]` 改成 `- [x]`（Obsidian 原生就认，两边是同一份），躺床上用手机在 Obsidian 里
+ * 列明天的清单，第二天早上工作台里就有它。
+ *
+ * **「今天 / 明天」两个日期串由服务端给**（`today` / `tomorrow`），前端不自己 `new Date()`：
+ * 文件名是按**服务端本机日期**建的，两边各算各的话，跨零点或时区一错就会写进另一个文件，
+ * 而现象是「我明明列过的清单不见了」。
+ */
+function usePlan(enabled) {
+  const [date, setDate] = useState("");
+  const [tick, setTick] = useState(0);
+  const [state, setState] = useState({ loading: true });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  // 改写要带上「打开时那一刻的 stamp」，而它每次动作后都会变。放 ref 不放闭包：
+  // 从 state 里捞的话，连点两下会拿同一个旧 stamp 打第二次，第二下必然 409。
+  const ref = useRef(null);
+
+  const apply = useCallback((data) => {
+    ref.current = data;
+    setState({ loading: false, data });
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    setState((s) => ({ ...s, loading: true }));
+    api
+      .plan(date)
+      .then((d) => alive && apply(d))
+      .catch((e) => alive && setState({ loading: false, failed: e }));
+    return () => {
+      alive = false;
+    };
+  }, [enabled, date, tick, apply]);
+
+  /**
+   * 每个动作都**拿服务端回的那份新状态整个覆盖**，不在前端拼一份「应该长这样」。
+   * 这个文件同时可能在 Obsidian 里开着，只有服务端刚读到的那份才作数——
+   * 前端自己改一个字段的话，界面和文件会安静地分叉。
+   */
+  const run = useCallback(
+    async (call) => {
+      const now = ref.current;
+      if (!now) return;
+      setBusy(true);
+      try {
+        apply(await call(now));
+      } catch (e) {
+        setError(e);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [apply]
+  );
+
+  return {
+    enabled: !!enabled,
+    ...state,
+    error,
+    busy,
+    setDate,
+    reload: () => setTick((t) => t + 1),
+    add: (text) => run((p) => api.addTask(p.date, text)),
+    toggle: (index, done) => run((p) => api.toggleTask(p.date, p.stamp, index, done)),
+    remove: (index) => run((p) => api.removeTask(p.date, p.stamp, index)),
+  };
+}
+
+/**
+ * 完成进度环。**分母是清单里的条数，不是推算出来的**——这也是它能存在的全部理由：
+ * 目标由你自己写下，环只是把「几条里完成了几条」画出来，不用编任何数字。
+ *
+ * **一条任务都没有时照画**（空环 + `0/0`）。上一版在空清单时把它整个藏起来，理由是
+ * 「空环是装饰」——那个理由站不住：清单空着恰恰是最常见的初始状态，藏起来的结果是
+ * **这个环从来没被看见过**。而且它一出现整块就会往下跳一次。
+ */
+function ProgressRing({ done, total }) {
+  const r = 53;
+  const circumference = 2 * Math.PI * r;
+  const ratio = total ? done / total : 0;
+  const left = total - done;
+  // 环底下那句话按状态换。**「还剩 2 条」和「今天清空了」不能说同一句**——
+  // 一个是「继续」，一个是「可以收工了」。（`total === 0` 时整个环不画，见调用处）
+  const note = left ? `还剩 ${left} 条` : "今天清空了";
+
+  return (
+    <div className="plan-ring" role="img" aria-label={`${total} 条任务里完成了 ${done} 条`}>
+      {/* 定位容器是里面这层 `__dial`，不是整个 `.plan-ring`——底下那行说明要正常排在环下面，
+          挂在同一个 `position: relative` 上会被绝对定位的数字压住 */}
+      <div className="plan-ring__dial">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle className="plan-ring__track" cx="60" cy="60" r={r} />
+          <circle
+            className="plan-ring__arc"
+            cx="60"
+            cy="60"
+            r={r}
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - ratio)}
+          />
+        </svg>
+        {/* 两截包在**一个**行内块里，让浏览器按正常行内流去排。直接把 `{done}` 和 `<i>` 摊在
+            定位容器里的话，它们会变成两个独立的盒子（grid 里上下摞、flex + baseline 里整行顶到上边），
+            图上一眼就看得出，而冒烟测试照样绿。 */}
+        <span className="plan-ring__label" aria-hidden="true">
+          <span>
+            {done}
+            <i>/{total}</i>
+          </span>
+        </span>
+      </div>
+      <span className="plan-ring__note">{note}</span>
+    </div>
+  );
+}
+
+/**
+ * 手写的任务清单。首页的主位就是它。
+ *
+ * **vault 没配时整块不画**（不是画一个报错的空壳）：底下的系统行已经在说这件事，
+ * 而且那儿的引导是能点的。同一个问题在一屏上说两遍，第二遍就是噪音。
+ */
+function DayPlan({ plan }) {
+  const [text, setText] = useState("");
+  // 输入框**默认不在**，点「+」才展开。常驻的话，空清单那一屏就是「一句说明 + 一个空
+  // 输入框 + 一行路径」三样东西在说同一件事，而它们加起来比清单本身还高。
+  const [adding, setAdding] = useState(false);
+  const data = plan.data;
+  const tasks = data?.tasks || [];
+  const done = tasks.filter((t) => t.done).length;
+  // 「今天还是明天」由服务端给的两个日期串比出来，不在前端算日期
+  const isTomorrow = !!data && data.date === data.tomorrow;
+  const dayLabel = isTomorrow ? "明天" : "今天";
+
+  if (!plan.enabled) return null;
+
+  function submit(e) {
+    e.preventDefault();
+    if (!text.trim() || plan.busy) return;
+    plan.add(text);
+    setText("");
+  }
+
+  return (
+    <section className="day-plan overview-block">
+      <SectionHead icon={IconClipboardList} eyebrow="MY LIST" title="我的清单" />
+
+      {/* 左边清单、右边大环。**环不放页头的 aside 里**：那儿只有一行的高度，塞进去就只能是
+          一枚小徽章，而这一块要一眼看出「今天走到哪了」——那正是大环存在的理由。
+          右栏定宽：左边是长短不一的中文任务，按比例分的话环会跟着任务文字长短忽大忽小。 */}
+      <div className="plan-body">
+        <div className="plan-main">
+          {/* 今天 / 明天两档。**这一档必须有**：用户的动线是「今晚列明天的」，
+              只给今天的话，这个清单最主要的写入时机压根没有入口。 */}
+          <div className="plan-days">
+            {data ? (
+              <>
+                <button className="plan-day" data-on={!isTomorrow} onClick={() => plan.setDate(data.today)}>
+                  今天
+                </button>
+                <button className="plan-day" data-on={isTomorrow} onClick={() => plan.setDate(data.tomorrow)}>
+                  明天
+                </button>
+                <button
+                  className="plan-plus"
+                  title={`加一条到${dayLabel}的清单`}
+                  aria-label={`加一条到${dayLabel}的清单`}
+                  aria-expanded={adding}
+                  onClick={() => setAdding((v) => !v)}
+                >
+                  <IconPlus size={16} stroke={2.2} aria-hidden="true" />
+                </button>
+                {/* **如实说明这份清单存到哪了**（和批注那条「保存前就该知道东西落在哪」同一条），
+                    但不再单独占一行——挂在这一排的最右端。显示路径掐掉 `99 - 个人工作台/`：
+                    那一段在每份文档上都一样，占的是最值钱的开头几个字。 */}
+                <span className="plan-where mono" title={data.path}>
+                  {shortPath(data.path)}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+      {/* 改写失败（多半是 409：文件刚在 Obsidian 里被动过）单独报，**不能把已经读到的
+          清单顶掉**——报个错就把列表清空的话，用户会以为清单本身也没了。
+          「刷新一下再试」这句话本身要能点，否则它就是个死胡同。 */}
+      {plan.error ? (
+        <Note tone="danger" title={`改这份清单失败：${plan.error.message}`}>
+          {plan.error.hint || "回终端看 npm run dev 的日志"}
+          <button className="sysrow__btn" style={{ marginTop: 8 }} onClick={plan.reload}>
+            重新读一遍
+          </button>
+        </Note>
+      ) : null}
+
+      {plan.loading && !data ? (
+        <Loading rows={2} />
+      ) : plan.failed ? (
+        <ErrorNote error={plan.failed} what="读今天的计划" />
+      ) : (
+        <>
+          {tasks.length ? (
+            <ul className="plan-list">
+              {tasks.map((t) => (
+                <li key={`${t.index}:${t.text}`} className="plan-task" data-done={t.done}>
+                  {/* 整行可点，不是只有那个小方框——12px 的点击目标在一个每天要点好几次的
+                      控件上太苛刻了。删除按钮是**另一个** button，所以行本身不能是 button。 */}
+                  <button
+                    className="plan-task__main"
+                    aria-pressed={t.done}
+                    disabled={plan.busy}
+                    onClick={() => plan.toggle(t.index, !t.done)}
+                  >
+                    <span className="plan-task__box" aria-hidden="true">
+                      {t.done ? <IconCheck size={13} stroke={2.6} /> : null}
+                    </span>
+                    <span className="plan-task__text">{t.text}</span>
+                  </button>
+                  {/* 只在 hover / 聚焦时出现：删一条不给二次确认（一行字点两下太重），
+                      靠「平时不在那儿」来防误触，和书架卡片上的换封面按钮同一条。 */}
+                  <button
+                    className="plan-task__del"
+                    disabled={plan.busy}
+                    title="从清单里删掉这条"
+                    aria-label={`从清单里删掉「${t.text}」`}
+                    onClick={() => plan.remove(t.index)}
+                  >
+                    <IconTrash size={14} stroke={1.7} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {/* 输入框只在点过「+」之后出现，而且**加完一条不收起**——晚上列明天的清单是
+              一口气写五六条，每条都要重新点一次「+」的话，这个入口就成了收费站。
+              Esc / 空着失焦才收起。 */}
+          {adding ? (
+            <form className="plan-add" onSubmit={submit}>
+              <input
+                value={text}
+                autoFocus
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Escape") return;
+                  // 这一层自己吃掉 Esc：不拦的话它会一路冒到别处去
+                  e.stopPropagation();
+                  setText("");
+                  setAdding(false);
+                }}
+                onBlur={() => !text.trim() && setAdding(false)}
+                placeholder={`加一条到${dayLabel}…`}
+                maxLength={200}
+                aria-label={`加一条任务到${dayLabel}的清单`}
+              />
+              <button type="submit" disabled={!text.trim() || plan.busy}>
+                加一条
+              </button>
+            </form>
+          ) : null}
+
+          {data?.unknownMarks ? (
+            <p className="plan-foot">
+              这份文件里还有 {data.unknownMarks} 行工作台认不出的任务标记（比如 <code>[/]</code>），它们原样留在文件里。
+            </p>
+          ) : null}
+        </>
+      )}
+        </div>
+
+        {/* **一条任务都没有时不画环。** 这和「空清单时也要画」正好相反，是看过实物之后改的：
+            画出来的是一个满圈的灰环加 `0/0`，它既不报告进度、也不指引下一步，只是把
+            「你还没开始」这件事放大成这一屏最大的图形。环有值可报时才出现。 */}
+        {tasks.length ? (
+          <div className="plan-side">
+            <ProgressRing done={done} total={tasks.length} />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+const WB_PREFIX = "99 - 个人工作台/";
+function shortPath(path) {
+  const p = String(path || "");
+  return p.startsWith(WB_PREFIX) ? p.slice(WB_PREFIX.length) : p;
 }
 
 // ---- 接着上次 --------------------------------------------------------------
@@ -470,14 +915,10 @@ function SystemRow({ config, workerReady, onIntake, onSettings }) {
         {/* 备份和 vault 路径待在一起：它们回答的是同一类问题——「我的东西放在哪、
             出事了怎么办」。做成侧栏一项的话，一个几周才点一次的东西会全程占着一屏。 */}
         <BackupButton />
-        {Object.entries(config?.links?.notion || {})
-          .filter(([, url]) => url)
-          .map(([name, url]) => (
-            <a key={name} className="sysrow__btn" href={url} target="_blank" rel="noreferrer">
-              <IconExternalLink size={14} stroke={1.7} aria-hidden="true" />
-              {name}
-            </a>
-          ))}
+        {/* 这儿原来还有四个「灵感库 / 素材库 / 选题库 / 稿件库」的外链，指向 Notion。
+            库迁到 D1 之后它们**整排撤掉了**：点开看到的是一份不再更新的旧数据，
+            而它长得跟真的一模一样——**一个通往过期数据的链接比没有链接更糟**。
+            这四个库现在就在左边「创作」页里，本来也不需要跳出去。 */}
       </span>
     </div>
   );
@@ -504,7 +945,7 @@ function BackupButton() {
   );
 }
 
-// Notion 稿件库「已发布」→ vault Markdown。单向、只增不改：
+// 稿件库「已发布」→ vault Markdown。单向、只增不改：
 // 已导出的文件绝不覆盖，你在 Obsidian 里给归档稿加过的批注不会被重跑冲掉。
 function ArchiveButton() {
   const [state, setState] = useState(null);
@@ -548,10 +989,10 @@ function ArchiveButton() {
 
 function SetupGuide({ onSettings }) {
   return (
-    <Note title="还没连上 content-pipeline，先做两步">
+    <Note title="还没连上流水线 Worker，先做两步">
       <ol style={{ margin: "8px 0 0", paddingLeft: 20 }}>
         <li>
-          在 content-pipeline 目录执行 <code>npx wrangler secret put WORKBENCH_KEY</code>，随便设一串长密码，然后{" "}
+          在 <code>worker/</code> 目录执行 <code>npx wrangler secret put WORKBENCH_KEY</code>，随便设一串长密码，然后{" "}
           <code>npx wrangler deploy</code>
         </li>
         <li>把同一串密码和 Worker 地址填进设置面板的「流水线」那一段</li>

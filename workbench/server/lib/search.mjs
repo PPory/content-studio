@@ -2,13 +2,13 @@
  * 全局检索。**本地轻量检索，不建搜索平台。**
  *
  * 要回答的是「那个东西在哪」——它可能是一本书里的一句话、一张素材卡、一条已发布作品，
- * 也可能是三周前那份洞察报告。分散在四处（Notion 四库 / vault / posts.csv / 热点快照），
+ * 也可能是三周前那份洞察报告。分散在四处（流水线四库 / vault / posts.csv / 热点快照），
  * 而人不该记得它当初存在哪儿。
  *
  * 三条实现上的取舍：
  *
- *  - **vault 侧建索引、Notion 侧不建。** vault 是本地文件，按 mtime 增量重读，
- *    改过的才重新读；Notion 在网络那头，一次 list 就是一个来回，只能整批缓存一小会儿。
+ *  - **vault 侧建索引、流水线侧不建。** vault 是本地文件，按 mtime 增量重读，
+ *    改过的才重新读；流水线在网络那头，一次 list 就是一个来回，只能整批缓存一小会儿。
  *  - **索引存正文，不存倒排。** 建倒排要管中文分词、失效和重建，而这里的量级是
  *    几十 MB 文本、几百个文件——`indexOf` 扫一遍是毫秒级。**先量再优化**。
  *  - **结果必须带「怎么继续」**（`go`），不是只给一个标题。搜到之后还要自己想
@@ -33,13 +33,13 @@ const VAULT_DIRS = [
 ];
 
 const MAX_FILE_BYTES = 400_000; // 单个文件超过这个就只索引开头，整本书塞进内存不值得
-const NOTION_TTL = 90_000;      // Notion 列表缓存。热点是分钟级的，这几个库是小时级的
-const NOTION_PAGE = 100;
+const PIPELINE_TTL = 90_000;      // 流水线列表缓存。热点是分钟级的，这几个库是小时级的
+const PIPELINE_PAGE = 100;
 
 // path → { mtime, size, title, text, type, dir }
 const fileIndex = new Map();
 let indexedAt = 0;
-const notionCache = new Map(); // view → { at, items }
+const pipelineCache = new Map(); // view → { at, items }
 
 async function walk(root, rel, out, depth = 0) {
   if (depth > 4) return; // 书架是 书架/<书名>/<章>.md，四层足够；再深多半是附件目录
@@ -105,17 +105,17 @@ async function refreshVault(root) {
   indexedAt = Date.now();
 }
 
-export async function notionList(env, view, q = "") {
+export async function pipelineList(env, view, q = "") {
   const cacheKey = `${view}:${String(q).trim().toLowerCase()}`;
-  const hit = notionCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < NOTION_TTL) return hit.items;
+  const hit = pipelineCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < PIPELINE_TTL) return hit.items;
   try {
     const search = q
-      ? `q=${encodeURIComponent(q)}&limit=${NOTION_PAGE}`
-      : `pageSize=${NOTION_PAGE}`;
+      ? `q=${encodeURIComponent(q)}&limit=${PIPELINE_PAGE}`
+      : `pageSize=${PIPELINE_PAGE}`;
     const r = await callWorker(env, q ? `search/${view}` : `list/${view}`, { search });
     const items = r.data?.ok ? r.data.items || [] : [];
-    notionCache.set(cacheKey, { at: Date.now(), items });
+    pipelineCache.set(cacheKey, { at: Date.now(), items });
     return items;
   } catch {
     // 上游挂了就用上一次的（哪怕过期），比整块搜不到强
@@ -142,7 +142,7 @@ function matcher(q) {
 
 /** 命中处前后各截一段，让人一眼看出为什么这条被搜到了。 */
 function snippet(text, q, len = 90) {
-  // Notion 里有些字段存的是**字面的反斜杠 n 两个字符**（LLM 生成 JSON 时转义了两遍）。
+  // 库里有些字段存的是**字面的反斜杠 n 两个字符**（LLM 生成 JSON 时转义了两遍）。
   // 摘要就一行，还原成真换行没意义；但原样留着，句子中间就杵着一串「\nStep 3」。
   // 折成空格即可。正文那边的还原规则在 `src/lib/sources.js`——那儿要保留段落，所以不同。
   const s = String(text || "")
@@ -216,7 +216,7 @@ export async function searchAll(env, q, { limit = 40 } = {}) {
     sources.push({ key: "vault", ok: false, error: e.message });
   }
 
-  // ---- Notion 四库 -----------------------------------------------------------
+  // ---- 流水线四库 -------------------------------------------------------------
   const VIEWS = [
     { view: "collections", label: "收件箱" },
     { view: "inbox", label: "灵感库" },
@@ -225,7 +225,7 @@ export async function searchAll(env, q, { limit = 40 } = {}) {
     { view: "drafts", label: "稿件库" },
   ];
   if ((env.WORKER_URL || "").trim()) {
-    const lists = await Promise.all(VIEWS.map((v) => notionList(env, v.view, q)));
+    const lists = await Promise.all(VIEWS.map((v) => pipelineList(env, v.view, q)));
     lists.forEach((items, i) => {
       const { view, label } = VIEWS[i];
       sources.push({ key: view, ok: true, count: items.length });
@@ -251,7 +251,7 @@ export async function searchAll(env, q, { limit = 40 } = {}) {
       }
     });
   } else {
-    sources.push({ key: "notion", ok: false, error: "未配置 WORKER_URL" });
+    sources.push({ key: "流水线", ok: false, error: "未配置 WORKER_URL" });
   }
 
   // ---- 已发布作品 -------------------------------------------------------------

@@ -121,7 +121,7 @@ export async function storeAutoMaterial(env, argStr, { source = "" } = {}) {
   if (!rest.trim()) return { ok: false, reason: "empty" };
   const { topicIds, topicTitles, tags: manualTags } = await resolveTokens(env, tokens);
 
-  const { json } = await chatJson(env, { system: CLASSIFY_PROMPT, user: rest.slice(0, 4000), maxTokens: 2000 });
+  const { json } = await chatJson(env, { system: CLASSIFY_PROMPT, user: rest.slice(0, 4000), maxTokens: 2000, task: "utility" });
   const dbType = normMaterialType(json.type);
   const title = (json.title || rest.slice(0, 30)).slice(0, 200);
   const titleEvidence = findSpecificPersonalClaims(rest).length
@@ -189,7 +189,7 @@ export async function classifyInboxEntry(env, text) {
   }
   let title = text.slice(0, 30) + "…";
   try {
-    const { json } = await chatJson(env, { system: TITLE_PROMPT, user: text.slice(0, 4000), maxTokens: 1000 });
+    const { json } = await chatJson(env, { system: TITLE_PROMPT, user: text.slice(0, 4000), maxTokens: 1000, task: "utility" });
     if (json.title) {
       const titleEvidence = findSpecificPersonalClaims(text).length
         ? [{ type: "个人经历", note: text }]

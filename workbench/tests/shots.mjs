@@ -5,11 +5,13 @@
  * 冒烟测试只保证「渲染出来了」，保证不了「好不好看」。改完样式必须跑这个、真去看图。
  */
 
-import { createServer } from "vite";
+import { createServer, loadEnv } from "vite";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DIRS } from "../server/lib/vault-dirs.mjs";
+import { localDate } from "../server/lib/plan.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // 端口可以从环境变量改：`strictPort` 下被别的进程占着就直接起不来，
@@ -53,19 +55,101 @@ const SEED = [
 2026-08-11,公众号,980,,
 `],
 ];
-const saved = SEED.map(([f]) => {
+/**
+ * ⚠️ **恢复单先落盘，再动任何一份真文件。**
+ *
+ * 上一版只把原文存在内存里、靠 `process.on("exit")` 写回去——而 `exit` 在 Ctrl+C、
+ * `Stop-Process`、被上层工具掐掉时**根本不会触发**。踩过一次，代价是 `data/posts.csv`
+ * 里留着样例数据、数据页显示的全是编出来的数字，而**没有任何地方会报错**。
+ *
+ * 现在：原文先写进 `tmp/.shots-restore.json`，进程无论怎么死，**下次启动第一件事就是
+ * 把它还回去**。这和 `safe-write.mjs` 那条「写坏了不能坏掉原来那份」是同一个道理。
+ */
+const RESTORE_FILE = path.join(ROOT, "tmp", ".shots-restore.json");
+
+/**
+ * `before === null` 表示这份文件本来不存在，该删掉。
+ *
+ * ⚠️ **但只在它现在的内容确实就是我们塞进去的样例时才删。** 恢复单是上一次跑留下的，
+ * 中间可能隔了很久——这期间你完全可能真的导入过一份数据。删之前先比一次，比错了
+ * 大不了留下一份样例（看得见、好清理），删错了是**真数据没了、而且不报错**。
+ */
+function restoreFrom(list) {
+  for (const [p, before, seeded] of list) {
+    if (before !== null) {
+      fs.writeFileSync(p, before, "utf8");
+      continue;
+    }
+    const now = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+    if (now === null || now === seeded) fs.rmSync(p, { force: true });
+    else console.error(`⚠ ${p} 里不是样例数据了，没有删它。自己确认一下`);
+  }
+}
+
+// 上一次跑没跑完的话，先把它欠的还了，再开始这一次
+if (fs.existsSync(RESTORE_FILE)) {
+  try {
+    restoreFrom(JSON.parse(fs.readFileSync(RESTORE_FILE, "utf8")));
+    console.log("↺ 上次的样例数据没还回去，已恢复");
+  } catch (e) {
+    console.error("⚠ 恢复上次的样例数据失败，去看 tmp/.shots-restore.json：", e.message);
+  }
+  fs.rmSync(RESTORE_FILE, { force: true });
+}
+
+// 第三项是「我们即将塞进去的样例」，恢复时用来确认那份文件确实还是样例（见 restoreFrom）
+const saved = SEED.map(([f, body]) => {
   const p = path.join(DATA, f);
-  return [p, fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null];
+  return [p, fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null, body];
 });
+
+/**
+ * 总览的「我的清单」同理：空清单只能验收空态，而这一块要看的恰恰是**打过钩的那一行**
+ * （变灰 + 删除线）和进度环。所以临时塞一份今天的计划，截完原样还原。
+ *
+ * **走文件不走界面**：脚本里一律不碰「点了就写」的控件（这条是踩出来的）。路径从
+ * `vault-dirs.mjs` 和 `plan.mjs` 取，不在这儿抄第二份——抄的那份迟早和真的对不上，
+ * 而现象只是「图上这块一直是空的」。
+ */
+const VAULT = loadEnv("development", ROOT, "").VAULT_ROOT || "";
+const PLAN_FILE = VAULT ? path.join(VAULT, ...DIRS.plan.split("/"), `${localDate()}.md`) : "";
+const PLAN_SEED = `# ${localDate()} 计划
+
+- [x] 把「深度思考」那篇的开头重写一遍
+- [x] 回复三条小红书评论
+- [ ] 先完成主稿：你以为自己在思考，其实只是在找一个让自己舒服的答案
+- [ ] 剪完周四那条口播
+- [ ] 把上周的洞察报告读完
+- [ ] 给「杠杆」那篇配封面
+`;
+if (PLAN_FILE) saved.push([PLAN_FILE, fs.existsSync(PLAN_FILE) ? fs.readFileSync(PLAN_FILE, "utf8") : null, PLAN_SEED]);
+
+// 恢复单落盘 → 然后才写样例。顺序反了的话，正好在这两步之间被掐掉就没得还了
+fs.mkdirSync(path.dirname(RESTORE_FILE), { recursive: true });
+fs.writeFileSync(RESTORE_FILE, JSON.stringify(saved), "utf8");
+
 fs.mkdirSync(DATA, { recursive: true });
 for (const [f, body] of SEED) fs.writeFileSync(path.join(DATA, f), body, "utf8");
+if (PLAN_FILE) {
+  fs.mkdirSync(path.dirname(PLAN_FILE), { recursive: true });
+  fs.writeFileSync(PLAN_FILE, PLAN_SEED, "utf8");
+}
+
+let restored = false;
 const restore = () => {
-  for (const [p, before] of saved) {
-    if (before === null) fs.rmSync(p, { force: true });
-    else fs.writeFileSync(p, before, "utf8");
-  }
+  if (restored) return;
+  restored = true;
+  restoreFrom(saved);
+  fs.rmSync(RESTORE_FILE, { force: true });
 };
 process.on("exit", restore);
+// `exit` 只在自然退出时触发。Ctrl+C 和 kill 走这两条，走完自己退出
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
+  process.on(sig, () => {
+    restore();
+    process.exit(1);
+  });
+}
 
 const server = await createServer({
   root: ROOT,
@@ -95,7 +179,27 @@ const shots = [
   ["settings", "/", ".todo-card, .note-title", async () => {
     await page.click(".conn__gear").catch(() => {});
     // 等的是自检真的出了结论，不是覆盖层这个壳——壳里全是转圈的话，截出来的是一张加载图
-    await page.waitForSelector(".set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 }).catch(() => {});
+    await page
+      .waitForSelector(".set-field__dot:not(.set-field__dot--wait), .set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 })
+      .catch(() => {});
+  }],
+  // 「可选能力」：这一段自检最多，也是「已配」最容易堆成一排灰盒子的地方。
+  // 现在绑了字段的那几条收成标题旁边一枚绿点，段尾只剩没有输入框可挂的那两条
+  ["settings-optional", "/", ".todo-card, .note-title", async () => {
+    await page.click(".conn__gear").catch(() => {});
+    await page.click('.set-nav__item[data-key="optional"]').catch(() => {});
+    await page
+      .waitForSelector(".set-field__dot:not(.set-field__dot--wait), .set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 })
+      .catch(() => {});
+    // 滚到底：没绑字段的那两条自检（Firecrawl 二选一、AI 对话没有输入框）在段尾
+    await page.$eval(".set-pane", (e) => e.scrollTo(0, e.scrollHeight)).catch(() => {});
+  }],
+  // 各环节模型：一行一个环节 + 一个下拉。**Worker 没部署这个端点时它是降级态**，
+  // 图上应该看得见一条带下一步的话，而不是一片空白
+  ["settings-models", "/", ".todo-card, .note-title", async () => {
+    await page.click(".conn__gear").catch(() => {});
+    await page.click('.set-nav__item[data-key="models"]').catch(() => {});
+    await page.waitForSelector(".set-models__row, .set-pane .note-danger", { timeout: 20000 }).catch(() => {});
   }],
   // 提示词那一段：左边文件清单 + 右边编辑器，这是这一版最要看的一屏
   ["settings-prompts", "/", ".todo-card, .note-title", async () => {
@@ -132,6 +236,12 @@ const shots = [
   // 洞察报告是这套界面里**信息最密**的一份文档（十几个分区、几十张表、卡片带元信息表），
   // 排版出问题只有看图才发现得了——之前一版把 frontmatter 里三个 sha256 整整齐齐
   // 铺在第一屏，冒烟测试全绿。
+  // 跑批面板：页头按钮点开之后那一屏。它是这一页唯一的动作入口，
+  // 而且里面全是「要不要花钱」这类需要看清楚的信息——不截图就等于没验。
+  ["insight-run", "/#/insights", ".wall-card, .empty, .note-title", async () => {
+    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.waitForSelector(".run-panel", { timeout: 8000 }).catch(() => {});
+  }],
   ["insight", "/#/insights", ".wall-card, .empty, .note-title", async () => {
     await page.click(".wall-card__open").catch(() => {});
     await page.waitForSelector(".reader .prose", { timeout: 25000 }).catch(() => {});
@@ -201,6 +311,42 @@ const shots = [
     await page.waitForSelector(".drawer", { timeout: 6000 }).catch(() => {});
     await page.fill(".drawer textarea", "复利不是利滚利，是「同一件事做久了，别人再进来就追不上」。").catch(() => {});
   }],
+  // 起点选择：三行一屏。这一屏光靠断言全绿——上一版就是三张并排的卡，
+  // 图标钉在左上角、文字沉在底部，中间挖出一块空白，测试一条没红。
+  ["create", "/", ".todo-card, .note-title", async () => {
+    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
+  }],
+  // 编辑器：**背景该比上一张糊得多**（沉浸），底部要能看见字数和留底状态。
+  // 这里会往编辑器里敲字，触发一次自动保存——写的是**测试浏览器自己的 localStorage**，
+  // 不碰服务端也不碰真数据，符合截图脚本「点了不写」的规矩。
+  ["create-editor", "/", ".todo-card, .note-title", async () => {
+    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
+    await page.click(".creation-mode").catch(() => {});
+    await page.waitForSelector(".creation-editor .cm-content", { timeout: 8000 }).catch(() => {});
+    await page.click(".creation-editor .cm-content").catch(() => {});
+    await page.keyboard.type("复利不是利滚利。它真正的意思是：同一件事做得够久，别人再进来就追不上了——因为你攒下的不只是结果，还有做这件事的手感。\n\n这一条对写作同样成立。", { delay: 4 }).catch(() => {});
+    await page.waitForTimeout(900);
+  }],
+  // 从素材开始：**平台下拉展开着截**。它贴在右栏最右端，而菜单比按钮宽 50 多像素，
+  // 默认 `left:0` 就会顶出面板边缘——这种事断言看不出来，只有图上看得见。
+  ["create-material", "/", ".todo-card, .note-title", async () => {
+    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
+    await page.keyboard.press("2");
+    await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
+    await page.click(".creation-material-plan .select__btn").catch(() => {});
+    await page.waitForSelector(".select__pop", { timeout: 5000 }).catch(() => {});
+  }],
+  // 访谈起稿的欢迎区：那枚圆形图标和这段话曾经被聊天气泡的样式串了台
+  //（图标涂成灰的、正文套上灰底），代码在跑、测试全绿，只有肉眼看得见
+  ["create-interview", "/", ".todo-card, .note-title", async () => {
+    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
+    await page.keyboard.press("3");
+    await page.waitForSelector(".creation-interview-welcome", { timeout: 8000 }).catch(() => {});
+  }],
   // 在工作台里读热点原文：抓得到出正文、抓不到出带引导的错误，两种都要能看
   ["hot-read", "/#/hot", ".board, .empty, .note-title", async () => {
     await page.click('.pill-tab:has-text("AI 情报")').catch(() => {});
@@ -237,7 +383,7 @@ for (const [name, hash, waitFor, after] of shots) {
   if (after) await after();
   await page.waitForTimeout(700);
   // 阅读覆盖层和内嵌工具是整屏布局，fullPage 会把 100vh 拉成一张怪图
-  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-prompts", "settings-local-prompts"].includes(name);
+  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-optional", "settings-prompts", "settings-models", "settings-local-prompts", "create", "create-editor", "create-material", "create-interview"].includes(name);
   await page.screenshot({ path: path.join(ROOT, "tmp", `shot-${name}${SUFFIX}.png`), fullPage: !inReader });
   console.log("→", `tmp/shot-${name}${SUFFIX}.png`);
 }

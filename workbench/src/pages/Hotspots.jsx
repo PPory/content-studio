@@ -42,7 +42,7 @@ const TABS = [
 /**
  * 榜名前的平台图标。**按 id 精确匹配**，不按 label 关键词——
  * id 来自我们自己的 `server/lib/sixty.mjs`，是稳定的；label 是给人看的，随时会改字。
- * （这和状态图标/字段图标那两处的模糊匹配不一样：那两处的名字来自 Notion，我们说了不算。）
+ * （这和状态图标/字段图标那两处的模糊匹配不一样：那两处的名字来自库里，我们说了不算。）
  *
  * tabler 没有今日头条和小红书的品牌图标，用语义最近的通用图标顶上；
  * 认不出的一律回落到 IconNews——**宁可给个通用的，也不要一排榜里有的有图标有的没有**。
@@ -61,6 +61,11 @@ const BOARD_ICONS = {
 };
 const boardIcon = (id) => BOARD_ICONS[id] || IconNews;
 
+// 「六个大众榜」里的数字得跟着 BOARDS 走（写死的话加一个榜这句话就悄悄变成假的），
+// 但夹在中文句子里得是中文数字——「6 个大众榜」读着像半句英文。超出十以内回落到阿拉伯数字。
+const CN_NUM = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+const cnNum = (n) => (Number.isInteger(n) && n >= 0 && n <= 10 ? CN_NUM[n] : String(n));
+
 export function Hotspots({ onIntake }) {
   const [tab, setTab] = useState("boards");
   // 收录状态提到这里：切 tab 不该把「已收录」的勾丢掉
@@ -77,7 +82,7 @@ export function Hotspots({ onIntake }) {
    * 一条热点后来怎么样了（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）。
    *
    * **状态从真实关联关系算，工作台自己不存一份映射**——手工状态一定会失真：
-   * 你在 Notion 里把稿子改成已发布，工作台那份记录不会跟着动，而这种错不报警。
+   * 你在别处把稿子改成已发布，工作台那份记录不会跟着动，而这种错不报警。
    *
    * 放在顶层而不是各面板各拉一次：两个面板的条目合起来一次问完，
    * 服务端那边四个库的列表也是复用全局检索的缓存，零额外网络调用。
@@ -140,9 +145,33 @@ export function Hotspots({ onIntake }) {
   );
 }
 
+/**
+ * 「这不是现在的数据」那条提示。
+ *
+ * ⚠️ **标题和正文必须各说各的一半**：标题说「这是什么」（一份多久以前的快照），
+ * 正文说「为什么 + 下一步」。上一版标题写死「显示的是上一次成功的快照」，而服务端
+ * 给的 `staleHint` 结尾又是同一句话，屏幕上那句话原样印了两遍。
+ *
+ * 快照的时间也必须写出来：一份 23 小时前的快照和一份 3 分钟前的快照，值不值得当真
+ * 完全是两回事，而它们在没有时间戳的界面上长得一模一样。
+ */
+function StaleNote({ data }) {
+  if (!data?.stale) return null;
+  const age = relTime(data.fetchedAt);
+  return (
+    <Note title={age ? `下面是 ${age}的快照，不是现在的数据` : "下面是上一次成功的快照，不是现在的数据"}>
+      {data.staleHint}
+      {data.checkedAt ? `（${relTime(data.checkedAt)}试过一次）` : ""}
+    </Note>
+  );
+}
+
 // 卡片头：眉标 + 标题 + 条数 + 说明，右边是「检查于」和刷新。
 // 两个 tab 长一样，所以刷新按钮永远在同一个位置。
-function PanelHead({ eyebrow, title, count, desc, fetchedAt, busy, onRefresh, extra }) {
+//
+// ⚠️ **`stale` 时那一行不能再写「检查于」**：检查是刚刚做的、而且失败了，
+// 那个时间戳说的是快照有多老。同一个数字配错动词，读出来正好是反的意思。
+function PanelHead({ eyebrow, title, count, desc, fetchedAt, stale, busy, onRefresh, extra }) {
   return (
     <div className="panel-head">
       <div className="panel-head__main">
@@ -159,11 +188,11 @@ function PanelHead({ eyebrow, title, count, desc, fetchedAt, busy, onRefresh, ex
       </div>
       <div className="panel-head__aside">
         {extra}
-        <span className="panel-head__time">
+        <span className="panel-head__time" title={stale ? "刚才检查过，没读到新的" : undefined}>
           <IconClock aria-hidden="true" stroke={1.7} />
           {fetchedAt ? (
             <>
-              检查于 <span className="micro__v">{relTime(fetchedAt)}</span>
+              {stale ? "快照来自" : "检查于"} <span className="micro__v">{relTime(fetchedAt)}</span>
             </>
           ) : (
             "尚未抓取"
@@ -241,6 +270,8 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
   }, [data, onTrace]);
 
   const dead = data?.boards.filter((b) => !b.ok) || [];
+  // 「地址没填」和「上游挂了」在界面上要走两条完全不同的路：一条给入口，一条只能等
+  const unset = data ? data.configured === false : false;
 
   return (
     <section className="panel-block">
@@ -248,8 +279,9 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
         eyebrow="LIVE PLATFORM RANKINGS"
         title="各平台实时热榜"
         count={data?.stats.total}
-        desc="六个大众榜的原始排名，不做关键词过滤——这一栏看的是大众在关心什么。"
+        desc={`${data ? cnNum(data.boards.length) : "六"}个大众榜的原始排名，不做关键词过滤——这一栏看的是大众在关心什么。`}
         fetchedAt={data?.fetchedAt}
+        stale={data?.stale}
         busy={busy}
         onRefresh={() => load(true)}
       />
@@ -261,8 +293,12 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
           {data.boards.filter((b) => b.ok).map((b) => (
             /* 不写「已刷新」：**每一枚芯片上都是同一句话，等于没说**。
                这一排要回答的是「哪几个源是通的」，那颗绿点已经答完了；
-               挂掉的会以 .src-chip--dead（虚线 + 红点）出现在面板底部那行说明里。 */
-            <span key={b.id} className="src-chip">
+               挂掉的会以 .src-chip--dead（虚线 + 红点）出现在面板底部那行说明里。
+
+               ⚠️ **`stale` 时这排芯片说的是快照里的事，不是现在。** 照旧点绿的话，
+               界面同时在说两句相反的话：上面一条「六个榜都没读到」，下面五枚绿点
+               「这五个是通的」。而绿点更显眼，人只会信绿点。 */
+            <span key={b.id} className={`src-chip${data.stale ? " src-chip--stale" : ""}`} title={data.stale ? "快照里这个榜是通的，不代表现在" : undefined}>
               <span className="dot" />
               {b.label}
             </span>
@@ -271,13 +307,23 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
       ) : null}
 
       <ErrorNote error={error} what="加载热榜" />
-      {data?.stale ? <Note title="显示的是上一次成功的快照">{data.staleHint}</Note> : null}
+      <StaleNote data={data} />
 
       {!data && !error ? (
         <Loading rows={5} />
+      ) : unset && data.stats.live === 0 ? (
+        /* 没配地址是个**有下一步**的状态，不该和「上游挂了」共用一句「过会儿再刷新」——
+           刷一万次也不会好。这一屏唯一要说的是去哪儿填。 */
+        <Empty icon={IconShieldCheck}>
+          热榜还没配数据源
+          <div className="page-sub" style={{ margin: "8px auto 0" }}>
+            这{cnNum(data.boards.length)}个榜来自你自己部署的 60s API 实例。去侧栏底下的齿轮 →「可选能力」填上
+            <code>SIXTY_SECONDS_API_BASE_URL</code>，这一栏才会有数据；另外两个 tab 不受影响。
+          </div>
+        </Empty>
       ) : data && data.stats.live === 0 ? (
         <Empty icon={IconShieldCheck}>
-          六个榜现在都读不到
+          {cnNum(data.boards.length)}个榜现在都读不到
           <div className="page-sub" style={{ margin: "8px auto 0" }}>
             {dead.map((b) => `${b.label}（${b.reason || b.error}）`).join("、")}。这类免费聚合接口随时会挂，过一会儿再刷新。
           </div>
@@ -344,7 +390,10 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
         </div>
       ) : null}
 
-      {dead.length > 0 ? (
+      {/* ⚠️ **stale 时不画这一行。** `dead` 是从快照里读出来的「那时候哪个榜挂了」，
+          而此刻是**全都挂了**——照旧写「只有 B 站暂时读不到」就是拿一句旧事实盖住新事实。
+          现在的失败原因由上面那条 StaleNote 说。 */}
+      {dead.length > 0 && !data?.stale && !unset ? (
         <p className="panel-note">
           {dead.map((b) => `${b.label}（${b.reason || b.error}）`).join("、")} 暂时读不到，上游恢复后会自动出现。
         </p>
@@ -386,6 +435,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace }) {
         count={data?.stats.shown}
         desc="按日期分组，新的在上。分类只作条目标记，不改变阅读顺序。"
         fetchedAt={data?.fetchedAt}
+        stale={data?.stale}
         busy={busy}
         onRefresh={() => load(true, all)}
         extra={
@@ -402,7 +452,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace }) {
       {/* 转化链算不全时**照实说、并给下一步**，不是悄悄少几个芯片：
           少几个芯片看起来就是「这些热点都没被用过」，那是句假话 */}
       {trace.degraded ? <Note title="转化链只能算到「已收藏」">{trace.why}</Note> : null}
-      {data?.stale ? <Note title="显示的是上一次成功的快照">{data.staleHint}</Note> : null}
+      <StaleNote data={data} />
 
       {!data && !error ? (
         <Loading rows={5} />
@@ -543,12 +593,13 @@ function ModelsPanel() {
         count={data?.count}
         desc="汇总多家公开评测榜单算出的综合分。几周才动一次，看的是牌面而不是新闻。"
         fetchedAt={data?.fetchedAt}
+        stale={data?.stale}
         busy={busy}
         onRefresh={() => load(true)}
       />
 
       <ErrorNote error={error} what="加载模型榜" />
-      {data?.stale ? <Note title="显示的是上一次成功的快照">{data.staleHint}</Note> : null}
+      <StaleNote data={data} />
 
       {!data && !error ? (
         <Loading rows={5} />
@@ -567,8 +618,19 @@ function ModelsPanel() {
               <a className="lb__row" key={`${m.rank}-${m.name}`} href={m.link} target="_blank" rel="noreferrer">
                 <span className="lb__rank">{String(m.rank).padStart(2, "0")}</span>
                 <span className="lb__model">
-                  <strong>{m.name}</strong>
-                  <small>{m.vendor}</small>
+                  {/* 图标是**服务端内联好的 data URI**（见 aihot.mjs），不引对方的图片地址。
+                      没抓到时那一格仍然占位——图标缺几个是小事，一列模型名参差不齐是大事 */}
+                  <span
+                    className="lb__logo"
+                    data-invert={m.logoInvert ? "1" : undefined}
+                    data-tile={m.logoTile ? "1" : undefined}
+                  >
+                    {m.logo ? <img src={m.logo} alt="" loading="lazy" /> : null}
+                  </span>
+                  <span className="lb__model-copy">
+                    <strong>{m.name}</strong>
+                    <small>{m.vendor}</small>
+                  </span>
                 </span>
                 <span className="lb__date">{m.released}</span>
                 {/* 完整度是**这个分靠不靠谱**的注脚：只跑了七成评测的分和跑满的分不能平着看 */}

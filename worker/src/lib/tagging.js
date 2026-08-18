@@ -11,6 +11,7 @@ export async function autoTag(env, materialId, type, content) {
       system: TAG_PROMPT,
       user: JSON.stringify({ 类型: type, 内容: content.slice(0, 2000) }),
       maxTokens: 2000, // thinking 模型会先耗 token 思考，留足余量免得 JSON 被截断
+      task: "utility",
     });
     if (Array.isArray(json.tags) && json.tags.length) {
       await setTags(env, "material", materialId, json.tags.slice(0, 4));

@@ -29,7 +29,7 @@ export const translateRoutes = [
       if (!key) {
         return fail(res, "还没配翻译服务", {
           status: 503,
-          hint: "在 creator-workbench/.env 里加一行 DEEPL_API_KEY=你的密钥（免费版的 key 以 :fx 结尾），然后重启 npm run dev",
+          hint: "在设置面板的「可选能力」里填 DeepL 密钥（免费版的 key 以 :fx 结尾），保存后立刻生效",
         });
       }
 

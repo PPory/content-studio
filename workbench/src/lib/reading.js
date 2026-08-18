@@ -8,15 +8,25 @@ const KEY = "workbench:reading:v1";
 const MAX = 120; // 记住最近这么多本，再多就把最旧的挤掉
 
 /**
- * 字数 / 预计读完。中文按**非空白字符**数算，不按词——`split(/\s+/)` 在中文上
- * 会把一整段算成一个词。400 字/分钟是中文默读的常见口径，取整到分钟就够。
+ * 数字数。中文按**非空白字符**数算，不按词——`split(/\s+/)` 在中文上
+ * 会把一整段算成一个词。
  *
- * **口径只写这一处**：阅读区左栏和洞察卡片都用它，各写一份的话同一篇文档会显示两个字数。
- * 传字符串会自己数，传数字就是已经数好的（洞察清单在服务端数完再给）。
- * 太短的（一句话素材卡）返回 null——给它报字数只是噪音。
+ * **口径只写这一处**：阅读区左栏、洞察卡片、创作编辑器底部的实时字数都从它出去，
+ * 各写一份的话同一篇文档会在两个地方显示两个数。传字符串会自己数，传数字就是
+ * 已经数好的（洞察清单在服务端数完再给）。
+ */
+export function countWords(text) {
+  return typeof text === "number" ? text : String(text || "").replace(/\s/g, "").length;
+}
+
+/**
+ * 字数 / 预计读完。400 字/分钟是中文默读的常见口径，取整到分钟就够。
+ *
+ * 太短的（一句话素材卡）返回 null——给它报「预计 1 分钟」只是噪音。
+ * **要的只是字数本身就直接用 `countWords`**，别为了绕开这条 80 字下限而另数一遍。
  */
 export function readStats(text) {
-  const words = typeof text === "number" ? text : String(text || "").replace(/\s/g, "").length;
+  const words = countWords(text);
   if (words < 80) return null;
   return { words, minutes: Math.max(1, Math.round(words / 400)) };
 }

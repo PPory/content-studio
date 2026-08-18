@@ -1,4 +1,4 @@
-// /api/archive → Notion 稿件库「已发布」→ vault Markdown 单向归档。
+// /api/archive → 流水线稿件库「已发布」→ vault Markdown 单向归档。
 //
 // 红线：**单向、只增不改**。已经导出过的文件绝不覆盖——你可能在 Obsidian 里
 // 给归档稿加过批注或改过错别字，重跑一次就没了。双向同步是明确禁止的（见 design.md）。
@@ -56,7 +56,6 @@ export const archiveRoutes = [
             `平台: ${item.platform || ""}`,
             `发布状态: ${item.status || ""}`,
             `归档于: ${new Date().toISOString().slice(0, 10)}`,
-            `notion: ${item.notionUrl || ""}`,
             "---",
             "",
           ].join("\n");

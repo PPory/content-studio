@@ -4,6 +4,24 @@
 export const VERBATIM_MATERIAL_TYPES = new Set(["金句/原话", "数据/事实"]);
 export const PERSONAL_EXPERIENCE_TYPE = "个人经历";
 
+/**
+ * 哪些素材类型能给第一人称叙事当证据——**类型清单只有这一份**。
+ *
+ * 它同时被两处用：这个文件里的闸门（`auditPersonalNarrative` 挑证据），和 `db.js`
+ * 里那条取证据的 SQL（`WHERE type IN (…)`）。写死两遍的话，将来放宽类型时 SQL 那边
+ * 会悄悄少捞一类——闸门收到的证据不全，症状是「明明录了素材还是报缺依据」，
+ * 而两边代码单看都对。
+ */
+export const EVIDENCE_MATERIAL_TYPES = [PERSONAL_EXPERIENCE_TYPE];
+
+export function isEvidenceMaterial(material) {
+  return EVIDENCE_MATERIAL_TYPES.includes(material?.type) && Boolean(comparableText(material?.note));
+}
+
+// 两条叙事之间最多隔这么多字符的空白还算「连着的」。一个空行是 2 个字符，
+// 给到 8 能容下 CRLF 和缩进；再放宽就可能跨过一整段被占位符掏空的正文。
+const MAX_CLAIM_GAP = 8;
+
 const PERSONAL_CLAIM_PATTERNS = [
   /(?:^|[。！？!?\n])\s*(?:前几天|昨天|上周|上个月|去年|几年前|有一次|记得|曾经|之前|当时)[，,、\s]*(?:我|我和|我跟|我在|我去|我做|我遇到|我认识)/g,
   /我(?:自己)?(?:也)?(?:曾经|曾|之前|过去|最近|前几天|上周|去年|当时|有一次)[^。！？!?\n]{0,50}(?:做过|去过|遇到|经历|发现|尝试|辞职|开始|失败|踩过|待过)/g,
@@ -14,6 +32,23 @@ const PERSONAL_CLAIM_PATTERNS = [
   /我的(?:朋友|同事|客户|读者)/g,
   /我(?:自己)?(?!认为|建议|觉得|相信|观察)[^。！？!?\n]{0,18}(?:辞职|创业|采访过|见过|拿到|赚到|花了|做过|写过|发布过)[^。！？!?\n]{0,40}/g,
 ];
+
+/**
+ * 正文归一：把**字面的 `\n`**（反斜杠 + n 两个字符）还原成真换行。
+ *
+ * 来源不是解析 bug——模型往 JSON 里写 `\\n` 双重转义，`parseLooseJson` 忠实地解成了
+ * 那两个字符，存进库就是 `Step 1 …\nStep 2 …`。**症状只在阅读时暴露**：素材卡片、
+ * vault 里的 md、拼进成稿提示词的那一段，全都带着满屏 `\n`，而没有任何一处会报错。
+ *
+ * 放在存储这一侧而不是显示那一侧：显示有四五个入口（工作台卡片、vault 归档、
+ * 成稿提示词、Bot 回执），修显示等于同一条规则写四遍，而且新入口一定会漏。
+ *
+ * 只认 `\n` / `\r\n`，不动 `\t` 和别的转义：真要在正文里写「反斜杠 n」这两个字符的
+ * 场景（讲转义、贴代码）虽然少，但存在；换行是唯一一个「肯定是本意」的。
+ */
+export function normalizeStoredText(value) {
+  return String(value || "").replace(/\\r\\n|\\n/g, "\n");
+}
 
 export function isValidHttpSource(value) {
   try {
@@ -65,18 +100,49 @@ export function isMaterialEligibleForDraft({ type, verificationStatus = "" }) {
 }
 
 export function hasPersonalExperienceEvidence(materials = []) {
-  return materials.some((m) => m?.type === PERSONAL_EXPERIENCE_TYPE && comparableText(m?.note));
+  return materials.some(isEvidenceMaterial);
+}
+
+/**
+ * 归一化成「只剩字母数字」的比较用文本，**并留下每个字符回到原文的下标**。
+ *
+ * `map[i]` 是 `text[i]` 在原始字符串里的位置。引用标注要靠它把匹配上的那一段
+ * 换算回正文里的真实区间（`lib/cite.js`）——没有这张表，匹配只能回答「像不像」，
+ * 回答不了「在哪一句」。
+ *
+ * ⚠️ **`compactForGrounding` 必须走这一个实现。** 闸门判「有没有依据」、引用判
+ * 「哪一句来自哪条」，用的得是同一套归一化；各写一份的话，某天全角/空白的处理
+ * 差一点，就会出现「闸门放行了，但一条引用都标不出来」这种没人看得懂的现象。
+ */
+export function compactWithMap(value) {
+  const source = String(value || "");
+  let text = "";
+  const map = [];
+  for (let i = 0; i < source.length; i++) {
+    // 逐字符 NFKC：整串归一化会改变长度，下标就对不回原文了
+    for (const ch of source[i].normalize("NFKC").toLowerCase()) {
+      if (/[\p{L}\p{N}]/u.test(ch)) {
+        text += ch;
+        map.push(i);
+      }
+    }
+  }
+  return { text, map };
 }
 
 function compactForGrounding(value) {
-  return comparableText(value).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return compactWithMap(value).text;
+}
+
+/** 已归一化文本的相邻二字组，**按出现顺序**。引用要滑窗，所以需要序列而不只是集合。 */
+export function bigramList(compactText) {
+  const out = [];
+  for (let i = 0; i < compactText.length - 1; i++) out.push(compactText.slice(i, i + 2));
+  return out;
 }
 
 function bigrams(value) {
-  const text = compactForGrounding(value);
-  const out = new Set();
-  for (let i = 0; i < text.length - 1; i++) out.add(text.slice(i, i + 2));
-  return out;
+  return new Set(bigramList(compactForGrounding(value)));
 }
 
 // 一条「个人经历」只能支撑与自身内容高度重合的叙事，不能成为放行任意故事的通行证。
@@ -100,9 +166,23 @@ function withoutPlaceholders(text) {
     .replace(/\[待补：[\s\S]*?\]/g, "");
 }
 
+const MAX_CLAIMS = 5;
+
+/**
+ * 找出「具体到可以求证」的第一人称叙事。
+ *
+ * ⚠️ **连着的几句算一条，不是几条。**「前几天跟一个朋友聊天…」和紧跟着的「我问他：…」
+ * 是同一个场景的两句话，拆成两条会有两个后果，都不轻：界面上让人以为有两处待办；
+ * 而补录时只填其中一句，另一句照样够不着依据——补了还在报，看着像修不好。
+ * 判据是**两句之间只隔空白**（含空行）：中间夹着别的正文就说明是两件事，不并。
+ *
+ * 先过一遍 `normalizeStoredText`：库里有些正文存的是字面的 `\\n` 两个字符
+ *（LLM 转义了两遍），不还原的话段落之间隔的不是空白而是那两个字符，上面那条合并规则
+ * 永远不生效——而现象只是「明明是一段话，却报了两处」。
+ */
 export function findSpecificPersonalClaims(text) {
-  const source = withoutPlaceholders(text);
-  const hits = [];
+  const source = withoutPlaceholders(normalizeStoredText(text));
+  const spans = [];
   for (const pattern of PERSONAL_CLAIM_PATTERNS) {
     pattern.lastIndex = 0;
     for (const match of source.matchAll(pattern)) {
@@ -117,10 +197,28 @@ export function findSpecificPersonalClaims(text) {
         .map((mark) => source.indexOf(mark, start + match[0].length))
         .filter((index) => index >= 0);
       const sentenceEnd = endings.length ? Math.min(...endings) + 1 : Math.min(source.length, start + 80);
-      const value = source.slice(sentenceStart, sentenceEnd).trim() || match[0].trim();
-      if (value && !hits.includes(value)) hits.push(value);
-      if (hits.length >= 5) return hits;
+      if (sentenceEnd > sentenceStart) spans.push([sentenceStart, sentenceEnd]);
+      else if (match[0].trim()) spans.push([start, start + match[0].length]);
     }
+  }
+
+  // **按出现顺序**排，不按正则顺序：合并只能在文档序上做，而顺序本身也该和正文一致。
+  spans.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged = [];
+  for (const [from, to] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && from <= last[1] + MAX_CLAIM_GAP && !source.slice(last[1], from).trim()) {
+      last[1] = Math.max(last[1], to);
+      continue;
+    }
+    merged.push([from, to]);
+  }
+
+  const hits = [];
+  for (const [from, to] of merged) {
+    const value = source.slice(from, to).trim();
+    if (value && !hits.includes(value)) hits.push(value);
+    if (hits.length >= MAX_CLAIMS) break;
   }
   return hits;
 }
@@ -136,7 +234,7 @@ export function assertGroundedPersonalNarrative(text, materials = []) {
 
 export function auditPersonalNarrative(text, materials = []) {
   const claims = findSpecificPersonalClaims(text);
-  const experiences = materials.filter((m) => m?.type === PERSONAL_EXPERIENCE_TYPE && comparableText(m?.note));
+  const experiences = materials.filter(isEvidenceMaterial);
   const ungrounded = claims.filter((claim) => !experiences.some((m) => isPersonalClaimGrounded(claim, m.note)));
   return { claims, ungrounded, evidenceCount: experiences.length };
 }

@@ -1,9 +1,27 @@
 // 调 content-studio Worker 的唯一出口。JSON 调用和流式调用共用同一套地址/密钥/代理处理，
 // 免得两处各写一遍、各漏一半错误分支。
 
-import { proxyFetch } from "./fetch.mjs";
+import { proxyFetch, proxyInfo } from "./fetch.mjs";
 
 const TIMEOUT_MS = 30_000; // status 要拉 D1 全库计数，数据多时可能需要数秒
+
+/**
+ * 连不上时说点有用的。
+ *
+ * 原来这里写死一句「检查网络和 .env 里的 WORKER_URL」——而真实发生过的那次，
+ * WORKER_URL 完全正确：workers.dev 在这条网络上要走代理，而从**开始菜单点图标**起的
+ * 进程继承的是 Explorer 登录那一刻的环境快照，拿不到后来才设的 HTTPS_PROXY。
+ * 终端里一切正常、点图标全线报错，提示还把人往 .env 引——那是最贵的一种误导。
+ *
+ * 所以先说走没走代理。这句话在两个方向上都能立刻定位：走了就去看代理开没开，
+ * 没走就知道是环境没带过来。
+ */
+function connectHint(url) {
+  const { via, local } = proxyInfo(url);
+  if (local) return "本机地址，直连。确认 wrangler dev 起来了";
+  if (via) return `走的是代理 ${via}，先确认它开着；再确认 .env 里的 WORKER_URL`;
+  return "这次是直连（没有 HTTPS_PROXY）。如果这台机器访问 workers.dev 需要代理，从终端 npm run dev 起，或重新点一次快捷方式";
+}
 
 // 未配置时返回的引导，走和其他错误一样的 { ok:false, error, hint } 契约
 function notConfigured(env) {
@@ -51,7 +69,7 @@ export async function callWorkerRaw(env, path, { method = "GET", body, search, t
       configError: {
         ok: false,
         error: aborted ? `Worker 超过 ${Math.round(timeoutMs / 1000)} 秒没响应` : `连不上 Worker：${e.message}`,
-        hint: aborted ? "D1 或 LLM 可能正在慢查询，稍后重试" : "检查网络和 .env 里的 WORKER_URL",
+        hint: aborted ? "D1 或 LLM 可能正在慢查询，稍后重试" : connectHint(url),
       },
     };
   }

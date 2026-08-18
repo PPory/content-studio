@@ -25,6 +25,8 @@ function describe(field, env) {
     hint: field.hint || "",
     // 长说明单独一位：界面上收进「为什么」折叠，默认不铺开
     why: field.why || "",
+    // 绑了自检的字段，那条自检画在字段上而不是段尾（见 settings-schema 的说明）
+    check: field.check || "",
     placeholder: field.placeholder || "",
     secret: !!field.secret,
     required: !!field.required,

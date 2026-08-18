@@ -52,6 +52,7 @@ export async function runSynthesize(env) {
     system: SYNTHESIZE_PROMPT,
     user: JSON.stringify(input),
     maxTokens: 12000,
+    task: "synthesize",
   });
 
   const topics = (json.topics || []).slice(0, TOPICS_CAP);

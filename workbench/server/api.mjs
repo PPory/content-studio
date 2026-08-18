@@ -17,6 +17,9 @@ import { translateRoutes } from "./routes/translate.mjs";
 import { extensionRoutes } from "./routes/extension.mjs";
 import { backupRoutes } from "./routes/backup.mjs";
 import { searchRoutes } from "./routes/search.mjs";
+import { insightsRoutes } from "./routes/insights.mjs";
+import { planRoutes } from "./routes/plan.mjs";
+import { audienceRoutes } from "./routes/audiences.mjs";
 
 const EXTENSION_ALIASES = {
   "/api/extension/intake": "/api/pipe/intake",
@@ -78,6 +81,9 @@ const ROUTES = [
   ...extensionRoutes,
   ...backupRoutes,
   ...searchRoutes,
+  ...planRoutes,
+  ...audienceRoutes,
+  ...insightsRoutes,
 ];
 
 export function createApi(env) {

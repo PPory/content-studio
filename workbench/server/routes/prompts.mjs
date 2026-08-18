@@ -1,7 +1,7 @@
 // /api/prompts/* → 两类提示词，**分开两组端点，因为它们生效的方式不同**。
 //
 //   /api/prompts             工作台自己的（config/prompts.json）。改完立刻生效。
-//   /api/prompts/pipeline    content-pipeline 的 prompt/*.md。**改完要 npx wrangler deploy。**
+//   /api/prompts/pipeline    worker/prompt 底下的 *.md。**改完要 npx wrangler deploy。**
 //
 // 合成一组端点的话，前端就得靠一个 `kind` 字段去分辨「这次保存要不要提醒部署」，
 // 而漏掉那个提醒的后果是：用户改完 Worker 的提示词、看到「已保存」、以为生效了，
@@ -51,7 +51,7 @@ export const promptsRoutes = [
     path: "/api/prompts/pipeline",
     async handler({ env, res }) {
       const { root, exists, items } = await listPipelinePrompts(env);
-      // 找不到目录**不是错**：没 clone content-pipeline 的人一样能用工作台的其余部分
+      // 找不到目录**不是错**：只单独跑 workbench 的人一样能用其余部分
       json(res, {
         ok: true,
         root,
@@ -60,7 +60,7 @@ export const promptsRoutes = [
         deployCmd: DEPLOY_CMD,
         ...(exists
           ? {}
-          : { hint: "把 content-pipeline clone 到工作台的同级目录，或者在「本机路径」里填 content-pipeline 目录" }),
+          : { hint: "合仓之后它应该就是 workbench 的同级 worker/；不在那儿的话在「本机路径」里填它的位置" }),
       });
     },
   },

@@ -13,7 +13,7 @@ import { chatJson } from "../lib/llm.js";
 import { assertGroundedGeneratedText, isMaterialEligibleForDraft, primaryPlatform, stableTaskKey } from "../lib/integrity.js";
 import {
   getRow, updateRow, listByStatus, upsertByTaskKey,
-  materialsOfTopic, draftsOfTopic, searchSupplementary, tagsOf, findTopicByTitle,
+  materialsOfTopic, draftsOfTopic, searchSupplementary, tagsOf, findTopicByTitle, personalEvidence,
 } from "../lib/db.js";
 import { TOPIC_STATUS, DRAFT_STATUS, PLATFORMS } from "../lib/values.js";
 import { isVaultEnabled, archiveDraft, tryArchive } from "../lib/vault.js";
@@ -191,11 +191,14 @@ async function generate(env, ctx, platform) {
       说明: "「核心关联素材」是本篇的主要依据，请优先使用；「补充检索素材」是按标签检索来的相关素材，仅作补充佐证，不要喧宾夺主。",
     }),
     maxTokens: DRAFT_MAX_TOKENS,
+    task: "draft",
   });
   const d = (json.drafts || [])[0];
   if (!d?.body_markdown) throw new Error("empty draft in LLM output");
   const note = json.review_note || "";
-  assertGroundedGeneratedText({ draft: d, reviewNote: note }, [...coreInput, ...suppInput]);
+  // 证据集**不能**就用上面这两批：稿子日后在工作台被重新审计时用的是 `personalEvidence`，
+  // 两边口径不一样的话，写的时候放行、打开就报「缺真实素材支撑」。见 db.js 里的说明。
+  assertGroundedGeneratedText({ draft: d, reviewNote: note }, await personalEvidence(env, [...coreInput, ...suppInput]));
   return { d, note };
 }
 

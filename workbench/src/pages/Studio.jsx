@@ -13,7 +13,7 @@
 // 只写适配器，不要动这个文件。书架不走这里——它有自己的三层动线（见 pages/Shelf.jsx）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SOURCES, PIPELINE, summarizeDraftReconcile } from "../lib/sources.js";
+import { SOURCES, PIPELINE, summarizeDraftReconcile, summarizeArchiveTrash } from "../lib/sources.js";
 import { api } from "../lib/api.js";
 import { contextOf } from "../lib/reading.js";
 import { noteOpened } from "../lib/recent.js";
@@ -36,10 +36,11 @@ import { ListHead } from "./studio/ListHead.jsx";
 import { FilterBar } from "./studio/FilterBar.jsx";
 import { DocList } from "./studio/DocList.jsx";
 import { PageHeader, Toast } from "../components/ui.jsx";
+import { InsightRunButton, InsightRunProgress, useInsightRun } from "../components/InsightRun.jsx";
 
-// Notion 源的划词动作 = 全套减去「高亮」。高亮靠原文文本锚在一个 .highlights.md 上，
-// Notion 页面没有那个文件（见 sources.js 的 highlightPath）。
-const NOTION_ACTIONS = ACTIONS.filter((a) => a.key !== "highlight");
+// 流水线源的划词动作 = 全套减去「高亮」。高亮靠原文文本锚在一个 .highlights.md 上，
+// 而库里的一行没有那个文件（见 sources.js 的 highlightPath）。
+const PIPELINE_ACTIONS = ACTIONS.filter((a) => a.key !== "highlight");
 
 export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, counts, refreshKey = 0 }) {
   const source = SOURCES[sourceKey];
@@ -209,16 +210,16 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
     );
   }, [list, searchList, query, facet, source]);
 
-  // 分面的选项从**已加载的条目里现算**，不写死一张表：Notion 的选项随时可能加，
+  // 分面的选项从**已加载的条目里现算**，不写死一张表：库里的取值随时可能加，
   // 写死的话新增一个类型就会在界面上凭空消失。
   /**
    * 分面选项 = 计数 + 顺序。
    *
    * **有权威名单（`facet.all`）时列全，没有时从数据现算。** 稿件库属于前者：只列已加载条目里
    * 出现过的平台，你就分不清「小红书 0 篇」和「小红书不存在」，而前者才是这一刻想知道的事。
-   * 素材库属于后者——「类型」的选项在 Notion 那边随时会加，写死一张表的话新类型会凭空消失。
+   * 素材库属于后者——「类型」的取值在库里随时会加，写死一张表的话新类型会凭空消失。
    *
-   * 名单之外**真实出现过的值也要带上**（`extra`）：Notion 里手填错一个平台名时，
+   * 名单之外**真实出现过的值也要带上**（`extra`）：手填错一个平台名时，
    * 那几条稿子仍然筛得到；悄悄藏掉才是真的坑。
    */
   const facetOptions = useMemo(() => {
@@ -367,7 +368,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
       } else {
         onChanged?.({ sourceKey, item, result });
       }
-      setToast({ text: `《${item.title}》已永久删除${reconcileText}` });
+      setToast({
+        text: `《${item.title}》已永久删除${reconcileText}`,
+        detail: summarizeArchiveTrash(result?.archive),
+      });
     },
     [source, sourceKey, active, closeItem, onChanged]
   );
@@ -506,18 +510,32 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
   const isPipeline = PIPELINE.includes(sourceKey);
   const canBoard = source.board !== false && !!source.states?.length;
 
+  // 洞察跑批的状态归一个 hook 管：按钮在页头 aside（窄），进度条在正文顶（宽），
+  // 两处隔着整个 PageHeader，各自轮询会互相打架、百分比还会差一拍。
+  const insightRun = useInsightRun(reload);
+
   return (
     <>
       <PageHeader
         eyebrow={source.eyebrowCn || "个人内容运营"}
         title={source.label}
         desc={source.sub}
-        aside={isPipeline ? (
-          <button className="btn btn-primary" onClick={() => setCreation("choose")}>
-            <IconPlus aria-hidden="true" stroke={2} />新建
-          </button>
-        ) : null}
+        aside={
+          isPipeline ? (
+            <button className="btn btn-primary" onClick={() => setCreation("choose")}>
+              <IconPlus aria-hidden="true" stroke={2} />新建
+            </button>
+          ) : sourceKey === "insights" ? (
+            <InsightRunButton run={insightRun.run} onStarted={insightRun.markStarted} />
+          ) : null
+        }
       />
+
+      {/* 进度条铺在正文顶而不是塞进页头：它要显示阶段名、百分比和失败原因，
+          页头右侧那个窄槽装不下，挤进去会把「新建 / 跑一次洞察」按钮顶到换行。 */}
+      {sourceKey === "insights" ? (
+        <InsightRunProgress run={insightRun.run} onCancel={insightRun.cancel} />
+      ) : null}
 
       {/* 流水线四段做成一排 tab：它们是**一条链的四段**，不是四个不相干的页面。
           摊成 tab 才看得出「东西是从左往右走的」，侧栏里排四行反而把这层关系藏了。 */}
@@ -595,9 +613,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           error={docError}
           onClose={closeItem}
           onSelect={onSelect}
-          // Notion 源没有高亮的落点（见 sources.js 的 highlightPath），
+          // 流水线源没有高亮的落点（见 sources.js 的 highlightPath），
           // 那就不画那个按钮——画一个点了报错的按钮比没有更糟
-          actions={NOTION_ACTIONS}
+          actions={PIPELINE_ACTIONS}
           onSaved={onSaved}
           onStatus={sourceKey === "collections" ? null : (next) => changeStatus(active, next)}
           onDelete={sourceKey === "collections" ? null : source.remove ? removeItem : null}
@@ -605,7 +623,21 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           onTypeset={openTypeset}
           outline={outline}
           onOutline={setOutline}
-          onCaptureExperience={() => onIntake({ target: "material", cmd: "经历", content: "", source: `补充《${active.title}》的真实经历` })}
+          /**
+           * 补录**带着被点名的那句原文走**，而不是开一个空输入框。
+           *
+           * 闸门是逐句比对的（`isPersonalClaimGrounded`），依据里必须真的含着这句话；
+           * 让用户凭记忆重打一遍，打出来的版本很可能又对不上，于是补了也不管用。
+           * 存完重取一次正文——告警是 Worker 在读的时候现算的，不重取它会一直挂着。
+           */
+          onCaptureExperience={(issue) => onIntake({
+            target: "material",
+            cmd: "经历",
+            content: issue || "",
+            source: `补充《${active.title}》的真实经历`,
+            hint: "把这件事补充完整，但别改掉这句话本身——闸门要在这条素材里找到它。",
+            onStored: () => source.load(active).then(setDoc).catch(() => {}),
+          })}
           extra={
             sourceKey === "collections" ? (
               <CollectionActions item={active} onExtract={(item) => setOrganizerItems([item])} onChanged={() => { reload(); source.load(active).then(setDoc).catch(() => {}); onChanged?.(); }} />
@@ -634,10 +666,15 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
                   setTimeout(() => setToast({ text: `在稿件库搜「${d.title}」` }), 300);
                 }}
               />
-            ) : sourceKey === "drafts" ? (
+            ) : null
+          }
+          actionsExtra={
+            sourceKey === "drafts" ? (
               <PublishPanel
                 item={active}
                 doc={doc}
+                // 一边警告「缺真实素材支撑」一边把「确认已发布」递过去，是系统自己打架
+                blocked={Boolean(doc?.warning)}
                 onPublished={(result, form) => {
                   const raw = {
                     ...active.raw,
@@ -713,14 +750,14 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
         }}
       />
 
-      <Toast text={toast?.text} onUndo={toast?.undo} onClose={() => setToast(null)} />
-
       <CollectionOrganizer
         open={Array.isArray(organizerItems)}
         items={organizerItems || []}
         onClose={() => setOrganizerItems(null)}
         onDone={() => { reload(); onChanged?.(); }}
       />
+
+      <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
     </>
   );
 }

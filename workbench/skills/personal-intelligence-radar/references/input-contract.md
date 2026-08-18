@@ -24,7 +24,7 @@
 只分析渲染后的 Markdown。除非用户明确改变输入契约，否则不要读取：
 
 ```text
-creator-workbench/tmp/{reddit,x,aihot}-raw-*.json
+<workbench>/tmp/{reddit,x,aihot}-raw-*.json
 ```
 
 预处理脚本可以把 Markdown 无损分块或建立索引，但不得回到 raw JSON 补充被筛掉的信息。Brave Search / Firecrawl 得到的网页只用于核实承重事实、寻找反证和审计内容供给，不得被当成第四个社媒样本源重新计算热度或平台分布。
@@ -117,7 +117,7 @@ creator-workbench/tmp/{reddit,x,aihot}-raw-*.json
 
 材料缺失时：
 
-1. 在 Skill 目录、vault、`creator-workbench` 或当前项目中查找脚本。
+1. 在 Skill 目录、vault、`<workbench>`（content-studio 仓库下的 workbench/）或当前项目中查找脚本。
 2. 运行 `node <script> --help` 或读取其 README/源码入口，确认真实参数。
 3. 优先执行 dry run 和预算预估。
 4. 网络失败时优先使用脚本支持的 `--from` 离线重放。

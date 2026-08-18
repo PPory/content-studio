@@ -18,6 +18,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DIRS } from "../server/lib/vault-dirs.mjs";
+// 分面的名字从适配器里读，测试不抄第二份——抄了的话改名字要改两处，
+// 而漏掉的那一处表现成「测试红了」，读起来像功能坏了（踩过：facet 从「类型」改叫「分类」）
+import { MATERIALS } from "../src/lib/sources.js";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = 5199;
@@ -69,6 +72,24 @@ page.on("console", (m) => {
   if (/Failed to load resource/i.test(t)) return;
   consoleErrors.push(t);
 });
+/**
+ * ⚠️ **内嵌工具（`/tools/typeset/`）里的报错不算工作台的报错。**
+ *
+ * 排版页是把 wechat-typeset 整个 iframe 嵌进来的，而「那个项目一行不改」正是这个接法的
+ * 前提——它自己的 JS 异常（实测有一处 `activeCfg is not defined`）我们既不该改也改不了。
+ * 算进来的话，这条断言会为**另一个项目的 bug** 长期红着，而真正属于工作台的报错会被淹没。
+ *
+ * `pageerror` 事件带不出是哪个 frame 抛的，所以按**时间段**排除：进排版页前记一个位置，
+ * 离开时截回去。范围小、也说得清——只有那一段里的报错被无视。
+ */
+const ignoreErrorsDuring = async (fn) => {
+  const before = consoleErrors.length;
+  try {
+    await fn();
+  } finally {
+    consoleErrors.length = before;
+  }
+};
 page.on("pageerror", (e) => consoleErrors.push(String(e)));
 
 const shot = (name, full = true) => page.screenshot({ path: path.join(ROOT, "tmp", `smoke-${name}.png`), fullPage: full });
@@ -197,7 +218,7 @@ try {
 
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
       const navs = await page.$$eval(".set-nav__item", (els) => els.map((e) => e.innerText.trim()));
-      check("左栏分四组", groups.join("/") === "连接/能力/提示词/其他", groups.join("/"));
+      check("左栏分五组", groups.join("/") === "连接/能力/模型/提示词/其他", groups.join("/"));
       check("左栏八项", navs.length === 8, navs.join("/"));
       // 右边一次只画一段：默认那段只有 vault 一个字段，不是十五个全铺出来
       check("右边一次只画一段", (await page.$$(".set-pane .set-field")).length === 1);
@@ -205,20 +226,96 @@ try {
       // 长说明默认收起——这正是上一版「一大坨」的根因
       const whyOpen = await page.$$eval(".set-pane .set-why", (els) => els.filter((e) => e.open).length);
       check("「为什么」默认是收起的", whyOpen === 0, `${whyOpen} 个展开着`);
+      /**
+       * ⚠️ **「为什么」不许自己占一行。** 它单独成行时，一个字段底下就是
+       * 「说明 / 为什么 / 自检」三行灰字——正是被说「一大坨」的那个形状。
+       * 判据是那句一行说明本身就是 `<summary>`：点整句都能展开。
+       */
+      const why = await page.evaluate(() => {
+        const s = document.querySelector(".set-pane .set-why > summary");
+        return s ? { text: s.textContent.trim(), more: !!s.querySelector(".set-why__more") } : null;
+      });
+      check(
+        "「为什么」挂在说明句尾，不另起一行",
+        why && why.more && why.text.endsWith("为什么") && why.text !== "为什么",
+        JSON.stringify(why)
+      );
+
+      /**
+       * 各环节模型这一段：数据在 **Worker 的 D1** 里，所以断言写成二选一——
+       * 连得上就该列出环节，连不上（或 Worker 还没部署这个端点）就该给一条**带下一步**的话。
+       * 写死其中一种的话，外部状态一变测试就红，而红着的测试等于没有测试。
+       */
+      await go("models");
+      await page.waitForSelector(".set-models .set-models__row, .set-models .note-danger, .set-pane .note-danger", { timeout: 20000 }).catch(() => {});
+      const modelPane = (await page.textContent(".set-pane")).replace(/\s+/g, " ");
+      const rows = (await page.$$(".set-models__row")).length;
+      check(
+        "模型这一段要么列出环节、要么给下一步",
+        rows > 0 || /wrangler deploy|Worker/.test(modelPane),
+        rows ? `${rows} 个环节` : modelPane.slice(60, 140)
+      );
+      // ⚠️ 这一段写的是 Worker 的库，不是本机 .env——底部那颗「写入 .env」不能看着像也管它
+      check("模型这一段说清了自己单独存", modelPane.includes("单独保存") || modelPane.includes("立刻生效"), "");
+      /**
+       * ⚠️ **提示框不许再长出左边那道竖线。**
+       * 一道彩色竖线 + 一句加粗标题是所有界面里最不假思索的形状，撤过一次；
+       * 而它属于「加回去也不报错、只有肉眼看得见」那一类，所以在这儿钉住：四边一样粗。
+       */
+      const noteBorder = await page.evaluate(() => {
+        const el = document.querySelector(".note");
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return { l: s.borderLeftWidth, t: s.borderTopWidth };
+      });
+      if (noteBorder) check("提示框四边一样粗，没有左侧竖线", noteBorder.l === noteBorder.t, `左 ${noteBorder.l} / 上 ${noteBorder.t}`);
+      await go("vault");
 
       /**
        * ⚠️ **等的是自检结果，不是自检那个容器。** 上一版直接数 `.set-check` 就断言完了，
        * 那时候全是 `--wait`（转圈占位），断言照样全绿而它一次都没看到真正的结论。
        * 八条是同一个请求一起回来的，只要有一条落地，其余也都落地了。
        */
-      await page.waitForSelector(".set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 });
-      check("自检真的出了结论", !!(await page.$(".set-pane .set-check:not(.set-check--wait)")));
+      await page.waitForSelector(".set-field__dot:not(.set-field__dot--wait), .set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 });
+      /**
+       * ⚠️ **配好了只在标题旁边留一枚绿点，字段底下一行都不占。**
+       *
+       * 走到这一版走了两步：先是整段的自检堆在段尾，三条并排全写「已配」——每一条说的话
+       * 都等于没说；绑进字段之后仍然是一行小字，而它和输入框里那句「已配置」说的是
+       * 同一件事。现在 ok / off 收成标题旁边一枚 `.dot`（结论进 `title`，那是核对信息，
+       * 想起来才看一眼），块面留给 bad / warn——那时候要占地方的是**下一步做什么**，
+       * 而一个要悬停才找得到的提示等于没有。
+       */
+      const okLook = await page.evaluate(() => {
+        const f = document.querySelector(".set-pane .set-field");
+        const dot = f?.querySelector(".set-field__label .set-field__dot");
+        return {
+          cls: dot ? [...dot.classList].join(" ") : null,
+          title: dot?.title || "",
+          rows: f ? f.querySelectorAll(".set-check").length : -1,
+        };
+      });
+      check("配好了在标题旁边给一枚绿点", !!okLook.cls?.includes("dot-ok"), JSON.stringify(okLook));
+      check("结论收进那枚点里，底下不再占一行", okLook.rows === 0 && okLook.title.length > 4, JSON.stringify(okLook));
       // 左栏的记号是这一版加左导航的全部理由：不逐段翻就知道哪一段出了事
       const marks = (await page.$$(".set-nav__mark")).length;
       check("左栏项上挂了状态记号", marks >= 3, `${marks} 枚`);
 
       await go("optional");
       await page.waitForSelector("#set-DEEPL_API_KEY", { timeout: 5000 });
+      // 段尾只剩**没有字段可挂**的那几条（对话引擎压根没有输入框，Worker / Firecrawl
+      // 各自跨两个字段）。它们通了时仍然是一行小字，不画块面
+      const tailFlat = await page.$$eval(".set-pane > .set-check", (els) =>
+        els.map((e) => ({
+          loud: e.classList.contains("set-check--bad") || e.classList.contains("set-check--warn"),
+          bg: getComputedStyle(e).backgroundColor,
+        }))
+      );
+      check(
+        "段尾那几条通了的也不画块面",
+        tailFlat.every((t) => t.loud || /(, ?0\)|transparent)$/.test(t.bg)),
+        JSON.stringify(tailFlat)
+      );
       const secret = await page.$eval("#set-DEEPL_API_KEY", (e) => ({ type: e.type, value: e.value, ph: e.placeholder }));
       check("密钥框是 password 且不回显", secret.type === "password" && secret.value === "", `${secret.type} / "${secret.value}"`);
       check("密钥框说清楚留空会怎样", /留空则不改|未配置/.test(secret.ph), secret.ph);
@@ -228,8 +325,8 @@ try {
        * 丢了的话「改 A → 去 B 改一下 → A 白改了」，而且不报错、屏幕上也看不出来。
        */
       await page.fill("#set-FIRECRAWL_BASE_URL", "http://127.0.0.1:3002");
-      await go("links");
-      await page.waitForSelector("#set-NOTION_INBOX_URL", { timeout: 5000 });
+      await go("data");
+      await page.waitForSelector("#set-SNAPSHOT_KEEP_DAYS", { timeout: 5000 });
       await go("optional");
       await page.waitForSelector("#set-FIRECRAWL_BASE_URL", { timeout: 5000 });
       check(
@@ -319,25 +416,490 @@ try {
   const workerReady = await page.evaluate(() => fetch("/api/config").then((r) => r.json()).then((c) => c.worker.configured));
   if (workerReady) {
     await page.waitForSelector(".todo-card", { timeout: 20000 });
+
+    // 一排三张卡，**分两组**。这是这块唯一真正要守住的东西：
+    // 「待初筛 / 待整理 / 撰写中」是 Worker 自己会消化的队列，它们的 0 是正常态；
+    // 「选题待写 / 初稿待修改」不点就永远不会动。两组画成一样重，你就分不出哪个欠着你。
     const labels = await page.$$eval(".todo-card__label", (els) => els.map((e) => e.textContent));
     check("等你动手的只有两张大卡", labels.length === 2, labels.join("/"));
     const nums = await page.$$eval(".todo-card__value", (els) => els.map((e) => e.textContent));
     check("计数是数字", nums.every((n) => /^\d+$/.test(n)), nums.join("/"));
 
-    // Worker 自己会消化的三段压成一条细横条。它们的 0 是**正常态**，和「等你动手」的 0
-    // 含义正好相反——摊成同样大的卡片，首屏最贵的一整行就会有大半在展示「没有事」。
-    const autos = await page.$$eval(".auto-card__item", (els) => els.map((e) => e.textContent));
-    check("自动环节收进一张卡", autos.length === 3, autos.join("/"));
-    check("每条都有图标", (await page.$$(".auto-card__item svg")).length === 3);
-    // 外壳一样，层次全靠内容——那边一个 46px 的数字，这边三行小字
-    const [cardPx, stripPx] = await page.evaluate(() => [
+    /**
+     * ⚠️ 流水线那三段画成**一条有三个节点的流程线**，摆在两张卡底下。
+     *
+     * **不是装饰**：灵感进来先「待初筛」，筛完成「待整理」，整理成选题之后「撰写中」——
+     * 本来就是一条链的三段，前一段的产出是后一段的输入。
+     *
+     * **不能删掉**：这是首页上唯一一处能看出「流水线卡住了」的地方（Worker 挂了、
+     * LLM key 过期了，表现就是「待初筛」一路往上涨）。删了的话，坏掉是看不见的。
+     */
+    const autos = await page.$$eval(".pipe-flow__node", (els) => els.map((e) => e.textContent));
+    check("流水线画成三个节点", autos.length === 3, autos.join("/"));
+    // 节点之间要有连接线，否则就是三个孤立的点，看不出这是一条链
+    check("节点之间有连接线", (await page.$$(".pipe-flow__line")).length === 2);
+    // 横贯一整行才读得出「这是一条贯穿的流水线」——量的是它和正文列同宽
+    const span = await page.evaluate(() => {
+      const t = document.querySelector(".pipe-flow__track").getBoundingClientRect();
+      const l = document.querySelector(".day-plan").getBoundingClientRect();
+      return { track: Math.round(t.width), col: Math.round(l.width) };
+    });
+    check("流程线铺满正文宽度", span.track >= span.col - 8, `${span.track} / ${span.col}`);
+    // ⚠️ 两端的名字不能挂到内容区外面（圆点贴边、名字还按圆点居中就会）
+    const spill = await page.evaluate(() => {
+      const box = document.querySelector(".pipe-flow__track").getBoundingClientRect();
+      return [...document.querySelectorAll(".pipe-flow__name")]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1; }).length;
+    });
+    check("两端的名字不出界", spill === 0, `${spill} 个`);
+    // ⚠️ **排在页头正下方、清单之前**：它是唯一能看出流水线卡住的地方，得每次打开都扫得到。
+    // 「显眼」和「安静」是两件事——位置管前者（所以排在最前），视觉重量管后者（所以只占一行）。
+    const order = await page.evaluate(() => {
+      const y = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? NaN;
+      return { flow: y(".pipe-flow"), list: y(".day-plan"), cards: y(".todo-grid") };
+    });
+    check("流程线排在清单之前", order.flow < order.list && order.list < order.cards, JSON.stringify(order));
+    // 标题去掉了：三个节点名加上串成一条线，已经把它是什么说完了
+    check("流程线没有多余的标题", !(await page.$(".pipe-flow__label")));
+    // 层次全靠内容：那边一个 46px 的数字，这边一圈 12px 的小字
+    const [cardPx, dotPx] = await page.evaluate(() => [
       parseFloat(getComputedStyle(document.querySelector(".todo-card__value")).fontSize),
-      parseFloat(getComputedStyle(document.querySelector(".auto-card__n")).fontSize),
+      parseFloat(getComputedStyle(document.querySelector(".pipe-flow__dot")).fontSize),
     ]);
-    check("两类数字的字号差得出层次", cardPx >= stripPx * 2.5, `${cardPx} vs ${stripPx}`);
-    // 三张卡的标题必须在同一条线上：外壳一样了，第一行还错开就更刺眼
-    const heads = await page.$$eval(".todo-card__label, .auto-card__label", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    check("三张卡的标题在同一条线上", Math.max(...heads) - Math.min(...heads) <= 1, heads.join("/"));
+    check("两类数字的字号差得出层次", cardPx >= dotPx * 2.5, `${cardPx} vs ${dotPx}`);
+    // 两张卡的标题必须在同一条线上
+    const heads = await page.$$eval(".todo-card__label", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    check("两张卡的标题在同一条线上", Math.max(...heads) - Math.min(...heads) <= 1, heads.join("/"));
+
+    /**
+     * ⚠️ **0 的节点空心、非 0 才变实心。**
+     * 这三段的 0 是**正常态**（Worker 自己会消化），给正常态加视觉重量等于每天都在提醒你
+     * 一件不用做的事。真实数据多数时候全是 0，所以这里**直接改 DOM 属性验 CSS**——
+     * 等一个真的堆起来的队列来测，这条规则就永远测不到。
+     */
+    // ⚠️ 翻完属性要**等过渡跑完再读**：`.pipe-flow__dot` 上有 `transition`，
+    // 立刻读 `getComputedStyle` 拿到的还是过渡的起始值，断言会假红。
+    const dotBg = () => page.$eval(".pipe-flow__dot", (e) => getComputedStyle(e).backgroundColor);
+    const beforeBg = await dotBg();
+    const wasBusy = await page.$eval(".pipe-flow__node", (e) => {
+      const was = e.dataset.busy;
+      e.dataset.busy = "true";
+      return was;
+    });
+    await page.waitForTimeout(300);
+    const afterBg = await dotBg();
+    await page.$eval(".pipe-flow__node", (e, was) => { e.dataset.busy = was; }, wasBusy);
+    check("堆了东西的节点才变实心", beforeBg !== afterBg, `${beforeBg} → ${afterBg}`);
+
+
+
+    /**
+     * ⚠️ **「其中最该先做的那一条」长在待办卡里，不再是一个独立的「系统建议」区块。**
+     * 那两块说的是同一件事的两个层次（有几条 / 该先做哪条），分开摆就是说了两遍。
+     * 而且旧那份的四条队列里有两条引的状态在 D1 的 CHECK 约束里根本不存在
+     * （`drafts/待发布`、`inbox/需处理`），**永远取不到东西也永远不报错**。
+     */
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll(".todo-card")].map((c) => ({
+        empty: c.dataset.empty === "true",
+        n: c.querySelectorAll(".todo-card__row").length,
+      }))
+    );
+    check(
+      "非空的待办卡都列出了几条",
+      rows.every((r) => (r.empty ? r.n === 0 : r.n > 0)),
+      rows.map((r) => `${r.empty ? "空" : "有"}:${r.n}`).join("/")
+    );
+    // 最多列 TOP_N 条，**卡里不开滚动区**（项目否决过「为了少一条滚动条套 max-height」）
+    check("一张卡最多列三条", rows.every((r) => r.n <= 3), rows.map((r) => r.n).join("/"));
+    const scrollers = await page.evaluate(() =>
+      [...document.querySelectorAll(".todo-card__list")].filter((e) => e.scrollHeight > e.clientHeight + 1).length
+    );
+    check("卡里没有自己滚的区域", scrollers === 0, `${scrollers} 个`);
+
+    // ⚠️ **一行文字不能撑破卡片。** grid / flex 的子项默认 `min-width: auto`，少写一处
+    // `min-width: 0` 那行字就跑到边框外面去，`text-overflow: ellipsis` 根本轮不到生效。
+    const overflow = await page.evaluate(() =>
+      [...document.querySelectorAll(".todo-card")].filter((c) => {
+        const box = c.getBoundingClientRect();
+        return [...c.querySelectorAll(".todo-card__row")].some((r) => r.getBoundingClientRect().right > box.right + 1);
+      }).length
+    );
+    check("条目不撑破卡片", overflow === 0, `${overflow} 张溢出`);
+
+    // 卡里有两个按钮（加进今天 / 去看看），所以外壳不能是 button——button 套 button 是非法结构
+    const cardTag = await page.$eval(".todo-card", (e) => e.tagName);
+    check("待办卡的外壳不是按钮", cardTag !== "BUTTON", cardTag);
+    // 动作行贴底，三张卡的按钮才落在同一条线上
+    const acts = await page.$$eval(".todo-card__acts", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    if (acts.length > 1) check("两张卡的动作行在同一条线上", Math.max(...acts) - Math.min(...acts) <= 1, acts.join("/"));
+
+    if (rows.some((r) => r.n)) {
+      // 每一行都能单独进清单——这是「库里有什么」和「我今天要做什么」之间那条路。
+      // 按钮只有图标，所以断言读 aria-label（图标按钮必须有名字，这也是本套件另一条断言）
+      const addLabel = await page.getAttribute(".todo-card__add", "aria-label").catch(() => "");
+      check("卡里每条都能加进清单", /加进(今天|明天)|已在清单/.test(addLabel || ""), addLabel);
+      /**
+       * ⚠️ **加进清单之后那一条不从卡里消失。**
+       * 卡片是库的镜子、清单是你的承诺——「选题待写 2」数的是库里真实处于「待写」的条数，
+       * 你把它抄进清单那条选题**还是待写**。移掉它，上面那个数字和下面的列表当场对不上。
+       * 它真正消失是等库里状态变了（选题 → 撰写中），那时计数自己会减 1。
+       */
+      const marked = await page.$$('.todo-card__row[data-on="true"]');
+      if (marked.length) {
+        const dim = await page.$eval('.todo-card__row[data-on="true"] .todo-card__top', (e) => getComputedStyle(e).color);
+        const normal = await page.$eval('.todo-card__row:not([data-on="true"]) .todo-card__top', (e) => getComputedStyle(e).color).catch(() => "");
+        check("已在清单的那条留在原位、只变灰", !normal || dim !== normal, `${dim} vs ${normal}`);
+      }
+    }
+
+    /**
+     * 首页要有创作入口。和侧栏常驻的「入库」**不是一回事**：入库是存一条已经有的素材，
+     * 新建是开一篇还不存在的。同一个动作两个入口才该合并，这是两个动作。
+     * ⚠️ 用的是和「创作」页右上角**同一个弹层**（`CreationDialog`）——复制一份简化版的话，
+     * 以后加一种创建方式会漏掉这一处。
+     */
+    const createBtn = await page.$('.page-header__aside .btn-primary');
+    check("首页有新建入口", !!createBtn);
+    if (createBtn) {
+      await createBtn.click();
+      await page.waitForSelector(".creation", { timeout: 6000 }).catch(() => {});
+      check("新建能打开创作弹层", !!(await page.$(".creation")));
+      check("三个起点并排摆着", (await page.$$(".creation-mode")).length === 3);
+
+      /**
+       * **手滑关掉不能把正在写的东西弄没。**
+       *
+       * 这一段测的是一条闭环：数字键选起点 → 敲字 → 自动留底 → 点背景关掉 → 重开时
+       * 问一句「接着写」→ 正文原样回来。任何一环断了，用户丢的是刚写完的一整段，
+       * 而**没有任何地方会报错**——这正是「安静的错」那一类里代价最高的。
+       *
+       * 全程只写测试浏览器自己的 localStorage，一个写请求都不发（草稿缓冲本来就没有服务端）。
+       */
+      await page.keyboard.press("1");
+      await page.waitForSelector(".creation-editor .cm-content", { timeout: 6000 }).catch(() => {});
+      check("数字键 1 直接进空白文章", !!(await page.$(".creation-editor")));
+      await page.click(".creation-editor .cm-content").catch(() => {});
+      await page.keyboard.type("误关之前写下的这一段必须还在。", { delay: 5 });
+      await page.waitForTimeout(1200);
+      check("底部有实时字数", ((await page.textContent(".creation-count")) || "").includes("字"), await page.textContent(".creation-count").catch(() => ""));
+      // ⚠️ 措辞钉死在「留底」：写「已保存」的人会关掉弹层去稿件库找，那儿什么都没有
+      const savedNote = (await page.textContent(".creation-autosave").catch(() => "")) || "";
+      check("说的是留底不是已保存", savedNote.includes("已留底") && !savedNote.includes("已保存"), savedNote);
+
+      // 手滑点在背景上。**坐标要挑左上角**：底部那一片在窄一点的视口里可能压根不在屏幕上，
+      // 点了等于没点，而后面那句「再打开」会卡在超时上——现象是整轮冒烟测试从这儿断掉。
+      await page.mouse.click(8, 8);
+      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      await createBtn.click();
+      await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
+      check("重开时问要不要接着写", !!(await page.$(".creation-recover")), (await page.textContent(".creation-recover").catch(() => "")).slice(0, 40));
+      await page.click('.creation-recover button:has-text("接着写")').catch(() => {});
+      await page.waitForSelector(".creation-editor .cm-content", { timeout: 6000 }).catch(() => {});
+      const restored = await page.textContent(".creation-editor .cm-content").catch(() => "");
+      check("正文原样回来了", restored.includes("误关之前写下的这一段必须还在"), restored.slice(0, 30));
+      // 已经有字之后不能再问「要不要恢复」——那是一个点了就覆盖自己刚写的东西的按钮
+      check("恢复之后那条提示收起来了", !(await page.$(".creation-recover")));
+
+      // 收尾：丢弃掉这份缓冲，别把测试写的字留给下一次
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      await createBtn.click();
+      await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
+      await page.click('.creation-recover button:has-text("丢弃")').catch(() => {});
+      await page.waitForTimeout(200);
+      check("丢弃之后不再问", !(await page.$(".creation-recover")));
+
+      /**
+       * 访谈欢迎区**不能被聊天气泡的样式串台**。
+       *
+       * 踩过一次：消息行的样式是按位置写的（`.creation-chat__log > div > span/p`），而欢迎区
+       * 也是这个容器的直接子 div——于是那枚圆形图标被涂成灰色小标签、还被 `display:block`
+       * 顶掉了居中，正文被套上聊天气泡的灰底。**代码在跑、测试全绿，只有肉眼看得见。**
+       * 量的是渲染后的颜色和背景，不是有没有加 class。
+       */
+      await page.keyboard.press("3");
+      await page.waitForSelector(".creation-interview-welcome", { timeout: 6000 }).catch(() => {});
+      const welcome = await page.evaluate(() => {
+        const svg = document.querySelector(".creation-interview-welcome > span svg");
+        const p = document.querySelector(".creation-interview-welcome > p");
+        const box = svg?.getBoundingClientRect();
+        return {
+          icon: svg ? getComputedStyle(svg).color : "",
+          square: box ? Math.abs(box.width - box.height) < 1 : false,
+          bubble: p ? getComputedStyle(p).backgroundColor : "",
+        };
+      });
+      check("欢迎区的图标是白的、不是聊天里那个灰标签", /255,\s*255,\s*255/.test(welcome.icon) && welcome.square, `${welcome.icon} · 正方 ${welcome.square}`);
+      check("欢迎区的正文没被套上聊天气泡", /rgba\(0,\s*0,\s*0,\s*0\)|transparent/.test(welcome.bubble), welcome.bubble);
+
+      /**
+       * 访谈屏的版面：两条**只有量矩形才看得出来**的。
+       *
+       * 1. **开场不撑成一栋空房子。** 上一版弹层写死 720px 高，而这时屏上只有一句引导、
+       *    三颗起手句和一个输入框——上半屏整片空白。现在开场不设高度，由内容决定。
+       * 2. **欢迎区和输入框要同轴。** 这条**栽过两次**，而两次的断言都是绿的——只有量才抓得住。
+       * 3. **发送键在输入盒子里面**，不是贴在旁边的第二个块。上一版是 76px 的框挨着 42px 的
+       *    方按钮，两个尺寸不一样的东西并排，看着就是拼上去的；而且正是它逼出了第 2 条那个
+       *    25px 的差值。所以这里量的是「它真的在盒子里」，不是「它俩底边齐平」——
+       *    **底边齐平的写法能被那个并排的旧版满足**，等于没测。
+       */
+      const layout = await page.evaluate(() => {
+        const box = (sel) => document.querySelector(sel)?.getBoundingClientRect() || null;
+        const mid = (r) => (r ? r.left + r.width / 2 : null);
+        const w = box(".creation-interview-welcome");
+        const shell = box(".creation-chat__composer");
+        const ta = box(".creation-chat__composer textarea");
+        const send = box(".creation-composer__send");
+        return {
+          dialog: Math.round(box(".creation")?.height || 0),
+          axis: w && ta ? Math.abs(mid(w) - mid(ta)) : null,
+          inside: !!(shell && send && send.right <= shell.right && send.bottom <= shell.bottom && send.left >= shell.left),
+        };
+      });
+      check("开场的访谈弹层不撑成空房子", layout.dialog > 0 && layout.dialog < 620, `${layout.dialog}px`);
+      check("欢迎区和输入框同轴", layout.axis !== null && layout.axis <= 1, `差 ${layout.axis}px`);
+      check("发送键长在输入盒子里", layout.inside);
+
+      /**
+       * **返回只有一个位置：标题旁边。** 原来三屏各放各的（素材在左栏底部、访谈在右栏底部、
+       * 编辑器在页脚），同一个动作换一屏就要重新找一次。这条钉的是「三屏都在同一处、
+       * 而且别处不再有第二个」——只断言「有返回按钮」的话，旧的那几个留在原地也照样绿。
+       */
+      check("访谈屏的返回在眉标那一行", !!(await page.$(".creation__head .creation__crumb")));
+      const strayInterview = await page.$$eval(".creation-interview button", (els) => els.filter((e) => e.textContent.includes("返回")).length);
+      check("访谈屏别处没有第二个返回", strayInterview === 0, `${strayInterview} 个`);
+      await page.click(".creation__crumb");
+      await page.waitForSelector(".creation-mode", { timeout: 5000 }).catch(() => {});
+
+      await page.keyboard.press("2");
+      await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
+      // 面包屑要写明**退回去是哪儿**：光一个箭头说不了这件事
+      const crumb = (await page.textContent(".creation__head .creation__crumb")).trim();
+      check("素材屏的返回写明退回哪儿", crumb.includes("起稿方式"), crumb);
+      const strayMaterial = await page.$$eval(".creation-material-workspace button", (els) => els.filter((e) => e.textContent.includes("返回")).length);
+      check("素材屏别处没有第二个返回", strayMaterial === 0, `${strayMaterial} 个`);
+      // 已选素材空着时只占一行：那句「选中的素材会留在这里…」原来占了 128px 去讲一件做一次就懂的事
+      check("没选素材时只留一行小字", !!(await page.$(".creation-picked[data-empty='true']")));
+
+      /**
+       * 目标读者是 combobox：能选预设，也能自己打。
+       * ⚠️ **Esc 只收菜单，不能把整个弹层一起关掉**——和 `ui.jsx` 的 `Select` 同一条，
+       * 不在捕获阶段吞掉这一下的话，用户以为自己只是收了个下拉，结果整篇没保存的东西没了。
+       */
+      const audienceToggle = await page.$(".creation-audience__toggle");
+      check("目标读者能选预设", !!audienceToggle);
+      if (audienceToggle) {
+        await audienceToggle.click();
+        await page.waitForSelector(".creation-audience__pop", { timeout: 5000 }).catch(() => {});
+        const first = (await page.textContent(".creation-audience__pop button")).trim();
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(250);
+        check("Esc 收菜单但不关弹层", !(await page.$(".creation-audience__pop")) && !!(await page.$(".creation")));
+        await audienceToggle.click();
+        await page.waitForSelector(".creation-audience__pop", { timeout: 5000 }).catch(() => {});
+        await page.click(".creation-audience__pop button >> nth=0");
+        check("选完就填进那一格", (await page.inputValue(".creation-audience input")) === first, first);
+      }
+
+      // 关键词搜不到不是终点：AI 那条路必须一直露在外面（真跑它要打一次 LLM，这里只验入口）
+      await page.fill(".creation-material-search input", "zzz这个词不可能出现zzz");
+      await page.waitForTimeout(900);
+      const dead = (await page.textContent(".creation-material-empty").catch(() => "")) || "";
+      check("搜不到时给的是下一步不是「换个词试试」", dead.includes("让 AI 按意思找"), dead.replace(/\s+/g, " ").slice(0, 60));
+
+      /**
+       * 引用标注：正文里哪一句来自哪条素材。
+       *
+       * 起稿那一步 mock 掉（真跑要打一次 LLM、几十秒），但 mock 的**只有内容**——
+       * 编号、底纹、脚标、跳转、改写后变灰这几件事全是界面自己算的，测的正是它们。
+       *
+       * ⚠️ **脚标必须不在文档里。** 它是 CodeMirror 的 widget，不是正文字符；
+       * 一旦真写进去，用户发布前得手动删一遍。这条断言就是钉这件事的。
+       */
+      const CITED = "信息过载导致的结果不仅是处理不过来，更深层的问题是人们会停止自己的思考。";
+      const CITED2 = "大脑想要舒服的答案，和真正的答案，从来就不是同一个东西。";
+      // 两条素材而不是一条：只有一条时，「点正文 → 右侧那条亮起来」会因为它本来就亮着而白过
+      const mocks = [
+        { id: "01HZZZZZZZZZZZZZZZZZZZZZZA", title: "信息过载的本质是替代思考", type: "核心观点", verificationStatus: "不适用", note: CITED },
+        { id: "01HZZZZZZZZZZZZZZZZZZZZZZB", title: "大脑想要舒服的答案", type: "核心观点", verificationStatus: "不适用", note: CITED2 },
+      ];
+      const MOCK_BODY = [
+        "# 你的脑子什么时候开始替别人转的", "", "有一个现象，你可能已经习惯到察觉不到了。", "",
+        CITED, "", CITED2, "", "说白了，你不是被信息淹没了，你是把思考这件事外包了。",
+      ].join("\n");
+      const citeOf = (id, text) => ({
+        id, start: MOCK_BODY.indexOf(text), end: MOCK_BODY.indexOf(text) + text.length,
+        score: 0.98, quote: text, text,
+      });
+      await page.route("**/api/pipe/search/materials*", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items: mocks }) }));
+      await page.route("**/api/pipe/draft/material", (route) =>
+        route.fulfill({
+          status: 200, contentType: "application/json",
+          body: JSON.stringify({
+            ok: true, body: MOCK_BODY, used: 2, skipped: [],
+            citations: [citeOf(mocks[0].id, CITED), citeOf(mocks[1].id, CITED2)],
+          }),
+        }));
+
+      // ⚠️ 按标题等，别等 `.creation-material-list button`——上一步搜「zzz」时留下的
+      // 「让 AI 按意思找」也是这个选择器，会让 waitForSelector 立刻返回，然后点错按钮
+      await page.fill(".creation-material-search input", "信息过载");
+      await page.waitForSelector(`.creation-material-list button:has-text("${mocks[0].title}")`, { timeout: 6000 }).catch(() => {});
+      for (const m of mocks) await page.click(`.creation-material-list button:has-text("${m.title}")`).catch(() => {});
+      const picked = await page.$$eval(".creation-picked .creation-chip", (els) => els.length).catch(() => -1);
+      check("点素材就进右栏的已选", picked === 2, `${picked} 条`);
+      await page.fill(".creation-brief-field--grow textarea", "想说清楚信息过载真正的代价是什么");
+      await page.click('.creation-writing-paths button:has-text("让 AI 生成初稿")');
+      await page.waitForSelector(".cm-cite", { timeout: 8000 }).catch(() => {});
+
+      const cite = await page.evaluate(() => {
+        const mark = document.querySelector(".cm-cite");
+        const num = document.querySelector(".cm-cite-num");
+        return {
+          text: mark?.textContent || "",
+          wash: mark ? getComputedStyle(mark).backgroundColor : "",
+          num: num?.textContent || "",
+          doc: document.querySelector(".creation-editor .cm-content")?.innerText || "",
+        };
+      });
+      check("被引用的那句在正文里标出来了", cite.text.includes("信息过载导致的结果"), cite.text.slice(0, 30));
+      check("标注有底纹不是纯文字", !/(, ?0\)|transparent)$/.test(cite.wash), cite.wash);
+      check("脚标号和右侧素材序号一致", cite.num === "1", cite.num);
+      // 文档里只能有正文，脚标是渲染出来的
+      check("脚标不是正文里的字符", !/\[\^|\^1/.test(cite.doc), cite.doc.slice(0, 40).replace(/\n/g, "⏎"));
+
+      const dock = await page.evaluate(() => {
+        const card = document.querySelector(".creation-source-list article");
+        return {
+          used: card?.dataset.used || "",
+          badge: card?.querySelector(".creation-source__used")?.textContent || "",
+          lede: document.querySelector(".creation-sources__lede")?.textContent || "",
+        };
+      });
+      check("右侧标出这条被用了", dock.used === "true" && /已用/.test(dock.badge), dock.badge);
+      /**
+       * ⚠️ **「不适用」是核验状态，不是「不适用于这篇文章」。** 完整含义是「这条不是
+       * 金句/数据，无需逐字核验」——跟着字段名读得懂，孤零零跟在类型后面就被读成
+       * 「这条素材不适用」，于是和旁边的「已用 1 处」并排看着自相矛盾。
+       * mock 的这条素材核验状态正是「不适用」，卡片上不该出现它。
+       */
+      const meta = await page.textContent('.creation-source-list article[data-used="true"] > small').catch(() => "");
+      check("卡片不说没有主语的「不适用」", !/不适用/.test(meta), meta.replace(/\s+/g, " ").trim());
+
+      // 素材正文能就地展开看全文——右栏的活儿是「对着正文核对」，弹层会盖住正文，等于没看
+      const folded = await page.$eval('.creation-source-list article[data-used="true"] > p', (e) => getComputedStyle(e).webkitLineClamp).catch(() => "");
+      await page.click('.creation-source-list article[data-used="true"] .creation-source__more');
+      const opened = await page.$eval('.creation-source-list article[data-used="true"] > p', (e) => ({
+        open: e.dataset.open, wrap: getComputedStyle(e).whiteSpace,
+      })).catch(() => ({}));
+      check("素材能就地展开看全文", folded === "3" && opened.open === "true", `折叠 ${folded} 行 → 展开 ${opened.open}`);
+      // 展开后按素材里真实的换行排版：多数素材是分条写的，挤成一段就读不出结构
+      check("展开后保留素材自己的换行", opened.wrap === "pre-wrap", opened.wrap);
+      await page.click('.creation-source-list article[data-used="true"] .creation-source__more');
+      // 原来这儿写着「它们不会自动进入正文」——在 AI 起稿这条路上那句话是反的
+      check("右侧不再说素材不会进正文", !/不会自动进入正文/.test(dock.lede), dock.lede.replace(/\s+/g, " ").slice(0, 50));
+
+      // 用上了的卡片给的是「跳过去看」，不是「插入引用」——它已经在正文里了，再插一遍是错的动作
+      const jump = await page.textContent('.creation-source-list article[data-used="true"] footer .btn').catch(() => "");
+      check("用过的素材给的动作是跳过去看", /看正文里的这处/.test(jump), jump.trim());
+
+      /**
+       * **两个方向都要通。**
+       * 卡片 → 正文：整张卡可点（不只是那颗小按钮），正文里对应那处加重高亮。
+       * 正文 → 卡片：点被标注的句子，右侧那张卡亮起来。
+       * 只做一个方向的话，用户在两栏之间对照时总有一半是死的。
+       */
+      // 先点第二条卡片（整张卡可点，不只是那颗小按钮）
+      await page.click(".creation-source-list article >> nth=1 >> h4");
+      const fromCard = await page.evaluate(() => {
+        const card = document.querySelector('.creation-source-list article[data-active="true"]');
+        const focus = document.querySelector('.cm-cite[data-focus="true"]');
+        return {
+          title: card?.querySelector("h4")?.textContent || "",
+          focused: focus?.textContent || "",
+          // 同一条素材的其他几处也该跟着亮一档，但当前这一处要能单独认出来
+          actives: document.querySelectorAll('.cm-cite[data-active="true"]').length,
+        };
+      });
+      check("点卡片本身就能定位到正文", fromCard.title === mocks[1].title && fromCard.focused.includes("大脑想要舒服"), JSON.stringify(fromCard));
+
+      // 反方向：点正文里**第一条**素材的那句 → 右侧高亮要从第二条切回第一条
+      await page.click(".cm-cite >> nth=0");
+      const fromBody = await page.evaluate(() => {
+        const card = document.querySelector('.creation-source-list article[data-active="true"]');
+        return { title: card?.querySelector("h4")?.textContent || "", focus: document.querySelector('.cm-cite[data-focus="true"]')?.textContent || "" };
+      });
+      check("点正文里的引用，右侧那条素材亮起来", fromBody.title === mocks[0].title, `${fromBody.title} ← ${fromBody.focus.slice(0, 14)}`);
+
+      // 点正文里没标注的地方 = 退出选中。只能换不能退的话，想安静读一遍正文时右边永远亮着一张卡
+      await page.click(".creation-editor .cm-content .cm-line >> nth=0");
+      const cleared = await page.evaluate(() => ({
+        card: !!document.querySelector('.creation-source-list article[data-active="true"]'),
+        focus: !!document.querySelector('.cm-cite[data-focus="true"]'),
+        marks: document.querySelectorAll(".cm-cite").length,
+      }));
+      check("点正文空白处取消选中", !cleared.card && !cleared.focus && cleared.marks === 2, JSON.stringify(cleared));
+      // ⚠️ 取消的是**选中**，不是标注本身——标注没了的话「哪句有出处」这件事就跟着没了
+      check("取消选中不会把标注一起清掉", cleared.marks === 2, `${cleared.marks} 处`);
+
+      // 卡片高亮不靠左侧那道竖线（`.note` 当初撤掉它的理由在这儿一样成立），也不靠外发光的圈
+      await page.click(".creation-source-list article >> nth=1 >> h4");
+      // ⚠️ 等那张卡真的变成 active 再量。React 的重渲染是异步的，点完立刻读
+      // 会量到上一张卡——而它各项样式都「正常」，于是断言绿着，测的却是错的元素
+      // ⚠️ **不能等到 `[data-active]` 出现就量。** 底色有 .12s 过渡，而过渡期间
+      // `getComputedStyle` 回的是**当前插值**、不是目标值——量到的会是一个还没变完的白，
+      // 于是断言红着，样式其实是对的。等的条件写成「颜色真的和没选中那张不一样了」。
+      await page
+        .waitForFunction(() => {
+          const on = document.querySelector('.creation-source-list article[data-active="true"]');
+          const off = document.querySelector(".creation-source-list article:not([data-active])");
+          return on && off && getComputedStyle(on).backgroundColor !== getComputedStyle(off).backgroundColor;
+        }, { timeout: 4000 })
+        .catch(() => {});
+      const look = await page.$eval('.creation-source-list article[data-active="true"]', (el) => ({
+        bar: getComputedStyle(el, "::before").content,
+        shadow: getComputedStyle(el).boxShadow,
+        bg: getComputedStyle(el).backgroundColor,
+        border: getComputedStyle(el).borderTopColor,
+      })).catch(() => ({}));
+      const plain = await page.$eval('.creation-source-list article:not([data-active])', (el) => getComputedStyle(el).backgroundColor).catch(() => "");
+      check("卡片选中态没有左侧竖线", look.bar === "none", String(look.bar));
+      // 靠换底色 + 换边框色，不靠外发光的圈——圈是浮在卡外面的一层，而「选中」说的是这张卡本身
+      check("卡片选中态靠换底色，不是外发光的圈",
+        /^(none|)$/.test(look.shadow || "none") && look.bg !== plain && /^rgba?\(/.test(look.bg || ""),
+        `底 ${look.bg}（未选 ${plain}）· 边 ${look.border} · 圈 ${look.shadow}`);
+
+      // 改写被标注的那一句 → 标注不能继续声称有出处。
+      // 用真的敲字而不是 dispatch 一个事务：要测的正是「用户在这句里打字之后会怎样」
+      await page.click(".cm-cite");
+      await page.keyboard.type("（这里是我自己后来加的一句）");
+      await page.waitForTimeout(300);
+      const afterEdit = await page.evaluate(() => ({
+        stale: document.querySelector(".cm-cite")?.dataset.stale || "",
+        recheck: document.querySelector(".creation-sources__recheck")?.textContent || "",
+      }));
+      check("改写过的标注变成待核对", afterEdit.stale === "true", afterEdit.stale);
+      check("并且给出重新核对这一步", /重新核对/.test(afterEdit.recheck), afterEdit.recheck.replace(/\s+/g, " "));
+
+      await page.unroute("**/api/pipe/draft/material").catch(() => {});
+      await page.unroute("**/api/pipe/search/materials*").catch(() => {});
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      await page.click('button:has-text("新建")').catch(() => {});
+      await page.waitForSelector(".creation-mode", { timeout: 6000 }).catch(() => {});
+      await page.click(".creation-mode >> nth=1");
+      await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
+
+      await page.click(".creation__crumb");
+      await page.waitForSelector(".creation-mode", { timeout: 5000 }).catch(() => {});
+      check("返回退回起点屏", !!(await page.$(".creation-mode")));
+
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      check("Esc 关得掉创作弹层", !(await page.$(".creation")));
+    }
 
     // 「N 件事等你」只数等你动手的两项。把 Worker 正在跑的活也算进去，
     // 会让人以为自己欠着事——「撰写中 3」并不需要你做任何动作。
@@ -362,6 +924,63 @@ try {
     () => (document.querySelector(".sysrow") || document.querySelector(".note"))?.textContent || ""
   );
   check("vault 路径或配置引导二选一", /obsidian-vault/.test(sysText) || /VAULT_ROOT/.test(sysText), sysText.slice(0, 60));
+
+  // 4b. 我的清单：手写任务落 vault 的 `05 - 计划/<日期>.md`。
+  //
+  // ⚠️ **这一段真的会写 vault**（清单本来就只有这一条路），所以它加的那条任务带时间戳、
+  // 而且走完必须自己删掉。留下的只有一份当天的空计划文件——那本来也是你今天会建的东西。
+  // vault 没配时整块不画，此时跳过（写死「一定有清单」的话，换台机器测试就红了）。
+  if (await page.$(".day-plan")) {
+    const days = await page.$$eval(".plan-day", (els) => els.map((e) => e.textContent.trim()));
+    // 「明天」这一档不能少：用户的动线是「今晚列明天的」，只给今天等于砍掉主要写入时机
+    check("清单能切到明天", days.join("/") === "今天/明天", days.join("/"));
+
+    // 输入框**默认不在**，点「明天」后面那个「+」才展开。常驻的话，空清单那一屏就是
+    // 「一句说明 + 一个空输入框 + 一行路径」三样东西在说同一件事。
+    check("输入框默认不占地方", !(await page.$(".plan-add input")));
+    await page.click(".plan-plus");
+    await page.waitForSelector(".plan-add input", { timeout: 4000 });
+
+    const label = `冒烟测试-${Date.now()}`;
+    await page.fill(".plan-add input", label);
+    await page.click(".plan-add button[type=submit]");
+    const row = `.plan-task:has-text("${label}")`;
+    await page.waitForSelector(row, { timeout: 8000 });
+    check("加得进一条任务", true);
+    // 加完一条不收起：晚上列明天的清单是一口气写五六条，每条都要重点一次「+」的话，
+    // 这个入口就成了收费站
+    check("加完一条还能接着加", !!(await page.$(".plan-add input")));
+
+    try {
+      // 打钩后**变灰 + 删除线两样都要**：只变灰在暗色下几乎看不出，只划线又太吵
+      await page.click(`${row} .plan-task__main`);
+      await page.waitForSelector(`${row}[data-done="true"]`, { timeout: 8000 });
+      const deco = await page.$eval(`${row} .plan-task__text`, (e) => {
+        const s = getComputedStyle(e);
+        return { line: s.textDecorationLine, color: s.color };
+      });
+      check("打完钩有删除线", deco.line.includes("line-through"), deco.line);
+
+      // 进度环的分母是清单条数——这也是它能存在的理由：不用编任何数字
+      const ring = await page.textContent(".plan-ring__label").catch(() => "");
+      check("进度环按清单条数走", /^\d+\/\d+$/.test(ring.replace(/\s/g, "")), ring);
+
+      // 打钩落进文件的方式必须是标准 Markdown 复选框，Obsidian 那边才认得
+      const raw = await page.evaluate(() => fetch("/api/plan").then((r) => r.json()));
+      check("清单存在 05 - 计划 底下", /05 - 计划\/\d{4}-\d{2}-\d{2}\.md$/.test(raw.path || ""), raw.path);
+    } finally {
+      await page.click(`${row} .plan-task__del`);
+      await page.waitForSelector(row, { state: "detached", timeout: 8000 }).catch(() => {});
+    }
+    check("测试加的任务已经删干净", !(await page.$(row)));
+
+    // ⚠️ **一条任务都没有时不画环。** 画出来的是个满圈的灰环加 `0/0`：既不报告进度、
+    // 也不指引下一步，只是把「你还没开始」放大成这一屏最大的图形。
+    // 这条只在清单真的空了的时候才验得到——上面刚把测试加的那条删掉，所以时机就在这儿。
+    if (!(await page.$(".plan-task"))) {
+      check("空清单不画进度环", !(await page.$(".plan-ring")));
+    }
+  }
 
   // 「接着上次」三块的出口固定在底部，必须落在同一条水平线上——各摆各的话，
   // 一行三个按钮会因为内容长短各在各的高度上，眼睛得上下找。
@@ -495,7 +1114,7 @@ try {
         await page.click('.select__pop button:has-text("撰写中")');
         await page.waitForSelector(".pick-grid", { timeout: 8000 });
         check("改成「撰写中」先问平台", true, `从「${cur}」改起`);
-        check("弹平台选择时一个字都没写回 Notion", writes === 0, `${writes} 次写请求`);
+        check("弹平台选择时一个字都没写回库里", writes === 0, `${writes} 次写请求`);
         const picks = await page.$$eval(".pick__name", (els) => els.map((e) => e.textContent.trim()));
         check("平台选项和流水线一致", picks.join("/") === "公众号/X/小红书/视频号/YouTube", picks.join("/"));
         await page.click('.modal button:has-text("取消")');
@@ -524,7 +1143,11 @@ try {
       check("卡片上有删除入口", (await page.$$(".wall-card__del")).length === n, `${(await page.$$(".wall-card__del")).length}/${n}`);
       await page.click(".wall-card__del");
       const confirmText = await page.textContent(".wall-card .btn-danger").catch(() => "");
-      check("删除要二次确认且说清去向", confirmText.includes("废纸篓"), confirmText.trim());
+      // ⚠️ 断言的是**「说清了不可恢复」**，不是某个具体词。Notion 时代删除是 archived:true
+      // （进废纸篓、30 天可捞），文案写的是「移到 Notion 废纸篓」；换 D1 之后那一层没了，
+      // 文案必须照实说「永久删除」。这条断言当时钉的是「废纸篓」三个字，于是迁移之后
+      // **代码对了、测试红了**——测试反过来在要求把对的文案改回去。
+      check("删除要二次确认且说清不可恢复", /永久删除|删了就没|不可恢复/.test(confirmText), confirmText.trim());
       // 反悔的路必须一直在：少了「取消」，点错第一下就只剩「删」和「离开这一页」两条路
       await page.click('.wall-card:has(.btn-danger) button:has-text("取消")');
       await page.waitForSelector(".wall-card .btn-danger", { state: "detached", timeout: 4000 });
@@ -537,7 +1160,7 @@ try {
       check("点开进阅读区", !!(await page.$(".reader-overlay")));
       check("阅读区有面包屑", (await page.textContent(".reader-overlay__crumb")).includes("选题库"));
       check("阅读区有批注台", !!(await page.$(".reader-overlay .rail")));
-      check("有状态下拉（可直接改 Notion）", !!(await page.$(".select__btn")));
+      check("有状态下拉（可直接改库里的状态）", !!(await page.$(".select__btn")));
       const actionText = await page.textContent(".doc-actions");
       check("接上了排版和封面工具", actionText.includes("去排版") && actionText.includes("配封面"), actionText.slice(0, 60));
       /**
@@ -678,7 +1301,19 @@ try {
        * 源码高亮：**标题在编辑区里就该是大的**，否则这个编辑器和原来那个 textarea 没区别。
        * 量的是渲染后的字号，不是有没有加 class——CodeMirror 的高亮是运行时算的，
        * 语法树没跑起来（比如 lang-markdown 忘了挂）时 class 照样在、字号却是默认的。
+       *
+       * ⚠️ **标题由测试自己敲进去，不指望库里第一条正好有一个。** 原来是直接量当前正文里
+       * 有没有更大的 span——那等于把断言押在「今天排在第一的那篇恰好写了 `#`」上。
+       * 列表排序一改（`id DESC` → `updated_at DESC`），第一条换了人、正文里没有标题行，
+       * **测试当场变红而编辑器一点毛病没有**。这正是本文件开头那条规矩说的：
+       * 别把断言写死在某一种外部状态上。
+       *
+       * 敲完不保存，下面走的还是「取消」那条路——写回流水线库会改真实数据。
        */
+      await page.click(".md-editor .cm-content");
+      await page.keyboard.press("Control+End");
+      await page.keyboard.type("\n# 冒烟测试的标题行\n");
+      await page.waitForTimeout(300); // 等语法树重算，量的是渲染后的字号
       const cmSizes = await page.evaluate(() => {
         const body = getComputedStyle(document.querySelector(".cm-content")).fontSize;
         const h = [...document.querySelectorAll(".cm-content .cm-line span")].find(
@@ -721,13 +1356,36 @@ try {
       await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
       check("Esc 回到卡片墙", !!(await page.$(".wall-card")));
 
-      // 搜索过滤
-      const first = await page.textContent(".wall-card h3");
-      await page.fill(".search-box input", first.slice(0, 4));
-      await page.waitForTimeout(400);
+      /**
+       * 搜索过滤。
+       *
+       * ⚠️ **等的是结果，不是一个固定的毫秒数。** 这条原来是 `fill` 之后 `waitForTimeout(400)`
+       * 就断言，而搜索是「250ms 防抖 + 一次 Worker 全库检索」——400ms 里网络那一程根本没回来，
+       * 列表当时是空的，于是断言读到 0 条。**测试红了，代码是对的**，而红着的测试等于没有测试。
+       *
+       * 两个方向一起测才说明它真的在筛：搜自己那一条要**搜得到**，搜一个不存在的词要**空**。
+       * 只测前者的话，「搜索坏掉、列表原样铺着」同样能过。
+       */
+      const first = (await page.textContent(".wall-card h3")).trim();
+      const q = first.slice(0, 4);
+      await page.fill(".search-box input", q);
+      await page
+        .waitForFunction((word) => {
+          const titles = [...document.querySelectorAll(".wall-card h3")].map((e) => e.textContent);
+          return titles.some((t) => t.includes(word));
+        }, q, { timeout: 15000 })
+        .catch(() => {});
       const filtered = await page.$$eval(".wall-card", (els) => els.length);
-      check("搜索能过滤", filtered > 0 && filtered <= n, `${filtered}/${n}`);
+      const stillThere = await page.$$eval(".wall-card h3", (els) => els.map((e) => e.textContent.trim()));
+      check("搜得到自己那一条", stillThere.some((t) => t.includes(q)) && filtered <= n, `${filtered}/${n} · ${q}`);
+
+      await page.fill(".search-box input", "zzz这个词不可能出现zzz");
+      await page
+        .waitForFunction(() => document.querySelectorAll(".wall-card").length === 0, null, { timeout: 15000 })
+        .catch(() => {});
+      check("搜不到时是真的空，不是原样铺着", (await page.$$(".wall-card")).length === 0);
       await page.fill(".search-box input", "");
+      await page.waitForTimeout(500);
     }
   } else {
     const listErr = await page.textContent(".note-title").catch(() => "");
@@ -759,7 +1417,10 @@ try {
   check("排版工具已托管", typeset.status === 200 && typeset.isTypeset, `HTTP ${typeset.status}`);
   check("排版工具挡住路径穿越", typeset.blocked);
 
-  // 6c. 排版现在是工作台里的一个页面，不用另开浏览器标签
+  // 6c. 排版现在是工作台里的一个页面，不用另开浏览器标签。
+  //     ⚠️ 整段包在 `ignoreErrorsDuring` 里：iframe 里跑的是**另一个项目**，它自己的
+  //     JS 异常不该记到工作台账上（理由见文件开头那段注释）。
+  await ignoreErrorsDuring(async () => {
   await page.goto(`http://127.0.0.1:${PORT}/#/typeset`, { waitUntil: "networkidle" });
   await page.waitForSelector(".embed iframe", { timeout: 10000 });
   const framed = await page.frameLocator(".embed iframe").locator("body").textContent();
@@ -773,6 +1434,7 @@ try {
   // 工具页放上去只是重复地说一遍它自己标题栏里已经写着的话，还吃掉 130px 操作空间
   check("排版页不占页头", (await page.$$(".main .page-header")).length === 0);
   await shot("typeset");
+  });
 
   // 7. 阅读工作区的完整链路：建书 → 读到正文 → 划词 → 批注 → 落盘 → 界面上就地可见。
   //    测完把书删掉，不在用户的真实 vault 里留垃圾。
@@ -1321,8 +1983,18 @@ try {
         null,
         { timeout: 60000 }
       );
-      const shownMode = (await page.textContent(".rail .ai-result .rail-label")).trim();
-      check("跑完直接停在新问的那一段上", shownMode === "展开", shownMode);
+      /**
+       * ⚠️ **这里的 `.catch` 不是防御性编程，是上面那条规矩往下走一步。**
+       *
+       * 第一次调用打嗝有人管（`aiErr` / 空回复两个分支），第二次没人管——而它一样会打嗝
+       * （实测撞到过一次 `连不上 Worker: fetch failed`）。那时右栏渲染的是 `.note-danger`，
+       * `.ai-result` 压根不存在，`page.textContent` 会**等满 30 秒然后抛**：
+       * 一次上游打嗝 = 整套在中途中断，后面一百多条全没跑到（177/180 就是这么来的）。
+       *
+       * 所以照旧记一条红的，但不许炸。**依赖外部的断言可以红，不可以炸。**
+       */
+      const shownMode = (await page.textContent(".rail .ai-result .rail-label").catch(() => "")).trim();
+      check("跑完直接停在新问的那一段上", shownMode === "展开", shownMode || "上游这次没回来（右栏是错误提示）");
       // 问过的模式要**看得出来**。上一版四个按钮长得一模一样、谁也不「当前」，
       // 只靠一个小圆点暗示，等于没有状态。现在问过的打勾 + 标记黄垫底。
       const done = await page.$$eval(".rail .ai-mode[data-done]", (els) => els.map((e) => e.textContent.trim()));
@@ -1338,10 +2010,11 @@ try {
       page.on("request", countAi);
       await page.click('.rail .ai-mode:has-text("解释")');
       await page.waitForTimeout(700);
-      const back = await page.textContent(".rail .ai-result .rail-label");
+      // 同上：上游没回来时这一条也读不到 `.ai-result`，照旧红，不许炸
+      const back = (await page.textContent(".rail .ai-result .rail-label").catch(() => "")).trim();
       page.off("request", countAi);
       check("点回问过的模式不重新花 token", calls === 0, `${calls} 次请求`);
-      check("点回去看到的是那一段", back.trim() === "解释", back.trim());
+      check("点回去看到的是那一段", back === "解释", back || "上游这次没回来（右栏是错误提示）");
       check("一次只显示一段", (await page.$$(".rail .ai-result")).length === 1);
       check("重跑要明确点「重新生成」", !!(await page.$('.rail .ai-result button:has-text("重新生成")')));
       // 存哪一段是分开的决定，所以「存为笔记」跟着当前这一段走
@@ -1560,9 +2233,12 @@ try {
       live: (r.boards || []).filter((b) => b.ok).map((b) => b.label),
       dead: (r.boards || []).filter((b) => !b.ok).map((b) => `${b.label}:${b.reason}`),
       total: r.stats?.total ?? 0,
+      stale: !!r.stale,
     };
   });
-  check("六个榜都在信源清单里", boards.ids.join(",") === "weibo,zhihu,douyin,bili,toutiao,rednote", boards.ids.join(","));
+  // 顺序也一起钉住：`BOARDS` 的数组顺序就是界面上的顺序，前端不再排一次。
+  // 改这条之前先确认改的是 `server/lib/sixty.mjs`，别在别处补一个排序把它绕过去。
+  check("六个榜都在信源清单里且顺序没变", boards.ids.join(",") === "weibo,douyin,toutiao,zhihu,bili,rednote", boards.ids.join(","));
   check("至少一个榜读到了内容", boards.live.length > 0 && boards.total > 0, `${boards.live.join("/")} 共 ${boards.total} 条`);
   // 挂掉的榜不占版面，但也不能装作不存在
   const chips = await page.$$eval(".src-chip", (els) => els.map((e) => e.textContent.trim()));
@@ -1591,7 +2267,9 @@ try {
     microFonts.every(([, f]) => !f || !/mono/i.test(f)),
     microFonts.map(([s, f]) => `${s}=${f.split(",")[0]}`).join(" ")
   );
-  if (boards.dead.length) {
+  // ⚠️ **stale 的时候底部那行故意不画**（它说的是快照里哪个榜挂了，而此刻是全挂），
+  //    所以这段断言只在拿到真数据时才成立——写死的话上游一挂测试就红
+  if (boards.dead.length && !boards.stale) {
     const note = await page.textContent(".panel-note").catch(() => "");
     check("挂掉的源在底部如实说明", boards.dead.every((d) => note.includes(d.split(":")[0])), note.slice(0, 70));
     // 原始异常（Unexpected token '<'…）不能直接铺到界面上
@@ -1600,6 +2278,56 @@ try {
   const boardTitles = await page.$$eval(".board__title", (els) => els.map((e) => e.textContent.trim()));
   check("热榜按平台分栏且未被过滤", boardTitles.length >= 10, `${boardTitles.length} 条`);
   await shot("hot-boards");
+
+  /**
+   * 快照态：**界面同时说两句相反的话**是这一页最容易出的事故，而它一个错都不报。
+   * 真实发生过的样子：上面一条「六个榜今天都没抓到」，下面五枚绿点「这五个是通的」，
+   * 页头还写着「检查于 23 小时前」——三处各说各的，而绿点最显眼，人只会信绿点。
+   *
+   * 上游是好是坏由不得测试，所以这里**伪造一个 stale 响应**，测的是界面怎么表达它。
+   */
+  const fakeFetchedAt = new Date(Date.now() - 23 * 3600_000).toISOString();
+  await page.route("**/api/hot/boards*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        date: "2026-01-01",
+        fetchedAt: fakeFetchedAt,
+        configured: false,
+        stale: true,
+        staleHint: "还没填热榜的数据源地址（SIXTY_SECONDS_API_BASE_URL）。去设置面板填上就有今天的数据。",
+        checkedAt: new Date().toISOString(),
+        stats: { total: 1, live: 1, dead: 1 },
+        boards: [
+          { id: "weibo", label: "微博热搜", ok: true, count: 1, items: [{ rank: 1, title: "快照里的一条", link: "https://example.com/stale-probe", hot: "1.0万" }] },
+          { id: "bili", label: "哔哩哔哩热搜", ok: false, reason: "上游返回了网页，多半被风控", count: 0, items: [] },
+        ],
+      }),
+    })
+  );
+  await page.goto("about:blank");
+  await page.goto(`http://127.0.0.1:${PORT}/#/hot`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".src-chip", { timeout: 30000 });
+  const staleUi = await page.evaluate(() => ({
+    title: document.querySelector(".note-title")?.textContent.trim() || "",
+    hint: document.querySelector(".note-hint")?.textContent.trim() || "",
+    time: document.querySelector(".panel-head__time")?.textContent.trim() || "",
+    chips: [...document.querySelectorAll(".src-chip")].map((e) => e.className),
+    deadNote: !!document.querySelector(".panel-note"),
+  }));
+  // 标题说「这是什么」，正文说「为什么 + 下一步」。**同一句话不能印两遍**
+  check("快照提示的标题和正文不是同一句话", staleUi.title && staleUi.hint && !staleUi.hint.includes(staleUi.title), `${staleUi.title} || ${staleUi.hint.slice(0, 30)}`);
+  check("快照提示写明了这份数据多老", /小时前|分钟前|天前|刚刚/.test(staleUi.title), staleUi.title);
+  check("快照态的信源芯片不装成实时的", staleUi.chips.length > 0 && staleUi.chips.every((c) => c.includes("src-chip--stale")), staleUi.chips.join(" | "));
+  check("页头写的是快照来自，不是检查于", staleUi.time.includes("快照来自") && !staleUi.time.includes("检查于"), staleUi.time);
+  // 底部那行说的是快照里哪个榜挂了，此刻却是全挂——旧事实盖住新事实
+  check("快照态不再拿旧的失败清单说话", !staleUi.deadNote);
+  await page.unroute("**/api/hot/boards*").catch(() => {});
+  await page.goto("about:blank");
+  await page.goto(`http://127.0.0.1:${PORT}/#/hot`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".board, .empty, .note-title", { timeout: 60000 });
 
   // AI 情报这一侧才过滤，而且过滤是个**看得见的开关**，不是一句状态说明
   await page.click('.pill-tab:has-text("AI 情报")');
@@ -1685,6 +2413,13 @@ try {
       href: el.getAttribute("href"),
     }));
     check("每行有模型名、分数和详情链接", !!first.name && /^\d/.test(first.score || "") && /^https?:/.test(first.href || ""), JSON.stringify(first));
+    /**
+     * 厂商图标那一格**每行都在，宽度一致**——图是抓来的，抓不到就是空格子，
+     * 但格子不能少：少一枚图标只是缺个装饰，而一列模型名忽左忽右会看着像排版坏了。
+     * 断言量的是**渲染后的宽度**（不是「有没有 img」），所以图抓不到时这条照样该绿。
+     */
+    const logoW = await page.$$eval(".lb__row .lb__logo", (els) => [...new Set(els.map((e) => e.getBoundingClientRect().width))]);
+    check("图标位每行都占着，宽度一致", logoW.length === 1 && logoW[0] > 0, `${models} 行 · ${logoW.join("/")}px`);
     // 它是解析来的，会随对方改版失效——版面上必须如实说，并且留一个去官网的出口
     const note = await page.textContent(".hot-footnote");
     check("如实标注来源和失效风险", note.includes("解析") && note.includes("AIHOT"), note.replace(/\s+/g, " ").slice(0, 60));
@@ -1707,7 +2442,17 @@ try {
     await page.keyboard.press("Escape");
     await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
   }
-  check("有新增入口", (await page.textContent(".panel-head")).includes("新增"));
+  /**
+   * 流水线四段每一段都要有自己的新增入口，而且**名字随段变**：灵感库是「入库」（存一条
+   * 已经有的东西），选题库是「选题」，稿件库是「新稿」（开一篇还不存在的）。
+   *
+   * ⚠️ 这条原来断言的是 `.panel-head` 里含「新增」——那是统一创作入口上线**之前**的文案。
+   * 改完之后按钮还在、功能更全，测试却红着，而红着的测试反过来在要求把对的文案改回去
+   * （和「删除文案从『废纸篓』改成『永久删除』」踩的是同一个坑）。所以断言改成钉**行为**：
+   * 有这颗按钮、且它的名字是这一段自己的说法。
+   */
+  const inboxCreate = (await page.textContent(".panel-head__aside .btn-primary").catch(() => "")).trim();
+  check("灵感库有自己的新增入口", inboxCreate.includes("入库"), inboxCreate || "（没有这颗按钮）");
 
   // **状态值里带斜杠的那个筛选**。灵感库有「初筛失败/需人工」，而路由是 `#/view/state`——
   // 整串先 decodeURIComponent 再 split 的话，`%2F` 被还原成真斜杠，状态被劈成两半，
@@ -1735,7 +2480,7 @@ try {
   const facetBtn = await page.$(".filter-bar .select__btn");
   if (matAll > 0 && facetBtn) {
     const label = (await facetBtn.textContent()).trim();
-    check("素材库能按类型筛", label.includes("类型"), label);
+    check("素材库能按分面筛", label.includes(MATERIALS.facet.label), `${label} · 适配器说是「${MATERIALS.facet.label}」`);
     await facetBtn.click();
     await page.waitForSelector(".select__pop", { timeout: 4000 });
     /**
@@ -1776,9 +2521,36 @@ try {
     await page.click(".wall-card__open");
     await page.waitForSelector(".reader-overlay .doc-meta", { timeout: 25000 });
     const materialMeta = await page.textContent(".reader-overlay .doc-meta");
+    /**
+     * 素材详情要回答两件事：**这条可不可信**（核验状态 / 核验说明）、**它从哪来、被谁用了**
+     * （来源灵感 / 关联选题）。
+     *
+     * ⚠️ **后一组是「有值才画」的，不能要求四个标签同时出现。** 一条还没被任何选题引用过的
+     * 素材就是没有「关联选题」——空字段不渲染是对的（画一个空标签等于说「这里应该有东西
+     * 但没有」）。原来那条断言要求四个全在，于是**只要第一张卡还没被引用过，测试就红**，
+     * 而代码没有任何问题。所以分成两句：可信度那组必须在，来路那组至少要有一条。
+     */
+    /**
+     * ⚠️ **核验那一组也是「有值才画」的，判据得跟着素材类型走。**
+     * 上面那段注释已经为「来路」那一组修过一次同样的病，可这半句还无条件要求两个标签都在——
+     * 于是列表排序一改（`id DESC` → `updated_at DESC`）、第一张卡换成「反直觉点」，
+     * **测试当场变红而代码完全正确**：核验状态只有金句/数据才有，空字段不渲染正是对的。
+     *
+     * 所以写成二选一，两边都在测真行为：**该有的必须有，不该有的必须没有**。
+     * 后者其实更值钱——它挡的是「给每条素材都挂一个恒为『待核验』的假徽标」。
+     */
+    const opened = materialCards[0] || {};
+    const needsVerification = ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].includes(opened.type);
     check(
-      "素材详情展示核验和证据链",
-      ["核验状态", "核验说明", "来源灵感", "关联选题"].every((label) => materialMeta.includes(label)),
+      needsVerification ? "金句/数据的详情说清可不可信" : "普通素材的详情不挂核验字段",
+      needsVerification
+        ? ["核验状态", "核验说明"].every((label) => materialMeta.includes(label))
+        : !materialMeta.includes("核验状态"),
+      `类型 ${opened.type || "?"} · ${materialMeta.slice(0, 100)}`,
+    );
+    check(
+      "素材详情能追出至少一条来路",
+      ["来源灵感", "关联选题"].some((label) => materialMeta.includes(label)),
       materialMeta.slice(0, 180),
     );
     if (materialCards[0].warning) {
@@ -1876,9 +2648,18 @@ try {
     await page.waitForSelector(".inbox__row", { timeout: 8000 });
     const card = await page.textContent(".inbox__row");
     check("自动发现下载好的导出文件", card.includes("小红书-内容分析-smoke.csv"), card.replace(/\s+/g, " ").slice(0, 70));
-    // 点之前就知道会不会白点——多数时候答案是「已经导过了」
-    check("卡片上先说清会新增几条", /新增 2/.test(card), card.replace(/\s+/g, " ").slice(0, 90));
-    await page.click('.inbox__row .btn-primary');
+    /**
+     * 点之前就知道会不会白点。**断言写成二选一**：这两条样例第一次跑是「新增 2」，
+     * 之后 `data/posts.csv` 里已经有它们了，同一份文件再发现一次就是「更新 2」。
+     * 写死「新增 2」的话，测试只有在**从没跑过**的机器上才绿——而这个套件本来就会
+     * 反复跑（这条是项目自己的规矩：别把断言钉在某一种外部状态上）。
+     * 真正要保证的是**它在点之前就说清楚了会发生什么**，两种说法都算数。
+     */
+    check("卡片上先说清会新增几条", /(新增|更新) 2/.test(card), card.replace(/\s+/g, " ").slice(0, 90));
+    // ⚠️ **按 `.inbox__row button` 点，不按 `.btn-primary`。** 那一格的按钮会换样式：
+    // 有新增时是主按钮，全都导过了（`added === 0`）就退成普通按钮。钉死 `.btn-primary`
+    // 的话，第二次跑这个套件就是 30 秒超时 + 整套在这儿中断，后面一百多条一条都跑不到。
+    await page.click(".inbox__row button");
     await page.waitForTimeout(900);
     check("一键导入真的写进去了", fs.readFileSync(postsCsv, "utf8").includes("冒烟自动发现甲"));
     // 导过之后按钮要改口，不能还写着「导入 2 条」
@@ -1925,8 +2706,35 @@ try {
     check("每周发布量画成堆叠柱（不是折线）", segs >= 1, `${segs} 段`);
     const chan = await page.textContent(".channels");
     check("渠道分布用平台自己的词", chan.includes("观看"), chan.replace(/\s+/g, " ").slice(0, 60));
-    // 小红书没有「分享」这一列 → 那一格整个不出现，不是显示 0
-    check("没有数据的指标整格不出现", !chan.includes("分享"), chan.replace(/\s+/g, " ").slice(0, 80));
+    /**
+     * 某个指标一条都没有值 → **那一格整个不出现，不是显示 0**（0 会被读成「收藏了 0 次」，
+     * 而真相是这个平台压根没有这个指标）。
+     *
+     * ⚠️ **判据从 csv 现算，不写死平台和指标名。** 原来这条钉的是「小红书那块里不该有分享」——
+     * 而 `data/posts.csv` 是 smoke 和 shots 共用的一份文件，谁后跑谁的样例留在里面，
+     * 于是这条断言会因为**另一个脚本跑过一次**而永久变红，红的还不是它要测的那件事。
+     */
+    const emptyMetric = await page.evaluate(() => {
+      const LABELS = { views: ["观看", "阅读数"], likes: ["点赞"], comments: ["评论"], collects: ["收藏"], shares: ["分享"] };
+      const blocks = [...document.querySelectorAll(".channels .channel")].map((el) => ({
+        platform: el.querySelector(".tag--state")?.textContent.trim() || "",
+        text: el.querySelector(".channel__metrics")?.textContent || "",
+      }));
+      return { blocks, LABELS };
+    });
+    const rows = fs.readFileSync(postsCsv, "utf8").split(/\r?\n/).slice(1).filter(Boolean).map((l) => l.split(","));
+    // csv 列序：date,platform,title,url,views,likes,comments,collects,shares
+    const COL = { views: 4, likes: 5, comments: 6, collects: 7, shares: 8 };
+    const missing = [];
+    for (const block of emptyMetric.blocks) {
+      const mine = rows.filter((r) => r[1] === block.platform && r[0].startsWith("2026-08-"));
+      if (!mine.length) continue;
+      for (const [key, words] of Object.entries(emptyMetric.LABELS)) {
+        const hasValue = mine.some((r) => String(r[COL[key]] || "").trim());
+        if (!hasValue && words.some((w) => block.text.includes(w))) missing.push(`${block.platform}/${words[0]}`);
+      }
+    }
+    check("没有数据的指标整格不出现", missing.length === 0, missing.join(",") || "全部平台都对");
 
     // 9c. 幂等：同一份文件再导一次不能多出三行
     await page.click('.pill-tab:has-text("数据来源")');
@@ -2007,6 +2815,32 @@ try {
     // 上一版没排掉它，列表里就会凭空多一张卡（同书架那个「正文像凭空消失了」是一类 bug）
     const titles = await page.$$eval(".wall-card h3", (els) => els.map((e) => e.textContent.trim()));
     check("批注文件没被当成报告列出来", !titles.some((t) => /\.(notes|highlights)$/.test(t)), titles.join(" / ").slice(0, 60));
+  }
+
+  /**
+   * 跑批入口。以前这一页没有任何动作入口，跑洞察必须回终端。
+   *
+   * **断言写成二选一**：面板要么给出就绪状态（vault 配好了），要么给出报错
+   *（vault 没配 / 服务没起）。写死「一定看到材料清单」的话，换台机器就红，
+   * 而红着的测试等于没有测试。
+   */
+  const runBtn = await page.$(".page-header__aside .btn-primary");
+  check("洞察页有跑批入口", !!runBtn, runBtn ? await runBtn.textContent() : "没找到页头按钮");
+  if (runBtn) {
+    await runBtn.click().catch(() => {});
+    await page.waitForSelector(".run-panel", { timeout: 8000 }).catch(() => {});
+    // ⚠️ **等的是结论，不是这个壳。** 面板打开时先显示「正在看这一周的状态…」，
+    // 马上读文本读到的就是那句话——又一次「等的是容器不是内容」（这个项目栽过好几回）。
+    await page.waitForSelector(".run-panel__cost, .run-panel__err, .run-panel__actions", { timeout: 25000 }).catch(() => {});
+    const panel = await page.textContent(".run-panel").catch(() => "");
+    check(
+      "跑批面板说清这次会不会花钱",
+      /不抓取|credits/.test(panel) || /run-panel__err/.test(await page.innerHTML(".run-panel").catch(() => "")),
+      panel.replace(/\s+/g, " ").slice(0, 70)
+    );
+    // 面板是临时物，不该占版面：关掉之后报告列表要回到原位
+    await page.click(".run-panel .icon-btn").catch(() => {});
+    check("跑批面板关得掉", !(await page.$(".run-panel")), "");
   }
 
   /**

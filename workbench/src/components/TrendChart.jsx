@@ -147,9 +147,12 @@ export function TrendChart({ title, unit, rows, metric }) {
             return (
               <g key={s.platform}>
                 {s.pts.length > 1 && <path d={d} fill="none" stroke={c} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
-                {s.pts.map((p) => (
-                  // 2px 底色描边：两条线交叠处才分得清谁在上面
-                  <circle key={p.date} cx={x(p.t)} cy={y(p.v)} r="4" fill={c} stroke="var(--surface)" strokeWidth="2" />
+                {s.pts.map((p, i) => (
+                  // 2px 底色描边：两条线交叠处才分得清谁在上面。
+                  // ⚠️ **key 要带上下标，不能只用日期**：`metrics.csv` 是有意只追加的
+                  // （同一平台同一天可以录两次，退回去靠快照），所以一条线上真的会有
+                  // 两个同日期的点。key 撞了 React 会安静地少画一个圆点。
+                  <circle key={`${p.date}-${i}`} cx={x(p.t)} cy={y(p.v)} r="4" fill={c} stroke="var(--surface)" strokeWidth="2" />
                 ))}
                 {labelled.includes(s.platform) && (
                   <text x={x(last.t) + 8} y={y(last.v) + 4} className="series-label">{s.platform}</text>

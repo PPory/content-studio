@@ -4,11 +4,11 @@
  *     未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布
  *
  * **状态一律由真实关联关系算出来，工作台自己不存一份映射。** 手工状态一定会失真：
- * 你在 Notion 里把选题删了、把稿子改成已发布，工作台那份记录不会跟着动，
+ * 你在别处把选题删了、把稿子改成已发布，工作台那份记录不会跟着动，
  * 于是界面上显示的东西和真相对不上——而这种错没有任何地方会报出来。
  *
  * 一次算完，不逐条问：四个库的列表本来就为全局检索缓存着（`search.mjs` 的
- * `notionList`），这里复用同一份，**零额外网络调用**。
+ * `pipelineList`），这里复用同一份，**零额外网络调用**。
  *
  * ## 认亲靠 URL
  *
@@ -21,14 +21,14 @@
  *
  * 「这条素材/灵感属于哪个选题」这层关系写在**选题页**上（`来源灵感` / `关联素材`，
  * 由 Worker 的 `/wb/list/topics` 一起回来）。反过来读灵感、素材上的同步属性也行，
- * 但那个属性叫什么取决于 Notion 里双向关系怎么配的，猜错就是静默的空数组。
+ * 但反过来从灵感、素材那一侧读，得先假设关联表是双向可查的，猜错就是静默的空数组。
  *
  * ⚠️ 这两个字段是 **content-pipeline 2026-08-13 之后**才有的。Worker 没更新时
  * 它们是 undefined，链条只能算到「已收藏」——那时 `degraded` 为 true，
  * 界面照实说「后面几档要更新 Worker 才能算」，**不是假装它们不存在**。
  */
 
-import { notionList } from "./search.mjs";
+import { pipelineList } from "./search.mjs";
 
 // 和 web-notes 那份同一套规则，但这里**不能抛异常**：热点里什么样的地址都有，
 // 一条不合法的不该让整批 trace 挂掉。
@@ -66,7 +66,7 @@ export async function traceLinks(env, links) {
   }
 
   const [inbox, materials, topics, drafts] = await Promise.all(
-    ["inbox", "materials", "topics", "drafts"].map((v) => notionList(env, v))
+    ["inbox", "materials", "topics", "drafts"].map((v) => pipelineList(env, v))
   );
 
   // 1. 地址 → 灵感/素材条目

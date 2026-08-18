@@ -34,7 +34,11 @@ const MIME = {
 export function typesetDir(env) {
   const custom = (env.TYPESET_DIR || "").trim();
   if (custom) return path.resolve(custom);
-  return path.resolve(process.cwd(), "..", "wechat-typeset");
+  // ⚠️ **两个点，不是一个。** workbench 现在住在 content-studio/ 里面，
+  // 而 wechat-typeset 是 content-studio 的同级，所以要往上翻两层。
+  // 合仓之前这里是 `..`——那一版在合仓当天就静默失效了：目录找不到，
+  // 「排版」页显示 404 引导，看起来像是 typeset 没装。
+  return path.resolve(process.cwd(), "..", "..", "wechat-typeset");
 }
 
 export function serveTypeset(env) {

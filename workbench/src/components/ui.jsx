@@ -39,6 +39,7 @@ import {
   IconUsers,
   IconVideo,
   IconWorld,
+  IconX,
 } from "./icons.jsx";
 
 // 页头：一行等宽小字（这一页属于哪一层）+ 大标题 + 右侧状态/动作。
@@ -75,10 +76,23 @@ export function SectionHead({ icon: Icon, eyebrow, title, count, aside }) {
   );
 }
 
+/**
+ * 一条提示。
+ *
+ * ⚠️ **别再给它加左边那道竖线。** 撤掉那一版是因为它是「模板感」最重的一个形状——
+ * 一道彩色竖线 + 一句加粗标题，任何一个界面套上去都长一个样，而这套界面的层次
+ * 本来靠的是字重、留白和实心块。现在的做法是：**一个安静的描边框 + 一枚按语气变的图标**，
+ * 语气靠**形状**区分（对勾 / 感叹号 / 三角），颜色只在真出错时才上。
+ *
+ * `default` 故意不给图标：中性提示是这里最常见的一类，给每条都挂个图标就成了噪音。
+ */
+const NOTE_ICON = { danger: IconAlertTriangle, warn: IconAlertCircle, success: IconCircleCheck };
+
 export function Note({ tone = "warn", title, children }) {
+  const Icon = NOTE_ICON[tone];
   return (
     <div className={`note note-${tone}`}>
-      {tone === "danger" ? <IconAlertTriangle aria-hidden="true" size={17} stroke={1.7} style={{ flex: "none", color: "var(--danger)", marginTop: 2 }} /> : null}
+      {Icon ? <Icon aria-hidden="true" size={16} stroke={1.8} /> : null}
       <div>
         <div className="note-title">{title}</div>
         {children ? <div className="note-hint">{children}</div> : null}
@@ -136,7 +150,7 @@ export function Tags({ items = [], accent = false }) {
  * 一行五六个「灰字段名 + 值」排开时，人是靠**位置**找信息的，得从头读一遍才知道
  * 哪个是平台哪个是读者。图标先于文字被认出来，第二次打开时就直接扫图标了。
  *
- * 按**关键词**匹配而不是精确等于：Notion 那边的字段名随时可能从「适配平台」
+ * 按**关键词**匹配而不是精确等于：库那边的字段名随时可能从「适配平台」
  * 改成「发布平台」，精确匹配的话图标会悄悄消失。认不出来的一律回落到标签图标——
  * 宁可给个通用的，也不要一行里有的有图标有的没有。
  */
@@ -161,7 +175,7 @@ export const fieldIcon = (name) => FIELD_ICONS.find(([re]) => re.test(name))?.[1
  * 只是在每行左边占了 15px。图标要有用，就得**逐项不同**。
  *
  * 同 `fieldIcon` / `STATE_ICONS` / `BOARD_ICONS` 那套：**关键词匹配，认不出来回落**。
- * 精确匹配在这里尤其不行——这些值来自 Notion 的选项，随时会改字（「金句/原话」可能变成
+ * 精确匹配在这里尤其不行——这些值来自库里的取值，随时会改字（「金句/原话」可能变成
  * 「金句·原话」，那个分隔符实测两种都出现过）。回落交给调用方传，因为「全部平台」
  * 这一行该用的是**字段**图标（它代表整个维度，不代表某个值）。
  */
@@ -243,7 +257,7 @@ export function relTime(iso) {
  * 实心点=发出去了，叉=不要了，叹号=出事了要人管。
  *
  * 按**关键词**匹配而不是精确等于：四个库的状态名各不相同（待写/待修改/待初筛…），
- * 而且 Notion 那边随时可能改字。认不出来的回落到空心圈，不会出现有的有图标有的没有。
+ * 而且库那边随时可能改字。认不出来的回落到空心圈，不会出现有的有图标有的没有。
  */
 const STATE_ICONS = [
   [/失败|需人工|异常/, IconAlertCircle],   // 出事了，等人管
@@ -383,15 +397,32 @@ export function Select({ value, options, onChange, disabled, title, ariaLabel, r
  * 「已改成 X · 撤销」——只报告结果不给退路，用户下次就不敢按那个按钮了。
  * 关闭按钮一直在：toast 会自己消失，但正读到一半时它压着内容，得能手动收掉。
  */
-export function Toast({ text, onUndo, onClose }) {
+/**
+ * 回执条。
+ *
+ * **`detail` 是第二句，不是把第一句写长。** 删除的回执要同时说两件可恢复性相反的事
+ *（库里删掉了 / Obsidian 里的归档进了废纸篓），拿分号接成一句的话是一条 60 多字、
+ * 折成两行的长句，读的人得自己找断点。拆成主句 + 一行淡色副句，扫一眼就知道
+ * 「做完了」在第一行、「东西去哪了」在第二行。
+ *
+ * ⚠️ **关闭键用 `IconX`，不要写字面的 `×`。** 这一处曾是全项目唯一的例外：
+ * 那个槽是按 15px 的 svg 排的（`.icon-btn svg`），塞一个字形进去在深色底上
+ * 几乎看不见，看着就是**一颗没画完的空按钮**。图标统一从 `icons.jsx` 出去。
+ */
+export function Toast({ text, detail, onUndo, onClose }) {
   if (!text) return null;
   return (
     <div className="toast" role="status">
-      <span>{text}</span>
+      <div className="toast__body">
+        <span>{text}</span>
+        {detail ? <small>{detail}</small> : null}
+      </div>
       {onUndo ? (
         <button className="btn btn-sm" onClick={onUndo}>撤销</button>
       ) : null}
-      <button className="icon-btn" onClick={onClose} aria-label="关闭提示">×</button>
+      <button className="icon-btn" onClick={onClose} aria-label="关闭提示">
+        <IconX aria-hidden="true" stroke={1.7} />
+      </button>
     </div>
   );
 }

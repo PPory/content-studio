@@ -13,6 +13,8 @@
 //    写进页面正文、下次读回来查字符串」连同它对内容的污染一起没了。
 //  * **多对多是关联表。** 不再有 relation 的 No limit 陷阱，也不再需要「写一边等另一边同步」。
 
+import { EVIDENCE_MATERIAL_TYPES } from "./integrity.js";
+
 // ---------------------------------------------------------------------------
 // 基础设施
 // ---------------------------------------------------------------------------
@@ -278,16 +280,17 @@ export async function listPage(env, table, { status = "", cursor = "", pageSize 
   const where = [];
   const params = [];
   if (status) { where.push("status = ?"); params.push(status); }
-  if (cursor) { where.push("id < ?"); params.push(cursor); }
+  const cur = cursorClause(cursor);
+  if (cur.sql) { where.push(cur.sql); params.push(...cur.params); }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = await all(
     env,
-    `SELECT * FROM ${table} ${clause} ORDER BY id DESC LIMIT ?`,
+    `SELECT * FROM ${table} ${clause} ${LIST_ORDER} LIMIT ?`,
     ...params, size + 1
   );
   const hasMore = rows.length > size;
   const page = hasMore ? rows.slice(0, size) : rows;
-  return { results: page, nextCursor: hasMore ? page[page.length - 1].id : null };
+  return { results: page, nextCursor: hasMore ? encodeCursor(page[page.length - 1]) : null };
 }
 
 /** 一批行改同一个状态。原来是逐条 PATCH，20 条灵感就是 20 次网络往返。 */
@@ -343,6 +346,37 @@ export async function materialsOfTopic(env, topicId) {
       ORDER BY m.created_at ASC`,
     topicId
   );
+}
+
+/**
+ * 一篇稿子的真实性证据集——**闸门用的证据只能从这里取**（`lib/integrity.js` 的
+ * `assertGrounded*` / `auditPersonalNarrative` 全部配它用）。
+ *
+ * ⚠️ 这里有过一个只在阅读时才暴露的 bug：成稿时拿「选题关联素材 + 按标签检索来的补充
+ * 素材」当证据，工作台打开稿件重新审计却只拿「选题关联素材」。补充素材恰恰是
+ * `searchSupplementary` 里**明确排除了选题关联素材**的那一批，于是一篇合法引用了补充
+ * 素材的稿子，写的时候放行、打开就报「有内容缺少真实素材支撑」、保存还会被拒——
+ * 同一条规则、两份证据集，两边代码单看都对。
+ *
+ * 现在的口径是**整库的个人经历素材**，理由是这条规则问的是「这件事到底发生过没有」，
+ * 而答案在素材库里，跟它挂在哪个选题下无关。放宽候选并不等于放水：
+ * `isPersonalClaimGrounded` 要求二字组重合 ≥ 4 且覆盖该句一半以上，一条无关经历够不着
+ * 这个门槛。**不要为了省一次查询把范围缩回选题**，那正是上面那个 bug。
+ *
+ * `extra` 给本次运行现有、但库里还没有的证据用（Telegram `/推` 的原文、访谈稿），
+ * 它们是同一条规则的额外输入，不是另一套规则。
+ */
+export async function personalEvidence(env, extra = []) {
+  const holes = EVIDENCE_MATERIAL_TYPES.map(() => "?").join(",");
+  const rows = await all(
+    env,
+    `SELECT id, title, type, content FROM materials WHERE type IN (${holes}) ORDER BY created_at ASC`,
+    ...EVIDENCE_MATERIAL_TYPES
+  );
+  return [
+    ...rows.map((r) => ({ id: r.id, title: r.title, type: r.type, note: r.content })),
+    ...extra,
+  ];
 }
 
 export async function inboxOfTopic(env, topicId) {

@@ -54,6 +54,20 @@
   --mark-pink: rgba(244, 114, 182, 0.28);
   --mark-line: rgba(10, 10, 10, 0.55);   /* 下划线式标记 */
 
+  /* 引用标注：「这一句来自某条素材」的底衬。
+     **刻意用中性灰而不是上面那排彩色蒙版**——划词高亮是「我圈的」，引用是「系统标的」，
+     两件事在同一屏正文上出现时必须一眼分得开；都给颜色的话，读者要先猜这块是谁涂的。 */
+  /* **中性灰在这儿失败了，试过两档都读不出来。**
+     原因不是不够深，是正文本身就是黑白灰——灰底衬和字、和边框、和引用块混在同一个
+     色域里，眼睛没有可抓的边界。改用蓝：这一屏里蓝是**只有系统标注在用**的颜色，
+     一眼就知道「这不是我涂的」。
+     不用黄（选区已经是黄的）、不用橙（加粗就是橙的，而被引用的句子十有八九是加粗的，
+     橙底压橙字会糊成一团）。 */
+  --cite-wash: rgba(59, 130, 246, 0.16);
+  --cite-wash-strong: rgba(59, 130, 246, 0.28);
+  --cite-line: rgba(37, 99, 235, 0.6);
+  --cite-num: #2563eb;
+
   /**
    * 正文的**暖色强调**：小标题的底衬 + 加粗的字色/下划线。
    *
@@ -85,6 +99,9 @@
   --text-1: var(--ink-900);
   --text-2: var(--ink-600);
   --text-3: var(--ink-400);
+  /* 外来的纯黑图标（模型榜的厂商 logo）要不要翻过来：亮色 0、暗色 1。
+     这是语义层里唯一一个不是颜色的值——它表达的仍然是「此刻的底是深是浅」 */
+  --logo-flip: 0;
 
   --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.04);
   --shadow: 0 8px 30px rgba(10, 10, 10, 0.06);
@@ -165,12 +182,18 @@
     --mark-blue: rgba(96, 165, 250, 0.24);
     --mark-pink: rgba(244, 114, 182, 0.22);
     --mark-line: rgba(255, 255, 255, 0.55);
+    --cite-wash: rgba(96, 165, 250, 0.22);
+    --cite-wash-strong: rgba(96, 165, 250, 0.34);
+    --cite-line: rgba(147, 197, 253, 0.7);
+    --cite-num: #93c5fd;
     /* 暗色下底衬要更透（深底上一层饱和色很容易糊成一块脏色），而且取的是**浅粉**那一头——
        把浅色那个 rgba(244,72,64) 原样搬过来，在近黑底上会压成一块暗红。
        字色同理要往亮里翻：#de7802 在深底上偏闷。 */
     --band: rgba(251, 191, 188, 0.16);
     --emph: #f59a3c;
     --emph-line: rgba(245, 154, 60, 0.48);
+
+    --logo-flip: 1;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.34);
@@ -457,15 +480,23 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    `minmax(268px, 1fr)`，两行才严丝合缝对齐。
    只放两张卡的话，宽屏上每张会被拉到 750px——一个 46px 的数字浮在那么大一片空白里，
    看着像还没加载完。 */
-.todo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 12px; }
+/* 一排三张卡：左边两张「等你动手」，右边一张「流水线在跑」。
+   ⚠️ **左边两张里还长着「其中最该先做的那一条」**——它原来是一个独立的「系统建议」区块，
+   和这排卡分开摆。那是同一件事说了两遍（一个报数量、一个报该先做哪条），还多一个段头、
+   多一整块高度。合并的来龙去脉见 `Overview.jsx` 的 `TodoCard`。 */
+/* 两张卡，不是三张。「流水线在跑」降级成底下那条细行（见 `PipeStrip`）——
+   左边两张长出条目列表之后，它就成了整排里唯一一块空着的三分之一。 */
+.todo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+/* ⚠️ **外壳不是 button 了**（里面每一行都有按钮，还有「去看看」，button 套 button
+   是非法结构），所以 hover 只改边框、**不再抬升**——不能整块点的东西不该做出能点的样子。 */
 .todo-card {
-  display: grid; grid-template-rows: auto auto auto; gap: 2px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
   text-align: left; padding: 20px 22px 16px;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--r-lg); box-shadow: var(--shadow-sm); color: inherit;
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
-.todo-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow-accent); }
+.todo-card:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); }
 /* 标签用正文字体：等宽包里没有中文字形，「选题待写」会掉进系统回退，
    字重字宽和旁边全对不上；uppercase 对中文更是个空操作。
    两个类名共用一组值，是为了让一排三张卡的第一行落在同一条线上；**不复用同一个类名**——
@@ -478,49 +509,91 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   color: var(--accent);
 }
 .todo-card__hint { font-size: 13px; color: var(--text-3); line-height: 1.55; }
+/* 「最该先做的那几条」。⚠️ **超出的不列，也不在卡里开滚动区**——这个项目否决过
+   「为了少一条滚动条去套 `max-height`」（引用块、看板列、左栏目录都踩过），
+   卡片上那个数字已经说了总共几条。没列全时底下照实写「还有 N 条」。 */
+/* ⚠️ `minmax(0, 1fr)` + 行上的 `min-width: 0` **两处都要**。grid 和 flex 的子项默认是
+   `min-width: auto`（不小于内容），少一处那行文字就**撑破卡片跑到边框外面**，
+   `text-overflow: ellipsis` 根本轮不到生效。踩过。 */
+.todo-card__list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 6px 0 0; padding: 0; list-style: none; }
+.todo-card__row { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 -6px; border-radius: var(--r-ctl); }
+.todo-card__row:hover { background: var(--surface-2); }
+/* 一条一行，**超了截断不折行**：折行的话每条高度不一样，两张卡的底边就对不齐了 */
+.todo-card__top {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 6px; border: 0; background: none; text-align: left; cursor: pointer;
+  font-size: 13px; line-height: 1.5; color: var(--text-1);
+}
+.todo-card__top:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* ⚠️ **加进清单之后这条不消失，只变灰。** 卡片是库的镜子、清单是你的承诺——移掉它，
+   上面那个数字和下面的列表当场对不上。它真正消失是等库里状态变了（见 `TodoCard`）。 */
+.todo-card__row[data-on="true"] .todo-card__top { color: var(--text-3); }
+/* ⚠️ **常驻，不做成 hover 才出现。** 这是这张卡上主要的动作（逐条加进清单），
+   藏起来就没人找得到——和「删一条任务」那种破坏性动作正好相反，那个才该平时不在。
+   「可以点要在静态下就看得出来」是这套界面的明规矩。 */
+.todo-card__add {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-right: 4px;
+  border: 0; border-radius: 50%; background: none; color: var(--accent-soft); cursor: pointer;
+  transition: color .12s var(--ease), background .12s var(--ease);
+}
+.todo-card__row:hover .todo-card__add { color: var(--text-2); }
+.todo-card__add:hover { background: var(--surface); color: var(--text-1); }
+/* 已在清单的那个 ✓ 是**状态**不是动作：不跟着 hover 变，也不该看着能点 */
+.todo-card__add:disabled { cursor: default; color: var(--text-3); }
+.todo-card__row:hover .todo-card__add:disabled { color: var(--text-3); }
+/* 动作行贴着卡片底边，三张卡的按钮才落在同一条线上 */
+.todo-card__acts { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 12px; }
+.todo-card__rest { font-size: 12px; color: var(--text-3); }
 /* 「可以点」要在静态下就看得出来——只靠 hover 抬升的话，截图和第一眼都看不出它是按钮 */
 .todo-card__go {
-  display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0;
+  border: 0; background: none; cursor: pointer;
   font-size: 12px; font-weight: 600; color: var(--accent);
 }
 .todo-card__go svg { transition: transform 0.16s var(--ease); }
-.todo-card:hover .todo-card__go svg { transform: translateX(3px); }
+.todo-card__go:hover svg { transform: translateX(3px); }
 /* 清空了就整张卡安静下去：数字不再是黑的，边框回到常规灰 */
 .todo-card[data-empty="true"] { border-color: var(--border); }
 .todo-card[data-empty="true"] .todo-card__value { color: var(--text-3); font-weight: 500; }
 .todo-card[data-empty="true"] .todo-card__go { color: var(--text-3); }
 
-/* Worker 自己会消化的三段，占三列里的最后一格。
-   **外壳和左边两张卡一样**——同一排里一张有壳一张没壳，看着像那格没加载出来。
-   层次不靠有没有边框，靠内容：那边是一个 46px 的数字，这边是三行小字。 */
-.auto-card {
-  display: flex; flex-direction: column;
-  padding: 20px 22px 16px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+/* Worker 自己会消化的三段，画成**一条有三个节点的流程线**，摆在两张卡底下。
+   **这不是装饰**：灵感进来先「待初筛」，筛完成「待整理」，整理成选题之后「撰写中」——
+   本来就是一条链的三段，前一段的产出是后一段的输入。摊成一排各不相干的数字，
+   这层关系看不出来。
+   ⚠️ **不能删掉**：这是首页上唯一一处能看出「流水线卡住了」的地方（Worker 挂了、
+   LLM key 过期了，表现就是「待初筛」一路往上涨）。删了的话，坏掉是看不见的。 */
+/* 排在页头正下方，只占一行。**没有标题**：三个节点名加上串成一条线，已经把它是什么说完了 */
+.pipe-flow { display: flex; align-items: flex-start; margin: -6px 0 4px; padding: 0 2px; }
+/* 铺满整幅：它在页头正下方，横贯一整行才读得出「这是一条贯穿的流水线」。
+   ⚠️ **两端的节点要向外对齐**（`justify-items: start / end`）：不然圆点贴着边、
+   名字还按圆点居中，就会半个字挂到内容区外面去。 */
+.pipe-flow__track { flex: 1; min-width: 0; display: flex; align-items: flex-start; }
+.pipe-flow__node:first-child { justify-items: start; padding-left: 0; }
+.pipe-flow__node:last-child { justify-items: end; padding-right: 0; }
+/* 连接线对齐到圆点的**中心**：`.pipe-flow__dot` 是 28px，所以往下推 14px。
+   节点是「圆点在上、名字在下」的两行，线要是按整个节点垂直居中就会落到两行之间。 */
+.pipe-flow__line { flex: 1; height: 1px; margin-top: 14px; background: var(--border-strong); }
+.pipe-flow__node {
+  flex: none; display: grid; justify-items: center; gap: 5px;
+  padding: 0 10px; border: 0; background: none; cursor: pointer;
 }
-/* 三行在剩余空间里居中：卡片高度被左边的大卡撑开，靠上排会在底部留一大块空。
-   **限宽**：这一格有 400px，数字贴着最右边的话，「待初筛」和它的 0 中间隔着一大片
-   空白，一行字要横着扫过去才读得完；收到 236px，三个数字仍成一条能扫的竖线。 */
-.auto-card__list { display: grid; gap: 2px; margin: auto 0; padding: 6px 0; max-width: 236px; }
-.auto-card__item {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  height: 30px; padding: 0 8px; margin: 0 -8px; border-radius: var(--r-ctl);
-  border: 0; background: transparent;
-  font-size: 12.5px; color: var(--text-2); white-space: nowrap; text-align: left;
+.pipe-flow__dot {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--canvas);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px;
+  color: var(--text-3); transition: background .16s var(--ease), color .16s var(--ease), border-color .16s var(--ease);
 }
-.auto-card__item:hover { background: var(--surface-2); color: var(--text-1); }
-.auto-card__item svg { flex: none; color: var(--text-3); }
-.auto-card__item:hover svg { color: var(--text-2); }
-.auto-card__name { flex: 1 1 auto; }
-/* 数字靠右成一列：左边有图标当锚点了，数字再挤在图标和文字中间就没有一条能扫的竖线 */
-.auto-card__n {
-  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
-  font-weight: 600; color: var(--text-1);
+.pipe-flow__name { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.pipe-flow__node:hover .pipe-flow__dot { border-color: var(--text-1); color: var(--text-1); }
+.pipe-flow__node:hover .pipe-flow__name { color: var(--text-1); }
+/* ⚠️ **堆了东西才变实心。** 0 是这三段的正常态——给正常态加视觉重量，等于每天都在
+   提醒你一件不用做的事。黑块在这套界面里是「你在这儿」，这里借它表示「东西在这儿」，
+   仍然是同一个语义：位置。 */
+.pipe-flow__node[data-busy="true"] .pipe-flow__dot {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700;
 }
-.auto-card__n.is-zero { color: var(--text-3); font-weight: 400; }
-
-/* ---------- 总览：接着上次 ---------- */
+.pipe-flow__node[data-busy="true"] .pipe-flow__name { color: var(--text-1); font-weight: 600; }
 
 .resume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 12px; }
 /* 三块的出口要落在同一条水平线上，所以 body 撑开、go 压到底 */
@@ -726,14 +799,28 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 
 /* ---------- 状态与反馈 ---------- */
 
+/* ⚠️ **没有左边那道竖线，别加回去。**
+ *
+ * 一道彩色竖线 + 一句加粗标题，是所有界面里最不假思索的那个形状——套在哪儿都长一个样，
+ * 而这套界面的层次本来靠字重、留白和实心块。撤掉之后语气改由**图标的形状**带
+ * （对勾 / 感叹号 / 三角，见 `ui.jsx` 的 `NOTE_ICON`），颜色只在真出错时才上：
+ * 出错要一眼认出来，而「已保存」不需要。
+ *
+ * 底色用 `--canvas` 不用 `--surface`：这块是压在正文之上的一小段旁白，比周围**沉下去**
+ * 一点才像旁白；浮起来（白底 + 阴影）就成了第二个主角。 */
 .note {
-  display: flex; gap: 10px; align-items: flex-start;
-  border: 1px solid var(--border); border-left: 3px solid var(--text-3);
-  border-radius: var(--r-surface); padding: 14px 16px; background: var(--surface);
+  display: flex; gap: 9px; align-items: flex-start;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 12px 14px; background: var(--canvas);
 }
-.note-danger { border-left-color: var(--danger); }
-.note-warn { border-left-color: var(--warn); }
-.note-title { font-weight: 600; }
+.note > svg { flex: none; margin-top: 1px; color: var(--text-3); }
+.note-title { font-weight: 600; font-size: 13.5px; line-height: 1.5; }
+/* 出错那一档是唯一上色的：图标和标题变红、底色带一层很淡的红。
+   边框跟着红一点点就够——整框描红会让一条「填错了」看着像系统崩了。 */
+.note-danger { border-color: color-mix(in srgb, var(--danger) 26%, var(--border)); background: color-mix(in srgb, var(--danger) 4%, var(--canvas)); }
+.note-danger > svg, .note-danger .note-title { color: var(--danger); }
+.note-warn > svg { color: var(--warn); }
+.note-success > svg { color: var(--ok); }
 .note-hint { color: var(--text-2); margin-top: 4px; font-size: 13px; line-height: 1.7; }
 .note code, .page-sub code, .note-hint code {
   font-family: var(--font-mono); font-size: 0.86em;
@@ -747,6 +834,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--border-strong); }
 .dot-ok { background: var(--ok); }
 .dot-bad { background: var(--danger); }
+.dot-warn { background: var(--warn); }
+/* 「没配」不是出错，所以它和默认的 .dot 同色——可选能力空着是正常态，
+   把它画成任何一种有颜色的状态，都等于每次打开设置面板都在提醒你少干了件事 */
+.dot-off { background: var(--border-strong); }
 .dot-accent { background: var(--accent); }
 
 .skeleton {
@@ -901,6 +992,12 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 500px 下这三段会挤成两行，而它们本来就该横着一眼扫完。
  */
 .drawer--wide { width: min(660px, 100%); }
+.organize-picks, .organize-preview { display: flex; flex-direction: column; gap: 8px; }
+.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
+.check-row input { margin-top: 3px; }
+.check-row span { display: grid; gap: 3px; min-width: 0; }
+.check-row small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.organize-item { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
 
 .bk-list { display: flex; flex-direction: column; gap: 6px; }
 .bk-row {
@@ -1018,6 +1115,12 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   margin-left: auto; font-family: var(--font-mono); font-size: 10.5px;
   color: var(--text-3); font-weight: 400; background: none; padding: 0;
 }
+/* 标题旁边那枚点。配好了就只有它——结论进 title，不在字段底下再占一行。
+   用的是侧栏底下「流水线已连接」那同一枚 .dot：界面上「这东西通没通」已经有一套
+   现成的说法了，不该在设置面板里另发明一种 */
+.set-field__dot { margin-left: -2px; }
+.set-field__dot--wait { animation: pulse 1.3s ease-in-out infinite; }
+
 .set-field__req {
   font-style: normal; font-size: 10.5px; font-weight: 500; padding: 1px 6px;
   border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-3);
@@ -1041,13 +1144,16 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    都会出现，而 rows 只能给一个折中值 */
 .set-field__area { width: 100%; resize: vertical; line-height: 1.75; min-height: 90px; }
 
-/* 长说明收进折叠，**默认收起**。踩过的坑一条不删，但它们不该占着一屏 */
-.set-why > summary {
-  cursor: pointer; font-size: 12.5px; color: var(--text-3); width: fit-content; list-style: none;
-}
+/* 长说明就地展开，**默认收起**，而且**不另起一行**——挂在那句一行说明的末尾。
+   单独占一行时，一个字段底下就成了「说明 / 为什么 / 自检」三行灰字，正是上一版被说
+   「一大坨」的原因。整句可点，也比一个孤零零的「▸ 为什么」更像个入口。 */
+.set-why > summary { cursor: pointer; list-style: none; }
 .set-why > summary::-webkit-details-marker { display: none; }
-.set-why > summary::before { content: "▸ "; }
-.set-why[open] > summary::before { content: "▾ "; }
+.set-why__more { margin-left: 7px; white-space: nowrap; color: var(--text-3); }
+.set-why__more::after { content: " ▸"; }
+.set-why[open] .set-why__more::after { content: " ▾"; }
+.set-why > summary:hover .set-why__more,
+.set-why > summary:focus-visible .set-why__more { color: var(--accent-strong); }
 .set-why > p {
   margin: 6px 0 0; font-size: 13px; line-height: 1.65; color: var(--text-3);
   border-left: 2px solid var(--border); padding-left: 10px;
@@ -1084,6 +1190,15 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .set-check--bad .set-check__text { color: var(--danger); }
 .set-check--off { color: var(--text-3); }
 .set-check--off .set-check__label { color: var(--text-2); }
+
+/* **通了就一行小字，不画块面。** 「已配」和上面那个写着「已配置」的输入框说的是同一件事，
+   再套一个灰盒子就是「每个都说的话等于没说」——三条并排堆在段尾时尤其明显（看图才发现的）。
+   块面留给 bad / warn：那时候要占地方的是**下一步做什么**，不是结论本身。 */
+.set-check--flat {
+  background: none; padding: 2px 0 0; font-size: 12.5px; gap: 4px 6px;
+}
+.set-check--flat svg { width: 14px; height: 14px; }
+.set-check--flat .set-check__hint { font-size: 12.5px; }
 
 /* ---------- 流水线提示词 ---------- */
 
@@ -1974,6 +2089,10 @@ kbd {
 .src-chip .dot { background: var(--ok); width: 6px; height: 6px; }
 .src-chip--dead { color: var(--text-3); border-style: dashed; }
 .src-chip--dead .dot { background: var(--danger); }
+/* 快照态：这个榜在**那一刻**是通的，不代表现在。点改成空心（形状区分，不靠颜色），
+   整枚芯片退到次要色——同一排里绿点和「都没读到」的提示不能同时出现在屏幕上。 */
+.src-chip--stale { color: var(--text-3); }
+.src-chip--stale .dot { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
 
 /* ---------- 平台热榜 ---------- */
 
@@ -2155,7 +2274,13 @@ kbd {
 .wall-card__origin {
   font-family: var(--font-mono); font-size: 9.5px; color: var(--text-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* ⚠️ **`min-width: 0` 不能省。** flex 子项的默认最小尺寸是内容宽度，
+     `nowrap` 的长链接（`https://x.com/…`）压根不会缩，`ellipsis` 也就永远不生效——
+     它会把右边那组按钮往外顶。确认态多一颗按钮时最明显。 */
+  min-width: 0; flex: 0 1 auto;
 }
+/* 确认态的两颗按钮是**一组选择题**，要聚在一起靠右，不能被 space-between 撑散 */
+.wall-card__confirm { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
 
 
 /* 面板里的补充说明：挂掉的源、边界情况。它不该抢戏，但也不能没有。 */
@@ -2375,9 +2500,24 @@ kbd {
 .lb__rank { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
 /* 前三名加重：榜单的第一屏信息就是「现在谁在最上面」 */
 .lb__row:nth-of-type(-n + 4) .lb__rank { color: var(--text-1); font-weight: 600; }
-.lb__model { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lb__model { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lb__model-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lb__model strong { font-size: 13.5px; color: var(--text-1); letter-spacing: -0.01em; }
 .lb__model small { font-size: 10.5px; color: var(--text-3); }
+/* 厂商 logo。**定宽的格子，图没抓到也留着**——少一枚图标只是缺个装饰，
+   而一列模型名忽左忽右会让人以为排版坏了。这是这一页唯一一处彩色，
+   和数据图的平台色同一类例外：它标的是「这是谁家的」，不是界面自己的语言 */
+.lb__logo {
+  display: flex; align-items: center; justify-content: center;
+  flex: none; width: 22px; height: 22px;
+}
+.lb__logo img { width: 100%; height: 100%; object-fit: contain; }
+/* 对方自己标出来的纯黑 logo（OpenAI / xAI）在暗色下是黑底上的黑块，得翻过来。
+   **翻不翻由语义层的变量说了算**，组件里不写第二套暗色规则 */
+.lb__logo[data-invert] img { filter: invert(var(--logo-flip)); }
+/* 白色 logo 自带的底块（Moonshot）。**两个主题下都是深色**——图标本身是照着深底画的，
+   跟着主题翻的话亮色下反而看不见了 */
+.lb__logo[data-tile] { background: #17171b; border-radius: 6px; padding: 3px; }
 .lb__date, .lb__pct, .lb__price { font-family: var(--font-mono); font-size: 11px; }
 .lb__price em { font-style: normal; color: var(--border-strong); margin: 0 1px; }
 .lb__score {
@@ -2701,16 +2841,26 @@ kbd {
   font-size: 12.5px; line-height: 1.6;
   animation: toast-in 0.2s ease-out;
 }
-.toast > span { flex: 1 1 auto; min-width: 0; }
+/* 主句 + 副句。副句淡一档、小一号——两句话不是一坨长句，扫一眼就分得出
+   「做完了」和「东西去哪了」。没有副句时这一层不影响布局。 */
+.toast__body { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; }
+.toast__body > span { display: block; }
+.toast__body > small { display: block; font-size: 11px; line-height: 1.55; opacity: 0.62; }
 .toast .btn {
   flex: none; background: transparent; color: inherit; font-weight: 600;
   border-color: rgba(127, 127, 127, 0.6);
 }
 .toast .btn:hover { border-color: currentColor; color: inherit; background: rgba(127, 127, 127, 0.18); }
+/* ⚠️ **`background: transparent` 是这条里最要紧的一句，别当它是多余的。**
+   基类 `.icon-btn` 带着 `background: var(--surface)`（浅色下是白）。这里只覆盖了
+   边框和字色、漏掉了底色，于是黑底回执条上贴着一块**白方块**，而图标是
+   `color: inherit`（也是白）——**白图标画在白底上，屏幕上就是一颗没画完的空按钮**。
+   换成 `×` 字符还是 `IconX` 都一样看不见，因为坏的从来不是图标。 */
 .toast .icon-btn {
-  flex: none; width: 24px; height: 24px; font-size: 15px; line-height: 1;
-  border-color: transparent; color: inherit; opacity: 0.55;
+  flex: none; width: 24px; height: 24px;
+  background: transparent; border-color: transparent; color: inherit; opacity: 0.6;
 }
+.toast .icon-btn svg { width: 14px; height: 14px; }
 .toast .icon-btn:hover { opacity: 1; border-color: transparent; color: inherit; background: rgba(127, 127, 127, 0.18); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 900px) {
@@ -2807,31 +2957,6 @@ kbd {
 .continue:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .continue__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .continue__body strong { font-family: var(--font-display); font-size: 17px; letter-spacing: -0.02em; }
-
-.drawer--wide { width: min(660px, 100%); }
-.organize-picks, .organize-preview { display: flex; flex-direction: column; gap: 8px; }
-.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
-.check-row input { margin-top: 3px; }
-.check-row span { display: grid; gap: 3px; min-width: 0; }
-.check-row small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.organize-item { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
-.set-models { display: flex; flex-direction: column; gap: 12px; }
-.set-models__row {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto); align-items: center; gap: 14px;
-}
-.set-models__copy { min-width: 0; display: grid; gap: 3px; }
-.set-models__copy .field-hint { font-size: 12px; line-height: 1.55; }
-.set-models__row .select { justify-self: end; }
-.set-models__row .select__btn { min-width: 190px; justify-content: flex-start; }
-.set-models__row .select__btn svg:last-child { margin-left: auto; }
-.set-models__row .select__pop { right: 0; left: auto; max-height: 300px; overflow-y: auto; }
-.set-models__row input {
-  justify-self: end; width: 190px; padding: 8px 10px; border: 1px solid var(--border-strong);
-  border-radius: var(--r-ctl); background: var(--canvas); color: inherit; font: inherit; font-size: 12.5px;
-}
-/* 自己的保存按钮：这一段写的是 Worker 的库，不跟着底部那条「写入 .env」走 */
-.set-models__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
-.set-models__foot .field-hint { display: inline-flex; align-items: center; gap: 5px; }
 .continue__where { font-size: 11.5px; color: var(--text-3); }
 .continue__bar { display: block; height: 3px; margin-top: 7px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .continue__bar span { display: block; height: 100%; background: var(--accent); }
@@ -2995,13 +3120,76 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-.publish-panel {
-  margin-top: 28px;
-  padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 94%, var(--ok));
+/* 「记录发布」现在是动作条里的一个按钮 + 一个抽屉，不再是常驻的绿卡片。
+   指标那五格只在抽屉里、且只在「已发布」那一档出现——刚发出去的那一刻它们必然是空的。 */
+/* 抽屉只有 500px 宽，五个指标横着排每格才 80px——「阅读 / 播放」这种标签会被切成三行。
+   三列两行，最后一格空着也认了：格子宽度比「排得满」重要。 */
+.publish-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 2px; }
+
+/**
+ * 真实性告警：状态行里的一枚标记 + 点开才有的面板。
+ *
+ * 用 --warn 不用 --danger：它报的是「这几句还没找到对应的个人经历素材」，
+ * 多数时候的解法是补一条素材而不是改文章。红色是「出错了」的分量，给重了——
+ * 而**一个总在正确的稿子上喊狼来了的告警，三次之后就没人看了**，那才是真的损失。
+ * 高度和「原文」那个链接按钮对齐（22px），状态行才不会被它顶出一道台阶。
+ */
+.doc-flag {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, var(--border));
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--warn) 8%, var(--canvas));
+  font-size: 11.5px; color: var(--text-2); cursor: pointer;
+  transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
 }
+.doc-flag:hover { border-color: var(--warn); color: var(--text-1); }
+.doc-flag > svg:first-child { color: var(--warn); }
+.doc-flag__caret { color: var(--text-3); transition: transform 0.14s var(--ease); }
+.doc-flag[aria-expanded="true"] .doc-flag__caret { transform: rotate(90deg); }
+
+/**
+ * 「去这儿改」跳过去之后底色闪一下。
+ *
+ * **只闪一次就退掉**——它是「在这儿」的提示，不是一个要人去关掉的状态。留着不退的话，
+ * 你改完这段、往下写第二段时，屏幕上还有一块亮着，而它指的事早就办完了。
+ * 用标记黄：这套界面里「这个被圈中了」一直是这个颜色（见 design-system 那条）。
+ */
+/* 亮两下再退。只淡出一次的话，你的视线还在左边那个面板上，等看过来时它已经淡完了——
+   「闪」这个动作要能被余光抓到，一次太容易错过。 */
+@keyframes cm-flash-out {
+  0%, 18%  { background: var(--mark-yellow); }
+  38%      { background: transparent; }
+  55%, 70% { background: var(--mark-yellow); }
+  100%     { background: transparent; }
+}
+/* ⚠️ **linear，不是 `--ease`。** 这套界面的缓动是 expo-out（开头几十毫秒就走完大半），
+   那条曲线是给「移动到位」用的，用在闪光上等于点亮的瞬间就已经淡掉了——
+   测出来 120ms 时透明度只剩 0.047，屏幕上根本看不见。 */
+.cm-flash { animation: cm-flash-out 1.6s linear forwards; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  /* 动画关掉的人也得看得见落点，所以留一层静态底色，不是干脆不画 */
+  .cm-flash { animation: none; background: var(--mark-yellow); }
+}
+
+.doc-flag__panel {
+  margin: -4px 0 18px; padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--warn) 4%, var(--canvas));
+}
+.doc-flag__lead { margin: 0; font-size: 13px; line-height: 1.7; color: var(--text-2); }
+.doc-flag__list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+/* 一句一行，出路就在这句话右边。句子长了先让句子换行，按钮不许被挤没 */
+.doc-flag__list li {
+  display: flex; align-items: start; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--warn) 16%, var(--border));
+}
+/* 一段可能是连着的两三句（Worker 那边合并过），所以要保留换行——挤成一行的话
+   两句话之间那个断点就没了，而人是靠它认出「这是同一个场景」的 */
+.doc-flag__quote { flex: 1 1 260px; white-space: pre-line; font-size: 13px; line-height: 1.7; color: var(--text-1); }
+/* 两个动作贴成一组，别让它们被 justify-content 推到两端各站一边：
+   它们是同一段话的两个出路，不是两件不相干的事 */
+.doc-flag__acts { flex: none; display: flex; align-items: center; gap: 6px; }
 .verification-panel {
   margin-top: 20px;
   padding: 20px;
@@ -3020,28 +3208,201 @@ kbd {
 }
 .verification-panel textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .verification-panel > button { justify-self: start; }
-.today-decisions { margin-bottom: 28px; }
-.today-decisions__list { display: grid; gap: 10px; }
-.today-decision {
-  width: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) 24px; align-items: center; gap: 16px;
-  padding: 18px 20px; text-align: left; border: 1px solid var(--border); border-radius: 16px;
-  background: var(--surface); color: inherit; cursor: pointer;
+/* 我的清单 —— 首页的主位。手写的任务落 vault 的 `05 - 计划/<日期>.md` */
+.day-plan { margin-bottom: 22px; }
+.plan-days { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
+.plan-day {
+  padding: 5px 14px; border: 1px solid var(--border-strong); border-radius: var(--r-pill);
+  background: var(--surface); color: var(--text-2); font-size: 13px; cursor: pointer;
 }
-.today-decision:hover { border-color: var(--text-1); transform: translateY(-1px); }
-.today-decision__rank { font: 600 12px/1 ui-monospace, monospace; color: var(--text-3); }
-.today-decision__body { display: grid; gap: 3px; min-width: 0; }
-.today-decision__body strong { color: var(--accent, #8a5b00); font-size: 13px; }
-.today-decision__body b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
-.today-decision__body small { color: var(--text-3); }
-.publish-panel__head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
-.publish-panel__head h3 { margin: 4px 0 0; font-size: 22px; }
-.publish-panel__head p { max-width: 420px; margin: 0; color: var(--text-3); font-size: 13px; }
-.publish-panel form { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(210px, .45fr); gap: 14px; }
-.publish-panel__metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: 10px; }
-.publish-panel .note, .publish-panel .error-note, .publish-panel > form > button { grid-column: 1 / -1; }
-.publish-panel > form > button { justify-self: end; }
-@media (max-width: 840px) {
-  .publish-panel__head { align-items: start; flex-direction: column; }
-  .publish-panel form { grid-template-columns: 1fr; }
-  .publish-panel__metrics { grid-template-columns: repeat(2, 1fr); }
+.plan-day:hover { border-color: var(--text-1); color: var(--text-1); }
+/* 黑块 = 「你在这儿」。这一排是位置（在看哪一天），不是「我圈中了什么」，所以用黑不用标记黄 */
+.plan-day[data-on="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.plan-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.plan-task { display: flex; align-items: center; gap: 4px; border-radius: var(--r-ctl); }
+.plan-task:hover { background: var(--surface-2); }
+.plan-task__main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  padding: 10px 8px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
 }
+.plan-task__box {
+  flex: none; display: grid; place-items: center; width: 19px; height: 19px;
+  border: 1.5px solid var(--border-strong); border-radius: 5px; color: var(--on-accent);
+  transition: background .12s var(--ease), border-color .12s var(--ease);
+}
+.plan-task__main:hover .plan-task__box { border-color: var(--text-1); }
+.plan-task[data-done="true"] .plan-task__box { background: var(--accent); border-color: var(--accent); }
+.plan-task__text { min-width: 0; font-size: 15px; line-height: 1.5; }
+/* 打完钩变灰 + 删除线。**两样都要**：只变灰在暗色下几乎看不出，只划线又太吵 */
+.plan-task[data-done="true"] .plan-task__text { color: var(--text-3); text-decoration: line-through; }
+.plan-task__del {
+  flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin-right: 4px;
+  border: 0; border-radius: var(--r-ctl); background: none; color: var(--text-3); cursor: pointer;
+  opacity: 0; transition: opacity .12s var(--ease);
+}
+/* 平时不在那儿——删一条不给二次确认，靠这个防误触 */
+.plan-task:hover .plan-task__del, .plan-task__del:focus-visible { opacity: 1; }
+.plan-task__del:hover { background: var(--surface); color: var(--danger); }
+
+/* 「+」跟在「明天」后面：清单空着时整块就只剩这一排，没有说明文字、没有空输入框 */
+.plan-plus {
+  display: grid; place-items: center; width: 30px; height: 30px; margin-left: 2px;
+  border: 1px dashed var(--border-strong); border-radius: 50%;
+  background: none; color: var(--text-2); cursor: pointer;
+}
+.plan-plus:hover { border-style: solid; border-color: var(--text-1); color: var(--text-1); }
+.plan-plus[aria-expanded="true"] { border-style: solid; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* 路径挂在这一排最右端，不再单独占一行。它是唯一说明「清单存到哪了」的地方，不能删 */
+.plan-where {
+  margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--text-3);
+}
+.plan-add { display: flex; gap: 8px; margin-top: 6px; }
+.plan-add input {
+  flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-ctl); background: var(--canvas); color: var(--text-1); font: inherit; font-size: 14px;
+}
+.plan-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.plan-add button {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px;
+  border: 1px solid var(--accent); border-radius: var(--r-ctl);
+  background: var(--accent); color: var(--on-accent); font-size: 14px; cursor: pointer;
+}
+/* 不能拿 opacity 压黑底按钮：淡下去的黑是一块灰板，看着像**坏了**而不是「还不能点」。
+   退成描边按钮，「主动作」这个身份让给输入框里真的写了字的那一刻。 */
+.plan-add button:disabled {
+  border-color: var(--border-strong); background: none; color: var(--text-3); cursor: default;
+}
+.plan-foot { margin: 10px 0 0; color: var(--text-3); font-size: 12px; }
+
+/* 左边清单、右边大环。右栏**定宽**：按比例分的话，环会跟着左边任务文字的长短忽大忽小 */
+.plan-body { display: grid; grid-template-columns: minmax(0, 1fr) 212px; gap: 40px; align-items: start; }
+/* 环不在时清单吃满整行——留着那 212px 空栏的话，输入框会莫名其妙短一截 */
+.plan-body:not(:has(.plan-side)) { grid-template-columns: minmax(0, 1fr); }
+.plan-main { min-width: 0; }
+/* ⚠️ **环垂直居中，不顶在上边。** 任务一多左栏就比右栏高一大截，环钉在顶上时下面那块
+   空白看着像少画了东西；居中之后同样的空白平分到上下，成了留白。
+   **不让环随任务数变大**——直径要是编码了任务总量，这个图形就在同时表达两件事
+   （完成度 + 总量），而人只会读出一件。 */
+.plan-side { display: flex; align-items: center; justify-content: center; align-self: stretch; }
+
+/* 进度环。分母是清单条数——这也是它能存在的全部理由（见 ProgressRing）。
+   一条任务都没有时照画：空清单是最常见的初始状态，藏起来等于这个环从来没被看见过。 */
+.plan-ring { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.plan-ring__dial { position: relative; width: 176px; height: 176px; }
+.plan-ring__dial svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.plan-ring circle { fill: none; stroke-width: 9; }
+.plan-ring__track { stroke: var(--border); }
+.plan-ring__arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .35s var(--ease); }
+/* ⚠️ 定位容器里**只放一个**行内块（见 ProgressRing 的注释）：摊成两个子元素的话，
+   grid 会把它们上下摞起来、flex + baseline 会把整行顶到环的上边缘。 */
+.plan-ring__label {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 44px; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 1;
+  color: var(--accent);
+}
+.plan-ring__label i {
+  font-style: normal; font-size: 18px; font-weight: 500; letter-spacing: 0; color: var(--text-3);
+}
+.plan-ring__note { font-size: 13px; color: var(--text-3); }
+
+/* 窄一点的窗口把环挪到清单下面。**不做移动端**，这只是防止 1280 以下把任务文字挤成两个字一行 */
+@media (max-width: 1180px) {
+  .plan-body { grid-template-columns: 1fr; gap: 20px; }
+  .plan-side { justify-content: flex-start; }
+}
+
+/* ⚠️ **总览这一页的段间距整体收窄。** `.section-head` 默认 42px 上边距，四段摞下来光空白
+   就有一百六十多像素——「接着上次」被顶到首屏之外，而这一页的用处恰恰是一眼看全。
+   只在这一页压，不动全局：别的页面一屏只有一段，那 42px 是对的。 */
+.overview-block > .section-head { margin-top: 22px; }
+.overview-block:first-of-type > .section-head { margin-top: 24px; }
+
+/* ---------- 洞察跑批：就绪面板 + 进度条 ---------- */
+
+/* 面板挂在页头按钮下方，绝对定位不占位——它是「问一句再跑」的临时物，
+   不是这一页的常驻结构。挤进文档流的话，报告列表会在开合之间上下跳。 */
+.run-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
+  width: min(420px, calc(100vw - 48px));
+  padding: 16px 18px 14px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 14px; box-shadow: 0 18px 40px rgba(0, 0, 0, .12);
+}
+.page-header__aside { position: relative; }
+
+.run-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.run-panel__head b { font-size: 15px; }
+/* 「已有报告，跑完会覆盖正文」这句会换行，整句连标点一起断开才不会把右括号甩到下一行 */
+.run-panel__week { margin: 0 0 10px; font-size: 13px; line-height: 1.7; color: var(--text-2); }
+.run-panel__warn { display: inline-block; color: var(--emph); }
+.run-panel__err { margin: 0 0 10px; font-size: 13px; color: var(--emph); }
+
+.run-panel__list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
+.run-panel__list li { font-size: 13px; color: var(--text-2); }
+/* 缺没缺靠**字形**区分（✓ / ✗）不只靠颜色——色觉差异下也读得出来 */
+.run-panel__list .is-missing { color: var(--emph); }
+.run-panel__dim { color: var(--text-3); }
+
+/* 状态那一行（不管是「要花钱」还是「不花钱」）都要和下面的挂账块隔开：
+   .page-sub 全局是 margin:0，两段贴在一起会读成同一段 */
+.run-panel .page-sub { margin: 0 0 12px; }
+.run-panel__cost { margin: 0 0 12px; padding: 8px 10px; font-size: 13px; line-height: 1.6;
+  background: var(--surface-2); border-radius: 8px; color: var(--text-2); }
+
+.run-panel__pending { margin: 0 0 12px; font-size: 13px; color: var(--text-2); }
+.run-panel__pending ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.run-panel__pending code { font-family: var(--font-mono); font-size: 12px; }
+
+.run-panel__actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.run-panel__note { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-3); }
+
+/* 进度条本体。跑完和失败都留着——**失败原因比进度重要，不能一结束就消失**。 */
+.run-progress {
+  margin: 0 0 18px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.run-progress.is-failed { border-color: var(--emph-line); }
+.run-progress__top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.run-progress__stage { flex: 1; font-size: 13px; color: var(--text-1); }
+.run-progress__dim { color: var(--text-3); }
+.run-progress__pct { font-family: var(--font-mono); font-size: 13px; color: var(--text-2); }
+
+.run-progress__bar { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.run-progress__bar > span {
+  display: block; height: 100%; background: var(--accent);
+  /* 只给宽度过渡，不做循环动画：**动起来的进度条会让「卡住」看不出来**，
+     而卡在哪一步正是这个组件要回答的问题。 */
+  transition: width .4s ease;
+}
+.run-progress.is-failed .run-progress__bar > span { background: var(--emph); }
+
+.run-progress__err { margin: 8px 0 0; font-size: 13px; color: var(--emph); }
+.run-progress__note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-3); }
+.run-progress__note code { font-family: var(--font-mono); font-size: 11px; }
+
+/* ---------- 设置面板：各环节模型 ----------
+ *
+ * 一行一个环节：左边是这一步在干什么 + 选型建议，右边是下拉。
+ * **建议写在名字底下、不写成 tooltip**：这一段的全部价值就是「哪一步值得花钱」，
+ * 藏进悬停里等于没写。
+ */
+.set-models { display: flex; flex-direction: column; gap: 12px; }
+.set-models__row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto); align-items: center; gap: 14px;
+}
+.set-models__copy { min-width: 0; display: grid; gap: 3px; }
+.set-models__copy .field-hint { font-size: 12px; line-height: 1.55; }
+.set-models__row .select { justify-self: end; }
+.set-models__row .select__btn { min-width: 190px; justify-content: flex-start; }
+.set-models__row .select__btn svg:last-child { margin-left: auto; }
+.set-models__row .select__pop { right: 0; left: auto; max-height: 300px; overflow-y: auto; }
+.set-models__row input {
+  justify-self: end; width: 190px; padding: 8px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-ctl); background: var(--canvas); color: inherit; font: inherit; font-size: 12.5px;
+}
+/* 自己的保存按钮：这一段写的是 Worker 的库，不跟着底部那条「写入 .env」走 */
+.set-models__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+.set-models__foot .field-hint { display: inline-flex; align-items: center; gap: 5px; }

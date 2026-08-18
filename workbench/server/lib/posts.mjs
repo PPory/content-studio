@@ -99,7 +99,7 @@ export function normalizeNumber(v) {
 // 标题会被改、日期不会，但只靠日期又区分不了同一天发的两条——所以三样一起。
 export const postKey = (r) => (r.url ? `u:${r.url}` : `t:${r.platform}|${r.date}|${normTitle(r.title)}`);
 
-// 比标题时剥掉话题标签和 emoji：小红书标题里挂着 #话题，平台导出和 Notion 里的写法常常不一样
+// 比标题时剥掉话题标签和 emoji：小红书标题里挂着 #话题，平台导出和库里的写法常常不一样
 export const normTitle = (t) =>
   String(t || "")
     .replace(/#[^\s#]+/g, "")

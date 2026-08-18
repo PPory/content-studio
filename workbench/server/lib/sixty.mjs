@@ -16,17 +16,37 @@ const DEFAULT_BASE = "https://your-60s-instance.example.com";
 const TIMEOUT_MS = 10_000;
 
 // id 就是路由后缀。加榜单只往这里加一行，别的地方不用动。
+//
+// **这个数组的顺序就是界面上的顺序**（`fetchBoards` 原样 map，前端不再排一次）。
+// 排在前面的是内容离自己近、看得最勤的那几个。
+//
+// ⚠️ **`sixtyPing` 拿 `BOARDS[0]` 当「地址通不通」的探针**，所以第一项要挑一个
+// 长期稳定的榜——把一个正在被风控的榜换到第一位，探针会一直说地址不通。
 export const BOARDS = [
   { id: "weibo", path: "/v2/weibo", label: "微博热搜" },
-  { id: "zhihu", path: "/v2/zhihu", label: "知乎话题榜" },
   { id: "douyin", path: "/v2/douyin", label: "抖音热搜" },
-  { id: "bili", path: "/v2/bili", label: "哔哩哔哩热搜" },
   { id: "toutiao", path: "/v2/toutiao", label: "今日头条热搜" },
+  { id: "zhihu", path: "/v2/zhihu", label: "知乎话题榜" },
+  { id: "bili", path: "/v2/bili", label: "哔哩哔哩热搜" },
   { id: "rednote", path: "/v2/rednote", label: "小红书热点" },
 ];
 
 export function sixtyBase(env) {
   return (env?.SIXTY_SECONDS_API_BASE_URL || DEFAULT_BASE).replace(/\/+$/, "");
+}
+
+/**
+ * 地址到底填没填。
+ *
+ * ⚠️ **「没配地址」和「上游挂了」必须分成两件事**，因为下一步完全不同：
+ * 前者要去设置面板填一行，后者只能等。上一版两者长得一模一样——占位域名 DNS 解析失败，
+ * 六个榜整整齐齐 `fetch failed`，界面照旧退回快照并说一句「今天都没抓到」，
+ * 看起来就是「上游今天不行」。而真相是这台机器从来就没配过地址，
+ * 那句话永远为真，热榜那一栏会一直显示一份越来越旧的快照——**只有看时间戳才发现**。
+ */
+export function sixtyConfigured(env) {
+  const base = sixtyBase(env);
+  return Boolean(base) && base !== DEFAULT_BASE;
 }
 
 // 热度是个裸数字（23214926），直接显示没人读得出来。折成「2321.5万」。
@@ -45,6 +65,9 @@ const clean = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
 function shortReason(msg) {
   const s = String(msg || "");
   if (/DOCTYPE|not valid JSON|返回不是 JSON/i.test(s)) return "上游返回了网页，多半被风控";
+  // undici 把 DNS 失败、连接被拒、代理不通全压成一句光秃秃的 "fetch failed"。
+  // 原样铺到界面上没有任何信息量，而它恰恰是「地址填错了」最常见的样子
+  if (/fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|socket hang up/i.test(s)) return "连不上（地址不对或网络不通）";
   if (/Cannot read propert|undefined|map/i.test(s)) return "上游解析失败";
   if (/超时|timeout|abort/i.test(s)) return "超时";
   if (/空列表/.test(s)) return "返回空列表";
@@ -103,5 +126,27 @@ async function fetchBoard(base, board, limit) {
 /** 六个榜一起抓，互不影响。 */
 export async function fetchBoards(env, { limit = 10 } = {}) {
   const base = sixtyBase(env);
+  // 没配地址就**不去打那个占位域名**：六次 DNS 失败要占满超时，而结果是已知的。
+  // 如实回「没配」，界面据此给的是「去设置里填」，不是「上游挂了，过会儿再刷」
+  if (!sixtyConfigured(env)) {
+    return BOARDS.map((b) => ({
+      id: b.id,
+      label: b.label,
+      ok: false,
+      error: "没填 SIXTY_SECONDS_API_BASE_URL",
+      reason: "没配数据源地址",
+      count: 0,
+      items: [],
+    }));
+  }
   return Promise.all(BOARDS.map((b) => fetchBoard(base, b, limit)));
+}
+
+/**
+ * 自检用：只探一个榜，不探六个。
+ * 设置面板那一枚点回答的是「这个实例还活不活着」，一条就够——
+ * 某个榜被上游风控（B 站长期如此）不代表实例有问题，那种事热点页自己会逐榜标出来。
+ */
+export async function probeSixty(env) {
+  return fetchBoard(sixtyBase(env), BOARDS[0], 1);
 }

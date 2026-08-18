@@ -11,7 +11,12 @@ workbench/   本地工作台：React + Vite，API 挂在 dev server 中间件里
 
 > **Worker 是所有数据规则的唯一真源。工作台不定义任何数据规则。**
 
-工作台拿到的是 `/wb/*` 压平后的扁平字段，不是数据库原始行；vault 的文件路径也由 Worker 在响应里给（`vaultPath`），工作台照着读、绝不自己拼。**这条守住了，换数据库时工作台一行都不用改**——这套东西从 Notion 迁到 D1 时，`/wb/*` 的对外契约一个字没动。
+工作台拿到的是 `/wb/*` 压平后的扁平字段，不是数据库原始行——它不知道有几张表、列叫什么、状态存的是中文还是枚举。**这条守住了，换数据库时工作台一行都不用改**——这套东西从 Notion 迁到 D1 时，`/wb/*` 的对外契约一个字没动。
+
+> ⚠️ **归档到 vault 的那条路不在这个契约里。** Worker 把归档路径写进 D1 的 `vault_path` 列，
+> 但 `/wb/*` **不回这个字段**；工作台界面上的 vault 路径是它自己扫 vault 得到的
+>（`workbench/server/lib/search.mjs`）。要在工作台里用「这条素材归档到哪个文件了」，
+> 得先在 Worker 的响应里把它压平出来——现在没有，别照着猜一个字段名去取。
 
 ## 改哪个包
 
@@ -40,5 +45,7 @@ cd workbench && npm run check && npm test
 ## 分发相关
 
 - `worker/wrangler.jsonc` 和 `workbench/.env` 都在 .gitignore 里，仓库里只有 `.example` 版本。**不要把自己的值改进 example 文件**，那是给下一个 clone 的人看的。
-- 加一个新的配置项时，同步更新对应的 `.example`——漏了的话别人换台机器就少一个变量，而且往往是静默失效。
+- ⚠️ **工作台的 `.env` 变量清单真源是 `workbench/server/lib/settings-schema.mjs`，不是 `.env.example`。**
+  加变量改那一处，设置面板和 `/api/config` 才会跟着有；只改 example 的话面板里根本不出现，而且不报错。
+  改完顺手把 `.example` 也补上——那份是给「还没跑起来」的那一刻看的。
 - 用 python 测线上端点时**必须带浏览器 UA**：`Python-urllib` 会被 Cloudflare 直接 403（`error code: 1010`），`Go-http-client` 这类反而放行。排查时别把这个当成自己代码的问题。

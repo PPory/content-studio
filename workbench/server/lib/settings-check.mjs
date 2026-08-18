@@ -19,9 +19,10 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { DIRS } from "./vault-dirs.mjs";
 import { callWorker } from "./worker.mjs";
-import { mediacrawlerDir, pipelineDir } from "./settings-schema.mjs";
+import { mediacrawlerDir, workerDir } from "./settings-schema.mjs";
 import { typesetDir } from "../routes/tools.mjs";
 import { ENGINES } from "../routes/agent.mjs";
+import { probeSixty, sixtyConfigured } from "./sixty.mjs";
 
 // ok=通了 / warn=能用但有话说 / bad=配了却不通 / off=没配（可选能力的正常态）
 const R = (id, label, status, text, hint = "") => ({ id, label, status, text, ...(hint ? { hint } : {}) });
@@ -57,16 +58,16 @@ async function checkWorker(env) {
   const url = (env.WORKER_URL || "").trim();
   const key = (env.WORKBENCH_KEY || "").trim();
   if (!url && !key) return R("worker", "流水线", "off", "没接", "不接的话「创作」页的四个库是空的，其余功能不受影响");
-  if (!url) return R("worker", "流水线", "bad", "填了密钥但没填地址", "把 content-pipeline 部署出来的 workers.dev 地址填上");
-  if (!key) return R("worker", "流水线", "bad", "填了地址但没填密钥", "在 content-pipeline 里跑 npx wrangler secret put WORKBENCH_KEY，把同一串填进来");
+  if (!url) return R("worker", "流水线", "bad", "填了密钥但没填地址", "把 worker/ 部署出来的 workers.dev 地址填上");
+  if (!key) return R("worker", "流水线", "bad", "填了地址但没填密钥", "在 worker/ 目录里跑 npx wrangler secret put WORKBENCH_KEY，把同一串填进来");
 
   const { status, data } = await callWorker(env, "status");
   // **401 和「连不上」要分开说**：现在界面上这两种长得一模一样，而它们的下一步完全不同
   if (status === 401 || status === 403) {
-    return R("worker", "流水线", "bad", "地址通了，密钥不对", "两边要是同一串：这里填的，和 content-pipeline 里 wrangler secret put 的");
+    return R("worker", "流水线", "bad", "地址通了，密钥不对", "两边要是同一串：这里填的，和 worker/ 里 wrangler secret put 的");
   }
   if (status === 503) return R("worker", "流水线", "bad", data?.error || "连不上", data?.hint || "检查网络和地址");
-  if (status === 404) return R("worker", "流水线", "bad", "地址通了，但没有 /wb 端点", "在 content-pipeline 里跑一次 npx wrangler deploy");
+  if (status === 404) return R("worker", "流水线", "bad", "地址通了，但没有 /wb 端点", "在 worker/ 目录里跑一次 npx wrangler deploy");
   if (status !== 200 || !data?.ok) {
     return R("worker", "流水线", "bad", data?.error || `Worker 回了 HTTP ${status}`, data?.hint || "用 npx wrangler tail 看真实报错");
   }
@@ -91,6 +92,24 @@ function checkFirecrawl(env) {
   }
   // 自托管默认不设鉴权，所以「有地址」单独成立（和 `lib/article.mjs` 的 viaFirecrawl 同一条判据）
   return R("firecrawl", "热点原文兜底", "ok", base ? `已配（自托管 ${base}）` : "已配（官方云端）");
+}
+
+/**
+ * 平台热榜的数据源。
+ *
+ * 这一条存在的理由和整个自检一样：**不配的表现是「看起来一切正常」**。六个榜全部失败时
+ * 热点页退回上一次成功的快照，界面上没有一处红的，只有那行时间戳在慢慢变旧。
+ * 没有这枚点的话，唯一的发现方式是自己去读 hot.mjs。
+ */
+async function checkSixty(env) {
+  if (!sixtyConfigured(env)) {
+    return R("sixty", "平台热榜", "off", "没配数据源地址", "「热点 → 平台热榜」那六个榜取不到，只会显示上一次成功的快照；另外两个 tab 不受影响");
+  }
+  const r = await probeSixty(env);
+  if (!r.ok) {
+    return R("sixty", "平台热榜", "bad", `地址填了，${r.label}读不到（${r.reason || r.error}）`, "浏览器打开这个地址的 /health 看看实例还在不在；workers.dev 在这台机器上还要能走代理");
+  }
+  return R("sixty", "平台热榜", "ok", "连上了");
 }
 
 /**
@@ -146,7 +165,9 @@ async function checkTypeset(env) {
   if (!(await exists(dir))) {
     return R("typeset", "排版工具", "bad", `找不到 ${dir}`, "把 wechat-typeset clone 到工作台的同级目录，或者在上面填它的路径");
   }
-  return R("typeset", "排版工具", "ok", "找到了", dir);
+  // ok 时**不带目录**：这条自检画在 TYPESET_DIR 字段底下，而那个字段上面
+  // 就写着「留空时用：<路径>」——同一个路径说两遍。出错分支照旧要给路径
+  return R("typeset", "排版工具", "ok", "找到了");
 }
 
 async function checkMediacrawler(env) {
@@ -154,20 +175,20 @@ async function checkMediacrawler(env) {
   if (!(await exists(dir))) {
     return R("mediacrawler", "站内探针", "off", "没装 MediaCrawler", "洞察报告会少「小红书 / 抖音站内」这条腿，其余照常");
   }
-  return R("mediacrawler", "站内探针", "ok", "找到了", dir);
+  return R("mediacrawler", "站内探针", "ok", "找到了");
 }
 
 /**
- * content-pipeline 的本地目录。**只用来找提示词文件**——工作台连 Notion 走的是
- * Worker 的网络地址，和这个目录无关。所以找不到时是 `off` 不是 `bad`：
- * 少的只是「在设置里改流水线提示词」这一件事。
+ * worker/ 的本地目录。**只用来找提示词文件**——工作台取数据走的是 Worker 的网络地址，
+ * 和这个本地目录无关。所以找不到时是 `off` 不是 `bad`：
+ * 少的只是「在设置里改流水线提示词」这一件事，四个库照样能用。
  */
-async function checkPipelineDir(env) {
-  const dir = pipelineDir(env);
+async function checkWorkerDir(env) {
+  const dir = workerDir(env);
   if (!(await exists(path.join(dir, "prompt")))) {
-    return R("pipedir", "流水线提示词", "off", `没找到 ${dir}/prompt`, "把 content-pipeline clone 到工作台的同级目录，或者在「本机路径」里填它的位置");
+    return R("workerdir", "流水线提示词", "off", `没找到 ${dir}/prompt`, "合仓之后它应该就是 workbench 的同级 worker/；不在那儿的话在「本机路径」里填它的位置");
   }
-  return R("pipedir", "流水线提示词", "ok", "找到了", path.join(dir, "prompt"));
+  return R("workerdir", "流水线提示词", "ok", "找到了");
 }
 
 /**
@@ -175,7 +196,7 @@ async function checkPipelineDir(env) {
  * 那时候用户会以为所有配置都错了。
  */
 export async function runChecks(env) {
-  const jobs = [checkVault, checkWorker, checkDeepl, checkFirecrawl, checkEngines, checkTypeset, checkMediacrawler, checkPipelineDir];
+  const jobs = [checkVault, checkWorker, checkDeepl, checkFirecrawl, checkSixty, checkEngines, checkTypeset, checkMediacrawler, checkWorkerDir];
   return Promise.all(
     jobs.map(async (fn) => {
       try {

@@ -16,13 +16,14 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, drawSelection } from "@codemirror/view";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { EditorView, keymap, drawSelection, Decoration } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { renderMarkdown } from "../lib/markdown.js";
+import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -137,11 +138,76 @@ function insertBlock(view, text) {
 
 const HEADINGS = ["正文", "标题 1", "标题 2", "标题 3"];
 
-export function MarkdownEditor({ value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled }) {
+/**
+ * 「跳到这句话」的落地：**选中 + 滚进视野 + 底色闪一下**。
+ *
+ * 三样缺一不可。只滚过去的话，一屏 Markdown 全是同色的字，人到了也认不出是哪句；
+ * 只选中的话，选区在没有焦点的编辑器里是一块很淡的灰，从别处点过来根本注意不到；
+ * 而闪光只闪一下就退掉——**它是一次「在这儿」的提示，不是一个要人去关掉的状态**。
+ */
+const setFlash = StateEffect.define();
+const flashMark = Decoration.mark({ class: "cm-flash" });
+const flashField = StateField.define({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setFlash)) {
+        return e.value ? Decoration.set([flashMark.range(e.value.from, e.value.to)]) : Decoration.none;
+      }
+    }
+    // 文档一改就撤掉：位置会挪，而这本来就是个一次性的提示
+    return tr.docChanged ? Decoration.none : deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/**
+ * 在正文里找到 `text` 并跳过去。找不到就什么都不做——**宁可没反应，也不能跳到一个错的地方**。
+ *
+ * ⚠️ 整段找不到时退回**首行**。告警里那段话是 Worker 在**入库时的原始正文**上切出来的，
+ * 而编辑器里这份过了 `unescapeNewlines` / `stripLegacyDraftWarnings`，段落之间的字节可能
+ * 已经不一样了。首行几乎总能命中，而「跳到这一段的开头」已经完成了这次点击的全部意图。
+ */
+function revealText(view, text) {
+  const doc = view.state.doc.toString();
+  const want = String(text || "").trim();
+  if (!want) return false;
+  let from = doc.indexOf(want);
+  let len = want.length;
+  if (from < 0) {
+    const head = want.split(String.fromCharCode(10))[0].trim();
+    if (head.length < 6) return false;
+    from = doc.indexOf(head);
+    len = head.length;
+  }
+  if (from < 0) return false;
+  const to = Math.min(doc.length, from + len);
+  /**
+   * ⚠️ **光标收在段首，不整段选中。** 试过选中整段，撤了：`drawSelection` 那层淡紫
+   * 铺满整段，把闪光盖成一块说不清是什么颜色的东西——而闪光正是这次点击唯一的
+   * 「就是这儿」的信号。收成光标之后，黄色闪光自己说话，光标也已经落在要改的地方。
+   */
+  view.dispatch({
+    selection: { anchor: from },
+    effects: [setFlash.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })],
+  });
+  view.focus();
+  return true;
+}
+
+export function MarkdownEditor({
+  value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled,
+  citations, onCitations, onCiteClick, revealRequest,
+  revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
+}) {
   const host = useRef(null);
   const view = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onCiteClickRef = useRef(onCiteClick);
+  onCiteClickRef.current = onCiteClick;
+  const onCitationsRef = useRef(onCitations);
+  onCitationsRef.current = onCitations;
   const [preview, setPreview] = useState(false);
 
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
@@ -160,8 +226,30 @@ export function MarkdownEditor({ value, onChange, ariaLabel = "正文", insertRe
           markdown({ base: markdownLanguage }),
           syntaxHighlighting(mdHighlight),
           cmTheme,
+          citationExtension,
+          flashField,
+          // 点正文里被标注的那句 → 右侧面板高亮对应素材。反方向由 revealRequest 走。
+          EditorView.domEventHandlers({
+            /**
+             * 点正文里被标注的那一句 → 右侧对应素材高亮并滚进视野。
+             *
+             * 位置用 `posAtCoords` 反查，而不是读 DOM 上的 `data-cite`：同一条素材
+             * 可能有好几处，只知道 id 定位不到「点的是第几处」。
+             */
+            click(event, view) {
+              // **点没标注的地方 = 取消选中**，所以这里不提前 return：
+              // 选中态只能换、不能退出的话，想安静读一遍正文时右边永远有一张卡亮着
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              onCiteClickRef.current?.(focusCitationAt(view, pos));
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
+            // 标注的**当下**状态（位置挪过、stale 重算过）回给右侧面板。
+            // 面板要靠它说「已用 2 处」和「有 1 处改过了」——那两句话必须跟着编辑走，
+            // 而位置只有编辑器这一份是准的。字段没变时是同一个对象，比较引用就够。
+            const now = u.state.field(citationField);
+            if (u.startState.field(citationField) !== now) onCitationsRef.current?.(now.items);
           }),
         ],
       }),
@@ -184,6 +272,37 @@ export function MarkdownEditor({ value, onChange, ariaLabel = "正文", insertRe
       v.dispatch({ changes: { from: 0, to: cur.length, insert: value } });
     }
   }, [value]);
+
+  /**
+   * 标注换了一批（起稿完成 / 重新核对完）。
+   *
+   * ⚠️ **必须排在上面那个「外部换值」effect 之后**：换文档和换标注常常是同一次渲染
+   * 里的事，而标注的下标是**针对新正文**算的。反过来的话，新标注会先落到旧文档上，
+   * 被 `withStale` 判成一片过时，然后才换文档——用户看到的是满屏虚线问号。
+   */
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    v.dispatch({ effects: setCitations.of(citations || []) });
+  }, [citations]);
+
+  // 从右侧面板点某条素材 → 正文滚到它第 seq 处引用（同一条用了多处时循环着看）
+  useEffect(() => {
+    // silent = 正文里刚点过，位置已经在眼前，只是把 seq 记下来给下一次点卡片用
+    if (view.current && revealRequest?.id && !revealRequest.silent) {
+      revealCitation(view.current, revealRequest.id, revealRequest.seq || 0);
+    }
+  }, [revealRequest]);
+
+  /**
+   * 「去这儿改」：进编辑器的同时跳到被点名的那一段。
+   *
+   * ⚠️ 靠 `nonce` 触发而不是靠 text 变没变——同一段连点两次也该再跳一次（人多半是
+   * 滚走了想回来）。文本相同就不响应的话，第二次点看着就是坏了。
+   */
+  useEffect(() => {
+    if (view.current && revealTextRequest?.nonce) revealText(view.current, revealTextRequest.text);
+  }, [revealTextRequest]);
 
   useEffect(() => {
     const v = view.current;

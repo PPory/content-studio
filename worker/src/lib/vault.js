@@ -116,8 +116,9 @@ export function titledBody(title, body) {
 }
 
 // UTF-8 → base64。btoa 只吃 Latin-1，中文必须先编码成字节再逐字节转。
-function toBase64(text) {
-  const bytes = new TextEncoder().encode(text);
+// 也收 Uint8Array：备份写的是 gzip 后的二进制，不是文本。
+function toBase64(data) {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
   let binary = "";
   const CHUNK = 0x8000; // 一次 spread 太多字节会爆栈
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -153,9 +154,9 @@ async function putFile(env, path, content, message) {
  * 不先查存在性再写：查和写之间有竞态，而且多花一次 subrequest。直接写，让 GitHub
  * 用 422 告诉我们「这个名字被占了」——服务端的原子拒绝比客户端的先查后写更可靠。
  */
-async function createFile(env, dir, base, content, message) {
+async function createFile(env, dir, base, content, message, { ext = "md" } = {}) {
   for (let i = 0; i < 5; i++) {
-    const name = i === 0 ? `${base}.md` : `${base}-${i + 1}.md`;
+    const name = i === 0 ? `${base}.${ext}` : `${base}-${i + 1}.${ext}`;
     const path = `${dir}/${name}`;
     const { conflict } = await putFile(env, path, content, message);
     if (!conflict) return path;
@@ -234,6 +235,27 @@ export async function archiveInbox(env, row, { tags = [] } = {}) {
     parts.join(""),
     `pipeline: 灵感｜${row.title.slice(0, 40)}`
   );
+}
+
+/**
+ * D1 整库备份 → `99 - 个人工作台/_备份/d1-YYYY-MM-DD.json.gz`。
+ *
+ * **和上面三个归档不是一件事，别按它们的思路读。** 那三个写的是「人要读的一份 Markdown」；
+ * 这个写的是**机器要读回去的一份数据**，正文里一个字都不给人看。放同一个文件里是因为
+ * GitHub 的写入链路（不带 sha、422 换名、base64 分块）只该有一份。
+ *
+ * 三个选择的理由：
+ *
+ *  * **下划线开头的目录**：和洞察的 `_material/` 同一个约定——`_` 打头＝机器产物。
+ *    工作台的全局检索只收 `.md` 且只扫白名单目录，所以这些文件在界面上完全不存在。
+ *  * **gzip**：不压的话几千行正文轻松过 1 MB，而 GitHub Contents API 对超过 1 MB 的
+ *    文件就不保证了；更实际的是这个仓库会同步到你本机的 Obsidian，每周一份未压缩的
+ *    全库 dump 一年就是几百 MB 躺在笔记库里。压完通常十分之一。
+ *  * **一次一个新文件，不覆盖**：正合 vault「只创建不修改」的硬约束，而且备份本来
+ *    要的就是**多个时间点**——覆盖成一个文件只剩一个还原点，那才是白备份。
+ */
+export async function archiveBackup(env, base, gzipped) {
+  return createFile(env, `${WB_ROOT}/_备份`, base, gzipped, `backup: D1 ${base}`, { ext: "json.gz" });
 }
 
 /**

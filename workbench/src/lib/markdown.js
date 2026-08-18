@@ -3,7 +3,7 @@
  *
  * 工作台里凡是走 `dangerouslySetInnerHTML` 的地方（正文 `Reader`、右栏 AI 输出 `Md`、
  * 热点原文）一律经过这里。**不允许任何页面自己 `marked.parse` 之后直接塞进 DOM**——
- * 那些内容全都来自外部：抓回来的网页、epub 转出来的 XHTML、Notion 里 LLM 写的稿、
+ * 那些内容全都来自外部：抓回来的网页、epub 转出来的 XHTML、库里 LLM 写的稿、
  * 模型流式吐回来的字。它们里面出现 `<img onerror=…>`、`<iframe>`、`javascript:` 链接
  * 不是假设，是迟早的事，而工作台这一页里有 vault 的读写口、有 Worker 的写入口、
  * 有本机 CLI 通道——**在这一页里执行任意脚本 = 拿到这些能力**。
@@ -145,7 +145,7 @@ export function unwrapWikilinks(text) {
  * 挪成 `**第一种是劳动力杠杆**，也就是……` 两边就都合法了，而且排版上本来就更对：
  * 标点属于句子，不属于被强调的那个词。
  *
- * 这里做是为了兜住**所有源**：Notion 里 LLM 写的中文稿同样会踩，那些内容不归导入器管。
+ * 这里做是为了兜住**所有源**：库里 LLM 写的中文稿同样会踩，那些内容不归导入器管。
  * `server/lib/books.mjs` 的 `fixEmphasis` 是同一份规则，改一处要改两处——
  * 那边是让落进 vault 的文件本身就正确（Obsidian 也要读）。
  */

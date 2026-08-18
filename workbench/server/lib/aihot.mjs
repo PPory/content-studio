@@ -180,6 +180,53 @@ export async function fetchAiHot({ limit = 50 } = {}) {
  */
 const LEADERBOARD_URL = `${ORIGIN}/leaderboard`;
 
+// 厂商 logo：**抓下来内联成 data URI**，不在前端直接引对方的图片地址。
+//
+// 三个理由，第一个是决定性的：
+//   1. **浏览器未必够得着那个站**。这台机器的出站靠 `HTTPS_PROXY`，而 Node 侧已经统一走
+//      `proxyFetch` 了；前端 `<img src="https://aihot…">` 走的是浏览器自己的网络栈，
+//      通不通是另一回事——而失败的样子是「一列破图」，看着像工作台坏了。
+//   2. **快照里就带着图**。模型榜挂掉时会退回最近一次成功的快照，图跟着快照走才不会
+//      出现「文字是旧的、图标是空的」这种半份数据。
+//   3. 不必为此新开一个图片代理端点（那等于开一个要防 SSRF 的口子）。
+//
+// 代价是抓一次榜单多发十来个请求（去重后就是厂商数），约 20KB。抓不到就没有图标，
+// 榜单照常显示——和这整块「best-effort，挂了不修」是同一个态度。
+const LOGO_PREFIX = "/model-providers/";
+const LOGO_MAX_BYTES = 32 * 1024;
+const LOGO_BUDGET = 16;
+
+/**
+ * 取一个厂商 logo，成功返回 data URI，失败返回空串。
+ *
+ * ⚠️ **只认对方 `/model-providers/` 底下的 `.svg`**：`src` 是从对方页面里读出来的字符串，
+ * 拿它去拼请求就等于让上游决定我们打谁——判据写死在这儿，改版改成别的路径就是没有图标，
+ * 不是「跟着去抓一个陌生地址」。
+ */
+async function fetchLogo(src) {
+  if (!src.startsWith(LOGO_PREFIX) || !src.endsWith(".svg") || src.includes("..")) return "";
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    let res;
+    try {
+      res = await proxyFetch(`${ORIGIN}${src}`, { headers: { Accept: "image/svg+xml" }, signal: ac.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return "";
+    const svg = await res.text();
+    // 图最终是喂给 `<img>` 的（那个上下文里 SVG 的脚本和外链本来就不执行），
+    // 但外来内容进这个项目一律要有一条说得清的线，所以这三条都验：像不像 svg、有多大、带不带脚本
+    if (svg.length > LOGO_MAX_BYTES) return "";
+    if (!/^\s*(<\?xml|<svg)/i.test(svg)) return "";
+    if (/<script|\son\w+\s*=/i.test(svg)) return "";
+    return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
 export async function fetchModels({ limit = 20 } = {}) {
   try {
     const ac = new AbortController();
@@ -200,10 +247,18 @@ export async function fetchModels({ limit = 20 } = {}) {
       const valueOf = (cls) => cell(cls)?.querySelector("strong")?.textContent?.trim() || "";
       const money = [...(cell("lb-pricing")?.querySelectorAll("strong") || [])].map((e) => e.textContent.trim());
       const href = row.getAttribute("href") || "";
+      const logoBox = cell("lb-brand-logo");
       return {
         rank: Number(cell("lb-rank")?.textContent?.trim()) || 0,
         name: cell("lb-model")?.querySelector("strong")?.textContent?.trim() || "",
         vendor: cell("lb-model")?.querySelector("small")?.textContent?.trim() || "",
+        logoSrc: logoBox?.querySelector("img")?.getAttribute("src") || "",
+        // 对方自己标出来的「这个 logo 是纯黑的，暗色下要反色」（OpenAI / xAI 那种 currentColor 图）。
+        // 不认这一条的话，暗色主题下那两枚图标就是**黑底上的黑块**——不报错，纯粹看不见
+        logoInvert: (logoBox?.getAttribute("class") || "").includes("invert-on-dark"),
+        // 同理另一头：Moonshot 那种**画在深色底块上**的白色 logo，底块是对方用 CSS 补的、不在 svg 里。
+        // 不补底块的话白色部分在白底上直接消失，Kimi 那一行只剩一个孤零零的蓝点（踩过，截图才看见）
+        logoTile: (logoBox?.getAttribute("class") || "").includes("dark-tile"),
         released: valueOf("lb-release-date"),
         completeness: valueOf("lb-completeness"),
         inPrice: money[0] || "",
@@ -215,6 +270,15 @@ export async function fetchModels({ limit = 20 } = {}) {
 
     const items = rows.filter((m) => m.name && m.score);
     if (!items.length) throw new Error("页面结构变了，一行都没解析出来");
+
+    // 一个厂商只抓一次：20 条榜单里通常只有十来个厂商，逐行抓就是同一张图抓五遍
+    const srcs = [...new Set(items.map((m) => m.logoSrc).filter(Boolean))].slice(0, LOGO_BUDGET);
+    const logos = new Map(await Promise.all(srcs.map(async (s) => [s, await fetchLogo(s)])));
+    for (const m of items) {
+      m.logo = logos.get(m.logoSrc) || "";
+      delete m.logoSrc; // 前端用的是内联那份，留着原地址只会诱人回头去直连
+    }
+
     return { ok: true, count: items.length, items, source: LEADERBOARD_URL };
   } catch (e) {
     return {

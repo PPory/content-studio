@@ -10,13 +10,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
+import { useConfirmGuard } from "../lib/use-confirm-guard.js";
 import { Reader } from "./Reader.jsx";
 import { SideRail } from "./SideRail.jsx";
 import { ReadingPrefs, loadPrefs, prefsToStyle } from "./ReadingPrefs.jsx";
 import { MarkdownEditor } from "./MarkdownEditor.jsx";
-import { ErrorNote, Loading, MetaItem, Note, Select, relTime } from "./ui.jsx";
+import { ErrorNote, Loading, MetaItem, Select, relTime } from "./ui.jsx";
 import { readStats } from "../lib/reading.js";
 import {
+  IconAlertTriangle,
   IconArrowLeft,
   IconArrowUpRight,
   IconBookmark,
@@ -26,7 +28,6 @@ import {
   IconLayoutSidebar,
   IconLayoutSidebarRight,
   IconChevronRight,
-  IconExternalLink,
   IconFileText,
   IconPencil,
   IconPhoto,
@@ -66,10 +67,11 @@ export function ReaderOverlay({
   baseDir = "",      // 正文里相对图片路径的基准目录
   initialScroll = 0, // 回到上次读到的位置
   onProgress,        // ({ progress, scrollTop }) => void，书架用它记进度
-  extra,             // 正文动作条上再挂点东西（选题的「去看成稿」）
+  extra,             // 正文动作条**上方**再挂一块（素材的核验面板、选题的「去看成稿」）
+  actionsExtra,      // 正文动作条**里面**再加个按钮（稿件的「记录发布」）
   cover,             // 可选：封面图地址（书架来源才有）
   highlights,        // 可选：[{ text, color }]，画在正文里
-  actions,           // 可选：这个源支持哪些划词动作（Notion 源没有高亮）
+  actions,           // 可选：这个源支持哪些划词动作（流水线源没有高亮）
   bookmarked,        // 可选：这一篇被收藏了没
   onBookmark,        // 可选：收藏 / 取消收藏
   onCaptureExperience, // 可选：把缺失经历补进素材库
@@ -227,7 +229,7 @@ export function ReaderOverlay({
             <h2 className="doc-rail__title">{doc?.title || item.title}</h2>
             {docPath(item) || item.time ? (
               <p className="doc-rail__meta">
-                {/* 只显示对人有意义的来路。Notion 条目的 key 是个 UUID，铺出来纯属噪音。 */}
+                {/* 只显示对人有意义的来路。库里那行的 key 是个 UUID / ULID，铺出来纯属噪音。 */}
                 {docPath(item) ? <span className="doc-rail__path">{docPath(item)}</span> : null}
                 {item.time ? <time>{relTime(item.time)}</time> : null}
               </p>
@@ -308,6 +310,7 @@ export function ReaderOverlay({
                 onDelete={onDelete}
                 onOutline={onOutline}
                 extra={extra}
+                actionsExtra={actionsExtra}
                 onCaptureExperience={onCaptureExperience}
               />
               {/* 读完一章要能直接进下一章。翻页放正文末尾，不放顶部——
@@ -350,17 +353,24 @@ export function ReaderOverlay({
 // 写死字面量：这里做的是显示层的裁剪，不该因为 import 了常量就跟着布局变量走。
 const WB_PREFIX = "99 - 个人工作台/";
 
-// 左栏那行「这东西哪来的」。vault 条目给文件路径，Notion 条目给出处或链接——
+// 左栏那行「这东西哪来的」。vault 条目给文件路径，流水线条目给出处或链接——
 // 它的 key 是个 UUID，铺出来纯属噪音。
 export function docPath(item) {
   const p = item.raw?.docPath || item.raw?.bookPath || item.raw?.path || item.raw?.source || item.raw?.link || "";
   return p.startsWith(WB_PREFIX) ? p.slice(WB_PREFIX.length) : p;
 }
 
-// 正文：读模式 / 编辑模式。编辑是整篇 Markdown 改一遍再存回 Notion——
+// 正文：读模式 / 编辑模式。编辑是整篇 Markdown 改一遍再整体存回去——
 // 块级编辑要维护块 id 映射和并发，复杂度高一个量级，而这里的场景就是「改一遍稿子」。
-function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, onCaptureExperience }) {
+function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, actionsExtra, onCaptureExperience }) {
   const [copied, setCopied] = useState(false);
+  /**
+   * 真实性告警**默认收着**。它是「待确认项」不是「错误」：一篇 2000 字的稿子，
+   * 打开第一屏该是正文，不该是一张红卡片加两条句子摘录。而且它常常只是
+   * 「这事真发生过，只是还没录成素材」——为这个把正文顶下去，代价不对等。
+   */
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [reveal, setReveal] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [title, setTitle] = useState("");
@@ -368,13 +378,25 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const armedDel = useConfirmGuard(confirmDel);
 
-  function startEdit() {
+  useEffect(() => {
+    setFlagOpen(false);   // 上一篇展开过告警，换一篇不该跟着展开
+  }, [item.key]);
+
+  /**
+   * `revealAt` 是可选的「进去之后跳到哪一段」。
+   *
+   * ⚠️ **`nonce` 用递增计数不用 `Date.now()`**：同一段连点两次也该再跳一次，
+   * 而两次点击落在同一毫秒里是完全可能的——那时候第二下看着就是没反应。
+   */
+  function startEdit(revealAt = "") {
     setDraft(doc.markdown ?? doc.content ?? "");
     setTitle(doc.title);
     setError(null);
     setSaved(false);
     setEditing(true);
+    setReveal(revealAt ? (cur) => ({ text: revealAt, nonce: (cur?.nonce || 0) + 1 }) : null);
   }
 
   async function save() {
@@ -382,7 +404,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
     setError(null);
     try {
       // stamp 是打开这份文档时拿到的版本号。vault 源用它做乐观锁——这些 md 同时
-      // 在 Obsidian 里开着，对不上就 409（Notion 源没有这个字段，传过去也无害）
+      // 在 Obsidian 里开着，对不上就 409（流水线源没有这个字段，传过去也无害）
       await source.save(item, { title, markdown: draft, stamp: doc.stamp });
       onSaved({ title, markdown: draft });
       setEditing(false);
@@ -407,6 +429,10 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   }
 
   async function remove() {
+    // 挡住一次物理双击直接删掉。这一处此刻「碰巧安全」——「删除」按钮带文字、比较宽，
+    // 点完之后指针正好落在「取消」上；但那是宽度的巧合，改一次文案就会翻。
+    // 规则和卡片那边共用同一份实现，见 `lib/use-confirm-guard.js`。
+    if (!armedDel.current) return;
     setBusy(true);
     setError(null);
     try {
@@ -419,9 +445,9 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   }
 
   if (editing) {
-    // 编辑器上的字**全由源来说**。写死「Notion」的话，书架改的明明是 vault 里的一份 md，
-    // 界面却一路说着「保存到 Notion」——那是句假话，而且会让人以为书被同步进 Notion 了。
-    const ed = source.edit || { target: "NOTION", save: "保存", hint: "" };
+    // 编辑器上的字**全由源来说**。写死一个库名的话，书架改的明明是 vault 里的一份 md，
+    // 界面却一路说着「保存到流水线」——那是句假话，而且会让人以为书被同步进库里了。
+    const ed = source.edit || { target: "流水线", save: "保存", hint: "" };
     return (
       <div className="ws-edit">
         <span className="eyebrow">EDITING · 写回 {ed.target}</span>
@@ -435,7 +461,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
         ) : (
           <input className="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} />
         )}
-        <MarkdownEditor value={draft} onChange={setDraft} ariaLabel="正文（Markdown）" />
+        <MarkdownEditor value={draft} onChange={setDraft} ariaLabel="正文（Markdown）" revealText={reveal} />
         <ErrorNote error={error} what="保存" />
         {/* 动作条固定在底部，和右栏批注台那套是同一条规则：按钮永远在同一个位置，
             肌肉记忆才立得住。长文编辑时尤其要紧——不然存一次要先滚到底。 */}
@@ -468,9 +494,29 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
             options={source.states}
             disabled={busy}
             onChange={changeStatus}
-            title="改状态会直接写回 Notion"
+            title="改状态会直接写回流水线"
             ariaLabel="改状态"
           />
+        ) : null}
+        {/**
+          * 真实性告警在状态行里只是**一枚可点的标记**，正文之上不再摆红卡片。
+          *
+          * 它背后是一道会真的拦住保存的闸门（Worker 的 `assertGroundedPersonalNarrative`），
+          * 所以不能不画；但它报的是「这几句还没找到对应的个人经历素材」，多数时候的解法是
+          * 补一条素材而不是改文章——**这是待办，不是错误**，红色警报的分量给重了。
+          */}
+        {doc.warning ? (
+          <button
+            type="button"
+            className="doc-flag"
+            aria-expanded={flagOpen}
+            onClick={() => setFlagOpen((v) => !v)}
+            title={doc.warning.title}
+          >
+            <IconAlertTriangle size={13} stroke={1.9} aria-hidden="true" />
+            {doc.warning.issues?.length ? `${doc.warning.issues.length} 处待核实经历` : doc.warning.title}
+            <IconChevronRight size={12} stroke={1.9} aria-hidden="true" className="doc-flag__caret" />
+          </button>
         ) : null}
         {/**
           * 元信息是**「字段名 + 值」的两段式，不是一排灰药丸**。
@@ -496,26 +542,57 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
         ) : null}
       </div>
 
-      {doc.warning ? (
-        <Note tone="danger" title={doc.warning.title}>
-          <p>{doc.warning.detail}</p>
-          {doc.warning.issues?.length ? (
-            <ul>{doc.warning.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-          ) : null}
-          {doc.warning.action === "edit_or_capture" ? (
-            <div className="row-actions" style={{ marginTop: 12 }}>
-              <button className="btn btn-sm" type="button" onClick={startEdit}>开始修改</button>
-              {onCaptureExperience ? <button className="btn btn-sm" type="button" onClick={onCaptureExperience}>补录真实经历</button> : null}
-            </div>
-          ) : null}
-        </Note>
+      {/**
+        * 展开之后**一段一个出路对**，不是一个列表配两个笼统的按钮。
+        *
+        * 这里的「一段」是 Worker 那边合并过的：连着的几句属于同一个场景，算一条
+        *（`findSpecificPersonalClaims`）。拆成几条的话，补录时只填其中一句，
+        * 剩下的照样够不着依据——补了还在报，看着像修不好。
+        *
+        * 两个动作对应这段话仅有的两种归宿：**是真事就录成素材**（原句预填好，闸门随即认它）、
+        * **不是就去改**（进编辑器并跳到那一段）。原来那版底下只有一个笼统的「去正文里改」，
+        * 进去之后光标停在开头，被点名的那句在两千字里的哪儿还得自己找。
+        */}
+      {doc.warning && flagOpen ? (
+        <div className="doc-flag__panel">
+          <p className="doc-flag__lead">{doc.warning.detail}</p>
+          <ul className="doc-flag__list">
+            {(doc.warning.issues || []).map((issue) => (
+              <li key={issue}>
+                <span className="doc-flag__quote">{issue}</span>
+                <span className="doc-flag__acts">
+                  {onCaptureExperience ? (
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      onClick={() => onCaptureExperience(issue)}
+                      title="把这段话存成「个人经历」素材，闸门就认它了"
+                    >
+                      这是真事，录进素材
+                    </button>
+                  ) : null}
+                  {doc.editable ? (
+                    <button
+                      className="btn btn-sm btn-quiet"
+                      type="button"
+                      onClick={() => startEdit(issue)}
+                      title="进编辑器并跳到这一段"
+                    >
+                      去这儿改
+                    </button>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {extra}
 
       {/* 一个动作都没有时**整条不画**。藏书是只读的，这一条会退化成一条光秃秃的分隔线
           加一片空白——看着像有什么东西没加载出来。 */}
-      {doc.editable || onTypeset || onCover || doc.notionUrl || onDelete || saved ? (
+      {doc.editable || onTypeset || onCover || actionsExtra || onDelete || saved ? (
       <div className="doc-actions">
         {doc.editable ? (
           <button className="btn btn-sm" onClick={startEdit}>
@@ -546,12 +623,8 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           </button>
         ) : null}
 
-        {doc.notionUrl ? (
-          <a className="btn btn-sm" href={doc.notionUrl} target="_blank" rel="noreferrer">
-            <IconExternalLink aria-hidden="true" stroke={1.7} />
-            在 Notion 打开
-          </a>
-        ) : null}
+        {actionsExtra}
+
         {saved ? <span className="tag">已保存</span> : null}
 
         {/* 删除永远排在最右、离编辑最远，而且要点两下。

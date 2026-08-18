@@ -11,14 +11,30 @@ import { fetch as undiciFetch, ProxyAgent } from "undici";
 
 let cached;
 
-function dispatcherFor(url) {
-  // 本机地址不走代理，否则把 WORKER_URL 指向 wrangler dev 时会连不上
-  const host = new URL(url).hostname;
+/** 这个地址是不是本机（本机永远直连，否则把 WORKER_URL 指向 wrangler dev 时会连不上） */
+function isDirect(url) {
+  const host = new URL(url).hostname.toLowerCase();
   const noProxy = (process.env.NO_PROXY || process.env.no_proxy || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (host === "localhost" || host === "127.0.0.1" || noProxy.includes(host)) return undefined;
+  return host === "localhost" || host === "127.0.0.1" || noProxy.includes(host);
+}
+
+/**
+ * 这次请求实际会怎么出去。**给错误提示用的**——连不上时，「有没有走代理」几乎总是
+ * 比「WORKER_URL 是不是写错了」更接近真相，而这件事光看报错完全看不出来。
+ *
+ * `via` 为空串表示直连；`local` 表示目标就在本机（那直连是对的，别提代理）。
+ */
+export function proxyInfo(url) {
+  const local = isDirect(url);
+  const via = local ? "" : process.env.HTTPS_PROXY || process.env.https_proxy || "";
+  return { via, local };
+}
+
+function dispatcherFor(url) {
+  if (isDirect(url)) return undefined;
 
   if (cached === undefined) {
     const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || "";

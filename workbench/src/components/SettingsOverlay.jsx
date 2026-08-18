@@ -112,6 +112,11 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
   const items = useMemo(() => (data?.nav || []).flatMap((g) => g.items), [data]);
   const current = items.find((i) => i.key === active) || items[0];
   const fieldsOf = useCallback((key) => (data?.fields || []).filter((f) => f.group === key), [data]);
+  // 这一段里已经被某个字段认领的自检，段尾不再重复画一遍
+  const boundChecks = useMemo(
+    () => new Set(fieldsOf(current?.key).map((f) => f.check).filter(Boolean)),
+    [fieldsOf, current]
+  );
   const checkById = useMemo(() => Object.fromEntries((checks || []).map((c) => [c.id, c])), [checks]);
 
   // 左栏那枚记号：这一段自检里最坏的一条。没有自检的段不画（不画一个恒为绿的假勾）
@@ -260,11 +265,18 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
                       cleared={cleared.includes(f.key)}
                       onChange={(v) => setField(f.key, v)}
                       onToggleClear={() => toggleClear(f.key)}
+                      check={f.check ? checkById[f.check] : null}
+                      checking={checking}
                     />
                   ))}
-                  {(current.checks || []).map((id) => (
-                    <CheckRow key={id} check={checkById[id]} loading={checking} />
-                  ))}
+                  {/* 段尾只剩**没有字段可挂**的那几条（对话引擎压根没有输入框；
+                      Worker 和 Firecrawl 各自跨两个字段）。有字段的都收进标题旁边那枚点了——
+                      三条「已配」并排堆在段尾时，每一条说的话都等于没说。 */}
+                  {(current.checks || [])
+                    .filter((id) => !boundChecks.has(id))
+                    .map((id) => (
+                      <CheckRow key={id} check={checkById[id]} loading={checking} />
+                    ))}
                 </>
               ) : current.kind === "models" ? (
                 <ModelSettings />
@@ -286,9 +298,16 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
           {checking ? "检查中…" : "重新检查"}
         </button>
 
+        {current?.kind === "models" ? (
+          <span className="field-hint set-overlay__note">
+            这一段在上面单独保存——它写的是 Worker 的库，不是本机 .env。
+            {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
+          </span>
+        ) : null}
+
         {current?.kind === "prompts-worker" ? (
           <span className="field-hint set-overlay__note">
-            这一段在上面单独保存——它写的是 content-pipeline 的文件，而且要部署一次才生效。
+            这一段在上面单独保存——它写的是 worker/ 的文件，而且要部署一次才生效。
             {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
           </span>
         ) : null}
@@ -336,12 +355,16 @@ function SavedNote({ saved }) {
   );
 }
 
-function Field({ field, draft, cleared, onChange, onToggleClear }) {
+function Field({ field, draft, cleared, onChange, onToggleClear, check, checking }) {
   const value = draft ?? field.value ?? "";
+  // 出问题了才占地方。ok / off 只在标题旁边留一枚点；bad / warn 底下另起完整一条，
+  // 因为那时候要看的是**下一步做什么**，而一个要悬停才找得到的提示等于没有
+  const loud = !!check && (check.status === "bad" || check.status === "warn");
   return (
     <div className="set-field">
       <label className="set-field__label" htmlFor={`set-${field.key}`}>
         {field.label}
+        {field.check ? <FieldDot check={check} loading={checking} /> : null}
         {field.required ? <em className="set-field__req">必填</em> : null}
         <code className="set-field__key">{field.key}</code>
       </label>
@@ -383,40 +406,98 @@ function Field({ field, draft, cleared, onChange, onToggleClear }) {
         ) : null}
       </div>
 
-      {field.hint ? <div className="field-hint">{field.hint}</div> : null}
+      <HintLine hint={field.hint} why={field.why} />
       {field.effective ? (
         <div className="field-hint set-field__eff">
           留空时用：<code>{field.effective}</code>
         </div>
       ) : null}
-      {/* 长说明收进折叠，**默认收起**。踩过的坑一条不删，但不该占着一屏 */}
-      {field.why ? (
-        <details className="set-why">
-          <summary>为什么</summary>
-          <p>{field.why}</p>
-        </details>
-      ) : null}
+
+      {loud ? <CheckRow check={check} loading={checking} /> : null}
     </div>
   );
 }
 
-/** 一条自检。**没结果时说「检查中」，不画一个假的绿勾。** */
+/**
+ * 标题旁边那枚点。**配好了就只有这一枚。**
+ *
+ * 上一版在字段底下留一行「✓ 已配（免费版，走 api-free.deepl.com）」。它说的和输入框里
+ * 那句「已配置（留空则不改）」是同一件事，只是多占一行——而一个字段底下同时挂着
+ * 说明、「为什么」和这一行时，三行灰字就把字段本身埋了。
+ *
+ * 结论和 hint 进 `title` / `aria-label`：那是**核对信息**，想起来才看一眼。
+ * 出问题的两档（bad / warn）不靠它——那时候字段底下另有完整一条。
+ *
+ * 用点不用图标，是因为侧栏底下那句「流水线已连接」用的就是同一枚 `.dot`——
+ * 界面上「这东西通没通」已经有一套现成的说法了，不该在设置面板里另发明一种。
+ */
+function FieldDot({ check, loading }) {
+  if (!check) {
+    const label = loading ? "检查中…" : "这一项没检成";
+    return <span className="dot set-field__dot set-field__dot--wait" role="img" aria-label={label} title={label} />;
+  }
+  // hint 另起一行，不套括号：结论里本来就有括号（「已配（免费版…）」），
+  // 再包一层就成了「（…（…））」
+  const label = `${check.label}：${check.text}` + (check.hint ? `\n${check.hint}` : "");
+  return (
+    <span
+      className={`dot set-field__dot dot-${check.status === "ok" ? "ok" : check.status === "bad" ? "bad" : check.status === "warn" ? "warn" : "off"}`}
+      role="img"
+      aria-label={label}
+      title={label}
+    />
+  );
+}
+
+/**
+ * 一行说明，长的那段就地展开。
+ *
+ * ⚠️ **「为什么」不另起一行**，挂在说明句尾。单独占一行时，一个字段底下就是
+ * 「说明 / 为什么 / 自检」三行灰字——上一版正是这么变成一大坨的。挂在句尾之后它不多占
+ * 地方，而且整句可点，比一个孤零零的「▸ 为什么」更像个入口。
+ */
+function HintLine({ hint, why }) {
+  if (!hint && !why) return null;
+  if (!why) return <div className="field-hint">{hint}</div>;
+  return (
+    <details className="set-why">
+      <summary className="field-hint">
+        {hint}
+        <span className="set-why__more">为什么</span>
+      </summary>
+      <p>{why}</p>
+    </details>
+  );
+}
+
+/**
+ * 一条自检。**没结果时说「检查中」，不画一个假的绿勾。**
+ *
+ * 两种重量，按「这一刻要不要占地方」分：
+ *   - `bad` / `warn` → 完整一条（灰块 + 名字 + 结论 + **下一步**）。出事时该显眼。
+ *   - `ok` / `off`   → 一行小字，不画块面。结论本身没几个字，套个灰盒子只是噪音。
+ *
+ * 两个地方会画它：**绑了字段的**只在出问题时画（通了的那两档由标题旁边那枚点带走，
+ * 见 `FieldDot`）；**没字段可挂的**画在段尾——`agent`（对话引擎）压根没有输入框，
+ * `worker` / `firecrawl` 各自跨两个字段，绑到其中一个就等于把红叉指到无辜的框上。
+ */
 function CheckRow({ check, loading }) {
   if (!check) {
     return (
-      <div className="set-check set-check--wait">
+      <div className="set-check set-check--wait set-check--flat">
         <IconLoader2 size={15} stroke={1.7} aria-hidden="true" className="spinning" />
         <span className="set-check__text">{loading ? "检查中…" : "这一项没检成"}</span>
       </div>
     );
   }
   const Icon = CHECK_ICONS[check.status] || IconCircleDashed;
+  const loud = check.status === "bad" || check.status === "warn";
   return (
-    <div className={`set-check set-check--${check.status}`}>
+    <div className={`set-check set-check--${check.status}${loud ? "" : " set-check--flat"}`}>
       <Icon size={15} stroke={1.7} aria-hidden="true" />
       <span className="set-check__label">{check.label}</span>
       <span className="set-check__text">{check.text}</span>
-      {/* hint 是**下一步动作**，不是错误详情。它才是这一行存在的理由 */}
+      {/* hint 是**下一步动作**，不是错误详情。它才是这一条存在的理由 */}
       {check.hint ? <span className="set-check__hint">{check.hint}</span> : null}
     </div>
   );

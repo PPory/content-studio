@@ -1,4 +1,4 @@
-// 前端只跟本地 API 说话，永远不直连 Notion / Worker / LLM。
+// 前端只跟本地 API 说话，永远不直连 Worker / 数据库 / LLM。
 // 统一契约：失败一律抛 Error，并把服务端给的 hint 挂在 err.hint 上供界面显示。
 
 async function req(path, options) {
@@ -48,9 +48,25 @@ export const api = {
   comment: (pageId, text) => postJson("/api/pipe/comment", { pageId, text }),
   comments: (pageId) => req(`/api/pipe/comments/${pageId}`),
 
+  // 每日计划。**只传日期串不传路径**，路径由服务端从 `05 - 计划/` 派生。
+  // 打钩和删除带 stamp（文件 mtime）做乐观锁：它们按**行号**改写，而这份 md 同时可能
+  // 在 Obsidian 里开着，对不上就 409。**「加一条」不带**——追加不依赖旧状态，
+  // 给它上锁的结果是最无害的操作反而第一个被拦（见 server/lib/plan.mjs）
+  plan: (date = "") => req(`/api/plan${date ? `?date=${encodeURIComponent(date)}` : ""}`),
+  addTask: (date, text) => postJson("/api/plan", { date, action: "add", text }),
+  toggleTask: (date, stamp, index, done) => postJson("/api/plan", { date, stamp, action: "toggle", index, done }),
+  removeTask: (date, stamp, index) => postJson("/api/plan", { date, stamp, action: "remove", index }),
+
   vaultTree: (dir = "") => req(`/api/vault/tree?dir=${encodeURIComponent(dir)}`),
   // 洞察报告清单。不用 vaultTree：卡片要摘要、覆盖周期、字数，那些只有读文件才有
   vaultInsights: () => req("/api/vault/insights"),
+
+  // 洞察跑批。ready 回答「现在能不能跑、缺什么、上周挂了什么账」——
+  // 这才是按钮真正省掉的事：以前要翻三个目录才能确认。
+  insightReady: (week = "") => req(`/api/insights/ready${week ? `?week=${encodeURIComponent(week)}` : ""}`),
+  insightRunStatus: () => req("/api/insights/run"),
+  insightRunStart: (week = "") => postJson("/api/insights/run", { week }),
+  insightRunCancel: () => postJson("/api/insights/run/cancel", {}),
   vaultFile: (path) => req(`/api/vault/file?path=${encodeURIComponent(path)}`),
   vaultDoc: (path, notePath = "") =>
     req(`/api/vault/doc?path=${encodeURIComponent(path)}&notePath=${encodeURIComponent(notePath)}`),
@@ -110,7 +126,9 @@ export const api = {
   updateFields: (view, pageId, fields) => postJson("/api/pipe/update", { view, pageId, fields }),
   saveContent: (view, pageId, markdown) => postJson("/api/pipe/content", { view, pageId, markdown }),
   publishDraft: (body) => postJson("/api/posts/publish", body),
-  // 删除是**真删除**：库已从 Notion 换成 D1，没有废纸篓那一层了。界面上要照实说
+  // 删除是**真删除**：库已从 Notion 换成 D1，没有废纸篓那一层了。界面上要照实说。
+  // 响应里的 `archive` 是本地路由补的：vault 里那份归档移进 `.trash/` 的结果，
+  // 四种状态见 `sources.js` 的 `summarizeArchiveTrash`。**Worker 不回这个字段。**
   removePage: (view, pageId) => postJson("/api/pipe/delete", { view, pageId }),
   draftsOf: (topicId) => req(`/api/pipe/drafts-of/${topicId}`),
   metrics: () => req("/api/metrics"),
@@ -132,7 +150,7 @@ export const api = {
     postJson(`/api/posts/inbox/import${dry ? "?dry=1" : ""}`, { id, platform }),
   runArchive: () => postJson("/api/archive/run", {}),
 
-  // 全局检索：一个入口搜遍 vault、Notion 四库和已发布作品
+  // 全局检索：一个入口搜遍 vault、流水线四库和已发布作品
   search: (q, limit) => req(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`),
   // 这些热点后来怎么样了（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）。
   // 一屏几十条链接，走 POST 是为了带 body，不是因为有副作用

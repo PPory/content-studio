@@ -30,7 +30,7 @@ import { typesetDir } from "../routes/tools.mjs";
  * `kind` 决定右边画什么：
  *   env             这一段是 `.env` 字段（`SETTINGS` 里 `group` 等于这个 key 的那些）
  *   prompts-local   工作台自己的提示词（`config/prompts.json`，改完立刻生效）
- *   prompts-worker  流水线的提示词（content-pipeline 的 prompt/*.md，改完要 deploy）
+ *   prompts-worker  流水线的提示词（worker/prompt 底下的 *.md，改完要 deploy）
  *
  * ⚠️ **提示词的两段在左栏里就分开，不混成一段。** 「改完立刻生效」和「改完要部署才
  * 生效」是两种完全不同的东西；混在一起的必然结果是用户改完 Worker 的提示词、
@@ -55,7 +55,9 @@ export const NAV = [
         key: "pipeline",
         kind: "env",
         label: "流水线",
-        desc: "工作台不直连 Notion，一律经 content-pipeline 的 Worker。没配时「创作」页的四个库都取不到东西。",
+        // 库从 Notion 迁到 D1 之后这句话得改：工作台仍然不直连数据库，
+        // 但它经过的是 worker/ 那个 Worker，而不再是「Notion 的代理」
+        desc: "灵感 / 素材 / 选题 / 稿件四个库都在 Worker 的 D1 里，工作台一律经 /wb/* 取。没配时「创作」页是空的。",
         checks: ["worker"],
       },
     ],
@@ -70,14 +72,14 @@ export const NAV = [
         desc: "都不配也能用，配了各多一件事。空着不是出错。",
         // 「AI 对话」也挂在这儿：它同样是「有就多一件事」，只是开关不在 .env 里而是
         // 「本机装没装那个 CLI」。归到别处的话，它就成了一条没有归属的孤立提示
-        checks: ["deepl", "firecrawl", "agent"],
+        checks: ["deepl", "firecrawl", "sixty", "agent"],
       },
       {
         key: "paths",
         kind: "env",
         label: "本机路径",
-        desc: "同级目录里那几个独立项目装在哪。留空就用默认值——每一项底下写着默认值算出来是哪个目录。",
-        checks: ["typeset", "mediacrawler", "pipedir"],
+        desc: "同仓的 worker/ 和外面那几个独立项目装在哪。留空就用默认值——每一项底下写着默认值算出来是哪个目录。",
+        checks: ["typeset", "mediacrawler", "workerdir"],
       },
     ],
   },
@@ -87,6 +89,9 @@ export const NAV = [
       {
         key: "models",
         kind: "models",
+        // ⚠️ **这一段的数据全在 Worker 的 D1 里，不在 `.env`。** 所以它不走 `SETTINGS`
+        // 那张字段表，也不跟着底部那条动作条保存——和「流水线提示词」是同一类：
+        // 面板管的东西不都住在同一个地方，那就分开说清楚，别让人以为点了「保存」就全存了。
         label: "各环节模型",
         desc: "初筛 / 整理 / 成稿这些重活值得用强模型，挑素材、打标签用便宜快的就够。改完立刻生效，不用部署。",
         checks: ["worker"],
@@ -106,20 +111,17 @@ export const NAV = [
         key: "prompts-worker",
         kind: "prompts-worker",
         label: "流水线",
-        desc: "content-pipeline 的提示词，初筛 / 整理 / 成稿 / 划词 AI 全按它们跑。它们打包进 Worker，所以改完要部署一次才算数。",
-        checks: ["pipedir"],
+        desc: "worker/prompt 底下那些提示词，初筛 / 整理 / 成稿 / 划词 AI 全按它们跑。它们打包进 Worker，所以改完要部署一次才算数。",
+        checks: ["workerdir"],
       },
     ],
   },
   {
     group: "其他",
     items: [
-      {
-        key: "links",
-        kind: "env",
-        label: "快捷入口",
-        desc: "纯链接，填了总览页底下才出这几个按钮。不影响任何功能。",
-      },
+      // 「快捷入口」那一节在库迁到 D1 之后**整个撤掉了**：它原来只放四个 Notion 库的
+      // 外链，而那四个库现在不是真源了——点开看到的是一份不再更新的旧数据，
+      // 比没有链接更糟。剩下的 TYPESET_URL 并进「可选能力」（它也是「配了多一件事」）。
       {
         key: "data",
         kind: "env",
@@ -143,6 +145,10 @@ export const NAV_ITEMS = NAV.flatMap((g) => g.items);
  *   why          长的那些（踩过的坑、为什么是这样）。界面上收进「为什么」折叠，默认收起
  *   placeholder  举个例子，不是重复 label
  *   effective    留空时实际生效的值。**只给「留空有默认」的字段**
+ *   check        绑一条自检（id 见 `lib/settings-check.mjs`）。绑了之后：通了就是**标题旁边一枚绿点**
+ *                （结论进 title），出问题才在字段底下占一行。**只有一对一的才绑**——`worker` 检的是「地址 + 密钥」两个字段、
+ *                `firecrawl` 检的是「云端 key 或自托管地址」二选一，绑到其中一个就等于把另一个
+ *                填错时的红叉指到无辜的框上。`agent`（对话引擎）压根没有字段，只能单独成行。
  *
  * ⚠️ **hint / why / desc / label 都是纯文本**，界面上直接塞进 <div>，不过 renderMarkdown。
  * 写了 `**加粗**` 的话，屏幕上出现的就是两个星号（踩过一次，截图才看得出来）。
@@ -154,6 +160,7 @@ export const SETTINGS = [
   {
     key: "VAULT_ROOT",
     group: "vault",
+    check: "vault",
     label: "Obsidian vault 路径",
     required: true,
     placeholder: "D:/ObsidianVault/obsidian-vault",
@@ -166,7 +173,7 @@ export const SETTINGS = [
     group: "pipeline",
     label: "Worker 地址",
     placeholder: "https://your-worker.workers.dev",
-    hint: "content-pipeline 部署出来的地址，不带结尾斜杠。",
+    hint: "worker/ 部署出来的地址，不带结尾斜杠。",
   },
   {
     key: "WORKBENCH_KEY",
@@ -174,12 +181,13 @@ export const SETTINGS = [
     label: "Worker 访问密钥",
     secret: true,
     hint: "自己设一串长密码，这里和 Worker 那边要一致。",
-    why: "同一串要在两边：填在这里，并在 content-pipeline 目录里跑一次 npx wrangler secret put WORKBENCH_KEY。它和 Telegram 那个 secret 是分开的，可以单独轮换。",
+    why: "同一串要在两边：填在这里，并在 worker/ 目录里跑一次 npx wrangler secret put WORKBENCH_KEY。它和 Telegram 那个 secret 是分开的，可以单独轮换。",
   },
 
   {
     key: "DEEPL_API_KEY",
     group: "optional",
+    check: "deepl",
     label: "DeepL 密钥",
     secret: true,
     hint: "配了才有划词翻译。",
@@ -201,6 +209,28 @@ export const SETTINGS = [
     hint: "自己 docker 起了一份时填它；留空走官方云端。",
     why: "自托管默认不设鉴权，所以填了这一项可以不填上面那个密钥——两个有一个就算配过了。",
   },
+  {
+    // ⚠️ **这一条以前根本不在这张表里**，而热点页那六个榜就靠它。后果是：代码里的默认值
+    // 是个占位域名，六个榜每次都失败、界面退回快照，而设置面板上**连这个变量都不存在**——
+    // 用户翻遍面板也找不到该填什么，只看见一份日期越来越旧、其余一切正常的热榜。
+    // 加变量只改这一处，面板和 /api/config 才会跟着有（`.env.example` 是给还没跑起来的那一刻看的）。
+    key: "SIXTY_SECONDS_API_BASE_URL",
+    group: "optional",
+    check: "sixty",
+    label: "热榜数据源（60s API）",
+    placeholder: "https://60s.<你的账号>.workers.dev",
+    hint: "「热点 → 平台热榜」那六个榜从这里取，不填就只剩旧快照。",
+    why: "60s API（github.com/vikiboss/60s）要自己部署一份实例，填它的根地址、不带结尾斜杠。留空时代码会去打一个占位域名、六个榜整整齐齐失败——而界面显示的是上一次成功的快照，不看时间戳的话跟正常的一模一样。接入约定见 docs/60s-api.md：Base URL 只从这里读、不能只看 HTTP 200（业务失败写在 body 的 code 里）。",
+  },
+  {
+    // 原来住在「快捷入口」那一节。那一节在库迁到 D1 之后整个撤了（见 NAV 里的注释），
+    // 而这一条本身仍然成立——它和这一段其他几项是同一件事：配了多一个入口，不配也照用
+    key: "TYPESET_URL",
+    group: "optional",
+    label: "排版工具外链",
+    hint: "另外部署了一份排版工具时填它的地址。",
+    why: "工作台里那个内嵌的排版页不受影响，这只是总览页底下多一个跳出去的按钮。",
+  },
 
   {
     key: "DOWNLOADS_DIR",
@@ -213,6 +243,7 @@ export const SETTINGS = [
   {
     key: "TYPESET_DIR",
     group: "paths",
+    check: "typeset",
     label: "wechat-typeset 目录",
     hint: "「排版」页嵌的就是它。",
     why: "工作台把它静态托管在 /tools/typeset/ 再 iframe 嵌进来，typeset 项目本身一行没改，仍然可以双击 index.html 独立使用。找不到目录时那一页显示的是 404 引导。",
@@ -221,30 +252,20 @@ export const SETTINGS = [
   {
     key: "MEDIACRAWLER_DIR",
     group: "paths",
+    check: "mediacrawler",
     label: "MediaCrawler 目录",
     hint: "中文站内探针用的，没装也不影响别的。",
     why: "只被 scripts/social-probe.mjs 用到。没装的话洞察报告会少「小红书 / 抖音站内」这条腿，其余照常。",
     effective: (env) => mediacrawlerDir(env),
   },
   {
-    key: "PIPELINE_DIR",
+    key: "WORKER_DIR",
     group: "paths",
-    label: "content-pipeline 目录",
+    check: "workerdir",
+    label: "worker 目录",
     hint: "上面「提示词 · 流水线」那一段直接读写它底下的 prompt/*.md。",
-    why: "只用来找提示词文件——工作台连 Notion 仍然是走 Worker 的网络地址（上面那个 Worker 地址），和这个本地目录无关。找不到目录时那一段只给引导，不报错。",
-    effective: (env) => pipelineDir(env),
-  },
-
-  { key: "NOTION_INBOX_URL", group: "links", label: "灵感库", placeholder: "https://www.notion.so/…", hint: "" },
-  { key: "NOTION_MATERIALS_URL", group: "links", label: "素材库", placeholder: "https://www.notion.so/…", hint: "" },
-  { key: "NOTION_TOPICS_URL", group: "links", label: "选题库", placeholder: "https://www.notion.so/…", hint: "" },
-  { key: "NOTION_DRAFTS_URL", group: "links", label: "稿件库", placeholder: "https://www.notion.so/…", hint: "" },
-  {
-    key: "TYPESET_URL",
-    group: "links",
-    label: "排版工具外链",
-    hint: "另外部署了一份排版工具时填它的地址。",
-    why: "工作台里那个内嵌的排版页不受影响，这只是总览页底下多一个跳出去的按钮。",
+    why: "只用来找提示词文件——工作台取数据走的是上面那个 Worker 网络地址，和这个本地目录无关（所以就算目录不在，四个库照样能用）。合仓之后它就是 workbench 的同级 worker/，默认值基本不用改。",
+    effective: (env) => workerDir(env),
   },
 
   {
@@ -269,10 +290,20 @@ export const WRITABLE = new Set(SETTINGS.map((f) => f.key));
  * 「留空时实际用的是哪个目录」——两处各算一遍的话，面板上写的路径和代码真正去找的
  * 路径可能对不上，而那种错没有任何地方会报出来。
  */
+/**
+ * ⚠️ **合仓之后这两个的层数不一样，别抄错。**
+ *
+ * workbench 现在住在 `content-studio/` 里面：
+ *   worker/       是**同级**（`../worker`）——它和 workbench 一起在这个仓里
+ *   MediaCrawler  是 content-studio 的同级（`../../MediaCrawler`）——外面的独立项目
+ *
+ * 合仓之前两个都是 `..`。那一版在合仓当天就静默失效了：目录找不到，
+ * 自检说「没装」，而其实只是路径少数了一层。
+ */
 export function mediacrawlerDir(env = {}) {
-  return path.resolve((env.MEDIACRAWLER_DIR || "").trim() || path.join(process.cwd(), "..", "MediaCrawler"));
+  return path.resolve((env.MEDIACRAWLER_DIR || "").trim() || path.join(process.cwd(), "..", "..", "MediaCrawler"));
 }
 
-export function pipelineDir(env = {}) {
-  return path.resolve((env.PIPELINE_DIR || "").trim() || path.join(process.cwd(), "..", "content-pipeline"));
+export function workerDir(env = {}) {
+  return path.resolve((env.WORKER_DIR || "").trim() || path.join(process.cwd(), "..", "worker"));
 }

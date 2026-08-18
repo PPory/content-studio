@@ -123,7 +123,7 @@ export function Reader({
   const context = useCallback((text) => contextOf(content, text), [content]);
 
   // 消毒、强调标记修复、wikilink 脱壳、相对图片改写全在 `lib/markdown.js` 里，
-  // 这里只管什么时候重算。正文来自外部（epub / 抓回来的网页 / Notion 里 LLM 写的稿），
+  // 这里只管什么时候重算。正文来自外部（epub / 抓回来的网页 / 库里 LLM 写的稿），
   // **绝不能**在这儿直接 marked.parse 之后塞进 DOM。
   const html = useMemo(
     () => (format === "markdown" ? renderMarkdown(content, { baseDir }) : null),

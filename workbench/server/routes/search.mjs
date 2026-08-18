@@ -1,4 +1,4 @@
-// /api/search —— 全局检索。一个入口找遍 vault、Notion 四库和已发布作品。
+// /api/search —— 全局检索。一个入口找遍 vault、流水线四库和已发布作品。
 
 import { json, fail } from "../lib/http.mjs";
 import { searchAll } from "../lib/search.mjs";

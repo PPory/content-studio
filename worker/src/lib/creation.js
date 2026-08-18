@@ -33,3 +33,26 @@ export function normalizeCreationRequest(body = {}) {
     materialIds,
   };
 }
+
+/**
+ * 「按意思挑素材」里模型给回来的 id，**必须拿真实候选校验一遍**。
+ *
+ * 放行一个不存在的 id，工作台上就是一张点了打不开的卡——**比「没找到」糟得多**：
+ * 「没找到」是个诚实的答案，一张打不开的卡是个假的答案。重复项同样要去掉
+ * （同一条被挑两次，界面上就是同一张卡出现两遍）。
+ *
+ * 放在 lib 里而不是 `workbench.js` 里，是因为那个文件 import 了 `prompt/*.md`
+ * （wrangler 的 Text 模块），node 跑不起来——**测不到的闸门等于没有闸门**，
+ * 而这道闸恰恰是界面上完全看不出有没有生效的那一类。
+ */
+export function keepRealPicks(picked, candidates, limit = 6) {
+  const ids = new Set((candidates || []).map((c) => String(c.id)));
+  const out = [];
+  for (const one of Array.isArray(picked) ? picked : []) {
+    const id = String(one?.id || "");
+    if (!ids.has(id) || out.some((x) => x.id === id)) continue;
+    out.push({ id, why: String(one?.why || "").replace(/\s+/g, " ").trim().slice(0, 60) });
+    if (out.length >= limit) break;
+  }
+  return out;
+}

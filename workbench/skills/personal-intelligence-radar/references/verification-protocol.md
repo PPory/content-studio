@@ -174,7 +174,7 @@ node scripts/web_research.mjs fetch \
 
 ### 5.4 环境与代理
 
-API key 默认从 `creator-workbench/.env` 或当前环境读取：
+API key 默认从 `<workbench>/.env` 或当前环境读取：
 
 ```text
 BRAVE_SEARCH_API_KEY=...
@@ -301,36 +301,78 @@ independent evaluation criticism auto mode 89% 14% different test set
    - 已经被说透，不值得写
 8. 记录 `coverage_limit`。
 
-公开 Web 无法完整覆盖微信、小红书等站内内容时，只能写：
+措辞必须跟着实际检索范围走：
 
-> “公开 Web 可见内容中……”
+| 实际检索了什么 | 只能写 |
+| --- | --- |
+| 只看了三份周材料 | 「本周材料中未见」 |
+| 公开 Web（Brave + Firecrawl） | 「公开 Web 可见内容中……」 |
+| **公开 Web + 小红书站内探针** | 「公开 Web 与小红书站内搜索首页均未见……」 |
+| 任何情况 | ❌ 不能写「整个中文互联网没有人讨论」 |
 
-不能写：
+⚠️ **微信站内仍然拿不到**，探针只覆盖小红书和抖音。声称「中文侧没有」之前先问：微信呢？
 
-> “整个中文互联网没有人讨论……”
-
-### 中文站内探针（可选的第二条腿）
+### 中文站内探针（小红书 / 抖音）
 
 Brave 搜不到小红书站内，而小红书是他要发的平台之一——只靠公开 Web 做审计，
-关于「中文侧有没有人写、写成什么样」的结论天然缺一块。工作台侧有一个探针补这一块：
+关于「中文侧有没有人写、写成什么样」的结论天然缺一块。工作台侧有一个探针补这一块。
+
+**它同时补两件事，别只当供给审计用：** 笔记回答「这个位置被占了没」（供给），
+评论回答「有人要吗、卡在哪」（需求）。**后者推导不出前者，前者也代替不了后者**——
+上一轮就栽在这儿：只看供给量级，把机会误判成「该换个话题」，
+补上评论之后才发现原话题的解释层根本是空的。
+
+探针有**两条腿，串联使用**——它们的短板正好互补：
+
+| | Museon CLI | MediaCrawler |
+| --- | --- | --- |
+| 小红书正文 | ⚠️ **只有 60 字预览** | ✅ 全文，免费 |
+| 小红书评论 | ❌ 不支持 | ✅ 唯一来源 |
+| 抖音 | ❌ 没有（**TikTok ≠ 抖音**） | ✅ |
+| 作者身份 | ✅ 真实昵称 + id | ❌ 硬编码脱敏 |
+| 数字精度 | ✅ 精确整数 | ⚠️「1.6万」缩写，比率误差 ±6% |
+| 时间筛选 | ✅ day / week / six-months | ❌ 做不到 |
+| 账号风险 | ✅ 服务端跑 | ⚠️ **跑挂过两次** |
+
+所以是 **Museon 选、MediaCrawler 取**：
 
 ```bash
-# 在 MediaCrawler 目录抓（需要人扫码，用小号；不要自己代跑）
-uv run main.py --platform xhs --type search --keywords "<词1>,<词2>" \
-  --get_comment true --max_comments_count_singlenotes 30
-# 在 creator-workbench 目录转
-node scripts/social-probe.mjs --week <YYYY-Www>              # 小红书
-node scripts/social-probe.mjs --platform dy --week <...>     # 抖音
-node scripts/social-probe.mjs --type creator --week <...>    # 对标博主
+# 1. 发现（在 <workbench>，不碰任何账号，约 1 credit/关键词）
+node scripts/social-probe.mjs --source museon --keywords "<词1>,<词2>" --vision 5
+
+# 2. 深取：上一步会**打印好带 xsec_token 的完整命令**，把那条给用户
+#    ——不要自己拼这条命令，脚本里有请求量上限，手写会绕过它
+
+# 3. 合并（跑完之后）
+node scripts/social-probe.mjs --merge tmp/insight-work/<week>/web/xhs-museon-search-<date>.json
 ```
 
-产物落 `tmp/insight-work/<week>/web/<platform>-<type>-probe-<date>.md` 和 `.json`
-（md 是分析视图，逐条只列前 8 条评论；**全量评论在 json 里**）。
+其他：`--platform dy`（抖音，仍走 MediaCrawler）· `--type creator --creators "<id>"`（对标博主）·
+`--rerender <json>`（改了呈现重出报告，**不重新采集、不花 credit**）。
+
+产物落 `tmp/insight-work/<week>/web/`（md 是分析视图，逐条只列前 8 条评论；**全量在 json 里**）。
 
 用法约束：
 
-- **要人扫码，所以不能当成自动步骤。** 判断需要它时，把命令给用户，不要试图自己跑完。
-  没跑也照常出报告，只是 `coverage_limit` 要如实写「未覆盖小红书站内」。
+- **深取要人扫码、且跑在他自己的小号上，所以不能当成自动步骤。** 判断需要它时，
+  把第 1 步打印出来的那条命令给用户，**不要自己代跑，也不要手写那条命令**——
+  脚本按「总请求量」设了上限（实测约 570 次评论请求就会被判「登录已过期」），
+  手写会绕过它。没跑也照常出报告，只是 `coverage_limit` 要如实写。
+- ⚠️ **60 字预览不能用来判断深度。** Museon 那一步返回的 `desc` 硬顶 60 字（传
+  `--content-chars 4000` 也没用）。json 里 `body.complete` 标着这条是不是全文：
+  `false` 就是预览，**拿一句钩子去判「这个角度写透了没」，得出的结论是流水线造的**。
+  同理 `comments: null` 是「未采集」，不是「没有评论」。
+- ⚠️ **`--time-window` 只有 `day` / `week` / `six-months` 真生效。**
+  `month` / `three-months` / `year` **静默失效**——不报错、照返结果，但混着几个月前的笔记。
+  供给审计默认**不筛时间**（三个月前写透的文章今天照样占着那个位置）；
+  「这周有没有新东西」是另一个问题，那才用 `week`。
+- ⚠️ **看一眼赞中位数再读收藏率。** 一批里过半笔记赞不足 50 时，
+  收藏率中位数**不可解读**——♥8/藏23 就是 287.5%，多一个收藏跳 12 个百分点。
+  脚本会在分区顶部打警告并留空那些条的「反响」列。**这通常不是内容冷，是关键词太书面**，
+  站内没人这么搜。实测「用AI 不会思考」赞中位数只有 13。换用户真会打的词重搜。
+- **图文笔记的正文在图里。** `--vision N` 会读头部 N 条的内页（2 credits/条，
+  只挑有内页的、跳过纯封面）。不读图的话，那些笔记你只看到了钩子——
+  实测有一条 60 字预览是「你有没有遇到过这种情况…」，图里是一份 5 页的结构化讲解。
 - **关键词用读者会搜的话，不是论文措辞**，一个候选选题配 2–3 个说法。
   **不要用「AI」「人工智能」这种宽词**——返回的是一片工具推荐和变现广告，
   而数量从来不是瓶颈，筛选才是。

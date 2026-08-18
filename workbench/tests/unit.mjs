@@ -11,8 +11,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { safeName } from "../server/routes/archive.mjs";
-import { writeVaultFile, readFile, fileExists, listFiles, cleanupSnapshots, parseFrontmatter, isChapterFile, writeDocBody, fileStamp, bookKind, setFrontmatterField } from "../server/lib/vault.mjs";
+import { writeVaultFile, readFile, fileExists, listFiles, cleanupSnapshots, parseFrontmatter, isChapterFile, writeDocBody, fileStamp, bookKind, setFrontmatterField, trashFile } from "../server/lib/vault.mjs";
 import { startRun, patchRun, endRun } from "../src/lib/ai-runs.js";
+import { countWords, readStats } from "../src/lib/reading.js";
+import { normalizeAudiences } from "../server/lib/audiences.mjs";
+import { draftHasContent } from "../src/lib/creation-draft.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -28,9 +31,11 @@ import { DATA_FILES, exportBundle, previewBundle, restoreBundle, restoreSnapshot
 import { parseEnv, setEnvValues } from "../server/lib/env-file.mjs";
 import { settingsRoutes } from "../server/routes/settings.mjs";
 import { NAV, NAV_ITEMS, SETTINGS } from "../server/lib/settings-schema.mjs";
+import { fetchBoards, sixtyConfigured } from "../server/lib/sixty.mjs";
 import { CHAT_GUARD, DEFAULT_PROMPTS, chatSystem } from "../server/lib/prompts.mjs";
 import { ENGINES } from "../server/routes/agent.mjs";
 import { listPipelinePrompts, readPipelinePrompt, writePipelinePrompt } from "../server/lib/pipeline-prompts.mjs";
+import { applyAdd, applyRemove, applyToggle, cleanTaskText, localDate, newPlanText, offsetDate, parseTasks, planPath, readPlan, writePlan } from "../server/lib/plan.mjs";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
 
@@ -91,6 +96,39 @@ try {
     escaped = true;
   }
   check("写盘也挡越界", escaped);
+
+  /**
+   * ---- 删流水线条目时连带清 vault 归档（`trashFile`）----
+   *
+   * 这是「工作台删了、Obsidian 里还在」那个 bug 的修法。三条各钉一个不会报错的失败方式：
+   */
+  {
+    const arch = await writeVaultFile(root, "99 - 个人工作台/03 - 稿件/2026-08-16-公众号-测试稿.md", "正文");
+    const moved = await trashFile(root, arch);
+    check("归档移进 .trash 而不是真删", moved?.to?.startsWith(".trash/") === true, moved?.to);
+    check("原位置空出来了", (await fileExists(root, arch)) === false);
+    // ⚠️ 真删的话，引用它的稿件归档里那条 [[素材]] 就是死链，而 Obsidian 不报错、只是点不开。
+    check("废纸篓里真的有这份内容", (await readFile(root, moved.to)) === "正文");
+    // ⚠️ 路径必须压平成一段：`.trash/` 底下不重建目录树，否则删两次同名的会撞在一起
+    check("废纸篓里的路径是压平的一段", moved.to.slice(".trash/".length).includes("/") === false, moved.to);
+
+    /**
+     * ⚠️ **文件不在要回 null，不能抛。** 调用方是删除流程，而 D1 那一行**已经删了**——
+     * 这儿抛出去，界面上就是「删除失败」，用户会再点一次然后收到「not found」，
+     * 于是以为东西根本没删掉。归档本来就可能不存在（`vault_path` 为空、归档失败过、
+     * 你自己在 Obsidian 里先删了），这些都不是错误。
+     */
+    check("归档早就不在时回 null 不抛", (await trashFile(root, "99 - 个人工作台/03 - 稿件/没有这个.md")) === null);
+
+    // 越界仍然要挡：vault_path 虽然来自我们自己的库，但它经过了一趟 HTTP
+    let outside = false;
+    try {
+      await trashFile(root, "../../别人的文件.md");
+    } catch {
+      outside = true;
+    }
+    check("清归档也挡越界", outside);
+  }
 
   // ---- 快照清理 ----
   await writeVaultFile(root, "热点/2020-01-01.json", "{}");
@@ -363,6 +401,25 @@ check("书名去掉 Windows 非法字符", bookName('纳瓦尔:宝典*?') === "�
 check("书名去掉 Obsidian 会当语法的字符", bookName("笔记[[双链]]#标签") === "笔记双链标签", bookName("笔记[[双链]]#标签"));
 check("导入格式白名单", SUPPORTED.join(",") === ".md,.markdown,.txt,.epub,.pdf", SUPPORTED.join(","));
 
+// ---- 目标读者预设：用过的排最前 ----
+// 错了不报错，只会让下拉里慢慢堆出重复项，或者把最近用的挤到看不见的地方
+check("去重并保序", normalizeAudiences(["独立开发者", "独立开发者", "创作者"]).join("/") === "独立开发者/创作者");
+check("空白和超长的清掉", normalizeAudiences(["  ", "a".repeat(200)])[0].length === 60);
+check("最多留 24 条", normalizeAudiences(Array.from({ length: 40 }, (_, i) => `读者${i}`)).length === 24);
+
+// ---- 字数口径 + 创作草稿缓冲 ----
+// 字数只准有一处口径：`readStats` 有 80 字下限（一句话素材卡报「预计 1 分钟」是噪音），
+// 而创作编辑器要的是**实时的那个数**，所以两者共用 `countWords`——各数一遍的话，
+// 同一篇稿子会在编辑器底部和素材卡上显示两个不一样的字数，而没有任何地方会报错。
+check("中文按非空白字符数", countWords("一二三 四五\n六") === 6, String(countWords("一二三 四五\n六")));
+check("readStats 用的是同一个口径", readStats("字".repeat(400)).words === countWords("字".repeat(400)));
+check("太短的不报预计时长", readStats("只有一句话") === null);
+// ⚠️ 空草稿必须判成「没内容」：自动保存拿它当依据决定写不写，判错了就会在编辑器还空着的
+// 时候把上一篇没保存的稿子覆盖成空。
+check("标题正文都空 = 没内容", draftHasContent({ title: "  ", body: "\n" }) === false);
+check("只有标题也算有内容", draftHasContent({ title: "先起个名", body: "" }) === true);
+check("null 不炸", draftHasContent(null) === false);
+
 // ---- 适配器工厂：新增配置项必须真的透传出来 ----
 // 这条是补上一个真事故：`askPlatformsOn` 只写进了 TOPICS 的配置、漏了 `notionSource()`
 // 的参数解构，于是「改成撰写中先问平台」这道闸门恒为 undefined、整个失效——
@@ -381,7 +438,7 @@ check("导入格式白名单", SUPPORTED.join(",") === ".md,.markdown,.txt,.epub
   check("「搁置」标成了异常落点", src.TOPICS.quietStates?.includes("搁置"), JSON.stringify(src.TOPICS.quietStates));
   // 它必须仍在 states 里：从 states 删掉的话，成稿失败的选题会从看板和筛选条上一起消失
   check("「搁置」仍在状态清单里", src.TOPICS.states.includes("搁置"), src.TOPICS.states.join("/"));
-  check("四个 Notion 库都能删", ["inbox", "materials", "topics", "drafts"].every((k) => typeof src.SOURCES[k].remove === "function"));
+  check("四个流水线库都能删", ["inbox", "materials", "topics", "drafts"].every((k) => typeof src.SOURCES[k].remove === "function"));
   check("收件箱只归档不永久删除", typeof src.COLLECTIONS.remove !== "function");
   // 平台名和 content-pipeline 的 draft.js 逐字一致，对不上 Worker 会静默跳过那个平台
   check("平台名单和流水线一致", src.PLATFORMS.join("/") === "公众号/X/小红书/视频号/YouTube", src.PLATFORMS.join("/"));
@@ -931,6 +988,28 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
   check("每个字段都能落到某一段上", lost.length === 0, lost.join(","));
   check("左栏项的 key 不重名", new Set(NAV_ITEMS.map((i) => i.key)).size === NAV_ITEMS.length);
   check("NAV 分了组", NAV.length >= 3 && NAV.every((g) => g.group && g.items.length));
+
+  // ⚠️ **代码里读了、这张表里没有 = 那个变量在面板上根本不存在。** 踩过一次：
+  //    热榜的 SIXTY_SECONDS_API_BASE_URL 只活在 sixty.mjs 里，没配时六个榜全失败、
+  //    界面退回快照，而用户翻遍设置面板也找不到该填什么——**没有任何地方会报错**，
+  //    只有那行时间戳在慢慢变旧。这条断言钉的是「热榜那一项还在表里」。
+  const sixtyField = SETTINGS.find((f) => f.key === "SIXTY_SECONDS_API_BASE_URL");
+  check("热榜数据源在设置清单里", !!sixtyField, sixtyField ? sixtyField.label : "缺失");
+  check("热榜数据源绑了自检", sixtyField?.check === "sixty");
+}
+
+// ---- 平台热榜：「没配地址」和「上游挂了」是两件事 ----
+{
+  // 没配地址时**一个请求都不该发**：占位域名解析失败要占满六次超时，而结果是已知的。
+  // 更要紧的是给出的理由——照旧回一句网络错误的话，界面只能说「过会儿再刷新」，
+  // 而刷一万次也不会好。
+  const t0 = Date.now();
+  const blank = await fetchBoards({});
+  check("没配地址时不去打占位域名", Date.now() - t0 < 1000, `${Date.now() - t0}ms`);
+  check("没配地址时六个榜全部标为失败", blank.length === 6 && blank.every((b) => !b.ok), `${blank.filter((b) => b.ok).length} 个 ok`);
+  check("理由说的是「没配」不是「连不上」", blank.every((b) => b.reason === "没配数据源地址"), blank[0]?.reason);
+  check("占位地址不算配过", !sixtyConfigured({}) && !sixtyConfigured({ SIXTY_SECONDS_API_BASE_URL: "" }));
+  check("填了地址才算配过", sixtyConfigured({ SIXTY_SECONDS_API_BASE_URL: "https://60s.example.workers.dev" }));
 }
 
 {
@@ -951,18 +1030,18 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
 {
   // 3. 流水线提示词：**认清单 id，不认路径**。路径当参数等于开了个任意文件写入的口子，
   //    而这一处写的是**另一个项目的文件**——和数据页 inbox 那条「接口认 id 不认路径」同一条。
-  const env = { PIPELINE_DIR: path.join(root, "fake-pipeline") };
-  await fs.mkdir(path.join(root, "fake-pipeline", "prompt", "platform"), { recursive: true });
-  await fs.writeFile(path.join(root, "fake-pipeline", "prompt", "draft.md"), "原始正文\n", "utf8");
-  await fs.writeFile(path.join(root, "fake-pipeline", "prompt", "platform", "x.md"), "平台指南\n", "utf8");
+  const env = { WORKER_DIR: path.join(root, "fake-worker") };
+  await fs.mkdir(path.join(root, "fake-worker", "prompt", "platform"), { recursive: true });
+  await fs.writeFile(path.join(root, "fake-worker", "prompt", "draft.md"), "原始正文\n", "utf8");
+  await fs.writeFile(path.join(root, "fake-worker", "prompt", "platform", "x.md"), "平台指南\n", "utf8");
   // 目录里混进来的非 .md 不该出现在清单里——我们只该碰提示词
-  await fs.writeFile(path.join(root, "fake-pipeline", "prompt", "notes.txt"), "别动我\n", "utf8");
+  await fs.writeFile(path.join(root, "fake-worker", "prompt", "notes.txt"), "别动我\n", "utf8");
 
   const listed = await listPipelinePrompts(env);
   check("列得出提示词", listed.items.length === 2, listed.items.map((i) => i.rel).join(","));
   check("非 .md 不进清单", !listed.items.some((i) => i.rel.endsWith(".txt")));
 
-  const bad = ["../../.env", path.join(root, "fake-pipeline", "prompt", "draft.md"), "prompt/draft.md", "draft.md", ""];
+  const bad = ["../../.env", path.join(root, "fake-worker", "prompt", "draft.md"), "prompt/draft.md", "draft.md", ""];
   const rejected = [];
   for (const id of bad) {
     try {
@@ -985,13 +1064,13 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
     conflicted = e.status === 409;
   }
   check("stamp 对不上就 409，不硬覆盖", conflicted);
-  check("被挡下时原文件没动", (await fs.readFile(path.join(root, "fake-pipeline", "prompt", "draft.md"), "utf8")) === "原始正文\n");
+  check("被挡下时原文件没动", (await fs.readFile(path.join(root, "fake-worker", "prompt", "draft.md"), "utf8")) === "原始正文\n");
 
   const cwd = process.cwd();
   process.chdir(root);
   try {
     await writePipelinePrompt(env, draft.id, "新正文\n", got.stamp);
-    check("按 id 写得进去", (await fs.readFile(path.join(root, "fake-pipeline", "prompt", "draft.md"), "utf8")) === "新正文\n");
+    check("按 id 写得进去", (await fs.readFile(path.join(root, "fake-worker", "prompt", "draft.md"), "utf8")) === "新正文\n");
     // 写别人的项目之前必须留一份：写坏了得退得回去
     const snaps = await listSnapshots(root, "pipeline-prompt");
     check("改别人的文件之前留了快照", snaps.length === 1 && (await fs.readFile(snaps[0].abs, "utf8")) === "原始正文\n");
@@ -1006,6 +1085,94 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
     !DATA_FILES.some((f) => /pipeline|prompt/.test(f.key)),
     DATA_FILES.map((f) => f.key).join(",")
   );
+}
+
+// ---- 每日计划（05 - 计划/<日期>.md） ----
+//
+// 这一组测的全是「错了不报错、只会安静弄坏用户文件」的地方：整份重排会覆盖掉他写在
+// 清单底下的备注、认不出的标记被顺手抹掉、晚上写的清单因为 UTC 落到明天那份文件里。
+{
+  const MIXED = "# 2026-08-15 计划\n\n- [ ] 改完主稿\n* [x] 回消息\n- [/] 自定义标记\n\n随手写的备注\n";
+
+  const { tasks, unknownMarks } = parseTasks(MIXED);
+  check("三种列表符号都认", tasks.length === 2 && tasks[1].bullet === "*", JSON.stringify(tasks.map((t) => t.bullet)));
+  check("打过钩的读成 done", tasks[0].done === false && tasks[1].done === true);
+  // 认不出的方框（Obsidian 主题的 [/]、[-]）**数出来交给界面照实说**，绝不隐藏也绝不改写
+  check("认不出的标记数出来", unknownMarks === 1, String(unknownMarks));
+
+  const toggled = applyToggle(MIXED, 0, true);
+  check("打钩只改那一行", toggled === MIXED.replace("- [ ] 改完主稿", "- [x] 改完主稿"));
+  check("打钩不动认不出的标记", toggled.includes("- [/] 自定义标记"));
+  check("打钩不动文件底下的备注", toggled.endsWith("随手写的备注\n"));
+
+  // 列表符号是用户的习惯，打个钩不该顺手把 `*` 改成 `-`
+  check("打钩保留原来的列表符号", applyToggle(MIXED, 1, false).includes("* [ ] 回消息"));
+
+  check("删除只删那一行", applyRemove(MIXED, 1) === MIXED.replace("* [x] 回消息\n", ""));
+
+  // ⚠️ 新的一条插在**最后一条任务后面**，不是文件末尾——写在清单底下的备注
+  // 应该一直待在清单底下，被顶到任务中间去是很难发现的那种坏
+  const added = applyAdd(MIXED, "买菜");
+  check("新任务插在最后一条任务之后", added.indexOf("买菜") < added.indexOf("随手写的备注"));
+  check("新任务没顶掉备注", added.endsWith("随手写的备注\n"));
+  check("空清单也加得进去", applyAdd(newPlanText("2026-08-15"), "第一条").endsWith("- [ ] 第一条\n"));
+
+  // 用户顺手打的 `- [ ]` 要剥掉，否则文件里是 `- [ ] - [ ] 买菜`
+  check("剥掉用户自己打的复选框前缀", cleanTaskText("- [ ] 买菜") === "买菜", cleanTaskText("- [ ] 买菜"));
+  check("一条任务压成一行", cleanTaskText("上午写稿\n下午剪片") === "上午写稿 下午剪片");
+
+  // ⚠️ **日期是本地日期，不是 UTC**。用 toISOString() 的话，晚上 8 点之后（东八区）
+  // 写的清单会落进明天那份文件——现象是「我昨晚列的清单不见了」，而没有任何地方会报错
+  const lateNight = new Date(2026, 7, 15, 23, 30);
+  check("晚上写的清单还算今天", localDate(lateNight) === "2026-08-15", localDate(lateNight));
+  check("明天就是明天", offsetDate(1, lateNight) === "2026-08-16", offsetDate(1, lateNight));
+  check("跨月也对", offsetDate(1, new Date(2026, 7, 31, 22, 0)) === "2026-09-01");
+
+  // 接口**认日期串不认路径**。这是这条链上防任意文件写入的第一道
+  check("路径由日期派生", planPath("2026-08-15") === `${DIRS.plan}/2026-08-15.md`, planPath("2026-08-15"));
+  for (const bad of ["../../etc/passwd", "2026-8-5", "", "2026-08-15.md"]) {
+    let rejected = false;
+    try { planPath(bad); } catch { rejected = true; }
+    check(`认不出的日期直接拒：${bad || "(空)"}`, rejected);
+  }
+
+  const vault = await fs.mkdtemp(path.join(os.tmpdir(), "wb-plan-"));
+  const day = "2026-08-15";
+  const fresh = await readPlan(vault, day);
+  check("文件还没建时是空清单不是报错", fresh.exists === false && fresh.tasks.length === 0);
+
+  const created = await writePlan(vault, day, fresh.stamp, (t) => applyAdd(t, "改完主稿"));
+  check("新建的文件写得进去", created.tasks.length === 1 && created.tasks[0].text === "改完主稿");
+  check("新文件带自述标题", (await readFile(vault, planPath(day))).startsWith(`# ${day} 计划`));
+
+  // ⚠️ 乐观锁：这份 md 同时可能在 Obsidian 里开着。拿旧 stamp 去写必须被挡下来，
+  // 否则「用旧的行号删掉别的行」这种事不报错也看不出来
+  let conflicted = false;
+  try {
+    await writePlan(vault, day, fresh.stamp, (t) => applyAdd(t, "又一条"));
+  } catch (e) {
+    conflicted = e.status === 409;
+  }
+  check("计划的 stamp 对不上就 409，不硬覆盖", conflicted);
+  check("被挡下来的那次没写进计划", (await readPlan(vault, day)).tasks.length === 1);
+
+  /**
+   * ⚠️ **`stamp === null` 表示这次不上锁，只有「追加一条」这么传。**
+   *
+   * 锁保护的是**按行号改写**（打钩、删除）：行号是在客户端手上那份快照里算的，文件一变
+   * 就可能指向别的行。追加不依赖任何旧状态，给它上锁的结果是——文件只要在别处被动过一下
+   * （在 Obsidian 里存一次、甚至跑一次截图脚本），**最无害的那个操作反而第一个被挡下来**，
+   * 而用户看到的是「添加任务失败」。这是真出过的 bug，所以两个方向都钉住。
+   */
+  const appended = await writePlan(vault, day, null, (t) => applyAdd(t, "拿着过期 stamp 也要加得进去"));
+  check("追加不受 stamp 影响", appended.tasks.length === 2, String(appended.tasks.length));
+  let stillLocked = false;
+  try {
+    await writePlan(vault, day, fresh.stamp, (t) => applyToggle(t, 0, true));
+  } catch (e) {
+    stillLocked = e.status === 409;
+  }
+  check("但打钩仍然要对 stamp", stillLocked);
 }
 
 console.log("");

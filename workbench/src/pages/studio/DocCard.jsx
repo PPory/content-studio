@@ -7,10 +7,13 @@
 import { useState } from "react";
 import { relTime } from "../../components/ui.jsx";
 import { IconArrowUpRight, IconTrash } from "../../components/icons.jsx";
+import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
 
 export function DocCard({ item, onOpen, onDelete, removeLabel }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 挡住一次物理双击直接删掉——为什么需要它、320ms 是怎么来的，见 hook 里的注释
+  const armed = useConfirmGuard(confirm);
 
   return (
     <article className="wall-card">
@@ -50,11 +53,22 @@ export function DocCard({ item, onOpen, onDelete, removeLabel }) {
         {/* 删除按钮平时是灰的、hover 才显形，要点两下。第二下写清楚东西去哪了 */}
         {onDelete ? (
           confirm ? (
-            <>
+            /**
+             * ⚠️ **确认态的两颗按钮要裹成一组。** `.wall-card__foot` 是
+             * `justify-content: space-between`，正常态靠垃圾桶上的 `margin-left: auto`
+             * 把「垃圾桶 + 打开」聚到右边；确认态多出一个按钮之后，三个子元素被均匀撑开，
+             * **两颗按钮一个飘在中间、一个贴着右缘**，看着不像一组选择题，像两个不相干的控件。
+             *
+             * **「取消」排在最右**，也就是「打开」原来的位置：那是手最熟的落点，
+             * 让它落在安全的那颗上。
+             */
+            <div className="wall-card__confirm">
               <button
                 className="btn btn-sm btn-danger"
                 disabled={busy}
                 onClick={async () => {
+                  // ⚠️ **挡住连点。** 见 `armed` 的注释——这不是防抖，是防误删。
+                  if (!armed.current) return;
                   setBusy(true);
                   try {
                     await onDelete();
@@ -68,7 +82,7 @@ export function DocCard({ item, onOpen, onDelete, removeLabel }) {
               </button>
               {/* 反悔的路必须一直在。少了它，点错第一下就只剩「删」和「离开这一页」两条路 */}
               <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
-            </>
+            </div>
           ) : (
             <button className="icon-btn wall-card__del" onClick={() => setConfirm(true)} title={removeLabel || "删除"} aria-label="删除">
               <IconTrash aria-hidden="true" size={15} stroke={1.7} />

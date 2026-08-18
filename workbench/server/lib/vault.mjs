@@ -11,7 +11,7 @@ import { DIRS } from "./vault-dirs.mjs";
 
 export function vaultRoot(env) {
   const root = (env.VAULT_ROOT || "").trim();
-  if (!root) throw Object.assign(new Error("未配置 VAULT_ROOT"), { hint: "在 creator-workbench/.env 里填 Obsidian vault 的绝对路径" });
+  if (!root) throw Object.assign(new Error("未配置 VAULT_ROOT"), { hint: "在设置面板的「知识库」那一段填 Obsidian vault 的绝对路径" });
   return path.resolve(root);
 }
 
@@ -533,14 +533,49 @@ export async function trashBook(root, dir) {
   const stat = await fs.stat(abs).catch(() => null);
   if (!stat?.isDirectory()) throw Object.assign(new Error("这本书不在书架上"), { status: 404 });
 
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-  const target = `.trash/${rel.split("/").join("_")}-${stamp}`;
+  const target = trashTarget(rel);
   const targetAbs = safeJoin(root, target);
   await fs.mkdir(path.dirname(targetAbs), { recursive: true });
   await fs.rename(abs, targetAbs);
   return { from: rel, to: target };
+}
+
+/**
+ * 废纸篓里的落点。**路径压平成一段文件名 + 时间戳**：`.trash/` 底下不重建目录树，
+ * 否则删两次同名的东西会撞在一起，而 Obsidian 的废纸篓也是平铺的。
+ */
+function trashTarget(rel) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `.trash/${rel.split("/").join("_")}-${stamp}`;
+}
+
+/**
+ * 把一个**文件**移进 `.trash/`，用于流水线删除时连带清理 vault 里的归档。
+ *
+ * 和 `trashBook` 同一个落点，理由也一样：这跟你在 Obsidian 里删一个文件是同一个
+ * 动作、同一个地方能找回来，不用学第二套规则。而且归档文件上可能有你加的批注和
+ * 双链——真删的话，删素材会让引用它的稿件归档里那条 `[[素材]]` 变成死链，
+ * 而 Obsidian 不报错，只是点不开。移进废纸篓，这个代价就是可逆的。
+ *
+ * ⚠️ **找不到文件回 `null`，不抛异常。** 调用方是删除流程，而 D1 那一行**已经删了**
+ * ——这时候再抛一个异常出去，界面上就是「删除失败」，用户会再点一次、然后收到
+ * 「not found」。归档本来就可能不存在（`vault_path` 为空、归档失败过、
+ * 你自己在 Obsidian 里先删了），这些都不是错误。
+ */
+export async function trashFile(root, rel) {
+  const abs = safeJoin(root, rel);
+  const clean = path.relative(root, abs).split(path.sep).join("/");
+  if (!clean || clean.startsWith("..")) throw Object.assign(new Error("路径不合法"), { status: 400 });
+  const stat = await fs.stat(abs).catch(() => null);
+  if (!stat?.isFile()) return null;
+
+  const target = trashTarget(clean);
+  const targetAbs = safeJoin(root, target);
+  await fs.mkdir(path.dirname(targetAbs), { recursive: true });
+  await fs.rename(abs, targetAbs);
+  return { from: clean, to: target };
 }
 
 /**

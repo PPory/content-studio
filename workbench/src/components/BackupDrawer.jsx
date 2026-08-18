@@ -108,7 +108,7 @@ export function BackupDrawer({ open, onClose }) {
 
         <ErrorNote error={error} what="备份" />
         {done ? (
-          <Note tone="warn" title="完成">
+          <Note tone="success" title="完成">
             {done}
           </Note>
         ) : null}

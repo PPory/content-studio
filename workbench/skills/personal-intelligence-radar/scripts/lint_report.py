@@ -368,6 +368,49 @@ def load_ledger(path: Path | None, findings: list[Finding]) -> list[dict[str, An
     return rows
 
 
+def lint_pending_actions(
+    registry: dict[str, Any] | None,
+    text: str,
+    findings: list[Finding],
+) -> None:
+    """跨周挂账必须在报告里露面。
+
+    这条检查存在的原因：上一轮把「下次先补那次检索」只写在报告正文里，
+    它生效纯粹靠下次跑的人正好读到那段话。现在真源是 registry 的
+    `pending_actions`，但**只写进 json 同样会丢**——用户读的是报告。
+    所以两边都要有，由这里保证一致。
+
+    没有 `pending_actions` 的旧 registry 整个跳过，不会误伤历史报告。
+    """
+    if not registry:
+        return
+    pending = registry.get("pending_actions")
+    if not isinstance(pending, list) or not pending:
+        return
+
+    for item in pending:
+        if not isinstance(item, dict):
+            findings.append(Finding("ERROR", "pending_actions contains a non-object entry."))
+            continue
+        pa_id = str(item.get("id", "")).strip()
+        status = str(item.get("status", "")).strip()
+        if not pa_id:
+            findings.append(Finding("ERROR", "pending_actions entry is missing an id."))
+            continue
+        if status == "open" and pa_id not in text:
+            findings.append(
+                Finding(
+                    "ERROR",
+                    f"Open pending action {pa_id} is not mentioned in the report; "
+                    f"a carried-over action that only lives in the registry will be missed.",
+                )
+            )
+        if status == "resolved" and not str(item.get("resolved_week", "") or "").strip():
+            findings.append(
+                Finding("WARNING", f"pending action {pa_id} is resolved but has no resolved_week.")
+            )
+
+
 def lint_registry(
     registry: dict[str, Any] | None,
     ledger: list[dict[str, Any]] | None,
@@ -930,6 +973,7 @@ def lint_report(
                     )
 
     lint_registry(registry, ledger, report_cards, summary_counts, findings)
+    lint_pending_actions(registry, text, findings)
 
     # Check report hashes when sidecars are supplied.
     hash_pairs = [

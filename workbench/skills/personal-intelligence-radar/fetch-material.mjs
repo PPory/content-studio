@@ -9,7 +9,7 @@
 //   x       名单里的人当天说了什么                Bright Data，花钱
 //   aihot   中文事实层和覆盖面（日报）            免费直连
 //
-// 跑法（在 creator-workbench 根目录）：
+// 跑法（在 content-studio/workbench 根目录）：
 //   node skills/social-insights/fetch-material.mjs              # 只打印计划和预估用量
 //   node skills/social-insights/fetch-material.mjs --go         # 三个源都抓
 //   node skills/social-insights/fetch-material.mjs --go --only aihot
@@ -91,7 +91,7 @@ if (SNAPSHOT && FROM) die("--snapshot 和 --from 不能一起用", "前者从服
 
 const needsKey = active.some((s) => s.paid) && !FROM;
 if (needsKey && GO && !KEY) {
-  die("没有 BRIGHTDATA_API_KEY", "在 creator-workbench/.env 里加一行 BRIGHTDATA_API_KEY=xxx（控制台 Settings → API keys）");
+  die("没有 BRIGHTDATA_API_KEY", "在 content-studio/workbench/.env 里加一行 BRIGHTDATA_API_KEY=xxx（控制台 Settings → API keys）");
 }
 
 // ── 计划 ───────────────────────────────────────────────────────────────

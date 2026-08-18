@@ -5,16 +5,13 @@
 // 而设置面板那条要算默认值、要遍历整份清单。合成一个的话，每次打开工作台都要为一个
 // 几周才点一次的面板付一遍代价。
 //
-// 但**字段名只写一处**：那四个 Notion 链接的中文名来自 `settings-schema.mjs` 的 `label`，
-// 不在这里抄第二份——抄了的话，以后在清单里改一个库名，总览页底下那排按钮会安静地
-// 变成两套叫法。
+// ⚠️ **`links.notion` 撤掉了。** 四个库从 Notion 迁到 D1 之后，那几个外链指向的是
+// 一份不再更新的旧数据——**一个通往过期数据的链接比没有链接更糟**，点开看到的东西
+// 长得跟真的一样。总览页底下那排按钮跟着一起撤了。
 
 import path from "node:path";
 import fs from "node:fs";
 import { json } from "../lib/http.mjs";
-import { SETTINGS } from "../lib/settings-schema.mjs";
-
-const NOTION_LINKS = SETTINGS.filter((f) => f.group === "links" && f.key.startsWith("NOTION_"));
 
 export const configRoutes = [
   {
@@ -38,7 +35,6 @@ export const configRoutes = [
           configured: !!(env.WORKER_URL || "").trim() && !!(env.WORKBENCH_KEY || "").trim(),
         },
         links: {
-          notion: Object.fromEntries(NOTION_LINKS.map((f) => [f.label, env[f.key] || ""])),
           typeset: env.TYPESET_URL || "",
         },
       });

@@ -103,6 +103,41 @@ tmp/insight-work/<YYYY-Www>/
 - 一页结论的行动计数按所有候选的 `primary_action` 生成，不要在正文里重新手数。
 - Top Card、Learn Queue、Write Queue、Watchlist 只引用 Registry 中的 `candidate_id`，不要各自创造新状态。
 
+### 3.1 `pending_actions`——跨周挂账
+
+Registry 顶层还有一个 `pending_actions` 数组，记**这次运行没做完、下次运行要先补的动作**：
+
+```json
+"pending_actions": [
+  {
+    "id": "PA-01",
+    "candidate_id": "IC-03",
+    "action": "补做「AI 水印」的小红书站内供给检索",
+    "why": "本轮只检索了「AIGC检测」，改写切口的依据不完整",
+    "created_week": "2026-W33",
+    "status": "open",
+    "resolved_week": null
+  }
+]
+```
+
+**它和 Watchlist 不是一回事，别合并：**
+
+| | 触发器 | 例子 |
+| --- | --- | --- |
+| Watchlist | **外部事件** | 「Anthropic 公布检测机制」「权重出现在 HuggingFace」 |
+| `pending_actions` | **下一次运行本身** | 「上次没检索那个关键词，这次先补」 |
+
+约束：
+
+- **每次运行的第一件事是读上一周 registry 的 `pending_actions`**（见 SKILL.md 工作流第 1 步）。
+  没有上一周的 registry 就跳过。
+- 结掉的写 `status: "resolved"` 和 `resolved_week`，**不要删**——删了就看不出这条挂了几周。
+- 挂了 3 周以上还没结的，要么当期结掉，要么在报告里明说为什么一直没做，
+  **不要静默续期**。
+- ⚠️ **不要把挂账只写在报告正文里。** 上一轮就是这么做的：正文里写了「下次运行时先补那一次检索」，
+  它生效纯粹是因为下次跑的人读到了那段话。**换个人跑、或者跳着读，这条就掉了。**
+
 ## 4. Verification Queue
 
 先生成候选，再挑承重主张。不要在第一次读材料时就联网，以免搜索结果覆盖材料自身的信号。

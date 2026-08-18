@@ -50,6 +50,26 @@ function Test-Up {
   } catch { return $false } finally { $c.Dispose() }
 }
 
+# 端口通了，不代表坐在上面的是**这个目录**的工作台。
+# 这台机器上不止一份 workbench（搬过家、旧副本还带着自己的 node_modules 和 .env），
+# 而端口是 strictPort 写死的：旧副本先起来的话，点图标打开的是另一份——界面一模一样、
+# 数据是另一份，**没有任何地方会说出这件事**。你会以为自己在改的东西没生效。
+# 返回占用者的项目根目录；没人占返回 $null，认不出来返回空串。
+function Get-PortOwnerRoot {
+  try {
+    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+  } catch { return "" }
+  if (-not $conn) { return $null }
+  $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($conn.OwningProcess)" -ErrorAction SilentlyContinue
+  if (-not $p -or -not $p.CommandLine) { return "" }
+  # 命令行长这样：`"…\node.exe" <root>\node_modules\vite\bin\vite.js`。
+  # `[^"']*?` 过不了引号，所以匹配不会从前面那个 node.exe 的盘符起头。
+  $m = [regex]::Match($p.CommandLine, '([A-Za-z]:[^"'']*?)\\node_modules\\vite\\bin\\vite\.js')
+  if ($m.Success) { return $m.Groups[1].Value.TrimEnd('\') }
+  return ""
+}
+
 function Show-Fail($title, $body) {
   Use-WinForms
   [Windows.Forms.MessageBox]::Show($body, $title, "OK", "Warning") | Out-Null
@@ -137,7 +157,20 @@ function Open-App {
 # 踩过一次：Icon.ToBitmap 抛异常，现象是「点了没反应」，查了两轮才想到去前台跑一遍。
 try {
   # ── 已经在跑：直接开窗口，不碰服务
-  if (Test-Up) { Open-App; exit 0 }
+  if (Test-Up) {
+    $owner = Get-PortOwnerRoot
+    # 只在**认准了是别人**的时候拦。认不出来（空串）照旧放行——宁可少拦一次，
+    # 也不能让一个命令行长得不一样的环境把启动器整个堵死。
+    if ($owner -and $owner -ne $root.TrimEnd('\')) {
+      $msg = "端口 $port 被另一份工作台占着：`n`n    $owner`n`n" +
+             "要开的是这一份：`n`n    $root`n`n" +
+             "两份界面一模一样，直接开等于在看另一份的数据。先去那个目录停掉它（npm run app:stop），再点一次图标。"
+      Show-Fail "Xenho OS 打不开" $msg
+      exit 1
+    }
+    Open-App
+    exit 0
+  }
 
   # ── 没在跑：先做能提前发现的检查，别让人对着启动画面等 90 秒才知道是没装依赖
   $vite = Join-Path $root "node_modules\vite\bin\vite.js"
@@ -158,6 +191,48 @@ try {
   # WB_LAUNCHER 让 vite.config.mjs 关掉 open：不关的话它会另外弹一个普通浏览器标签，
   # 加上我们这个 app 窗口就是同一个工作台开两遍。
   $env:WB_LAUNCHER = "1"
+
+  # ── 代理：**不能指望继承来的环境变量**
+  #
+  # workers.dev 在这条网络上要走代理才通（不走就是 DNS 被污染后的连接超时）。
+  # `server/lib/fetch.mjs` 认 HTTPS_PROXY，但从开始菜单点图标起的进程，环境是从
+  # **Explorer** 继承的，而 Explorer 的环境是登录那一刻的快照——后来才设的用户变量
+  # 到不了它那儿。症状极具误导性：终端里 `npm run dev` 一切正常，点图标起来的同一份
+  # 代码每个面板都是「连不上 Worker：fetch failed」，而提示还让你去查 .env。
+  #
+  # 所以这里不读继承值，直接问持久化的那几处（用户级 → 机器级 → 系统代理设置）。
+  function Resolve-Proxy {
+    foreach ($scope in "User", "Machine") {
+      foreach ($name in "HTTPS_PROXY", "HTTP_PROXY") {
+        $v = [Environment]::GetEnvironmentVariable($name, $scope)
+        if ($v) { return $v.Trim() }
+      }
+    }
+    # IE/系统代理面板那一份（勾了「使用代理服务器」但没设环境变量的情况）
+    try {
+      $k = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -ErrorAction Stop
+      if ($k.ProxyEnable -eq 1 -and $k.ProxyServer) {
+        $s = [string]$k.ProxyServer
+        # 可能是 `host:port`，也可能是 `http=…;https=…` 这种分协议写法
+        if ($s -match '(?i)https?=([^;]+)') { $s = $Matches[1] }
+        elseif ($s -match ';') { return "" }
+        if ($s -notmatch '^\w+://') { $s = "http://$s" }
+        return $s.Trim()
+      }
+    } catch {}
+    return ""
+  }
+  if (-not $env:HTTPS_PROXY) {
+    $proxy = Resolve-Proxy
+    if ($proxy) { $env:HTTPS_PROXY = $proxy }
+  }
+  # 本机地址永远直连。fetch.mjs 里也硬编码了 localhost/127.0.0.1，这里是把用户自己配的
+  # 那份一起带过去（比如额外放行了内网域名）。
+  if (-not $env:NO_PROXY) {
+    $np = [Environment]::GetEnvironmentVariable("NO_PROXY", "User")
+    if (-not $np) { $np = [Environment]::GetEnvironmentVariable("NO_PROXY", "Machine") }
+    if ($np) { $env:NO_PROXY = $np }
+  }
   # 重定向到文件（而不是 .NET 的管道）：Vite 每次热更新都会写日志，管道没人读满了就会
   # 把服务卡死；写文件是操作系统在收，不用管。
   Start-Process -FilePath $node.Source -ArgumentList $vite `

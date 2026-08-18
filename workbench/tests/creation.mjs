@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { interviewPromptParts, materialDraftPromptParts } from "../server/routes/agent.mjs";
+import { interviewPromptParts } from "../server/routes/agent.mjs";
 import { cleanGeneratedDraft, deriveDraftTitle, formatMaterialQuote } from "../src/lib/creation-api.js";
 
 assert.equal(cleanGeneratedDraft("```markdown\n# 标题\n\n正文\n```"), "# 标题\n\n正文");
@@ -24,18 +24,8 @@ assert.equal(deriveDraftTitle("", "这是正文第一句话。\n\n第二段"), "
 assert.equal(deriveDraftTitle("用户填写的标题", "# 正文标题"), "用户填写的标题");
 console.log("✓ 空白稿可在写完后从正文生成标题");
 
-const materialPrompt = materialDraftPromptParts({
-  draftTitle: "有依据的文章",
-  platform: "公众号",
-  viewpoint: "只讨论已知信息",
-  audience: "内容创作者",
-  materials: [{ title: "真实素材", type: "数据/事实", verificationStatus: "已核验", note: "原始内容", link: "https://example.com" }],
-});
-assert.match(materialPrompt.join("\n"), /只能使用下面已经确认的写作简报和可用素材/);
-assert.match(materialPrompt.join("\n"), /写作方向：只讨论已知信息/);
-assert.match(materialPrompt.join("\n"), /正文：\n原始内容/);
-assert.doesNotMatch(materialPrompt.join("\n"), /vault/);
-console.log("✓ AI 素材起稿只接收已确认简报和已选素材");
+// ⚠️ 「AI 素材起稿」的提示词已经搬去 Worker（`/wb/draft/material`），不再由本地 CLI 拼。
+// 那边的断言在 worker/test 里：候选素材从库里读、待核验的剔掉、真实性闸门拦编造经历。
 
 assert.equal(formatMaterialQuote({ title: "真实素材", note: "第一行\n第二行" }), "> 第一行\n> 第二行\n>\n> —— 素材：真实素材");
 console.log("✓ 素材引用按需插入正文，不预填编辑器");

@@ -18,6 +18,8 @@ import VOICE_MD from "../prompt/voice.md";
 import FRAMEWORKS_MD from "../prompt/frameworks.md";
 import TAGS_MD from "../prompt/tags.md";
 import EXPLAIN_MD from "../prompt/explain.md";
+import PICK_MATERIALS_MD from "../prompt/pick-materials.md";
+import MATERIAL_DRAFT_MD from "../prompt/material-draft.md";
 import COLLECTION_ORGANIZE_MD from "../prompt/collection-organize.md";
 import KNOWLEDGE_CARD_MD from "../prompt/knowledge-card.md";
 
@@ -64,6 +66,11 @@ export const TRIAGE_PROMPT = compose(TRIAGE_MD);
 export const SYNTHESIZE_PROMPT = compose(SYNTHESIZE_MD);
 // creator-workbench 阅读区的划词 AI（解释/展开/反驳/选题），通过真实性校验后返回、默认不落库
 export const EXPLAIN_PROMPT = compose(EXPLAIN_MD);
+// creator-workbench 创作弹层「按意思找素材」：关键词搜不到时，让模型在整库候选里挑
+export const PICK_MATERIALS_PROMPT = compose(PICK_MATERIALS_MD);
+// creator-workbench 创作弹层「让 AI 生成初稿」：用户挑好的素材 + 简报 → 一份可编辑初稿。
+// 和任务3 的成稿（`draft.md`）分开：那边是流水线按选题自动跑，这边是人挑好素材当场要一版
+export const MATERIAL_DRAFT_PROMPT = compose(MATERIAL_DRAFT_MD);
 export const COLLECTION_ORGANIZE_PROMPT = compose(COLLECTION_ORGANIZE_MD);
 export const KNOWLEDGE_CARD_PROMPT = compose(KNOWLEDGE_CARD_MD);
 
