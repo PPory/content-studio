@@ -73,10 +73,17 @@ try {
   await page.waitForSelector(".writing-assist__result");
   const firstStarter = await page.textContent(".writing-assist__result > p");
   assert((await page.textContent(".writing-assist__result footer")).includes("2,560"), "没有显示真实的起始句库数量");
-  await page.click('.writing-assist__result button:has-text("换一句")');
+  const iconActions = await page.evaluate(() => Array.from(document.querySelectorAll(".writing-assist__modes button, .writing-assist__result footer button"), (button) => ({
+    label: button.getAttribute("aria-label"),
+    title: button.getAttribute("title"),
+    text: button.textContent.trim(),
+    icons: button.querySelectorAll("svg").length,
+  })));
+  assert(iconActions.every((item) => item.label && item.title && !item.text && item.icons === 1), "推动方式和结果操作没有全部换成带悬停说明的图标按钮");
+  await page.click('.writing-assist__result button[aria-label="换一句起始句"]');
   const secondStarter = await page.textContent(".writing-assist__result > p");
   assert(firstStarter !== secondStarter, "换一句没有换内容");
-  await page.click('.writing-assist__result button:has-text("用这句开头")');
+  await page.click('.writing-assist__result button[aria-label="用这句开头"]');
   await page.waitForFunction((text) => document.querySelector(".cm-content")?.textContent.includes(text), secondStarter);
 
   // 光标放在正文中间：请求位置、浮层位置和等待动画必须都以真实界面为准。
@@ -104,27 +111,46 @@ try {
   assert(requests.find((item) => item.mode === "nudge")?.cursor === 3, "新建文章没有把当前光标位置发给 AI");
 
   // 连续两次小推动：第二次必须真的再发请求，而不是重复展示第一次缓存。
-  await page.click('.writing-assist__result button:has-text("再来一个")');
+  await page.click('.writing-assist__result button[aria-label="再生成一个"]');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("读者最可能反对"));
   assert(nudges === 2, `小推动请求次数不对：${nudges}`);
 
-  await page.click('.writing-assist__modes button:has-text("帮我写")');
+  await page.click('.writing-assist__modes button[aria-label^="帮我写"]');
   await page.click('.writing-assist__choice button:has-text("续写一段")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("缺少更多方法"));
   const before = await editorValue(".cm-content");
   assert(!before.includes("缺少更多方法"), "候选在确认前就写进了正文");
-  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist.png"), fullPage: false });
-  await page.click('.writing-assist__result button:has-text("插入光标处")');
+  await page.click('.writing-assist__result button[aria-label="插入光标处"]');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("缺少更多方法"));
   await page.waitForSelector(".writing-assist__card", { state: "detached" });
   const after = await editorValue(".cm-content");
   const paragraph = "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
   assert(after === before.slice(0, 3) + paragraph + before.slice(3), "续写没有精确插入当前光标，或额外添加了换行");
+  assert((await page.$$(".cm-ai-draft")).length > 0, "AI 续写插入后没有轻量底纹");
+  const aiWash = await page.$eval(".cm-ai-draft", (node) => getComputedStyle(node).backgroundColor);
+  assert(aiWash !== "rgba(0, 0, 0, 0)" && aiWash !== "transparent", "AI 续写底纹没有实际颜色");
+  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-ai-pending.png"), fullPage: false });
+  await page.keyboard.type("再补一句。");
+  assert((await editorValue(".cm-content")).includes(paragraph + "再补一句。"), "不能直接在 AI 底纹范围内修改");
+  await page.click('.ai-draft-review button[aria-label="回看 AI 插入时的原稿"]');
+  await page.waitForSelector(".ai-draft-history");
+  assert((await page.textContent(".ai-draft-history")).includes(paragraph), "回看历史里没有保留 AI 插入时的原稿");
+  assert((await page.textContent(".ai-draft-history")).includes("已修改"), "修改 AI 续写后历史没有标出状态");
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 原稿"]');
+  await page.click('.ai-draft-review button[aria-label="确认采用这段，移除底纹"]');
+  await page.waitForSelector(".ai-draft-review", { state: "detached" });
+  assert((await page.$$(".cm-ai-draft")).length === 0, "确认采用后 AI 底纹没有消失");
+  assert((await page.$$(".md-editor__ai-history")).length === 1, "确认采用后没有保留原稿回看入口");
+  await page.click(".md-editor__ai-history");
+  await page.waitForSelector(".ai-draft-history");
+  assert((await page.textContent(".ai-draft-history")).includes(paragraph), "确认采用后无法再次回看 AI 原稿");
+  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-ai-history.png"), fullPage: false });
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 原稿"]');
 
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__wait");
   await page.waitForSelector(".writing-assist__result");
-  await page.click('.writing-assist__modes button:has-text("帮我写")');
+  await page.click('.writing-assist__modes button[aria-label^="帮我写"]');
   await page.waitForSelector(".writing-assist__choice");
   await page.click('.writing-assist__choice button:has-text("完成全文")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("真正的结束"));
@@ -139,7 +165,7 @@ try {
   });
   assert(overflow.cardHeight <= 461 && overflow.scrolls && overflow.overflowY === "auto", "长结果没有限制窗口高度并在内部滚动");
   assert(!(await page.textContent(".cm-content")).includes("真正的结束"), "完成全文在确认前就写进了正文");
-  await page.click('.writing-assist__result button:has-text("插入光标处")');
+  await page.click('.writing-assist__result button[aria-label="插入光标处"]');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("真正的结束"));
 
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
@@ -159,14 +185,15 @@ try {
   await page.waitForSelector(".ws-edit .writing-assist__result");
   const existingNudge = requests.filter((item) => item.mode === "nudge").at(-1);
   assert(existingNudge?.cursor === 12 && existingNudge.cursor < existingNudge.content.length, "正式编辑器仍然按文末而不是当前光标请求");
-  await page.click('.ws-edit .writing-assist__modes button:has-text("帮我写")');
+  await page.click('.ws-edit .writing-assist__modes button[aria-label^="帮我写"]');
   await page.click('.ws-edit .writing-assist__choice button:has-text("续写一段")');
   await page.waitForFunction(() => document.querySelector(".ws-edit .writing-assist__result > p")?.textContent.includes("缺少更多方法"));
   await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-existing-editor.png"), fullPage: false });
-  await page.click('.ws-edit .writing-assist__result button:has-text("插入光标处")');
+  await page.click('.ws-edit .writing-assist__result button[aria-label="插入光标处"]');
   await page.waitForFunction(() => document.querySelector(".ws-edit .cm-content")?.textContent.includes("缺少更多方法"));
   const existingAfter = await editorValue(".ws-edit .cm-content");
   assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "正式编辑器没有在当前光标精确插入");
+  assert((await page.$$(".ws-edit .cm-ai-draft")).length > 0, "正式编辑器里的 AI 续写没有底纹");
   await page.click('.ws-edit__foot button:has-text("取消")');
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
@@ -175,6 +202,8 @@ try {
   console.log("✓ AI 续写先预览，并在当前光标精确插入、不额外换行");
   console.log("✓ 长结果限制高度并在浮层内部滚动");
   console.log("✓ 新建文章与稿件库正式编辑器都把当前光标发给 AI");
+  console.log("✓ 图标按钮都有名称和悬停说明");
+  console.log("✓ AI 续写可在底纹内修改、确认后退底纹，并能回看原稿");
   console.log("✓ 浏览器控制台 0 错误");
 } finally {
   await browser.close();

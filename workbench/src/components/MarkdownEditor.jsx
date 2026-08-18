@@ -24,6 +24,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { renderMarkdown } from "../lib/markdown.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
+import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -38,8 +39,13 @@ import {
   IconEye,
   IconPencil,
   IconHeading,
+  IconCheck,
+  IconHistory,
+  IconSparkles,
+  IconX,
 } from "./icons.jsx";
 import { Select } from "./ui.jsx";
+import "./ai-draft-review.css";
 
 /**
  * 语法着色。**只用语义 token，不写死颜色**——不然暗色模式下这一块会是整屏唯一不认主题的东西。
@@ -213,6 +219,8 @@ export function MarkdownEditor({
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
   const [preview, setPreview] = useState(false);
+  const [aiDrafts, setAiDrafts] = useState([]);
+  const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
 
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
   // 光标、撤销历史、滚动位置全丢。外部改值走下面那个 effect 的补丁式更新。
@@ -231,6 +239,7 @@ export function MarkdownEditor({
           syntaxHighlighting(mdHighlight),
           cmTheme,
           citationExtension,
+          aiDraftExtension,
           flashField,
           // 点正文里被标注的那句 → 右侧面板高亮对应素材。反方向由 revealRequest 走。
           EditorView.domEventHandlers({
@@ -255,6 +264,8 @@ export function MarkdownEditor({
             // 而位置只有编辑器这一份是准的。字段没变时是同一个对象，比较引用就够。
             const now = u.state.field(citationField);
             if (u.startState.field(citationField) !== now) onCitationsRef.current?.(now.items);
+            const aiNow = u.state.field(aiDraftField);
+            if (u.startState.field(aiDraftField) !== aiNow) setAiDrafts(aiNow.items);
           }),
         ],
       }),
@@ -321,7 +332,17 @@ export function MarkdownEditor({
     const lead = !exact && before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
     const tail = !exact && after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
     const insert = exact ? text : `${lead}${text}${tail}`;
-    v.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length - tail.length } });
+    const effects = insertRequest.ai
+      ? [addAiDraft.of({
+          id: insertRequest.id,
+          from,
+          to: from + insert.length,
+          original: text,
+          label: insertRequest.kind || "AI 续写",
+          createdAt: Date.now(),
+        })]
+      : undefined;
+    v.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length - tail.length }, effects });
     v.focus();
     onInsertHandled?.(insertRequest.id);
   }, [insertRequest, onInsertHandled]);
@@ -333,6 +354,19 @@ export function MarkdownEditor({
     if (!v) return HEADINGS[0];
     const line = v.state.doc.lineAt(v.state.selection.main.from);
     return HEADINGS[(line.text.match(/^(#{1,3})\s+/)?.[1].length ?? 0)] || HEADINGS[0];
+  };
+  const pendingAiDrafts = aiDrafts.filter((item) => !item.confirmed);
+  const activeAiDraft = pendingAiDrafts.at(-1);
+  const aiText = (item) => {
+    const v = view.current;
+    if (!v || !item || item.from < 0 || item.to > v.state.doc.length) return "";
+    return v.state.sliceDoc(item.from, item.to);
+  };
+  const activeAiChanged = activeAiDraft ? aiText(activeAiDraft) !== activeAiDraft.original : false;
+  const acceptAiDraft = () => {
+    if (!view.current || !activeAiDraft) return;
+    view.current.dispatch({ effects: confirmAiDraft.of(activeAiDraft.id) });
+    view.current.focus();
   };
 
   return (
@@ -390,8 +424,58 @@ export function MarkdownEditor({
           {preview ? <IconPencil aria-hidden="true" stroke={1.7} /> : <IconEye aria-hidden="true" stroke={1.7} />}
           {preview ? "编辑" : "预览"}
         </button>
+        {aiDrafts.length ? (
+          <button
+            className="icon-btn md-editor__ai-history"
+            data-open={aiHistoryOpen ? "true" : undefined}
+            onClick={() => setAiHistoryOpen((open) => !open)}
+            aria-expanded={aiHistoryOpen}
+            aria-label={`查看本次编辑的 AI 原稿，共 ${aiDrafts.length} 段`}
+            title={`查看本次编辑的 AI 原稿（${aiDrafts.length}）`}
+          >
+            <IconHistory aria-hidden="true" stroke={1.7} />
+          </button>
+        ) : null}
         {toolbarExtra}
       </div>
+      {activeAiDraft ? (
+        <div className="ai-draft-review" aria-live="polite">
+          <IconSparkles aria-hidden="true" stroke={1.7} />
+          <div className="ai-draft-review__copy">
+            <b>AI 续写待确认</b>
+            <span>{activeAiChanged ? "已经改过，可以采用" : "直接在底纹里修改"}{pendingAiDrafts.length > 1 ? ` · 共 ${pendingAiDrafts.length} 段` : ""}</span>
+          </div>
+          <div className="ai-draft-review__actions">
+            <button className="icon-btn" onClick={() => setAiHistoryOpen(true)} aria-label="回看 AI 插入时的原稿" title="回看 AI 插入时的原稿">
+              <IconHistory aria-hidden="true" stroke={1.7} />
+            </button>
+            <button className="icon-btn" data-primary="true" onClick={acceptAiDraft} aria-label="确认采用这段，移除底纹" title="确认采用这段，移除底纹">
+              <IconCheck aria-hidden="true" stroke={1.9} />
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {aiHistoryOpen && aiDrafts.length ? (
+        <section className="ai-draft-history" aria-label="本次编辑的 AI 原稿">
+          <header className="ai-draft-history__head">
+            <span><IconHistory aria-hidden="true" stroke={1.7} />本次编辑的 AI 原稿</span>
+            <button className="icon-btn" onClick={() => setAiHistoryOpen(false)} aria-label="关闭 AI 原稿" title="关闭">
+              <IconX aria-hidden="true" stroke={1.7} />
+            </button>
+          </header>
+          <div className="ai-draft-history__list">
+            {[...aiDrafts].reverse().map((item, index) => (
+              <article className="ai-draft-history__item" key={item.id}>
+                <div className="ai-draft-history__meta">
+                  <span>{item.label || "AI 续写"} · {aiDrafts.length - index}</span>
+                  <span>{item.removed ? "已删除" : item.confirmed ? "已采用" : "待确认"}{!item.removed && aiText(item) !== item.original ? " · 已修改" : ""}</span>
+                </div>
+                <p>{item.original}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {/* 编辑器**一直挂在 DOM 里**，预览只是盖上去。卸载再挂的话，撤销历史和滚动位置会丢 */}
       <div className="md-editor__body" hidden={preview}>
         <div ref={host} className="md-editor__cm" aria-label={ariaLabel} />

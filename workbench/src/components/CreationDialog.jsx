@@ -481,7 +481,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
             platform={platform} setPlatform={setPlatform} materials={selected} writingMode={materialWritingMode} notice={draftNotice}
             insertRequest={insertRequest} onInsertHandled={() => setInsertRequest(null)}
             onInsertMaterial={(item) => setInsertRequest({ id: `${item.id}-${Date.now()}`, text: formatMaterialQuote(item) })}
-            onInsertWriting={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact" })}
+            onInsertWriting={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
             citations={numberedCitations} citeState={citeState} onCiteState={setCiteState}
             citeBusy={citeBusy} onRecheck={recheckCitations}
             active={active} onActivate={onBodyCite}

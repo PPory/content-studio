@@ -8,7 +8,8 @@
 .writing-assist__card > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writing-assist__modes { display: inline-flex; gap: 3px; padding: 3px; border-radius: 9px; background: color-mix(in srgb, var(--on-accent) 10%, transparent); }
 .writing-assist__modes button, .writing-assist__close, .writing-assist__result button, .writing-assist__choice button, .writing-assist__error button { border: 0; background: transparent; color: inherit; font: 600 11px/1 var(--font); cursor: pointer; }
-.writing-assist__modes button { padding: 6px 9px; border-radius: 7px; color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
+.writing-assist__modes button { width: 30px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: 7px; color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
+.writing-assist__modes button svg { width: 15px; height: 15px; }
 .writing-assist__modes button[data-on="true"] { background: var(--on-accent); color: var(--accent); }
 .writing-assist__close { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: color-mix(in srgb, var(--on-accent) 72%, transparent); }
 .writing-assist__close:hover { background: color-mix(in srgb, var(--on-accent) 12%, transparent); color: var(--on-accent); }
@@ -22,6 +23,8 @@
 .writing-assist__result footer > span { color: color-mix(in srgb, var(--on-accent) 52%, transparent); font-size: 10.5px; }
 .writing-assist__result footer > div { flex: none; display: flex; gap: 6px; }
 .writing-assist__result footer button, .writing-assist__choice button, .writing-assist__error button { min-height: 30px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--on-accent) 26%, transparent); border-radius: 9px; }
+.writing-assist__result footer button.writing-assist__icon-action { width: 32px; padding: 0; display: grid; place-items: center; }
+.writing-assist__icon-action svg { width: 15px; height: 15px; }
 .writing-assist__result footer button:hover, .writing-assist__choice button:hover, .writing-assist__error button:hover { border-color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
 .writing-assist__result footer button.is-primary { border-color: var(--on-accent); background: var(--on-accent); color: var(--accent); }
 .writing-assist__choice { padding-top: 13px; }

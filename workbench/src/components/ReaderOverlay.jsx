@@ -479,7 +479,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
               body={draft}
               platform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
               getCursor={() => writingCursor.current}
-              onInsert={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact" })}
+              onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
             />
           )}
         />

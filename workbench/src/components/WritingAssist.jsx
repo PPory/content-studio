@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { creationApi } from "../lib/creation-api.js";
 import { STARTING_LINE_COUNT, startingLine } from "../lib/writing-prompts.js";
-import { IconBulb, IconLoader2, IconX } from "./icons.jsx";
+import { IconBulb, IconFileImport, IconLoader2, IconPencil, IconRefresh, IconX } from "./icons.jsx";
 import "./writing-assist.css";
 
 /**
@@ -74,7 +74,10 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
 
   function insert() {
     if (!result?.text) return;
-    onInsert?.(result.text);
+    onInsert?.(result.text, {
+      ai: result.mode === "paragraph" || result.mode === "finish",
+      kind: result.kind,
+    });
     setOpen(false);
   }
 
@@ -87,8 +90,8 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
         <section className="writing-assist__card" aria-label="写作推动" aria-live="polite">
           <header>
             <div className="writing-assist__modes" aria-label="推动方式">
-              <button data-on={mode === "think"} onClick={() => pickMode("think")}>想一想</button>
-              <button data-on={mode === "write"} onClick={() => pickMode("write")}>帮我写</button>
+              <button data-on={mode === "think"} onClick={() => pickMode("think")} aria-label="想一想：围绕光标给一个问题或新角度" title="想一想：给一个问题或新角度"><IconBulb aria-hidden="true" /></button>
+              <button data-on={mode === "write"} onClick={() => pickMode("write")} aria-label="帮我写：围绕光标续写正文" title="帮我写：续写正文"><IconPencil aria-hidden="true" /></button>
             </div>
             <button className="writing-assist__close" onClick={() => setOpen(false)} aria-label="关闭写作推动"><IconX aria-hidden="true" /></button>
           </header>
@@ -112,8 +115,8 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
               <footer>
                 <span>{result.mode === "starter" ? `内置组合库 · ${STARTING_LINE_COUNT.toLocaleString("en-US")} 种` : result.mode === "nudge" ? "围绕光标，只给一步" : `候选 ${result.text.length} 字`}</span>
                 <div>
-                  <button onClick={() => result.mode === "starter" ? localStarter() : ask(result.mode)}>{result.mode === "starter" ? "换一句" : "再来一个"}</button>
-                  {result.mode !== "nudge" ? <button className="is-primary" onClick={insert}>{result.mode === "starter" ? "用这句开头" : "插入光标处"}</button> : null}
+                  <button className="writing-assist__icon-action" onClick={() => result.mode === "starter" ? localStarter() : ask(result.mode)} aria-label={result.mode === "starter" ? "换一句起始句" : "再生成一个"} title={result.mode === "starter" ? "换一句起始句" : "再生成一个"}><IconRefresh aria-hidden="true" /></button>
+                  {result.mode !== "nudge" ? <button className="writing-assist__icon-action is-primary" onClick={insert} aria-label={result.mode === "starter" ? "用这句开头" : "插入光标处"} title={result.mode === "starter" ? "用这句开头" : "插入光标处"}><IconFileImport aria-hidden="true" /></button> : null}
                 </div>
               </footer>
             </div>
