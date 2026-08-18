@@ -5,9 +5,20 @@
 
 import { Readable } from "node:stream";
 import { json, readJsonBody } from "../lib/http.mjs";
-import { callWorkerRaw } from "../lib/worker.mjs";
+import { callWorker, callWorkerRaw } from "../lib/worker.mjs";
 
 export const aiRoutes = [
+  {
+    method: "POST",
+    path: "/api/ai/knowledge-card",
+    async handler({ env, req, res }) {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (e) { return json(res, { ok: false, error: e.message }, 400); }
+      const result = await callWorker(env, "knowledge/preview", { method: "POST", body, timeoutMs: 120_000 });
+      return json(res, result.data, result.status);
+    },
+  },
   {
     method: "POST",
     path: "/api/ai/explain",

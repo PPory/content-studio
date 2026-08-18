@@ -9,6 +9,7 @@
 
 import {
   getRow, updateRow, insertRow, deleteRow as dbDeleteRow, listPage, upsertByTaskKey,
+  LIST_ORDER, cursorClause, encodeCursor,
   materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic,
   tagsOf, setTags, addComment, listComments as dbListComments,
   all, first, now, newId, batch, stmt,
@@ -26,6 +27,16 @@ import {
   topicStatusFromDrafts,
 } from "./lib/integrity.js";
 import { normalizeCreationRequest } from "./lib/creation.js";
+import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
+import {
+  applyCollectionOrganize,
+  collectionSummary,
+  isReviewStatus,
+  previewCollectionOrganize,
+  previewKnowledgeCard,
+  refreshCollectionSnapshot,
+  storeCollection,
+} from "./lib/collections.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -40,6 +51,28 @@ const csv = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolea
 // 四个视图：表名、状态列、行 → 扁平对象的映射。
 // `map` 只做纯字段搬运；标签和关联 id 由 enrich 批量补，避免每行一次查询。
 const VIEWS = {
+  collections: {
+    table: "inbox",
+    hasStatus: true,
+    map: (r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.review_status,
+      reviewStatus: r.review_status,
+      type: r.kind,
+      note: r.save_note,
+      selection: r.selection,
+      tags: [],
+      link: r.link,
+      source: r.source,
+      snapshotStatus: r.snapshot_status,
+      snapshotError: r.snapshot_error,
+      snapshotAt: iso(r.snapshot_at),
+      processingMode: r.processing_mode,
+      materialIds: [],
+      topicIds: [],
+    }),
+  },
   inbox: {
     table: "inbox",
     hasStatus: true,
@@ -133,10 +166,26 @@ async function enrich(env, viewKey, rows) {
   const ids = rows.map((r) => r.id);
   const holes = ids.map(() => "?").join(",");
 
-  if (viewKey === "inbox" || viewKey === "materials") {
+  if (viewKey === "collections" || viewKey === "inbox" || viewKey === "materials") {
     const kind = viewKey === "materials" ? "material" : "inbox";
     const tagMap = await tagsOf(env, kind, ids);
     for (const item of items) item.tags = tagMap.get(item.id) || [];
+  }
+
+  if (viewKey === "collections") {
+    const [materials, topics] = await Promise.all([
+      all(env, `SELECT id, inbox_id FROM materials WHERE inbox_id IN (${holes})`, ...ids),
+      all(env, `SELECT topic_id, inbox_id FROM topic_inbox WHERE inbox_id IN (${holes})`, ...ids),
+    ]);
+    const materialMap = new Map(ids.map((id) => [id, []]));
+    const topicMap = new Map(ids.map((id) => [id, []]));
+    for (const row of materials) materialMap.get(row.inbox_id)?.push(row.id);
+    for (const row of topics) topicMap.get(row.inbox_id)?.push(row.topic_id);
+    for (const item of items) {
+      item.materialIds = materialMap.get(item.id) || [];
+      item.topicIds = topicMap.get(item.id) || [];
+      item.convertedToIdea = rows.find((r) => r.id === item.id)?.processing_mode === "triage";
+    }
   }
 
   if (viewKey === "materials") {
@@ -193,7 +242,15 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "ping") return json({ ok: true, pong: true });
 
     if (path === "status" && request.method === "GET") {
-      return json({ ok: true, counts: await pipelineCounts(env), ts: Date.now() });
+      const counts = await pipelineCounts(env);
+      try {
+        return json({ ok: true, counts, collections: await collectionSummary(env), capabilities: { collectionsV1: true }, ts: Date.now() });
+      } catch (error) {
+        if (/no such column|no such table/i.test(String(error?.message || ""))) {
+          return json({ ok: true, counts, collections: null, capabilities: { collectionsV1: false }, migrationHint: "先执行 D1 collections_v1 迁移并部署 Worker", ts: Date.now() });
+        }
+        throw error;
+      }
     }
 
     // 这几处必须 `return await`。直接 `return 异步函数()` 的话，Promise 被原样返回出去，
@@ -209,6 +266,13 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (pageMatch && request.method === "GET") return await pageDetail(env, pageMatch[1], url.searchParams.get("view"));
 
     if (path === "intake" && request.method === "POST") return await intake(env, ctx, await request.json());
+
+    const snapshotMatch = path.match(/^collections\/([0-9A-Za-z-]{20,40})\/snapshot$/);
+    if (snapshotMatch && request.method === "POST") return json(await refreshCollectionSnapshot(env, snapshotMatch[1]));
+
+    if (path === "collections/organize/preview" && request.method === "POST") return json(await previewCollectionOrganize(env, await request.json()));
+    if (path === "collections/organize/apply" && request.method === "POST") return json(await applyCollectionOrganize(env, await request.json()));
+    if (path === "knowledge/preview" && request.method === "POST") return json(await previewKnowledgeCard(env, await request.json()));
 
     if (path === "create" && request.method === "POST") return await createContent(env, await request.json());
 
@@ -227,6 +291,16 @@ export async function handleWorkbench(request, env, ctx, url) {
     }
 
     if (path === "explain" && request.method === "POST") return await explain(env, await request.json());
+
+    // 每个环节用哪个模型：知识卡片和现有环节共用同一份 D1 设置。
+    if (path === "models" && request.method === "GET") {
+      const [values, available] = await Promise.all([readModelMap(env), availableModels(env)]);
+      return json({ ok: true, tasks: MODEL_TASKS, values, fallback: env.LLM_MODEL || "", available });
+    }
+    if (path === "models" && request.method === "POST") {
+      const body = await request.json();
+      return json({ ok: true, values: await writeModelMap(env, body?.values || {}) });
+    }
 
     if (path === "update" && request.method === "POST") return await updateFields(env, await request.json());
 
@@ -259,10 +333,12 @@ const INBOX_GROUPS = {
   已收纳: ["已选题", "存档备用"],
   需处理: ["初筛失败/需人工"],
 };
+const COLLECTION_GROUPS = { 待整理: ["pending"], 已收藏: ["kept"], 已归档: ["archived"] };
 
 function statusValues(viewKey, state) {
   if (!state) return [];
   if (viewKey === "inbox" && INBOX_GROUPS[state]) return INBOX_GROUPS[state];
+  if (viewKey === "collections" && COLLECTION_GROUPS[state]) return COLLECTION_GROUPS[state];
   return [state];
 }
 
@@ -274,6 +350,35 @@ async function listRows(env, url, viewKey) {
   const values = view.hasStatus ? statusValues(viewKey, state) : [];
   const pageSize = Math.min(Math.max(Number(url.searchParams.get("pageSize")) || 25, 1), 100);
   const cursor = url.searchParams.get("cursor") || "";
+
+  if (viewKey === "collections") {
+    const params = [];
+    let clause = "WHERE capture_origin = 'collection'";
+    if (values.length) { clause += " AND review_status = ?"; params.push(values[0]); }
+    const cur = cursorClause(cursor);
+    if (cur.sql) { clause += ` AND ${cur.sql}`; params.push(...cur.params); }
+    const fetched = await all(env, `SELECT * FROM inbox ${clause} ${LIST_ORDER} LIMIT ?`, ...params, pageSize + 1);
+    const hasMore = fetched.length > pageSize;
+    const rows = hasMore ? fetched.slice(0, pageSize) : fetched;
+    const nextCursor = hasMore ? encodeCursor(rows[rows.length - 1]) : null;
+    return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
+  }
+
+  if (viewKey === "inbox") {
+    const params = [];
+    let clause = "WHERE processing_mode = 'triage'";
+    if (values.length) {
+      clause += ` AND status IN (${values.map(() => "?").join(",")})`;
+      params.push(...values);
+    }
+    const cur = cursorClause(cursor);
+    if (cur.sql) { clause += ` AND ${cur.sql}`; params.push(...cur.params); }
+    const fetched = await all(env, `SELECT * FROM inbox ${clause} ${LIST_ORDER} LIMIT ?`, ...params, pageSize + 1);
+    const hasMore = fetched.length > pageSize;
+    const rows = hasMore ? fetched.slice(0, pageSize) : fetched;
+    const nextCursor = hasMore ? encodeCursor(rows[rows.length - 1]) : null;
+    return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
+  }
 
   let rows, nextCursor;
   if (values.length > 1) {
@@ -316,6 +421,7 @@ async function searchRows(env, url, viewKey) {
   const values = view.hasStatus ? statusValues(viewKey, url.searchParams.get("state")) : [];
   // 每张表可搜的列不同，这里写死——让调用方指定列名等于把表结构暴露出去
   const COLUMNS = {
+    collections: ["title", "body", "selection", "save_note", "source", "link"],
     inbox: ["title", "body", "verdict", "source", "card_markdown"],
     materials: ["title", "content", "verification_note", "performance_basis"],
     topics: ["title", "viewpoint", "audience", "notes", "draft_note"],
@@ -325,8 +431,11 @@ async function searchRows(env, url, viewKey) {
   const like = `%${q}%`;
   const params = COLUMNS.map(() => like);
   let clause = `WHERE (${COLUMNS.map((c) => `${c} LIKE ?`).join(" OR ")})`;
+  if (viewKey === "collections") clause += " AND capture_origin = 'collection'";
+  if (viewKey === "inbox") clause += " AND processing_mode = 'triage'";
   if (values.length) {
-    clause += ` AND status IN (${values.map(() => "?").join(",")})`;
+    const statusColumn = viewKey === "collections" ? "review_status" : "status";
+    clause += ` AND ${statusColumn} IN (${values.map(() => "?").join(",")})`;
     params.push(...values);
   }
   const rows = await all(
@@ -348,6 +457,7 @@ async function pageDetail(env, id, viewKey) {
   if (!row) return json({ ok: false, error: "not found" }, 404);
 
   const text = table === "drafts" ? row.body
+    : viewKey === "collections" ? [row.selection, row.body].filter(Boolean).join("\n\n---\n\n")
     : table === "inbox" ? [row.body, row.card_markdown].filter(Boolean).join("\n\n---\n\n")
     : table === "topics" ? [row.notes, row.draft_note].filter(Boolean).join("\n\n---\n\n")
     : row.content || "";
@@ -454,9 +564,29 @@ async function draftsOfTopicEndpoint(env, topicId) {
 // 统一入库：工作台各处的「存素材 / 进灵感库」按钮都打到这里。
 // 存储规则复用 lib/store.js，与 Telegram 命令完全同一份。
 async function intake(env, ctx, body) {
-  const target = body?.target === "inbox" ? "inbox" : "material";
+  const target = String(body?.target || "");
+  if (!["collection", "inbox", "material"].includes(target)) {
+    return json({ ok: false, error: "target 只能是 collection、inbox 或 material" }, 400);
+  }
   const content = String(body?.content || "").trim();
   const source = String(body?.source || "").trim();
+
+  if (target === "collection") {
+    let saved;
+    try {
+      saved = await storeCollection(env, {
+        content, title: body?.title, url: body?.url, selection: body?.selection,
+        source: source || "工作台", saveNote: body?.saveNote, saveDuplicate: !!body?.saveDuplicate,
+      });
+    } catch (error) {
+      return json({ ok: false, error: error.message }, 400);
+    }
+    if (!saved.duplicate && saved.snapshotStatus === "pending") {
+      ctx.waitUntil(refreshCollectionSnapshot(env, saved.id).catch((e) => console.warn("collection snapshot failed:", e.message)));
+    }
+    return json({ ...saved, target });
+  }
+
   if (!content) return json({ ok: false, error: "content 不能为空" }, 400);
 
   if (target === "inbox") {
@@ -558,6 +688,7 @@ async function createContent(env, input) {
 // 不像 Notion 那样静默存下去。）
 // key 是前端传的名字，value 是库里的列名；tags 特殊，走关联表。
 const EDITABLE = {
+  collections: { reviewStatus: "review_status", title: "title", note: "save_note", tags: "__tags__" },
   inbox: { status: "status", title: "title", note: "verdict" },
   materials: {
     title: "title", note: "content", type: "type",
@@ -581,6 +712,9 @@ async function updateFields(env, body) {
   const applied = [];
   let tags = null;
   for (const [key, value] of Object.entries(body?.fields || {})) {
+    if (body?.view === "collections" && key === "reviewStatus" && !isReviewStatus(value)) {
+      return json({ ok: false, error: "reviewStatus 不合法" }, 400);
+    }
     if (body?.view === "drafts" && key === "status" && value === DRAFT_STATUS.PUBLISHED) {
       return json({ ok: false, error: "请用稿件详情里的“记录发布”完成发布；链接、时间和数据会一起进入复盘闭环。" }, 400);
     }

@@ -8,13 +8,15 @@
     chat: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/>',
     topic: '<path d="m15 4 5 5L7 22l-5 1 1-5Z"/><path d="m14 6 5 5"/><path d="M6 4V2"/><path d="M5 3h2"/><path d="M19 17v-2"/><path d="M18 16h2"/>',
     intake: '<path d="M4 4h16v5H4z"/><path d="M6 9v11h12V9"/><path d="M10 13h4"/>',
+    "intake-menu": '<path d="m8 10 4 4 4-4"/>',
   };
   const actions = [
     ["annotate", "批注", "写下自己的想法"],
     ["ask", "提问", "解释、展开或反驳"],
     ["chat", "对话", "带着选区连续聊"],
     ["topic", "选题", "把片段变成内容方向"],
-    ["intake", "入库", "选择素材库或灵感库"],
+    ["intake", "收藏", "直接存入收件箱"],
+    ["intake-menu", "更多入库", "选择灵感库或素材库"],
   ];
   const host = document.createElement("div");
   host.id = "xenho-selection-assistant";
@@ -34,7 +36,8 @@
       .action{position:relative;width:34px;height:34px;border-radius:8px;transition:background .12s,color .12s}
       .action:hover,.action:focus-visible{background:#f0b84b;color:#111318;outline:none}
       .action svg{width:18px;height:18px}
-      .action[data-action="intake"]{margin-left:4px;border-left:1px solid rgba(255,255,255,.16);border-radius:0 8px 8px 0;width:40px}
+      .action[data-action="intake"]{margin-left:4px;border-left:1px solid rgba(255,255,255,.16);border-radius:0;width:40px}
+      .action[data-action="intake-menu"]{width:22px;border-radius:0 8px 8px 0}
       .tip{pointer-events:none;position:absolute;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);display:none;white-space:nowrap;background:#fff;color:#111318;border:1px solid #ded9cc;border-radius:7px;padding:7px 9px;font-size:11px;line-height:1.25;box-shadow:0 8px 22px rgba(0,0,0,.18)}
       .tip b{display:block;font-size:12px;margin-bottom:2px}.action:hover .tip,.action:focus-visible .tip{display:block}
       .wrap.fresh .tip,.wrap.choosing .action>.tip{display:none!important}
@@ -111,7 +114,7 @@
   }
 
   function place(rect) {
-    const width = wrap.classList.contains("open") ? 202 : 30;
+    const width = wrap.classList.contains("open") ? 230 : 30;
     const height = wrap.classList.contains("open") ? 42 : 30;
     const gapX = wrap.classList.contains("open") ? 6 : 2;
     const gapY = wrap.classList.contains("open") ? 7 : -3;
@@ -201,17 +204,17 @@
     const choice = event.target.closest("button[data-target]");
     const button = choice || event.target.closest("button[data-action]");
     if (!button || !event.isTrusted || !snapshot) return;
-    const action = choice ? "intake" : button.dataset.action;
-    if (action === "intake" && !choice) return toggleIntakeMenu();
-    const target = choice?.dataset.target || "";
+    let action = choice ? "intake" : button.dataset.action;
+    if (action === "intake-menu") return toggleIntakeMenu();
+    const target = choice?.dataset.target || (action === "intake" ? "collection" : "");
     wrap.classList.remove("choosing", "menu-up");
     intakeAction.setAttribute("aria-expanded", "false");
     for (const item of bar.querySelectorAll("button")) item.disabled = true;
-    if (action === "intake") showToast(target === "inbox" ? "正在存入灵感库…" : "正在存入素材库…");
+    if (action === "intake") showToast(target === "collection" ? "正在收藏…" : target === "inbox" ? "正在存入灵感库…" : "正在存入素材库…");
     try {
       const result = await chrome.runtime.sendMessage({ type: "XENHO_CAPTURE", action, target, context: snapshot, eventTrusted: true });
       if (!result?.ok) throw new Error(result?.error || "操作失败");
-      if (action === "intake") showToast(result.message || (target === "inbox" ? "已存入灵感库" : "已存入素材库"));
+      if (action === "intake") showToast(result.message || (target === "collection" ? "已收藏到收件箱" : target === "inbox" ? "已存入灵感库" : "已存入素材库"));
       else hide();
     } catch (error) {
       showToast(error.message || "工作台暂时不可用", true);

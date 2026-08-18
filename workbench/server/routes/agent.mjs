@@ -211,22 +211,28 @@ export const agentRoutes = [
       child.stdin.end(prompt, "utf8");
 
       let headersSent = false;
+      let pendingSessionId = "";
       let stderr = "";
       let failure = "";
       const out = {
         wrote: false,
         session(id) {
+          if (headersSent || !id) return;
+          pendingSessionId = id;
+        },
+        start() {
           if (headersSent) return;
           headersSent = true;
           res.writeHead(200, {
             "content-type": "text/plain; charset=utf-8",
             "cache-control": "no-cache, no-transform",
-            // 前端拿它来续聊。header 只能在正文开始前发，所以必须等到 init 事件再发头。
-            "x-session-id": id || "",
+            // 会话号先暂存，等第一段正文真正到达再发头。
+            // 否则 agent 在 init 后失败时，前端只会收到一次空白的 200。
+            "x-session-id": pendingSessionId,
           });
         },
         write(text) {
-          out.session("");
+          out.start();
           out.wrote = true;
           res.write(text);
         },
@@ -265,7 +271,12 @@ export const agentRoutes = [
 
       await new Promise((resolve) => {
         const die = (error, hint, status) => {
-          if (!headersSent) json(res, { ok: false, error, hint }, status);
+          if (!headersSent) {
+            // 会话号过期是前端可恢复的控制分支：它会携带已有对话重建一次。
+            // 仍返回 JSON 失败契约，但不把这次预期内恢复记成浏览器网络错误。
+            const recoverable = /No conversation found with session ID/i.test(String(error || ""));
+            json(res, { ok: false, error, hint, code: recoverable ? "SESSION_EXPIRED" : undefined }, recoverable ? 200 : status);
+          }
           else res.end();
           resolve();
         };

@@ -14,6 +14,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import { renderMarkdown } from "../lib/markdown.js";
 import { ErrorNote } from "./ui.jsx";
 import { CHAT_AGENTS, agentName } from "../lib/chat-agent.js";
+import { KnowledgeCardDialog } from "./KnowledgeCardDialog.jsx";
 import {
   IconArchive,
   IconCheck,
@@ -123,6 +124,7 @@ export function SideRail({
    */
   saveLabel = "存为笔记",
   railActions,
+  knowledgeSource,
 }) {
   // 写批注时页签停在「标记」上——它是批注流程的一步，不是第四个地方
   const activeTab = mode === "annotate" ? "notes" : mode;
@@ -161,6 +163,7 @@ export function SideRail({
           onSave={onSaveChatAsNote}
           onAgent={onChatAgent}
           onNewChat={onNewChat}
+          knowledgeSource={knowledgeSource}
         />
       ) : (
         <MarksPanel
@@ -681,12 +684,14 @@ function AiBody({ ai, results, answered, onSave, onStop, onRun, saveLabel }) {
  * 照着渲染的话屏幕上会挂一个灰色空条，旁边同时还有个「正在想」——两个东西说同一件事，
  * 其中一个还是空的。（Codex 根本不吐增量，那个空条会挂十几秒，更得靠 Waiting 说清楚。）
  */
-function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat }) {
+function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledgeSource }) {
   const [text, setText] = useState("");
+  const [cardOpen, setCardOpen] = useState(false);
   const endRef = useRef(null);
   const boxRef = useRef(null);
   const msgs = chat?.messages || [];
   const engine = CHAT_AGENTS.find((a) => a.id === chat?.agent) || CHAT_AGENTS[0];
+  const canCard = !chat?.running && msgs.some((m) => m.role === "user" && m.text) && msgs.some((m) => ["assistant", "agent"].includes(m.role) && m.text);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -709,6 +714,7 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat }) {
   }
 
   return (
+    <>
     <Panel
       /**
        * 头上放「发给谁」和「重开一轮」：这两件事都是**关于这场对话本身**的，
@@ -731,6 +737,7 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat }) {
               </button>
             ))}
           </div>
+          <button type="button" className="btn btn-sm" onClick={() => setCardOpen(true)} disabled={!canCard} title={canCard ? "把整轮对话整理成知识卡" : "至少完成一轮提问和回答后可用"}>沉淀卡片</button>
           {/* 一直聊下去上下文会越滚越长、也越跑越偏。**换个话题就该重开一轮**，
               而且不能只靠刷新页面——那会把整个阅读区一起关掉。 */}
           <button
@@ -808,6 +815,8 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat }) {
         <div ref={endRef} />
       </div>
     </Panel>
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={msgs} source={{ ...(knowledgeSource || {}), engine: engine.name }} />
+    </>
   );
 }
 

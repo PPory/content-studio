@@ -30,6 +30,20 @@ CREATE TABLE IF NOT EXISTS inbox (
   value_judgment TEXT NOT NULL DEFAULT ''         -- 原「价值判断」，与 status 由同一个 value 推导
                 CHECK (value_judgment IN ('','值得深挖','存档备用','建议弃用')),
   verdict       TEXT NOT NULL DEFAULT '',         -- 原「一句话判断」
+  capture_origin TEXT NOT NULL DEFAULT 'idea'
+                CHECK (capture_origin IN ('collection','idea')),
+  processing_mode TEXT NOT NULL DEFAULT 'triage'
+                CHECK (processing_mode IN ('hold','triage')),
+  review_status TEXT NOT NULL DEFAULT 'kept'
+                CHECK (review_status IN ('pending','kept','archived')),
+  save_note     TEXT NOT NULL DEFAULT '',
+  selection     TEXT NOT NULL DEFAULT '',
+  canonical_url TEXT NOT NULL DEFAULT '',
+  content_hash  TEXT NOT NULL DEFAULT '',
+  snapshot_status TEXT NOT NULL DEFAULT 'not_needed'
+                CHECK (snapshot_status IN ('pending','ready','failed','not_needed')),
+  snapshot_error TEXT NOT NULL DEFAULT '',
+  snapshot_at   INTEGER,
   vault_path    TEXT,                             -- 阶段 2：归档后的 .md 路径
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
@@ -37,6 +51,9 @@ CREATE TABLE IF NOT EXISTS inbox (
 
 -- 三个任务都是「按状态领一批」，这个索引是热路径
 CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_inbox_collection_review ON inbox(capture_origin, review_status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_inbox_canonical_url ON inbox(canonical_url) WHERE canonical_url != '';
+CREATE INDEX IF NOT EXISTS idx_inbox_content_hash ON inbox(content_hash) WHERE content_hash != '';
 
 -- ---------------------------------------------------------------------------
 -- 素材库
@@ -216,6 +233,22 @@ CREATE TABLE IF NOT EXISTS task_log (
   kind      TEXT NOT NULL,
   entity_id TEXT,
   done_at   INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- 运行时设置（现在只有一件事：每个环节用哪个模型）
+-- ---------------------------------------------------------------------------
+--
+-- **为什么不放 wrangler var**：那样每改一次模型都要 deploy，而「这一步用便宜的、那一步
+-- 用强的」本来就是要边用边调的事。放进库里之后，三个调用方（cron 任务、两个 Bot、
+-- 工作台）读的是同一份，改完立刻生效。
+--
+-- **为什么是通用 k/v 而不是 models 表**：以后要加的运行时开关不会只有模型一件，
+-- 而每加一件就建一张表，迁移成本比这张表本身高。值一律存字符串，语义由 key 定。
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 
 -- ---------------------------------------------------------------------------

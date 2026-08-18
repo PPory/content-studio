@@ -1,13 +1,15 @@
+import { modelFor } from "./models.js";
+
 // OpenAI 兼容 LLM 调用 + 防御性 JSON 解析。
 // 实测 claude-opus-4-6-thinking 会包 ```json 围栏，解析前先剥。
 
 // 附在 user 消息末尾的格式提醒（system prompt 保持原文，不在此改动）
 const JSON_HINT = "\n\n（格式要求：输出必须是可被 JSON.parse 解析的合法 JSON——字符串内部的双引号必须转义为 \\\"，换行必须写成 \\n，不要输出裸换行。）";
 
-export async function chatJson(env, { system, user, maxTokens = 8000 }) {
+export async function chatJson(env, { system, user, maxTokens = 8000, task }) {
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { content, finishReason } = await chat(env, { system, user: user + JSON_HINT, maxTokens });
+    const { content, finishReason } = await chat(env, { system, user: user + JSON_HINT, maxTokens, task });
     try {
       return { json: parseLooseJson(content), finishReason };
     } catch (e) {
@@ -19,7 +21,13 @@ export async function chatJson(env, { system, user, maxTokens = 8000 }) {
 
 // 流式调用：LLM 代理经 Cloudflare，非流式请求超 100 秒会被 524 掐断；
 // SSE 持续有字节到达，长生成（成稿数分钟）也能安全完成。
-export async function chat(env, { system, user, maxTokens = 8000 }) {
+/**
+ * `task` 决定用哪个模型（`lib/models.js` 的 `MODEL_TASKS`）。**不传就是 `env.LLM_MODEL`**，
+ * 所以漏传的后果是「用了默认模型」，不是报错——这是有意的：新增一个调用点时忘了标环节，
+ * 该继续能跑，而不是让整条流水线停在一个配置问题上。
+ */
+export async function chat(env, { system, user, maxTokens = 8000, task }) {
+  const model = task ? await modelFor(env, task) : env.LLM_MODEL;
   const res = await fetch(`${env.LLM_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -27,7 +35,7 @@ export async function chat(env, { system, user, maxTokens = 8000 }) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: env.LLM_MODEL,
+      model,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -38,7 +46,9 @@ export async function chat(env, { system, user, maxTokens = 8000 }) {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`LLM ${res.status}: ${body.slice(0, 500)}`);
+    // 模型名写错时代理回的多半是 404/400，**把模型名带进报错**：不带的话，
+    // 「设置里改了个模型」和「代理挂了」在日志里长得一模一样
+    throw new Error(`LLM ${res.status}（model=${model}）: ${body.slice(0, 500)}`);
   }
   let content = "";
   let finishReason = null;
@@ -69,7 +79,8 @@ export async function chat(env, { system, user, maxTokens = 8000 }) {
 }
 
 // 可选的纯文本透传流。需要“输出前完成整段校验”的场景不能直接使用它，应调用 chat() 收齐后校验。
-export async function chatStream(env, { system, user, maxTokens = 2000 }) {
+export async function chatStream(env, { system, user, maxTokens = 2000, task }) {
+  const model = task ? await modelFor(env, task) : env.LLM_MODEL;
   const res = await fetch(`${env.LLM_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -77,7 +88,7 @@ export async function chatStream(env, { system, user, maxTokens = 2000 }) {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: env.LLM_MODEL,
+      model,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },

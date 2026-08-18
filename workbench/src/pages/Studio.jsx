@@ -27,6 +27,7 @@ import { PlatformGate } from "../components/PlatformGate.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { MaterialVerificationPanel } from "../components/MaterialVerificationPanel.jsx";
 import { CreationDialog } from "../components/CreationDialog.jsx";
+import { CollectionActions, CollectionOrganizer } from "../components/CollectionOrganizer.jsx";
 import { IconPlus } from "../components/icons.jsx";
 // 展示件搬进 pages/studio/。**页面只留组合和状态边界。**
 // 这三样搬走之后，`Board` / `Empty` / `Select` / 那一排图标也跟着不在这儿用了——
@@ -40,7 +41,7 @@ import { PageHeader, Toast } from "../components/ui.jsx";
 // Notion 页面没有那个文件（见 sources.js 的 highlightPath）。
 const NOTION_ACTIONS = ACTIONS.filter((a) => a.key !== "highlight");
 
-export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, counts }) {
+export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, counts, refreshKey = 0 }) {
   const source = SOURCES[sourceKey];
 
   const [list, setList] = useState(null);
@@ -60,6 +61,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
   const [gate, setGate] = useState(null);   // { item, next } 等待选平台
   const [toast, setToast] = useState(null); // { text, undo? }
   const [creation, setCreation] = useState(null); // choose | topic | blank
+  const [organizerItems, setOrganizerItems] = useState(null);
 
   const [railMode, setRailMode] = useState("notes");
   const [outline, setOutline] = useState([]);   // 正文的小标题，画在阅读区左栏
@@ -101,6 +103,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
     newChat();   // 换源：掐掉在跑的、清会话号、清消息
     reload();
   }, [reload, resetAi]);
+
+  useEffect(() => {
+    if (refreshKey > 0) reload();
+  }, [refreshKey, reload]);
 
   // 输入停顿后走 Worker 全库检索，不再只筛当前已经加载的 30 条。
   useEffect(() => {
@@ -498,7 +504,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
   useEffect(() => () => stopChat(), [stopChat]);   // 卸载时别让请求接着烧 token
 
   const isPipeline = PIPELINE.includes(sourceKey);
-  const canBoard = !!source.states?.length;
+  const canBoard = source.board !== false && !!source.states?.length;
 
   return (
     <>
@@ -546,6 +552,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           sourceKey={sourceKey}
           onIntake={onIntake}
           onCreate={setCreation}
+          onOrganize={() => setOrganizerItems((query.trim() ? searchList : list)?.items || [])}
         />
 
         {/* 筛选条**只占一行**：状态是芯片（互斥的分流，一眼看全），平台是下拉（选项会变多）。
@@ -574,7 +581,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           loadingMore={loadingMore}
           openItem={openItem}
           changeStatus={changeStatus}
-          removeItem={removeItem}
+          removeItem={sourceKey === "collections" ? undefined : removeItem}
           loadMore={loadMore}
         />
       </section>
@@ -592,15 +599,17 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           // 那就不画那个按钮——画一个点了报错的按钮比没有更糟
           actions={NOTION_ACTIONS}
           onSaved={onSaved}
-          onStatus={(next) => changeStatus(active, next)}
-          onDelete={source.remove ? removeItem : null}
+          onStatus={sourceKey === "collections" ? null : (next) => changeStatus(active, next)}
+          onDelete={sourceKey === "collections" ? null : source.remove ? removeItem : null}
           onCover={runCover}
           onTypeset={openTypeset}
           outline={outline}
           onOutline={setOutline}
           onCaptureExperience={() => onIntake({ target: "material", cmd: "经历", content: "", source: `补充《${active.title}》的真实经历` })}
           extra={
-            sourceKey === "materials" ? (
+            sourceKey === "collections" ? (
+              <CollectionActions item={active} onExtract={(item) => setOrganizerItems([item])} onChanged={() => { reload(); source.load(active).then(setDoc).catch(() => {}); onChanged?.(); }} />
+            ) : sourceKey === "materials" ? (
               <MaterialVerificationPanel
                 item={active}
                 onVerified={(verificationNote) => {
@@ -665,6 +674,14 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
             onNewChat: newChat,
             onRailSelect,
             onSaveChatAsNote: saveChatAsNote,
+            knowledgeSource: {
+              kind: sourceKey === "collections" ? "inbox" : sourceKey,
+              ref: active ? (sourceKey === "collections" ? `inbox:${active.key}` : `${sourceKey}:${active.key}`) : "",
+              url: active?.raw?.link || "",
+              title: doc?.title || active?.title || "",
+              selection: quote || "",
+              text: doc?.content || "",
+            },
           }}
         />
       ) : null}
@@ -697,6 +714,13 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
       />
 
       <Toast text={toast?.text} onUndo={toast?.undo} onClose={() => setToast(null)} />
+
+      <CollectionOrganizer
+        open={Array.isArray(organizerItems)}
+        items={organizerItems || []}
+        onClose={() => setOrganizerItems(null)}
+        onDone={() => { reload(); onChanged?.(); }}
+      />
     </>
   );
 }

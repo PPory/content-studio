@@ -32,6 +32,7 @@ import { CHAT_GUARD, DEFAULT_PROMPTS, chatSystem } from "../server/lib/prompts.m
 import { ENGINES } from "../server/routes/agent.mjs";
 import { listPipelinePrompts, readPipelinePrompt, writePipelinePrompt } from "../server/lib/pipeline-prompts.mjs";
 import { strToU8, unzipSync, zipSync } from "fflate";
+import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -372,15 +373,16 @@ check("导入格式白名单", SUPPORTED.join(",") === ".md,.markdown,.txt,.epub
   check("选题的平台闸门透传到了适配器", src.TOPICS.askPlatformsOn === "撰写中", String(src.TOPICS.askPlatformsOn));
   check("稿件库按平台分面", src.DRAFTS.facet?.key === "platform", JSON.stringify(src.DRAFTS.facet));
   check(
-    "四库名称统一",
-    [src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/") === "灵感库/素材库/选题库/稿件库",
-    [src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/"),
+    "五段创作页签顺序统一",
+    [src.COLLECTIONS, src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/") === "收件箱/灵感库/素材库/选题库/稿件库",
+    [src.COLLECTIONS, src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/"),
   );
   // 异常落点也走同一条透传路径，同样是漏了就静默失效
   check("「搁置」标成了异常落点", src.TOPICS.quietStates?.includes("搁置"), JSON.stringify(src.TOPICS.quietStates));
   // 它必须仍在 states 里：从 states 删掉的话，成稿失败的选题会从看板和筛选条上一起消失
   check("「搁置」仍在状态清单里", src.TOPICS.states.includes("搁置"), src.TOPICS.states.join("/"));
   check("四个 Notion 库都能删", ["inbox", "materials", "topics", "drafts"].every((k) => typeof src.SOURCES[k].remove === "function"));
+  check("收件箱只归档不永久删除", typeof src.COLLECTIONS.remove !== "function");
   // 平台名和 content-pipeline 的 draft.js 逐字一致，对不上 Worker 会静默跳过那个平台
   check("平台名单和流水线一致", src.PLATFORMS.join("/") === "公众号/X/小红书/视频号/YouTube", src.PLATFORMS.join("/"));
 
@@ -767,6 +769,7 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
 // 的空态引导——也就是说，漏改一处看起来像「你还没用过这个功能」。
 {
   check("目录常量都挂在工作台那一级下面", Object.values(DIRS).every((d) => d.startsWith(`${WB_ROOT}/`)), Object.values(DIRS).join(" · "));
+  check("知识卡片落在固定目录", DIRS.knowledge === `${WB_ROOT}/06 - 知识卡片`, DIRS.knowledge);
   check("归档成品在归档目录里", ARCHIVE_WORKS.startsWith(`${DIRS.archive}/`), ARCHIVE_WORKS);
 
   // 书名靠 `bookOfPath` 切。原来是 `split("/")[1]`——书架变成两段路径之后那个下标
@@ -776,6 +779,26 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
   check("书架外面的路径切不出书名", bookOfPath(`${DIRS.insight}/2026-W33.md`) === "" && bookOfPath("随便/什么.md") === "");
   // 前缀相同但不是书架（比如以后有个「01 - 书架备份」），不能被认成书架里的
   check("前缀像但不是书架的不算", bookOfPath(`${DIRS.shelf}备份/某书/x.md`) === "");
+}
+
+// ---- 知识卡片：预览不写盘、确认才写、同名不覆盖、来源可反查 ----
+{
+  const box = await fs.mkdtemp(path.join(os.tmpdir(), "wb-knowledge-"));
+  try {
+    const draft = { title: "同名/卡片", conclusion: "结论", explanation: "解释", evidence: "原文", boundaries: "边界", questions: "问题", personalUnderstanding: "理解", tags: ["认知"], sourceKind: "inbox", sourceRef: "inbox:abc", sourceUrl: "https://example.com", sourceTitle: "来源", evidenceStatus: "有原文支撑", engine: "test-model" };
+    const preview = cardMarkdown(draft, { id: "preview", createdAt: "2026-08-18T00:00:00.000Z" });
+    check("知识卡预览含固定 frontmatter 与正文段落", /source_ref: "inbox:abc"/.test(preview) && preview.includes("## 形成过程") && !preview.includes("完整聊天记录"));
+    const ungrounded = cardMarkdown({ ...draft, evidence: "", evidenceStatus: "有原文支撑" }, { id: "ungrounded", createdAt: "2026-08-18T00:00:00.000Z" });
+    check("没有原文证据时服务端强制标为待验证", /evidence_status: "待验证"/.test(ungrounded));
+    check("生成预览不会创建目录", !(await fileExists(box, DIRS.knowledge)));
+    const a = await saveKnowledgeCard(box, draft);
+    const b = await saveKnowledgeCard(box, draft);
+    check("同名知识卡不会覆盖", a.path !== b.path && await fileExists(box, a.path) && await fileExists(box, b.path), `${a.path} / ${b.path}`);
+    const links = await knowledgeCardLinks(box, ["inbox:abc", "inbox:none"]);
+    check("知识卡来源可反查", links["inbox:abc"] === 2 && links["inbox:none"] === 0, JSON.stringify(links));
+  } finally {
+    await fs.rm(box, { recursive: true, force: true });
+  }
 }
 
 // 迁移是**一次性**的：跑第二遍必须什么都不做，否则路径会被套两层前缀，

@@ -39,6 +39,12 @@ export const api = {
     req(`/api/pipe/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
   page: (id, view = "") => req(`/api/pipe/page/${id}${view ? `?view=${encodeURIComponent(view)}` : ""}`),
   intake: (body) => postJson("/api/pipe/intake", body),
+  retryCollectionSnapshot: (id) => postJson(`/api/pipe/collections/${encodeURIComponent(id)}/snapshot`, {}),
+  previewCollectionOrganize: (ids) => postJson("/api/pipe/collections/organize/preview", { ids }),
+  applyCollectionOrganize: (items) => postJson("/api/pipe/collections/organize/apply", { items }),
+  previewKnowledgeCard: (body) => postJson("/api/ai/knowledge-card", body),
+  saveKnowledgeCard: (card) => postJson("/api/vault/knowledge-card", card),
+  knowledgeCardLinks: (refs) => postJson("/api/vault/knowledge-card/links", { refs }),
   comment: (pageId, text) => postJson("/api/pipe/comment", { pageId, text }),
   comments: (pageId) => req(`/api/pipe/comments/${pageId}`),
 
@@ -161,6 +167,9 @@ export const api = {
   // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
   // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，
   // 前端就得靠一个字段去分辨「这次要不要提醒部署」，而漏掉那个提醒不会报错
+  // 各环节用哪个模型。真源在 Worker 的 D1 里，本地只转发（`server/routes/pipe.mjs`）
+  models: () => req("/api/pipe/models"),
+  saveModels: (values) => postJson("/api/pipe/models", { values }),
   prompts: () => req("/api/prompts"),
   savePrompts: (values) => postJson("/api/prompts", values),
   // 列表回的每一项带 id（相对路径的哈希）。**后面读写只认 id 不认路径**——

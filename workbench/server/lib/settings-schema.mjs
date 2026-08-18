@@ -82,6 +82,18 @@ export const NAV = [
     ],
   },
   {
+    group: "模型",
+    items: [
+      {
+        key: "models",
+        kind: "models",
+        label: "各环节模型",
+        desc: "初筛 / 整理 / 成稿这些重活值得用强模型，挑素材、打标签用便宜快的就够。改完立刻生效，不用部署。",
+        checks: ["worker"],
+      },
+    ],
+  },
+  {
     group: "提示词",
     items: [
       {

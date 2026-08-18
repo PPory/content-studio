@@ -117,6 +117,7 @@ export function Overview({ config, status, statusError, statusLoading, onGo, onI
       {workerReady && (
         <>
           <ErrorNote error={statusError} what="读取流水线状态" />
+          {status ? <CollectionReminder collections={status.collections} onGo={onGo} /> : null}
           {statusLoading && !status ? (
             <Loading rows={2} />
           ) : status ? (
@@ -171,6 +172,17 @@ export function Overview({ config, status, statusError, statusLoading, onGo, onI
       <SystemRow config={config} workerReady={workerReady} onIntake={onIntake} onSettings={onSettings} />
     </>
   );
+}
+function CollectionReminder({ collections, onGo }) {
+  if (!collections) return null;
+  const oldestDays = collections.oldestPendingAt
+    ? Math.floor((Date.now() - Date.parse(collections.oldestPendingAt)) / 86400_000)
+    : 0;
+  if (collections.pending < 20 && oldestDays <= 7) return null;
+  return <Note tone="warning" title={`收件箱有 ${collections.pending} 条待整理`}>
+    最早一条已放了 {oldestDays} 天。系统不会在后台替你自动分流。
+    <button className="btn btn-sm" onClick={() => onGo("collections", "待整理")}>去整理 Inbox</button>
+  </Note>;
 }
 
 // ---- 接着上次 --------------------------------------------------------------

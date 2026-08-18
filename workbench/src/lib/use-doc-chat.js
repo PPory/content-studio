@@ -37,16 +37,24 @@ export function useDocChat({ docTitle = "", docPath = "" } = {}) {
   const [chat, setChat] = useState({ messages: [], running: false, error: null });
   const chatAbortRef = useRef(null);
   const sessionRef = useRef("");
+  const messagesRef = useRef([]);
 
   const sendChat = useCallback(
     (text) => {
       chatAbortRef.current?.abort();
       const ac = new AbortController();
       chatAbortRef.current = ac;
+      const previousMessages = messagesRef.current;
+      const pendingMessages = [
+        ...previousMessages,
+        { role: "user", text },
+        { role: "agent", text: "", agent: chatAgent },
+      ];
+      messagesRef.current = pendingMessages;
       setChat((c) => ({
         ...c,
         // 每条回复记下是谁答的：换过引擎之后，回头能看出上下两段不是同一个模型
-        messages: [...c.messages, { role: "user", text }, { role: "agent", text: "", agent: chatAgent }],
+        messages: pendingMessages,
         running: true,
         error: null,
       }));
@@ -55,18 +63,38 @@ export function useDocChat({ docTitle = "", docPath = "" } = {}) {
           const msgs = c.messages.slice();
           const i = msgs.length - 1;
           if (i >= 0 && msgs[i].role === "agent") msgs[i] = { ...msgs[i], ...fn(msgs[i]) };
+          messagesRef.current = msgs;
           return { ...c, messages: msgs };
         });
-      agentStream({
-        signal: ac.signal,
-        message: text,
-        agent: chatAgent,
-        sessionId: sessionRef.current || undefined,
-        docTitle,
-        docPath,
-        onSession: (id) => id && (sessionRef.current = id),
-        onChunk: (full) => patchLast(() => ({ text: full })),
-      })
+      const currentSession = sessionRef.current;
+      const run = (message, sessionId) =>
+        agentStream({
+          signal: ac.signal,
+          message,
+          agent: chatAgent,
+          sessionId: sessionId || undefined,
+          docTitle,
+          docPath,
+          onSession: (id) => id && (sessionRef.current = id),
+          onChunk: (full) => patchLast(() => ({ text: full })),
+        });
+
+      run(text, currentSession)
+        .catch((e) => {
+          // Claude/Codex CLI 偶尔会返回一个随后无法 resume 的会话号。
+          // 只对这个明确错误重建一次，并把屏幕上已完成的对话带回；
+          // 网络、鉴权和其他失败仍原样报错，避免双倍调用。
+          if (!currentSession || !/No conversation found with session ID/i.test(e.message || "")) throw e;
+          sessionRef.current = "";
+          const history = previousMessages
+            .filter((m) => (m.role === "user" || m.role === "agent") && String(m.text || "").trim())
+            .map((m) => `${m.role === "user" ? "用户" : "AI"}：${String(m.text).trim()}`)
+            .join("\n\n");
+          const recoveredMessage = history
+            ? `【之前的对话】\n${history}\n\n【继续提问】\n${text}`
+            : text;
+          return run(recoveredMessage, "");
+        })
         .then((full) => {
           patchLast(() => ({ text: full }));
           setChat((c) => ({ ...c, running: false }));
@@ -95,6 +123,9 @@ export function useDocChat({ docTitle = "", docPath = "" } = {}) {
         ? [...c.messages, { role: "sys", text: `已切到 ${agentName(id)}，之前的上下文不带过去` }]
         : c.messages,
     }));
+    messagesRef.current = messagesRef.current.length
+      ? [...messagesRef.current, { role: "sys", text: `已切到 ${agentName(id)}，之前的上下文不带过去` }]
+      : messagesRef.current;
   }, []);
 
   /**
@@ -109,6 +140,7 @@ export function useDocChat({ docTitle = "", docPath = "" } = {}) {
   const newChat = useCallback(() => {
     chatAbortRef.current?.abort();
     sessionRef.current = "";
+    messagesRef.current = [];
     setChat({ messages: [], running: false, error: null });
   }, []);
 

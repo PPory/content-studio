@@ -42,7 +42,7 @@
   // 数据库。先 `npx wrangler d1 create content-pipeline`，把返回的 id 填进来，
   // 再 `npx wrangler d1 execute content-pipeline --remote --file=schema.sql` 建表。
   "d1_databases": [
-    { "binding": "DB", "database_name": "content-pipeline", "database_id": "<d1 create 返回的 database_id>" }
+    { "binding": "DB", "database_name": "content-pipeline", "database_id": "<d1 create 返回的 database_id>", "migrations_dir": "migrations" }
   ],
 
   "observability": { "enabled": true },

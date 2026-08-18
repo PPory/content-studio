@@ -17,6 +17,7 @@ import {
 import { findTopicByKeyword, normalizePlatform } from "../tasks/draft.js";
 import { TWEET_USAGE, detectTweetMode } from "../tasks/tweet.js";
 import { enqueueExplicitJob, enqueuePipelineJobs } from "../pipeline-jobs.js";
+import { refreshCollectionSnapshot, storeCollection } from "./collections.js";
 
 /** 非命令消息：进灵感库，等任务1 初筛。 */
 export async function captureInbox(env, to, text, source) {
@@ -55,6 +56,25 @@ export async function runCommand(env, to, text, dedupeKey) {
 
   if (cmd === "状态" || cmd === "status") {
     await notify(env, to, formatCounts(await pipelineCounts(env)));
+    return;
+  }
+
+  if (cmd === "收藏" || cmd === "collect") {
+    if (!argStr.trim()) {
+      await notify(env, to, "用法：/收藏 <链接或内容>");
+      return;
+    }
+    try {
+      const saved = await storeCollection(env, { content: argStr, source: "Bot" });
+      if (saved.duplicate) {
+        await notify(env, to, `已有这条收藏：${saved.existing.title}`);
+        return;
+      }
+      await notify(env, to, `✅ 已收藏：${saved.title}`);
+      if (saved.snapshotStatus === "pending") await refreshCollectionSnapshot(env, saved.id).catch((e) => console.warn("bot collection snapshot failed:", e.message));
+    } catch (e) {
+      await notify(env, to, `❌ 收藏失败：${e.message.slice(0, 150)}`);
+    }
     return;
   }
 
@@ -158,6 +178,7 @@ export const HELP_TEXT = [
   "📋 命令说明",
   "",
   "【存素材 · 直接进素材库】",
+  "/收藏 <链接或内容>  先收藏，暂不进入创作流程",
   "/金句 <内容> [—— 出处]  逐字保真·金句原话",
   "/数据 <内容> [—— 出处]  逐字保真·数据事实",
   "/概念 <内容>  核心观点",

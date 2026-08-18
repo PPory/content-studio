@@ -18,6 +18,8 @@ import VOICE_MD from "../prompt/voice.md";
 import FRAMEWORKS_MD from "../prompt/frameworks.md";
 import TAGS_MD from "../prompt/tags.md";
 import EXPLAIN_MD from "../prompt/explain.md";
+import COLLECTION_ORGANIZE_MD from "../prompt/collection-organize.md";
+import KNOWLEDGE_CARD_MD from "../prompt/knowledge-card.md";
 
 import GUIDE_GZH from "../prompt/platform/gongzhonghao.md";
 import GUIDE_X from "../prompt/platform/x.md";
@@ -62,6 +64,8 @@ export const TRIAGE_PROMPT = compose(TRIAGE_MD);
 export const SYNTHESIZE_PROMPT = compose(SYNTHESIZE_MD);
 // creator-workbench 阅读区的划词 AI（解释/展开/反驳/选题），通过真实性校验后返回、默认不落库
 export const EXPLAIN_PROMPT = compose(EXPLAIN_MD);
+export const COLLECTION_ORGANIZE_PROMPT = compose(COLLECTION_ORGANIZE_MD);
+export const KNOWLEDGE_CARD_PROMPT = compose(KNOWLEDGE_CARD_MD);
 
 // Telegram 长文本提炼标题（入口用的轻量 prompt，非三段主 prompt，留在代码里）
 export const TITLE_PROMPT = `你是标题提炼助手。用户会给你一段较长的中文或英文文本，请提炼一个不超过 30 字的标题，概括其核心内容。只输出 JSON：{"title": "..."}，不要任何多余文字。`;

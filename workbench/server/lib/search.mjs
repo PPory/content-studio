@@ -29,6 +29,7 @@ const VAULT_DIRS = [
   { dir: DIRS.insight, type: "insight", label: "洞察" },
   { dir: DIRS.archive, type: "archive", label: "归档" },
   { dir: DIRS.webnote, type: "webnote", label: "网页批注" },
+  { dir: DIRS.knowledge, type: "knowledge", label: "知识卡片" },
 ];
 
 const MAX_FILE_BYTES = 400_000; // 单个文件超过这个就只索引开头，整本书塞进内存不值得
@@ -217,6 +218,7 @@ export async function searchAll(env, q, { limit = 40 } = {}) {
 
   // ---- Notion 四库 -----------------------------------------------------------
   const VIEWS = [
+    { view: "collections", label: "收件箱" },
     { view: "inbox", label: "灵感库" },
     { view: "materials", label: "素材库" },
     { view: "topics", label: "选题库" },

@@ -2807,6 +2807,31 @@ kbd {
 .continue:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .continue__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .continue__body strong { font-family: var(--font-display); font-size: 17px; letter-spacing: -0.02em; }
+
+.drawer--wide { width: min(660px, 100%); }
+.organize-picks, .organize-preview { display: flex; flex-direction: column; gap: 8px; }
+.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
+.check-row input { margin-top: 3px; }
+.check-row span { display: grid; gap: 3px; min-width: 0; }
+.check-row small { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.organize-item { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
+.set-models { display: flex; flex-direction: column; gap: 12px; }
+.set-models__row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto); align-items: center; gap: 14px;
+}
+.set-models__copy { min-width: 0; display: grid; gap: 3px; }
+.set-models__copy .field-hint { font-size: 12px; line-height: 1.55; }
+.set-models__row .select { justify-self: end; }
+.set-models__row .select__btn { min-width: 190px; justify-content: flex-start; }
+.set-models__row .select__btn svg:last-child { margin-left: auto; }
+.set-models__row .select__pop { right: 0; left: auto; max-height: 300px; overflow-y: auto; }
+.set-models__row input {
+  justify-self: end; width: 190px; padding: 8px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-ctl); background: var(--canvas); color: inherit; font: inherit; font-size: 12.5px;
+}
+/* 自己的保存按钮：这一段写的是 Worker 的库，不跟着底部那条「写入 .env」走 */
+.set-models__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+.set-models__foot .field-hint { display: inline-flex; align-items: center; gap: 5px; }
 .continue__where { font-size: 11.5px; color: var(--text-3); }
 .continue__bar { display: block; height: 3px; margin-top: 7px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .continue__bar span { display: block; height: 100%; background: var(--accent); }

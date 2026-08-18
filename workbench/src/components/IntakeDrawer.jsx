@@ -8,11 +8,12 @@ import { INTAKE_TYPES } from "../lib/views.js";
 import { ErrorNote, Note, Tags } from "./ui.jsx";
 import { IconArchive, IconX } from "./icons.jsx";
 
-export function IntakeDrawer({ open, onClose, preset, onStored }) {
-  const [target, setTarget] = useState("material");
+export function IntakeDrawer({ open, onClose, preset, onStored, collectionsEnabled }) {
+  const [target, setTarget] = useState("collection");
   const [cmd, setCmd] = useState("");
   const [content, setContent] = useState("");
   const [source, setSource] = useState("");
+  const [saveNote, setSaveNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
@@ -23,8 +24,8 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
     if (!open || !preset) return;
     setContent(preset.content || "");
     setSource(preset.source || "");
-// 从灵感库点「新增灵感」进来时，默认就该落在灵感库，不用用户再选一次
-    if (preset.target) setTarget(preset.target);
+    setSaveNote(preset.saveNote || "");
+    setTarget(preset.target || "collection");
     if (preset.cmd != null) setCmd(preset.cmd);
   }, [open, preset]);
 
@@ -40,21 +41,31 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
 
   if (!open) return null;
 
-  async function submit(e) {
-    e.preventDefault();
-    if (!content.trim() || busy) return;
+  async function store(saveDuplicate = false) {
+    if (!content.trim() || busy || (target === "collection" && !collectionsEnabled)) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await api.intake({ target, cmd: target === "material" ? cmd : "", content, source });
+      const r = await api.intake({ target, cmd: target === "material" ? cmd : "", content, source, saveNote, selection: preset?.selection || "", saveDuplicate });
       setDone(r);
-      setContent("");
-      onStored?.(r);
+      if (!r.duplicate) {
+        setContent("");
+        setSaveNote("");
+        onStored?.(r);
+      }
+      // 调用方自己的后续动作（稿件补录经历要重取正文，好让那条告警自己消失）。
+      // 走 preset 而不是再加一个 prop：这是**这一次入库**的事，不是抽屉的属性。
+      if (!r.duplicate) preset?.onStored?.(r);
     } catch (err) {
       setError(err);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    await store(false);
   }
 
   return (
@@ -82,7 +93,17 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
             onChange={(e) => setContent(e.target.value)}
             placeholder={"粘贴内容。行首或空格后的 #词 会自动消歧：\n能匹配到选题名就挂关联选题，否则当标签。"}
           />
+          {/* 带着上下文进来的（补录经历、划词入库）要说清「这段为什么已经填好了」，
+              否则用户会以为是残留，顺手清掉——而清掉之后这条素材就不管用了 */}
+          {preset?.hint ? <div className="field-hint">{preset.hint}</div> : null}
         </div>
+
+        {target === "collection" ? (
+          <div className="field">
+            <label>为什么收藏（可选）</label>
+            <input value={saveNote} onChange={(e) => setSaveNote(e.target.value)} placeholder="一句话记下它对你有什么价值" />
+          </div>
+        ) : null}
 
         <div className="field">
           <label>出处（可选）</label>
@@ -97,15 +118,20 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
         <div className="field">
           <label>存到哪</label>
           <div className="seg">
+            <button type="button" aria-pressed={target === "collection"} onClick={() => setTarget("collection")}>
+              收件箱
+            </button>
+            <button type="button" aria-pressed={target === "inbox"} onClick={() => setTarget("inbox")}>
+              灵感库
+            </button>
             <button type="button" aria-pressed={target === "material"} onClick={() => setTarget("material")}>
               素材库
             </button>
-            <button type="button" aria-pressed={target === "inbox"} onClick={() => setTarget("inbox")}>
-                灵感库
-            </button>
           </div>
           <div className="field-hint">
-            {target === "material"
+            {target === "collection"
+              ? collectionsEnabled ? "只收藏，不调用 AI，也不会自动进入创作流程" : "当前 Worker 未完成 Inbox 迁移；为防止误存成素材，收藏已禁用"
+              : target === "material"
               ? "直接成为素材卡，成稿时按标签被检索到"
               : "走正常初筛流程（每 5 分钟一轮），由系统判断价值再分流"}
           </div>
@@ -137,8 +163,12 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
         <ErrorNote error={error} what="入库" />
 
         {done && (
-          <Note tone="warn" title={`已存入${done.target === "inbox" ? "灵感库" : `素材库（${done.dbType}）`}`}>
-            <div style={{ marginTop: 4 }}>{done.title}</div>
+          <Note tone="success" title={done.duplicate ? "这条已经收藏过" : `已存入${done.target === "collection" ? "收件箱" : done.target === "inbox" ? "灵感库" : `素材库（${done.dbType}）`}`}>
+            <div style={{ marginTop: 4 }}>{done.title || done.existing?.title}</div>
+            {done.duplicate ? <div className="row-actions" style={{ marginTop: 8 }}>
+              <button type="button" className="btn btn-sm" onClick={() => { window.location.hash = "#/collections"; onClose(); }}>打开已有收藏</button>
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => store(true)}>仍然保存副本</button>
+            </div> : null}
             <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Tags items={done.topicTitles || []} accent />
               <Tags items={done.tags || []} />
@@ -151,9 +181,9 @@ export function IntakeDrawer({ open, onClose, preset, onStored }) {
             而人在填完表之后的目光在底部——退出的路不该要求他先把视线拉回顶上。 */}
         <div className="drawer-foot">
           <button type="button" className="btn" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" disabled={busy || !content.trim()}>
+          <button className="btn btn-primary" disabled={busy || !content.trim() || (target === "collection" && !collectionsEnabled)}>
             <IconArchive aria-hidden="true" stroke={1.8} />
-          {busy ? "存入中…" : target === "inbox" ? "存进灵感库" : "存进素材库"}
+          {busy ? "存入中…" : target === "collection" ? "收藏到收件箱" : target === "inbox" ? "存进灵感库" : "存进素材库"}
           </button>
         </div>
       </form>

@@ -3,6 +3,7 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { vaultRoot } from "../lib/vault.mjs";
 import { addWebNote, editWebNote, readWebNotes } from "../lib/web-notes.mjs";
+import { callWorker } from "../lib/worker.mjs";
 
 function guarded(fn) {
   return async (ctx) => {
@@ -24,6 +25,9 @@ export const extensionRoutes = [
     handler: guarded(async ({ env, res, extensionToken }) => {
       let vault = true;
       try { vaultRoot(env); } catch { vault = false; }
+      const pipelineConfigured = !!String(env.WORKER_URL || "").trim() && !!String(env.WORKBENCH_KEY || "").trim();
+      const worker = pipelineConfigured ? await callWorker(env, "status") : null;
+      const collectionsV1 = worker?.data?.capabilities?.collectionsV1 === true;
       json(res, {
         ok: true,
         name: "Xenho 网页助手",
@@ -31,8 +35,9 @@ export const extensionRoutes = [
         product: "content-studio",
         protocolVersion: 2,
         pairToken: extensionToken,
-        ready: vault && !!String(env.WORKER_URL || "").trim() && !!String(env.WORKBENCH_KEY || "").trim(),
-        services: { vault, pipeline: !!String(env.WORKER_URL || "").trim() && !!String(env.WORKBENCH_KEY || "").trim() },
+        ready: vault && pipelineConfigured && collectionsV1,
+        services: { vault, pipeline: pipelineConfigured },
+        capabilities: { collectionsV1 },
       });
     }),
   },

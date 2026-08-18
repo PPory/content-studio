@@ -30,6 +30,7 @@ import {
 import { DIRS, bookOfPath } from "../lib/vault-dirs.mjs";
 import { importBook, SUPPORTED } from "../lib/books.mjs";
 import { parseNotes, applyNoteEdit } from "../lib/notes.mjs";
+import { knowledgeCardLinks, saveKnowledgeCard } from "../lib/knowledge-cards.mjs";
 
 // 目录名的单一真源在 vault-dirs.mjs，这里不再抄第二份。
 const SHELF_DIR = DIRS.shelf;
@@ -84,6 +85,22 @@ function guard(fn) {
 }
 
 export const vaultRoutes = [
+  {
+    method: "POST",
+    path: "/api/vault/knowledge-card",
+    handler: guard(async ({ env, req, res }) => {
+      const card = await readJsonBody(req);
+      json(res, { ok: true, card: await saveKnowledgeCard(vaultRoot(env), card) });
+    }),
+  },
+  {
+    method: "POST",
+    path: "/api/vault/knowledge-card/links",
+    handler: guard(async ({ env, req, res }) => {
+      const { refs } = await readJsonBody(req);
+      json(res, { ok: true, counts: await knowledgeCardLinks(vaultRoot(env), refs) });
+    }),
+  },
   {
     method: "GET",
     path: "/api/vault/tree",

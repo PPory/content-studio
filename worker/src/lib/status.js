@@ -7,8 +7,8 @@
 import { batch, stmt } from "./db.js";
 
 const QUERIES = [
-  ["待初筛", "inbox", "待初筛"],
-  ["待整理", "inbox", "待选题"],
+  ["待初筛", "inbox", "待初筛", "processing_mode = 'triage'"],
+  ["待整理", "inbox", "待选题", "processing_mode = 'triage'"],
   ["选题待写", "topics", "待写"],
   ["选题撰写中", "topics", "撰写中"],
   ["内容待修改", "drafts", "待修改"],
@@ -17,8 +17,8 @@ const QUERIES = [
 export async function pipelineCounts(env) {
   const rows = await batch(
     env,
-    QUERIES.map(([, table, status]) =>
-      stmt(env, `SELECT COUNT(*) AS n FROM ${table} WHERE status = ?`, status))
+    QUERIES.map(([, table, status, extra]) =>
+      stmt(env, `SELECT COUNT(*) AS n FROM ${table} WHERE status = ?${extra ? ` AND ${extra}` : ""}`, status))
   );
   const counts = {};
   QUERIES.forEach(([label], i) => {

@@ -3,7 +3,7 @@ const PRODUCT = "content-studio";
 const PROTOCOL_VERSION = 2;
 const CONNECTION_KEY = "workbenchConnection";
 const ALLOWED_ACTIONS = new Set(["annotate", "ask", "chat", "topic"]);
-const INTAKE_TARGETS = new Set(["material", "inbox"]);
+const INTAKE_TARGETS = new Set(["collection", "material", "inbox"]);
 const MAX_SELECTION = 4000;
 let connectionRequest = null;
 
@@ -67,6 +67,9 @@ async function connect(force = false) {
     if (data.product !== PRODUCT || data.protocolVersion !== PROTOCOL_VERSION) {
       throw new Error("检测到旧版工作台，请启动 content-studio 中的 Xenho OS");
     }
+    if (data.capabilities?.collectionsV1 !== true) {
+      throw new Error("工作台尚未完成 Inbox 迁移，请先迁移并部署 Worker");
+    }
     const { pairToken, ...status } = data;
     const connection = { pairToken, status };
     await chrome.storage.session.set({ [CONNECTION_KEY]: connection });
@@ -106,7 +109,15 @@ async function intake(context, target) {
   if (!INTAKE_TARGETS.has(target)) throw new Error("不支持的入库位置");
   const response = await api("/api/extension/intake", {
     method: "POST",
-    body: { target, cmd: "", content: context.selection, source: context.url },
+    body: {
+      target,
+      cmd: "",
+      content: target === "collection" ? context.context : context.selection,
+      selection: context.selection,
+      title: context.title,
+      url: context.url,
+      source: target === "collection" ? "浏览器扩展" : context.url,
+    },
   });
   const data = await response.json().catch(() => null);
   if (!response.ok || !data?.ok) throw new Error(data?.error || `保存失败（HTTP ${response.status}）`);
@@ -119,10 +130,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!sender.tab?.id || !message.eventTrusted) throw new Error("操作未通过网页校验");
       const context = cleanContext(message.context, sender);
       if (message.action === "intake") {
-        const target = String(message.target || "material");
+        const target = String(message.target || "collection");
         const data = await intake(context, target);
         const detail = data.dbType ? `（${data.dbType}）` : "";
-        sendResponse({ ok: true, message: target === "inbox" ? "已存入灵感库" : `已存入素材库${detail}` });
+        sendResponse({ ok: true, message: target === "collection" ? "已收藏到收件箱" : target === "inbox" ? "已存入灵感库" : `已存入素材库${detail}` });
         return;
       }
       if (!ALLOWED_ACTIONS.has(message.action)) throw new Error("不支持的操作");

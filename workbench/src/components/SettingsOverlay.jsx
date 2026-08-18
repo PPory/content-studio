@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
+import { ModelSettings } from "./SettingsModels.jsx";
 import { LocalPrompts, PipelinePrompts } from "./SettingsPrompts.jsx";
 import {
   IconAlertCircle,
@@ -265,6 +266,8 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
                     <CheckRow key={id} check={checkById[id]} loading={checking} />
                   ))}
                 </>
+              ) : current.kind === "models" ? (
+                <ModelSettings />
               ) : current.kind === "prompts-local" ? (
                 <LocalPrompts data={promptData} draft={pDraft} onChange={setPrompt} guard={promptData?.guard} />
               ) : (
@@ -298,7 +301,7 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
          * 「没有改动」了（管的是当前那个 .md），底下再来一个一模一样的灰按钮，
          * 两个长得一样、管的却是两回事——看图才发现的。
          */}
-        {current?.kind === "prompts-worker" && !dirty ? null : confirm ? (
+        {(current?.kind === "prompts-worker" || current?.kind === "models") && !dirty ? null : confirm ? (
           <>
             <button className="btn" onClick={() => setConfirm(false)} disabled={saving}>
               取消

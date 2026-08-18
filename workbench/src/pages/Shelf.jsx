@@ -537,6 +537,14 @@ export function Shelf({ onIntake, state = "" }) {
             onChatAgent: switchAgent,
             onNewChat: newChat,
             onSaveChatAsNote: (text) => saveNote({ quote: "", body: `**与 ${agentName(chatAgent)} 的讨论**\n\n${text}` }),
+            knowledgeSource: {
+              kind: "document",
+              ref: reading?.entry?.path || "",
+              url: "",
+              title: doc?.title || reading?.entry?.title || reading?.book?.name || "",
+              selection: quote || "",
+              text: doc?.content || "",
+            },
           }}
         />
       ) : null}
@@ -568,8 +576,6 @@ export function Shelf({ onIntake, state = "" }) {
     </>
   );
 }
-
-
 
 
 

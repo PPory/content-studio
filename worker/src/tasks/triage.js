@@ -22,7 +22,11 @@ const TRIAGE_BATCH = 3;      // 每轮最多处理条数
 const MATERIALS_CAP = 6;     // 每条灵感最多建素材卡数
 
 export async function listPendingTriage(env, pageSize = TRIAGE_BATCH) {
-  return listByStatus(env, "inbox", INBOX_STATUS.PENDING, Math.min(pageSize, TRIAGE_BATCH));
+  const limit = Math.min(pageSize, TRIAGE_BATCH);
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM inbox WHERE status = ? AND processing_mode = 'triage' ORDER BY created_at ASC LIMIT ?"
+  ).bind(INBOX_STATUS.PENDING, limit).all();
+  return results || [];
 }
 
 export async function runTriage(env) {
@@ -41,7 +45,7 @@ export async function runTriage(env) {
 
 export async function runTriagePageById(env, id) {
   const row = await getRow(env, "inbox", id);
-  if (!row || row.status !== INBOX_STATUS.PENDING) {
+  if (!row || row.status !== INBOX_STATUS.PENDING || row.processing_mode !== "triage") {
     return { skipped: true, reason: "not_pending", id };
   }
   try {

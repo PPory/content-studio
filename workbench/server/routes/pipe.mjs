@@ -86,9 +86,34 @@ export const pipeRoutes = [
     handler: ({ env, res, params }) => forwardGet(env, res, `comments/${params.id}`),
   },
   {
+    method: "GET",
+    path: "/api/pipe/models",
+    handler: ({ env, res }) => forwardGet(env, res, "models"),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/models",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "models"),
+  },
+  {
     method: "POST",
     path: "/api/pipe/intake",
     handler: ({ env, req, res }) => forwardPost(env, req, res, "intake"),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/collections/:id/snapshot",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `collections/${params.id}/snapshot`),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/collections/organize/preview",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "collections/organize/preview"),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/collections/organize/apply",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "collections/organize/apply"),
   },
   {
     method: "POST",

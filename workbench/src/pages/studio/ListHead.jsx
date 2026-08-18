@@ -1,12 +1,12 @@
 // 卡片墙 / 看板上方那一条：眉标 + 标题 + 条数 · 搜索 · 视图切换 · 新增。
 // 从 `pages/Studio.jsx` 的 return 里原样外提，JSX 一字未动（只去掉了整体缩进）。
 //
-// **视图切换只在有状态的源上出现**（`canBoard`）：素材库在 Notion 侧没有状态字段，
+// **视图切换只在有状态的源上出现**（`canBoard`）：素材库在库里没有状态列，
 // 给它一个「看板」按钮，点开是一列空的。**新增只在流水线四段上出现**——
 // 书架和洞察的新增各有各的入口，混进来只会让这颗按钮的含义随页面变。
 import { IconLayoutGrid, IconLayoutKanban, IconPlus, IconSearch } from "../../components/icons.jsx";
 
-export function ListHead({ source, list, searchRef, query, setQuery, canBoard, layout, setLayout, isPipeline, sourceKey, onIntake, onCreate }) {
+export function ListHead({ source, list, searchRef, query, setQuery, canBoard, layout, setLayout, isPipeline, sourceKey, onIntake, onCreate, onOrganize }) {
   return (
     <div className="panel-head">
       <div className="panel-head__main">
@@ -39,6 +39,7 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
             </button>
           </div>
         ) : null}
+        {sourceKey === "collections" ? <button className="btn btn-sm" onClick={onOrganize}>整理 Inbox</button> : null}
         {isPipeline ? (
           <button
             className="btn btn-primary btn-sm"
@@ -46,7 +47,7 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
               ? onCreate("topic")
               : sourceKey === "drafts"
                 ? onCreate("choose")
-                : onIntake({ target: sourceKey === "inbox" ? "inbox" : "material" })}
+                : onIntake({ target: sourceKey === "collections" ? "collection" : sourceKey === "inbox" ? "inbox" : "material" })}
           >
             <IconPlus aria-hidden="true" stroke={2} />
             {sourceKey === "topics" ? "选题" : sourceKey === "drafts" ? "新稿" : "入库"}

@@ -23,7 +23,7 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
 const NAV = [
   { key: "overview", to: "overview" },
   { key: "hot", to: "hot" },
-  { key: "studio", to: "inbox", match: (v) => PIPELINE.includes(v) },
+  { key: "studio", to: "collections", match: (v) => PIPELINE.includes(v) },
   { key: "insights", to: "insights" },
   { key: "shelf", to: "shelf" },
   { key: "typeset", to: "typeset" },
@@ -53,7 +53,7 @@ const STUDIO = new Set([...PIPELINE, "insights"]);
 function readHash() {
   // **先切段、再解码**，顺序反了就是个真 bug：状态值里本来就带斜杠
   // （灵感库有「初筛失败/需人工」）。整串先 decodeURIComponent 的话，`%2F` 会被还原成
-  // 真斜杠，再 split 就把状态劈成两半，只剩「初筛失败」送去 Notion —— 那不是合法选项，
+  // 真斜杠，再 split 就把状态劈成两半，只剩「初筛失败」送去库里 —— 那不是合法取值，
   // 库里直接回 400，界面上是一坨 validation_error。
   const raw = window.location.hash.replace(/^#\/?/, "");
   const [rawView = "", ...rest] = raw.split("/");
@@ -68,6 +68,7 @@ export function App() {
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [intake, setIntake] = useState(null); // null=关闭；{} 或 {content,source}=打开
+  const [intakeVersion, setIntakeVersion] = useState(0);
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
   const [finder, setFinder] = useState(false); // 全局检索（Ctrl/⌘ + K）
   const [settings, setSettings] = useState(false); // 设置面板
@@ -186,7 +187,7 @@ export function App() {
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "n") {
+      if (e.key.toLowerCase() === "n") {
         e.preventDefault();
         setIntake({});
       }
@@ -197,7 +198,7 @@ export function App() {
 
   // 「创作」那一项的角标 = 整条流水线的待办总数。分段的数字挂在页内 tab 上。
   const pipelinePending =
-    (status?.counts?.待初筛 ?? 0) + (status?.counts?.选题待写 ?? 0) + (status?.counts?.内容待修改 ?? 0);
+    (status?.collections?.pending ?? 0) + (status?.counts?.待初筛 ?? 0) + (status?.counts?.选题待写 ?? 0) + (status?.counts?.内容待修改 ?? 0);
 
   return (
     <div className="app" data-rail={railCollapsed ? "collapsed" : "open"}>
@@ -327,11 +328,12 @@ export function App() {
           <Studio
             sourceKey={route.view}
             state={route.state}
-            counts={status?.counts}
+            counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
             onState={(s) => go(route.view, s)}
             onGo={go}
             onIntake={setIntake}
             onChanged={refreshStatus}
+            refreshKey={intakeVersion}
           />
         ) : null}
       </main>
@@ -344,7 +346,8 @@ export function App() {
         open={!!intake}
         preset={intake}
         onClose={() => setIntake(null)}
-        onStored={refreshStatus}
+        onStored={() => { refreshStatus(); setIntakeVersion((value) => value + 1); }}
+        collectionsEnabled={status?.capabilities?.collectionsV1 === true}
       />
     </div>
   );

@@ -40,8 +40,9 @@ check("工具条入库提供两个工作台去处", [
 check("入库选择使用紧凑双图标次级工具条", content.includes("grid-template-columns:repeat(2,30px)") && content.includes("width:30px;height:30px") && content.includes('class="choice-tip"'));
 check("入库次级工具条与主工具条有明确层级", content.includes("background:#fbfaf7;color:#3f4148") && content.includes(".intake-menu::before") && content.includes("box-shadow:0 7px 16px rgba(0,0,0,.16)"));
 check("提问入口使用灯泡图标", content.includes('ask: \'<path d="M9 18h6"/><path d="M10 22h4"/>'));
-check("扩展后台只接受既定入库去处", background.includes('new Set(["material", "inbox"])') && background.includes("INTAKE_TARGETS.has(target)"));
-check("入库继续经过扩展专用安全入口", background.includes('api("/api/extension/intake"') && background.includes("body: { target, cmd: \"\", content: context.selection, source: context.url }"));
+check("扩展后台只接受既定入库去处", background.includes('new Set(["collection", "material", "inbox"])') && background.includes("INTAKE_TARGETS.has(target)"));
+check("入库继续经过扩展专用安全入口", background.includes('api("/api/extension/intake"') && ["selection: context.selection", "title: context.title", "url: context.url"].every((token) => background.includes(token)));
+check("扩展主收藏默认进入收件箱", background.includes('message.target || "collection"') && content.includes('action === "intake" ? "collection"'));
 check("配对信息保存在 Chrome 会话而不是易失全局变量", background.includes("chrome.storage.session.get(CONNECTION_KEY)") && background.includes("chrome.storage.session.set({ [CONNECTION_KEY]: connection })") && !background.includes("let pairToken"));
 check("手动连接检测会绕过缓存", background.includes('connect(true).then(({ status })'));
 check("插件文档明确使用 content-studio 与 D1", extensionReadme.includes("content-studio") && extensionReadme.includes("D1 流水线") && extensionReadme.includes("不再依赖或直连 Notion"));
@@ -69,6 +70,10 @@ const pipelineServer = http.createServer(async (req, res) => {
   if (req.url === "/wb/intake") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ ok: true, dbType: "material" }));
+  }
+  if (req.url === "/wb/status") {
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, capabilities: { collectionsV1: true } }));
   }
   if (req.url === "/wb/explain") {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
@@ -104,7 +109,7 @@ try {
   const status = await statusRes.json();
   check("扩展能临时配对", statusRes.ok && status.ok && status.pairToken?.length >= 24);
   check("只接受 content-studio 第二版协议", status.product === "content-studio" && status.protocolVersion === 2);
-  check("D1 流水线配置完整时报告已就绪", status.ready === true && status.services?.pipeline === true);
+  check("D1 流水线和收件箱能力完整时报告已就绪", status.ready === true && status.services?.pipeline === true && status.capabilities?.collectionsV1 === true);
   const auth = { ...marker, "X-Xenho-Token": status.pairToken };
 
   const noToken = await fetch(`${base}/api/extension/annotations?url=${encodeURIComponent("https://example.com/a")}`, { headers: marker });

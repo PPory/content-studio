@@ -68,7 +68,7 @@ export const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"]
  * 整个失效——状态被直接写回 Notion，Worker 五分钟内就领走选题、按三个平台跑了三遍 LLM。
  * 这类漏字段不会报错，只会安静地少一个功能。
  */
-function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint }) {
+function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true }) {
   return {
     key,
     label,
@@ -80,6 +80,7 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
     askPlatformsOn,
     quietStates,
     defaultState,
+    board,
     // 分面：按条目自身的某个属性筛（素材库按类型）。**在已加载的条目里筛**，
     // 因为素材库在 Notion 侧根本没有状态字段，服务端过滤不了（Worker 的 statusProp 是 null）。
     facet,
@@ -89,11 +90,21 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
 
     async list({ state, cursor } = {}) {
       const r = await api.list(key, { state, cursor, pageSize: 30 });
+      if (key === "collections" && r.items.length) {
+        const refs = r.items.map((item) => `inbox:${item.id}`);
+        const links = await api.knowledgeCardLinks(refs).catch(() => ({ counts: {} }));
+        for (const item of r.items) item.knowledgeCardCount = links.counts?.[`inbox:${item.id}`] || 0;
+      }
       return { exists: true, items: r.items.map(mapItem), nextCursor: r.nextCursor };
     },
 
     async search({ q, state } = {}) {
       const r = await api.searchLibrary(key, q, state);
+      if (key === "collections" && r.items.length) {
+        const refs = r.items.map((item) => `inbox:${item.id}`);
+        const links = await api.knowledgeCardLinks(refs).catch(() => ({ counts: {} }));
+        for (const item of r.items) item.knowledgeCardCount = links.counts?.[`inbox:${item.id}`] || 0;
+      }
       return { exists: true, items: r.items.map(mapItem), nextCursor: null, fullLibrary: true };
     },
 
@@ -123,7 +134,7 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
         meta: detailItem.meta,
         warning: page.warning || detailItem.warning,
         format: "markdown",
-        editable: true,
+        editable,
         status: item.raw.status || "",
         notionUrl: item.raw.notionUrl,
       };
@@ -158,9 +169,7 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
     // 30 天可恢复，所以按钮上写的是「移到 Notion 废纸篓」；换成 D1 之后那一层没了，
     // 关联表靠 ON DELETE CASCADE 一起清掉。
     // 界面必须照实说：一个承诺「可恢复」的按钮会让人放心地删掉找不回来的东西。
-    async remove(item) {
-      return api.removePage(key, item.key);
-    },
+    remove: removable ? (item) => api.removePage(key, item.key) : undefined,
     removeLabel: "永久删除",
 
     /**
@@ -175,6 +184,40 @@ function notionSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateT
     sourceOf: (item) => item.raw.link || item.title,
   };
 }
+
+export const COLLECTIONS = notionSource({
+  key: "collections",
+  label: "收件箱",
+  eyebrow: "inbox",
+  eyebrowCn: "先收藏，后判断",
+  sub: "看到有价值或喜欢的内容先放这里；默认不初筛，也不会自动变成素材。",
+  pendingKey: "collectionPending",
+  states: ["pending", "kept", "archived"],
+  stateTabs: ["待整理", "已收藏", "已归档"],
+  defaultState: "待整理",
+  board: false,
+  editable: false,
+  removable: false,
+  emptyHint: "收件箱还是空的",
+  mapItem: (p) => ({
+    key: p.id,
+    title: p.title || "（无标题）",
+    sub: [p.type, p.source].filter(Boolean).join(" · "),
+    preview: unescapeNewlines(p.note || p.selection),
+    tags: p.tags,
+    badge: { pending: "待整理", kept: "已收藏", archived: "已归档" }[p.reviewStatus] || p.reviewStatus,
+    time: p.editedAt,
+    meta: {
+      类型: p.type,
+      来源: p.source,
+      收藏备注: p.note,
+      抓取状态: { pending: "抓取中", ready: "正文已保存", failed: "抓取失败", not_needed: "无需抓取" }[p.snapshotStatus] || p.snapshotStatus,
+      派生关系: [p.convertedToIdea && "已转灵感", p.materialIds?.length && `素材 ${p.materialIds.length}`, p.topicIds?.length && `选题 ${p.topicIds.length}`, p.knowledgeCardCount && `知识卡 ${p.knowledgeCardCount}`].filter(Boolean).join(" · ") || "尚未派生",
+      链接: p.link,
+    },
+    raw: p,
+  }),
+});
 
 export const INBOX = notionSource({
   key: "inbox",
@@ -675,10 +718,11 @@ export const INSIGHTS = {
 };
 
 // 流水线四段的顺序 = tab 的顺序 = 东西流动的方向。别乱改。
-export const PIPELINE = ["inbox", "materials", "topics", "drafts"];
+export const PIPELINE = ["collections", "inbox", "materials", "topics", "drafts"];
 
 
 export const SOURCES = {
+  collections: COLLECTIONS,
   inbox: INBOX,
   materials: MATERIALS,
   shelf: SHELF,

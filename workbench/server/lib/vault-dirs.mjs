@@ -21,6 +21,7 @@ export const DIRS = {
   insight: `${WB_ROOT}/02 - 洞察`,
   archive: `${WB_ROOT}/03 - 归档`,
   webnote: `${WB_ROOT}/04 - 网页批注`,
+  knowledge: `${WB_ROOT}/06 - 知识卡片`,
   hot: `${WB_ROOT}/09 - 热点`,
 };
 
