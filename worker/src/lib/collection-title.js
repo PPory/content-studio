@@ -28,7 +28,11 @@ function socialPostTitle(title, url) {
   const site = hostLabel(url);
   if (site !== "X" && site !== "Substack") return "";
   const raw = cleanTitle(title).replace(/^\(\d+\)\s*/, "");
-  const author = raw.match(/^(.{1,80}?)\s*[:：]\s*["“”'‘]/)?.[1]?.trim();
+  const author = (
+    raw.match(/^(?:X|Twitter)\s*上的\s*(.{1,80}?)\s*[:：]\s*["“”'‘]/i)
+    || raw.match(/^(.{1,80}?)\s+on\s+(?:X|Twitter)\s*[:：]\s*["“”'‘]/i)
+    || raw.match(/^(.{1,80}?)\s*[:：]\s*["“”'‘]/)
+  )?.[1]?.trim();
   return author ? `${author} 的帖子`.slice(0, 200) : `${site} 上的帖子`;
 }
 
@@ -36,9 +40,9 @@ export function collectionTitle({ title, url, selection, content, source }) {
   const raw = cleanTitle(title);
   const excerpt = cleanTitle(selection || content);
   const generatedByExtension = String(source || "").trim() === "浏览器扩展";
-  if (raw && (!generatedByExtension || (!titleRepeatsExcerpt(raw, excerpt) && !/^(?:主页|Home)\s*\/\s*X$/i.test(raw)))) return raw;
   const social = generatedByExtension ? socialPostTitle(raw, url) : "";
   if (social) return social;
+  if (raw && (!generatedByExtension || (!titleRepeatsExcerpt(raw, excerpt) && !/^(?:主页|Home)\s*\/\s*X$/i.test(raw)))) return raw;
   if (generatedByExtension && url && excerpt) return `${hostLabel(url)} · 摘录`;
   if (raw) return raw;
   if (selection) return cleanTitle(selection.slice(0, 60));

@@ -29,6 +29,18 @@ test("浏览器收藏标题不再重复整段社交帖子", () => {
     url: "https://substack.com/@thedankoe/note/c-1",
     source: "浏览器扩展",
   }), "DAN KOE (@thedankoe) 的帖子");
+  assert.equal(collectionTitle({
+    title: "X 上的 CooperBaggs 💰🍞：“Underrated truth: your life gets better when you stop needing every decision to be optimal.”",
+    selection: "被低估的真理：当你不再需要每个决定都是最优时，你的生活会变得更好。",
+    url: "https://x.com/CooperBaggs/status/1",
+    source: "浏览器扩展",
+  }), "CooperBaggs 💰🍞 的帖子");
+  assert.equal(collectionTitle({
+    title: "CooperBaggs on X: “Underrated truth: your life gets better.”",
+    selection: "被低估的真理：你的生活会变得更好。",
+    url: "https://x.com/CooperBaggs/status/1",
+    source: "浏览器扩展",
+  }), "CooperBaggs 的帖子");
 });
 
 test("普通网页保留有效标题，重复标题退回站点摘录", () => {
