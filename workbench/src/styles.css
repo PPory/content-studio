@@ -2821,8 +2821,14 @@ kbd {
 .btn-quiet:hover { border-color: var(--danger); color: var(--danger); }
 .doc-actions__end { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
 /* 删除挨着「打开」一起靠右：它是这张卡的动作，不该孤零零悬在中间 */
-.wall-card__del { width: 26px; height: 26px; margin-left: auto; border-color: transparent; color: var(--text-3); }
+.wall-card__del {
+  width: 26px; height: 26px; margin-left: auto; border-color: transparent; color: var(--text-3);
+  opacity: 0; pointer-events: none; transition: opacity .12s ease, border-color .12s ease, color .12s ease;
+}
+.wall-card:hover .wall-card__del,
+.wall-card:focus-within .wall-card__del { opacity: 1; pointer-events: auto; }
 .wall-card__del:hover { border-color: var(--danger); color: var(--danger); }
+@media (hover: none) { .wall-card__del { opacity: 1; pointer-events: auto; } }
 
 /* 回执条。
    **停在内容区的下方居中，不是屏幕左下角**——左下角正好压在侧栏的「入库」按钮上，

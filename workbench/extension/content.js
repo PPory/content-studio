@@ -1,6 +1,5 @@
 (() => {
   if (location.origin === "http://127.0.0.1:5180" || location.origin === "http://localhost:5180") return;
-  if (window.top !== window) return;
 
   const icons = {
     annotate: '<path d="M13 20h7"/><path d="M14.5 4.5a2.12 2.12 0 0 1 3 3L7 18l-4 1 1-4Z"/>',
@@ -95,9 +94,9 @@
     </button>`;
   bar.appendChild(intakeMenu);
 
-  function editable(node) {
+  function blockedSelection(node) {
     const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
-    return !!el?.closest('input,textarea,select,[contenteditable=""],[contenteditable="true"],[role="textbox"]');
+    return !!el?.closest("input,textarea,select");
   }
 
   function nearby(node) {
@@ -148,7 +147,7 @@
   function capture() {
     const selection = getSelection();
     const text = selection?.toString().replace(/\s+/g, " ").trim();
-    if (!text || text.length < 2 || editable(selection?.anchorNode) || editable(selection?.focusNode) || !selection.rangeCount) return hide();
+    if (!text || text.length < 2 || blockedSelection(selection?.anchorNode) || blockedSelection(selection?.focusNode) || !selection.rangeCount) return hide();
     const range = selection.getRangeAt(0).cloneRange();
     const rect = endpointRect(selection, range);
     if (!rect.width && !rect.height) return hide();

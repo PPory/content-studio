@@ -489,7 +489,7 @@ async function pageDetail(env, id, viewKey) {
   if (!row) return json({ ok: false, error: "not found" }, 404);
 
   const text = table === "drafts" ? row.body
-    : viewKey === "collections" ? [row.selection, row.body].filter(Boolean).join("\n\n---\n\n")
+    : viewKey === "collections" ? row.selection || row.body
     : table === "inbox" ? [row.body, row.card_markdown].filter(Boolean).join("\n\n---\n\n")
     : table === "topics" ? [row.notes, row.draft_note].filter(Boolean).join("\n\n---\n\n")
     : row.content || "";
@@ -556,6 +556,9 @@ async function deleteRowEndpoint(env, body) {
   if (!isId(pageId)) return json({ ok: false, error: "pageId 不合法" }, 400);
 
   const row = await getRow(env, view.table, pageId);
+  if (body.view === "collections" && row?.capture_origin !== "collection") {
+    return json({ ok: false, error: "not found" }, 404);
+  }
   const vaultPath = row?.vault_path || "";
   const affectedTopicIds = body.view === "drafts" && row?.topic_id ? [row.topic_id] : [];
   const deleted = await dbDeleteRow(env, view.table, pageId);

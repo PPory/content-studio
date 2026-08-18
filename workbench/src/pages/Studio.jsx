@@ -599,7 +599,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           loadingMore={loadingMore}
           openItem={openItem}
           changeStatus={changeStatus}
-          removeItem={sourceKey === "collections" ? undefined : removeItem}
+          removeItem={removeItem}
           loadMore={loadMore}
         />
       </section>
@@ -618,7 +618,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           actions={PIPELINE_ACTIONS}
           onSaved={onSaved}
           onStatus={sourceKey === "collections" ? null : (next) => changeStatus(active, next)}
-          onDelete={sourceKey === "collections" ? null : source.remove ? removeItem : null}
+          onDelete={source.remove ? removeItem : null}
           onCover={runCover}
           onTypeset={openTypeset}
           outline={outline}

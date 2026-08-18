@@ -34,3 +34,14 @@ test("初筛 SQL 必须排除 hold 收藏", () => {
   assert.match(source, /processing_mode = 'triage'/);
   assert.match(source, /row\.processing_mode !== "triage"/);
 });
+
+test("收件箱阅读优先展示划取内容，不把整页噪音拼进正文", () => {
+  const source = fs.readFileSync(new URL("../src/workbench.js", import.meta.url), "utf8");
+  assert.match(source, /viewKey === "collections" \? row\.selection \|\| row\.body/);
+  assert.doesNotMatch(source, /viewKey === "collections" \? \[row\.selection, row\.body\]/);
+});
+
+test("收件箱删除不能越权删除同表里的灵感", () => {
+  const source = fs.readFileSync(new URL("../src/workbench.js", import.meta.url), "utf8");
+  assert.match(source, /body\.view === "collections" && row\?\.capture_origin !== "collection"/);
+});

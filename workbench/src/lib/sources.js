@@ -211,7 +211,7 @@ export const COLLECTIONS = pipelineSource({
   defaultState: "待整理",
   board: false,
   editable: false,
-  removable: false,
+  removable: true,
   emptyHint: "收件箱还是空的",
   mapItem: (p) => ({
     key: p.id,

@@ -439,7 +439,7 @@ check("null 不炸", draftHasContent(null) === false);
   // 它必须仍在 states 里：从 states 删掉的话，成稿失败的选题会从看板和筛选条上一起消失
   check("「搁置」仍在状态清单里", src.TOPICS.states.includes("搁置"), src.TOPICS.states.join("/"));
   check("四个流水线库都能删", ["inbox", "materials", "topics", "drafts"].every((k) => typeof src.SOURCES[k].remove === "function"));
-  check("收件箱只归档不永久删除", typeof src.COLLECTIONS.remove !== "function");
+  check("收件箱支持两次确认后永久删除", typeof src.COLLECTIONS.remove === "function" && src.COLLECTIONS.removeLabel === "永久删除");
   // 平台名和 content-pipeline 的 draft.js 逐字一致，对不上 Worker 会静默跳过那个平台
   check("平台名单和流水线一致", src.PLATFORMS.join("/") === "公众号/X/小红书/视频号/YouTube", src.PLATFORMS.join("/"));
 
