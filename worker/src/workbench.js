@@ -39,6 +39,7 @@ import {
   refreshCollectionSnapshot,
   storeCollection,
 } from "./lib/collections.js";
+import { collectionTitle } from "./lib/collection-title.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -58,7 +59,7 @@ const VIEWS = {
     hasStatus: true,
     map: (r) => ({
       id: r.id,
-      title: r.title,
+      title: collectionTitle({ title: r.title, url: r.canonical_url || r.link, selection: r.selection, content: r.body, source: r.source }),
       status: r.review_status,
       reviewStatus: r.review_status,
       type: r.kind,

@@ -5,20 +5,13 @@ import { chatJson } from "./llm.js";
 import { modelFor } from "./models.js";
 import { COLLECTION_ORGANIZE_PROMPT, KNOWLEDGE_CARD_PROMPT } from "../prompts.js";
 import { canonicalizeUrl, hashCollectionText } from "./collection-key.js";
+import { collectionTitle } from "./collection-title.js";
 
 const VIDEO_HOSTS = /(?:youtube\.com|youtu\.be|bilibili\.com|vimeo\.com|douyin\.com)/i;
 const ACTIONS = new Set(["keep", "archive", "idea", "material"]);
 const REVIEW = new Set(["pending", "kept", "archived"]);
 function cleanTitle(value) {
-  return String(value || "").replace(/[\r\n]+/g, " ").trim().slice(0, 200);
-}
-
-function collectionTitle({ title, url, selection, content }) {
-  if (cleanTitle(title)) return cleanTitle(title);
-  if (selection) return cleanTitle(selection.slice(0, 60));
-  const firstLine = String(content || "").split(/\r?\n/).find((line) => line.trim());
-  if (firstLine) return cleanTitle(firstLine.slice(0, 60));
-  try { return new URL(url).hostname; } catch { return "未命名收藏"; }
+  return String(value || "").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
 export async function storeCollection(env, input = {}) {
@@ -36,7 +29,7 @@ export async function storeCollection(env, input = {}) {
   else if (contentHash) duplicate = await first(env, "SELECT id, title FROM inbox WHERE capture_origin = 'collection' AND content_hash = ? ORDER BY created_at DESC LIMIT 1", contentHash);
   if (duplicate && !input.saveDuplicate) return { ok: true, duplicate: true, existing: duplicate };
 
-  const title = collectionTitle({ title: input.title, url: canonicalUrl, selection, content });
+  const title = collectionTitle({ title: input.title, url: canonicalUrl, selection, content, source: input.source });
   const kind = canonicalUrl ? (VIDEO_HOSTS.test(canonicalUrl) ? "视频链接" : "文章链接") : selection || content.length > 120 ? "摘录" : "想法";
   const id = await insertRow(env, "inbox", {
     title,
