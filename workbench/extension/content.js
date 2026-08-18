@@ -168,6 +168,19 @@
     timer = setTimeout(hide, error ? 3500 : 1800);
   }
 
+  async function sendToExtension(payload) {
+    const runtime = globalThis.chrome?.runtime;
+    if (!runtime?.sendMessage) throw new Error("扩展已更新，请刷新当前页面后再试");
+    try {
+      return await runtime.sendMessage(payload);
+    } catch (error) {
+      if (!globalThis.chrome?.runtime?.sendMessage || /extension context invalidated/i.test(String(error?.message || error))) {
+        throw new Error("扩展已更新，请刷新当前页面后再试");
+      }
+      throw error;
+    }
+  }
+
   function toggleIntakeMenu() {
     const opening = !wrap.classList.contains("choosing");
     wrap.classList.toggle("choosing", opening);
@@ -213,7 +226,7 @@
     for (const item of bar.querySelectorAll("button")) item.disabled = true;
     if (action === "intake") showToast(target === "collection" ? "正在收藏…" : target === "inbox" ? "正在存入灵感库…" : "正在存入素材库…");
     try {
-      const result = await chrome.runtime.sendMessage({ type: "XENHO_CAPTURE", action, target, context: snapshot, eventTrusted: true });
+      const result = await sendToExtension({ type: "XENHO_CAPTURE", action, target, context: snapshot, eventTrusted: true });
       if (!result?.ok) throw new Error(result?.error || "操作失败");
       if (action === "intake") showToast(result.message || (target === "collection" ? "已收藏到收件箱" : target === "inbox" ? "已存入灵感库" : "已存入素材库"));
       else hide();

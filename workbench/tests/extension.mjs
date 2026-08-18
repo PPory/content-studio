@@ -25,12 +25,13 @@ const panelCss = await fs.readFile(path.join(ROOT, "extension", "sidepanel.css")
 const panelJs = await fs.readFile(path.join(ROOT, "extension", "sidepanel.js"), "utf8");
 
 check("扩展使用 Manifest V3", manifest.manifest_version === 3);
-check("在线文档支持版本已升级", manifest.version === "0.2.2", manifest.version);
+check("扩展通信恢复提示版本已升级", manifest.version === "0.2.3", manifest.version);
 check("扩展只连接本机工作台", manifest.host_permissions?.join() === "http://127.0.0.1:5180/*", manifest.host_permissions?.join());
 check("没有申请多余的高危权限", manifest.permissions?.join() === "sidePanel,storage", manifest.permissions?.join());
 check("普通网页才注入划词入口", manifest.content_scripts?.[0]?.matches?.join() === "http://*/*,https://*/*", manifest.content_scripts?.[0]?.matches?.join());
 check("在线文档的内嵌编辑区也会注入", manifest.content_scripts?.[0]?.all_frames === true && manifest.content_scripts?.[0]?.match_about_blank === true && manifest.content_scripts?.[0]?.match_origin_as_fallback === true);
 check("富文本正文可划取，普通输入框仍不打扰", !content.includes("window.top !== window") && !content.includes("[contenteditable=") && content.includes('closest("input,textarea,select")'));
+check("扩展更新后提示刷新页面，不暴露运行时英文错误", content.includes("function sendToExtension") && content.includes("globalThis.chrome?.runtime") && content.includes("扩展已更新，请刷新当前页面后再试") && !content.includes("await chrome.runtime.sendMessage"));
 check("工具条没有高亮和翻译", !content.includes('"highlight"') && !content.includes('"translate"'));
 check("工具条保留五个入口", ["annotate", "ask", "chat", "topic", "intake"].every((key) => content.includes(`[\"${key}\"`)));
 check("工具条入库明确提供三个工作台去处", [
