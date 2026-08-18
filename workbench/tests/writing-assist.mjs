@@ -1,4 +1,4 @@
-/** 写作推动的真实浏览器闭环：起始句 → 两次小推动 → 续写候选 → 手动插入。 */
+/** 写作推动的真实浏览器闭环：新建文章与稿件库正式编辑器都必须能看到、能插入。 */
 import { createServer } from "vite";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -98,11 +98,34 @@ try {
   assert(!(await page.textContent(".cm-content")).includes("真正的结束"), "完成全文在确认前就写进了正文");
   await page.click('.writing-assist__result button:has-text("插入光标处")');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("真正的结束"));
+
+  // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
+  await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".wall-card__open, .empty", { timeout: 25000 });
+  assert((await page.$$(".wall-card__open")).length > 0, "稿件库没有可用于验证的稿件");
+  await page.click(".wall-card__open");
+  await page.waitForSelector('.doc-actions button:has-text("编辑")', { timeout: 25000 });
+  await page.click('.doc-actions button:has-text("编辑")');
+  await page.waitForSelector(".ws-edit .cm-content", { timeout: 8000 });
+  assert((await page.$$(".ws-edit .writing-assist__trigger")).length === 1, "正式编辑器里没有推动按钮");
+  const existingBefore = await page.textContent(".ws-edit .cm-content");
+  await page.click(".ws-edit .writing-assist__trigger");
+  await page.waitForSelector(".ws-edit .writing-assist__result");
+  await page.click('.ws-edit .writing-assist__modes button:has-text("帮我写")');
+  await page.click('.ws-edit .writing-assist__choice button:has-text("续写一段")');
+  await page.waitForFunction(() => document.querySelector(".ws-edit .writing-assist__result > p")?.textContent.includes("缺少更多方法"));
+  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-existing-editor.png"), fullPage: false });
+  await page.click('.ws-edit .writing-assist__result button:has-text("插入光标处")');
+  await page.waitForFunction(() => document.querySelector(".ws-edit .cm-content")?.textContent.includes("缺少更多方法"));
+  const existingAfter = await page.textContent(".ws-edit .cm-content");
+  assert(existingAfter.includes(existingBefore), "正式编辑器插入续写时覆盖了原稿");
+  await page.click('.ws-edit__foot button:has-text("取消")');
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
   console.log("✓ 连续两次 AI 小推动都返回新结果");
   console.log("✓ AI 续写先预览，确认后才插入且不覆盖上文");
   console.log("✓ 完成全文同样先预览再插入");
+  console.log("✓ 稿件库正式编辑器显示推动按钮并能插入候选");
   console.log("✓ 浏览器控制台 0 错误");
 } finally {
   await browser.close();

@@ -199,6 +199,7 @@ export function MarkdownEditor({
   value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled,
   citations, onCitations, onCiteClick, revealRequest,
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
+  toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
 }) {
   const host = useRef(null);
   const view = useRef(null);
@@ -383,6 +384,7 @@ export function MarkdownEditor({
           {preview ? <IconPencil aria-hidden="true" stroke={1.7} /> : <IconEye aria-hidden="true" stroke={1.7} />}
           {preview ? "编辑" : "预览"}
         </button>
+        {toolbarExtra}
       </div>
       {/* 编辑器**一直挂在 DOM 里**，预览只是盖上去。卸载再挂的话，撤销历史和滚动位置会丢 */}
       <div className="md-editor__body" hidden={preview}>

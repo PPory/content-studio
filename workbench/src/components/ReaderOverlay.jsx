@@ -15,6 +15,7 @@ import { Reader } from "./Reader.jsx";
 import { SideRail } from "./SideRail.jsx";
 import { ReadingPrefs, loadPrefs, prefsToStyle } from "./ReadingPrefs.jsx";
 import { MarkdownEditor } from "./MarkdownEditor.jsx";
+import { WritingAssist } from "./WritingAssist.jsx";
 import { ErrorNote, Loading, MetaItem, Select, relTime } from "./ui.jsx";
 import { readStats } from "../lib/reading.js";
 import {
@@ -378,6 +379,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [insertRequest, setInsertRequest] = useState(null);
   const armedDel = useConfirmGuard(confirmDel);
 
   useEffect(() => {
@@ -395,6 +397,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
     setTitle(doc.title);
     setError(null);
     setSaved(false);
+    setInsertRequest(null);
     setEditing(true);
     setReveal(revealAt ? (cur) => ({ text: revealAt, nonce: (cur?.nonce || 0) + 1 }) : null);
   }
@@ -461,7 +464,22 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
         ) : (
           <input className="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} />
         )}
-        <MarkdownEditor value={draft} onChange={setDraft} ariaLabel="正文（Markdown）" revealText={reveal} />
+        <MarkdownEditor
+          value={draft}
+          onChange={setDraft}
+          ariaLabel="正文（Markdown）"
+          revealText={reveal}
+          insertRequest={insertRequest}
+          onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
+          toolbarExtra={(
+            <WritingAssist
+              title={title}
+              body={draft}
+              platform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
+              onInsert={(text) => setInsertRequest({ id: `writing-${Date.now()}`, text })}
+            />
+          )}
+        />
         <ErrorNote error={error} what="保存" />
         {/* 动作条固定在底部，和右栏批注台那套是同一条规则：按钮永远在同一个位置，
             肌肉记忆才立得住。长文编辑时尤其要紧——不然存一次要先滚到底。 */}
