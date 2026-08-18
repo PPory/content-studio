@@ -227,7 +227,51 @@ export async function listByStatus(env, table, status, limit = 20) {
   );
 }
 
-/** 工作台列表用的分页。cursor 是上一页最后一行的 id（ULID 字典序即时间序）。 */
+/**
+ * 工作台所有列表的排序：**最近动过的在最前**。
+ *
+ * ⚠️ **判据是 `updated_at`，绝不能是 `id`。** 这一条踩过：原来三处都写 `ORDER BY id DESC`，
+ * 注释里还写着「ULID 字典序即时间序」——那句话对**纯 ULID** 成立，但这个库的 id
+ * **有两种格式**（迁移过来的是小写 UUID `3b91…`，新建的是 ULID `01M0…`）。
+ * 按 ASCII 比 `01M…` 永远小于 `3…`，于是**所有新建的行被整体压到所有迁移行后面**：
+ * 8-16 写的那篇排在 7-05 那篇的后面。**不报错、不白屏，只是顺序不对**，
+ * 而顺序不对这件事，看的人只会以为「东西没进来」。
+ *
+ * ⚠️ **为什么是 `updated_at` 而不是 `created_at`：卡片上显示的就是它**
+ *（`decorate` 里的 `editedAt`，`/wb/*` 压根不回 `createdAt`）。按创建时间排的话，
+ * 七月建、八月改过的那条会显示着「08-14」却躺在显示「07-08」的那条下面——
+ * **屏幕上的日期上下乱跳，看着就是排序坏了**。要改回按创建时间排，
+ * 就必须同时让卡片改显示创建时间，两件事得一起做，别只改一半。
+ *
+ * 加 `id` 做次级排序不是装饰：时间戳是秒，一轮初筛能在同一秒写进 6 张素材卡，
+ * 并列时顺序不稳定的话，**翻页会漏行也会重复**（游标指向的那行下一次查询排到了别处）。
+ */
+export const LIST_ORDER = "ORDER BY updated_at DESC, id DESC";
+
+/**
+ * 游标 = 上一页最后一行的 `(updated_at, id)`，和 `LIST_ORDER` 必须是同一对列。
+ *
+ * **不用 SQLite 的行值比较 `(a,b) < (?,?)`**，摊开成等价的 OR 式子：D1 底下的 SQLite
+ * 版本不由我们定，而这条查询错了的表现是「翻页少几行」，同样是不报错的那一类。
+ *
+ * ⚠️ **认不出的游标当成没有游标**（回第一页），不抛错。旧格式是裸 id，
+ * 部署那一刻正开着页面的人点「加载更多」会拿它来问——那时候宁可让他看到重复几条，
+ * 也不要甩一个 500。刷新一次就好了。
+ *
+ * ⚠️ **按 `updated_at` 排的代价写在这儿**：翻页期间某一行被改了，它会跳到第一页，
+ * 于是这一页可能少一行。这是「最近动过的在最前」这个选择自带的，不是 bug——
+ * 而且只影响正在翻的那一刻，刷新就对了。要根治得换成不会变的列（如 `created_at`）。
+ */
+export const encodeCursor = (row) => (row ? `${row.updated_at}.${row.id}` : null);
+
+export function cursorClause(cursor) {
+  const m = /^(\d+)\.(.+)$/.exec(String(cursor || ""));
+  if (!m) return { sql: "", params: [] };
+  const at = Number(m[1]);
+  return { sql: "(updated_at < ? OR (updated_at = ? AND id < ?))", params: [at, at, m[2]] };
+}
+
+/** 工作台列表用的分页。排序和游标规则见上面两条，**别在调用方另写一份**。 */
 export async function listPage(env, table, { status = "", cursor = "", pageSize = 25 } = {}) {
   assertTable(table);
   const size = Math.min(Math.max(pageSize, 1), 100);
