@@ -124,6 +124,21 @@ export const pipeRoutes = [
     },
   },
   {
+    /** 写作推动同样先收齐、过真实性闸门，再把候选结果交给用户决定是否插入。 */
+    method: "POST",
+    path: "/api/pipe/writing-assist",
+    async handler({ env, req, res }) {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        return fail(res, e.message, { status: 400 });
+      }
+      const r = await callWorker(env, "writing-assist", { method: "POST", body, timeoutMs: 300_000 });
+      json(res, withDeployHint(r.data), r.status);
+    },
+  },
+  {
     /**
      * 正文里哪一句来自哪条素材。**对齐算法在 Worker 那侧**（`worker/src/lib/cite.js`），
      * 因为它和真实性闸门共用同一套归一化和二字组判据——挪一份到工作台来，

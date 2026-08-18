@@ -26,6 +26,7 @@ export const MODEL_TASKS = [
   { key: "draft", label: "成稿", hint: "最花 token 也最看质量的一步。" },
   { key: "tweet", label: "快速推文（/推）", hint: "短、要有网感，可以试试别的模型。" },
   { key: "explain", label: "划词理解", hint: "解释 / 展开 / 反驳 / 选题。要快，你在等着读。" },
+  { key: "writing", label: "写作推动", hint: "卡住时的一问或续写。响应要快，完成全文时也要稳。" },
   { key: "pick", label: "按意思挑素材", hint: "只是在候选清单里排个序，便宜快的模型足够。" },
   { key: "utility", label: "打标签 · 分类 · 提标题", hint: "把已有内容归个类，用最便宜的那档就行。" },
 ];

@@ -19,7 +19,7 @@ import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
 import { chat, chatJson } from "./lib/llm.js";
-import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT } from "./prompts.js";
+import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT, WRITING_ASSIST_PROMPT } from "./prompts.js";
 import {
   assertGroundedGeneratedText,
   auditPersonalNarrative,
@@ -29,6 +29,7 @@ import {
 } from "./lib/integrity.js";
 import { citeText } from "./lib/cite.js";
 import { normalizeCreationRequest, keepRealPicks } from "./lib/creation.js";
+import { normalizeWritingAssistRequest } from "./lib/writing-assist.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
 import {
   applyCollectionOrganize,
@@ -297,6 +298,8 @@ export async function handleWorkbench(request, env, ctx, url) {
     }
 
     if (path === "explain" && request.method === "POST") return await explain(env, await request.json());
+
+    if (path === "writing-assist" && request.method === "POST") return await writingAssist(env, await request.json());
 
     if (path === "pick/materials" && request.method === "POST") return await pickMaterials(env, await request.json());
 
@@ -936,6 +939,85 @@ async function explain(env, body) {
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "no-cache, no-transform",
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 写作推动（创作编辑器里的“推动一下”）
+//
+// 默认 nudge 只给一问；paragraph / finish 只有用户明确选择“帮我写”才会到这里。
+// 三种结果都先回到候选卡片，由用户决定是否插入，Worker 不直接改稿件。
+
+const NUDGE_KINDS = new Set(["问题", "新角度", "下一步"]);
+const WRITING_TOKENS = { nudge: 500, paragraph: 1800, finish: 9000 };
+
+async function writingAssist(env, raw) {
+  let input;
+  try {
+    input = normalizeWritingAssistRequest(raw);
+  } catch (e) {
+    return json({ ok: false, error: e.message }, e.status || 400);
+  }
+
+  const user = [
+    `【模式】${input.mode}`,
+    input.title ? `【标题或主题】${input.title}` : "",
+    input.platform ? `【目标平台】${input.platform}` : "",
+    input.content ? `【已有正文】\n${input.content}` : "【已有正文】（还没有正文）",
+  ].filter(Boolean).join("\n\n");
+
+  // “完成全文”可能持续一两分钟，但任何字在外显前都必须先收齐并过真实性闸门。
+  // 期间发空白心跳，调用方仍能把最终响应当 JSON 读取。
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const beat = setInterval(() => {
+        try { controller.enqueue(encoder.encode("\n")); } catch { /* 客户端已离开 */ }
+      }, 10_000);
+      const send = (payload) => controller.enqueue(encoder.encode(JSON.stringify(payload)));
+      try {
+        if (input.mode === "nudge") {
+          const { json: out } = await chatJson(env, {
+            system: WRITING_ASSIST_PROMPT,
+            user,
+            maxTokens: WRITING_TOKENS.nudge,
+            task: "writing",
+          });
+          const text = String(out?.text || "").trim().slice(0, 180);
+          if (!text) throw new Error("AI 没有给出有效推动");
+          assertGroundedGeneratedText(text, []);
+          send({ ok: true, mode: input.mode, kind: NUDGE_KINDS.has(out?.kind) ? out.kind : "问题", text });
+        } else {
+          const { content } = await chat(env, {
+            system: WRITING_ASSIST_PROMPT,
+            user,
+            maxTokens: WRITING_TOKENS[input.mode],
+            task: "writing",
+          });
+          const text = unfence(content);
+          if (!text) throw new Error("AI 没有生成可用正文");
+          // 当前编辑器正文是用户这次亲手提供的额外证据：允许延续已写的真实经历，
+          // 但新编的细节和原文对不上，仍会被同一道确定性闸门拒绝。
+          const evidence = await personalEvidence(env, input.content ? [{ type: "个人经历", note: input.content }] : []);
+          assertGroundedGeneratedText(text, evidence);
+          send({ ok: true, mode: input.mode, kind: input.mode === "finish" ? "完成全文" : "续写一段", text });
+        }
+      } catch (e) {
+        const ungrounded = e?.code === "UNGROUNDED_PERSONAL_EXPERIENCE";
+        send({
+          ok: false,
+          error: ungrounded ? "这次续写里出现了上文没有的亲身经历，已经拦下" : String(e?.message || "写作推动失败").slice(0, 800),
+          hint: ungrounded ? "再生成一次，或先把真实细节写进正文再让 AI 接着写" : undefined,
+        });
+      } finally {
+        clearInterval(beat);
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-cache, no-transform" },
   });
 }
 

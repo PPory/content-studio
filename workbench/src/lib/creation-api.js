@@ -35,6 +35,12 @@ export const creationApi = {
     body: JSON.stringify(body),
     signal,
   }),
+  writingAssist: (body, signal) => jsonRequest("/api/pipe/writing-assist", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  }),
   /**
    * 重新核对引用：用户改完正文之后，哪些标注还成立。
    * 只传 id，素材原文由 Worker 从库里读——标注是给用户「这句有出处」的信号，

@@ -16,6 +16,7 @@ import { startRun, patchRun, endRun } from "../src/lib/ai-runs.js";
 import { countWords, readStats } from "../src/lib/reading.js";
 import { normalizeAudiences } from "../server/lib/audiences.mjs";
 import { draftHasContent } from "../src/lib/creation-draft.js";
+import { STARTING_LINE_COUNT, startingLine } from "../src/lib/writing-prompts.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -419,6 +420,10 @@ check("太短的不报预计时长", readStats("只有一句话") === null);
 check("标题正文都空 = 没内容", draftHasContent({ title: "  ", body: "\n" }) === false);
 check("只有标题也算有内容", draftHasContent({ title: "先起个名", body: "" }) === true);
 check("null 不炸", draftHasContent(null) === false);
+// 起始句不是一份写死的巨型数组，而是三个独立语义库的组合；数量必须真的过“数千”这条线。
+check("内置起始句超过两千条", STARTING_LINE_COUNT >= 2000, String(STARTING_LINE_COUNT));
+check("起始句能带上当前主题", startingLine({ topic: "独立思考", seed: "fixed" }).startsWith("关于“独立思考”"));
+check("同一个种子给同一句", startingLine({ seed: "fixed" }) === startingLine({ seed: "fixed" }));
 
 // ---- 适配器工厂：新增配置项必须真的透传出来 ----
 // 这条是补上一个真事故：`askPlatformsOn` 只写进了 TOPICS 的配置、漏了 `notionSource()`

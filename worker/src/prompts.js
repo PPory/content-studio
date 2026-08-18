@@ -22,6 +22,7 @@ import PICK_MATERIALS_MD from "../prompt/pick-materials.md";
 import MATERIAL_DRAFT_MD from "../prompt/material-draft.md";
 import COLLECTION_ORGANIZE_MD from "../prompt/collection-organize.md";
 import KNOWLEDGE_CARD_MD from "../prompt/knowledge-card.md";
+import WRITING_ASSIST_MD from "../prompt/writing-assist.md";
 
 import GUIDE_GZH from "../prompt/platform/gongzhonghao.md";
 import GUIDE_X from "../prompt/platform/x.md";
@@ -73,6 +74,8 @@ export const PICK_MATERIALS_PROMPT = compose(PICK_MATERIALS_MD);
 export const MATERIAL_DRAFT_PROMPT = compose(MATERIAL_DRAFT_MD);
 export const COLLECTION_ORGANIZE_PROMPT = compose(COLLECTION_ORGANIZE_MD);
 export const KNOWLEDGE_CARD_PROMPT = compose(KNOWLEDGE_CARD_MD);
+// 创作编辑器里的即时推动：默认只问一个问题；用户明确选择后才续写。
+export const WRITING_ASSIST_PROMPT = compose(WRITING_ASSIST_MD);
 
 // Telegram 长文本提炼标题（入口用的轻量 prompt，非三段主 prompt，留在代码里）
 export const TITLE_PROMPT = `你是标题提炼助手。用户会给你一段较长的中文或英文文本，请提炼一个不超过 30 字的标题，概括其核心内容。只输出 JSON：{"title": "..."}，不要任何多余文字。`;
