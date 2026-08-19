@@ -44,6 +44,7 @@ import {
 import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
+import { getContentProject, listContentProjects, PROJECT_STAGES } from "./lib/content-project.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -269,6 +270,11 @@ export async function handleWorkbench(request, env, ctx, url) {
     const listMatch = path.match(/^list\/([a-z]+)$/);
     if (listMatch && request.method === "GET") return await listRows(env, url, listMatch[1]);
 
+    if (path === "projects" && request.method === "GET") return await listProjects(env, url);
+
+    const projectMatch = path.match(/^projects\/(.+)$/);
+    if (projectMatch && request.method === "GET") return await projectDetail(env, projectMatch[1]);
+
     const searchMatch = path.match(/^search\/([a-z]+)$/);
     if (searchMatch && request.method === "GET") return await searchRows(env, url, searchMatch[1]);
 
@@ -441,6 +447,34 @@ async function listRows(env, url, viewKey) {
   }
 
   return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
+}
+
+// 内容项目只读聚合。这两个端点不改 topics / drafts 的任何状态，
+// 阶段和阻塞原因由 Worker 统一返回，前端不再拿稿件状态二次猜流程。
+async function listProjects(env, url) {
+  const stage = String(url.searchParams.get("stage") || "").trim();
+  if (stage && !PROJECT_STAGES.includes(stage)) {
+    return json({ ok: false, error: `stage 不合法（可选 ${PROJECT_STAGES.join("/")}）` }, 400);
+  }
+  const result = await listContentProjects(env, {
+    stage,
+    cursor: url.searchParams.get("cursor") || "",
+    pageSize: url.searchParams.get("pageSize") || 100,
+  });
+  return json({ ok: true, ...result });
+}
+
+async function projectDetail(env, rawId) {
+  let id;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {
+    return json({ ok: false, error: "project id 不合法" }, 400);
+  }
+  const valid = isId(id) || (id.startsWith("draft:") && isId(id.slice(6)));
+  if (!valid) return json({ ok: false, error: "project id 不合法" }, 400);
+  const project = await getContentProject(env, id);
+  return project ? json({ ok: true, project }) : json({ ok: false, error: "not found" }, 404);
 }
 
 /**

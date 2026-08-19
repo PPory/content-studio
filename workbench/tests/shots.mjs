@@ -20,6 +20,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = Number(process.env.SHOTS_PORT) || 5198;
 const WIDTH = Number(process.argv[2]) || 1600;
 const DARK = process.argv.includes("dark");
+const ONLY = new Set(process.argv.slice(3).filter((arg) => arg !== "dark"));
 const SUFFIX = DARK ? "-dark" : "";
 
 const require = createRequire(import.meta.url);
@@ -166,9 +167,31 @@ const page = await browser.newPage({
   colorScheme: DARK ? "dark" : "light",
 });
 
+// 新的内容项目页要看得出阶段和下一步，空态截图验不了这两件事。
+// 和上面的数据页样例一样，这里只拦截浏览器请求，不写真流水线。
+const PROJECT_SHOT_SEED = [
+  { id: "shot-planning", title: "AI 时代，什么才算真正的独立思考", stage: "策划中", stageReason: "缺少目标读者", nextAction: "补全创作简报", blockers: ["缺少目标读者"], topic: { id: "shot-planning" }, masterDraft: null, updatedAt: new Date().toISOString() },
+  { id: "shot-writing", title: "别再把收藏当成学会", stage: "写作中", stageReason: "已有稿件，继续收紧观点", nextAction: "继续写作", blockers: [], topic: { id: "shot-writing" }, masterDraft: { id: "shot-draft" }, updatedAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: "shot-review", title: "信息过载最先杀死的是判断力", stage: "待复盘", stageReason: "内容已发布，尚未进行表现判断", nextAction: "开始复盘", blockers: [], topic: { id: "shot-review" }, masterDraft: { id: "shot-review-draft" }, updatedAt: new Date(Date.now() - 7200000).toISOString() },
+];
+await page.route("**/api/pipe/projects*", (route) => route.fulfill({
+  status: 200,
+  contentType: "application/json",
+  body: JSON.stringify({
+    ok: true,
+    projects: PROJECT_SHOT_SEED,
+    counts: { "策划中": 1, "生成中": 0, "写作中": 1, "待复盘": 1, "已完成": 0, "需处理": 0 },
+    total: PROJECT_SHOT_SEED.length,
+    nextCursor: null,
+  }),
+}));
+
 // [文件名, hash, 等这个出现, 进页面后再做点什么]
 const shots = [
-  ["overview", "/", ".todo-card, .note-title"],
+  ["today", "/", ".today-focus, .project-setup, .note-danger"],
+  ["content", "/#/content", ".project-lanes, .project-setup, .project-error"],
+  ["discover", "/#/discover", ".discover-grid"],
+  ["overview", "/#/overview", ".todo-card, .note-title"],
   ["hot-boards", "/#/hot", ".board, .empty, .note-title"],
   ["hot-ai", "/#/hot", ".board, .empty, .note-title", async () => {
     await page.click('.pill-tab:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
@@ -205,7 +228,7 @@ const shots = [
   ["settings-prompts", "/", ".todo-card, .note-title", async () => {
     await page.click(".conn__gear").catch(() => {});
     await page.click('.set-nav__item[data-key="prompts-worker"]').catch(() => {});
-    await page.waitForSelector(".set-pp__item, .note-title", { timeout: 15000 }).catch(() => {});
+    await page.waitForSelector(".set-pp__item, .set-pane .note-title", { timeout: 15000 }).catch(() => {});
     await page.click(".set-pp__item").catch(() => {});
     await page.waitForSelector(".set-pp__editor .cm-content", { timeout: 15000 }).catch(() => {});
   }],
@@ -374,7 +397,7 @@ const shots = [
   }],
 ];
 
-for (const [name, hash, waitFor, after] of shots) {
+for (const [name, hash, waitFor, after] of shots.filter(([name]) => !ONLY.size || ONLY.has(name))) {
   // 先回空白页再进：goto 到只有 hash 不同的地址**不会重新加载**，
   // 上一张图点出来的状态（切成卡片视图、打开了阅读区）会原样留到下一张图里。
   await page.goto("about:blank");

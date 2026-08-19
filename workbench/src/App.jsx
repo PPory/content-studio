@@ -1,8 +1,5 @@
-// 侧栏就是一天的动线：看外面（热点/洞察）→ 做内容（创作/书架）→ 发出去（排版）→ 看反馈（数据）。
-//
-// **流水线四段不占四个侧栏项**。灵感库 → 素材库 → 选题库 → 稿件库是一条链的四段，
-// 摊成页内 tab 才看得出「东西是从左往右走的」；排成四行侧栏项反而把这层关系藏了。
-// 侧栏那一项高亮的条件是「当前在四段里的任意一段」。
+// 一级导航只表达五个用户任务：今天做什么、内容走到哪、有什么素材、外面有什么、发布后学到什么。
+// 数据库对象和旧工具路由仍保留兼容，但只归属于其中一个任务，不再争抢侧栏位置。
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./lib/api.js";
@@ -10,6 +7,9 @@ import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
 import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
+import { Today } from "./pages/Today.jsx";
+import { Content } from "./pages/Content.jsx";
+import { Discover } from "./pages/Discover.jsx";
 import { Studio } from "./pages/Studio.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
@@ -25,18 +25,20 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-// 侧栏项。`match` 用来判断「当前路由算不算这一项」——「创作」要覆盖流水线四段。
+const CONTENT_VIEWS = new Set(["content", "topics", "drafts"]);
+const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
+
+// 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
-  { key: "overview", to: "overview" },
-  { key: "hot", to: "hot" },
-  { key: "studio", to: "collections", match: (v) => PIPELINE.includes(v) },
-  { key: "insights", to: "insights" },
-  { key: "shelf", to: "shelf" },
-  { key: "typeset", to: "typeset" },
-  { key: "metrics", to: "metrics" },
+  { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
+  { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || v === "typeset" },
+  { key: "materials", to: "materials", match: (v) => MATERIAL_VIEWS.has(v) },
+  { key: "discover", to: "discover", match: (v) => DISCOVER_VIEWS.has(v) },
+  { key: "review", to: "review", match: (v) => v === "review" || v === "metrics" },
 ];
 
-const VIEWS = ["overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "content", "discover", "review", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -63,8 +65,8 @@ function readHash() {
   // 库里直接回 400，界面上是一坨 validation_error。
   const raw = window.location.hash.replace(/^#\/?/, "");
   const [rawView = "", ...rest] = raw.split("/");
-  const view = decodeURIComponent(rawView) || "overview";
-  return { view: VIEWS.includes(view) ? view : "overview", state: decodeURIComponent(rest.join("/")) };
+  const view = decodeURIComponent(rawView) || "today";
+  return { view: VIEWS.includes(view) ? view : "today", state: decodeURIComponent(rest.join("/")) };
 }
 
 export function App() {
@@ -238,10 +240,6 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 「创作」那一项的角标 = 整条流水线的待办总数。分段的数字挂在页内 tab 上。
-  const pipelinePending =
-    (status?.collections?.pending ?? 0) + (status?.counts?.待初筛 ?? 0) + (status?.counts?.选题待写 ?? 0) + (status?.counts?.内容待修改 ?? 0);
-
   return (
     <div className="app" data-rail={railCollapsed ? "collapsed" : "open"}>
       <aside className="sidebar">
@@ -290,7 +288,9 @@ export function App() {
           {NAV.map((item) => {
             const Icon = NAV_ICONS[item.key];
             const current = item.match ? item.match(route.view) : route.view === item.key;
-            const badge = item.key === "studio" ? pipelinePending : 0;
+            // 选题数 + 稿件数不等于内容项目数：同一篇会被算两次。
+            // 在项目汇总没有上收到 App 前，导航不显示这个会误导人的数字。
+            const badge = 0;
             return (
               <button
                 key={item.key}
@@ -318,7 +318,7 @@ export function App() {
               这个最显眼的按钮出现在每一屏——常驻的提示只有第一天有用。留在 title 里 */}
           <button className="btn btn-primary btn-block" onClick={() => setIntake({})} title="入库（快捷键 n）">
             <IconPlus aria-hidden="true" stroke={2} />
-            <span className="nav-item__label">入库</span>
+            <span className="nav-item__label">收集</span>
           </button>
           {/**
             * 连接状态 + 设置入口住在一起，因为它们说的是同一件事的两面：
@@ -348,7 +348,29 @@ export function App() {
       </aside>
 
       <main className="main" key={route.view}>
-        {route.view === "overview" ? (
+        {route.view === "today" ? (
+          <Today
+            config={config}
+            status={status}
+            statusError={statusError}
+            statusLoading={statusLoading}
+            onRetryStatus={refreshStatus}
+            onGo={go}
+            onChanged={refreshStatus}
+            onSettings={() => setSettings(true)}
+          />
+        ) : route.view === "content" ? (
+          <Content
+            workerReady={config?.worker?.configured}
+            onGo={go}
+            onChanged={refreshStatus}
+            onSettings={() => setSettings(true)}
+          />
+        ) : route.view === "discover" ? (
+          <Discover onGo={go} />
+        ) : route.view === "review" ? (
+          <Metrics onSettings={() => setSettings(true)} />
+        ) : route.view === "overview" ? (
           <Overview
             config={config}
             status={status}

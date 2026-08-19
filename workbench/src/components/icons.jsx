@@ -123,10 +123,8 @@ export {
 import {
   IconHome as Home,
   IconRadar2 as Radar,
-  IconSocial as Social,
   IconStack2 as Stack,
-  IconBooks as Books,
-  IconBrandWechat as Wechat,
+  IconArchive as Archive,
   IconChartLine as ChartLine,
 } from "@tabler/icons-react";
 
@@ -162,11 +160,9 @@ export function BrandMark() {
 }
 
 export const NAV_ICONS = {
-  overview: Home,
-  hot: Radar,
-  studio: Stack,
-  insights: Social,
-  shelf: Books,
-  typeset: Wechat,
-  metrics: ChartLine,
+  today: Home,
+  content: Stack,
+  materials: Archive,
+  discover: Radar,
+  review: ChartLine,
 };

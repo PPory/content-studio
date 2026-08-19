@@ -347,7 +347,7 @@ function TodoCard({ card, n, items, plan, onGo }) {
  * 文件名是按**服务端本机日期**建的，两边各算各的话，跨零点或时区一错就会写进另一个文件，
  * 而现象是「我明明列过的清单不见了」。
  */
-function usePlan(enabled) {
+export function usePlan(enabled) {
   const [date, setDate] = useState("");
   const [tick, setTick] = useState(0);
   const [state, setState] = useState({ loading: true });
@@ -464,7 +464,7 @@ function ProgressRing({ done, total }) {
  * **vault 没配时整块不画**（不是画一个报错的空壳）：底下的系统行已经在说这件事，
  * 而且那儿的引导是能点的。同一个问题在一屏上说两遍，第二遍就是噪音。
  */
-function DayPlan({ plan }) {
+export function DayPlan({ plan }) {
   const [text, setText] = useState("");
   // 输入框**默认不在**，点「+」才展开。常驻的话，空清单那一屏就是「一句说明 + 一个空
   // 输入框 + 一行路径」三样东西在说同一件事，而它们加起来比清单本身还高。

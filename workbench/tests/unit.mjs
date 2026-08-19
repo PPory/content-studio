@@ -40,7 +40,8 @@ import { applyAdd, applyRemove, applyToggle, cleanTaskText, localDate, newPlanTe
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
 import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditorRevision, verifyRevisionStore } from "../server/lib/editor-revisions.mjs";
-import { workerPostTimeout } from "../server/routes/pipe.mjs";
+import { pipeRoutes, workerPostTimeout } from "../server/routes/pipe.mjs";
+import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } from "../src/lib/content-projects.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -48,6 +49,26 @@ const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
 // Inbox 整理会把最多 20 条长内容交给模型，不能被普通接口的 30 秒上限提前掐断。
 check("Inbox 整理预览单独允许 180 秒", workerPostTimeout("collections/organize/preview") === 180_000);
 check("普通 Worker 写请求仍使用默认超时", workerPostTimeout("collections/organize/apply") === undefined);
+
+// 内容项目是 Worker 的只读聚合，本机只转发并决定怎么排版，不能再算一套业务状态。
+check("本机代理有内容项目列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects"));
+check("本机代理有内容项目详情", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects/:id"));
+{
+  const projects = [
+    { id: "plan", stage: "策划中", updatedAt: "2026-08-19", topic: { id: "topic-1" } },
+    { id: "write", stage: "写作中", updatedAt: "2026-08-18", masterDraft: { id: "draft-1" } },
+    { id: "blocked", stage: "需处理", updatedAt: "2026-08-17", topic: { id: "topic-2" } },
+    { id: "generating", stage: "生成中", updatedAt: "2026-08-20", topic: { id: "topic-3" } },
+    { id: "unknown", stage: "未来状态", updatedAt: "2026-08-20" },
+  ];
+  const grouped = groupProjects(projects);
+  check("未知项目阶段归到需处理而不是消失", grouped.需处理.map((x) => x.id).join("/") === "blocked/unknown");
+  check("项目阶段顺序只有一份", PROJECT_STAGES.join("/") === "策划中/生成中/写作中/待复盘/已完成/需处理");
+  check("今日先摆阻塞，再摆正在写的", actionableProjects(projects).slice(0, 2).map((x) => x.id).join("/") === "blocked/write");
+  check("生成中是后台状态，不冒充用户待办", !actionableProjects(projects).some((x) => x.id === "generating"));
+  check("有母版时打开稿件", JSON.stringify(projectOpenTarget(projects[1])) === JSON.stringify({ view: "drafts", id: "draft-1" }));
+  check("没有母版时打开选题", JSON.stringify(projectOpenTarget(projects[0])) === JSON.stringify({ view: "topics", id: "topic-1" }));
+}
 
 // ---- AI 局部修订历史：独立于正文、原子保存、可迁移到正式稿件身份 ----
 {

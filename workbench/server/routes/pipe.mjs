@@ -67,6 +67,20 @@ export const pipeRoutes = [
     handler: ({ env, res }) => forwardGet(env, res, "status"),
   },
   {
+    // 内容项目是 Worker 对既有选题/稿件/关联关系的只读聚合，本机不存第二份。
+    method: "GET",
+    path: "/api/pipe/projects",
+    handler({ env, res, url }) {
+      const stage = url.searchParams.get("stage");
+      return forwardGet(env, res, "projects", stage ? `stage=${encodeURIComponent(stage)}` : "");
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/pipe/projects/:id",
+    handler: ({ env, res, params }) => forwardGet(env, res, `projects/${encodeURIComponent(params.id)}`),
+  },
+  {
     method: "GET",
     path: "/api/pipe/list/:view",
     handler({ env, res, params, url }) {

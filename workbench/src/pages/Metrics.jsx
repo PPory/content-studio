@@ -79,9 +79,9 @@ export function Metrics({ onSettings }) {
   return (
     <>
       <PageHeader
-        eyebrow="发出去之后"
-        title="数据"
-        desc="平台的数字和你的稿子对着看。数据从各家后台导出来，工作台不碰任何平台接口。"
+        eyebrow="发布之后"
+        title="复盘"
+        desc="先把平台数字和稿子对上，再判断什么有效、下一篇具体改变什么。"
         aside={
           rows.length ? (
             <div className="month-nav">

@@ -31,6 +31,8 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 export const api = {
   config: () => req("/api/config"),
   status: () => req("/api/pipe/status"),
+  projects: (stage = "") => req(`/api/pipe/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
+  project: (id) => req(`/api/pipe/projects/${encodeURIComponent(id)}`),
   list: (view, params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
     return req(`/api/pipe/list/${view}${qs.toString() ? `?${qs}` : ""}`);

@@ -98,32 +98,43 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
 
   // 1. 渲染了，不是白屏
-  await page.waitForSelector(".brand-name", { timeout: 8000 });
+  // 首次冷启动要转译编辑器和中文字体，8 秒在 Windows 上偶尔只截到空白首帧。
+  await page.waitForSelector(".brand-name", { timeout: 20000 });
   check("界面渲染", (await page.textContent(".brand-name")) === "Xenho OS");
 
-  // 2. 侧栏是一天的动线：看外面 → 做内容 → 发出去 → 看反馈。
-  //    流水线四段**不占四个侧栏项**，它们是「创作」页内的 tab。
+  // 2. 侧栏只放用户任务。数据库对象、后台状态和单个工具都不再抢一级入口。
   const nav = await page.$$eval(".nav-item", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
   check(
-    "侧栏按一天的动线排",
-    nav.join("/") === "总览/热点/创作/洞察/书架/排版/数据",
+    "侧栏按内容任务排",
+    nav.join("/") === "今日/内容/素材/发现/复盘",
     nav.join("/")
   );
   check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
+  check("默认进入今日", (await page.textContent(".page-title")) === "今天", await page.textContent(".page-title"));
+
+  // 新结构先守住一级链路；Worker 尚未部署新聚合端点时，内容页要给升级提示和旧版退路，不能白屏。
+  await page.click('.nav-item:has-text("内容")');
+  await page.waitForSelector(".page-title", { timeout: 8000 });
+  check("内容成为独立任务页", (await page.textContent(".page-title")) === "内容");
+  check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
+  await page.click('.nav-item:has-text("发现")');
+  await page.waitForSelector(".discover-card", { timeout: 8000 });
+  check("发现统一收住热点洞察书架", (await page.$$(".discover-card")).length === 3);
+  await page.click('.nav-item:has-text("今日")');
+  await page.waitForSelector(".page-title", { timeout: 8000 });
 
   /**
    * 侧栏能收起，而且**记得住**。
    *
    * 收起态只剩一列图标：文字是 `display:none` 而不是换一套 DOM——同一批节点两种形态，
-   * 加一个导航项才不会要改两处。**测完必须展开回去**：后面几段用的是
-   * `.nav-item:has-text("创作")` 这种按文字点的选择器，收起态下文字不可见，一点就超时。
+   * 加一个导航项才不会要改两处。**测完必须展开回去**：后面还要按可见标签点击导航。
    */
   await page.click(".rail-toggle");
   await page.waitForTimeout(250);
   const railW = await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width));
   check("收起后只剩一列图标的宽度", railW <= 64, `${railW}px`);
   check("收起后文字不占位", (await page.$eval(".nav-item", (e) => e.innerText.trim())) === "", await page.$eval(".nav-item", (e) => e.innerText));
-  check("收起后图标还在", (await page.$$(".nav-item .nav-icon")).length === 7);
+  check("收起后图标还在", (await page.$$(".nav-item .nav-icon")).length === 5);
   // 收起后收放按钮让位给 logo：60px 一条里摆两个方块太挤，而 logo 已经在最顺手的位置
   check("收起后收放按钮不出现", !(await page.isVisible(".rail-toggle")));
   // logo 要和下面那一列图标块等宽：小一圈的话它看着像还没加载完，左右边缘也连不成一条竖线
@@ -346,7 +357,8 @@ try {
       check("安全约束只读摆出来", /改不掉/.test(guard) && !guardEditable, guard.slice(0, 40));
 
       await go("prompts-worker");
-      await page.waitForSelector(".set-pp__item, .note-title", { timeout: 8000 });
+      // 「今日」背景页自己也可能有 note-title，不能拿它冒充设置面板加载完成。
+      await page.waitForSelector(".set-pp__item, .set-pane .note-title", { timeout: 8000 });
       // 二选一：content-pipeline 找得到就列文件、找不到就给引导
       const files = await page.$$eval(".set-pp__item", (els) => els.map((e) => e.innerText.trim()));
       if (files.length) {
@@ -412,7 +424,8 @@ try {
     }
   }
 
-  // 3. 总览要么给数据、要么给引导——两种状态都不能是空白。
+  // 3. 兼容期的旧总览仍要完整可用，直到新今日页覆盖完这些能力。
+  await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
   const workerReady = await page.evaluate(() => fetch("/api/config").then((r) => r.json()).then((c) => c.worker.configured));
   if (workerReady) {
     await page.waitForSelector(".todo-card", { timeout: 20000 });
@@ -1036,7 +1049,7 @@ try {
   await page.goto("about:blank");
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
   await page.waitForSelector(".nav-item", { timeout: 10000 });
-  await page.click('.nav-item:has-text("创作")');
+  await page.click('.nav-item:has-text("素材")');
   await page.waitForSelector(".pill-tabs", { timeout: 10000 });
   await page.click('.pill-tab:has-text("选题库")');
   await page.waitForTimeout(600);
@@ -1048,9 +1061,9 @@ try {
   // 收件箱排在最前面：**它是唯一一个不触发 AI 的入口**，先收起来再决定要不要进流水线，
   // 顺序本身就是那条链的走向。（加它之前这里只有四段，断言写死过一次，加完就红了。）
   check("流水线五段名称统一", tabs.join("/") === "收件箱/灵感库/素材库/选题库/稿件库", tabs.join("/"));
-  // 侧栏那一项要覆盖四段，否则点进选题会发现「自己不在任何一个导航项里」
+  // 兼容期的选题/稿件归到「内容」，收件/灵感/素材归到「素材」。
   const activeNav = await page.textContent('.nav-item[aria-current="true"]');
-  check("侧栏高亮覆盖四段", activeNav.includes("创作"), activeNav.trim());
+  check("选题页归到内容导航", activeNav.includes("内容"), activeNav.trim());
   check("浏览是卡片墙不是三栏", !!(await page.$(".panel-block")) && !(await page.$(".reader-overlay")));
 
   if (workerReady) {
@@ -1151,6 +1164,10 @@ try {
       check("卡片带摘要", previews.length > 0 && previews[0].length > 10, `${previews.length} 张有摘要`);
       // 删除要有入口、而且**必须点两下**：第一下只是把按钮换成写清去向的确认按钮
       check("卡片上有删除入口", (await page.$$(".wall-card__del")).length === n, `${(await page.$$(".wall-card__del")).length}/${n}`);
+      // 入口为了不抢主动作，鼠标场景下只在卡片 hover 后显形。Playwright 直接 click
+      // 一个 opacity:0 + pointer-events:none 的节点会一直等到超时；先模拟真实用户把鼠标
+      // 移进卡片，测到的才是界面约定，而不是用 force 绕过界面状态。
+      await page.hover(".wall-card");
       await page.click(".wall-card__del");
       const confirmText = await page.textContent(".wall-card .btn-danger").catch(() => "");
       // ⚠️ 断言的是**「说清了不可恢复」**，不是某个具体词。Notion 时代删除是 archived:true
@@ -2999,7 +3016,7 @@ try {
   check("能重开一轮对话", !!(await page.$(".chat-log .rail-empty")));
   await shot("chat", false);
 
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
+  await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
   await page.waitForSelector(".todo-card, .note-title", { timeout: 20000 });
   check("总览有归档入口", (await page.textContent(".main")).includes("归档"));
 
