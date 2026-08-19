@@ -41,6 +41,7 @@ import {
   storeCollection,
 } from "./lib/collections.js";
 import { collectionTitle } from "./lib/collection-title.js";
+import { collectionMarkdown } from "./lib/collection-text.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -493,7 +494,7 @@ async function pageDetail(env, id, viewKey) {
   if (!row) return json({ ok: false, error: "not found" }, 404);
 
   const text = table === "drafts" ? row.body
-    : viewKey === "collections" ? row.selection || row.body
+    : viewKey === "collections" ? collectionMarkdown(row.selection || row.body)
     : table === "inbox" ? [row.body, row.card_markdown].filter(Boolean).join("\n\n---\n\n")
     : table === "topics" ? [row.notes, row.draft_note].filter(Boolean).join("\n\n---\n\n")
     : row.content || "";

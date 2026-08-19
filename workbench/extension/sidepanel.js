@@ -150,10 +150,15 @@ async function checkConnection(showResult = false) {
   node.querySelector("span").textContent = "连接中";
   try {
     const result = await message({ type: "XENHO_STATUS" });
-    if (!result?.ok) throw new Error(result?.error || "连接失败");
+    if (!result?.ok) {
+      node.classList.add("bad");
+      node.querySelector("span").textContent = result?.pending ? `待同步 ${result.pending}` : "未连接";
+      if (showResult) notify(result?.pending ? `${result.pending} 条收藏已安全暂存，启动工作台后自动同步` : result?.error || "工作台未启动", !result?.pending);
+      return;
+    }
     node.classList.add("ok");
     node.querySelector("span").textContent = result.status.ready ? "已连接" : "部分可用";
-    if (showResult) notify(result.status.ready ? "工作台连接正常" : "已连接，部分服务尚未配置");
+    if (showResult) notify(result.synced ? `工作台连接正常，已同步 ${result.synced} 条收藏` : result.status.ready ? "工作台连接正常" : "已连接，部分服务尚未配置");
   } catch (error) {
     node.classList.add("bad");
     node.querySelector("span").textContent = "未连接";

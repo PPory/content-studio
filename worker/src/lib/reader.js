@@ -64,7 +64,7 @@ function metaContent(html, key) {
   return (html.match(re1)?.[1] || html.match(re2)?.[1] || "").trim();
 }
 
-function htmlToText(html) {
+export function htmlToText(html) {
   let s = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -74,11 +74,11 @@ function htmlToText(html) {
   return decodeEntities(
     region
       .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(?:p|div|h[1-6]|li|blockquote|tr)>/gi, "\n")
+      .replace(/<\/(?:p|div|h[1-6]|li|blockquote|tr)>/gi, "\n\n")
       .replace(/<[^>]+>/g, " ")
   )
     .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

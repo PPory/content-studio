@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 import { createServer } from "vite";
 import { workbenchApi } from "../server/vite-plugin-workbench.mjs";
 
@@ -25,9 +26,9 @@ const panelCss = await fs.readFile(path.join(ROOT, "extension", "sidepanel.css")
 const panelJs = await fs.readFile(path.join(ROOT, "extension", "sidepanel.js"), "utf8");
 
 check("扩展使用 Manifest V3", manifest.manifest_version === 3);
-check("扩展通信恢复提示版本已升级", manifest.version === "0.2.3", manifest.version);
+check("扩展离线收藏版本已升级", manifest.version === "0.3.0", manifest.version);
 check("扩展只连接本机工作台", manifest.host_permissions?.join() === "http://127.0.0.1:5180/*", manifest.host_permissions?.join());
-check("没有申请多余的高危权限", manifest.permissions?.join() === "sidePanel,storage", manifest.permissions?.join());
+check("离线收藏只增加定时补传权限", manifest.permissions?.join() === "sidePanel,storage,alarms", manifest.permissions?.join());
 check("普通网页才注入划词入口", manifest.content_scripts?.[0]?.matches?.join() === "http://*/*,https://*/*", manifest.content_scripts?.[0]?.matches?.join());
 check("在线文档的内嵌编辑区也会注入", manifest.content_scripts?.[0]?.all_frames === true && manifest.content_scripts?.[0]?.match_about_blank === true && manifest.content_scripts?.[0]?.match_origin_as_fallback === true);
 check("富文本正文可划取，普通输入框仍不打扰", !content.includes("window.top !== window") && !content.includes("[contenteditable=") && content.includes('closest("input,textarea,select")'));
@@ -49,9 +50,17 @@ check("扩展后台只接受既定入库去处", background.includes('new Set(["
 check("入库继续经过扩展专用安全入口", background.includes('api("/api/extension/intake"') && ["selection: context.selection", "title: context.title", "url: context.url"].every((token) => background.includes(token)));
 check("扩展主收藏默认进入收件箱", background.includes('message.target || "collection"') && content.includes('action === "intake" ? "collection"'));
 check("配对信息保存在 Chrome 会话而不是易失全局变量", background.includes("chrome.storage.session.get(CONNECTION_KEY)") && background.includes("chrome.storage.session.set({ [CONNECTION_KEY]: connection })") && !background.includes("let pairToken"));
-check("手动连接检测会绕过缓存", background.includes('connect(true).then(({ status })'));
+check("手动连接检测会绕过缓存", background.includes("await connect(true)"));
 check("插件文档明确使用 content-studio 与 D1", extensionReadme.includes("content-studio") && extensionReadme.includes("D1 流水线") && extensionReadme.includes("不再依赖或直连 Notion"));
 check("多行选区按收笔端点定位", content.includes("function endpointRect") && content.includes("selection.focusNode") && content.includes("range.getClientRects()"));
+check("采集保留标题、段落、列表和引用结构", content.includes("function selectionMarkdown") && content.includes("renderSelectionNode") && content.includes('tag === "blockquote"') && content.includes('tag === "li"'));
+check("列表项保持连续，不被拆成松散段落", content.includes('return `${index} ${inner.trim()}\\n`;'));
+check("公众号等动态页面有完整选区触发兜底", ["pointerup", "touchend", "selectionchange", "MutationObserver"].every((token) => content.includes(token)));
+check("点击悬浮工具条不会被全局选区监听立即重置", content.includes("function captureAfterSelectionGesture") && content.includes("event.composedPath().includes(host)"));
+check("滚动和窗口变化只重定位，不再销毁悬浮入口", content.includes('addEventListener("scroll", scheduleReposition') && content.includes('addEventListener("resize", scheduleReposition') && !content.includes('addEventListener("scroll", hide'));
+check("工作台关闭时收件箱收藏进入持久待同步队列", background.includes('chrome.storage.local.get(PENDING_KEY)') && background.includes("queueCollection(context)") && background.includes("flushPendingCollections"));
+check("离线队列只用于收件箱，不把 AI 或素材操作伪装成成功", background.includes('target !== "collection"') && background.includes("error instanceof WorkbenchUnavailableError"));
+check("待同步收藏按事件唤醒并自动补传", background.includes("chrome.alarms.create(PENDING_ALARM") && background.includes("chrome.alarms.onAlarm.addListener"));
 check("右侧面板只有批注提问对话三栏", ["批注", "提问", "对话"].every((label) => panel.includes(`>${label}<`)));
 check("右侧面板复用工作台字体与标记色", ["Noto Sans SC", "Space Grotesk", "JetBrains Mono", "--mark-yellow"].every((token) => panelCss.includes(token)));
 check("右侧面板跟随工作台明暗主题", panelCss.includes("prefers-color-scheme: dark"));
@@ -61,6 +70,103 @@ check("四种提问方式压成一排", panelCss.includes("grid-template-columns
 check("提问提示不再使用容器边框", panelCss.includes(".hint-block { margin-top: 10px; padding: 0 2px;") && !panelCss.includes(".hint-block { margin-top: 9px; padding: 9px 10px; border:"));
 check("对话输入框单独压低", panelCss.includes(".chat-composer textarea { height: 72px; min-height: 72px; max-height: 180px; }"));
 check("中文界面和英文标记分别使用工作台字体", panel.includes("网页助手 <em>· WEB ASSIST</em>") && panelCss.includes(".brand span em") && panelCss.includes(".composer-foot kbd"));
+
+function chromeEvent() {
+  const listeners = [];
+  return { listeners, addListener(listener) { listeners.push(listener); } };
+}
+
+function chromeStorageArea(store) {
+  return {
+    async get(key) {
+      if (typeof key === "string") return { [key]: store[key] };
+      return { ...store };
+    },
+    async set(values) { Object.assign(store, values); },
+    async remove(key) { delete store[key]; },
+  };
+}
+
+async function sendBackground(listener, message, sender = {}) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("background response timeout")), 2000);
+    listener(message, sender, (value) => {
+      clearTimeout(timeout);
+      resolve(value);
+    });
+  });
+}
+
+async function exerciseOfflineCollectionQueue() {
+  const sessionStore = {};
+  const localStore = {};
+  const onMessage = chromeEvent();
+  const forwardedBodies = [];
+  let online = false;
+  const sandbox = {
+    AbortController,
+    Response,
+    TextDecoder,
+    URL,
+    crypto,
+    setTimeout,
+    clearTimeout,
+    console,
+    fetch: async (url, options = {}) => {
+      if (!online) throw new TypeError("connection refused");
+      if (String(url).endsWith("/api/extension/status")) {
+        return new Response(JSON.stringify({
+          ok: true,
+          pairToken: "test-pair-token-0123456789",
+          product: "content-studio",
+          protocolVersion: 2,
+          ready: true,
+          capabilities: { collectionsV1: true },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (String(url).endsWith("/api/extension/intake")) {
+        forwardedBodies.push(JSON.parse(options.body));
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+    chrome: {
+      runtime: { onInstalled: chromeEvent(), onStartup: chromeEvent(), onMessage, onConnect: chromeEvent() },
+      sidePanel: { setPanelBehavior: async () => {}, open: async () => {} },
+      alarms: { create() {}, onAlarm: chromeEvent() },
+      storage: { session: chromeStorageArea(sessionStore), local: chromeStorageArea(localStore) },
+    },
+  };
+  vm.runInNewContext(background, sandbox, { filename: "extension/background.js" });
+  const listener = onMessage.listeners[0];
+  const selection = "# 公众号文章标题\n\n第一段正文。\n\n- 要点一\n- 要点二";
+  const queued = await sendBackground(listener, {
+    type: "XENHO_CAPTURE",
+    action: "intake",
+    target: "collection",
+    eventTrusted: true,
+    context: { selection, context: selection, title: "公众号文章", url: "https://mp.weixin.qq.com/s/test" },
+  }, { tab: { id: 8, title: "公众号文章", url: "https://mp.weixin.qq.com/s/test" } });
+  const queue = localStore.pendingCollectionIntakesV1;
+
+  const material = await sendBackground(listener, {
+    type: "XENHO_CAPTURE",
+    action: "intake",
+    target: "material",
+    eventTrusted: true,
+    context: { selection, context: selection, title: "公众号文章", url: "https://mp.weixin.qq.com/s/test" },
+  }, { tab: { id: 8, title: "公众号文章", url: "https://mp.weixin.qq.com/s/test" } });
+
+  online = true;
+  const status = await sendBackground(listener, { type: "XENHO_STATUS" });
+  return { queued, queue, material, status, localStore, forwardedBodies };
+}
+
+const offline = await exerciseOfflineCollectionQueue();
+check("工作台关闭时收藏真实写入 Chrome 本地队列", offline.queued?.ok === true && offline.queued?.queued === true && offline.queue?.length === 1);
+check("离线队列完整保留公众号正文结构", offline.queue?.[0]?.body?.selection.includes("\n\n- 要点一"));
+check("工作台关闭时素材和 AI 不会被伪装成已保存", offline.material?.ok === false && offline.queue?.length === 1);
+check("工作台恢复后待同步收藏自动补传并清空", offline.status?.ok === true && offline.status?.synced === 1 && offline.localStore.pendingCollectionIntakesV1?.length === 0 && offline.forwardedBodies.length === 1);
 
 const forwarded = [];
 const pipelineServer = http.createServer(async (req, res) => {

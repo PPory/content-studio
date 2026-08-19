@@ -20,7 +20,10 @@
   const host = document.createElement("div");
   host.id = "xenho-selection-assistant";
   const shadow = host.attachShadow({ mode: "closed" });
-  document.documentElement.appendChild(host);
+  const attachHost = () => {
+    if (!host.isConnected) document.documentElement?.appendChild(host);
+  };
+  attachHost();
   shadow.innerHTML = `
     <style>
       :host{all:initial;position:fixed;z-index:2147483647;left:0;top:0;font-family:Inter,"Noto Sans SC","Microsoft YaHei UI",sans-serif;color:#f6f3ea}
@@ -59,8 +62,11 @@
   const toast = shadow.querySelector(".toast");
   let snapshot = null;
   let timer = null;
+  let captureTimer = null;
+  let repositionFrame = null;
   let selectedRange = null;
   let selectionAnchor = null;
+  let focusAtStart = false;
 
   const svg = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
   for (const [key, label, hint] of actions) {
@@ -99,19 +105,88 @@
     return !!el?.closest("input,textarea,select");
   }
 
+  function normalizePlainText(value) {
+    return String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .split("\n")
+      .map((line) => line.replace(/[\t ]+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function renderSelectionNode(node, depth = 0) {
+    if (node.nodeType === Node.TEXT_NODE) return String(node.nodeValue || "").replace(/\s+/g, " ");
+    if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return "";
+    if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      return [...node.childNodes].map((child) => renderSelectionNode(child, depth)).join("");
+    }
+    const tag = node.tagName.toLowerCase();
+    if (["script", "style", "noscript", "template", "svg", "button", "input", "textarea", "select", "option"].includes(tag)) return "";
+    if (tag === "br") return "\n\n";
+    if (tag === "img") {
+      const alt = String(node.getAttribute("alt") || "").trim();
+      return alt ? ` ${alt} ` : "";
+    }
+    if (tag === "pre") {
+      const code = String(node.textContent || "").replace(/\r\n?/g, "\n").trim();
+      return code ? `\n\n\`\`\`\n${code}\n\`\`\`\n\n` : "";
+    }
+    const inner = [...node.childNodes].map((child) => renderSelectionNode(child, depth + 1)).join("");
+    if (/^h[1-6]$/.test(tag)) {
+      const level = Number(tag.slice(1));
+      return `\n\n${"#".repeat(level)} ${inner.trim()}\n\n`;
+    }
+    if (tag === "li") {
+      const parent = node.parentElement?.tagName.toLowerCase();
+      const index = parent === "ol" ? `${[...node.parentElement.children].indexOf(node) + 1}.` : "-";
+      return `${index} ${inner.trim()}\n`;
+    }
+    if (tag === "blockquote") {
+      const quoted = normalizePlainText(inner).split("\n").map((line) => `> ${line}`).join("\n");
+      return `\n\n${quoted}\n\n`;
+    }
+    if (tag === "tr") {
+      const cells = [...node.children].map((cell) => normalizePlainText(renderSelectionNode(cell, depth + 1))).filter(Boolean);
+      return cells.length ? `\n${cells.join(" | ")}\n` : "";
+    }
+    if (["p", "div", "section", "article", "main", "aside", "figure", "figcaption", "table", "ul", "ol", "dl", "dt", "dd"].includes(tag)) {
+      return `\n\n${inner.trim()}\n\n`;
+    }
+    return inner;
+  }
+
+  function selectionMarkdown(range, fallback) {
+    try {
+      const rendered = renderSelectionNode(range.cloneContents());
+      const normalized = rendered
+        .replace(/\u00a0/g, " ")
+        .replace(/[\t ]+\n/g, "\n")
+        .replace(/\n[\t ]+/g, "\n")
+        .replace(/[\t ]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (normalized.length >= 2) return normalized;
+    } catch { /* selection DOM may be replaced while the event is settling */ }
+    return normalizePlainText(fallback);
+  }
+
   function nearby(node) {
     const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
     const root = el?.closest("article,main,[role=main],section") || document.querySelector("article,main,[role=main]") || document.body;
-    return String(root?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 3000);
+    return normalizePlainText(root?.innerText).slice(0, 6000);
   }
 
   function hide() {
     clearTimeout(timer);
+    clearTimeout(captureTimer);
     wrap.classList.remove("on", "open", "toast-on", "fresh", "choosing", "menu-up");
     intakeAction.setAttribute("aria-expanded", "false");
     snapshot = null;
     selectedRange = null;
     selectionAnchor = null;
+    focusAtStart = false;
   }
 
   function place(rect) {
@@ -144,28 +219,58 @@
     return fragments.at(-1) || range.getBoundingClientRect();
   }
 
+  function storedEndpointRect(range) {
+    try {
+      const caret = range.cloneRange();
+      caret.collapse(focusAtStart);
+      const rect = caret.getBoundingClientRect();
+      if (rect.height || rect.width) return rect;
+    } catch { /* the source DOM may have been replaced */ }
+    const fragments = [...range.getClientRects()].filter((rect) => rect.height || rect.width);
+    return (focusAtStart ? fragments[0] : fragments.at(-1)) || range.getBoundingClientRect();
+  }
+
+  function reposition() {
+    repositionFrame = null;
+    if (!wrap.classList.contains("on") || !selectedRange) return;
+    try {
+      const rect = storedEndpointRect(selectedRange);
+      if (!rect.width && !rect.height) return;
+      selectionAnchor = { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+      place(selectionAnchor);
+    } catch { /* keep the last safe viewport position */ }
+  }
+
+  function scheduleReposition() {
+    if (!repositionFrame) repositionFrame = requestAnimationFrame(reposition);
+  }
+
   function capture() {
-    const selection = getSelection();
-    const text = selection?.toString().replace(/\s+/g, " ").trim();
-    if (!text || text.length < 2 || blockedSelection(selection?.anchorNode) || blockedSelection(selection?.focusNode) || !selection.rangeCount) return hide();
+    const selection = document.getSelection();
+    const rawText = selection?.toString() || "";
+    if (!rawText.trim() || rawText.trim().length < 2 || !selection.rangeCount) return;
+    if (blockedSelection(selection.anchorNode) || blockedSelection(selection.focusNode)) return hide();
     const range = selection.getRangeAt(0).cloneRange();
     const rect = endpointRect(selection, range);
-    if (!rect.width && !rect.height) return hide();
+    if (!rect.width && !rect.height) return;
+    const text = selectionMarkdown(range, rawText);
+    if (text.length < 2) return;
     selectedRange = range;
+    focusAtStart = range.startContainer === selection.focusNode && range.startOffset === selection.focusOffset;
     selectionAnchor = { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-    snapshot = { selection: text.slice(0, 4000), context: nearby(selection.anchorNode), title: document.title, url: location.href };
+    snapshot = { selection: text.slice(0, 8000), context: nearby(selection.anchorNode), title: document.title, url: location.href };
     wrap.classList.remove("open", "toast-on", "fresh", "choosing", "menu-up");
     intakeAction.setAttribute("aria-expanded", "false");
     wrap.classList.add("on");
     place(selectionAnchor);
   }
 
-  function showToast(text, error = false) {
+  function showToast(text, error = false, duration = error ? 3500 : 1800) {
     toast.textContent = text;
     toast.style.borderColor = error ? "#d25c4d" : "#e0ad49";
     wrap.classList.add("on", "toast-on");
     clearTimeout(timer);
-    timer = setTimeout(hide, error ? 3500 : 1800);
+    timer = setTimeout(hide, duration);
   }
 
   async function sendToExtension(payload) {
@@ -193,16 +298,35 @@
     intakeMenu.querySelector("button")?.focus({ preventScroll: true });
   }
 
-  document.addEventListener("mouseup", () => setTimeout(capture, 0), true);
+  function scheduleCapture(delay = 0) {
+    clearTimeout(captureTimer);
+    captureTimer = setTimeout(capture, delay);
+  }
+
+  function captureAfterSelectionGesture(event, delay = 0) {
+    if (event.composedPath().includes(host)) return;
+    scheduleCapture(delay);
+  }
+
+  document.addEventListener("pointerup", (event) => captureAfterSelectionGesture(event), true);
+  document.addEventListener("mouseup", (event) => captureAfterSelectionGesture(event), true);
+  document.addEventListener("touchend", (event) => captureAfterSelectionGesture(event, 40), true);
+  document.addEventListener("selectionchange", () => {
+    if (document.getSelection()?.toString().trim()) scheduleCapture(70);
+  }, true);
   document.addEventListener("keyup", (event) => {
     if (event.key === "Escape") return hide();
-    if (event.shiftKey || event.key.startsWith("Arrow")) setTimeout(capture, 0);
+    if (event.shiftKey || event.key.startsWith("Arrow")) scheduleCapture();
   }, true);
   document.addEventListener("pointerdown", (event) => {
-    if (!event.composedPath().includes(host) && !getSelection()?.toString().trim()) hide();
+    if (event.composedPath().includes(host)) return;
+    setTimeout(() => {
+      if (!document.getSelection()?.toString().trim()) hide();
+    }, 0);
   }, true);
-  addEventListener("scroll", hide, true);
-  addEventListener("resize", hide, true);
+  addEventListener("scroll", scheduleReposition, true);
+  addEventListener("resize", scheduleReposition, true);
+  new MutationObserver(attachHost).observe(document.documentElement, { childList: true });
 
   shadow.querySelector(".seed").addEventListener("click", (event) => {
     if (!event.isTrusted || !selectedRange || !selectionAnchor) return;
@@ -228,7 +352,7 @@
     try {
       const result = await sendToExtension({ type: "XENHO_CAPTURE", action, target, context: snapshot, eventTrusted: true });
       if (!result?.ok) throw new Error(result?.error || "操作失败");
-      if (action === "intake") showToast(result.message || (target === "collection" ? "已收藏到收件箱" : target === "inbox" ? "已存入灵感库" : "已存入素材库"));
+      if (action === "intake") showToast(result.message || (target === "collection" ? "已收藏到收件箱" : target === "inbox" ? "已存入灵感库" : "已存入素材库"), false, result.queued ? 4200 : 1800);
       else hide();
     } catch (error) {
       showToast(error.message || "工作台暂时不可用", true);

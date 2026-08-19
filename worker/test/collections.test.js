@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalizeUrl, hashCollectionText } from "../src/lib/collection-key.js";
 import { collectionTitle } from "../src/lib/collection-title.js";
+import { collectionMarkdown } from "../src/lib/collection-text.js";
 
 test("链接去锚点、追踪参数并固定查询顺序", () => {
   assert.equal(canonicalizeUrl("HTTPS://Example.com/a/?utm_source=x&b=2&a=1#part"), "https://example.com/a?a=1&b=2");
@@ -72,8 +73,21 @@ test("初筛 SQL 必须排除 hold 收藏", () => {
 
 test("收件箱阅读优先展示划取内容，不把整页噪音拼进正文", () => {
   const source = fs.readFileSync(new URL("../src/workbench.js", import.meta.url), "utf8");
-  assert.match(source, /viewKey === "collections" \? row\.selection \|\| row\.body/);
+  assert.match(source, /viewKey === "collections" \? collectionMarkdown\(row\.selection \|\| row\.body\)/);
   assert.doesNotMatch(source, /viewKey === "collections" \? \[row\.selection, row\.body\]/);
+});
+
+test("收件箱阅读保留原有结构，并修复旧版扩展压平的长正文", () => {
+  const structured = "# 标题\n\n第一段。\n\n- 列表一\n- 列表二";
+  assert.equal(collectionMarkdown(structured), structured);
+
+  const flat = "这是第一句，用来模拟旧版扩展抹掉段落后的正文。".repeat(35);
+  const formatted = collectionMarkdown(flat);
+  assert.match(formatted, /\n\n/);
+  assert.equal(formatted.replace(/\n/g, ""), flat);
+
+  const english = "This is one sentence. This is another sentence about keeping readable spacing. ".repeat(12).trim();
+  assert.equal(collectionMarkdown(english).replace(/\s+/g, " "), english);
 });
 
 test("收件箱删除不能越权删除同表里的灵感", () => {
