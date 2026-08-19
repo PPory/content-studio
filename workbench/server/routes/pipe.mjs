@@ -30,6 +30,14 @@ async function forwardGet(env, res, path, search) {
   json(res, withDeployHint(r.data), r.status);
 }
 
+/**
+ * 只有 Inbox 整理预览会通读长文并等待模型返回，单独给 180 秒。
+ * 其余普通写接口继续使用 `callWorker` 的 30 秒默认值，避免慢请求无限占着连接。
+ */
+export function workerPostTimeout(path) {
+  return path === "collections/organize/preview" ? 180_000 : undefined;
+}
+
 // 转发一个 POST，先把请求体读出来
 async function forwardPost(env, req, res, path) {
   let body;
@@ -38,7 +46,12 @@ async function forwardPost(env, req, res, path) {
   } catch (e) {
     return fail(res, e.message, { status: 400 });
   }
-  const r = await callWorker(env, path, { method: "POST", body });
+  const timeoutMs = workerPostTimeout(path);
+  const r = await callWorker(env, path, {
+    method: "POST",
+    body,
+    ...(timeoutMs ? { timeoutMs } : {}),
+  });
   json(res, withDeployHint(r.data), r.status);
 }
 

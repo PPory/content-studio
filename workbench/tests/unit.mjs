@@ -40,9 +40,14 @@ import { applyAdd, applyRemove, applyToggle, cleanTaskText, localDate, newPlanTe
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
 import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditorRevision, verifyRevisionStore } from "../server/lib/editor-revisions.mjs";
+import { workerPostTimeout } from "../server/routes/pipe.mjs";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
+
+// Inbox 整理会把最多 20 条长内容交给模型，不能被普通接口的 30 秒上限提前掐断。
+check("Inbox 整理预览单独允许 180 秒", workerPostTimeout("collections/organize/preview") === 180_000);
+check("普通 Worker 写请求仍使用默认超时", workerPostTimeout("collections/organize/apply") === undefined);
 
 // ---- AI 局部修订历史：独立于正文、原子保存、可迁移到正式稿件身份 ----
 {
