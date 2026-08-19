@@ -9,7 +9,7 @@ import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, Brand
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Content } from "./pages/Content.jsx";
-import { Discover } from "./pages/Discover.jsx";
+import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
 import { Studio } from "./pages/Studio.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
@@ -25,20 +25,42 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["content", "topics", "drafts"]);
+const CONTENT_VIEWS = new Set(["content", "project", "topics", "drafts"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
 
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
-  { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || v === "typeset" },
-  { key: "materials", to: "materials", match: (v) => MATERIAL_VIEWS.has(v) },
-  { key: "discover", to: "discover", match: (v) => DISCOVER_VIEWS.has(v) },
+  {
+    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || v === "typeset",
+    children: [
+      { to: "content", label: "项目" },
+      { to: "topics", label: "选题" },
+      { to: "drafts", label: "稿件" },
+      { to: "typeset", label: "排版" },
+    ],
+  },
+  {
+    key: "materials", to: "materials", match: (v) => MATERIAL_VIEWS.has(v),
+    children: [
+      { to: "materials", label: "素材库" },
+      { to: "collections", label: "收件箱" },
+      { to: "inbox", label: "灵感库" },
+    ],
+  },
+  {
+    key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v),
+    children: [
+      { to: "hot", label: "热点" },
+      { to: "insights", label: "洞察" },
+      { to: "shelf", label: "书架" },
+    ],
+  },
   { key: "review", to: "review", match: (v) => v === "review" || v === "metrics" },
 ];
 
-const VIEWS = ["today", "content", "discover", "review", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "content", "project", "review", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -65,7 +87,9 @@ function readHash() {
   // 库里直接回 400，界面上是一坨 validation_error。
   const raw = window.location.hash.replace(/^#\/?/, "");
   const [rawView = "", ...rest] = raw.split("/");
-  const view = decodeURIComponent(rawView) || "today";
+  const decodedView = decodeURIComponent(rawView) || "today";
+  // 发现旧入口只做兼容跳转，不再让用户经过一张中转页。
+  const view = decodedView === "discover" ? "hot" : decodedView;
   return { view: VIEWS.includes(view) ? view : "today", state: decodeURIComponent(rest.join("/")) };
 }
 
@@ -292,23 +316,39 @@ export function App() {
             // 在项目汇总没有上收到 App 前，导航不显示这个会误导人的数字。
             const badge = 0;
             return (
-              <button
-                key={item.key}
-                className="nav-item"
-                aria-current={current}
-                onClick={() => go(item.to)}
-                // 收起后只剩图标，名字得有地方可查；展开时浏览器不会为同文本再弹一次
-                title={NAV_LABELS[item.key]}
-              >
-                <span className="nav-item__icon">
-                  <Icon aria-hidden="true" className="nav-icon" stroke={1.7} />
-                  {/* 收起态放不下数字，就退成一颗点：它回答的是「这儿有没有事」，
-                      具体几件展开或点进去就知道 */}
-                  {badge ? <span className="nav-item__dot" aria-hidden="true" /> : null}
-                </span>
-                <span className="nav-item__label">{NAV_LABELS[item.key]}</span>
-                {badge ? <span className="count">{badge}</span> : null}
-              </button>
+              <div className={`nav-group${item.children ? " has-children" : ""}`} key={item.key} data-current={current ? "true" : undefined}>
+                <button
+                  className="nav-item"
+                  aria-current={current && !item.children ? "page" : undefined}
+                  data-current={current ? "true" : undefined}
+                  onClick={() => go(item.to)}
+                  // 收起后只剩图标，名字得有地方可查；展开时浏览器不会为同文本再弹一次
+                  title={NAV_LABELS[item.key]}
+                >
+                  <span className="nav-item__icon">
+                    <Icon aria-hidden="true" className="nav-icon" stroke={1.7} />
+                    {/* 收起态放不下数字，就退成一颗点：它回答的是「这儿有没有事」，
+                        具体几件展开或点进去就知道 */}
+                    {badge ? <span className="nav-item__dot" aria-hidden="true" /> : null}
+                  </span>
+                  <span className="nav-item__label">{NAV_LABELS[item.key]}</span>
+                  {badge ? <span className="count">{badge}</span> : null}
+                </button>
+                {item.children && current && !railCollapsed ? (
+                  <div className="subnav" aria-label={`${NAV_LABELS[item.key]}下的页面`}>
+                    {item.children.map((child) => (
+                      <button
+                        key={child.to}
+                        className="subnav-item"
+                        aria-current={route.view === child.to || (route.view === "project" && child.to === "content") ? "page" : undefined}
+                        onClick={() => go(child.to, "")}
+                      >
+                        <span aria-hidden="true" />{child.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>
@@ -366,8 +406,8 @@ export function App() {
             onChanged={refreshStatus}
             onSettings={() => setSettings(true)}
           />
-        ) : route.view === "discover" ? (
-          <Discover onGo={go} />
+        ) : route.view === "project" ? (
+          <ProjectWorkspace projectId={route.state} onGo={go} onChanged={refreshStatus} />
         ) : route.view === "review" ? (
           <Metrics onSettings={() => setSettings(true)} />
         ) : route.view === "overview" ? (

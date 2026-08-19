@@ -62,6 +62,15 @@ export const TOPIC_STATUS = {
 
 export const DRAFT_STATUS = { TODO: "待修改", PUBLISHED: "已发布" };
 
+// 创作流程状态独立于旧发布状态。发布必须同时写入两者；其余阶段只改这一列。
+export const DRAFT_WORKFLOW = {
+  WRITING: "写作中",
+  DIAGNOSIS: "待诊断",
+  READY: "待发布",
+  PUBLISHED: "已发布",
+  ABANDONED: "已弃用",
+};
+
 export const PLATFORMS = new Set(["公众号", "X", "小红书", "视频号", "YouTube"]);
 export const PRIORITIES = new Set(["高", "中", "低"]);
 

@@ -6,6 +6,7 @@ import {
   buildContentProject,
   chooseMasterDraft,
   deriveProjectStage,
+  nextDraftWorkflow,
 } from "../src/lib/content-project.js";
 
 const topic = (fields = {}) => ({
@@ -29,6 +30,7 @@ const draft = (fields = {}) => ({
   body: "# 正文",
   platform: "公众号",
   status: "待修改",
+  workflow_status: "写作中",
   published_url: "",
   published_at: "",
   views: null,
@@ -42,10 +44,10 @@ const draft = (fields = {}) => ({
   ...fields,
 });
 
-test("内容项目阶段是固定契约，不暴露现有稿件状态", () => {
-  assert.deepEqual(PROJECT_STAGES, ["策划中", "生成中", "写作中", "待复盘", "已完成", "需处理"]);
+test("内容项目阶段是固定契约，创作门槛有明确阶段", () => {
+  assert.deepEqual(PROJECT_STAGES, ["策划中", "生成中", "写作中", "待诊断", "待发布", "待复盘", "已完成", "已搁置", "需处理"]);
   assert.ok(!PROJECT_STAGES.includes("待修改"));
-  assert.ok(!PROJECT_STAGES.includes("待发布"));
+  assert.ok(PROJECT_STAGES.includes("待发布"));
 });
 
 test("只有一篇稿件时直接作为母版", () => {
@@ -72,6 +74,18 @@ test("多稿件仍有歧义时必须要求确认母版，不按新旧猜", () =>
   assert.deepEqual(selected.variants.map((item) => item.id), ["newer", "older"]);
 });
 
+test("已确认的 primary_draft_id 是唯一母版依据", () => {
+  const primary = draft({ id: "chosen", platform: "X" });
+  const other = draft({ id: "other", platform: "公众号" });
+  const selected = chooseMasterDraft(topic({ primary_draft_id: "chosen" }), [other, primary]);
+  assert.equal(selected.master.id, "chosen");
+  assert.deepEqual(selected.variants.map((item) => item.id), ["other"]);
+
+  const broken = chooseMasterDraft(topic({ primary_draft_id: "missing" }), [other]);
+  assert.equal(broken.master, null);
+  assert.match(broken.blocker, /不在这个项目/);
+});
+
 test("待写选题没有稿件时处于策划中，并明示简报缺口", () => {
   const state = deriveProjectStage({ topic: topic({ audience: "", viewpoint: "" }), drafts: [] });
   assert.equal(state.stage, "策划中");
@@ -85,10 +99,23 @@ test("撰写中选题尚无稿件时是生成中", () => {
   assert.equal(state.nextAction, "等待初稿");
 });
 
-test("待修改稿件只能判为写作中，不能猜成待诊断或待发布", () => {
+test("旧待修改稿安全兼容为写作中", () => {
   const state = deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft()] });
   assert.equal(state.stage, "写作中");
-  assert.match(state.stageReason, /不足以证明/);
+  assert.match(state.stageReason, /尚未提交诊断/);
+});
+
+test("稿件创作状态直接决定待诊断和待发布", () => {
+  assert.equal(deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ workflow_status: "待诊断" })] }).stage, "待诊断");
+  assert.equal(deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ workflow_status: "待发布" })] }).stage, "待发布");
+});
+
+test("阶段命令只允许相邻门槛和明确退回", () => {
+  assert.equal(nextDraftWorkflow("写作中", "submit-diagnosis"), "待诊断");
+  assert.equal(nextDraftWorkflow("待诊断", "approve-diagnosis"), "待发布");
+  assert.equal(nextDraftWorkflow("待发布", "return-writing"), "写作中");
+  assert.throws(() => nextDraftWorkflow("写作中", "approve-diagnosis"), /不能执行/);
+  assert.throws(() => nextDraftWorkflow("写作中", "unknown"), /action 不合法/);
 });
 
 test("完整发布记录尚无表现判断时是待复盘", () => {

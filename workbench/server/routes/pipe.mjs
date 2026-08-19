@@ -81,6 +81,11 @@ export const pipeRoutes = [
     handler: ({ env, res, params }) => forwardGet(env, res, `projects/${encodeURIComponent(params.id)}`),
   },
   {
+    method: "POST",
+    path: "/api/pipe/projects/:id/transition",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/transition`),
+  },
+  {
     method: "GET",
     path: "/api/pipe/list/:view",
     handler({ env, res, params, url }) {

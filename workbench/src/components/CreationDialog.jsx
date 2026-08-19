@@ -259,7 +259,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
     try {
       const result = await creationApi.create({ kind: "topic", mode: "blank", title, platform, viewpoint, audience });
       keepAudience();
-      onTopicCreated?.(result.topic);
+      onTopicCreated?.(result.topic, result.project);
       close();
     } catch (err) {
       setError(err);
@@ -293,7 +293,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
       clearTimeout(autosaveTimer.current);
       clearCreationDraft();
       keepAudience();
-      onCreated?.(result.draft);
+      onCreated?.(result.draft, result.project);
       close();
     } catch (err) {
       setError(err);

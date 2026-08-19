@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { setOpenTarget } from "../lib/open-target.js";
 import { CreationDialog } from "../components/CreationDialog.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, relTime } from "../components/ui.jsx";
 import { IconArrowRight, IconFileText, IconPlus, IconRefresh } from "../components/icons.jsx";
@@ -30,8 +29,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const open = (project) => {
     const target = projectOpenTarget(project);
     if (!target) return;
-    setOpenTarget(target.view, target.id);
-    onGo(target.view, "");
+    onGo(target.view, target.id);
   };
 
   return (
@@ -69,7 +67,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
           <div className="project-error__legacy">
             <span>兼容期仍可继续使用现有内容。</span>
             <button className="btn btn-sm" onClick={() => onGo("topics", "待写")}>打开旧版选题</button>
-            <button className="btn btn-sm" onClick={() => onGo("drafts", "待修改")}>打开旧版稿件</button>
+            <button className="btn btn-sm" onClick={() => onGo("drafts", "写作中")}>打开稿件库</button>
           </div>
         </div>
       ) : null}
@@ -109,15 +107,13 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
         open={!!creation}
         preset={creation}
         onClose={() => setCreation(null)}
-        onCreated={(draft) => {
-          setOpenTarget("drafts", draft.id);
+        onCreated={(draft, project) => {
           onChanged?.();
-          onGo("drafts", "");
+          onGo("project", project?.id || draft.topicId);
         }}
-        onTopicCreated={(topic) => {
-          setOpenTarget("topics", topic.id);
+        onTopicCreated={(topic, project) => {
           onChanged?.();
-          onGo("topics", "");
+          onGo("project", project?.id || topic.id);
         }}
       />
     </>

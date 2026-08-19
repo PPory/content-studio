@@ -169,6 +169,7 @@ async function draftTopic(env, topic, platformsOverride) {
   // 修改提示写回选题。原来这要把整页正文读回来查任务标识再追加，现在是一列，覆盖即可。
   await updateRow(env, "topics", topic.id, {
     status: TOPIC_STATUS.DRAFTED,
+    primary_draft_id: saved.id,
     draft_note: note ? `✍️ 人工修改提示\n\n${note}` : "",
   });
 

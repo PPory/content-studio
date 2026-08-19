@@ -112,14 +112,22 @@ try {
   check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
   check("默认进入今日", (await page.textContent(".page-title")) === "今天", await page.textContent(".page-title"));
 
-  // 新结构先守住一级链路；Worker 尚未部署新聚合端点时，内容页要给升级提示和旧版退路，不能白屏。
+  // 一级任务展开后，稳定目的地直接出现在左栏；不再先进入一张页内中转页。
   await page.click('.nav-item:has-text("内容")');
   await page.waitForSelector(".page-title", { timeout: 8000 });
   check("内容成为独立任务页", (await page.textContent(".page-title")) === "内容");
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
+  check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
   await page.click('.nav-item:has-text("发现")');
-  await page.waitForSelector(".discover-card", { timeout: 8000 });
-  check("发现统一收住热点洞察书架", (await page.$$(".discover-card")).length === 3);
+  await page.waitForSelector(".page-title", { timeout: 8000 });
+  check("发现直接进入热点而非中转页", (await page.textContent(".page-title")) === "近期热点");
+  check("发现二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "热点/洞察/书架");
+  await page.click('.subnav-item:has-text("书架")');
+  await page.waitForSelector(".bookshelf, .empty, .note-title", { timeout: 8000 });
+  const shelfHash = await page.evaluate(() => location.hash);
+  check("二级导航能直接打开书架", shelfHash.startsWith("#/shelf"), shelfHash);
+  await page.click('.nav-item:has-text("素材")');
+  check("素材二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "素材库/收件箱/灵感库");
   await page.click('.nav-item:has-text("今日")');
   await page.waitForSelector(".page-title", { timeout: 8000 });
 
@@ -1037,9 +1045,9 @@ try {
   await page.waitForSelector(".drawer", { state: "detached", timeout: 4000 });
   check("Esc 关闭抽屉", true);
 
-  // 6. 内容工作台：四段做成页内 tab，浏览是卡片墙，点开才进阅读区。
+  // 6. 内容工作台：跨页面入口归左侧二级导航，页面内部只保留筛选和内容操作。
   await page.goto(`http://127.0.0.1:${PORT}/#/topics`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".pill-tabs", { timeout: 10000 });
+  await page.waitForSelector('.subnav-item[aria-current="page"]', { timeout: 10000 });
   /**
    * **选题默认只看「待写」。** 这一库里绝大多数条目是已成稿和已发布的历史，
    * 而打开这一页的意图基本只有一个：看接下来要写什么。
@@ -1049,20 +1057,18 @@ try {
   await page.goto("about:blank");
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
   await page.waitForSelector(".nav-item", { timeout: 10000 });
-  await page.click('.nav-item:has-text("素材")');
-  await page.waitForSelector(".pill-tabs", { timeout: 10000 });
-  await page.click('.pill-tab:has-text("选题库")');
+  await page.click('.nav-item:has-text("内容")');
+  await page.waitForSelector('.subnav-item:has-text("选题")', { timeout: 10000 });
+  await page.click('.subnav-item:has-text("选题")');
   await page.waitForTimeout(600);
   check("选题默认落在「待写」", decodeURIComponent(page.url()).endsWith("/topics/待写"), decodeURIComponent(page.url()).split("#")[1] || "");
   const onChip = await page.$$eval('.chips .chip[aria-pressed="true"]', (els) => els.map((e) => e.textContent.trim()));
   check("筛选条上「待写」是亮的", onChip.some((t) => t.includes("待写")), onChip.join("/") || "(没有选中项)");
 
-  const tabs = await page.$$eval(".pill-tab", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
-  // 收件箱排在最前面：**它是唯一一个不触发 AI 的入口**，先收起来再决定要不要进流水线，
-  // 顺序本身就是那条链的走向。（加它之前这里只有四段，断言写死过一次，加完就红了。）
-  check("流水线五段名称统一", tabs.join("/") === "收件箱/灵感库/素材库/选题库/稿件库", tabs.join("/"));
-  // 兼容期的选题/稿件归到「内容」，收件/灵感/素材归到「素材」。
-  const activeNav = await page.textContent('.nav-item[aria-current="true"]');
+  const subnav = await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()));
+  check("内容二级导航名称统一", subnav.join("/") === "项目/选题/稿件/排版", subnav.join("/"));
+  check("页面内部不再重复跨页面 Tab", !(await page.$(".main > .pill-tabs")));
+  const activeNav = await page.textContent('.nav-item[data-current="true"]');
   check("选题页归到内容导航", activeNav.includes("内容"), activeNav.trim());
   check("浏览是卡片墙不是三栏", !!(await page.$(".panel-block")) && !(await page.$(".reader-overlay")));
 

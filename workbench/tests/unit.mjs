@@ -53,6 +53,7 @@ check("普通 Worker 写请求仍使用默认超时", workerPostTimeout("collect
 // 内容项目是 Worker 的只读聚合，本机只转发并决定怎么排版，不能再算一套业务状态。
 check("本机代理有内容项目列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects"));
 check("本机代理有内容项目详情", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects/:id"));
+check("本机代理有项目阶段命令", pipeRoutes.some((route) => route.method === "POST" && route.path === "/api/pipe/projects/:id/transition"));
 {
   const projects = [
     { id: "plan", stage: "策划中", updatedAt: "2026-08-19", topic: { id: "topic-1" } },
@@ -63,11 +64,11 @@ check("本机代理有内容项目详情", pipeRoutes.some((route) => route.meth
   ];
   const grouped = groupProjects(projects);
   check("未知项目阶段归到需处理而不是消失", grouped.需处理.map((x) => x.id).join("/") === "blocked/unknown");
-  check("项目阶段顺序只有一份", PROJECT_STAGES.join("/") === "策划中/生成中/写作中/待复盘/已完成/需处理");
+  check("项目阶段顺序只有一份", PROJECT_STAGES.join("/") === "策划中/生成中/写作中/待诊断/待发布/待复盘/已完成/已搁置/需处理");
   check("今日先摆阻塞，再摆正在写的", actionableProjects(projects).slice(0, 2).map((x) => x.id).join("/") === "blocked/write");
   check("生成中是后台状态，不冒充用户待办", !actionableProjects(projects).some((x) => x.id === "generating"));
-  check("有母版时打开稿件", JSON.stringify(projectOpenTarget(projects[1])) === JSON.stringify({ view: "drafts", id: "draft-1" }));
-  check("没有母版时打开选题", JSON.stringify(projectOpenTarget(projects[0])) === JSON.stringify({ view: "topics", id: "topic-1" }));
+  check("有母版时仍打开同一个内容项目", JSON.stringify(projectOpenTarget(projects[1])) === JSON.stringify({ view: "project", id: "write" }));
+  check("没有母版时也打开同一个内容项目", JSON.stringify(projectOpenTarget(projects[0])) === JSON.stringify({ view: "project", id: "plan" }));
 }
 
 // ---- AI 局部修订历史：独立于正文、原子保存、可迁移到正式稿件身份 ----
@@ -498,7 +499,7 @@ check("同一个种子给同一句", startingLine({ seed: "fixed" }) === startin
   check("选题的平台闸门透传到了适配器", src.TOPICS.askPlatformsOn === "撰写中", String(src.TOPICS.askPlatformsOn));
   check("稿件库按平台分面", src.DRAFTS.facet?.key === "platform", JSON.stringify(src.DRAFTS.facet));
   check(
-    "五段创作页签顺序统一",
+    "五类创作来源顺序统一",
     [src.COLLECTIONS, src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/") === "收件箱/灵感库/素材库/选题库/稿件库",
     [src.COLLECTIONS, src.INBOX, src.MATERIALS, src.TOPICS, src.DRAFTS].map((x) => x.label).join("/"),
   );

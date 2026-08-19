@@ -135,6 +135,9 @@ CREATE TABLE IF NOT EXISTS topics (
              CHECK (priority IN ('高','中','低')),
   status     TEXT NOT NULL DEFAULT '待写'
              CHECK (status IN ('待写','撰写中','已成稿','已发布','搁置')),
+  -- 内容项目的明确母版。保留为普通 id 字段而不建循环外键：topics 与 drafts 互相引用时，
+  -- SQLite 的迁移、删除顺序都会被绑死；一致性由项目命令在同一批事务里维护。
+  primary_draft_id TEXT,
   draft_note TEXT NOT NULL DEFAULT '',            -- 成稿回执/失败提示，原来追加在选题正文里
   vault_path TEXT,
   task_key   TEXT UNIQUE,
@@ -179,6 +182,11 @@ CREATE TABLE IF NOT EXISTS drafts (
              CHECK (platform IN ('公众号','X','小红书','视频号','YouTube')),
   status     TEXT NOT NULL DEFAULT '待修改'       -- 原「发布状态」
              CHECK (status IN ('待修改','已发布')),
+  -- 创作流程和发布事实是两条轴。旧 status 保留给现有发布链，workflow_status 决定
+  -- 项目此刻该写、该诊断还是该发布，避免再从“待修改”猜下一步。
+  workflow_status TEXT NOT NULL DEFAULT '写作中'
+             CHECK (workflow_status IN ('写作中','待诊断','待发布','已发布','已弃用')),
+  parent_draft_id TEXT REFERENCES drafts(id) ON DELETE SET NULL,
 
   -- 发布复盘。工作台的「记录发布」一次写入这一整组，然后按 feedback_status
   -- 决定要不要把有效标题/角度沉淀回素材库。**状态不能靠 /wb/update 直接改成
@@ -202,6 +210,8 @@ CREATE TABLE IF NOT EXISTS drafts (
 
 CREATE INDEX IF NOT EXISTS idx_drafts_topic ON drafts(topic_id);
 CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_drafts_workflow ON drafts(workflow_status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_drafts_parent ON drafts(parent_draft_id);
 
 -- ---------------------------------------------------------------------------
 -- 评论（原 Notion 页面评论，工作台批注用）

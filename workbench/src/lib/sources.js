@@ -450,8 +450,8 @@ export const DRAFTS = pipelineSource({
   eyebrow: "drafts",
   eyebrowCn: "初稿与已发布作品",
   sub: "先完成主平台稿件；发布时记录链接和表现，系统会把有效经验沉淀回素材库。",
-  pendingKey: "内容待修改",
-  states: ["待修改", "待发布", "已发布", "已弃用"],
+  pendingKey: "内容写作中",
+  states: ["写作中", "待诊断", "待发布", "已发布", "已弃用"],
   /**
    * 按平台分面：一个选题会成好几篇稿，混在一起看不出「公众号那篇改完没有」。
    *

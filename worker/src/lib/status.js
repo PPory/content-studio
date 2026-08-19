@@ -11,14 +11,14 @@ const QUERIES = [
   ["待整理", "inbox", "待选题", "processing_mode = 'triage'"],
   ["选题待写", "topics", "待写"],
   ["选题撰写中", "topics", "撰写中"],
-  ["内容待修改", "drafts", "待修改"],
+  ["内容写作中", "drafts", "写作中", "", "workflow_status"],
 ];
 
 export async function pipelineCounts(env) {
   const rows = await batch(
     env,
-    QUERIES.map(([, table, status, extra]) =>
-      stmt(env, `SELECT COUNT(*) AS n FROM ${table} WHERE status = ?${extra ? ` AND ${extra}` : ""}`, status))
+    QUERIES.map(([, table, status, extra, column = "status"]) =>
+      stmt(env, `SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?${extra ? ` AND ${extra}` : ""}`, status))
   );
   const counts = {};
   QUERIES.forEach(([label], i) => {
@@ -34,6 +34,6 @@ export function formatCounts(counts) {
     `待整理（待选题）：${counts.待整理}`,
     `选题待写：${counts.选题待写}`,
     `选题撰写中：${counts.选题撰写中}`,
-    `稿件库待修改：${counts.内容待修改}`,
+    `稿件库写作中：${counts.内容写作中}`,
   ].join("\n");
 }

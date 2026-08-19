@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { setOpenTarget } from "../lib/open-target.js";
 import { CreationDialog } from "../components/CreationDialog.jsx";
 import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
 import { IconArrowRight, IconPlus } from "../components/icons.jsx";
@@ -30,8 +29,7 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
   const open = (project) => {
     const target = projectOpenTarget(project);
     if (!target) return;
-    setOpenTarget(target.view, target.id);
-    onGo(target.view, "");
+    onGo(target.view, target.id);
   };
 
   return (
@@ -107,8 +105,8 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
         open={!!creation}
         preset={creation}
         onClose={() => setCreation(null)}
-        onCreated={(draft) => { setOpenTarget("drafts", draft.id); onChanged?.(); onGo("drafts", ""); }}
-        onTopicCreated={(topic) => { setOpenTarget("topics", topic.id); onChanged?.(); onGo("topics", ""); }}
+        onCreated={(draft, project) => { onChanged?.(); onGo("project", project?.id || draft.topicId); }}
+        onTopicCreated={(topic, project) => { onChanged?.(); onGo("project", project?.id || topic.id); }}
       />
     </>
   );

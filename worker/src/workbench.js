@@ -14,7 +14,7 @@ import {
   tagsOf, setTags, addComment, listComments as dbListComments,
   all, first, now, newId, batch, stmt,
 } from "./lib/db.js";
-import { TOPIC_STATUS, DRAFT_STATUS, VERIFICATION } from "./lib/values.js";
+import { TOPIC_STATUS, DRAFT_STATUS, DRAFT_WORKFLOW, VERIFICATION } from "./lib/values.js";
 import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
@@ -44,7 +44,7 @@ import {
 import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
-import { getContentProject, listContentProjects, PROJECT_STAGES } from "./lib/content-project.js";
+import { getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -87,7 +87,7 @@ const VIEWS = {
     map: (r) => ({
       id: r.id,
       title: r.title,
-      status: r.status,
+      status: r.workflow_status || (r.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING),
       type: r.kind,
       value: r.value_judgment,
       note: r.verdict,
@@ -272,6 +272,11 @@ export async function handleWorkbench(request, env, ctx, url) {
 
     if (path === "projects" && request.method === "GET") return await listProjects(env, url);
 
+    const projectTransitionMatch = path.match(/^projects\/(.+)\/transition$/);
+    if (projectTransitionMatch && request.method === "POST") {
+      return await transitionProject(env, projectTransitionMatch[1], await request.json());
+    }
+
     const projectMatch = path.match(/^projects\/(.+)$/);
     if (projectMatch && request.method === "GET") return await projectDetail(env, projectMatch[1]);
 
@@ -421,6 +426,22 @@ async function listRows(env, url, viewKey) {
     return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
   }
 
+  if (viewKey === "drafts") {
+    const params = [];
+    let clause = "";
+    if (values.length) {
+      clause = `WHERE workflow_status IN (${values.map(() => "?").join(",")})`;
+      params.push(...values);
+    }
+    const cur = cursorClause(cursor);
+    if (cur.sql) { clause += `${clause ? " AND" : "WHERE"} ${cur.sql}`; params.push(...cur.params); }
+    const fetched = await all(env, `SELECT * FROM drafts ${clause} ${LIST_ORDER} LIMIT ?`, ...params, pageSize + 1);
+    const hasMore = fetched.length > pageSize;
+    const rows = hasMore ? fetched.slice(0, pageSize) : fetched;
+    const nextCursor = hasMore ? encodeCursor(rows[rows.length - 1]) : null;
+    return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
+  }
+
   let rows, nextCursor;
   if (values.length > 1) {
     // 分组筛选（灵感库的「处理中」等）：listPage 只支持单值，多值走一条 IN 查询。
@@ -477,6 +498,58 @@ async function projectDetail(env, rawId) {
   return project ? json({ ok: true, project }) : json({ ok: false, error: "not found" }, 404);
 }
 
+// 项目阶段只允许通过命令推进。前端不直接写状态值，非法跨级会在这里被拒绝。
+async function transitionProject(env, rawId, body) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+  const orphanDraftId = id.startsWith("draft:") ? id.slice(6) : "";
+  if (!isId(id) && !isId(orphanDraftId)) return json({ ok: false, error: "project id 不合法" }, 400);
+  const action = String(body?.action || "");
+  if (!PROJECT_ACTIONS.includes(action)) return json({ ok: false, error: "action 不合法" }, 400);
+
+  const project = await getContentProject(env, id);
+  if (!project) return json({ ok: false, error: "内容项目不存在" }, 404);
+  const draft = project.masterDraft;
+  const ts = now();
+
+  if (action === "set-primary") {
+    if (!project.topic) return json({ ok: false, error: "独立稿件不需要选择母版" }, 409);
+    const draftId = String(body?.draftId || "");
+    const candidates = [project.masterDraft, ...(project.variants || [])].filter(Boolean);
+    if (!isId(draftId) || !candidates.some((item) => item.id === draftId)) {
+      return json({ ok: false, error: "所选稿件不属于这个项目" }, 400);
+    }
+    await updateRow(env, "topics", id, { primary_draft_id: draftId, status: TOPIC_STATUS.DRAFTED });
+  } else if (action === "start-writing") {
+    if (!project.topic) return json({ ok: false, error: "独立稿件已经是主稿" }, 409);
+    if (draft) return json({ ok: false, error: "项目已经有主稿" }, 409);
+    const draftId = newId();
+    await batch(env, [
+      stmt(env, `INSERT INTO drafts
+        (id, topic_id, headline, summary, body, platform, status, workflow_status, task_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)`,
+        draftId, id, project.title, project.brief?.viewpoint || "", project.brief?.platform || "公众号",
+        DRAFT_STATUS.TODO, DRAFT_WORKFLOW.WRITING, `manual:${draftId}`, ts, ts),
+      stmt(env, "UPDATE topics SET primary_draft_id = ?, status = ?, updated_at = ? WHERE id = ?",
+        draftId, TOPIC_STATUS.DRAFTED, ts, id),
+    ]);
+  } else {
+    if (!draft) return json({ ok: false, error: "项目还没有主稿" }, 409);
+    const current = draft.status;
+    let next;
+    try { next = nextDraftWorkflow(current, action); }
+    catch (error) { return json({ ok: false, error: error.message }, 409); }
+    const ops = [stmt(env, "UPDATE drafts SET workflow_status = ?, updated_at = ? WHERE id = ?", next, ts, draft.id)];
+    if (project.topic) {
+      const topicStatus = action === "abandon" ? TOPIC_STATUS.PARKED : TOPIC_STATUS.DRAFTED;
+      ops.push(stmt(env, "UPDATE topics SET status = ?, updated_at = ? WHERE id = ?", topicStatus, ts, id));
+    }
+    await batch(env, ops);
+  }
+
+  return json({ ok: true, project: await getContentProject(env, id) });
+}
+
 /**
  * 全库搜索。
  *
@@ -507,7 +580,7 @@ async function searchRows(env, url, viewKey) {
   if (viewKey === "collections") clause += " AND capture_origin = 'collection'";
   if (viewKey === "inbox") clause += " AND processing_mode = 'triage'";
   if (values.length) {
-    const statusColumn = viewKey === "collections" ? "review_status" : "status";
+    const statusColumn = viewKey === "collections" ? "review_status" : viewKey === "drafts" ? "workflow_status" : "status";
     clause += ` AND ${statusColumn} IN (${values.map(() => "?").join(",")})`;
     params.push(...values);
   }
@@ -626,8 +699,10 @@ export async function reconcileTopicDraftState(env, topicId) {
     topic.platform ? [topic.platform] : [],
     drafts.map((d) => ({ platform: d.platform, status: d.status }))
   );
-  await updateRow(env, "topics", topicId, { status: nextStatus });
-  return { id: topicId, title: topic.title, status: nextStatus, draftIds: drafts.map((d) => d.id) };
+  const hasPrimary = drafts.some((draft) => draft.id === topic.primary_draft_id);
+  const primaryDraftId = hasPrimary ? topic.primary_draft_id : drafts.length === 1 ? drafts[0].id : null;
+  await updateRow(env, "topics", topicId, { status: nextStatus, primary_draft_id: primaryDraftId });
+  return { id: topicId, title: topic.title, status: nextStatus, primaryDraftId, draftIds: drafts.map((d) => d.id) };
 }
 
 /**
@@ -719,9 +794,9 @@ async function createContent(env, input) {
   const topicStatus = body.kind === "draft" ? TOPIC_STATUS.DRAFTED : TOPIC_STATUS.TODO;
   const ops = [stmt(
     env,
-    `INSERT INTO topics (id, title, viewpoint, audience, platform, priority, status, task_key, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, '中', ?, ?, ?, ?)`,
-    topicId, body.title, body.viewpoint, body.audience, body.platform, topicStatus, `manual-topic:${topicId}`, ts, ts
+    `INSERT INTO topics (id, title, viewpoint, audience, platform, priority, status, primary_draft_id, task_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, '中', ?, ?, ?, ?, ?)`,
+    topicId, body.title, body.viewpoint, body.audience, body.platform, topicStatus, draftId || null, `manual-topic:${topicId}`, ts, ts
   )];
 
   for (const material of materials) {
@@ -759,8 +834,10 @@ async function createContent(env, input) {
   }
 
   await batch(env, ops);
+  const project = await getContentProject(env, topicId);
   return json({
     ok: true,
+    project,
     topic: { id: topicId, title: body.title, status: topicStatus, platform: body.platform },
     draft: draftId ? { id: draftId, title: body.title, status: DRAFT_STATUS.TODO, platform: body.platform, topicId } : null,
     linkedMaterials: materials.length + (evidenceId ? 1 : 0),
@@ -782,7 +859,7 @@ const EDITABLE = {
     status: "status", title: "title", note: "viewpoint",
     audience: "audience", platforms: "__platform__", priority: "priority",
   },
-  drafts: { status: "status", title: "headline", note: "summary" },
+  drafts: { status: "workflow_status", title: "headline", note: "summary" },
 };
 
 // 改字段。前端只传要改的键，没传的一律不动。
@@ -843,6 +920,7 @@ async function publishDraft(env, body) {
 
   await updateRow(env, "drafts", draftId, {
     status: DRAFT_STATUS.PUBLISHED,
+    workflow_status: DRAFT_WORKFLOW.PUBLISHED,
     published_url: publishedUrl,
     published_at: publishedAt,
     views: num(metrics.views),

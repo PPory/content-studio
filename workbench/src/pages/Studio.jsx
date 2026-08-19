@@ -9,8 +9,9 @@
 // 永远只能显示标题。卡片墙能显示摘要和标签，扫的效率高一个量级；真要细读时，
 // 阅读区又能吃满整屏。**浏览和精读是两件事，不该挤在同一屏。**
 //
-// 四个流水线库共用这一个页面，差异全在 lib/sources.js 的适配器里。加新的可读源
-// 只写适配器，不要动这个文件。书架不走这里——它有自己的三层动线（见 pages/Shelf.jsx）。
+// 四个流水线库共用这一个页面，差异全在 lib/sources.js 的适配器里。页面切换已经
+// 统一收进左侧二级导航；这里不再重复一排 Tab，只保留当前页面自己的筛选和操作。
+// 书架不走这里——它有自己的三层动线（见 pages/Shelf.jsx）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SOURCES, PIPELINE, summarizeDraftReconcile, summarizeArchiveTrash } from "../lib/sources.js";
@@ -42,7 +43,7 @@ import { InsightRunButton, InsightRunProgress, useInsightRun } from "../componen
 // 而库里的一行没有那个文件（见 sources.js 的 highlightPath）。
 const PIPELINE_ACTIONS = ACTIONS.filter((a) => a.key !== "highlight");
 
-export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, counts, refreshKey = 0 }) {
+export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, refreshKey = 0 }) {
   const source = SOURCES[sourceKey];
 
   const [list, setList] = useState(null);
@@ -566,25 +567,6 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
         <InsightRunProgress run={insightRun.run} onCancel={insightRun.cancel} />
       ) : null}
 
-      {/* 流水线四段做成一排 tab：它们是**一条链的四段**，不是四个不相干的页面。
-          摊成 tab 才看得出「东西是从左往右走的」，侧栏里排四行反而把这层关系藏了。 */}
-      {isPipeline ? (
-        <div className="pill-tabs" role="tablist">
-          {PIPELINE.map((k) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={k === sourceKey}
-              className="pill-tab"
-              onClick={() => onGo(k)}
-            >
-              {SOURCES[k].label}
-              {counts?.[SOURCES[k].pendingKey] ? <span className="pill-tab__count">{counts[SOURCES[k].pendingKey]}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <section className="panel-block">
 <ListHead
           source={source}
@@ -766,16 +748,14 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
         open={!!creation}
         preset={creation}
         onClose={() => setCreation(null)}
-        onCreated={(draft) => {
-          setOpenTarget("drafts", draft.id);
+        onCreated={(draft, project) => {
           onChanged?.();
-          onGo("drafts", "");
+          onGo("project", project?.id || draft.topicId);
         }}
-        onTopicCreated={(topic) => {
+        onTopicCreated={(topic, project) => {
           onChanged?.();
           setToast({ text: `选题《${topic.title}》已建立` });
-          if (sourceKey === "topics") reload();
-          else onGo("topics", "待写");
+          onGo("project", project?.id || topic.id);
         }}
       />
 

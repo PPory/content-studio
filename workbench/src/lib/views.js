@@ -40,7 +40,7 @@ export const NAV_LABELS = {
  */
 export const TODO_CARDS = [
   { key: "选题待写", label: "选题待写", view: "topics", state: "待写", action: "选择今天要写的题", hint: "挑一条改成「撰写中」就开始成稿" },
-  { key: "内容待修改", label: "初稿待修改", view: "drafts", state: "待修改", action: "先完成主稿", hint: "改完就能去排版发出去" },
+  { key: "内容写作中", label: "主稿写作中", view: "drafts", state: "写作中", action: "先完成主稿", hint: "完成后提交诊断，再进入发布" },
 ];
 
 export const AUTO_CARDS = [

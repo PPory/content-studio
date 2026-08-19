@@ -173,13 +173,11 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
         open={!!creation}
         preset={creation}
         onClose={() => setCreation(null)}
-        onCreated={(draft) => {
-          setOpenTarget("drafts", draft.id);
-          onGo("drafts", "");
+        onCreated={(draft, project) => {
+          onGo("project", project?.id || draft.topicId);
         }}
-        onTopicCreated={(topic) => {
-          setOpenTarget("topics", topic.id);
-          onGo("topics", "");
+        onTopicCreated={(topic, project) => {
+          onGo("project", project?.id || topic.id);
         }}
       />
     </>

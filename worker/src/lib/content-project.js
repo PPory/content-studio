@@ -4,20 +4,38 @@
 // Workers 绑定，让最容易“看起来差不多”的业务判定能用 Node 纯逻辑测试钉住。
 
 import { all, first } from "./db.js";
-import { DRAFT_STATUS, TOPIC_STATUS } from "./values.js";
+import { DRAFT_STATUS, DRAFT_WORKFLOW, TOPIC_STATUS } from "./values.js";
 
 export const PROJECT_STAGES = Object.freeze([
   "策划中",
   "生成中",
   "写作中",
+  "待诊断",
+  "待发布",
   "待复盘",
   "已完成",
+  "已搁置",
   "需处理",
 ]);
 
 const REVIEW_DONE = new Set(["样本不足", "普通", "表现突出", "已沉淀"]);
 const asText = (value) => String(value || "").trim();
 const iso = (unix) => (unix ? new Date(unix * 1000).toISOString() : null);
+
+export const PROJECT_ACTIONS = Object.freeze(["start-writing", "set-primary", "submit-diagnosis", "approve-diagnosis", "return-writing", "abandon"]);
+
+export function nextDraftWorkflow(current, action) {
+  const rules = {
+    "submit-diagnosis": { from: [DRAFT_WORKFLOW.WRITING], to: DRAFT_WORKFLOW.DIAGNOSIS },
+    "approve-diagnosis": { from: [DRAFT_WORKFLOW.DIAGNOSIS], to: DRAFT_WORKFLOW.READY },
+    "return-writing": { from: [DRAFT_WORKFLOW.DIAGNOSIS, DRAFT_WORKFLOW.READY, DRAFT_WORKFLOW.ABANDONED], to: DRAFT_WORKFLOW.WRITING },
+    abandon: { from: [DRAFT_WORKFLOW.WRITING, DRAFT_WORKFLOW.DIAGNOSIS, DRAFT_WORKFLOW.READY], to: DRAFT_WORKFLOW.ABANDONED },
+  };
+  const rule = rules[action];
+  if (!rule) throw new Error("action 不合法");
+  if (!rule.from.includes(current)) throw new Error(`当前是“${current}”，不能执行这个动作`);
+  return rule.to;
+}
 
 function newestFirst(a, b) {
   return (Number(b.updated_at) - Number(a.updated_at)) || String(b.id).localeCompare(String(a.id));
@@ -31,6 +49,13 @@ function newestFirst(a, b) {
 export function chooseMasterDraft(topic, draftRows = []) {
   const drafts = [...draftRows].sort(newestFirst);
   if (!drafts.length) return { master: null, variants: [], blocker: null };
+
+  const explicitId = asText(topic?.primary_draft_id);
+  if (explicitId) {
+    const explicit = drafts.find((draft) => draft.id === explicitId);
+    if (!explicit) return { master: null, variants: drafts, blocker: "已记录的母版不在这个项目中" };
+    return { master: explicit, variants: drafts.filter((draft) => draft.id !== explicit.id), blocker: null };
+  }
   if (drafts.length === 1) return { master: drafts[0], variants: [], blocker: null };
 
   const primaryPlatform = asText(topic?.platform);
@@ -94,7 +119,10 @@ function reviewFrom(drafts, publication) {
  * 现阶段不能可靠区分“待诊断”和“待发布”：drafts 只有待修改/已发布。
  * 把待修改猜成待发布会让未经诊断的历史稿跳过门槛，所以一律是写作中。
  */
-export function deriveProjectStage({ topic = null, drafts = [], masterBlocker = null } = {}) {
+const workflowOf = (draft) => asText(draft?.workflow_status)
+  || (draft?.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING);
+
+export function deriveProjectStage({ topic = null, drafts = [], master = null, masterBlocker = null } = {}) {
   const blockers = [];
   const publication = publicationFrom(drafts);
   const review = reviewFrom(drafts, publication);
@@ -109,9 +137,6 @@ export function deriveProjectStage({ topic = null, drafts = [], masterBlocker = 
     }
   }
 
-  if (topic?.status === TOPIC_STATUS.PARKED) {
-    blockers.push("项目已搁置");
-  }
   if (!drafts.length && [TOPIC_STATUS.DRAFTED, TOPIC_STATUS.PUBLISHED].includes(topic?.status)) {
     blockers.push("选题状态显示已有稿件，但没有找到关联稿件");
   }
@@ -130,6 +155,15 @@ export function deriveProjectStage({ topic = null, drafts = [], masterBlocker = 
       blockers: [...new Set(blockers)],
       publication,
       review,
+    };
+  }
+
+  if (topic?.status === TOPIC_STATUS.PARKED || (drafts.length && drafts.every((draft) => workflowOf(draft) === DRAFT_WORKFLOW.ABANDONED))) {
+    return {
+      stage: "已搁置",
+      stageReason: "项目已停止推进，内容和关系仍完整保留",
+      nextAction: "恢复写作",
+      blockers: [], publication, review,
     };
   }
 
@@ -159,9 +193,26 @@ export function deriveProjectStage({ topic = null, drafts = [], masterBlocker = 
   }
 
   if (drafts.length) {
+    const workflow = workflowOf(master || drafts[0]);
+    if (workflow === DRAFT_WORKFLOW.DIAGNOSIS) {
+      return {
+        stage: "待诊断",
+        stageReason: "主稿已经完成，等待发布前诊断",
+        nextAction: "开始诊断",
+        blockers: [], publication, review,
+      };
+    }
+    if (workflow === DRAFT_WORKFLOW.READY) {
+      return {
+        stage: "待发布",
+        stageReason: "主稿已通过诊断，可以进入排版和发布",
+        nextAction: "去排版发布",
+        blockers: [], publication, review,
+      };
+    }
     return {
       stage: "写作中",
-      stageReason: "已有稿件，但现有数据不足以证明已完成诊断或发布准备",
+      stageReason: "主稿正在编辑，尚未提交诊断",
       nextAction: "继续写作",
       blockers: [], publication, review,
     };
@@ -191,6 +242,7 @@ function mapTopic(row) {
     notes: row.notes,
     platform: row.platform || "",
     priority: row.priority,
+    primaryDraftId: row.primary_draft_id || null,
     updatedAt: iso(row.updated_at),
   };
 }
@@ -203,7 +255,9 @@ function mapDraft(row) {
     summary: row.summary,
     body: row.body ?? null,
     platform: row.platform,
-    status: row.status,
+    status: workflowOf(row),
+    publicationStatus: row.status,
+    parentDraftId: row.parent_draft_id || null,
     updatedAt: iso(row.updated_at),
   };
 }
@@ -238,7 +292,7 @@ function mapSource(row) {
 export function buildContentProject({ topic = null, drafts = [], materials = [], sources = [] } = {}) {
   const orderedDrafts = [...drafts].sort(newestFirst);
   const selected = chooseMasterDraft(topic, orderedDrafts);
-  const state = deriveProjectStage({ topic, drafts: orderedDrafts, masterBlocker: selected.blocker });
+  const state = deriveProjectStage({ topic, drafts: orderedDrafts, master: selected.master, masterBlocker: selected.blocker });
   const onlyDraft = !topic && orderedDrafts[0];
   const updatedUnix = Math.max(Number(topic?.updated_at) || 0, ...orderedDrafts.map((draft) => Number(draft.updated_at) || 0));
 
@@ -289,7 +343,7 @@ function parseCursor(cursor) {
 export async function listContentProjects(env, { stage = "", cursor = "", pageSize = 100 } = {}) {
   const [topics, draftMeta] = await Promise.all([
     all(env, "SELECT * FROM topics"),
-    all(env, `SELECT id, topic_id, headline, summary, NULL AS body, platform, status,
+    all(env, `SELECT id, topic_id, headline, summary, NULL AS body, platform, status, workflow_status, parent_draft_id,
       published_url, published_at, views, likes, comments, collects, shares,
       performance_summary, feedback_status, created_at, updated_at FROM drafts`),
   ]);
