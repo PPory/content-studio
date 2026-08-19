@@ -33,6 +33,7 @@ import "./creation.css";
 
 const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"];
 const firstScreen = (preset) => preset === "topic" ? "topic" : preset === "blank" ? "editor" : "choose";
+const newRevisionScope = () => `creation:${crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 
 export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreated }) {
   const [screen, setScreen] = useState(firstScreen(preset));
@@ -54,6 +55,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
   const [phase, setPhase] = useState("interviewing");
   const [materialWritingMode, setMaterialWritingMode] = useState("manual");
   const [insertRequest, setInsertRequest] = useState(null);
+  const [revisionScope, setRevisionScope] = useState(newRevisionScope);
   // 草稿缓冲：`recover` 是上次没保存的那篇（有就在顶上问一句），`autosave` 是这一篇的存盘状态
   const [recover, setRecover] = useState(null);
   const [autosave, setAutosave] = useState({ at: 0, dirty: false, failed: false });
@@ -95,6 +97,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
     setQuery(""); setMaterials([]); setSelected([]); setDraftTitle(""); setDraftBody("");
     setInterviewEvidence(""); setBusy(false); setError(null); setMessages([]); setMessage(""); setPhase("interviewing");
     setMaterialWritingMode("manual"); setInsertRequest(null);
+    setRevisionScope(newRevisionScope());
     setAutosave({ at: 0, dirty: false, failed: false });
     setDraftNotice(null);
     setCitations([]); setCiteState([]); setCiteBusy(false); setReveal(null); setActive("");
@@ -122,12 +125,13 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
         body: draftBody,
         platform,
         materials: selected,
+        revisionScope,
       });
       setAutosave({ at, dirty: false, failed: !at });
     }, 700);
     autosaveTimer.current = timer;
     return () => clearTimeout(timer);
-  }, [open, screen, draftMode, materialWritingMode, draftTitle, draftBody, platform, selected]);
+  }, [open, screen, draftMode, materialWritingMode, draftTitle, draftBody, platform, selected, revisionScope]);
 
   // 预设清单只取一次。取不到不报错也不挡路：那一格照旧能手打
   useEffect(() => {
@@ -182,6 +186,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
     if (!recover) return;
     setPlatform(recover.platform || "公众号");
     setSelected(Array.isArray(recover.materials) ? recover.materials : []);
+    setRevisionScope(recover.revisionScope || newRevisionScope());
     openEditor(recover.mode || "blank", recover.body || "", recover.title || "", recover.writingMode || "manual");
     setAutosave({ at: recover.savedAt || 0, dirty: false, failed: false });
     setRecover(null);
@@ -279,6 +284,11 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
         body: draftBody,
         interviewEvidence,
       });
+      if (revisionScope && result.draft?.id) {
+        await creationApi.moveRevisions(revisionScope, `pipeline:drafts:${result.draft.id}`).catch((moveError) => {
+          console.warn("AI 修订历史迁移失败（稿件已保存）:", moveError.message);
+        });
+      }
       // 有家了，缓冲必须立刻空掉——留着的话同一篇稿子有两份，而它们迟早不一样
       clearTimeout(autosaveTimer.current);
       clearCreationDraft();
@@ -479,6 +489,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
         {screen === "editor" ? (
           <DraftEditor mode={draftMode} title={draftTitle} setTitle={setDraftTitle} body={draftBody} setBody={setDraftBody}
             platform={platform} setPlatform={setPlatform} materials={selected} writingMode={materialWritingMode} notice={draftNotice}
+            revisionScope={revisionScope}
             insertRequest={insertRequest} onInsertHandled={() => setInsertRequest(null)}
             onInsertMaterial={(item) => setInsertRequest({ id: `${item.id}-${Date.now()}`, text: formatMaterialQuote(item) })}
             onInsertWriting={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
@@ -892,6 +903,7 @@ function MaterialSetup({ title, setTitle, platform, setPlatform, viewpoint, setV
  */
 function DraftEditor({
   mode, title, setTitle, body, setBody, platform, setPlatform, materials, writingMode, notice,
+  revisionScope,
   insertRequest, onInsertHandled, onInsertMaterial, onInsertWriting,
   citations, citeState, onCiteState, citeBusy, onRecheck, reveal, onReveal, active, onActivate,
   busy, autosave, onSave,
@@ -928,6 +940,7 @@ function DraftEditor({
           </div>
         ) : null}
         <MarkdownEditor value={body} onChange={setBody} ariaLabel="新稿正文" insertRequest={insertRequest} onInsertHandled={onInsertHandled}
+          revisionScope={revisionScope} revisionTitle={title} revisionPlatform={platform}
           onCursorChange={(position) => { writingCursor.current = position; }}
           citations={citations} onCitations={onCiteState} onCiteClick={onActivate} revealRequest={reveal}
           toolbarExtra={<WritingAssist title={title} body={body} platform={platform} getCursor={() => writingCursor.current} onInsert={onInsertWriting} />} />

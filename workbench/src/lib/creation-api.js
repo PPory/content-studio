@@ -41,6 +41,15 @@ export const creationApi = {
     body: JSON.stringify(body),
     signal,
   }),
+  reviseText: (body, signal) => jsonRequest("/api/pipe/text-revision", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  }),
+  revisions: (scope) => jsonRequest(`/api/revisions?scope=${encodeURIComponent(scope)}`),
+  saveRevision: (scope, item) => post("/api/revisions", { scope, item }),
+  moveRevisions: (from, to) => post("/api/revisions/move", { from, to }),
   /**
    * 重新核对引用：用户改完正文之后，哪些标注还成立。
    * 只传 id，素材原文由 Worker 从库里读——标注是给用户「这句有出处」的信号，

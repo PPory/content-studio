@@ -19,7 +19,7 @@ import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
 import { chat, chatJson } from "./lib/llm.js";
-import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT, WRITING_ASSIST_PROMPT } from "./prompts.js";
+import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT, TEXT_REVISION_PROMPT, WRITING_ASSIST_PROMPT } from "./prompts.js";
 import {
   assertGroundedGeneratedText,
   auditPersonalNarrative,
@@ -30,6 +30,7 @@ import {
 import { citeText } from "./lib/cite.js";
 import { normalizeCreationRequest, keepRealPicks } from "./lib/creation.js";
 import { normalizeWritingAssistRequest } from "./lib/writing-assist.js";
+import { normalizeTextRevisionRequest } from "./lib/text-revision.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
 import {
   applyCollectionOrganize,
@@ -302,6 +303,8 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "explain" && request.method === "POST") return await explain(env, await request.json());
 
     if (path === "writing-assist" && request.method === "POST") return await writingAssist(env, await request.json());
+
+    if (path === "text-revision" && request.method === "POST") return await textRevision(env, await request.json());
 
     if (path === "pick/materials" && request.method === "POST") return await pickMaterials(env, await request.json());
 
@@ -1032,6 +1035,51 @@ async function writingAssist(env, raw) {
   return new Response(stream, {
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-cache, no-transform" },
   });
+}
+
+// ---------------------------------------------------------------------------
+// 局部修订。候选在浏览器里进入对比态，只有用户点击“采纳”才会替换正文。
+
+async function textRevision(env, raw) {
+  let input;
+  try {
+    input = normalizeTextRevisionRequest(raw);
+  } catch (e) {
+    return json({ ok: false, error: e.message }, e.status || 400);
+  }
+
+  const user = [
+    `【模式】${input.label}`,
+    input.instruction ? `【具体要求】${input.instruction}` : "",
+    input.title ? `【标题或主题】${input.title}` : "",
+    input.platform ? `【目标平台】${input.platform}` : "",
+    input.before ? `【选区前文】\n${input.before}` : "",
+    `【需要修订的原文】\n${input.selected}`,
+    input.after ? `【选区后文】\n${input.after}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  try {
+    const { content } = await chat(env, {
+      system: TEXT_REVISION_PROMPT,
+      user,
+      maxTokens: input.mode === "expand" ? 5000 : 3200,
+      task: "writing",
+    });
+    const text = unfence(content);
+    if (!text) throw new Error("AI 没有生成可用的修订文本");
+    // 当前全文和被选原文都是用户给出的证据；修订可以换表达，不能凭空长出个人经历。
+    const evidenceText = [input.before, input.selected, input.after].filter(Boolean).join("\n\n");
+    const evidence = evidenceText ? [{ type: "个人经历", note: evidenceText }] : [];
+    assertGroundedGeneratedText(text, evidence);
+    return json({ ok: true, mode: input.mode, kind: input.label, text });
+  } catch (e) {
+    const ungrounded = e?.code === "UNGROUNDED_PERSONAL_EXPERIENCE";
+    return json({
+      ok: false,
+      error: ungrounded ? "这次修订加入了原文没有的亲身经历，已经拦下" : String(e?.message || "局部修订失败").slice(0, 800),
+      hint: ungrounded ? "换一种写法，或先把真实细节补进原文再扩写" : undefined,
+    }, ungrounded ? 422 : 500);
+  }
 }
 
 // ---------------------------------------------------------------------------

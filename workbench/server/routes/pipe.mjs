@@ -139,6 +139,21 @@ export const pipeRoutes = [
     },
   },
   {
+    /** 选区局部修订：Worker 只生成候选，正文替换必须由浏览器里的“采纳”触发。 */
+    method: "POST",
+    path: "/api/pipe/text-revision",
+    async handler({ env, req, res }) {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        return fail(res, e.message, { status: 400 });
+      }
+      const r = await callWorker(env, "text-revision", { method: "POST", body, timeoutMs: 300_000 });
+      json(res, withDeployHint(r.data), r.status);
+    },
+  },
+  {
     /**
      * 正文里哪一句来自哪条素材。**对齐算法在 Worker 那侧**（`worker/src/lib/cite.js`），
      * 因为它和真实性闸门共用同一套归一化和二字组判据——挪一份到工作台来，

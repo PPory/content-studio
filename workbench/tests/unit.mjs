@@ -39,9 +39,46 @@ import { listPipelinePrompts, readPipelinePrompt, writePipelinePrompt } from "..
 import { applyAdd, applyRemove, applyToggle, cleanTaskText, localDate, newPlanText, offsetDate, parseTasks, planPath, readPlan, writePlan } from "../server/lib/plan.mjs";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
+import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditorRevision, verifyRevisionStore } from "../server/lib/editor-revisions.mjs";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
+
+// ---- AI 局部修订历史：独立于正文、原子保存、可迁移到正式稿件身份 ----
+{
+  const box = await fs.mkdtemp(path.join(os.tmpdir(), "wb-revisions-"));
+  const cwd = process.cwd();
+  process.chdir(box);
+  try {
+    const original = "这是一段原文。";
+    const candidate = "这是一段更自然的正文。";
+    const item = normalizeRevision({
+      id: "revision-test-001",
+      mode: "polish",
+      label: "润色",
+      instruction: "更自然",
+      original,
+      candidate,
+      generations: [{ text: candidate, at: "2026-08-19T00:00:00.000Z" }],
+      status: "adopted",
+    });
+    await saveEditorRevision("creation:test-draft", item);
+    check("修订历史能单独写盘", (await listEditorRevisions("creation:test-draft"))[0]?.original === original);
+    await moveEditorRevisions("creation:test-draft", "pipeline:drafts:01KTESTREVISION0000000000");
+    check("新稿入库后历史迁到正式身份", (await listEditorRevisions("pipeline:drafts:01KTESTREVISION0000000000"))[0]?.candidate === candidate);
+    check("迁移后临时身份会指向正式历史", (await listEditorRevisions("creation:test-draft"))[0]?.candidate === candidate);
+    await saveEditorRevision("creation:test-draft", { ...item, candidate: "用户最终采用的版本。", status: "adopted" });
+    check("迁移后晚到的保存不会留在临时身份", (await listEditorRevisions("pipeline:drafts:01KTESTREVISION0000000000"))[0]?.candidate === "用户最终采用的版本。");
+    const text = await fs.readFile(path.join(box, "data", "editor-revisions.json"), "utf8");
+    check("修订历史文件可完整校验", verifyRevisionStore(text).schemaVersion === 1);
+    let invalid = false;
+    try { normalizeRevision({ id: "bad", original, candidate }); } catch { invalid = true; }
+    check("非法修订 id 被拒绝", invalid);
+  } finally {
+    process.chdir(cwd);
+    await fs.rm(box, { recursive: true, force: true });
+  }
+}
 
 // ---- 文件名清洗 ----
 check("去掉路径分隔符", safeName("a/b\\c") === "a b c", safeName("a/b\\c"));
@@ -766,8 +803,10 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
 
     // 导出 → 恢复往返。恢复前把当前数据改坏，恢复之后必须变回来。
     await atomicWrite(target, "date,platform,title\n2026-03-03,公众号,原样\n");
+    await atomicWrite(path.join(box, "data", "editor-revisions.json"), JSON.stringify({ schemaVersion: 1, documents: { "pipeline:drafts:test": { items: [] } } }));
     const { zip, manifest } = await exportBundle(box, { browser: { "workbench:reading:v1": "{}" } });
     check("导出包里有 posts", manifest.files.some((f) => f.rel === "data/posts.csv"));
+    check("AI 修订历史进入备份", manifest.files.some((f) => f.rel === "data/editor-revisions.json"));
     check("导出包里不含 vault 正文", manifest.vault.included === false);
 
     await atomicWrite(target, "date,platform,title\n2099-09-09,X,被改坏了\n");

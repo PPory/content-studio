@@ -20,6 +20,7 @@ import { searchRoutes } from "./routes/search.mjs";
 import { insightsRoutes } from "./routes/insights.mjs";
 import { planRoutes } from "./routes/plan.mjs";
 import { audienceRoutes } from "./routes/audiences.mjs";
+import { revisionRoutes } from "./routes/revisions.mjs";
 
 const EXTENSION_ALIASES = {
   "/api/extension/intake": "/api/pipe/intake",
@@ -83,6 +84,7 @@ const ROUTES = [
   ...searchRoutes,
   ...planRoutes,
   ...audienceRoutes,
+  ...revisionRoutes,
   ...insightsRoutes,
 ];
 

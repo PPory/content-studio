@@ -473,6 +473,9 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           insertRequest={insertRequest}
           onCursorChange={(position) => { writingCursor.current = position; }}
           onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
+          revisionScope={source.key === "drafts" ? `pipeline:drafts:${item.key}` : ""}
+          revisionTitle={title}
+          revisionPlatform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
           toolbarExtra={(
             <WritingAssist
               title={title}

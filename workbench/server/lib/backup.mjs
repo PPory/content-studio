@@ -39,6 +39,17 @@ export const BUNDLE_VERSION = 1;
  */
 export const DATA_FILES = [
   {
+    key: "editor-revisions",
+    rel: "data/editor-revisions.json",
+    label: "AI 局部修订历史",
+    verify: (text) => {
+      const data = JSON.parse(text);
+      if (data.schemaVersion !== 1 || !data.documents || typeof data.documents !== "object" || Array.isArray(data.documents)) {
+        throw new Error("editor-revisions.json 结构不正确");
+      }
+    },
+  },
+  {
     key: "posts",
     rel: "data/posts.csv",
     label: "已发布内容（一条内容一行）",
@@ -102,7 +113,7 @@ ${list}
 
 如果工作台起不来
   这些文件就是纯文本，解压后直接覆盖到工作台目录下的同名路径即可
-  （data/posts.csv、data/metrics.csv、config/attention.json）。
+  （data/posts.csv、data/metrics.csv、data/editor-revisions.json、config/attention.json）。
   browser-local.json 只有工作台自己能写回去，手工恢复时可以先跳过它，
   代价只是阅读进度和书签要重来。
 `;

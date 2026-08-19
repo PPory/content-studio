@@ -32,6 +32,8 @@ export {
   IconVideo,
   IconSitemap,
   IconArrowsExchange,
+  IconArrowsMinimize,
+  IconArrowsMaximize,
   // Markdown 编辑器的工具栏（IconEye / IconQuote / IconList 上面已经导出过了）
   IconArrowBackUp,
   IconArrowForwardUp,

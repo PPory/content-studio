@@ -47,6 +47,9 @@ export const api = {
   knowledgeCardLinks: (refs) => postJson("/api/vault/knowledge-card/links", { refs }),
   comment: (pageId, text) => postJson("/api/pipe/comment", { pageId, text }),
   comments: (pageId) => req(`/api/pipe/comments/${pageId}`),
+  revisions: (scope) => req(`/api/revisions?scope=${encodeURIComponent(scope)}`),
+  saveRevision: (scope, item) => postJson("/api/revisions", { scope, item }),
+  moveRevisions: (from, to) => postJson("/api/revisions/move", { from, to }),
 
   // 每日计划。**只传日期串不传路径**，路径由服务端从 `05 - 计划/` 派生。
   // 打钩和删除带 stamp（文件 mtime）做乐观锁：它们按**行号**改写，而这份 md 同时可能

@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { EditorView, keymap, drawSelection, Decoration } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from "@codemirror/commands";
@@ -23,8 +24,10 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { renderMarkdown } from "../lib/markdown.js";
+import { creationApi } from "../lib/creation-api.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
+import { clearTextRevision, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -45,6 +48,7 @@ import {
   IconX,
 } from "./icons.jsx";
 import { Select } from "./ui.jsx";
+import { RevisionReviewCard, SelectionRevisionMenu, revisionLabel } from "./TextRevision.jsx";
 import "./ai-draft-review.css";
 
 /**
@@ -90,6 +94,27 @@ const cmTheme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground": { backgroundColor: "var(--mark-yellow)" },
   ".cm-cursor": { borderLeftColor: "var(--text-1)", borderLeftWidth: "2px" },
 });
+
+function revisionSelectionOf(view) {
+  const { from, to } = view.state.selection.main;
+  if (from === to) return null;
+  const text = view.state.sliceDoc(from, to);
+  if (!text.trim()) return null;
+  const start = view.coordsAtPos(from);
+  const end = view.coordsAtPos(to);
+  if (!start || !end) return null;
+  const topEdge = Math.min(start.top, end.top);
+  const bottomEdge = Math.max(start.bottom, end.bottom);
+  const placement = topEdge > 92 ? "above" : "below";
+  return {
+    from,
+    to,
+    text,
+    left: Math.max(18, Math.min(window.innerWidth - 18, (start.left + end.right) / 2)),
+    top: placement === "above" ? topEdge - 8 : bottomEdge + 8,
+    placement,
+  };
+}
 
 // ---- 工具栏的动作：**一律是「插入 Markdown 记号」，不是富文本命令** ----------
 // 这样按钮做的事和你自己敲出来的完全一样，没有第二套模型要对账。
@@ -207,6 +232,7 @@ export function MarkdownEditor({
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
   onCursorChange,                 // 当前光标是写作推动的锚点；不改变正文，只上报位置
+  revisionScope = "", revisionTitle = "", revisionPlatform = "",
 }) {
   const host = useRef(null);
   const view = useRef(null);
@@ -221,6 +247,22 @@ export function MarkdownEditor({
   const [preview, setPreview] = useState(false);
   const [aiDrafts, setAiDrafts] = useState([]);
   const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
+  const [selectionMenu, setSelectionMenu] = useState(null);
+  const [activeRevision, setActiveRevision] = useState(null);
+  const activeRevisionRef = useRef(null);
+  const revisionAbort = useRef(null);
+  const revisionSaveTimer = useRef(0);
+  const [revisionHistory, setRevisionHistory] = useState([]);
+  const [revisionSaveError, setRevisionSaveError] = useState("");
+  const revisionScopeRef = useRef(revisionScope);
+  revisionScopeRef.current = revisionScope;
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+
+  const setCurrentRevision = (next) => {
+    activeRevisionRef.current = next;
+    setActiveRevision(next);
+  };
 
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
   // 光标、撤销历史、滚动位置全丢。外部改值走下面那个 effect 的补丁式更新。
@@ -240,6 +282,7 @@ export function MarkdownEditor({
           cmTheme,
           citationExtension,
           aiDraftExtension,
+          textRevisionExtension,
           flashField,
           // 点正文里被标注的那句 → 右侧面板高亮对应素材。反方向由 revealRequest 走。
           EditorView.domEventHandlers({
@@ -266,13 +309,39 @@ export function MarkdownEditor({
             if (u.startState.field(citationField) !== now) onCitationsRef.current?.(now.items);
             const aiNow = u.state.field(aiDraftField);
             if (u.startState.field(aiDraftField) !== aiNow) setAiDrafts(aiNow.items);
+            const revisionNow = u.state.field(textRevisionField);
+            if (u.startState.field(textRevisionField) !== revisionNow) {
+              if (revisionNow.active) {
+                setSelectionMenu(null);
+                setActiveRevision((current) => {
+                  if (!current || current.id !== revisionNow.active.id) return current;
+                  const next = { ...current, from: revisionNow.active.from, to: revisionNow.active.to };
+                  activeRevisionRef.current = next;
+                  return next;
+                });
+              } else {
+                activeRevisionRef.current = null;
+                setActiveRevision(null);
+              }
+            }
+            if (u.selectionSet || u.docChanged) {
+              setSelectionMenu(revisionScopeRef.current && !previewRef.current && !revisionNow.active ? revisionSelectionOf(u.view) : null);
+            }
           }),
         ],
       }),
     });
     view.current = v;
     onCursorChangeRef.current?.(v.state.selection.main.head);
+    const refreshSelection = () => {
+      const active = v.state.field(textRevisionField).active;
+      setSelectionMenu(revisionScopeRef.current && !previewRef.current && !active ? revisionSelectionOf(v) : null);
+    };
+    v.scrollDOM.addEventListener("scroll", refreshSelection, { passive: true });
+    window.addEventListener("resize", refreshSelection);
     return () => {
+      v.scrollDOM.removeEventListener("scroll", refreshSelection);
+      window.removeEventListener("resize", refreshSelection);
       v.destroy();
       view.current = null;
     };
@@ -322,6 +391,30 @@ export function MarkdownEditor({
   }, [revealTextRequest]);
 
   useEffect(() => {
+    let cancelled = false;
+    revisionAbort.current?.abort();
+    clearTimeout(revisionSaveTimer.current);
+    setRevisionSaveError("");
+    setRevisionHistory([]);
+    setSelectionMenu(null);
+    if (view.current?.state.field(textRevisionField).active) view.current.dispatch({ effects: clearTextRevision.of(null) });
+    setCurrentRevision(null);
+    if (revisionScope) {
+      creationApi.revisions(revisionScope)
+        .then((result) => { if (!cancelled) setRevisionHistory(result.items || []); })
+        .catch((error) => { if (!cancelled) setRevisionSaveError(error.message); });
+    }
+    return () => { cancelled = true; };
+    // scope 变了就是换稿件；这里有意清掉上一份稿的临时对比态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionScope]);
+
+  useEffect(() => () => {
+    revisionAbort.current?.abort();
+    clearTimeout(revisionSaveTimer.current);
+  }, []);
+
+  useEffect(() => {
     const v = view.current;
     const text = String(insertRequest?.text || "").trim();
     if (!v || !insertRequest?.id || !text) return;
@@ -368,6 +461,140 @@ export function MarkdownEditor({
     view.current.dispatch({ effects: confirmAiDraft.of(activeAiDraft.id) });
     view.current.focus();
   };
+
+  function recordOf(revision, status = revision.status || "pending") {
+    return {
+      id: revision.id,
+      mode: revision.mode,
+      label: revision.label,
+      instruction: revision.instruction || "",
+      original: revision.original,
+      candidate: revision.candidate || "",
+      generations: revision.generations || [],
+      status,
+      createdAt: revision.createdAt,
+    };
+  }
+
+  async function persistRevision(revision, status) {
+    if (!revisionScope || !revision) return;
+    try {
+      const result = await creationApi.saveRevision(revisionScope, recordOf(revision, status));
+      setRevisionHistory(result.items || []);
+      setRevisionSaveError("");
+    } catch (error) {
+      setRevisionSaveError(error.message || "修订历史没有保存下来");
+    }
+  }
+
+  async function generateRevision(base, instruction = base.instruction || "") {
+    const v = view.current;
+    if (!v || !base) return;
+    revisionAbort.current?.abort();
+    const controller = new AbortController();
+    revisionAbort.current = controller;
+    const pending = { ...base, instruction, busy: true, error: null };
+    setCurrentRevision(pending);
+    try {
+      const doc = v.state.doc.toString();
+      const result = await creationApi.reviseText({
+        mode: base.mode,
+        instruction,
+        selected: base.original,
+        title: revisionTitle,
+        platform: revisionPlatform,
+        before: doc.slice(Math.max(0, pending.from - 4_000), pending.from),
+        after: doc.slice(pending.to, Math.min(doc.length, pending.to + 4_000)),
+      }, controller.signal);
+      const current = activeRevisionRef.current;
+      if (!current || current.id !== base.id) return;
+      const now = new Date().toISOString();
+      const next = {
+        ...current,
+        instruction,
+        candidate: result.text,
+        generations: [...(current.generations || []), { text: result.text, at: now }],
+        busy: false,
+        error: null,
+        status: "pending",
+      };
+      setCurrentRevision(next);
+      await persistRevision(next, "pending");
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      const current = activeRevisionRef.current;
+      if (current?.id === base.id) setCurrentRevision({ ...current, instruction, busy: false, error });
+    } finally {
+      if (revisionAbort.current === controller) revisionAbort.current = null;
+    }
+  }
+
+  function beginRevision(mode, instruction) {
+    const v = view.current;
+    if (!v || !selectionMenu || !revisionScope) return;
+    const id = `revision-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
+    const revision = {
+      id,
+      mode,
+      label: revisionLabel(mode),
+      instruction,
+      original: selectionMenu.text,
+      candidate: "",
+      generations: [],
+      from: selectionMenu.from,
+      to: selectionMenu.to,
+      createdAt: new Date().toISOString(),
+      status: "pending",
+      busy: true,
+      error: null,
+    };
+    setSelectionMenu(null);
+    setCurrentRevision(revision);
+    v.dispatch({ effects: startTextRevision.of({ id, from: revision.from, to: revision.to }) });
+    generateRevision(revision, instruction);
+  }
+
+  function editRevisionCandidate(candidate) {
+    const current = activeRevisionRef.current;
+    if (!current) return;
+    setCurrentRevision({ ...current, candidate });
+  }
+
+  function closeRevision(status) {
+    const current = activeRevisionRef.current;
+    const v = view.current;
+    if (!current || !v) return;
+    revisionAbort.current?.abort();
+    clearTimeout(revisionSaveTimer.current);
+    if (status === "adopted") {
+      const candidate = current.candidate.trim();
+      if (!candidate) return;
+      v.dispatch({
+        changes: { from: current.from, to: current.to, insert: candidate },
+        selection: { anchor: current.from + candidate.length },
+        effects: clearTextRevision.of(null),
+      });
+      persistRevision({ ...current, candidate }, "adopted");
+    } else {
+      v.dispatch({ effects: clearTextRevision.of(null) });
+      persistRevision(current, "discarded");
+    }
+    setCurrentRevision(null);
+    v.focus();
+  }
+
+  useEffect(() => {
+    clearTimeout(revisionSaveTimer.current);
+    if (!activeRevision || activeRevision.busy || !activeRevision.candidate) return;
+    revisionSaveTimer.current = setTimeout(() => persistRevision(activeRevision, "pending"), 700);
+    return () => clearTimeout(revisionSaveTimer.current);
+    // 持久保存只跟候选文字变化走；其余状态由生成、采纳、弃用即时保存。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRevision?.candidate]);
+
+  const revisionHost = activeRevision && view.current
+    ? view.current.dom.querySelector(`[data-revision-host="${activeRevision.id}"]`)
+    : null;
 
   return (
     <div className="md-editor">
@@ -417,21 +644,22 @@ export function MarkdownEditor({
         {/* 预览挂最右边：它切的是整块区域，和左边那些「改一段文字」的按钮不是一类动作 */}
         <button
           className={`btn btn-sm md-editor__preview${preview ? " is-on" : ""}`}
-          onClick={() => setPreview((p) => !p)}
+          onClick={() => { setSelectionMenu(null); setPreview((p) => !p); }}
           aria-pressed={preview}
-          title={preview ? "回到编辑" : "看排版后的样子"}
+          disabled={!!activeRevision}
+          title={activeRevision ? "先采纳或弃用正在对比的修订" : preview ? "回到编辑" : "看排版后的样子"}
         >
           {preview ? <IconPencil aria-hidden="true" stroke={1.7} /> : <IconEye aria-hidden="true" stroke={1.7} />}
           {preview ? "编辑" : "预览"}
         </button>
-        {aiDrafts.length ? (
+        {aiDrafts.length || revisionHistory.length || revisionSaveError ? (
           <button
             className="icon-btn md-editor__ai-history"
             data-open={aiHistoryOpen ? "true" : undefined}
             onClick={() => setAiHistoryOpen((open) => !open)}
             aria-expanded={aiHistoryOpen}
-            aria-label={`查看本次编辑的 AI 原稿，共 ${aiDrafts.length} 段`}
-            title={`查看本次编辑的 AI 原稿（${aiDrafts.length}）`}
+            aria-label={`查看 AI 原稿与修订历史，共 ${aiDrafts.length + revisionHistory.length} 条`}
+            title={`查看 AI 原稿与修订历史（${aiDrafts.length + revisionHistory.length}）`}
           >
             <IconHistory aria-hidden="true" stroke={1.7} />
           </button>
@@ -455,15 +683,27 @@ export function MarkdownEditor({
           </div>
         </div>
       ) : null}
-      {aiHistoryOpen && aiDrafts.length ? (
-        <section className="ai-draft-history" aria-label="本次编辑的 AI 原稿">
+      {aiHistoryOpen && (aiDrafts.length || revisionHistory.length || revisionSaveError) ? (
+        <section className="ai-draft-history" aria-label="AI 原稿与修订历史">
           <header className="ai-draft-history__head">
-            <span><IconHistory aria-hidden="true" stroke={1.7} />本次编辑的 AI 原稿</span>
-            <button className="icon-btn" onClick={() => setAiHistoryOpen(false)} aria-label="关闭 AI 原稿" title="关闭">
+            <span><IconHistory aria-hidden="true" stroke={1.7} />AI 原稿与修订历史</span>
+            <button className="icon-btn" onClick={() => setAiHistoryOpen(false)} aria-label="关闭 AI 历史" title="关闭">
               <IconX aria-hidden="true" stroke={1.7} />
             </button>
           </header>
           <div className="ai-draft-history__list">
+            {revisionSaveError ? <div className="ai-draft-history__error">修订历史暂时没有保存：{revisionSaveError}</div> : null}
+            {revisionHistory.map((item) => (
+              <article className="ai-draft-history__item text-revision-history__item" key={item.id}>
+                <div className="ai-draft-history__meta">
+                  <span>{item.label || revisionLabel(item.mode)}{item.instruction ? ` · ${item.instruction}` : ""}</span>
+                  <span>{{ adopted: "已采纳", discarded: "已弃用", pending: "未处理" }[item.status] || "未处理"}</span>
+                </div>
+                <small>原文</small>
+                <p className="text-revision-history__original">{item.original}</p>
+                {item.candidate ? <><small>候选</small><p className="text-revision-history__candidate">{item.candidate}</p></> : null}
+              </article>
+            ))}
             {[...aiDrafts].reverse().map((item, index) => (
               <article className="ai-draft-history__item" key={item.id}>
                 <div className="ai-draft-history__meta">
@@ -484,6 +724,21 @@ export function MarkdownEditor({
         <div className="md-editor__body md-editor__preview-body">
           <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
+      ) : null}
+      {selectionMenu && !preview ? createPortal(
+        <SelectionRevisionMenu selection={selectionMenu} onRun={beginRevision} onClose={() => setSelectionMenu(null)} />,
+        document.body
+      ) : null}
+      {activeRevision && revisionHost ? createPortal(
+        <RevisionReviewCard
+          revision={activeRevision}
+          persistenceError={revisionSaveError}
+          onCandidate={editRevisionCandidate}
+          onRegenerate={(instruction) => generateRevision(activeRevisionRef.current, instruction)}
+          onAdopt={() => closeRevision("adopted")}
+          onDiscard={() => closeRevision("discarded")}
+        />,
+        revisionHost
       ) : null}
     </div>
   );

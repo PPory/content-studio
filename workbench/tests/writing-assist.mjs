@@ -36,6 +36,8 @@ await page.addInitScript(() => localStorage.removeItem("workbench:creation-draft
 
 let nudges = 0;
 const requests = [];
+const revisionRequests = [];
+const revisionDocuments = new Map();
 await page.route("**/api/pipe/writing-assist", async (route) => {
   const body = route.request().postDataJSON();
   requests.push(body);
@@ -53,13 +55,40 @@ await page.route("**/api/pipe/writing-assist", async (route) => {
     : "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: body.mode === "finish" ? "完成全文" : "续写一段", text }) });
 });
+await page.route("**/api/pipe/text-revision", async (route) => {
+  const body = route.request().postDataJSON();
+  revisionRequests.push(body);
+  const text = revisionRequests.length === 1
+    ? "第一版候选：把最重要的判断说清楚，再删掉不服务于这个判断的句子。"
+    : "第二版候选：先说清最重要的判断，再删掉无关句子。";
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: "润色", text }) });
+});
+await page.route("**/api/revisions**", async (route) => {
+  const request = route.request();
+  const url = new URL(request.url());
+  if (request.method() === "GET") {
+    const items = revisionDocuments.get(url.searchParams.get("scope")) || [];
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items }) });
+  }
+  const body = request.postDataJSON();
+  if (url.pathname.endsWith("/move")) {
+    const items = [...(revisionDocuments.get(body.from) || []), ...(revisionDocuments.get(body.to) || [])];
+    revisionDocuments.set(body.to, items);
+    revisionDocuments.delete(body.from);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items }) });
+  }
+  const current = revisionDocuments.get(body.scope) || [];
+  const items = [body.item, ...current.filter((item) => item.id !== body.item.id)];
+  revisionDocuments.set(body.scope, items);
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items }) });
+});
 
 function assert(value, message) {
   if (!value) throw new Error(message);
 }
 
 function editorValue(selector) {
-  return page.$eval(selector, (content) => Array.from(content.children, (line) => line.textContent).join("\n"));
+  return page.$eval(selector, (content) => Array.from(content.children).filter((line) => line.classList.contains("cm-line")).map((line) => line.textContent).join("\n"));
 }
 
 try {
@@ -85,6 +114,16 @@ try {
   assert(firstStarter !== secondStarter, "换一句没有换内容");
   await page.click('.writing-assist__result button[aria-label="用这句开头"]');
   await page.waitForFunction((text) => document.querySelector(".cm-content")?.textContent.includes(text), secondStarter);
+
+  // 新稿编辑器同样支持选区工具条；Esc 只收起工具条，不改正文。
+  await page.click(".creation-editor .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.waitForSelector(".text-revision-menu");
+  const newEditorActions = await page.$$eval(".text-revision-menu__actions button:not(.text-revision-menu__close)", (buttons) => buttons.map((button) => button.textContent.trim()));
+  assert(newEditorActions.join("/") === "润色/纠错/缩写/扩写/改写", `新稿选区工具不完整：${newEditorActions.join("/")}`);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".text-revision-menu", { state: "detached" });
 
   // 光标放在正文中间：请求位置、浮层位置和等待动画必须都以真实界面为准。
   await page.click(".creation-editor .cm-content");
@@ -136,7 +175,7 @@ try {
   await page.waitForSelector(".ai-draft-history");
   assert((await page.textContent(".ai-draft-history")).includes(paragraph), "回看历史里没有保留 AI 插入时的原稿");
   assert((await page.textContent(".ai-draft-history")).includes("已修改"), "修改 AI 续写后历史没有标出状态");
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 原稿"]');
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
   await page.click('.ai-draft-review button[aria-label="确认采用这段，移除底纹"]');
   await page.waitForSelector(".ai-draft-review", { state: "detached" });
   assert((await page.$$(".cm-ai-draft")).length === 0, "确认采用后 AI 底纹没有消失");
@@ -145,7 +184,7 @@ try {
   await page.waitForSelector(".ai-draft-history");
   assert((await page.textContent(".ai-draft-history")).includes(paragraph), "确认采用后无法再次回看 AI 原稿");
   await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-ai-history.png"), fullPage: false });
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 原稿"]');
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
 
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__wait");
@@ -194,6 +233,66 @@ try {
   const existingAfter = await editorValue(".ws-edit .cm-content");
   assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "正式编辑器没有在当前光标精确插入");
   assert((await page.$$(".ws-edit .cm-ai-draft")).length > 0, "正式编辑器里的 AI 续写没有底纹");
+
+  // 正式改稿：选区 → 自定义润色 → 对比 → 重写 → 编辑候选 → 采纳。
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 12; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.waitForSelector(".text-revision-menu");
+  await page.click('.text-revision-menu__actions button:has-text("润色")');
+  await page.fill('.text-revision-menu__command input[aria-label="润色要求"]', "更克制");
+  await page.click('.text-revision-menu__command button[aria-label="开始润色"]');
+  await page.waitForSelector(".text-revision-review textarea");
+  assert(revisionRequests[0]?.instruction === "更克制", "自定义润色要求没有发给 AI");
+  const compareDocument = await editorValue(".ws-edit .cm-content");
+  const visuallySplitDocument = `${existingAfter.slice(0, 12)}\n${existingAfter.slice(12)}`;
+  assert(compareDocument === visuallySplitDocument, "对比阶段除候选卡片占位外改变了正文内容");
+  const compareStyle = await page.evaluate(() => ({
+    strike: getComputedStyle(document.querySelector(".cm-text-revision-original")).textDecorationLine,
+    wash: getComputedStyle(document.querySelector(".text-revision-review textarea")).backgroundColor,
+  }));
+  assert(compareStyle.strike.includes("line-through"), "对比状态的原文没有删除线");
+  assert(compareStyle.wash !== "transparent" && compareStyle.wash !== "rgba(0, 0, 0, 0)", "修订候选没有轻量底纹");
+  await page.fill('.text-revision-review__command input[aria-label="调整修订要求"]', "更克制、更直接");
+  await page.click('.text-revision-review__command button[aria-label="重新生成"]');
+  await page.waitForFunction(() => document.querySelector(".text-revision-review textarea")?.value.includes("第二版候选"));
+  assert(revisionRequests[1]?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
+  await page.fill('.text-revision-review textarea[aria-label="AI 修订候选，可直接编辑"]', "这是用户调整后的最终候选。 ");
+  await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-review.png"), fullPage: false });
+  await page.click('.text-revision-review__decide button:has-text("采纳")');
+  await page.waitForSelector(".text-revision-review", { state: "detached" });
+  const revisedAfter = await editorValue(".ws-edit .cm-content");
+  assert(revisedAfter === `这是用户调整后的最终候选。${existingAfter.slice(12)}`, "采纳没有精确替换原选区");
+  await page.click(".ws-edit .md-editor__ai-history");
+  await page.waitForSelector(".ai-draft-history");
+  const historyText = await page.textContent(".ai-draft-history");
+  assert(historyText.includes("已采纳") && historyText.includes(existingAfter.slice(0, 12)) && historyText.includes("这是用户调整后的最终候选。"), "修订历史没有同时保留原文和最终候选");
+  await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-history.png"), fullPage: false });
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+  await page.click('.ws-edit__foot button:has-text("取消")');
+
+  // 编辑器卸载再打开，记录仍从持久层读回来。
+  await page.click('.doc-actions button:has-text("编辑")');
+  await page.waitForSelector(".ws-edit .md-editor__ai-history", { timeout: 8000 });
+  await page.click(".ws-edit .md-editor__ai-history");
+  await page.waitForSelector(".ai-draft-history");
+  assert((await page.textContent(".ai-draft-history")).includes("已采纳"), "重新打开稿件后修订历史没有恢复");
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+
+  // 弃用只记录决定，不改变正文；结果同样进入持久历史。
+  const beforeDiscard = await editorValue(".ws-edit .cm-content");
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.click('.text-revision-menu__actions button:has-text("纠错")');
+  await page.waitForSelector(".text-revision-review textarea");
+  await page.click('.text-revision-review__decide button:has-text("弃用")');
+  await page.waitForSelector(".text-revision-review", { state: "detached" });
+  assert(await editorValue(".ws-edit .cm-content") === beforeDiscard, "弃用修订后正文发生了变化");
+  await page.click(".ws-edit .md-editor__ai-history");
+  await page.waitForSelector(".ai-draft-history");
+  assert((await page.textContent(".ai-draft-history")).includes("已弃用"), "弃用决定没有进入持久修订历史");
+  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
   await page.click('.ws-edit__foot button:has-text("取消")');
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
@@ -204,6 +303,10 @@ try {
   console.log("✓ 新建文章与稿件库正式编辑器都把当前光标发给 AI");
   console.log("✓ 图标按钮都有名称和悬停说明");
   console.log("✓ AI 续写可在底纹内修改、确认后退底纹，并能回看原稿");
+  console.log("✓ 两个编辑入口都有选区修订工具，采纳前正文保持不变");
+  console.log("✓ 局部修订支持自定义要求、重新生成、直接编辑和精确采纳");
+  console.log("✓ 弃用修订不改变正文，并持久记录弃用决定");
+  console.log("✓ 修订历史跨编辑器重开仍可回看原文与最终候选");
   console.log("✓ 浏览器控制台 0 错误");
 } finally {
   await browser.close();
