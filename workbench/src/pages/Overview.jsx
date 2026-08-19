@@ -63,7 +63,7 @@ const AUTO_ICONS = {
  */
 const TOP_N = 3;
 
-export function Overview({ config, status, statusError, statusLoading, onGo, onIntake, onSettings }) {
+export function Overview({ config, status, statusError, statusLoading, onRetryStatus, onGo, onIntake, onSettings }) {
   const workerReady = config?.worker?.configured;
   /**
    * 每一档**最该先做的那几条**（列表最前面的 `TOP_N` 条）。
@@ -132,7 +132,7 @@ export function Overview({ config, status, statusError, statusLoading, onGo, onI
 
       {workerReady && (
         <>
-          <ErrorNote error={statusError} what="读取流水线状态" />
+          <ErrorNote error={statusError} what="读取流水线状态" onRetry={onRetryStatus} />
           {statusLoading && !status ? (
             <Loading rows={2} />
           ) : status ? (

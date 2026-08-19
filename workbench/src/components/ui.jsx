@@ -101,11 +101,22 @@ export function Note({ tone = "warn", title, children }) {
   );
 }
 
-export function ErrorNote({ error, what }) {
+/**
+ * `onRetry` 可选。给的话在提示下面多一颗「重试」——**能自己再试一次的错误，
+ * 不该只留一句话让人回去刷浏览器**。不给就还是原来那样，别的调用点一个字不用改。
+ */
+export function ErrorNote({ error, what, onRetry }) {
   if (!error) return null;
   return (
     <Note tone="danger" title={`${what}失败：${error.message}`}>
       {error.hint || "回终端看 npm run dev 的日志"}
+      {onRetry ? (
+        <div className="note-act">
+          <button type="button" className="btn btn-sm" onClick={onRetry}>
+            重试
+          </button>
+        </div>
+      ) : null}
     </Note>
   );
 }

@@ -5,6 +5,7 @@
 // `npm run build` 只用来验证前端能编译过。
 
 import { createApi } from "./api.mjs";
+import { installAutoExit } from "./lib/auto-exit.mjs";
 import { serveTypeset } from "./routes/tools.mjs";
 
 export function workbenchApi(env) {
@@ -15,6 +16,8 @@ export function workbenchApi(env) {
       server.middlewares.use(createApi(env));
       // 公众号排版工具静态托管。放在 Vite 之前，否则会被它的 SPA 回退吃掉
       server.middlewares.use(serveTypeset(env));
+      // 当桌面应用用的那次：关掉窗口就把这个进程也收掉（终端 npm run dev 不受影响）
+      installAutoExit(server);
     },
   };
 }

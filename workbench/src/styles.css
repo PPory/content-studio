@@ -822,6 +822,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .note-warn > svg { color: var(--warn); }
 .note-success > svg { color: var(--ok); }
 .note-hint { color: var(--text-2); margin-top: 4px; font-size: 13px; line-height: 1.7; }
+/* 提示里的行动按钮。和正文留一行的距离，不跟文字挤在一起——它是「接下来做什么」，
+   不是这句话的一部分。 */
+.note-act { margin-top: 9px; }
 .note code, .page-sub code, .note-hint code {
   font-family: var(--font-mono); font-size: 0.86em;
   background: var(--surface-2); padding: 1.5px 6px; border-radius: 5px;

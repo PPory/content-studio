@@ -996,6 +996,14 @@ try {
   await page.click(".sidebar-foot .btn-primary");
   await page.waitForSelector(".drawer", { timeout: 4000 });
   check("入库抽屉打开", true);
+  /**
+   * **默认目标是「收藏」，不是「存素材」**——先收起来、不惊动 AI 是最常见的那一次。
+   * 素材类型芯片因此只在切到「存素材」之后才存在，下面这两条断言都得先切过去。
+   * （原来这里直接数芯片，加了收藏之后就一直是空数组。）
+   */
+  const defaultTarget = await page.textContent('.drawer .seg button[aria-pressed="true"]');
+  check("默认落在收件箱", defaultTarget.trim() === "收件箱", defaultTarget.trim());
+  await page.click('.drawer .seg button:has-text("素材库")');
   const typeBtns = await page.$$eval(".drawer .chip", (els) => els.map((e) => e.textContent.trim()));
   check("入库类型齐全", typeBtns.includes("自动判断") && typeBtns.includes("金句"), typeBtns.join("/"));
   /**
@@ -1037,7 +1045,9 @@ try {
   check("筛选条上「待写」是亮的", onChip.some((t) => t.includes("待写")), onChip.join("/") || "(没有选中项)");
 
   const tabs = await page.$$eval(".pill-tab", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
-  check("流水线四库名称统一", tabs.join("/") === "灵感库/素材库/选题库/稿件库", tabs.join("/"));
+  // 收件箱排在最前面：**它是唯一一个不触发 AI 的入口**，先收起来再决定要不要进流水线，
+  // 顺序本身就是那条链的走向。（加它之前这里只有四段，断言写死过一次，加完就红了。）
+  check("流水线五段名称统一", tabs.join("/") === "收件箱/灵感库/素材库/选题库/稿件库", tabs.join("/"));
   // 侧栏那一项要覆盖四段，否则点进选题会发现「自己不在任何一个导航项里」
   const activeNav = await page.textContent('.nav-item[aria-current="true"]');
   check("侧栏高亮覆盖四段", activeNav.includes("创作"), activeNav.trim());

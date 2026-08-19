@@ -32,7 +32,7 @@ content-studio 的本地工作台：把流水线（同仓的 `worker/`，数据�
 npm install
 npm run dev          # http://127.0.0.1:5180，自动开浏览器
 npm run app:install  # 装成开始菜单里的应用（一次就够），之后点图标启动
-npm run app:stop     # 停掉后台的 dev server
+npm run app:stop     # 停掉后台的 dev server（图标那条路关窗就自己退了，这条留给终端起的那次）
 ```
 
 ## 当桌面应用用（开始菜单 / 任务栏）
@@ -43,6 +43,7 @@ npm run app:stop     # 停掉后台的 dev server
 - ⚠️ **主流程整个包在 `try` 里，而脚本是隐藏跑的、没有控制台**——任何未捕获异常都纯静默：点了图标什么都不发生，日志里也没有。排查的唯一办法是前台跑一遍 `powershell -File scripts/launch.ps1`。
 - **端口从 `vite.config.mjs` 正则读出来**，不在 launcher 里抄第二份——`strictPort` 下抄错就是起不来。
 - **项目一搬家就要重跑 `npm run app:install`**（`.lnk` 记的是绝对路径），任务栏上固定的那份是独立副本、不会跟着改。旧副本还在同一台机器上时，端口通了也可能是**它**——launcher 会反查占用者并说清楚，见文档。
+- **点叉号会把 dev server 一起收掉**（`server/lib/auto-exit.mjs`）：最后一个 HMR 客户端断开、宽限期内没人接回来就退。**只在 `WB_LAUNCHER=1` 时装**——终端 `npm run dev` 关个标签页就没服务，那是更烦的新问题。判据用 HMR 连接数不用 `beforeunload`：刷新也会触发后者，而刷新和关窗在那一刻分不出来。
 - ⚠️ **点图标起的进程继承的是 Explorer 登录那一刻的环境**，后加的用户变量它拿不到。所以别让功能依赖「终端里有这个环境变量」——`workers.dev` 要走的 `HTTPS_PROXY` 就栽在这儿：终端 `npm run dev` 正常，点图标全线「连不上 Worker」。`launch.ps1` 现在自己去查持久化的那几处再传下去。**在终端里验证通过不等于图标那条路也通。**
 
 ## ⚠️ 跑 `tests/shots.mjs` 别用管道掐它
@@ -60,6 +61,7 @@ npm run check          # 不开浏览器：vault 路径、越界防护、Worker 
 npm test               # 冒烟测试：自己起 Vite + 开浏览器，走完读/批注/AI/热点/数据/对话全流程
 node tests/unit.mjs    # 纯函数与文件层：文件名清洗、写盘越界、原子写与快照、导出恢复往返、写请求来源
 npm run build          # 只验前端能编译
+npm run test:app-exit  # 关窗要退、刷新不能退（改 auto-exit.mjs / vite 插件时跑）
 node tests/shots.mjs   # 截图到 tmp/shot-*.png（末尾加 dark 出暗色版）
 ```
 

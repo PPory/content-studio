@@ -9,6 +9,7 @@
     "test": "node tests/smoke.mjs",
     "test:unit": "node tests/unit.mjs",
     "test:extension": "node tests/extension.mjs",
+    "test:app-exit": "node tests/auto-exit.mjs",
     "shots": "node tests/shots.mjs",
     "app:icon": "node scripts/make-icon.mjs",
     "app:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",

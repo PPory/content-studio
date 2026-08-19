@@ -308,6 +308,15 @@ export function startRun({ week, allowFetch, reportPath }) {
   return snapshot(job);
 }
 
+/**
+ * 现在这个进程里有没有一轮洞察在跑。**只看内存，不读盘**——`getRun()` 找不到内存里的
+ * 那一份时会回落到磁盘快照，而崩溃前写下的那份状态很可能永远停在「running」。
+ * 拿它当「能不能退出」的判据，等于让进程被一个早就死掉的任务永久扣住。
+ */
+export function isInsightRunActive() {
+  return !!current && current.status === "running";
+}
+
 export function getRun() {
   if (current) {
     if (current.status === "running") computeProgress(current);

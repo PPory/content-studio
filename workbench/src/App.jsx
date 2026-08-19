@@ -4,7 +4,7 @@
 // 摊成页内 tab 才看得出「东西是从左往右走的」；排成四行侧栏项反而把这层关系藏了。
 // 侧栏那一项高亮的条件是「当前在四段里的任意一段」。
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
@@ -18,6 +18,12 @@ import { Metrics } from "./pages/Metrics.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
+
+/**
+ * 状态读失败后的退避重试间隔。**三档就够**：代理抖一下是秒级的，30 秒还不通
+ * 基本就是代理没开或 Worker 挂了——那种情况再退下去只是让红框来得更晚。
+ */
+const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 // 侧栏项。`match` 用来判断「当前路由算不算这一项」——「创作」要覆盖流水线四段。
 const NAV = [
@@ -67,6 +73,8 @@ export function App() {
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [statusRetrying, setStatusRetrying] = useState(false); // 正在退避重试，还没到该报错的时候
+  const retryTimer = useRef(null);
   const [intake, setIntake] = useState(null); // null=关闭；{} 或 {content,source}=打开
   const [intakeVersion, setIntakeVersion] = useState(0);
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
@@ -99,19 +107,53 @@ export function App() {
     loadConfig();
   }, [loadConfig]);
 
-  const refreshStatus = useCallback(() => {
-    if (!config?.worker?.configured) return;
-    setStatusLoading(true);
-    setStatusError(null);
-    api
-      .status()
-      .then(setStatus)
-      .catch(setStatusError)
-      .finally(() => setStatusLoading(false));
-  }, [config]);
+  /**
+   * 拉一次流水线状态，失败了自己退着重试。
+   *
+   * 为什么必须重试：这台机器访问 workers.dev 要过代理，而代理会抖——切节点、刚开机
+   * 还没连上，都是几百毫秒到几秒的事。原来这里只在挂载时取一次、失败就定死，
+   * 代价是一次抖动换来整页红框 + 侧栏「流水线不可达」+「取不到稿件库」，
+   * 一直挂到你手动刷新浏览器。**而那时候它其实早就通了。**
+   *
+   * 重试期间**不报错、也不停止 loading**：一次网络抖动不该让用户看见任何东西，
+   * 界面上继续是骨架屏（它确实还在读）。三次都没成才是真出事了，那时才亮红框。
+   */
+  const runStatus = useCallback(
+    (attempt = 0) => {
+      if (!config?.worker?.configured) return;
+      clearTimeout(retryTimer.current);
+      setStatusLoading(true);
+      setStatusError(null);
+      api
+        .status()
+        .then((data) => {
+          setStatus(data);
+          setStatusLoading(false);
+          setStatusRetrying(false);
+        })
+        .catch((e) => {
+          const delay = STATUS_RETRY_MS[attempt];
+          // 退完了还不行：这才是用户需要知道的那种失败
+          if (delay == null) {
+            setStatusError(e);
+            setStatusLoading(false);
+            setStatusRetrying(false);
+            return;
+          }
+          setStatusRetrying(true);
+          retryTimer.current = setTimeout(() => runStatus(attempt + 1), delay);
+        });
+    },
+    [config]
+  );
+
+  // 手动触发的刷新（入库完、设置改完）一律从头数：上一轮退到第三档了，
+  // 不该让用户点一下还要等 20 秒
+  const refreshStatus = useCallback(() => runStatus(0), [runStatus]);
 
   useEffect(() => {
     refreshStatus();
+    return () => clearTimeout(retryTimer.current);
   }, [refreshStatus]);
 
   /**
@@ -290,9 +332,9 @@ export function App() {
             *（复用「60px 里放不下就退成一颗点」那条规则，见 .nav-item__dot），
             * 差别全在 CSS 里。
             */}
-          <div className="conn" title={connLabel(config, statusError, status)}>
-            <span className={`dot ${connTone(config, statusError, status)}`} />
-            <span className="nav-item__label conn__label">{connLabel(config, statusError, status)}</span>
+          <div className="conn" title={connLabel(config, statusError, status, statusRetrying)}>
+            <span className={`dot ${connTone(config, statusError, status, statusRetrying)}`} />
+            <span className="nav-item__label conn__label">{connLabel(config, statusError, status, statusRetrying)}</span>
             <button
               className="conn__gear"
               onClick={() => setSettings(true)}
@@ -312,6 +354,7 @@ export function App() {
             status={status}
             statusError={statusError}
             statusLoading={statusLoading}
+            onRetryStatus={refreshStatus}
             onGo={go}
             onIntake={() => setIntake({})}
             onSettings={() => setSettings(true)}
@@ -353,15 +396,21 @@ export function App() {
   );
 }
 
-function connTone(config, error, status) {
+/**
+ * 侧栏那颗点。**重连中是黄的，不是红的**——红色是「你得去处理」，而代理抖一下
+ * 用户什么都不用做，几秒后自己就好了。两者用同一个颜色的话，真出事那次就不显眼了。
+ */
+function connTone(config, error, status, retrying) {
   if (!config?.worker?.configured) return "";
   if (error) return "dot-bad";
+  if (retrying) return "dot-warn";
   return status ? "dot-ok" : "";
 }
 
-function connLabel(config, error, status) {
+function connLabel(config, error, status, retrying) {
   if (!config) return "本地服务连接中…";
   if (!config.worker.configured) return "未连接流水线";
   if (error) return "流水线不可达";
+  if (retrying) return "流水线重连中…";
   return status ? "流水线已连接" : "读取中…";
 }
