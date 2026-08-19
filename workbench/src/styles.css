@@ -3397,17 +3397,22 @@ kbd {
  */
 .set-models { display: flex; flex-direction: column; gap: 12px; }
 .set-models__row {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto); align-items: center; gap: 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 240px; align-items: center; gap: 14px;
 }
 .set-models__copy { min-width: 0; display: grid; gap: 3px; }
 .set-models__copy .field-hint { font-size: 12px; line-height: 1.55; }
-.set-models__row .select { justify-self: end; }
-.set-models__row .select__btn { min-width: 190px; justify-content: flex-start; }
+.set-models__row .select { justify-self: end; width: 100%; }
+.set-models__row .select__btn { width: 100%; justify-content: flex-start; }
 .set-models__row .select__btn svg:last-child { margin-left: auto; }
 .set-models__row .select__pop { right: 0; left: auto; max-height: 300px; overflow-y: auto; }
 .set-models__row input {
-  justify-self: end; width: 190px; padding: 8px 10px; border: 1px solid var(--border-strong);
+  justify-self: end; width: 240px; padding: 8px 10px; border: 1px solid var(--border-strong);
   border-radius: var(--r-ctl); background: var(--canvas); color: inherit; font: inherit; font-size: 12.5px;
+}
+@media (max-width: 620px) {
+  .set-models__row { grid-template-columns: minmax(0, 1fr); }
+  .set-models__row .select,
+  .set-models__row input { justify-self: stretch; width: 100%; }
 }
 /* 自己的保存按钮：这一段写的是 Worker 的库，不跟着底部那条「写入 .env」走 */
 .set-models__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
