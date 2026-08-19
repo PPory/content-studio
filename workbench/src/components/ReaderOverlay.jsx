@@ -409,8 +409,8 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
     try {
       // stamp 是打开这份文档时拿到的版本号。vault 源用它做乐观锁——这些 md 同时
       // 在 Obsidian 里开着，对不上就 409（流水线源没有这个字段，传过去也无害）
-      await source.save(item, { title, markdown: draft, stamp: doc.stamp });
-      onSaved({ title, markdown: draft });
+      const result = await source.save(item, { title, markdown: draft, stamp: doc.stamp });
+      onSaved({ title, markdown: draft, updatedAt: result?.updatedAt });
       setEditing(false);
       setSaved(true);
     } catch (e) {

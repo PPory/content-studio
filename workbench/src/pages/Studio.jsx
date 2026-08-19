@@ -487,7 +487,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
   // 编辑保存后就地刷新那一张卡，不整页重载。
   // 正文也要跟着换——不换的话，退出编辑器看到的还是改之前那一版，像是没存上
   const onSaved = useCallback(
-    ({ title, status, markdown }) => {
+    ({ title, status, markdown, updatedAt }) => {
       setDoc((d) =>
         d
           ? {
@@ -496,13 +496,42 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
               status: status ?? d.status,
               content: markdown ?? d.content,
               markdown: markdown ?? d.markdown,
+              updatedAt: updatedAt || d.updatedAt,
             }
           : d
       );
-      if (active) patchItem(active.key, { title: title ?? active.title, badge: status ?? active.badge });
+      if (active) {
+        const patch = {
+          title: title ?? active.title,
+          raw: updatedAt ? { ...active.raw, editedAt: updatedAt } : active.raw,
+        };
+        // 编辑收藏只会改标题和正文，不能拿打开时的旧 badge 覆盖刚刚完成的“保留/归档”状态。
+        if (status != null) patch.badge = status;
+        patchItem(active.key, patch);
+      }
     },
     [active, patchItem]
   );
+
+  const onCollectionChanged = useCallback((result) => {
+    if (!active) return;
+    const applied = result?.results?.find((item) => item.id === active.key && item.ok);
+    if (!applied) return;
+    const reviewStatus = applied.action === "archive" ? "archived" : "kept";
+    const raw = {
+      ...active.raw,
+      reviewStatus,
+      status: reviewStatus,
+      ...(applied.action === "idea" ? { processingMode: "triage" } : {}),
+    };
+    patchItem(active.key, { badge: reviewStatus === "archived" ? "已归档" : "已收藏", raw });
+    source.load({ ...active, raw }).then((fresh) => {
+      setDoc(fresh);
+      if (fresh?.updatedAt) patchItem(active.key, { raw: { ...raw, editedAt: fresh.updatedAt } });
+    }).catch(() => {});
+    reload();
+    onChanged?.();
+  }, [active, onChanged, patchItem, reload, source]);
 
   // 划词 AI 的中止归 useAiRuns 自己管，这里只收对话那条
   useEffect(() => () => stopChat(), [stopChat]);   // 卸载时别让请求接着烧 token
@@ -619,8 +648,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           onSaved={onSaved}
           onStatus={sourceKey === "collections" ? null : (next) => changeStatus(active, next)}
           onDelete={source.remove ? removeItem : null}
-          onCover={runCover}
-          onTypeset={openTypeset}
+          onCover={sourceKey === "collections" ? null : runCover}
+          onTypeset={sourceKey === "collections" ? null : openTypeset}
           outline={outline}
           onOutline={setOutline}
           /**
@@ -640,7 +669,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, c
           })}
           extra={
             sourceKey === "collections" ? (
-              <CollectionActions item={active} onExtract={(item) => setOrganizerItems([item])} onChanged={() => { reload(); source.load(active).then(setDoc).catch(() => {}); onChanged?.(); }} />
+              <CollectionActions item={active} updatedAt={doc?.updatedAt} onExtract={(item) => setOrganizerItems([item])} onChanged={onCollectionChanged} />
             ) : sourceKey === "materials" ? (
               <MaterialVerificationPanel
                 item={active}

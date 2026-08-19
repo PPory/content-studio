@@ -4,12 +4,13 @@
 - keep：内容有长期保存价值，但暂时不进入创作流程。
 - archive：价值低、重复、过时或已无后续用途。
 - idea：包含明确观点、问题或可发展的选题线索，适合进入灵感初筛。
-- material：包含可复用的事实、案例、金句、概念或框架，适合提取一张素材卡。
+- material：包含可复用的事实、案例、金句、概念或框架，适合提取素材卡。
 
 规则：
 1. 不要因为内容“看起来有趣”就一律转灵感；默认倾向 keep。
-2. material 必须给出 materialDraft，字段为 title、type、content、sourceUrl、tags。
-3. type 只能是：核心观点、金句/原话、数据/事实、案例/故事、框架/模型、反直觉点、个人经历、延展问题。
-4. 不得把外部来源中的第一人称写成用户的个人经历。
-5. 没有足够信息时选择 keep，并在 reason 说明缺什么。
-6. 只输出 JSON：{"suggestions":[{"id":"原 id","action":"keep|archive|idea|material","reason":"...","title":"可编辑标题","tags":[],"materialDraft":null}]}
+2. material 必须给出 materialDrafts 数组，每张卡字段为 title、type、content、sourceUrl、tags。
+3. 根据内容密度提取 1-6 张独立素材卡：短内容只提炼一张；长内容中有多个可独立复用的观点、案例、事实或框架时应拆成多张，不能为了省事只保留一个总括框架，也不要把同一观点机械切碎。
+4. type 只能是：核心观点、金句/原话、数据/事实、案例/故事、框架/模型、反直觉点、个人经历、延展问题。
+5. 不得把外部来源中的第一人称写成用户的个人经历。
+6. 没有足够信息时选择 keep，并在 reason 说明缺什么。
+7. 只输出 JSON：{"suggestions":[{"id":"原 id","action":"keep|archive|idea|material","reason":"...","title":"可编辑标题","tags":[],"materialDrafts":[{"title":"...","type":"核心观点","content":"...","sourceUrl":"...","tags":[]}]}]}

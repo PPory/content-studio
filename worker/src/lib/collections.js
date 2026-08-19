@@ -1,11 +1,12 @@
 import { all, first, getRow, insertRow, updateRow, upsertByTaskKey, setTags, now } from "./db.js";
-import { INBOX_STATUS, normMaterialType, VERIFICATION } from "./values.js";
+import { INBOX_STATUS, VERIFICATION } from "./values.js";
 import { fetchArticle } from "./reader.js";
 import { chatJson } from "./llm.js";
 import { modelFor } from "./models.js";
 import { COLLECTION_ORGANIZE_PROMPT, KNOWLEDGE_CARD_PROMPT } from "../prompts.js";
 import { canonicalizeUrl, hashCollectionText } from "./collection-key.js";
 import { collectionTitle } from "./collection-title.js";
+import { cleanCollectionTags, normalizeMaterialDrafts } from "./collection-materials.js";
 
 const VIDEO_HOSTS = /(?:youtube\.com|youtu\.be|bilibili\.com|vimeo\.com|douyin\.com)/i;
 const ACTIONS = new Set(["keep", "archive", "idea", "material"]);
@@ -13,7 +14,6 @@ const REVIEW = new Set(["pending", "kept", "archived"]);
 function cleanTitle(value) {
   return String(value || "").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
 }
-
 export async function storeCollection(env, input = {}) {
   const content = String(input.content || "").trim().slice(0, 20_000);
   const selection = String(input.selection || "").trim().slice(0, 8_000);
@@ -104,16 +104,18 @@ export async function previewCollectionOrganize(env, input = {}) {
     if (!byId.has(id) || seen.has(id)) return [];
     seen.add(id);
     const action = ACTIONS.has(raw?.action) ? raw.action : "keep";
-    const materialDraft = action === "material" ? {
-      title: cleanTitle(raw?.materialDraft?.title || raw?.title || byId.get(id).title),
-      type: normMaterialType(raw?.materialDraft?.type),
-      content: String(raw?.materialDraft?.content || byId.get(id).selection || byId.get(id).body || "").trim().slice(0, 20_000),
-      sourceUrl: String(raw?.materialDraft?.sourceUrl || byId.get(id).link || "").slice(0, 2048),
-      tags: (Array.isArray(raw?.materialDraft?.tags) ? raw.materialDraft.tags : []).map(String).map((x) => x.trim()).filter(Boolean).slice(0, 6),
-    } : null;
-    return [{ id, action, reason: String(raw?.reason || "").slice(0, 500), title: cleanTitle(raw?.title || byId.get(id).title), tags: (Array.isArray(raw?.tags) ? raw.tags : []).map(String).slice(0, 6), materialDraft, updatedAt: new Date(byId.get(id).updated_at * 1000).toISOString() }];
+    const materialDrafts = action === "material" ? normalizeMaterialDrafts(raw, byId.get(id)) : [];
+    return [{
+      id,
+      action,
+      reason: String(raw?.reason || "").slice(0, 500),
+      title: cleanTitle(raw?.title || byId.get(id).title),
+      tags: cleanCollectionTags(raw?.tags),
+      materialDrafts,
+      updatedAt: new Date(byId.get(id).updated_at * 1000).toISOString(),
+    }];
   });
-  for (const row of rows) if (!seen.has(row.id)) suggestions.push({ id: row.id, action: "keep", reason: "AI 未给出可靠建议，先保留。", title: row.title, tags: [], materialDraft: null, updatedAt: new Date(row.updated_at * 1000).toISOString() });
+  for (const row of rows) if (!seen.has(row.id)) suggestions.push({ id: row.id, action: "keep", reason: "AI 未给出可靠建议，先保留。", title: row.title, tags: [], materialDrafts: [], updatedAt: new Date(row.updated_at * 1000).toISOString() });
   return { ok: true, suggestions };
 }
 
@@ -134,24 +136,37 @@ export async function applyCollectionOrganize(env, input = {}) {
       if (action === "keep") await updateRow(env, "inbox", id, { title, review_status: "kept" });
       if (action === "archive") await updateRow(env, "inbox", id, { title, review_status: "archived" });
       if (action === "idea") await updateRow(env, "inbox", id, { title, review_status: "kept", processing_mode: "triage", status: INBOX_STATUS.PENDING });
-      let materialId = "";
+      const materialIds = [];
       if (action === "material") {
-        const draft = item.materialDraft || {};
-        const saved = await upsertByTaskKey(env, "materials", `collection-organize:${id}:material`, {
-          title: cleanTitle(draft.title || title), content: String(draft.content || row.selection || row.body || "").trim().slice(0, 20_000),
-          type: normMaterialType(draft.type), source_url: String(draft.sourceUrl || row.link || "").slice(0, 2048), inbox_id: id,
-          verification: VERIFICATION.NA, verification_note: "",
-        }, { preserve: ["title", "content", "type", "verification", "verification_note"] });
-        materialId = saved.id;
-        if (saved.created) await setTags(env, "material", saved.id, Array.isArray(draft.tags) ? draft.tags.slice(0, 6) : []);
+        const drafts = normalizeMaterialDrafts(item, row);
+        for (const [index, draft] of drafts.entries()) {
+          // 第一张沿用旧版 task_key，升级前已经提取过的收藏不会再多建一张。
+          const taskKey = index === 0
+            ? `collection-organize:${id}:material`
+            : `collection-organize:${id}:material:${draft.key}`;
+          const saved = await upsertByTaskKey(env, "materials", taskKey, {
+            title: cleanTitle(draft.title || title), content: draft.content,
+            type: draft.type, source_url: draft.sourceUrl, inbox_id: id,
+            verification: VERIFICATION.NA, verification_note: "",
+          }, { preserve: ["title", "content", "type", "verification", "verification_note"] });
+          materialIds.push(saved.id);
+          if (saved.created) await setTags(env, "material", saved.id, draft.tags);
+        }
         await updateRow(env, "inbox", id, { title, review_status: "kept" });
       }
-      results.push({ id, ok: true, action, materialId: materialId || undefined });
+      results.push({ id, ok: true, action, materialId: materialIds[0], materialIds });
     } catch (error) {
       results.push({ id, ok: false, status: 500, error: String(error?.message || error).slice(0, 500) });
     }
   }
-  return { ok: results.some((r) => r.ok), results };
+  // 这是逐条执行接口：HTTP/顶层请求成功与否，不能被某条业务冲突绑架。
+  // 否则全部冲突时前端只看到“HTTP 200 请求失败”，看不到 results 里的真实原因。
+  return {
+    ok: true,
+    results,
+    successCount: results.filter((r) => r.ok).length,
+    failedCount: results.filter((r) => !r.ok).length,
+  };
 }
 
 export async function previewKnowledgeCard(env, input = {}) {

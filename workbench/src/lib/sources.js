@@ -68,7 +68,7 @@ export const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"]
  * 整个失效——状态被直接写回库里，Worker 五分钟内就领走选题、按三个平台跑了三遍 LLM。
  * 这类漏字段不会报错，只会安静地少一个功能。
  */
-function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true }) {
+function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true, editTarget = "流水线" }) {
   return {
     key,
     label,
@@ -136,6 +136,7 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
         format: "markdown",
         editable,
         status: item.raw.status || "",
+        updatedAt: page.meta?.editedAt || item.raw?.editedAt || "",
       };
     },
 
@@ -151,8 +152,8 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
 
     // 编辑器上的字**由源来说**：这一套界面书架也在用，写死一个具体的库名就是句假话
     edit: {
-      target: "流水线",
-      save: "保存到流水线",
+      target: editTarget,
+      save: `保存到${editTarget}`,
       // ⚠️ **原来这句写的是「Notion 里删掉的块可从页面历史找回」——换 D1 之后它成了假话。**
       // 库里没有逐行的版本历史，一条 UPDATE 覆盖过去就没了。承诺「能找回」的提示，
       // 会让人放心地覆盖掉找不回来的东西，和删除按钮那条是同一个道理。
@@ -165,6 +166,8 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
       if (title != null && title !== item.title) props.title = title;
       if (Object.keys(props).length) await api.updateFields(key, item.key, props);
       if (markdown != null) await api.saveContent(key, item.key, markdown);
+      const fresh = await api.page(item.key, key);
+      return { updatedAt: fresh.meta?.editedAt || "" };
     },
 
     /**
@@ -210,7 +213,8 @@ export const COLLECTIONS = pipelineSource({
   stateTabs: ["待整理", "已收藏", "已归档"],
   defaultState: "待整理",
   board: false,
-  editable: false,
+  editable: true,
+  editTarget: "收件箱",
   removable: true,
   emptyHint: "收件箱还是空的",
   mapItem: (p) => ({

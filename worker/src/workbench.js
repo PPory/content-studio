@@ -42,6 +42,7 @@ import {
 } from "./lib/collections.js";
 import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
+import { hashCollectionText } from "./lib/collection-key.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -895,8 +896,16 @@ async function replaceContent(env, body) {
     assertGroundedGeneratedText(markdown, await personalEvidence(env));
   }
 
-  const COLUMN = { inbox: "body", materials: "content", topics: "notes", drafts: "body" }[body.view];
-  await updateRow(env, view.table, pageId, { [COLUMN]: markdown });
+  if (body.view === "collections") {
+    const row = await getRow(env, "inbox", pageId);
+    if (!row || row.capture_origin !== "collection") return json({ ok: false, error: "收藏不存在" }, 404);
+    const fields = { body: markdown, selection: markdown };
+    if (!row.canonical_url) fields.content_hash = await hashCollectionText(markdown);
+    await updateRow(env, "inbox", pageId, fields);
+  } else {
+    const COLUMN = { inbox: "body", materials: "content", topics: "notes", drafts: "body" }[body.view];
+    await updateRow(env, view.table, pageId, { [COLUMN]: markdown });
+  }
   return json({ ok: true, added: markdown.length });
 }
 

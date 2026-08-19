@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { canonicalizeUrl, hashCollectionText } from "../src/lib/collection-key.js";
 import { collectionTitle } from "../src/lib/collection-title.js";
 import { collectionMarkdown } from "../src/lib/collection-text.js";
+import { normalizeMaterialDrafts } from "../src/lib/collection-materials.js";
 
 test("链接去锚点、追踪参数并固定查询顺序", () => {
   assert.equal(canonicalizeUrl("HTTPS://Example.com/a/?utm_source=x&b=2&a=1#part"), "https://example.com/a?a=1&b=2");
@@ -93,4 +94,40 @@ test("收件箱阅读保留原有结构，并修复旧版扩展压平的长正�
 test("收件箱删除不能越权删除同表里的灵感", () => {
   const source = fs.readFileSync(new URL("../src/workbench.js", import.meta.url), "utf8");
   assert.match(source, /body\.view === "collections" && row\?\.capture_origin !== "collection"/);
+});
+
+test("长收藏可生成多张独立素材，并兼容旧版单素材草稿", () => {
+  const row = { title: "长文", selection: "原文", link: "https://example.com/a" };
+  const drafts = normalizeMaterialDrafts({
+    materialDrafts: [
+      { title: "观点", type: "核心观点", content: "观点正文", tags: ["思考"] },
+      { title: "案例", type: "案例/故事", content: "案例正文", tags: ["案例"] },
+    ],
+  }, row);
+  assert.equal(drafts.length, 2);
+  assert.deepEqual(drafts.map((draft) => draft.key), ["material-1", "material-2"]);
+  assert.deepEqual(drafts.map((draft) => draft.type), ["核心观点", "案例/故事"]);
+
+  const legacy = normalizeMaterialDrafts({ materialDraft: { title: "旧草稿", content: "旧正文" } }, row);
+  assert.equal(legacy.length, 1);
+  assert.equal(legacy[0].title, "旧草稿");
+});
+
+test("素材草稿最多六张，重复 key 会被稳定区分", () => {
+  const drafts = normalizeMaterialDrafts({ materialDrafts: Array.from({ length: 8 }, (_, index) => ({ key: "same", title: `素材 ${index + 1}`, content: `正文 ${index + 1}` })) });
+  assert.equal(drafts.length, 6);
+  assert.equal(new Set(drafts.map((draft) => draft.key)).size, 6);
+});
+
+test("收藏整理逐条失败不会再被顶层 HTTP 200 错误遮住", () => {
+  const source = fs.readFileSync(new URL("../src/lib/collections.js", import.meta.url), "utf8");
+  assert.match(source, /ok:\s*true,\s*\n\s*results,/);
+  assert.match(source, /failedCount:/);
+});
+
+test("收藏正文允许二次编辑并同步更新选区与文本指纹", () => {
+  const source = fs.readFileSync(new URL("../src/workbench.js", import.meta.url), "utf8");
+  assert.match(source, /body\.view === "collections"/);
+  assert.match(source, /body: markdown, selection: markdown/);
+  assert.match(source, /content_hash = await hashCollectionText\(markdown\)/);
 });
