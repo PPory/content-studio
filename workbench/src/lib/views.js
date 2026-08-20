@@ -44,8 +44,8 @@ export const TODO_CARDS = [
 ];
 
 export const AUTO_CARDS = [
-  { key: "待初筛", label: "待初筛", view: "inbox", state: "待初筛", hint: "自动初筛每 5 分钟跑一次" },
-  { key: "待整理", label: "待整理", view: "inbox", state: "待选题", hint: "每天 14:00 聚类成选题" },
+  { key: "待初筛", label: "待初筛", view: "materials", state: "待处理", hint: "自动初筛每 5 分钟跑一次" },
+  { key: "待整理", label: "待整理", view: "materials", state: "已收纳", hint: "每天 14:00 聚类成选题" },
   { key: "选题撰写中", label: "撰写中", view: "topics", state: "撰写中", hint: "成稿任务正在处理" },
 ];
 

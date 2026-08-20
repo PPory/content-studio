@@ -188,9 +188,9 @@ function CollectionReminder({ collections, onGo }) {
   if (!collections) return null;
   const oldestDays = collections.oldestPendingAt ? Math.floor((Date.now() - Date.parse(collections.oldestPendingAt)) / 86400_000) : 0;
   if (collections.pending < 20 && oldestDays <= 7) return null;
-  return <Note tone="warning" title={`收件箱有 ${collections.pending} 条待整理`}>
-    最早一条已放了 {oldestDays} 天。系统不会在后台替你自动分流。
-    <button className="btn btn-sm" onClick={() => onGo("collections", "待整理")}>去整理 Inbox</button>
+  return <Note tone="warning" title={`素材工作区有 ${collections.pending} 条待处理来源`}>
+    最早一条已放了 {oldestDays} 天。系统不会替你决定它是否值得留下。
+    <button className="btn btn-sm" onClick={() => onGo("materials", "待处理")}>去处理</button>
   </Note>;
 }
 

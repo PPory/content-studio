@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
+import { normalizeMaterialRoute } from "./lib/open-target.js";
 import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
@@ -43,11 +44,6 @@ const NAV = [
   },
   {
     key: "materials", to: "materials", match: (v) => MATERIAL_VIEWS.has(v),
-    children: [
-      { to: "materials", label: "素材库" },
-      { to: "collections", label: "收件箱" },
-      { to: "inbox", label: "灵感库" },
-    ],
   },
   {
     key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v),
@@ -88,9 +84,16 @@ function readHash() {
   const raw = window.location.hash.replace(/^#\/?/, "");
   const [rawView = "", ...rest] = raw.split("/");
   const decodedView = decodeURIComponent(rawView) || "today";
+  const decodedState = decodeURIComponent(rest.join("/"));
+  const legacyMaterial = normalizeMaterialRoute(decodedView, decodedState);
+  if (legacyMaterial) {
+    const canonical = `#/materials${legacyMaterial.state ? `/${encodeURIComponent(legacyMaterial.state)}` : ""}`;
+    window.history.replaceState(null, "", canonical);
+    return legacyMaterial;
+  }
   // 发现旧入口只做兼容跳转，不再让用户经过一张中转页。
   const view = decodedView === "discover" ? "hot" : decodedView;
-  return { view: VIEWS.includes(view) ? view : "today", state: decodeURIComponent(rest.join("/")) };
+  return { view: VIEWS.includes(view) ? view : "today", state: decodedState };
 }
 
 export function App() {
@@ -431,7 +434,7 @@ export function App() {
           <Shelf onIntake={setIntake} state={route.state} />
         ) : STUDIO.has(route.view) ? (
           <Studio
-            sourceKey={route.view}
+            sourceKey={route.view === "materials" ? "material-workspace" : route.view}
             state={route.state}
             counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
             onState={(s) => go(route.view, s)}

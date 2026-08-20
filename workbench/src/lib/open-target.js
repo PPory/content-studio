@@ -20,6 +20,39 @@
 
 const pending = new Map();
 
+const MATERIAL_VIEWS = new Set(["collections", "inbox", "materials"]);
+
+// 旧的三库搜索结果统一落到素材工作区。复合 key 同时保留原对象类型和真实 id，
+// 避免 inbox 与 materials 恰好出现同 id 时打开错对象。
+export function normalizeMaterialOpen(view, key) {
+  if (!MATERIAL_VIEWS.has(view) || !key) return null;
+  const value = String(key);
+  return {
+    view: "materials",
+    targetView: "material-workspace",
+    key: value.includes(":") ? value : `${view}:${value}`,
+  };
+}
+
+export function normalizeMaterialRoute(view, state = "") {
+  if (view !== "collections" && view !== "inbox") return null;
+  const value = String(state || "");
+  if (view === "collections") {
+    const stage = ["pending", "待整理"].includes(value)
+      ? "待处理"
+      : ["archived", "已归档"].includes(value)
+        ? "已归档"
+        : value ? "已收纳" : "";
+    return { view: "materials", state: stage };
+  }
+  const stage = ["待初筛", "初筛失败/需人工", "处理中", "需处理"].includes(value)
+    ? "待处理"
+    : ["已弃用", "已归档"].includes(value)
+      ? "已归档"
+      : value ? "已收纳" : "";
+  return { view: "materials", state: stage };
+}
+
 export function setOpenTarget(view, key) {
   if (!view || !key) return;
   pending.set(view, key);

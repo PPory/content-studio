@@ -19,7 +19,10 @@ export function DocCard({ item, onOpen, onDelete, removeLabel }) {
     <article className="wall-card">
       <button className="wall-card__open" onClick={onOpen} aria-label={`打开：${item.title}`}>
         <div className="wall-card__top">
-          {item.badge ? <span className="tag tag--state">{item.badge}</span> : <span />}
+          <span className="wall-card__signals">
+            {item.kindLabel ? <span className="tag tag--kind">{item.kindLabel}</span> : null}
+            {item.badge ? <span className="tag tag--state">{item.badge}</span> : null}
+          </span>
           <time>{item.time ? relTime(item.time) : ""}</time>
         </div>
         {/* 标题恒占两行（CSS 里 clamp + min-height），所以完整标题挂在 title 上 */}
@@ -33,6 +36,7 @@ export function DocCard({ item, onOpen, onDelete, removeLabel }) {
             <strong>{item.warning.title}</strong>
           </p>
         ) : null}
+        {item.trace ? <div className="wall-card__trace">{item.trace}</div> : null}
         {item.tags?.length ? (
           <div className="wall-card__tags">
             {item.tags.slice(0, 4).map((t) => (

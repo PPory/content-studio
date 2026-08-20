@@ -114,26 +114,27 @@ export function IntakeDrawer({ open, onClose, preset, onStored, collectionsEnabl
           />
         </div>
 
-        {/* 分流是**互斥的去处**，所以仍然是黑块 seg：黑块的语言是「你现在在这儿」 */}
+        {/* 用户选择的是“这条内容现在需要怎样处理”，底层仍复用三种存储目标，
+            但不再把数据库对象冒充成三个并列的产品入口。 */}
         <div className="field">
-          <label>存到哪</label>
+          <label>先怎么处理</label>
           <div className="seg">
             <button type="button" aria-pressed={target === "collection"} onClick={() => setTarget("collection")}>
-              收件箱
+              稍后整理
             </button>
             <button type="button" aria-pressed={target === "inbox"} onClick={() => setTarget("inbox")}>
-              灵感库
+              记下想法
             </button>
             <button type="button" aria-pressed={target === "material"} onClick={() => setTarget("material")}>
-              素材库
+              直接作为素材
             </button>
           </div>
           <div className="field-hint">
             {target === "collection"
-              ? collectionsEnabled ? "只收藏，不调用 AI，也不会自动进入创作流程" : "当前 Worker 未完成 Inbox 迁移；为防止误存成素材，收藏已禁用"
+              ? collectionsEnabled ? "先保留原文和出处，之后再决定是否提炼成素材" : "当前收藏能力不可用；为防止误存，暂时不能选择这一项"
               : target === "material"
-              ? "直接成为素材卡，成稿时按标签被检索到"
-              : "走正常初筛流程（每 5 分钟一轮），由系统判断价值再分流"}
+              ? "直接成为可复用素材，写作时可按标签检索"
+              : "记录为一个待整理的想法，由系统辅助判断价值和去向"}
           </div>
         </div>
 
@@ -163,10 +164,10 @@ export function IntakeDrawer({ open, onClose, preset, onStored, collectionsEnabl
         <ErrorNote error={error} what="入库" />
 
         {done && (
-          <Note tone="success" title={done.duplicate ? "这条已经收藏过" : `已存入${done.target === "collection" ? "收件箱" : done.target === "inbox" ? "灵感库" : `素材库（${done.dbType}）`}`}>
+          <Note tone="success" title={done.duplicate ? "这条已经收藏过" : done.target === "material" ? `已加入素材工作区（${done.dbType}）` : "已加入素材工作区"}>
             <div style={{ marginTop: 4 }}>{done.title || done.existing?.title}</div>
             {done.duplicate ? <div className="row-actions" style={{ marginTop: 8 }}>
-              <button type="button" className="btn btn-sm" onClick={() => { window.location.hash = "#/collections"; onClose(); }}>打开已有收藏</button>
+              <button type="button" className="btn btn-sm" onClick={() => { window.location.hash = "#/materials/待处理"; onClose(); }}>打开已有收藏</button>
               <button type="button" className="btn btn-sm" disabled={busy} onClick={() => store(true)}>仍然保存副本</button>
             </div> : null}
             <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -183,7 +184,7 @@ export function IntakeDrawer({ open, onClose, preset, onStored, collectionsEnabl
           <button type="button" className="btn" onClick={onClose}>取消</button>
           <button className="btn btn-primary" disabled={busy || !content.trim() || (target === "collection" && !collectionsEnabled)}>
             <IconArchive aria-hidden="true" stroke={1.8} />
-          {busy ? "存入中…" : target === "collection" ? "收藏到收件箱" : target === "inbox" ? "存进灵感库" : "存进素材库"}
+          {busy ? "存入中…" : target === "collection" ? "先收下" : target === "inbox" ? "记下想法" : "加入素材"}
           </button>
         </div>
       </form>

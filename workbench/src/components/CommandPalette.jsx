@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
 import { api } from "../lib/api.js";
 import { recentOpened, recentQueries, noteQuery } from "../lib/recent.js";
-import { setOpenTarget } from "../lib/open-target.js";
+import { normalizeMaterialOpen, setOpenTarget } from "../lib/open-target.js";
 import { bookProgress, pct, recentReadings, resumeEntry } from "../lib/reading.js";
 import {
   IconBook2,
@@ -165,8 +165,14 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
       noteQuery(q);
       const go = row.go || {};
       if (go.view) {
-        if (go.open) setOpenTarget(go.view, go.open);
-        onGo(go.view, go.state);
+        const material = normalizeMaterialOpen(go.view, go.open);
+        if (material) {
+          setOpenTarget(material.targetView, material.key);
+          onGo(material.view, "");
+        } else {
+          if (go.open) setOpenTarget(go.view, go.open);
+          onGo(go.view, go.state);
+        }
         onClose();
         return;
       }
@@ -225,7 +231,7 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-          placeholder="搜书、灵感库、素材库、选题库、稿件库、洞察、已发布作品…"
+          placeholder="搜书、素材、选题、稿件、洞察、已发布作品…"
             aria-label="搜索"
           />
           {busy ? <span className="cmdk__busy">搜索中…</span> : null}

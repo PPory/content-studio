@@ -12,8 +12,8 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
       <div className="panel-head__main">
         <span className="eyebrow">{(source.eyebrow || source.key).toUpperCase()}</span>
         <h2>
-          {source.label}
-          {list ? <span className="panel-head__count">{list.items.length}{list.nextCursor ? "+" : ""} 条</span> : null}
+          {source.panelLabel || source.label}
+          {list ? <span className="panel-head__count">{list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条</span> : null}
         </h2>
       </div>
       <div className="panel-head__aside">
@@ -23,7 +23,7 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索标题、内容或标签 /"
+            placeholder={source.isMaterialWorkspace ? "搜索来源、素材或标签 /" : "搜索标题、内容或标签 /"}
             onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())}
           />
         </label>
@@ -39,8 +39,8 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
             </button>
           </div>
         ) : null}
-        {sourceKey === "collections" ? <button className="btn btn-sm" onClick={onOrganize}>整理 Inbox</button> : null}
-        {isPipeline ? (
+        {sourceKey === "collections" || source.isMaterialWorkspace ? <button className="btn btn-sm" onClick={onOrganize}>整理待处理来源</button> : null}
+        {isPipeline && !source.isMaterialWorkspace ? (
           <button
             className="btn btn-primary btn-sm"
             onClick={() => sourceKey === "topics"

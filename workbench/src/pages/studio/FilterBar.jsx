@@ -5,14 +5,18 @@
 // `source.states`、`layout` 和 `facetPick` 三样，是页面的编排问题不是这一条的事。
 import { Select, fieldIcon, valueIcon } from "../../components/ui.jsx";
 
-export function FilterBar({ source, layout, state, onState, facet, setFacet, facetPick }) {
+export function FilterBar({ source, layout, state, onState, facet, setFacet, facetPick, verification, setVerification, counts = {} }) {
+  const verificationOptions = source.verificationFilters || [];
+  const verificationAll = "全部核验状态";
   return (
     <div className="filter-bar">
       {source.stateTabs?.length && layout === "wall" ? (
-        <div className="chips chips-sm">
-          <button className="chip" aria-pressed={!state} onClick={() => onState("")}>全部</button>
+        <div className="chips chips-sm" aria-label="按处理状态筛选">
+          <button className="chip" aria-pressed={!state} onClick={() => onState("")}>全部{counts.total != null ? ` ${counts.total}` : ""}</button>
           {source.stateTabs.map((s) => (
-            <button key={s} className="chip" aria-pressed={state === s} onClick={() => onState(s)}>{s}</button>
+            <button key={s} className="chip" aria-pressed={state === s} onClick={() => onState(s)}>
+              {s}{counts[s] != null ? ` ${counts[s]}` : ""}
+            </button>
           ))}
         </div>
       ) : null}
@@ -36,6 +40,15 @@ export function FilterBar({ source, layout, state, onState, facet, setFacet, fac
           }}
           ariaLabel={`按${source.facet.label}筛选`}
           title={`只看某一个${source.facet.label}的条目`}
+        />
+      ) : null}
+      {verificationOptions.length ? (
+        <Select
+          value={verification || verificationAll}
+          options={[verificationAll, ...verificationOptions]}
+          onChange={(value) => setVerification(value === verificationAll ? "" : value)}
+          ariaLabel="按核验状态筛选"
+          title="只看某一种证据核验状态"
         />
       ) : null}
     </div>

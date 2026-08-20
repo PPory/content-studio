@@ -45,6 +45,12 @@ import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
 import { getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
+import {
+  MATERIAL_LIBRARY_CTE,
+  MATERIAL_LIBRARY_STAGES,
+  materialLibraryWhere,
+  parseMaterialLibraryQuery,
+} from "./lib/material-library.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -87,13 +93,15 @@ const VIEWS = {
     map: (r) => ({
       id: r.id,
       title: r.title,
-      status: r.workflow_status || (r.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING),
+      status: r.status,
       type: r.kind,
       value: r.value_judgment,
       note: r.verdict,
       tags: [],
       link: r.link,
       source: r.source,
+      materialIds: [],
+      topicIds: [],
     }),
   },
   materials: {
@@ -143,7 +151,7 @@ const VIEWS = {
     map: (r) => ({
       id: r.id,
       title: r.headline,
-      status: r.status,
+      status: r.workflow_status || (r.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING),
       platform: r.platform,
       note: r.summary,
       topicIds: r.topic_id ? [r.topic_id] : [],
@@ -269,6 +277,8 @@ export async function handleWorkbench(request, env, ctx, url) {
     // （非 JSON，客户端只能看到「HTTP 500」，真实报错全丢）。
     const listMatch = path.match(/^list\/([a-z]+)$/);
     if (listMatch && request.method === "GET") return await listRows(env, url, listMatch[1]);
+
+    if (path === "materials" && request.method === "GET") return await listMaterialLibrary(env, url);
 
     if (path === "projects" && request.method === "GET") return await listProjects(env, url);
 
@@ -468,6 +478,189 @@ async function listRows(env, url, viewKey) {
   }
 
   return json({ ok: true, items: decorate(await enrich(env, viewKey, rows), rows), nextCursor });
+}
+
+const unique = (values = []) => [...new Set(values.filter(Boolean))];
+
+function addRelation(map, owner, value) {
+  if (!owner || !value) return;
+  if (!map.has(owner)) map.set(owner, []);
+  map.get(owner).push(value);
+}
+
+async function materialLibraryRelations(env, sourceIds, materialIds) {
+  const sourceMaterial = new Map();
+  const sourceTopic = new Map();
+  const sourceDraft = new Map();
+  const materialTopic = new Map();
+  const materialDraft = new Map();
+
+  if (sourceIds.length) {
+    const selected = sourceIds.map(() => "(?)").join(",");
+    const rows = await all(env, `WITH selected(id) AS (VALUES ${selected})
+      SELECT m.inbox_id AS owner_id, 'material' AS relation, m.id AS target_id
+        FROM materials m WHERE m.inbox_id IN (SELECT id FROM selected)
+      UNION ALL
+      SELECT ti.inbox_id AS owner_id, 'topic' AS relation, ti.topic_id AS target_id
+        FROM topic_inbox ti WHERE ti.inbox_id IN (SELECT id FROM selected)
+      UNION ALL
+      SELECT m.inbox_id AS owner_id, 'topic' AS relation, tm.topic_id AS target_id
+        FROM materials m JOIN topic_materials tm ON tm.material_id = m.id
+       WHERE m.inbox_id IN (SELECT id FROM selected)
+      UNION ALL
+      SELECT ti.inbox_id AS owner_id, 'draft' AS relation, d.id AS target_id
+        FROM topic_inbox ti JOIN drafts d ON d.topic_id = ti.topic_id
+       WHERE ti.inbox_id IN (SELECT id FROM selected)
+      UNION ALL
+      SELECT m.inbox_id AS owner_id, 'draft' AS relation, d.id AS target_id
+        FROM materials m
+        JOIN topic_materials tm ON tm.material_id = m.id
+        JOIN drafts d ON d.topic_id = tm.topic_id
+       WHERE m.inbox_id IN (SELECT id FROM selected)`,
+      ...sourceIds
+    );
+    for (const row of rows) {
+      if (row.relation === "material") addRelation(sourceMaterial, row.owner_id, row.target_id);
+      if (row.relation === "topic") addRelation(sourceTopic, row.owner_id, row.target_id);
+      if (row.relation === "draft") addRelation(sourceDraft, row.owner_id, row.target_id);
+    }
+  }
+
+  if (materialIds.length) {
+    const selected = materialIds.map(() => "(?)").join(",");
+    const rows = await all(env, `WITH selected(id) AS (VALUES ${selected})
+      SELECT tm.material_id AS owner_id, 'topic' AS relation, tm.topic_id AS target_id
+        FROM topic_materials tm WHERE tm.material_id IN (SELECT id FROM selected)
+      UNION ALL
+      SELECT tm.material_id AS owner_id, 'draft' AS relation, d.id AS target_id
+        FROM topic_materials tm JOIN drafts d ON d.topic_id = tm.topic_id
+       WHERE tm.material_id IN (SELECT id FROM selected)`,
+      ...materialIds
+    );
+    for (const row of rows) {
+      if (row.relation === "topic") addRelation(materialTopic, row.owner_id, row.target_id);
+      if (row.relation === "draft") addRelation(materialDraft, row.owner_id, row.target_id);
+    }
+  }
+
+  return { sourceMaterial, sourceTopic, sourceDraft, materialTopic, materialDraft };
+}
+
+async function hydrateMaterialLibrary(env, metas) {
+  if (!metas.length) return [];
+  const sourceIds = metas.filter((row) => row.kind !== "material").map((row) => row.id);
+  const materialIds = metas.filter((row) => row.kind === "material").map((row) => row.id);
+  const [sourceRows, materialRows, sourceTags, materialTags, relations] = await Promise.all([
+    sourceIds.length ? all(env, `SELECT * FROM inbox WHERE id IN (${sourceIds.map(() => "?").join(",")})`, ...sourceIds) : [],
+    materialIds.length ? all(env, `SELECT * FROM materials WHERE id IN (${materialIds.map(() => "?").join(",")})`, ...materialIds) : [],
+    tagsOf(env, "inbox", sourceIds),
+    tagsOf(env, "material", materialIds),
+    materialLibraryRelations(env, sourceIds, materialIds),
+  ]);
+  const sources = new Map(sourceRows.map((row) => [row.id, row]));
+  const materials = new Map(materialRows.map((row) => [row.id, row]));
+
+  return metas.map((meta) => {
+    const row = meta.kind === "material" ? materials.get(meta.id) : sources.get(meta.id);
+    if (!row) return null;
+    const sourceKey = meta.source_key;
+    const record = VIEWS[sourceKey].map(row);
+    const tags = meta.kind === "material"
+      ? (materialTags.get(meta.id) || [])
+      : (sourceTags.get(meta.id) || []);
+    const materialIdsForItem = meta.kind === "material" ? [] : unique(relations.sourceMaterial.get(meta.id));
+    const inspirationIds = meta.kind === "material" && row.inbox_id ? [row.inbox_id] : [];
+    const topicIds = meta.kind === "material"
+      ? unique(relations.materialTopic.get(meta.id))
+      : unique(relations.sourceTopic.get(meta.id));
+    const draftIds = meta.kind === "material"
+      ? unique([row.draft_id, ...(relations.materialDraft.get(meta.id) || [])])
+      : unique(relations.sourceDraft.get(meta.id));
+
+    Object.assign(record, {
+      tags,
+      materialIds: materialIdsForItem,
+      inspirationIds,
+      topicIds,
+      draftIds,
+      editedAt: iso(meta.updated_at),
+    });
+    if (sourceKey === "collections") record.convertedToIdea = row.processing_mode === "triage";
+    return {
+      id: meta.id,
+      sourceKey,
+      kind: meta.kind,
+      stage: meta.stage,
+      title: meta.title,
+      type: meta.type,
+      excerpt: meta.excerpt,
+      tags,
+      status: meta.status,
+      verificationStatus: meta.verification_status,
+      verificationNote: row.verification_note || "",
+      link: meta.link,
+      source: meta.source,
+      materialIds: materialIdsForItem,
+      inspirationIds,
+      topicIds,
+      draftIds,
+      updatedAt: iso(meta.updated_at),
+      record,
+    };
+  }).filter(Boolean);
+}
+
+/**
+ * 收件箱、灵感和素材的统一只读列表。分页先在 D1 的 UNION 结果上全局排序，
+ * 再对当页 id 批量补关系；不会出现“每张卡查一次”的 N+1。
+ */
+async function listMaterialLibrary(env, url) {
+  let filters;
+  try {
+    filters = parseMaterialLibraryQuery(url);
+  } catch (error) {
+    return json({ ok: false, error: error.message }, 400);
+  }
+
+  const pageWhere = materialLibraryWhere(filters, { cursor: true });
+  const countWhere = materialLibraryWhere(filters, { stage: false });
+  const typeWhere = materialLibraryWhere(filters, { type: false });
+  const verificationWhere = materialLibraryWhere(filters, { verification: false });
+  const totalWhere = materialLibraryWhere(filters);
+  const verificationTail = verificationWhere.sql ? "AND verification_status != ''" : "WHERE verification_status != ''";
+
+  const [fetched, stageRows, typeRows, verificationRows, totalRow] = await Promise.all([
+    all(env, `${MATERIAL_LIBRARY_CTE}
+      SELECT * FROM material_library ${pageWhere.sql}
+      ORDER BY updated_at DESC, id DESC LIMIT ?`, ...pageWhere.params, filters.pageSize + 1),
+    all(env, `${MATERIAL_LIBRARY_CTE}
+      SELECT stage, COUNT(*) AS count FROM material_library ${countWhere.sql} GROUP BY stage`, ...countWhere.params),
+    all(env, `${MATERIAL_LIBRARY_CTE}
+      SELECT type, COUNT(*) AS count FROM material_library ${typeWhere.sql} GROUP BY type ORDER BY count DESC, type ASC`, ...typeWhere.params),
+    all(env, `${MATERIAL_LIBRARY_CTE}
+      SELECT verification_status AS verification, COUNT(*) AS count
+        FROM material_library ${verificationWhere.sql} ${verificationTail}
+       GROUP BY verification_status ORDER BY count DESC, verification_status ASC`, ...verificationWhere.params),
+    first(env, `${MATERIAL_LIBRARY_CTE}
+      SELECT COUNT(*) AS count FROM material_library ${totalWhere.sql}`, ...totalWhere.params),
+  ]);
+
+  const hasMore = fetched.length > filters.pageSize;
+  const rows = hasMore ? fetched.slice(0, filters.pageSize) : fetched;
+  const counts = Object.fromEntries(MATERIAL_LIBRARY_STAGES.map((stage) => [stage, 0]));
+  for (const row of stageRows) if (row.stage in counts) counts[row.stage] = Number(row.count) || 0;
+  return json({
+    ok: true,
+    items: await hydrateMaterialLibrary(env, rows),
+    counts,
+    total: Number(totalRow?.count) || 0,
+    facets: {
+      stages: MATERIAL_LIBRARY_STAGES.map((value) => ({ value, count: counts[value] })),
+      types: typeRows.map((row) => ({ value: row.type, count: Number(row.count) || 0 })),
+      verifications: verificationRows.map((row) => ({ value: row.verification, count: Number(row.count) || 0 })),
+    },
+    nextCursor: hasMore ? encodeCursor(rows[rows.length - 1]) : null,
+  });
 }
 
 // 内容项目只读聚合。这两个端点不改 topics / drafts 的任何状态，

@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { DIRS } from "../server/lib/vault-dirs.mjs";
 // 分面的名字从适配器里读，测试不抄第二份——抄了的话改名字要改两处，
 // 而漏掉的那一处表现成「测试红了」，读起来像功能坏了（踩过：facet 从「类型」改叫「分类」）
-import { MATERIALS } from "../src/lib/sources.js";
+import { MATERIAL_WORKSPACE } from "../src/lib/material-workspace.js";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = 5199;
@@ -127,7 +127,9 @@ try {
   const shelfHash = await page.evaluate(() => location.hash);
   check("二级导航能直接打开书架", shelfHash.startsWith("#/shelf"), shelfHash);
   await page.click('.nav-item:has-text("素材")');
-  check("素材二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "素材库/收件箱/灵感库");
+  await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
+  check("素材不再拆成三个二级入口", (await page.$$(".subnav-item")).length === 0);
+  check("素材直接进入统一工作区", (await page.textContent(".page-title")) === "素材工作区");
   await page.click('.nav-item:has-text("今日")');
   await page.waitForSelector(".page-title", { timeout: 8000 });
 
@@ -2460,51 +2462,27 @@ try {
     check("模型榜挂了也给出口", (await page.textContent(".empty")).includes("官网"));
   }
 
-  // 8b. 灵感库：同一套卡片墙，点开有完整正文和批注台（这是它从阅读器搬过来的东西）
+  // 8b. 三个旧库只保留兼容跳转；用户看到的是同一个素材工作区与同一条处理链。
   await page.goto(`http://127.0.0.1:${PORT}/#/inbox`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".wall-card, .empty, .note-title", { timeout: 25000 });
-  const ideas = await page.$$eval(".wall-card", (els) => els.length);
-  if (ideas > 0) {
-    check("灵感库是卡片墙", ideas > 0, `${ideas} 张`);
-    await page.click(".wall-card__open");
+  await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
+  check("旧灵感入口自动归到素材", decodeURIComponent(page.url()).includes("#/materials"), page.url());
+  check("素材链路把四个主要环节说清", (await page.$$(".material-flow__steps li")).length === 4);
+  const ideaIndex = await page.$$eval(".wall-card", (cards) => cards.findIndex((card) => card.querySelector(".tag--kind")?.textContent.includes("灵感来源")));
+  if (ideaIndex >= 0) {
+    await page.locator(".wall-card__open").nth(ideaIndex).click();
     // 等批注台真的挂上来，不是等覆盖层出现——正文还在取的时候右栏是不渲染的
     await page.waitForSelector(".reader-overlay .rail-tabs", { timeout: 25000 });
-    check("灵感也能进阅读区", !!(await page.$(".reader-overlay .rail")));
+    check("灵感来源仍能进阅读区", !!(await page.$(".reader-overlay .rail")));
     const ideaTabs = await page.$$eval(".reader-overlay .rail-tabs button", (els) => els.map((e) => e.textContent.trim()));
-    check("灵感能划词批注/问 AI", ideaTabs.join("/") === "标记/衍生/对话", ideaTabs.join("/"));
+    check("灵感来源仍能划词批注/问 AI", ideaTabs.join("/") === "标记/衍生/对话", ideaTabs.join("/"));
     await page.keyboard.press("Escape");
     await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
   }
-  /**
-   * 流水线四段每一段都要有自己的新增入口，而且**名字随段变**：灵感库是「入库」（存一条
-   * 已经有的东西），选题库是「选题」，稿件库是「新稿」（开一篇还不存在的）。
-   *
-   * ⚠️ 这条原来断言的是 `.panel-head` 里含「新增」——那是统一创作入口上线**之前**的文案。
-   * 改完之后按钮还在、功能更全，测试却红着，而红着的测试反过来在要求把对的文案改回去
-   * （和「删除文案从『废纸篓』改成『永久删除』」踩的是同一个坑）。所以断言改成钉**行为**：
-   * 有这颗按钮、且它的名字是这一段自己的说法。
-   */
-  const inboxCreate = (await page.textContent(".panel-head__aside .btn-primary").catch(() => "")).trim();
-  check("灵感库有自己的新增入口", inboxCreate.includes("入库"), inboxCreate || "（没有这颗按钮）");
-
-  // **状态值里带斜杠的那个筛选**。灵感库有「初筛失败/需人工」，而路由是 `#/view/state`——
-  // 整串先 decodeURIComponent 再 split 的话，`%2F` 被还原成真斜杠，状态被劈成两半，
-  // 只剩「初筛失败」送去 Notion，库里直接回 400。这条守的就是那个 bug。
-  const slashChip = await page.$('.chips-sm .chip:has-text("初筛失败/需人工")');
-  if (slashChip) {
-    await slashChip.click();
-    await page.waitForTimeout(1500);
-    const err = await page.textContent(".note-danger").catch(() => "");
-    check("带斜杠的状态筛选不炸", !err.includes("validation_error") && !err.includes("not found for property"), err.slice(0, 80) || "无报错");
-    check("斜杠状态完整进了 hash", decodeURIComponent(page.url().split("#")[1] || "").includes("初筛失败/需人工"), page.url().split("#")[1] || "");
-    await page.click('.chips-sm .chip:has-text("全部")');
-    await page.waitForTimeout(600);
-  }
+  const collectAction = (await page.textContent(".page-head .btn-primary").catch(() => "")).trim();
+  check("统一素材页保留收集入口", collectAction.includes("收集"), collectAction || "（没有这颗按钮）");
   await shot("ideas");
 
-  // 8c. 素材库按类型分面。素材库在 Notion 侧没有状态字段（Worker 的 statusProp 是 null），
-  //     所以这个筛是在已加载的条目里做的，选项也从真实数据里现算——写死一张表的话，
-  //     Notion 里新加一个类型就会在界面上凭空消失。
+  // 8c. 统一素材区按处理阶段、类型、证据核验组合筛选；阶段与数量由 Worker 返回。
   await page.goto(`http://127.0.0.1:${PORT}/#/materials`, { waitUntil: "networkidle" });
   await page.waitForSelector(".wall-card, .empty, .note-title", { timeout: 25000 });
   const matAll = await page.$$eval(".wall-card", (els) => els.length);
@@ -2513,7 +2491,7 @@ try {
   const facetBtn = await page.$(".filter-bar .select__btn");
   if (matAll > 0 && facetBtn) {
     const label = (await facetBtn.textContent()).trim();
-    check("素材库能按分面筛", label.includes(MATERIALS.facet.label), `${label} · 适配器说是「${MATERIALS.facet.label}」`);
+    check("素材工作区能按类型筛", label.includes(MATERIAL_WORKSPACE.facet.label), `${label} · 适配器说是「${MATERIAL_WORKSPACE.facet.label}」`);
     await facetBtn.click();
     await page.waitForSelector(".select__pop", { timeout: 4000 });
     /**
@@ -2541,19 +2519,23 @@ try {
   }
   if (matAll > 0) {
     const materialCards = await page.$$eval(".wall-card", (cards) => cards.map((card) => ({
+      kind: card.querySelector(".tag--kind")?.textContent.trim() || "",
       type: card.querySelector(".wall-card__sub")?.textContent.trim() || "",
       badge: card.querySelector(".tag--state")?.textContent.trim() || "",
       warning: card.querySelector(".wall-card__warning")?.textContent.trim() || "",
     })));
-    const sensitive = materialCards.filter((card) => ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].includes(card.type));
-    const pending = sensitive.filter((card) => card.badge === "待核验");
+    const reusable = materialCards.filter((card) => card.kind.includes("可复用素材"));
+    const sensitive = reusable.filter((card) => ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].some((type) => card.type.includes(type)));
+    const pending = sensitive.filter((card) => card.badge === "需核验");
     check("待核验金句和数据在卡片上有警告", pending.every((card) => card.warning.includes("暂勿用于成稿")), JSON.stringify(pending));
-    const ordinary = materialCards.filter((card) => !["金句/原话", "数据/事实", "金句·原话", "数据·事实"].includes(card.type));
-    check("普通素材卡不堆核验徽标", ordinary.every((card) => !card.badge), JSON.stringify(ordinary.slice(0, 4)));
+    const ordinary = reusable.filter((card) => !sensitive.includes(card));
+    check("普通素材不挂证据警告", ordinary.every((card) => !card.warning), JSON.stringify(ordinary.slice(0, 4)));
 
-    await page.click(".wall-card__open");
-    await page.waitForSelector(".reader-overlay .doc-meta", { timeout: 25000 });
-    const materialMeta = await page.textContent(".reader-overlay .doc-meta");
+    const materialIndex = materialCards.findIndex((card) => card.kind.includes("可复用素材"));
+    if (materialIndex >= 0) {
+      await page.locator(".wall-card__open").nth(materialIndex).click();
+      await page.waitForSelector(".reader-overlay .doc-meta", { timeout: 25000 });
+      const materialMeta = await page.textContent(".reader-overlay .doc-meta");
     /**
      * 素材详情要回答两件事：**这条可不可信**（核验状态 / 核验说明）、**它从哪来、被谁用了**
      * （来源灵感 / 关联选题）。
@@ -2572,28 +2554,29 @@ try {
      * 所以写成二选一，两边都在测真行为：**该有的必须有，不该有的必须没有**。
      * 后者其实更值钱——它挡的是「给每条素材都挂一个恒为『待核验』的假徽标」。
      */
-    const opened = materialCards[0] || {};
-    const needsVerification = ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].includes(opened.type);
-    check(
-      needsVerification ? "金句/数据的详情说清可不可信" : "普通素材的详情不挂核验字段",
-      needsVerification
-        ? ["核验状态", "核验说明"].every((label) => materialMeta.includes(label))
-        : !materialMeta.includes("核验状态"),
-      `类型 ${opened.type || "?"} · ${materialMeta.slice(0, 100)}`,
-    );
-    check(
-      "素材详情能追出至少一条来路",
-      ["来源灵感", "关联选题"].some((label) => materialMeta.includes(label)),
-      materialMeta.slice(0, 180),
-    );
-    if (materialCards[0].warning) {
-      const detailWarning = await page.textContent(".reader-overlay .note-danger").catch(() => "");
-      check("待核验素材详情有明确警告", detailWarning.includes("暂勿用于成稿"), detailWarning.slice(0, 120));
+      const opened = materialCards[materialIndex] || {};
+      const needsVerification = ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].some((type) => opened.type.includes(type));
+      check(
+        needsVerification ? "金句/数据的详情说清可不可信" : "普通素材的详情不挂核验字段",
+        needsVerification
+          ? ["核验状态", "核验说明"].every((label) => materialMeta.includes(label))
+          : !materialMeta.includes("核验状态"),
+        `类型 ${opened.type || "?"} · ${materialMeta.slice(0, 100)}`,
+      );
+      check(
+        "素材详情能追出至少一条来路",
+        ["来源灵感", "关联选题"].some((label) => materialMeta.includes(label)),
+        materialMeta.slice(0, 180),
+      );
+      if (opened.warning) {
+        const detailWarning = await page.textContent(".reader-overlay .note-danger").catch(() => "");
+        check("待核验素材详情有明确警告", detailWarning.includes("暂勿用于成稿"), detailWarning.slice(0, 120));
+      }
+      // **不给 `.catch(() => Escape)` 兜底。** 这句原来带着兜底，而选择器其实一直没匹配上
+      // （那时按钮的名字是「关闭 Esc」）——兜底让它看起来一直在工作。
+      // 关不掉就该让测试红，那正是要知道的事。
+      await page.click('.reader-overlay__bar button[aria-label="关闭"]');
     }
-    // **不给 `.catch(() => Escape)` 兜底。** 这句原来带着兜底，而选择器其实一直没匹配上
-    // （那时按钮的名字是「关闭 Esc」）——兜底让它看起来一直在工作。
-    // 关不掉就该让测试红，那正是要知道的事。
-    await page.click('.reader-overlay__bar button[aria-label="关闭"]');
   }
 
   /**

@@ -34,6 +34,10 @@ export const api = {
   projects: (stage = "") => req(`/api/pipe/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
   project: (id) => req(`/api/pipe/projects/${encodeURIComponent(id)}`),
   transitionProject: (id, action, input = {}) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
+  materialWorkspace: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null));
+    return req(`/api/pipe/materials${qs.toString() ? `?${qs}` : ""}`);
+  },
   list: (view, params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
     return req(`/api/pipe/list/${view}${qs.toString() ? `?${qs}` : ""}`);

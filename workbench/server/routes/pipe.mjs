@@ -76,6 +76,15 @@ export const pipeRoutes = [
     },
   },
   {
+    // 收件、灵感和素材的统一读模型；来源、核验与使用关系都由 D1 返回，
+    // 本机不拼三份分页结果，也不猜一套处理状态。
+    method: "GET",
+    path: "/api/pipe/materials",
+    handler({ env, res, url }) {
+      return forwardGet(env, res, "materials", url.searchParams.toString());
+    },
+  },
+  {
     method: "GET",
     path: "/api/pipe/projects/:id",
     handler: ({ env, res, params }) => forwardGet(env, res, `projects/${encodeURIComponent(params.id)}`),

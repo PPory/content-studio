@@ -42,6 +42,8 @@ import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/l
 import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditorRevision, verifyRevisionStore } from "../server/lib/editor-revisions.mjs";
 import { pipeRoutes, workerPostTimeout } from "../server/routes/pipe.mjs";
 import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } from "../src/lib/content-projects.js";
+import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-target.js";
+import { mapMaterialWorkspaceItem, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -54,6 +56,20 @@ check("普通 Worker 写请求仍使用默认超时", workerPostTimeout("collect
 check("本机代理有内容项目列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects"));
 check("本机代理有内容项目详情", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects/:id"));
 check("本机代理有项目阶段命令", pipeRoutes.some((route) => route.method === "POST" && route.path === "/api/pipe/projects/:id/transition"));
+check("本机代理有统一素材列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/materials"));
+check("统一素材阶段只有一份", MATERIAL_STAGES.join("/") === "待处理/已收纳/可用素材/需核验/已使用/已归档");
+check("旧收件入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("collections", "待整理")) === JSON.stringify({ view: "materials", state: "待处理" }));
+check("旧灵感失败入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("inbox", "初筛失败/需人工")) === JSON.stringify({ view: "materials", state: "待处理" }));
+check("旧搜索结果保留来源类型和真实 id", JSON.stringify(normalizeMaterialOpen("inbox", "idea-1")) === JSON.stringify({ view: "materials", targetView: "material-workspace", key: "inbox:idea-1" }));
+{
+  const item = mapMaterialWorkspaceItem({
+    id: "m1", sourceKey: "materials", kind: "material", stage: "需核验",
+    title: "一条数据", type: "数据/事实", verificationStatus: "待核验",
+    inspirationIds: ["i1"], topicIds: ["t1"], draftIds: ["d1"], record: { id: "m1", type: "数据/事实", verificationStatus: "待核验" },
+  });
+  check("统一素材卡保留来源到稿件的去向", item.trace === "来源 1 → 项目 1 → 稿件 1", item.trace);
+  check("待核验证据不能伪装成可用素材", item.badge === "需核验" && Boolean(item.warning));
+}
 {
   const projects = [
     { id: "plan", stage: "策划中", updatedAt: "2026-08-19", topic: { id: "topic-1" } },

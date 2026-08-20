@@ -94,8 +94,8 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
       {status ? (
         <section className="today-background" aria-label="后台流水线状态">
           <span>后台</span>
-          <button onClick={() => onGo("inbox", "待初筛")}>待初筛 <b>{status.counts?.待初筛 ?? 0}</b></button>
-          <button onClick={() => onGo("inbox", "待选题")}>待整理 <b>{status.counts?.待整理 ?? 0}</b></button>
+          <button onClick={() => onGo("materials", "待处理")}>待初筛 <b>{status.counts?.待初筛 ?? 0}</b></button>
+          <button onClick={() => onGo("materials", "已收纳")}>待整理 <b>{status.counts?.待整理 ?? 0}</b></button>
           <button onClick={() => onGo("topics", "撰写中")}>生成中 <b>{status.counts?.选题撰写中 ?? 0}</b></button>
           {statusLoading ? <small>刷新中…</small> : <small>这些由流水线自己处理</small>}
         </section>

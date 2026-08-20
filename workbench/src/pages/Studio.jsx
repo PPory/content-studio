@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SOURCES, PIPELINE, summarizeDraftReconcile, summarizeArchiveTrash } from "../lib/sources.js";
+import { MATERIAL_WORKSPACE } from "../lib/material-workspace.js";
 import { api } from "../lib/api.js";
 import { contextOf } from "../lib/reading.js";
 import { noteOpened } from "../lib/recent.js";
@@ -36,6 +37,7 @@ import { IconPlus } from "../components/icons.jsx";
 import { ListHead } from "./studio/ListHead.jsx";
 import { FilterBar } from "./studio/FilterBar.jsx";
 import { DocList } from "./studio/DocList.jsx";
+import { MaterialFlow } from "./studio/MaterialFlow.jsx";
 import { PageHeader, Toast } from "../components/ui.jsx";
 import { InsightRunButton, InsightRunProgress, useInsightRun } from "../components/InsightRun.jsx";
 
@@ -44,7 +46,7 @@ import { InsightRunButton, InsightRunProgress, useInsightRun } from "../componen
 const PIPELINE_ACTIONS = ACTIONS.filter((a) => a.key !== "highlight");
 
 export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, refreshKey = 0 }) {
-  const source = SOURCES[sourceKey];
+  const source = sourceKey === MATERIAL_WORKSPACE.key ? MATERIAL_WORKSPACE : SOURCES[sourceKey];
 
   const [list, setList] = useState(null);
   const [searchList, setSearchList] = useState(null);
@@ -52,6 +54,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [facet, setFacet] = useState("");   // 分面筛选（素材库按类型、稿件库按平台），在已加载的条目里筛
+  const [verification, setVerification] = useState("");
   const [layout, setLayout] = useState("wall"); // wall | board
 
   const [active, setActive] = useState(null);
@@ -91,20 +94,22 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     setList(null);
     setSearchList(null);
     setListError(null);
-    source.list({ state }).then(setList).catch(setListError);
-  }, [source, state]);
+    source.list({ state, type: facet, verification }).then(setList).catch(setListError);
+  }, [source, state, facet, verification]);
 
-  // 换源或换筛选：一切归零。不清的话会出现「上一个源的批注挂在这条上」这种串台。
+  // 换源或换主状态：阅读上下文归零。类型和核验是同一页的组合筛选，变化时不清空彼此。
   useEffect(() => {
     setActive(null);
     setDoc(null);
     resetAi();
     setQuery("");
     setFacet("");
+    setVerification("");
     setRailMode("notes");
     newChat();   // 换源：掐掉在跑的、清会话号、清消息
-    reload();
-  }, [reload, resetAi]);
+  }, [source, state, resetAi]);
+
+  useEffect(() => reload(), [reload]);
 
   useEffect(() => {
     if (refreshKey > 0) reload();
@@ -119,7 +124,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      source.search({ q, state })
+      source.search({ q, state, type: facet, verification })
         .then((result) => !cancelled && setSearchList(result))
         .catch((error) => !cancelled && setListError(error));
     }, 250);
@@ -127,7 +132,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, source, state]);
+  }, [query, source, state, facet, verification]);
 
   // **默认一律卡片墙。** 看板回答的是「卡在哪一步」，那是偶尔要问一次的问题；
   // 日常打开这几个库是来找内容的，卡片墙带摘要和标签，信息密度高一个量级。
@@ -144,14 +149,18 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       // 点回去还得自己想它在哪个页面，那就等于没记。
       noteOpened({
         id: `${sourceKey}:${item.key}`,
-        type: sourceKey,
+        type: source.recentType || sourceKey,
         typeLabel: source.label,
         title: item.title,
         source: item.sub || "",
         // **`open` 不能漏。** 只写 `{view, state}` 的话，这条「最近打开」点回去
         // 只是跳到那个库的列表——而这一行的全部意思就是「回到我刚才在看的那一篇」。
         // 检索结果那条路早就带上了 `open`，这条当时漏了，现象一模一样：点了像没反应。
-        go: { view: sourceKey, state: item.raw?.status || "", open: item.key },
+        go: {
+          view: source.goView || sourceKey,
+          state: source.isMaterialWorkspace ? item.raw?.stage || "" : item.raw?.status || "",
+          open: item.key,
+        },
       });
       setDoc(null);
       setDrafts(null);
@@ -200,7 +209,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
 
   const shown = useMemo(() => {
     let items = (query.trim() ? searchList : list)?.items || [];
-    if (facet && source.facet) {
+    if (!source.serverFilters && facet && source.facet) {
       const group = source.facet.groups?.find((entry) => entry.label === facet);
       items = items.filter((it) => group ? group.values.includes(it.raw?.[source.facet.key]) : it.raw?.[source.facet.key] === facet);
     }
@@ -225,7 +234,14 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
    */
   const facetOptions = useMemo(() => {
     if (!source.facet) return [];
-    const items = (query.trim() ? searchList : list)?.items || [];
+    const current = query.trim() ? (searchList || list) : list;
+    const items = current?.items || [];
+    if (source.facet.server) {
+      return (current?.facets?.types || []).map((entry) => {
+        if (typeof entry === "string") return [entry, 0];
+        return [entry.value || entry.type || "", Number(entry.count || 0)];
+      }).filter(([value]) => value);
+    }
     if (source.facet.groups) {
       return source.facet.groups
         .map((group) => [group.label, items.filter((it) => group.values.includes(it.raw?.[source.facet.key])).length])
@@ -263,7 +279,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     if (!list?.nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const more = await source.list({ state, cursor: list.nextCursor });
+      const more = await source.list({ state, type: facet, verification, cursor: list.nextCursor });
       setList((l) => ({ ...more, items: [...l.items, ...more.items] }));
     } catch (e) {
       setListError(e);
@@ -502,30 +518,47 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           : d
       );
       if (active) {
+        const nextRecord = source.isMaterialWorkspace
+          ? {
+              ...(active.raw?.record || active.raw),
+              ...(title != null ? { title } : {}),
+              ...(updatedAt ? { editedAt: updatedAt } : {}),
+            }
+          : null;
         const patch = {
           title: title ?? active.title,
-          raw: updatedAt ? { ...active.raw, editedAt: updatedAt } : active.raw,
+          raw: source.isMaterialWorkspace
+            ? { ...active.raw, ...nextRecord, record: nextRecord }
+            : updatedAt ? { ...active.raw, editedAt: updatedAt } : active.raw,
         };
         // 编辑收藏只会改标题和正文，不能拿打开时的旧 badge 覆盖刚刚完成的“保留/归档”状态。
         if (status != null) patch.badge = status;
         patchItem(active.key, patch);
       }
     },
-    [active, patchItem]
+    [active, patchItem, source]
   );
 
   const onCollectionChanged = useCallback((result) => {
     if (!active) return;
-    const applied = result?.results?.find((item) => item.id === active.key && item.ok);
-    if (!applied) return;
-    const reviewStatus = applied.action === "archive" ? "archived" : "kept";
-    const raw = {
-      ...active.raw,
+    const activeId = active.raw?.entityId || active.key;
+    const matched = result?.results?.find((item) => item.id === activeId && item.ok);
+    if (!matched) return;
+    const reviewStatus = matched.action === "archive" ? "archived" : "kept";
+    const stage = reviewStatus === "archived" ? "已归档" : "已收纳";
+    const record = {
+      ...(active.raw?.record || active.raw),
       reviewStatus,
       status: reviewStatus,
-      ...(applied.action === "idea" ? { processingMode: "triage" } : {}),
+      ...(matched.action === "idea" ? { processingMode: "triage" } : {}),
     };
-    patchItem(active.key, { badge: reviewStatus === "archived" ? "已归档" : "已收藏", raw });
+    const raw = {
+      ...active.raw,
+      ...record,
+      record,
+      stage,
+    };
+    patchItem(active.key, { badge: source.isMaterialWorkspace ? stage : reviewStatus === "archived" ? "已归档" : "已收藏", raw });
     source.load({ ...active, raw }).then((fresh) => {
       setDoc(fresh);
       if (fresh?.updatedAt) patchItem(active.key, { raw: { ...raw, editedAt: fresh.updatedAt } });
@@ -537,8 +570,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   // 划词 AI 的中止归 useAiRuns 自己管，这里只收对话那条
   useEffect(() => () => stopChat(), [stopChat]);   // 卸载时别让请求接着烧 token
 
-  const isPipeline = PIPELINE.includes(sourceKey);
+  const isPipeline = source.kind === "pipeline" || PIPELINE.includes(sourceKey);
   const canBoard = source.board !== false && !!source.states?.length;
+  const activeSourceKey = active?.raw?.sourceKey || sourceKey;
 
   // 洞察跑批的状态归一个 hook 管：按钮在页头 aside（窄），进度条在正文顶（宽），
   // 两处隔着整个 PageHeader，各自轮询会互相打架、百分比还会差一拍。
@@ -551,7 +585,11 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         title={source.label}
         desc={source.sub}
         aside={
-          isPipeline ? (
+          source.isMaterialWorkspace ? (
+            <button className="btn btn-primary" onClick={() => onIntake({ target: "collection" })}>
+              <IconPlus aria-hidden="true" stroke={2} />收集
+            </button>
+          ) : isPipeline ? (
             <button className="btn btn-primary" onClick={() => setCreation("choose")}>
               <IconPlus aria-hidden="true" stroke={2} />新建
             </button>
@@ -565,6 +603,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           页头右侧那个窄槽装不下，挤进去会把「新建 / 跑一次洞察」按钮顶到换行。 */}
       {sourceKey === "insights" ? (
         <InsightRunProgress run={insightRun.run} onCancel={insightRun.cancel} />
+      ) : null}
+
+      {source.isMaterialWorkspace ? (
+        <MaterialFlow counts={list?.counts || {}} active={state} onPick={onState} />
       ) : null}
 
       <section className="panel-block">
@@ -581,12 +623,17 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           sourceKey={sourceKey}
           onIntake={onIntake}
           onCreate={setCreation}
-          onOrganize={() => setOrganizerItems((query.trim() ? searchList : list)?.items || [])}
+          onOrganize={() => {
+            const candidates = (query.trim() ? searchList : list)?.items || [];
+            setOrganizerItems(source.isMaterialWorkspace
+              ? candidates.filter((item) => item.raw?.sourceKey === "collections").map((item) => source.childItem(item))
+              : candidates);
+          }}
         />
 
         {/* 筛选条**只占一行**：状态是芯片（互斥的分流，一眼看全），平台是下拉（选项会变多）。
             状态筛选在看板里是多余的——看板每一列就是一个状态。 */}
-        {(source.states?.length && layout === "wall") || facetPick ? (
+        {(source.stateTabs?.length && layout === "wall") || facetPick || source.verificationFilters?.length ? (
 <FilterBar
             source={source}
             layout={layout}
@@ -595,6 +642,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             facet={facet}
             setFacet={setFacet}
             facetPick={facetPick}
+            verification={verification}
+            setVerification={setVerification}
+            counts={{ total: list?.total, ...(list?.counts || {}) }}
           />
         ) : null}
 
@@ -628,10 +678,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           // 那就不画那个按钮——画一个点了报错的按钮比没有更糟
           actions={PIPELINE_ACTIONS}
           onSaved={onSaved}
-          onStatus={sourceKey === "collections" ? null : (next) => changeStatus(active, next)}
+          onStatus={source.isMaterialWorkspace || activeSourceKey === "collections" ? null : (next) => changeStatus(active, next)}
           onDelete={source.remove ? removeItem : null}
-          onCover={sourceKey === "collections" ? null : runCover}
-          onTypeset={sourceKey === "collections" ? null : openTypeset}
+          onCover={activeSourceKey === "collections" ? null : runCover}
+          onTypeset={activeSourceKey === "collections" ? null : openTypeset}
           outline={outline}
           onOutline={setOutline}
           /**
@@ -650,19 +700,22 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             onStored: () => source.load(active).then(setDoc).catch(() => {}),
           })}
           extra={
-            sourceKey === "collections" ? (
-              <CollectionActions item={active} updatedAt={doc?.updatedAt} onExtract={(item) => setOrganizerItems([item])} onChanged={onCollectionChanged} />
-            ) : sourceKey === "materials" ? (
+            activeSourceKey === "collections" ? (
+              <CollectionActions item={source.isMaterialWorkspace ? source.childItem(active) : active} updatedAt={doc?.updatedAt} onExtract={(item) => setOrganizerItems([item])} onChanged={onCollectionChanged} />
+            ) : activeSourceKey === "materials" ? (
               <MaterialVerificationPanel
-                item={active}
+                item={source.isMaterialWorkspace ? source.childItem(active) : active}
                 onVerified={(verificationNote) => {
-                  const raw = { ...active.raw, verificationStatus: "已核验", verificationNote };
-                  patchItem(active.key, { badge: "已核验", warning: null, raw });
+                  const record = { ...(active.raw?.record || active.raw), verificationStatus: "已核验", verificationNote };
+                  const nextStage = active.raw?.topicIds?.length || active.raw?.draftIds?.length ? "已使用" : "可用素材";
+                  const raw = { ...active.raw, record, verificationStatus: "已核验", verificationNote, stage: nextStage };
+                  patchItem(active.key, { badge: source.isMaterialWorkspace ? nextStage : "已核验", warning: null, raw });
                   setDoc((current) => current ? {
                     ...current,
                     warning: null,
                     meta: { ...current.meta, 核验状态: "已核验", 核验说明: verificationNote },
                   } : current);
+                  if (source.isMaterialWorkspace) reload();
                   setToast({ text: "已核验；这条证据现在可以进入成稿。" });
                 }}
               />
@@ -723,8 +776,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             onRailSelect,
             onSaveChatAsNote: saveChatAsNote,
             knowledgeSource: {
-              kind: sourceKey === "collections" ? "inbox" : sourceKey,
-              ref: active ? (sourceKey === "collections" ? `inbox:${active.key}` : `${sourceKey}:${active.key}`) : "",
+              kind: activeSourceKey === "collections" ? "inbox" : activeSourceKey,
+              ref: active ? (activeSourceKey === "collections" ? `inbox:${active.raw?.entityId || active.key}` : `${activeSourceKey}:${active.raw?.entityId || active.key}`) : "",
               url: active?.raw?.link || "",
               title: doc?.title || active?.title || "",
               selection: quote || "",
