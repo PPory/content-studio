@@ -5,6 +5,7 @@
 
 import { all, first } from "./db.js";
 import { DRAFT_STATUS, DRAFT_WORKFLOW, TOPIC_STATUS } from "./values.js";
+import { releaseOptions, releasePackage } from "./release-package.js";
 
 export const PROJECT_STAGES = Object.freeze([
   "策划中",
@@ -258,6 +259,7 @@ function mapDraft(row) {
     status: workflowOf(row),
     publicationStatus: row.status,
     parentDraftId: row.parent_draft_id || null,
+    release: releasePackage(row),
     updatedAt: iso(row.updated_at),
   };
 }
@@ -317,6 +319,7 @@ export function buildContentProject({ topic = null, drafts = [], materials = [],
     sources: sources.map(mapSource),
     publication: state.publication,
     review: state.review,
+    releaseOptions: releaseOptions(),
     updatedAt: iso(updatedUnix),
   };
 }
@@ -344,6 +347,7 @@ export async function listContentProjects(env, { stage = "", cursor = "", pageSi
   const [topics, draftMeta] = await Promise.all([
     all(env, "SELECT * FROM topics"),
     all(env, `SELECT id, topic_id, headline, summary, NULL AS body, platform, status, workflow_status, parent_draft_id,
+      cover_url, cover_text, cover_note, keywords_json, interaction_goal,
       published_url, published_at, views, likes, comments, collects, shares,
       performance_summary, feedback_status, created_at, updated_at FROM drafts`),
   ]);

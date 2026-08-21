@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 const migration = readFileSync(new URL("../migrations/0002_content_projects_v2.sql", import.meta.url), "utf8");
+const releaseMigration = readFileSync(new URL("../migrations/0003_release_packages_v1.sql", import.meta.url), "utf8");
 
 function oldDatabase() {
   const db = new DatabaseSync(":memory:");
@@ -54,5 +55,16 @@ test("项目 v2 状态约束拒绝非法值", () => {
     () => db.exec("INSERT INTO drafts (id, topic_id, headline, status, updated_at, workflow_status) VALUES ('bad', 'one', '坏状态', '待修改', 1, '随便写')"),
     /CHECK constraint failed/
   );
+  db.close();
+});
+
+test("发布包迁移保留旧稿并补齐空的发布信息", () => {
+  const db = oldDatabase();
+  db.exec("INSERT INTO topics VALUES ('one', '单稿', '已成稿')");
+  db.exec("INSERT INTO drafts VALUES ('d-one', 'one', '唯一稿', '待修改', 1)");
+  db.exec(migration);
+  db.exec(releaseMigration);
+  const row = { ...db.prepare("SELECT cover_url, cover_text, cover_note, keywords_json, interaction_goal FROM drafts WHERE id = 'd-one'").get() };
+  assert.deepEqual(row, { cover_url: "", cover_text: "", cover_note: "", keywords_json: "[]", interaction_goal: "" });
   db.close();
 });

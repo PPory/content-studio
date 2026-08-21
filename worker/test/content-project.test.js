@@ -40,6 +40,11 @@ const draft = (fields = {}) => ({
   shares: null,
   performance_summary: "",
   feedback_status: "未评估",
+  cover_url: "",
+  cover_text: "",
+  cover_note: "",
+  keywords_json: "[]",
+  interaction_goal: "",
   updated_at: 1_786_000_010,
   ...fields,
 });
@@ -188,5 +193,7 @@ test("聚合读模型包含前端不应二次推导的全部契约字段", () =>
   for (const key of [
     "id", "title", "stage", "stageReason", "nextAction", "blockers", "brief", "topic",
     "masterDraft", "variants", "materials", "sources", "publication", "review", "updatedAt",
+    "releaseOptions",
   ]) assert.ok(Object.hasOwn(project, key), `缺少 ${key}`);
+  assert.equal(project.masterDraft.release.spec.platform, "公众号");
 });

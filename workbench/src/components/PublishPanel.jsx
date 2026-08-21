@@ -38,7 +38,7 @@ function localNow() {
   return date.toISOString().slice(0, 16);
 }
 
-export function PublishPanel({ item, doc, onPublished, blocked, buttonClassName = "btn btn-sm", buttonLabel = "" }) {
+export function PublishPanel({ item, doc, onPublished, blocked, blockedTitle = "先处理掉「待核实经历」再记录发布", buttonClassName = "btn btn-sm", buttonLabel = "" }) {
   const [open, setOpen] = useState(false);
   const published = (item.raw || {}).status === "已发布";
   return (
@@ -49,7 +49,7 @@ export function PublishPanel({ item, doc, onPublished, blocked, buttonClassName 
         onClick={() => setOpen(true)}
         disabled={blocked}
         // 有真实性告警时不给点，但**要说清为什么**——灰着不解释的按钮只会让人以为坏了
-        title={blocked ? "先处理掉「待核实经历」再记录发布" : published ? "补上表现数据，跑一次复盘" : "填发布链接和时间"}
+        title={blocked ? blockedTitle : published ? "补上表现数据，跑一次复盘" : "填发布链接和时间"}
       >
         <IconCloudUpload aria-hidden="true" stroke={1.7} />
         {buttonLabel || (published ? "更新数据并复盘" : "记录发布")}

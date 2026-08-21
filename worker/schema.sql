@@ -202,6 +202,13 @@ CREATE TABLE IF NOT EXISTS drafts (
   feedback_status TEXT NOT NULL DEFAULT '未评估'
              CHECK (feedback_status IN ('未评估','样本不足','普通','表现突出','已沉淀')),
 
+  -- 平台发布包。正文和发布辅助信息分开，平台版本用 parent_draft_id 追溯母版。
+  cover_url TEXT NOT NULL DEFAULT '',
+  cover_text TEXT NOT NULL DEFAULT '',
+  cover_note TEXT NOT NULL DEFAULT '',
+  keywords_json TEXT NOT NULL DEFAULT '[]',
+  interaction_goal TEXT NOT NULL DEFAULT '',
+
   vault_path TEXT,
   task_key   TEXT UNIQUE NOT NULL,
   created_at INTEGER NOT NULL,

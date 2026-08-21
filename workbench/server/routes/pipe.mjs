@@ -95,6 +95,21 @@ export const pipeRoutes = [
     handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/transition`),
   },
   {
+    method: "POST",
+    path: "/api/pipe/projects/:id/variants",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/variants`),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/projects/:id/variants/:draftId/remove",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/variants/${encodeURIComponent(params.draftId)}/remove`),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/projects/:id/releases/:draftId",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/releases/${encodeURIComponent(params.draftId)}`),
+  },
+  {
     method: "GET",
     path: "/api/pipe/list/:view",
     handler({ env, res, params, url }) {

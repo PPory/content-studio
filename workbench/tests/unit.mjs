@@ -45,6 +45,7 @@ import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } 
 import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-target.js";
 import { mapMaterialWorkspaceItem, materialWorkspaceCounts, materialWorkspaceQuery, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
 import { mergeTypesetState, typesetMarkdown } from "../src/lib/typeset-handoff.js";
+import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../src/lib/project-release.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -74,7 +75,18 @@ check("已有一级标题时不重复补标题", typesetMarkdown("标题", "# �
   const resumed = mergeTypesetState(edited, handoff, 200);
   check("同一版主稿再进入会继续排版稿而不覆盖", resumed.mode === "resume" && resumed.state.drafts.find((item) => item.id === resumed.state.currentId)?.content === "已做过的排版");
   const next = mergeTypesetState(resumed.state, { ...handoff, body: "第二版" }, 300);
-  check("主稿改版后新建排版稿，不覆盖上一版", next.mode === "create" && next.state.drafts.length === 3 && next.state.drafts.some((item) => item.content === "已做过的排版"));
+check("主稿改版后新建排版稿，不覆盖上一版", next.mode === "create" && next.state.drafts.length === 3 && next.state.drafts.some((item) => item.content === "已做过的排版"));
+}
+{
+  const master = { id: "m", title: "主稿", body: "正文", summary: "摘要", release: { keywords: ["写作"], coverUrl: "", coverText: "", coverNote: "", interactionGoal: "" } };
+  const variant = { ...master, id: "v", title: "平台标题" };
+  check("发布版本列表先母版再平台版本", projectReleaseDrafts({ masterDraft: master, variants: [variant] }).map((item) => item.id).join(",") === "m,v");
+  check("发布版本列表兼容项目加载态", projectReleaseDrafts(null).length === 0);
+  const form = releaseForm(variant);
+  check("发布版本表单读回标题正文和关键词", form.title === "平台标题" && form.body === "正文" && form.keywords === "写作");
+  check("未修改的发布版本不误报待保存", !releaseChanged(variant, form));
+  check("平台标题变化会标成待保存", releaseChanged(variant, { ...form, title: "新标题" }));
+  check("发布关键词按中文标点拆成数组", JSON.stringify(releasePayload({ ...form, keywords: "写作，复利、产品" }).keywords) === JSON.stringify(["写作", "复利", "产品"]));
 }
 {
   const item = mapMaterialWorkspaceItem({

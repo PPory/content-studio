@@ -32,6 +32,7 @@ import { normalizeCreationRequest, keepRealPicks } from "./lib/creation.js";
 import { normalizeWritingAssistRequest } from "./lib/writing-assist.js";
 import { normalizeTextRevisionRequest } from "./lib/text-revision.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
+import { normalizeReleaseInput, releaseSpec } from "./lib/release-package.js";
 import {
   applyCollectionOrganize,
   collectionSummary,
@@ -281,6 +282,21 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "materials" && request.method === "GET") return await listMaterialLibrary(env, url);
 
     if (path === "projects" && request.method === "GET") return await listProjects(env, url);
+
+    const projectVariantMatch = path.match(/^projects\/(.+)\/variants$/);
+    if (projectVariantMatch && request.method === "POST") {
+      return await createProjectVariant(env, projectVariantMatch[1], await request.json());
+    }
+
+    const projectVariantRemoveMatch = path.match(/^projects\/(.+)\/variants\/([0-9A-Za-z-]{20,40})\/remove$/);
+    if (projectVariantRemoveMatch && request.method === "POST") {
+      return await removeProjectVariant(env, projectVariantRemoveMatch[1], projectVariantRemoveMatch[2]);
+    }
+
+    const projectReleaseMatch = path.match(/^projects\/(.+)\/releases\/([0-9A-Za-z-]{20,40})$/);
+    if (projectReleaseMatch && request.method === "POST") {
+      return await updateProjectRelease(env, projectReleaseMatch[1], projectReleaseMatch[2], await request.json());
+    }
 
     const projectTransitionMatch = path.match(/^projects\/(.+)\/transition$/);
     if (projectTransitionMatch && request.method === "POST") {
@@ -741,6 +757,90 @@ async function transitionProject(env, rawId, body) {
   }
 
   return json({ ok: true, project: await getContentProject(env, id) });
+}
+
+async function createProjectVariant(env, rawId, body) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+  if (!isId(id)) return json({ ok: false, error: "只有以选题为根的内容项目才能建立平台版本" }, 400);
+
+  let spec;
+  try { spec = releaseSpec(body?.platform); }
+  catch (error) { return json({ ok: false, error: error.message }, 400); }
+
+  const project = await getContentProject(env, id);
+  if (!project) return json({ ok: false, error: "内容项目不存在" }, 404);
+  if (project.stage !== "待发布" || !project.masterDraft) {
+    return json({ ok: false, error: "主稿通过诊断后才能建立平台版本" }, 409);
+  }
+  if (spec.platform === project.masterDraft.platform) {
+    return json({ ok: false, error: `${spec.platform} 已经是主稿平台` }, 409);
+  }
+
+  const samePlatform = project.variants.find((item) => item.platform === spec.platform);
+  if (samePlatform) {
+    if (samePlatform.parentDraftId === project.masterDraft.id) {
+      return json({ ok: true, created: false, variantId: samePlatform.id, project });
+    }
+    return json({ ok: false, error: `项目里已经有一份 ${spec.platform} 稿件，请先确认它的来源` }, 409);
+  }
+
+  const draftId = newId();
+  const ts = now();
+  const taskKey = `project-variant:${id}:${project.masterDraft.id}:${spec.platform}`;
+  await batch(env, [stmt(env, `INSERT OR IGNORE INTO drafts
+    (id, topic_id, headline, summary, body, platform, status, workflow_status, parent_draft_id, task_key, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    draftId, id, project.masterDraft.title, project.masterDraft.release?.summary || project.masterDraft.summary || "",
+    project.masterDraft.body || "", spec.platform, DRAFT_STATUS.TODO, DRAFT_WORKFLOW.READY,
+    project.masterDraft.id, taskKey, ts, ts)],
+  );
+  const saved = await first(env, "SELECT id FROM drafts WHERE task_key = ?", taskKey);
+  return json({ ok: true, created: saved?.id === draftId, variantId: saved?.id || draftId, project: await getContentProject(env, id) });
+}
+
+async function removeProjectVariant(env, rawId, draftId) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+  if (!isId(id) || !isId(draftId)) return json({ ok: false, error: "项目或版本 id 不合法" }, 400);
+  const project = await getContentProject(env, id);
+  if (!project) return json({ ok: false, error: "内容项目不存在" }, 404);
+  const variant = (project.variants || []).find((item) => item.id === draftId);
+  if (!variant) return json({ ok: false, error: "只能移除这个项目里的平台版本，母版不会被删除" }, 400);
+  if (variant.publicationStatus === DRAFT_STATUS.PUBLISHED) return json({ ok: false, error: "已发布版本不能移除" }, 409);
+  if (variant.parentDraftId !== project.masterDraft?.id) return json({ ok: false, error: "这个稿件的母版关系不明确，不能直接移除" }, 409);
+  await dbDeleteRow(env, "drafts", draftId);
+  return json({ ok: true, removedId: draftId, project: await getContentProject(env, id) });
+}
+
+async function updateProjectRelease(env, rawId, draftId, body) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+  if (!isId(id) || !isId(draftId)) return json({ ok: false, error: "项目或版本 id 不合法" }, 400);
+  const project = await getContentProject(env, id);
+  if (!project) return json({ ok: false, error: "内容项目不存在" }, 404);
+  if (project.stage !== "待发布") return json({ ok: false, error: "只有待发布项目可以编辑发布版本" }, 409);
+
+  const candidates = [project.masterDraft, ...(project.variants || [])].filter(Boolean);
+  const current = candidates.find((item) => item.id === draftId);
+  if (!current) return json({ ok: false, error: "所选版本不属于这个内容项目" }, 400);
+  if (current.publicationStatus === DRAFT_STATUS.PUBLISHED) return json({ ok: false, error: "已发布版本不能再改写" }, 409);
+
+  const isMaster = current.id === project.masterDraft?.id;
+  if (isMaster) {
+    const requestedTitle = String(body?.title ?? current.title).trim();
+    const requestedBody = String(body?.body ?? current.body);
+    if (requestedTitle !== current.title || requestedBody !== current.body) {
+      return json({ ok: false, error: "主稿已锁定；需要改正文时请先退回写作" }, 409);
+    }
+  }
+
+  let fields;
+  try { fields = normalizeReleaseInput(body, current); }
+  catch (error) { return json({ ok: false, error: error.message }, 400); }
+  if (fields.body !== current.body) assertGroundedGeneratedText(fields.body, await personalEvidence(env));
+  await updateRow(env, "drafts", draftId, fields);
+  return json({ ok: true, draftId, project: await getContentProject(env, id) });
 }
 
 /**
