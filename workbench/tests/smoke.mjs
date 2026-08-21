@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DIRS } from "../server/lib/vault-dirs.mjs";
+import { DATA_FILES } from "../server/lib/backup.mjs";
 // 分面的名字从适配器里读，测试不抄第二份——抄了的话改名字要改两处，
 // 而漏掉的那一处表现成「测试红了」，读起来像功能坏了（踩过：facet 从「类型」改叫「分类」）
 import { MATERIAL_WORKSPACE } from "../src/lib/material-workspace.js";
@@ -522,6 +523,22 @@ try {
      * 而且旧那份的四条队列里有两条引的状态在 D1 的 CHECK 约束里根本不存在
      * （`drafts/待发布`、`inbox/需处理`），**永远取不到东西也永远不报错**。
      */
+    /**
+     * ⚠️ **计数和列表是两个请求，别在中间那一刻量。**
+     * 卡上的数字来自计数接口（快），下面几行来自列表接口（慢）。两者之间有一段时间
+     * 卡片是「数字 1、一条没列」——那正是这条断言要抓的**坏状态**，但它此刻只是**还没到**。
+     * 所以先等不变量成立再量：真的坏了的话等不到，超时之后断言照样红。
+     */
+    await page
+      .waitForFunction(
+        () =>
+          [...document.querySelectorAll(".todo-card")].every(
+            (c) => c.dataset.empty === "true" || c.querySelectorAll(".todo-card__row").length > 0
+          ),
+        null,
+        { timeout: 10000 }
+      )
+      .catch(() => {});
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll(".todo-card")].map((c) => ({
         empty: c.dataset.empty === "true",
@@ -2504,7 +2521,10 @@ try {
     await page.keyboard.press("Escape");
     await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
   }
-  const collectAction = (await page.textContent(".page-head .btn-primary").catch(() => "")).trim();
+  /* ⚠️ 这里原来写的是 `.page-head`，而共用页头件（`ui.jsx` 的 `PageHeader`）的类名一直是
+     `.page-header`——**选择器指着一个不存在的类**，于是这条恒红，而按钮从头到尾都在。
+     `.catch(() => "")` 把「找不到元素」和「按钮文案不对」抹成了同一种结果，所以看不出是哪种。 */
+  const collectAction = (await page.textContent(".page-header .btn-primary").catch(() => "")).trim();
   check("统一素材页保留收集入口", collectAction.includes("收集"), collectAction || "（没有这颗按钮）");
   await shot("ideas");
 
@@ -2536,28 +2556,50 @@ try {
     /* ⚠️ **挑一个计数为正的分面，不要盲点第二项。**
        选项标签自带条数（「核心观点 11」），而第二项**可以合法地是 0 条**——
        那时候筛出 0 行是对的，红的是断言不是界面。上一版就是这么假红的。 */
-    const pickIdx = await page.$$eval(".select__pop button", (els) =>
-      els.findIndex((e, i) => i > 0 && /\s(\d+)\s*$/.test(e.textContent.trim()) && +RegExp.$1 > 0)
+    const facetOpts = await page.$$eval(".select__pop button", (els) =>
+      els.map((e) => e.textContent.replace(/\s+/g, " ").trim())
     );
-    await page.click(`.select__pop button >> nth=${pickIdx > 0 ? pickIdx : 1}`);
+    // 标签自带条数（「核心观点 11」）。挑第一个计数为正的：第二项**可以合法地是 0 条**，
+    // 那时候筛出 0 行是对的，红的是断言不是界面。
+    const pickIdx = facetOpts.findIndex((t, i) => i > 0 && (Number((t.match(/(\d+)$/) || [])[1]) || 0) > 0);
+    const picked = pickIdx > 0 ? pickIdx : 1;
+    await page.click(`.select__pop button >> nth=${picked}`);
     /**
-     * ⚠️ **等的是「条数真的变了」，不是一个拍脑袋的毫秒数。**
-     * 原来写 `waitForTimeout(300)`：改成分组列表之后重渲染多了一层，300ms 偶尔不够，
-     * 断言量到的是**还没渲染完的 0 条**——红的是测试，界面其实一直是对的
-     *（实测筛完 30 → 11）。固定等待就是这么变成假红的，和「等容器不等内容」同一类。
+     * ⚠️ **等的是「变成那一项自己承诺的条数」，不是「变了」也不是一个毫秒数。**
+     *
+     * 走过两版都错：
+     * 1. `waitForTimeout(300)` —— 分组列表重渲染多了一层，300ms 偶尔不够；
+     * 2. `waitForFunction(len !== matAll)` —— 看着严谨，其实**被中间的加载空态满足了**：
+     *    重新取数时列表先清空，0 !== 30 立刻成立，于是量到 0 条。
+     *    「等容器不等内容」的又一个变种：等到的是过程中的一帧，不是结果。
+     *
+     * 选项标签自带条数（「核心观点 11」），那就是唯一可信的目标值。
      */
+    const wantN = Number((String(facetOpts[picked] || "").match(/(\d+)$/) || [])[1]) || 0;
     await page
-      .waitForFunction((n) => document.querySelectorAll(".doc-row").length !== n, matAll, { timeout: 8000 })
+      .waitForFunction(
+        (n) => document.querySelectorAll(".doc-row").length === n,
+        wantN,
+        { timeout: 8000 }
+      )
       .catch(() => {});
     const filtered = await page.$$eval(".doc-row", (els) => els.length);
-    check("类型筛真的收窄了", filtered > 0 && filtered <= matAll, `${filtered}/${matAll}`);
+    /* 失败时要能看出**点的是哪一项、那一项自己说有几条**——只报「0/30」的话
+       分不出是筛错了、还是那一项本来就空、还是根本没点中。 */
+    check(
+      "类型筛真的收窄了",
+      filtered > 0 && filtered <= matAll,
+      `${filtered}/${matAll} · 点的是「${facetOpts[picked] || "?"}」· 全部选项：${facetOpts.join(" | ")}`
+    );
     // 回头路必须有：没有「全部」的筛选等于把人锁在一个子集里
     await page.click(".filter-bar .select__btn");
     await page.click(".select__pop button >> nth=0");
+    // 同理：等它回到全量，而不是等「变了」——中间同样会闪一次空。
     await page
       .waitForFunction((n) => document.querySelectorAll(".doc-row").length === n, matAll, { timeout: 8000 })
       .catch(() => {});
-    check("能筛回全部", (await page.$$eval(".doc-row", (els) => els.length)) === matAll);
+    const backAll = await page.$$eval(".doc-row", (els) => els.length);
+    check("能筛回全部", backAll === matAll, `${backAll}/${matAll}`);
   }
   if (matAll > 0) {
     const materialCards = await page.$$eval(".doc-row", (cards) => cards.map((card) => ({
@@ -2726,7 +2768,10 @@ try {
       "utf8"
     );
     await page.reload({ waitUntil: "networkidle" });
-    await page.click('.pill-tab:has-text("数据来源")');
+    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+       现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
     await page.waitForSelector(".inbox__row", { timeout: 8000 });
     const card = await page.textContent(".inbox__row");
     check("自动发现下载好的导出文件", card.includes("小红书-内容分析-smoke.csv"), card.replace(/\s+/g, " ").slice(0, 70));
@@ -2752,7 +2797,10 @@ try {
     /* 9a. 导入：**先 dry 看一眼、再确认写盘**。这两步存在的全部理由是解析器只能靠列名
      *     认字段——认错了不报错，只会让一列数字安静地进错格子。所以断言钉的是
      *     「界面上真的把映射摊开给人看了」，不只是「导入成功了」。 */
-    await page.click('.pill-tab:has-text("数据来源")');
+    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+       现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
     await page.setInputFiles(".dropzone input[type=file]", {
       name: "小红书-内容分析.csv",
@@ -2775,7 +2823,8 @@ try {
     await page.waitForTimeout(900);
 
     // 9b. 总览：发布量、渠道分布、空值不被记成 0
-    await page.click('.pill-tab:has-text("月度总览")');
+    /* 同上：「月度总览」这一档现在是侧栏的「内容表现」，路由 `#/review-performance`。 */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance`, { waitUntil: "networkidle" });
     await page.waitForSelector(".bars__plot, .empty", { timeout: 8000 });
     const stats = await page.$$eval(".stat-strip strong", (els) => els.map((e) => e.textContent.trim()));
     // 跟 csv 里当月的行数对，不写死数字——前面几步导进去多少条会变，写死的话
@@ -2819,7 +2868,10 @@ try {
     check("没有数据的指标整格不出现", missing.length === 0, missing.join(",") || "全部平台都对");
 
     // 9c. 幂等：同一份文件再导一次不能多出三行
-    await page.click('.pill-tab:has-text("数据来源")');
+    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+       现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
     await page.setInputFiles(".dropzone input[type=file]", {
       name: "小红书-内容分析.csv",
@@ -3251,7 +3303,19 @@ try {
     rows: [...document.querySelectorAll(".bk-row__label")].map((e) => e.textContent.trim()),
     text: document.querySelector(".drawer--wide").innerText,
   }));
-  check("备份面板列出三份工作台数据", bk.rows.length === 3, bk.rows.join(" / "));
+  /**
+   * ⚠️ **数量从真源读，不写死。**
+   * 上一版写的是 `=== 3`，而清单的真源是 `backup.mjs` 的 `DATA_FILES`。
+   * 加第四份数据文件（AI 局部修订历史）之后这条就红了——**红的是断言，备份本身是对的**。
+   * 更坏的是反过来：万一哪天有份数据**没进** `DATA_FILES`，写死的数字照样能对上，
+   * 而那份数据就这么安静地不进备份了。这正是 `../CLAUDE.md` 里
+   *「数据文件的清单只有一份」要防的事——断言也得认那一份。
+   */
+  check(
+    "备份面板列出全部工作台数据",
+    bk.rows.length === DATA_FILES.length && DATA_FILES.every((f) => bk.rows.includes(f.label)),
+    `面板 ${bk.rows.length} 份 / 清单 ${DATA_FILES.length} 份 · ${bk.rows.join(" / ")}`
+  );
   check("面板说清 vault 正文不在包里", /不包含[\s\S]{0,40}Obsidian/.test(bk.text));
   check("面板说清密钥不在包里", bk.text.includes(".env"));
   // 恢复是覆盖式的，「预览再确认」这条不能靠记忆——界面上要写着退得回来
