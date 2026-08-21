@@ -6,11 +6,11 @@
 
 import { useMemo, useState } from "react";
 import { Cover } from "../../components/Cover.jsx";
-import { IconBookmark, IconChevronRight, IconFileText, IconPhoto, IconTrash } from "../../components/icons.jsx";
+import { IconBook2, IconBookmark, IconCheck, IconChevronRight, IconFileText, IconListDetails, IconPhoto, IconTrash } from "../../components/icons.jsx";
 import { bookProgress, pct, readingOf } from "../../lib/reading.js";
 import { stateTone } from "../../components/ui.jsx";
 
-export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
+export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
   /**
    * 进度只有在**它指的那份文件还在这本书里**时才作数。
    * 书重新导入过（章节文件名换了）、或者上一版把 notes.md 误当成章节记了进度时，
@@ -24,6 +24,19 @@ export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
   }, [book, tick]);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * 封面底边那条线的长度。⚠️ **没读过就是 `null`，不是 0**——
+   * 两者在界面上不是同一件事：`null` 整条线都不画（还没开），`0` 会画一条空槽
+   * （开了但没进度）。混在一起的话，一面墙上每本书底下都挂着一条空槽，
+   * 「哪些动过」这个信息就没了。
+   */
+  const progress = useMemo(() => {
+    if (!saved) return null;
+    const v = book.chapterCount > 1 ? bookProgress(book, saved) : saved.progress;
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : null;
+  }, [book, saved]);
+  const done = progress != null && progress >= 0.995;
 
   // 确认态把整张卡换掉，不是在角落加个小按钮：下架一本书连着批注一起走，
   // 这个动作值得占满一张卡的注意力。
@@ -98,6 +111,50 @@ export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
         */}
       <span className="book-card__cover">
         <Cover book={book} />
+        {/* 读完那枚勾。**只在真读完时画**——它说的是「这本可以放下了」，
+            而一个恒亮的记号什么都不说。 */}
+        {done ? (
+          <span className="book-card__done" aria-hidden="true">
+            <IconCheck size={12} stroke={2.4} />
+          </span>
+        ) : null}
+        {/* 进度线。`aria-hidden`：同样的信息在下面 `__open` 的 aria-label 里有字面版本，
+            读屏读一遍就够，画面上这条是给眼睛的。 */}
+        {progress != null ? (
+          <span className="book-card__prog" aria-hidden="true">
+            <i style={{ width: `${Math.round(progress * 100)}%` }} />
+          </span>
+        ) : null}
+        {/**
+          * ⚠️ **hover 动作：常用动作不该逼人先进详情页。**
+          * 多章的书原来点封面只能进书详情，「接着读」得再点一次。现在两条路都在封面上：
+          * 左边接着读（有进度才给）、右边进目录。**它们是 `.book-card` 这个 div 的
+          * 子孙而不是某个 button 的**——外壳早就退成普通容器了，所以不构成 button 套 button。
+          */}
+        <span className="book-card__ov">
+          {onResume && saved ? (
+            <button
+              type="button"
+              title={`接着读：${saved.title}`}
+              aria-label={`接着读《${book.name}》：${saved.title}`}
+              onClick={(e) => (e.stopPropagation(), onResume())}
+            >
+              <IconBook2 size={16} stroke={1.7} aria-hidden="true" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            title={book.chapterCount > 1 ? "查看章节" : "开始读"}
+            aria-label={`${book.chapterCount > 1 ? "查看章节" : "开始读"}：《${book.name}》`}
+            onClick={(e) => (e.stopPropagation(), onOpen())}
+          >
+            {book.chapterCount > 1 ? (
+              <IconListDetails size={16} stroke={1.7} aria-hidden="true" />
+            ) : (
+              <IconBook2 size={16} stroke={1.7} aria-hidden="true" />
+            )}
+          </button>
+        </span>
         {onCover ? (
           <button
             type="button"
@@ -121,7 +178,13 @@ export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
         * 键盘走书名那个按钮。
         */}
       <div className="book-card__body">
-        <button type="button" className="book-card__open" onClick={(e) => (e.stopPropagation(), onOpen())}>
+        {/* 封面上那条进度线是给眼睛的，读屏得有字面版本——所以进 aria-label */}
+        <button
+          type="button"
+          className="book-card__open"
+          aria-label={saved ? `${book.name}，读到「${saved.title}」${pct(progress ?? 0)}` : book.name}
+          onClick={(e) => (e.stopPropagation(), onOpen())}
+        >
           {book.name}
         </button>
         {/**

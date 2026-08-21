@@ -2269,7 +2269,29 @@ try {
      * 页面根本不重新渲染——人还站在书详情上，而 `.book-card` 只在书架墙上有。
      * （CLAUDE.md 记过同一个坑：「goto 到只有 hash 不同的地址不会重新加载」。）
      */
-    await page.click('.book-detail button:has-text("返回书架"), .main button:has-text("返回书架")');
+    /**
+     * ⚠️ **这两行原来引着一个从不存在的类名。**
+     *
+     * 原写法是 `page.click('.book-detail button:has-text("返回书架"), .main button:has-text("返回书架")')`。
+     * `BookDetail` 是个 fragment，**根本没有 `.book-detail` 这个元素**——那半个选择器
+     * 从写下那天起就是死的。真正干活的一直是后半个。而它一旦也点不中，
+     * 报出来的只有一句「click 超时 30 秒」：看不出是按钮改名了、是页面不对、
+     * 还是选择器本来就指着空气。
+     *
+     * 现在：判据用**真实存在的** `.book-hero`（书详情的第一块），点击用不带死选择器的
+     * 文本 locator。断言先跑，页面不对时它红在前面，不会退化成一次静默的长等待。
+     */
+    const backHere = await page.evaluate(() => ({
+      detail: !!document.querySelector(".book-hero"),
+      overlay: !!document.querySelector(".reader-overlay"),
+      chapters: document.querySelectorAll(".chapter-row").length,
+    }));
+    check(
+      "关掉阅读区之后回到书详情",
+      backHere.detail && !backHere.overlay,
+      JSON.stringify(backHere)
+    );
+    await page.getByRole("button", { name: "返回书架" }).first().click();
     await page.waitForSelector(".book-card", { timeout: 15000 });
 
     await page.click(`.book-card:has-text("${mdBook}") .book-card__del`);

@@ -88,6 +88,7 @@ export {
   IconTypography,
   IconLayoutKanban,
   IconBook2,
+  IconListDetails,
   IconGripVertical,
   IconArrowRight,
   IconFileImport,

@@ -23,6 +23,7 @@ import { ReaderOverlay } from "../components/ReaderOverlay.jsx";
 // 展示件搬进 pages/shelf/。**页面只留组合和状态边界**——
 // 这一个文件原来 1200 行、其中 `Shelf` 一个函数就占 596 行。
 import { ContinueCard } from "./shelf/ContinueCard.jsx";
+import { RecentMarks } from "./shelf/RecentMarks.jsx";
 import { BookCard } from "./shelf/BookCard.jsx";
 import { BookDetail } from "./shelf/BookDetail.jsx";
 import { ShelfActions } from "./shelf/ShelfActions.jsx";
@@ -171,6 +172,26 @@ export function Shelf({ onIntake, state = "" }) {
       if (hp) api.highlights(hp).then((r) => setHighlights(r.highlights)).catch(() => setHighlights([]));
     },
     [resetAi]
+  );
+
+  /**
+   * 从「最近标注」那一条跳到它所在的正文。
+   *
+   * ⚠️ **跳不过去就什么都不做，不要退而求其次打开这本书的第一章。**
+   * 那种兜底看起来友好，实际是把「我要看这句话在哪」变成了「莫名其妙打开了另一章」——
+   * 而用户不会知道发生了什么。跳不了的情况本来就只有一种（批注定位不到章节），
+   * 而那种条目在界面上已经标着「未定位」了，点不动是**说得通**的。
+   */
+  const openDocByPath = useCallback(
+    (mark) => {
+      if (!mark?.bookDir || !mark?.path) return;
+      const b = (list?.items || []).map((it) => it.raw).find((x) => x.dir === mark.bookDir);
+      if (!b) return;
+      const entry = docsOf(b).find((d) => d.path === mark.path);
+      if (!entry) return;
+      openDoc(b, entry, { resume: false, detail: false });
+    },
+    [list, docsOf, openDoc]
   );
 
   /**
@@ -381,6 +402,24 @@ export function Shelf({ onIntake, state = "" }) {
 
   const entries = book ? docsOf(book) : [];
 
+  /**
+   * ⚠️ **藏书和资料分成两组，因为它们的「正文能不能改」是相反的**（`bookKind`）。
+   * 混在同一面墙上时，这个差别只藏在一行小字的「单篇 / 59 章」里——
+   * 而它决定的是「点进去之后能不能编辑正文」，是这本书最要紧的一条属性。
+   *
+   * ⚠️ **只有一组时不画分组标题**：全是藏书的书架上挂一个「藏书 7 本」的标题，
+   * 等于把「这些都是藏书」这句废话摆在最显眼的地方。和分组色带那条同一个判据。
+   */
+  const groups = useMemo(() => {
+    const shelf = books.filter((b) => b.kind !== "资料");
+    const own = books.filter((b) => b.kind === "资料");
+    if (!shelf.length || !own.length) return [{ key: "all", label: "", hint: "", items: books }];
+    return [
+      { key: "shelf", label: "藏书", hint: "别人写的，正文只读", items: shelf },
+      { key: "own", label: "资料", hint: "自己攒的，正文能改", items: own },
+    ];
+  }, [books]);
+
   return (
     <>
       {book && !reading ? (
@@ -437,25 +476,48 @@ export function Shelf({ onIntake, state = "" }) {
                   tick={progressTick}
                   onResume={(b, entry) => openDoc(b, entry, { resume: true, detail: b.chapterCount > 1 })}
                 />
-                <div className="bookshelf">
-                  {books.map((b) => (
-                    <BookCard
-                      key={b.dir}
-                      book={b}
-                      tick={progressTick}
-                      onCover={() => {
-                        setCoverFor(b);
-                        coverRef.current?.click();
-                      }}
-                      // 单篇书没有目录可挑，中间那一层就是一次白点的鼠标——直接进正文
-                      onOpen={() =>
-                        b.chapterCount > 1
-                          ? setBook(b)
-                          : openDoc(b, docsOf(b)[0], { resume: true, detail: false })
-                      }
-                      onTrash={() => trash(b)}
-                    />
-                  ))}
+                {/**
+                  * 封面墙 + 右栏「最近标注」。⚠️ **标注放书架不放书详情**：
+                  * 放详情页意味着你得先想起「是哪本书」才能看到自己写过什么，
+                  * 而标记是**跨书**的——「我最近在想什么」根本不按书分。
+                  * 书详情那一栏仍然留着，那儿回答的是「这一本里我留下了什么」，两者不重复。
+                  */}
+                <div className="shelf-cols">
+                  <div className="shelf-cols__wall">
+                    {groups.map((g) => (
+                      <div key={g.key}>
+                        {g.label ? (
+                          <div className="shelf-group">
+                            <h3>{g.label}</h3>
+                            <em>{g.items.length} 本 · {g.hint}</em>
+                          </div>
+                        ) : null}
+                        <div className="bookshelf">
+                          {g.items.map((b) => (
+                            <BookCard
+                              key={b.dir}
+                              book={b}
+                              tick={progressTick}
+                              onCover={() => {
+                                setCoverFor(b);
+                                coverRef.current?.click();
+                              }}
+                              // 单篇书没有目录可挑，中间那一层就是一次白点的鼠标——直接进正文
+                              onOpen={() =>
+                                b.chapterCount > 1
+                                  ? setBook(b)
+                                  : openDoc(b, docsOf(b)[0], { resume: true, detail: false })
+                              }
+                              // 封面上那颗「接着读」：多章的书原来必须先进书详情才能接着读
+                              onResume={() => openDoc(b, docsOf(b)[0], { resume: true, detail: false })}
+                              onTrash={() => trash(b)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <RecentMarks onOpen={(m) => openDocByPath(m)} />
                 </div>
               </>
             ) : (
