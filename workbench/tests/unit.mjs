@@ -44,6 +44,7 @@ import { pipeRoutes, workerPostTimeout } from "../server/routes/pipe.mjs";
 import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } from "../src/lib/content-projects.js";
 import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-target.js";
 import { mapMaterialWorkspaceItem, materialWorkspaceCounts, materialWorkspaceQuery, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
+import { mergeTypesetState, typesetMarkdown } from "../src/lib/typeset-handoff.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -63,6 +64,18 @@ check("分阶段查看时“全部”仍显示素材总数", materialWorkspaceCo
 check("旧收件入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("collections", "待整理")) === JSON.stringify({ view: "materials", state: "待处理" }));
 check("旧灵感失败入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("inbox", "初筛失败/需人工")) === JSON.stringify({ view: "materials", state: "待处理" }));
 check("旧搜索结果保留来源类型和真实 id", JSON.stringify(normalizeMaterialOpen("inbox", "idea-1")) === JSON.stringify({ view: "materials", targetView: "material-workspace", key: "inbox:idea-1" }));
+check("项目主稿进排版时会补上文章标题", typesetMarkdown("标题", "正文") === "# 标题\n\n正文");
+check("已有一级标题时不重复补标题", typesetMarkdown("标题", "# 正文自带标题\n\n内容") === "# 正文自带标题\n\n内容");
+{
+  const handoff = { projectId: "p1", draftId: "d1", title: "发布稿", body: "第一版", platform: "公众号" };
+  const created = mergeTypesetState({ drafts: [{ id: "manual", name: "手工稿", content: "原稿" }], cfg: { preset: "x" } }, handoff, 100);
+  check("首次进排版工具时保留原草稿和排版设置", created.mode === "create" && created.state.drafts.length === 2 && created.state.cfg.preset === "x");
+  const edited = { ...created.state, drafts: created.state.drafts.map((item) => item.id === created.context.typesetDraftId ? { ...item, content: "已做过的排版" } : item) };
+  const resumed = mergeTypesetState(edited, handoff, 200);
+  check("同一版主稿再进入会继续排版稿而不覆盖", resumed.mode === "resume" && resumed.state.drafts.find((item) => item.id === resumed.state.currentId)?.content === "已做过的排版");
+  const next = mergeTypesetState(resumed.state, { ...handoff, body: "第二版" }, 300);
+  check("主稿改版后新建排版稿，不覆盖上一版", next.mode === "create" && next.state.drafts.length === 3 && next.state.drafts.some((item) => item.content === "已做过的排版"));
+}
 {
   const item = mapMaterialWorkspaceItem({
     id: "m1", sourceKey: "materials", kind: "material", stage: "需核验",

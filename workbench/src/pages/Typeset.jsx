@@ -10,7 +10,8 @@
 // 正文怎么进去：阅读区的「去排版」先把 Markdown 放进剪贴板，跳到这里粘贴。
 
 import { useEffect, useRef, useState } from "react";
-import { IconExternalLink, IconRefresh } from "../components/icons.jsx";
+import { IconArrowLeft, IconExternalLink, IconRefresh } from "../components/icons.jsx";
+import { readTypesetContext, TYPESET_CONTEXT_KEY } from "../lib/typeset-handoff.js";
 
 /**
  * 排版工具把所有草稿存在**同源 localStorage 的这一个键**里。
@@ -23,11 +24,12 @@ import { IconExternalLink, IconRefresh } from "../components/icons.jsx";
  */
 const TYPESET_KEY = "wechat-typeset";
 
-export function Typeset() {
+export function Typeset({ onGo }) {
   const [nonce, setNonce] = useState(0);
   const [confirm, setConfirm] = useState(false);
   const [ready, setReady] = useState(false);
   const timer = useRef(null);
+  const [context, setContext] = useState(() => readTypesetContext());
 
   /**
    * **iframe 加载完之前不显示它。**
@@ -50,10 +52,12 @@ export function Typeset() {
   function reset() {
     try {
       localStorage.removeItem(TYPESET_KEY);
+      localStorage.removeItem(TYPESET_CONTEXT_KEY);
     } catch {
       /* 隐私模式下删不了，重挂 iframe 至少还能刷新 */
     }
     setNonce((n) => n + 1);
+    setContext(null);
     setConfirm(false);
   }
 
@@ -65,7 +69,20 @@ export function Typeset() {
   }
 
   return (
-    <div className="embed-page">
+    <div className="embed-page" data-context={context ? "true" : undefined}>
+      {context ? (
+        <div className="typeset-context" role="status">
+          <button className="typeset-context__back" onClick={() => onGo?.("project", context.projectId)}>
+            <IconArrowLeft aria-hidden="true" />返回项目
+          </button>
+          <div className="typeset-context__copy">
+            <span>正在发布</span>
+            <b>{context.title}</b>
+            <small>{context.platform} · 已载入当前主稿</small>
+          </div>
+          <div className="typeset-context__next">排版后返回项目记录发布</div>
+        </div>
+      ) : null}
       {/* 两个动作悬浮在右下角——右上角是工具自己的主操作区（「复制到公众号」在那儿） */}
       <div className="embed-page__acts">
         {confirm ? (

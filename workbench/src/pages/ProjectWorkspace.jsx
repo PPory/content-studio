@@ -3,8 +3,10 @@ import { api } from "../lib/api.js";
 import { PROJECT_STAGES, PROJECT_STAGE_META } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { WritingAssist } from "../components/WritingAssist.jsx";
+import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ErrorNote, Loading } from "../components/ui.jsx";
-import { IconArrowLeft, IconArrowRight, IconCheck, IconLoader2, IconPlus, IconRefresh } from "../components/icons.jsx";
+import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 const FLOW = ["策划中", "生成中", "写作中", "待诊断", "待发布", "待复盘", "已完成"];
 
@@ -21,6 +23,54 @@ function materialText(item) {
   return `> ${item.content || item.title}${source}`;
 }
 
+function ProjectPublishRail({ project, draft, title, body, onTypeset, onCopy, onPublished }) {
+  const isWechat = draft?.platform === "公众号";
+  return (
+    <aside className="project-publish" aria-label="发布准备">
+      <div className="project-publish__head">
+        <span>发布准备</span>
+        <b>{draft?.platform || "未选平台"}</b>
+      </div>
+      <h2>主稿已通过诊断</h2>
+      <p>从这里出发，排版、发布与链接记录都会回到同一个内容项目。</p>
+
+      <ol className="project-publish__steps">
+        <li data-done="true"><span>01</span><div><b>确认发布版</b><small>{draft?.title} · {draft?.platform}</small></div></li>
+        <li><span>02</span><div><b>{isWechat ? "公众号排版" : "复制发布稿"}</b><small>{isWechat ? "已有排版草稿会继续，不被覆盖" : "复制确认后的标题与正文"}</small></div></li>
+        <li><span>03</span><div><b>记录发布</b><small>链接和时间会推进项目到复盘</small></div></li>
+      </ol>
+
+      {isWechat ? (
+        <button className="btn btn-primary project-publish__primary" onClick={onTypeset}>
+          <IconBrandWechat aria-hidden="true" />载入排版工具<IconArrowRight aria-hidden="true" />
+        </button>
+      ) : (
+        <button className="btn btn-primary project-publish__primary" onClick={onCopy}>
+          <IconCopy aria-hidden="true" />复制当前发布稿
+        </button>
+      )}
+
+      <PublishPanel
+        item={{
+          key: draft.id,
+          title,
+          raw: {
+            platform: draft.platform,
+            status: draft.publicationStatus,
+            publishedUrl: project.publication?.latest?.draftId === draft.id ? project.publication.latest.url : "",
+            publishedAt: project.publication?.latest?.draftId === draft.id ? project.publication.latest.publishedAt : "",
+          },
+        }}
+        doc={{ title, content: body }}
+        buttonClassName="btn project-publish__record"
+        buttonLabel="发布后记录链接"
+        onPublished={onPublished}
+      />
+      <small className="project-publish__truth">只有链接、时间和当前版本一起记录，项目才会进入复盘。</small>
+    </aside>
+  );
+}
+
 export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const [project, setProject] = useState(null);
   const [title, setTitle] = useState("");
@@ -29,6 +79,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [notice, setNotice] = useState("");
   const [insertRequest, setInsertRequest] = useState(null);
   const cursor = useRef(null);
 
@@ -91,6 +142,38 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
     }
   }
 
+  async function openTypeset() {
+    if (!draft) return;
+    try {
+      const result = prepareTypesetHandoff({
+        projectId: project.id,
+        draftId: draft.id,
+        title,
+        body,
+        platform: draft.platform,
+      });
+      setNotice(result.mode === "resume" ? "已继续上次的排版草稿" : "已将当前主稿载入排版工具");
+      onGo("typeset", "");
+    } catch (e) {
+      setError(Object.assign(new Error("无法准备排版草稿"), { hint: e.message }));
+    }
+  }
+
+  async function copyRelease() {
+    try {
+      await navigator.clipboard.writeText(typesetMarkdown(title, body));
+      setNotice("已复制当前发布稿");
+    } catch {
+      setError(new Error("复制失败，请在正文里手动复制"));
+    }
+  }
+
+  async function handlePublished(result) {
+    setNotice(result.feedbackCreated ? `发布已记录，并沉淀 ${result.feedbackCreated} 条有效素材` : "发布已记录，项目已进入复盘");
+    await load();
+    onChanged?.();
+  }
+
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
     return (
@@ -103,6 +186,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
 
   const mainAction = PRIMARY_ACTION[project.stage];
   const phaseIndex = FLOW.indexOf(project.stage);
+  const draftEditable = project.stage === "写作中";
 
   return (
     <div className="project-workspace">
@@ -112,10 +196,11 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
           <span>/</span><span>{project.title}</span>
         </div>
         <div className="project-workspace__actions">
+          {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
           {saved && !dirty ? <span className="project-saved"><IconCheck aria-hidden="true" />已保存</span> : null}
-          {draft ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}保存</button> : null}
+          {draft && draftEditable ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}保存</button> : null}
           {project.stage === "待发布" ? (
-            <button className="btn btn-primary" onClick={() => onGo("typeset", "")}>去排版发布<IconArrowRight aria-hidden="true" /></button>
+            draft?.platform === "公众号" ? <button className="btn btn-primary" onClick={openTypeset}><IconBrandWechat aria-hidden="true" />去排版<IconArrowRight aria-hidden="true" /></button> : null
           ) : mainAction ? (
             <button className="btn btn-primary" onClick={() => transition(mainAction.action)} disabled={busy}>
               {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{mainAction.label}
@@ -159,8 +244,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
           {draft ? (
             <>
               <div className="project-draft__label"><span>主稿</span><em>{draft.status}</em></div>
-              <input className="project-draft__title" value={title} onChange={(e) => { setTitle(e.target.value); setSaved(false); }} aria-label="主稿标题" />
+              <input className="project-draft__title" value={title} onChange={(e) => { setTitle(e.target.value); setSaved(false); }} aria-label="主稿标题" disabled={!draftEditable} />
               <MarkdownEditor
+                key={`${draft.id}:${draftEditable ? "edit" : "locked"}`}
                 value={body}
                 onChange={(value) => { setBody(value); setSaved(false); }}
                 ariaLabel="主稿正文"
@@ -170,8 +256,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
                 revisionScope={`pipeline:drafts:${draft.id}`}
                 revisionTitle={title}
                 revisionPlatform={draft.platform}
-                toolbarExtra={<WritingAssist title={title} body={body} platform={draft.platform} getCursor={() => cursor.current}
-                  onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} />}
+                readOnly={!draftEditable}
+                toolbarExtra={draftEditable ? <WritingAssist title={title} body={body} platform={draft.platform} getCursor={() => cursor.current}
+                  onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>
           ) : project.variants?.length ? (
@@ -189,7 +276,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
           <ErrorNote error={error} what="更新内容项目" />
         </main>
 
-        <aside className="project-materials">
+        {project.stage === "待发布" && draft ? (
+          <ProjectPublishRail project={project} draft={draft} title={title} body={body} onTypeset={openTypeset} onCopy={copyRelease} onPublished={handlePublished} />
+        ) : <aside className="project-materials">
           <div className="project-materials__head"><div><span className="eyebrow">REFERENCES</span><h2>项目素材</h2></div><b>{project.materials?.length || 0}</b></div>
           <p>素材不会自动改写正文。需要哪条，插入到当前光标处。</p>
           {project.materials?.length ? project.materials.map((item, index) => (
@@ -197,13 +286,13 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
               <small>{String(index + 1).padStart(2, "0")} · {item.type}</small>
               <h3>{item.title}</h3>
               <p>{item.content || "这条素材没有正文。"}</p>
-              <button className="btn btn-sm" onClick={() => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })} disabled={!draft || !item.content}>
+              <button className="btn btn-sm" onClick={() => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })} disabled={!draftEditable || !item.content}>
                 <IconPlus aria-hidden="true" />插到光标处
               </button>
             </article>
           )) : <div className="project-materials__empty">这个项目还没有关联素材。</div>}
           <button className="project-refresh" onClick={load} disabled={loading}><IconRefresh aria-hidden="true" />重新读取项目</button>
-        </aside>
+        </aside>}
       </div>
     </div>
   );

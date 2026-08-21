@@ -611,8 +611,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-workspace__crumb svg { width: 15px; height: 15px; }
 .project-workspace__crumb span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-workspace__actions { display: flex; align-items: center; gap: 8px; flex: none; }
-.project-saved { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-xs); }
-.project-saved svg { width: 14px; height: 14px; }
+.project-saved, .project-notice { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-xs); }
+.project-saved svg, .project-notice svg { width: 14px; height: 14px; }
+.project-notice { color: var(--text-2); }
 .project-flow {
   list-style: none; margin: 0; padding: 12px 24px; border-bottom: 1px solid var(--border);
   background: var(--surface); display: grid; grid-template-columns: repeat(7, minmax(70px, 1fr)); gap: 0;
@@ -625,7 +626,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-flow li[data-state="current"] { color: var(--text-1); }
 .project-flow li[data-state="current"] > span { border-color: var(--text-1); box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 10px var(--text-1); }
 .project-workspace__grid { display: grid; grid-template-columns: 245px minmax(480px, 1fr) 280px; min-height: calc(100% - 112px); }
-.project-brief, .project-materials { background: var(--surface); padding: 24px 20px; }
+.project-brief, .project-materials, .project-publish { background: var(--surface); padding: 24px 20px; }
 .project-brief { border-right: 1px solid var(--border); }
 .project-brief h1 { margin: 12px 0 20px; font-family: var(--font-display); font-size: var(--fs-xl); line-height: 1.28; letter-spacing: -.025em; }
 .project-stage-note { padding: 12px 12px; background: var(--surface-2); border-radius: var(--r-ctl); }
@@ -647,7 +648,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-draft__label em { padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-style: normal; letter-spacing: 0; }
 .project-draft__title { width: 100%; margin-bottom: 16px; padding: 6px 0 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-1); font-family: var(--font-display); font-size: clamp(25px, 2.8vw, 38px); font-weight: 650; letter-spacing: -.035em; }
 .project-draft__title:focus { outline: 0; border-color: var(--text-1); }
+.project-draft__title:disabled { opacity: 1; color: var(--text-1); cursor: default; }
 .project-draft .md-editor { min-height: 620px; background: var(--surface); border-radius: var(--r-lg); }
+.md-editor[data-readonly] .md-editor__bar > :not(.md-editor__preview):not(.md-editor__ai-history) { display: none; }
+.md-editor[data-readonly] .md-editor__bar::before {
+  content: "发布版已锁定 · 需修改时先退回写作";
+  margin-right: auto; color: var(--text-3); font-size: var(--fs-xs);
+}
 .project-draft__empty { max-width: 540px; margin: 15vh auto 0; text-align: center; }
 .project-draft__empty > span { display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 50%; font-family: var(--font-mono); font-size: var(--fs-2xs); }
 .project-draft__empty h2 { margin: 16px 0 8px; font-family: var(--font-display); font-size: var(--fs-2xl); }
@@ -664,6 +671,21 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-materials__empty { padding: 24px 10px; border: 1px dashed var(--border); border-radius: var(--r-ctl); color: var(--text-3); text-align: center; font-size: var(--fs-xs); }
 .project-refresh { display: inline-flex; align-items: center; gap: 4px; margin-top: 16px; }
 .project-refresh svg { width: 13px; height: 13px; }
+.project-publish { border-left: 1px solid var(--border); }
+.project-publish__head { display: flex; align-items: center; justify-content: space-between; color: var(--text-3); font-size: var(--fs-2xs); letter-spacing: .08em; }
+.project-publish__head b { padding: 3px 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-weight: 500; letter-spacing: 0; }
+.project-publish > h2 { margin: 18px 0 8px; font-family: var(--font-display); font-size: var(--fs-lg); line-height: 1.35; }
+.project-publish > p { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.65; }
+.project-publish__steps { list-style: none; display: grid; gap: 0; margin: 22px 0; padding: 0; border-top: 1px solid var(--border); }
+.project-publish__steps li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.project-publish__steps li > span { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.project-publish__steps li[data-done] > span { background: var(--text-1); border-color: var(--text-1); color: var(--surface); }
+.project-publish__steps li div { min-width: 0; display: grid; gap: 3px; }
+.project-publish__steps li b { font-size: var(--fs-xs); }
+.project-publish__steps li small { overflow: hidden; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; text-overflow: ellipsis; }
+.project-publish__primary, .project-publish__record { width: 100%; justify-content: center; }
+.project-publish__record { margin-top: 8px; }
+.project-publish__truth { display: block; margin-top: 12px; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.55; }
 /* 和 .rail-toggle 同一形态：侧栏里的工具按钮是一套语汇，各画各的就是两种记号 */
 .conn__gear {
   margin-left: auto; flex: none;
@@ -2782,6 +2804,19 @@ kbd {
  * 一遍它自己标题栏里已经写着的话。
  */
 .embed-page { position: relative; height: 100%; }
+.embed-page[data-context] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.typeset-context {
+  min-height: 58px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px;
+  padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.typeset-context__back { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: transparent; color: var(--text-2); font-size: var(--fs-xs); }
+.typeset-context__back:hover { border-color: var(--border-strong); color: var(--text-1); }
+.typeset-context__back svg { width: 15px; height: 15px; }
+.typeset-context__copy { min-width: 0; display: grid; grid-template-columns: auto minmax(0, max-content); align-items: baseline; justify-content: start; column-gap: 8px; }
+.typeset-context__copy > span { color: var(--text-3); font-size: var(--fs-2xs); }
+.typeset-context__copy > b { overflow: hidden; color: var(--text-1); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
+.typeset-context__copy > small { grid-column: 1 / -1; color: var(--text-3); font-size: var(--fs-2xs); }
+.typeset-context__next { color: var(--text-3); font-size: var(--fs-2xs); white-space: nowrap; }
 /* 悬浮在**右下角**，不是右上角——右上角是工具自己的主操作区（「复制到公众号」就在那儿），
    压上去会挡住它。右下角那片是预览区的空白，谁都不占。 */
 .embed-page__acts {
@@ -3652,7 +3687,7 @@ kbd {
   .book-hero { gap: 16px; }
   .book-hero .cover { width: 112px; }
   .project-workspace__grid { grid-template-columns: 220px minmax(0, 1fr); }
-  .project-materials { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+  .project-materials, .project-publish { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (max-width: 900px) {
   .app { flex-direction: column; }
@@ -3673,9 +3708,11 @@ kbd {
   .project-workspace__head { position: static; height: auto; min-height: 64px; flex-wrap: wrap; padding: 12px 16px; }
   .project-flow { padding: 12px 16px; overflow-x: auto; grid-template-columns: repeat(7, minmax(92px, 1fr)); }
   .project-workspace__grid { grid-template-columns: minmax(0, 1fr); }
-  .project-brief, .project-materials { border: 0; border-bottom: 1px solid var(--border); }
+  .project-brief, .project-materials, .project-publish { border: 0; border-bottom: 1px solid var(--border); }
   .project-draft { padding: 24px 16px 40px; }
-  .project-materials { grid-column: auto; }
+  .project-materials, .project-publish { grid-column: auto; }
+  .typeset-context { grid-template-columns: auto minmax(0, 1fr); }
+  .typeset-context__next { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -431,7 +431,7 @@ export function App() {
           ) : route.view === "hot" ? (
             <Hotspots onIntake={setIntake} />
           ) : route.view === "typeset" ? (
-            <Typeset />
+            <Typeset onGo={go} />
           ) : route.view === "metrics" ? (
             <Metrics onSettings={() => setSettings(true)} />
           ) : route.view === "shelf" ? (

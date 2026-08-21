@@ -233,6 +233,7 @@ export function MarkdownEditor({
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
   onCursorChange,                 // 当前光标是写作推动的锚点；不改变正文，只上报位置
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
+  readOnly = false,
 }) {
   const host = useRef(null);
   const view = useRef(null);
@@ -278,6 +279,8 @@ export function MarkdownEditor({
           EditorView.lineWrapping,
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           markdown({ base: markdownLanguage }),
+          EditorState.readOnly.of(readOnly),
+          EditorView.editable.of(!readOnly),
           syntaxHighlighting(mdHighlight),
           cmTheme,
           citationExtension,
@@ -597,7 +600,7 @@ export function MarkdownEditor({
     : null;
 
   return (
-    <div className="md-editor">
+    <div className="md-editor" data-readonly={readOnly || undefined}>
       <div className="md-editor__bar" role="toolbar" aria-label="排版工具">
         <button className="icon-btn" onClick={cmd(undo)} title="撤销 Ctrl+Z" aria-label="撤销">
           <IconArrowBackUp aria-hidden="true" stroke={1.7} />

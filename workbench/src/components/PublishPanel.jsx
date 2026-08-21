@@ -38,13 +38,13 @@ function localNow() {
   return date.toISOString().slice(0, 16);
 }
 
-export function PublishPanel({ item, doc, onPublished, blocked }) {
+export function PublishPanel({ item, doc, onPublished, blocked, buttonClassName = "btn btn-sm", buttonLabel = "" }) {
   const [open, setOpen] = useState(false);
   const published = (item.raw || {}).status === "已发布";
   return (
     <>
       <button
-        className="btn btn-sm"
+        className={buttonClassName}
         type="button"
         onClick={() => setOpen(true)}
         disabled={blocked}
@@ -52,7 +52,7 @@ export function PublishPanel({ item, doc, onPublished, blocked }) {
         title={blocked ? "先处理掉「待核实经历」再记录发布" : published ? "补上表现数据，跑一次复盘" : "填发布链接和时间"}
       >
         <IconCloudUpload aria-hidden="true" stroke={1.7} />
-        {published ? "更新数据并复盘" : "记录发布"}
+        {buttonLabel || (published ? "更新数据并复盘" : "记录发布")}
       </button>
       {open ? (
         <PublishDrawer
