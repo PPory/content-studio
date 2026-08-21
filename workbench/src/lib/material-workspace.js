@@ -118,9 +118,21 @@ function mapResult(result) {
     items: (result.items || []).map(mapMaterialWorkspaceItem),
     nextCursor: result.nextCursor || null,
     total: Number(result.total || 0),
-    counts: { ...(result.counts || {}), total: Number(result.total || 0) },
+    counts: materialWorkspaceCounts(result.counts, result.total),
     facets: result.facets || { types: [], verifications: [] },
   };
+}
+
+export function materialWorkspaceCounts(counts = {}, filteredTotal = 0) {
+  const total = MATERIAL_STAGES.reduce((sum, stage) => sum + Number(counts?.[stage] || 0), 0);
+  return { ...(counts || {}), total: total || Number(filteredTotal || 0) };
+}
+
+// 页面路由沿用通用 Studio 的 `state`，Worker 的统一素材读模型只认 `stage`。
+// 这个转换必须放在适配器边界，否则界面会显示“已选中”，列表却仍然查全部数据。
+export function materialWorkspaceQuery(params = {}) {
+  const { state = "", ...query } = params;
+  return { ...query, stage: query.stage || state };
 }
 
 export const MATERIAL_WORKSPACE = {
@@ -148,11 +160,11 @@ export const MATERIAL_WORKSPACE = {
   },
 
   async list(params = {}) {
-    return mapResult(await api.materialWorkspace({ ...params, pageSize: 30 }));
+    return mapResult(await api.materialWorkspace(materialWorkspaceQuery({ ...params, pageSize: 30 })));
   },
 
   async search(params = {}) {
-    return mapResult(await api.materialWorkspace({ ...params, pageSize: 100 }));
+    return mapResult(await api.materialWorkspace(materialWorkspaceQuery({ ...params, pageSize: 100 })));
   },
 
   async load(item) {

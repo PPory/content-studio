@@ -43,7 +43,7 @@ import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditor
 import { pipeRoutes, workerPostTimeout } from "../server/routes/pipe.mjs";
 import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } from "../src/lib/content-projects.js";
 import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-target.js";
-import { mapMaterialWorkspaceItem, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
+import { mapMaterialWorkspaceItem, materialWorkspaceCounts, materialWorkspaceQuery, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -58,6 +58,8 @@ check("本机代理有内容项目详情", pipeRoutes.some((route) => route.meth
 check("本机代理有项目阶段命令", pipeRoutes.some((route) => route.method === "POST" && route.path === "/api/pipe/projects/:id/transition"));
 check("本机代理有统一素材列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/materials"));
 check("统一素材阶段只有一份", MATERIAL_STAGES.join("/") === "待处理/已收纳/可用素材/需核验/已使用/已归档");
+check("素材页面状态正确转成 Worker 阶段查询", JSON.stringify(materialWorkspaceQuery({ state: "已收纳", type: "框架/模型" })) === JSON.stringify({ type: "框架/模型", stage: "已收纳" }));
+check("分阶段查看时“全部”仍显示素材总数", materialWorkspaceCounts({ "已收纳": 8, "可用素材": 14, "已使用": 18 }, 8).total === 40);
 check("旧收件入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("collections", "待整理")) === JSON.stringify({ view: "materials", state: "待处理" }));
 check("旧灵感失败入口归到待处理来源", JSON.stringify(normalizeMaterialRoute("inbox", "初筛失败/需人工")) === JSON.stringify({ view: "materials", state: "待处理" }));
 check("旧搜索结果保留来源类型和真实 id", JSON.stringify(normalizeMaterialOpen("inbox", "idea-1")) === JSON.stringify({ view: "materials", targetView: "material-workspace", key: "inbox:idea-1" }));
