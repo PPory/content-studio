@@ -40,6 +40,9 @@ const draft = (fields = {}) => ({
   shares: null,
   performance_summary: "",
   feedback_status: "未评估",
+  review_conclusion: "",
+  next_experiment: "",
+  reviewed_at: "",
   cover_url: "",
   cover_text: "",
   cover_note: "",
@@ -131,20 +134,29 @@ test("完整发布记录尚无表现判断时是待复盘", () => {
   assert.equal(state.nextAction, "开始复盘");
 });
 
-test("只有表现状态和复盘结论都存在时才是已完成", () => {
+test("只有表现状态、复盘判断和下一次实验都存在时才是已完成", () => {
   const reviewed = draft({
     status: "已发布",
     published_url: "https://example.com/p",
     published_at: "2026-08-20T08:00:00.000Z",
     feedback_status: "普通",
-    performance_summary: "阅读正常，下篇改进开头。",
+    performance_summary: "阅读量与同平台近三篇相当。",
+    review_conclusion: "开头没有带来明显改善。",
+    next_experiment: "下一篇只替换成案例开头。",
+    reviewed_at: "2026-08-21T08:00:00.000Z",
   });
   assert.equal(deriveProjectStage({ topic: topic({ status: "已发布" }), drafts: [reviewed] }).stage, "已完成");
 
-  const missingConclusion = { ...reviewed, performance_summary: "" };
+  const missingConclusion = { ...reviewed, review_conclusion: "" };
   const state = deriveProjectStage({ topic: topic({ status: "已发布" }), drafts: [missingConclusion] });
   assert.equal(state.stage, "待复盘");
-  assert.deepEqual(state.blockers, ["缺少复盘结论"]);
+  assert.deepEqual(state.blockers, ["缺少复盘判断"]);
+
+  const missingExperiment = { ...reviewed, next_experiment: "" };
+  assert.deepEqual(
+    deriveProjectStage({ topic: topic({ status: "已发布" }), drafts: [missingExperiment] }).blockers,
+    ["缺少下一篇实验"]
+  );
 });
 
 test("已发布却缺链接或时间的记录进入需处理", () => {

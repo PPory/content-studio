@@ -37,6 +37,7 @@ export const api = {
   createProjectVariant: (id, platform) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants`, { platform }),
   removeProjectVariant: (id, draftId) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),
   saveProjectRelease: (id, draftId, release) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/releases/${encodeURIComponent(draftId)}`, release),
+  saveProjectReview: (id, review) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/review`, review),
   materialWorkspace: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null));
     return req(`/api/pipe/materials${qs.toString() ? `?${qs}` : ""}`);

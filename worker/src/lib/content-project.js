@@ -6,6 +6,7 @@
 import { all, first } from "./db.js";
 import { DRAFT_STATUS, DRAFT_WORKFLOW, TOPIC_STATUS } from "./values.js";
 import { releaseOptions, releasePackage } from "./release-package.js";
+import { winningFeedbackPlan } from "./project-review.js";
 
 export const PROJECT_STAGES = Object.freeze([
   "策划中",
@@ -95,9 +96,9 @@ function publicationFrom(drafts) {
   };
 }
 
-function reviewFrom(drafts, publication) {
+function reviewFrom(drafts, publication, topic = null, materials = []) {
   if (publication.status !== "已发布") {
-    return { status: "未开始", summary: "", metrics: null, draftId: null };
+    return { status: "未开始", basis: "", conclusion: "", nextExperiment: "", metrics: null, draftId: null, reviewedAt: null, feedbackCandidates: [], storyCandidateIds: [] };
   }
   const publishedId = publication.latest?.draftId;
   const draft = drafts.find((item) => item.id === publishedId);
@@ -108,25 +109,28 @@ function reviewFrom(drafts, publication) {
     collects: draft.collects ?? null,
     shares: draft.shares ?? null,
   } : null;
+  const feedback = winningFeedbackPlan({ draft, topic, materials, basis: draft?.performance_summary });
   return {
     status: draft?.feedback_status || "未评估",
-    summary: asText(draft?.performance_summary),
+    basis: asText(draft?.performance_summary),
+    conclusion: asText(draft?.review_conclusion),
+    nextExperiment: asText(draft?.next_experiment),
     metrics,
     draftId: draft?.id || null,
+    reviewedAt: asText(draft?.reviewed_at) || null,
+    feedbackCandidates: feedback.candidates,
+    storyCandidateIds: feedback.storyIds,
   };
 }
 
-/**
- * 现阶段不能可靠区分“待诊断”和“待发布”：drafts 只有待修改/已发布。
- * 把待修改猜成待发布会让未经诊断的历史稿跳过门槛，所以一律是写作中。
- */
+/** 旧数据没有 workflow_status 时保守回落到写作中，不让历史稿跳过诊断门槛。 */
 const workflowOf = (draft) => asText(draft?.workflow_status)
   || (draft?.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING);
 
-export function deriveProjectStage({ topic = null, drafts = [], master = null, masterBlocker = null } = {}) {
+export function deriveProjectStage({ topic = null, drafts = [], materials = [], master = null, masterBlocker = null } = {}) {
   const blockers = [];
   const publication = publicationFrom(drafts);
-  const review = reviewFrom(drafts, publication);
+  const review = reviewFrom(drafts, publication, topic, materials);
 
   if (masterBlocker) blockers.push(masterBlocker);
 
@@ -178,7 +182,7 @@ export function deriveProjectStage({ topic = null, drafts = [], master = null, m
   }
 
   if (publication.status === "已发布") {
-    const reviewed = REVIEW_DONE.has(review.status) && !!review.summary;
+    const reviewed = REVIEW_DONE.has(review.status) && !!review.conclusion && !!review.nextExperiment;
     return reviewed ? {
       stage: "已完成",
       stageReason: "已有完整发布记录、表现判断和复盘结论",
@@ -186,9 +190,9 @@ export function deriveProjectStage({ topic = null, drafts = [], master = null, m
       blockers: [], publication, review,
     } : {
       stage: "待复盘",
-      stageReason: review.status === "未评估" ? "内容已发布，尚未进行表现判断" : "已有表现判断，还需补充复盘结论",
-      nextAction: review.status === "未评估" ? "开始复盘" : "补充复盘结论",
-      blockers: review.status === "未评估" ? [] : ["缺少复盘结论"],
+      stageReason: review.status === "未评估" ? "内容已发布，尚未进行表现判断" : "已有表现依据，还需留下判断和下一步",
+      nextAction: review.status === "未评估" ? "开始复盘" : "完成复盘",
+      blockers: [!review.conclusion ? "缺少复盘判断" : null, !review.nextExperiment ? "缺少下一篇实验" : null].filter(Boolean),
       publication, review,
     };
   }
@@ -294,7 +298,7 @@ function mapSource(row) {
 export function buildContentProject({ topic = null, drafts = [], materials = [], sources = [] } = {}) {
   const orderedDrafts = [...drafts].sort(newestFirst);
   const selected = chooseMasterDraft(topic, orderedDrafts);
-  const state = deriveProjectStage({ topic, drafts: orderedDrafts, master: selected.master, masterBlocker: selected.blocker });
+  const state = deriveProjectStage({ topic, drafts: orderedDrafts, materials, master: selected.master, masterBlocker: selected.blocker });
   const onlyDraft = !topic && orderedDrafts[0];
   const updatedUnix = Math.max(Number(topic?.updated_at) || 0, ...orderedDrafts.map((draft) => Number(draft.updated_at) || 0));
 
@@ -349,7 +353,8 @@ export async function listContentProjects(env, { stage = "", cursor = "", pageSi
     all(env, `SELECT id, topic_id, headline, summary, NULL AS body, platform, status, workflow_status, parent_draft_id,
       cover_url, cover_text, cover_note, keywords_json, interaction_goal,
       published_url, published_at, views, likes, comments, collects, shares,
-      performance_summary, feedback_status, created_at, updated_at FROM drafts`),
+      performance_summary, feedback_status, review_conclusion, next_experiment, reviewed_at,
+      created_at, updated_at FROM drafts`),
   ]);
   const draftsByTopic = groupBy(draftMeta.filter((draft) => draft.topic_id), "topic_id");
   const candidates = [

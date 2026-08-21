@@ -23,15 +23,9 @@ import {
   IconDatabase,
   IconExternalLink,
   IconRefresh,
-  IconRoute,
   IconSettings,
 } from "../components/icons.jsx";
 import { fmtMonth, fmtNum, inMonth, metricLabel, monthsOf, overview, platformSummary, platformsIn, recent, weeklyPublish } from "../lib/posts.js";
-
-const TABS = [
-  { key: "overview", label: "月度总览", icon: IconChartBar },
-  { key: "sources", label: "数据来源", icon: IconRoute },
-];
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -48,8 +42,7 @@ function useDark() {
   return dark;
 }
 
-export function Metrics({ onSettings }) {
-  const [tab, setTab] = useState("overview");
+export function Metrics({ onSettings, mode = "overview" }) {
   const [posts, setPosts] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState(null);
@@ -102,20 +95,9 @@ export function Metrics({ onSettings }) {
 
       {posts && (
         <>
-          {/* 页签**一直在**，哪怕一条内容数据都没有：粉丝周录住在「数据来源」里，
-              空态时把整条页签藏掉，等于把它一起锁在门外。 */}
-          <div className="pill-tabs" role="tablist">
-            {TABS.map((t) => (
-              <button key={t.key} role="tab" aria-selected={tab === t.key} className="pill-tab" onClick={() => setTab(t.key)}>
-                <t.icon aria-hidden="true" stroke={1.7} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {tab === "overview" && rows.length === 0 ? (
+          {mode === "overview" && rows.length === 0 ? (
             <FirstRun onDone={load} onSettings={onSettings} />
-          ) : tab === "overview" ? (
+          ) : mode === "overview" ? (
             <OverviewTab rows={rows} month={month} />
           ) : (
             <SourcesTab posts={posts} metrics={metrics} onPosts={setPosts} onMetrics={setMetrics} onReload={load} onSettings={onSettings} />

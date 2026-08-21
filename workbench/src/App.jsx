@@ -16,6 +16,7 @@ import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
 import { Metrics } from "./pages/Metrics.jsx";
+import { Review } from "./pages/Review.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
@@ -29,6 +30,7 @@ const STATUS_RETRY_MS = [3000, 8000, 20000];
 const CONTENT_VIEWS = new Set(["content", "project", "topics", "drafts"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
+const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", "metrics"]);
 
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
@@ -53,10 +55,17 @@ const NAV = [
       { to: "shelf", label: "书架" },
     ],
   },
-  { key: "review", to: "review", match: (v) => v === "review" || v === "metrics" },
+  {
+    key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v),
+    children: [
+      { to: "review", label: "待复盘" },
+      { to: "review-performance", label: "内容表现" },
+      { to: "review-sources", label: "数据来源" },
+    ],
+  },
 ];
 
-const VIEWS = ["today", "content", "project", "review", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -85,6 +94,10 @@ function readHash() {
   const [rawView = "", ...rest] = raw.split("/");
   const decodedView = decodeURIComponent(rawView) || "today";
   const decodedState = decodeURIComponent(rest.join("/"));
+  if (decodedView === "metrics") {
+    window.history.replaceState(null, "", "#/review-performance");
+    return { view: "review-performance", state: "" };
+  }
   const legacyMaterial = normalizeMaterialRoute(decodedView, decodedState);
   if (legacyMaterial) {
     const canonical = `#/materials${legacyMaterial.state ? `/${encodeURIComponent(legacyMaterial.state)}` : ""}`;
@@ -416,7 +429,11 @@ export function App() {
           ) : route.view === "project" ? (
             <ProjectWorkspace projectId={route.state} onGo={go} onChanged={refreshStatus} />
           ) : route.view === "review" ? (
-            <Metrics onSettings={() => setSettings(true)} />
+            <Review onGo={go} />
+          ) : route.view === "review-performance" ? (
+            <Metrics mode="overview" onSettings={() => setSettings(true)} />
+          ) : route.view === "review-sources" ? (
+            <Metrics mode="sources" onSettings={() => setSettings(true)} />
           ) : route.view === "overview" ? (
             <Overview
               config={config}
@@ -432,8 +449,6 @@ export function App() {
             <Hotspots onIntake={setIntake} />
           ) : route.view === "typeset" ? (
             <Typeset onGo={go} />
-          ) : route.view === "metrics" ? (
-            <Metrics onSettings={() => setSettings(true)} />
           ) : route.view === "shelf" ? (
             <Shelf onIntake={setIntake} state={route.state} />
           ) : STUDIO.has(route.view) ? (

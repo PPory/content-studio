@@ -110,6 +110,11 @@ export const pipeRoutes = [
     handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/releases/${encodeURIComponent(params.draftId)}`),
   },
   {
+    method: "POST",
+    path: "/api/pipe/projects/:id/review",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/review`),
+  },
+  {
     method: "GET",
     path: "/api/pipe/list/:view",
     handler({ env, res, params, url }) {

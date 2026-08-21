@@ -1,0 +1,3 @@
+ALTER TABLE drafts ADD COLUMN review_conclusion TEXT NOT NULL DEFAULT '';
+ALTER TABLE drafts ADD COLUMN next_experiment TEXT NOT NULL DEFAULT '';
+ALTER TABLE drafts ADD COLUMN reviewed_at TEXT NOT NULL DEFAULT '';

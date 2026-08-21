@@ -33,6 +33,7 @@ import { normalizeWritingAssistRequest } from "./lib/writing-assist.js";
 import { normalizeTextRevisionRequest } from "./lib/text-revision.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
 import { normalizeReleaseInput, releaseSpec } from "./lib/release-package.js";
+import { normalizeProjectReview, winningFeedbackPlan } from "./lib/project-review.js";
 import {
   applyCollectionOrganize,
   collectionSummary,
@@ -296,6 +297,11 @@ export async function handleWorkbench(request, env, ctx, url) {
     const projectReleaseMatch = path.match(/^projects\/(.+)\/releases\/([0-9A-Za-z-]{20,40})$/);
     if (projectReleaseMatch && request.method === "POST") {
       return await updateProjectRelease(env, projectReleaseMatch[1], projectReleaseMatch[2], await request.json());
+    }
+
+    const projectReviewMatch = path.match(/^projects\/(.+)\/review$/);
+    if (projectReviewMatch && request.method === "POST") {
+      return await submitProjectReview(env, projectReviewMatch[1], await request.json());
     }
 
     const projectTransitionMatch = path.match(/^projects\/(.+)\/transition$/);
@@ -1225,59 +1231,97 @@ async function publishDraft(env, body) {
     feedback_status: feedbackStatus,
   });
 
-  let feedbackCreated = 0;
   const topicIds = draft.topic_id ? [draft.topic_id] : [];
-  if (feedbackStatus === "表现突出" && topicIds.length) {
-    const topic = await getRow(env, "topics", topicIds[0]);
-    if (topic) {
-      feedbackCreated = await captureWinningFeedback(env, {
-        draft, topic, publishedUrl, summary: String(performance.summary || ""),
-      });
-      await updateRow(env, "drafts", draftId, { feedback_status: "已沉淀" });
-    }
-  }
-
   const topics = [];
   for (const topicId of topicIds) topics.push(await reconcileTopicDraftState(env, topicId));
-  return json({ ok: true, draftId, feedbackStatus: feedbackCreated ? "已沉淀" : feedbackStatus, feedbackCreated, topics });
+  return json({ ok: true, draftId, feedbackStatus, feedbackCreated: 0, topics });
 }
 
-// 一篇稿子表现突出时，把「什么标题有效、什么角度有效」沉淀回素材库，下次写作能直接用。
-async function captureWinningFeedback(env, { draft, topic, publishedUrl, summary }) {
+async function submitProjectReview(env, projectId, body) {
+  const project = await getContentProject(env, projectId);
+  if (!project) return json({ ok: false, error: "内容项目不存在" }, 404);
+  if (!["待复盘", "已完成"].includes(project.stage)) {
+    return json({ ok: false, error: `当前项目是“${project.stage}”，只有已发布项目才能复盘` }, 409);
+  }
+
+  let input;
+  try {
+    input = normalizeProjectReview(body);
+  } catch (error) {
+    return json({ ok: false, error: error.message }, 400);
+  }
+
+  const alreadyCaptured = project.review?.status === "已沉淀";
+  if (alreadyCaptured && input.status !== "表现突出") {
+    return json({ ok: false, error: "这次复盘的有效经验已经进入素材库，不能直接改成其他判断" }, 409);
+  }
+  const shouldCapture = alreadyCaptured || input.captureFeedback;
+
+  const draftId = String(body?.draftId || project.review?.draftId || "");
+  const publishedIds = new Set((project.publication?.records || []).filter((item) => item.complete).map((item) => item.draftId));
+  if (!publishedIds.has(draftId)) return json({ ok: false, error: "选中的不是这个项目已发布的版本" }, 409);
+
+  const draft = await getRow(env, "drafts", draftId);
+  if (!draft) return json({ ok: false, error: "已发布稿件不存在" }, 404);
+  if (shouldCapture && !draft.topic_id) {
+    return json({ ok: false, error: "这篇稿件没有所属选题，无法沉淀标题和角度素材" }, 409);
+  }
+  const captureContext = shouldCapture ? {
+    topic: await getRow(env, "topics", draft.topic_id),
+    materials: await materialsOfTopic(env, draft.topic_id),
+  } : null;
+  if (captureContext && !captureContext.topic) return json({ ok: false, error: "稿件所属选题不存在" }, 409);
+  const updated = await updateRow(env, "drafts", draftId, {
+    views: input.metrics.views,
+    likes: input.metrics.likes,
+    comments: input.metrics.comments,
+    collects: input.metrics.collects,
+    shares: input.metrics.shares,
+    performance_summary: input.basis,
+    feedback_status: input.status,
+    review_conclusion: input.conclusion,
+    next_experiment: input.nextExperiment,
+    reviewed_at: new Date().toISOString(),
+  });
+
+  let feedbackCreated = 0;
+  if (shouldCapture) {
+    const plan = winningFeedbackPlan({ draft: updated, ...captureContext, basis: input.basis });
+    feedbackCreated = await captureWinningFeedback(env, { draft: updated, topic: captureContext.topic, publishedUrl: updated.published_url, plan });
+    await updateRow(env, "drafts", draftId, { feedback_status: "已沉淀" });
+  }
+
+  return json({ ok: true, feedbackCreated, project: await getContentProject(env, projectId) });
+}
+
+// 只有用户在复盘页看过依据并明确确认，才把有效经验沉淀回素材库。
+async function captureWinningFeedback(env, { draft, topic, publishedUrl, plan }) {
   const common = {
     source_url: publishedUrl,
     draft_id: draft.id,
     verification: VERIFICATION.NA,
     verification_note: "来自已发布内容的确定性复盘，不需要逐字核验。",
-    performance_basis: summary,
+    performance_basis: plan.candidates[0]?.evidence || "",
   };
-  const angle = topic.viewpoint || topic.title;
-  const cards = [
-    { kind: "title", type: "标题样本", title: `有效标题｜${draft.headline}`, note: `${draft.platform} 已发布标题：${draft.headline}`, feedback: "有效标题" },
-    { kind: "angle", type: "内容角度", title: `有效角度｜${topic.title}`, note: angle, feedback: "有效角度" },
-    { kind: "feedback", type: "平台反馈", title: `平台反馈｜${draft.headline}`, note: summary || `${draft.platform} 发布后表现突出。`, feedback: "平台反馈" },
-  ];
   let created = 0;
-  for (const card of cards) {
+  for (const card of plan.candidates) {
     const saved = await upsertByTaskKey(env, "materials", stableTaskKey("publish-feedback", draft.id, card.kind), {
       ...common,
       title: card.title.slice(0, 200),
       type: card.type,
-      content: card.note,
-      feedback_types: card.feedback,
+      content: card.content,
+      feedback_types: card.label,
     });
-    if (saved.created) {
-      created++;
-      await linkMaterialToTopic(env, saved.id, topic.id);
-    }
+    if (saved.created) created++;
+    await linkMaterialToTopic(env, saved.id, topic.id);
   }
 
   // 这个选题下用过的故事类素材，标记成「有效故事」——它们参与了一次成功的发布
   const related = await materialsOfTopic(env, topic.id);
   for (const m of related) {
-    if (!["案例/故事", "个人经历"].includes(m.type)) continue;
+    if (!plan.storyIds.includes(m.id)) continue;
     const merged = [...new Set([...csv(m.feedback_types), "有效故事"])].join(",");
-    await updateRow(env, "materials", m.id, { feedback_types: merged, performance_basis: summary });
+    await updateRow(env, "materials", m.id, { feedback_types: merged, performance_basis: common.performance_basis });
   }
   return created;
 }

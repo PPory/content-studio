@@ -46,6 +46,7 @@ import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-t
 import { mapMaterialWorkspaceItem, materialWorkspaceCounts, materialWorkspaceQuery, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
 import { mergeTypesetState, typesetMarkdown } from "../src/lib/typeset-handoff.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../src/lib/project-release.js";
+import { projectReviewForm, projectReviewPayload, reviewGoal } from "../src/lib/project-review.js";
 
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass, detail });
@@ -58,6 +59,7 @@ check("普通 Worker 写请求仍使用默认超时", workerPostTimeout("collect
 check("本机代理有内容项目列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects"));
 check("本机代理有内容项目详情", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/projects/:id"));
 check("本机代理有项目阶段命令", pipeRoutes.some((route) => route.method === "POST" && route.path === "/api/pipe/projects/:id/transition"));
+check("本机代理有项目复盘提交", pipeRoutes.some((route) => route.method === "POST" && route.path === "/api/pipe/projects/:id/review"));
 check("本机代理有统一素材列表", pipeRoutes.some((route) => route.method === "GET" && route.path === "/api/pipe/materials"));
 check("统一素材阶段只有一份", MATERIAL_STAGES.join("/") === "待处理/已收纳/可用素材/需核验/已使用/已归档");
 check("素材页面状态正确转成 Worker 阶段查询", JSON.stringify(materialWorkspaceQuery({ state: "已收纳", type: "框架/模型" })) === JSON.stringify({ type: "框架/模型", stage: "已收纳" }));
@@ -87,6 +89,19 @@ check("主稿改版后新建排版稿，不覆盖上一版", next.mode === "crea
   check("未修改的发布版本不误报待保存", !releaseChanged(variant, form));
   check("平台标题变化会标成待保存", releaseChanged(variant, { ...form, title: "新标题" }));
   check("发布关键词按中文标点拆成数组", JSON.stringify(releasePayload({ ...form, keywords: "写作，复利、产品" }).keywords) === JSON.stringify(["写作", "复利", "产品"]));
+}
+{
+  const project = {
+    brief: { viewpoint: "验证案例开头是否更容易被读完" },
+    publication: { latest: { draftId: "d1" } },
+    masterDraft: { id: "d1", release: { interactionGoal: "引导读者分享自己的经历" } },
+    review: { status: "已沉淀", draftId: "d1", basis: "高于近五篇", conclusion: "案例开头有效", nextExperiment: "只替换结尾提问", metrics: { views: 1234, likes: null } },
+  };
+  const form = projectReviewForm(project);
+  check("已沉淀复盘读回为突出判断并保留确认态", form.status === "表现突出" && form.captureFeedback === true);
+  check("空指标在表单里保持空白", form.metrics.likes === "" && form.metrics.views === "1234");
+  check("复盘目标优先使用发布时的互动目标", reviewGoal(project) === "引导读者分享自己的经历");
+  check("复盘提交保留当前发布版本", projectReviewPayload(form).draftId === "d1");
 }
 {
   const item = mapMaterialWorkspaceItem({

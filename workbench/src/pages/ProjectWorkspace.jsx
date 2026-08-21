@@ -4,6 +4,7 @@ import { PROJECT_STAGES, PROJECT_STAGE_META } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { WritingAssist } from "../components/WritingAssist.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
+import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading } from "../components/ui.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
@@ -243,9 +244,24 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   }
 
   async function handlePublished(result) {
-    setNotice(result.feedbackCreated ? `发布已记录，并沉淀 ${result.feedbackCreated} 条有效素材` : "发布已记录，项目已进入复盘");
+    setNotice("发布已记录，项目已进入复盘");
     await load();
     onChanged?.();
+  }
+
+  async function saveReview(input) {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await api.saveProjectReview(projectId, input);
+      acceptProject(result.project);
+      setNotice(result.feedbackCreated ? `复盘已完成，并沉淀 ${result.feedbackCreated} 条有效素材` : "复盘已完成，下一步已留存");
+      onChanged?.();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function selectRelease(nextDraft) {
@@ -335,6 +351,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
       </ol>
 
       <div className="project-workspace__grid">
+        {["待复盘", "已完成"].includes(project.stage) ? (
+          <ProjectReviewStage project={project} busy={busy} onSave={saveReview} />
+        ) : <>
         <aside className="project-brief">
           <span className="eyebrow">PROJECT BRIEF</span>
           <h1>{project.title}</h1>
@@ -425,7 +444,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
           )) : <div className="project-materials__empty">这个项目还没有关联素材。</div>}
           <button className="project-refresh" onClick={load} disabled={loading}><IconRefresh aria-hidden="true" />重新读取项目</button>
         </aside>}
+        </>}
       </div>
+      {["待复盘", "已完成"].includes(project.stage) ? <ErrorNote error={error} what="保存复盘" /> : null}
     </div>
   );
 }
