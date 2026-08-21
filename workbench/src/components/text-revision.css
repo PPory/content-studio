@@ -4,9 +4,9 @@
   width: max-content;
   max-width: min(560px, calc(100vw - 24px));
   transform: translate(-50%, -100%);
-  padding: 5px;
+  padding: 4px;
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   color: var(--text-1);
@@ -17,10 +17,10 @@
   min-height: 30px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   padding: 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-ctl);
   background: transparent;
   color: var(--text-2);
   font: 550 11.5px/1 var(--font);
@@ -29,12 +29,12 @@
 .text-revision-menu__actions button:hover, .text-revision-menu__actions button[data-on="true"] { background: var(--surface-2); color: var(--text-1); }
 .text-revision-menu__actions button svg { width: 15px; height: 15px; }
 .text-revision-menu__actions .text-revision-menu__close { width: 30px; padding: 0; justify-content: center; color: var(--text-3); }
-.text-revision-menu__command { display: flex; gap: 5px; margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--border); }
+.text-revision-menu__command { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
 .text-revision-menu__command input, .text-revision-review__command input {
   min-width: 0;
   flex: 1;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-ctl);
   background: var(--canvas);
   color: var(--text-1);
   font: 400 12px/1.4 var(--font);
@@ -42,7 +42,7 @@
 }
 .text-revision-menu__command input { width: 380px; height: 32px; padding: 0 10px; }
 .text-revision-menu__command input:focus, .text-revision-review__command input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
-.text-revision-menu__command button { width: 32px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.text-revision-menu__command button { width: 32px; border: 0; border-radius: var(--r-ctl); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .text-revision-menu__command button svg { width: 15px; height: 15px; }
 
 .cm-text-revision-original {
@@ -52,49 +52,49 @@
   text-decoration-thickness: 1px;
   background: color-mix(in srgb, var(--surface-2) 64%, transparent);
 }
-.cm-text-revision-host { margin: 7px 0 12px; }
+.cm-text-revision-host { margin: 6px 0 12px; }
 .text-revision-review {
   margin: 0 4px;
-  padding: 9px 10px 8px;
+  padding: 8px 10px 8px;
   border: 1px solid color-mix(in srgb, var(--ai-draft-line) 42%, var(--border));
-  border-radius: 11px;
+  border-radius: var(--r-md);
   background: color-mix(in srgb, var(--ai-draft-wash) 56%, var(--surface));
   color: var(--text-1);
   box-shadow: 0 6px 18px rgba(0, 0, 0, .07);
 }
-.text-revision-review > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
-.text-revision-review > header span { display: inline-flex; align-items: baseline; gap: 7px; }
-.text-revision-review > header b { font-size: 11.5px; }
-.text-revision-review > header small, .text-revision-review > header span:last-child, .text-revision-review__note { color: var(--text-3); font-size: 10px; }
+.text-revision-review > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.text-revision-review > header span { display: inline-flex; align-items: baseline; gap: 6px; }
+.text-revision-review > header b { font-size: var(--fs-xs); }
+.text-revision-review > header small, .text-revision-review > header span:last-child, .text-revision-review__note { color: var(--text-3); font-size: var(--fs-2xs); }
 .text-revision-review textarea {
   display: block;
   width: 100%;
   max-height: 230px;
   resize: vertical;
   overflow-y: auto;
-  padding: 8px 9px;
+  padding: 8px 8px;
   border: 1px solid color-mix(in srgb, var(--ai-draft-line) 34%, var(--border));
-  border-radius: 8px;
+  border-radius: var(--r-ctl);
   background: color-mix(in srgb, var(--ai-draft-wash) 82%, var(--surface));
   color: var(--text-1);
   font: 400 14px/1.72 var(--font);
   outline: none;
 }
 .text-revision-review textarea:focus { border-color: var(--ai-draft-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ai-draft-line) 12%, transparent); }
-.text-revision-review > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; }
-.text-revision-review__command { min-width: 0; flex: 1; display: flex; gap: 5px; }
-.text-revision-review__command input { height: 32px; padding: 0 9px; }
-.text-revision-review__command button { width: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer; }
+.text-revision-review > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.text-revision-review__command { min-width: 0; flex: 1; display: flex; gap: 4px; }
+.text-revision-review__command input { height: 32px; padding: 0 8px; }
+.text-revision-review__command button { width: 32px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
 .text-revision-review__command button:disabled { opacity: .42; cursor: default; }
 .text-revision-review__command svg { width: 15px; height: 15px; }
 .text-revision-review__decide { flex: none; display: flex; gap: 6px; }
-.text-revision-review__decide button, .text-revision-review__error button { min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-1); font: 600 11.5px/1 var(--font); cursor: pointer; }
-.text-revision-review__decide button.is-primary { display: inline-flex; align-items: center; gap: 5px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.text-revision-review__decide button, .text-revision-review__error button { min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: 600 11.5px/1 var(--font); cursor: pointer; }
+.text-revision-review__decide button.is-primary { display: inline-flex; align-items: center; gap: 4px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .text-revision-review__decide button.is-primary svg { width: 14px; height: 14px; }
 .text-revision-review__decide button:disabled { opacity: .46; cursor: default; }
-.text-revision-review__loading { min-height: 72px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; }
+.text-revision-review__loading { min-height: 72px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .text-revision-review__loading svg { width: 16px; height: 16px; color: var(--ai-draft-line); }
-.text-revision-review__error { display: grid; gap: 5px; padding: 9px; border-radius: 8px; background: var(--surface); font-size: 11px; }
+.text-revision-review__error { display: grid; gap: 4px; padding: 8px; border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-xs); }
 .text-revision-review__error small { color: var(--text-3); }
 .text-revision-review__error button { justify-self: start; margin-top: 2px; }
 .text-revision-review__note { display: block; margin-top: 6px; text-align: right; }
