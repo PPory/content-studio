@@ -430,6 +430,9 @@ export function Shelf({ onIntake, state = "" }) {
           onOpen={(entry, opts) => openDoc(book, entry, opts)}
           onTrash={() => trash(book)}
           onKind={(kind) => changeKind(book, kind)}
+          // 标记上那颗「摘成素材」——高亮本来就是「这句值得留下」，
+          // 从这一页直接入库，省掉「重新打开那一章、再划一遍同一句」那一趟
+          onIntake={onIntake}
         />
       ) : (
         <>

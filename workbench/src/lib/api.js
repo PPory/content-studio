@@ -112,6 +112,9 @@ export const api = {
   searchBook: (dir, q) =>
     req(`/api/vault/books/search?dir=${encodeURIComponent(dir)}&q=${encodeURIComponent(q)}`),
 
+  // 一本书里的全部标记（高亮 + 批注），按章排。聚合规则在 server/lib/marks.mjs
+  bookMarks: (dir) => req(`/api/vault/book-marks?dir=${encodeURIComponent(dir)}`),
+
   highlights: (path) => req(`/api/vault/highlights?path=${encodeURIComponent(path)}`),
   markHighlight: (path, add, remove) => postJson("/api/vault/highlights", { path, add, remove }),
   // 换封面：整块二进制原样传过去，和导入书籍走同一条路

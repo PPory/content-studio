@@ -1570,6 +1570,22 @@ try {
     check("多章书先进书详情", (await page.$$(".chapter-row")).length === 3, `${(await page.$$(".chapter-row")).length} 章`);
 
     /**
+     * ⚠️ **这一页的主角会变，判据是「这本书里有没有标记」。**
+     * 这本刚导进来、一条标记都没有，所以章节目录**占满整栏**——还没读过的书，
+     * 章节就是它的全部内容，给它画一个空的「我的标记」大栏是把版面让给了一句
+     * 「这里什么都没有」。等下划了高亮再回来，两边要换位（见下面那组断言）。
+     *
+     * 两个方向都要钉：只钉「有标记时是标记主导」的话，「一直都是标记主导」这种
+     * 实现照样能过，而那正是要避免的那一版。
+     */
+    check(
+      "还没有标记时，章节目录占满整栏",
+      (await page.$$(".marks")).length === 0 && (await page.$$(".chapter-list[data-rail]")).length === 0,
+      `.marks=${(await page.$$(".marks")).length} 右栏=${(await page.$$(".chapter-list[data-rail]")).length}`
+    );
+    check("没有标记时页头说的是章节", (await page.textContent(".panel-head__main h2")).includes("章节目录"), await page.textContent(".panel-head__main h2"));
+
+    /**
      * 书详情的元信息和阅读区**是同一套**（`.doc-meta` + `MetaItem`）。
      *
      * 上一版是等宽大写的小药丸，而等宽包里没有中文字形——「在读」两个字直接掉进系统
@@ -1765,6 +1781,44 @@ try {
     // 书架是三层，Esc 一层一层退：阅读区 → 书详情 → 书架。
     // 这也是断言——退一下就直接回书架的话，说明中间那层被跳过了。
     check("Esc 退回的是书详情不是书架", !!(await page.$(".book-hero")));
+
+    /**
+     * 刚才那条高亮落进了 `02 第二章.highlights.md`，所以退回书详情时**主角换人了**：
+     * 标记翻到主栏、章节退到右边那条 300px 上。
+     *
+     * 这一组是新版书详情**唯一**被覆盖到的路径——上面那本测试书一条标记都没有，
+     * 走的是「章节占满」那一支。少了这一组，整个标记栏可以完全不渲染而测试全绿。
+     */
+    await page.waitForSelector(".marks", { timeout: 8000 });
+    const flipped = await page.evaluate(() => ({
+      head: document.querySelector(".panel-head__main h2")?.innerText.replace(/\s+/g, " ").trim(),
+      quote: document.querySelector(".mark__q")?.textContent.trim(),
+      chapter: document.querySelector(".marks__ch")?.textContent.trim(),
+      when: document.querySelector(".mark__f time")?.textContent.trim(),
+      railCount: document.querySelector(".chapter-list[data-rail] .chapter-row__marks")?.textContent.trim(),
+      chapters: document.querySelectorAll(".chapter-list[data-rail] .chapter-row").length,
+      // 高亮没有正文（我没写字），批注有——**这才是分得开两者的东西**，
+      // 不是竖线的颜色（那一版量出来在白底上只有 1.17:1，而且库里所有高亮都是黄的）
+      body: document.querySelectorAll(".mark .mark__n").length,
+    }));
+    check("划了高亮之后，标记翻到主栏", /我的标记/.test(flipped.head || "") && /1 条/.test(flipped.head || ""), flipped.head);
+    check("标记就是刚划的那句", (flipped.quote || "").includes("内容乙"), flipped.quote);
+    check("标记按章分组", (flipped.chapter || "").includes("第二章"), flipped.chapter);
+    /**
+     * ⚠️ **高亮文件的格式里不记时间，所以这儿只能照实说「只划了线」。**
+     * 钉这条是因为最省事的写法就是拿文件 mtime 顶上——一整份文件同一个时间戳，
+     * 排出来的顺序看着像真的，其实是假的。
+     */
+    check("高亮没有时间就照实说，不编一个", flipped.when === "只划了线", flipped.when);
+    check("章节退到右栏但一章不少", flipped.chapters === 3, `${flipped.chapters} 章`);
+    check("右栏那一章挂着标记数", flipped.railCount === "1", flipped.railCount || "(没有)");
+    /**
+     * ⚠️ **高亮和批注靠内容分，不靠颜色分。** 这条钉的是一个撤掉的方案不要长回来：
+     * 按 `--mark-*` 给竖线上色的那一版，在白底上量出来只有 1.17:1（看不见），
+     * 而且划词工具条根本不给选颜色——它区分的是一个不存在的差别。
+     * 这一条只划了线、没写字，所以正文块应该是 0 个。
+     */
+    check("高亮没有正文块，批注才有", flipped.body === 0, `${flipped.body} 个`);
     await page.keyboard.press("Escape");
     await page.waitForSelector(".book-card", { timeout: 8000 });
 

@@ -3699,7 +3699,7 @@ kbd {
    ⚠️ 右栏 `sticky`：封面墙可能很长，而「最近标注」是**扫读时的旁注**，
    滚下去之后它还该在——不 sticky 的话它只在第一屏有用。 */
 .shelf-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
-.shelf-cols__wall { min-width: 0; }
+.shelf-cols > * { min-width: 0; }
 @media (max-width: 1180px) { .shelf-cols { grid-template-columns: minmax(0, 1fr); } }
 
 .shelf-group { display: flex; align-items: baseline; gap: 8px; margin: 0 0 16px; }
@@ -3933,6 +3933,68 @@ kbd {
   font-size: var(--fs-xs); color: var(--text-3); opacity: 0; transition: opacity 0.12s;
 }
 .chapter-row:hover .chapter-row__go, .chapter-row[aria-current="true"] .chapter-row__go { opacity: 1; color: var(--accent); }
+
+/* ── 书详情：我的标记 ─────────────────────────────────────────────────
+   主栏是标记、章节退到右栏那条 300px 上；哪一边当主角由「这本书有没有标记」决定，
+   判据和理由写在 `pages/shelf/BookDetail.jsx` 开头。 */
+.marks { display: flex; flex-direction: column; gap: 26px; }
+.marks__grp { display: flex; flex-direction: column; gap: 12px; }
+.marks__ch {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 3px;
+  padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+  font-size: var(--fs-sm); color: var(--text-3);
+}
+.marks__ch:hover { color: var(--text-1); }
+.marks__ch svg { opacity: 0; transition: opacity 0.12s; }
+.marks__ch:hover svg { opacity: 1; }
+/* 定位不到章节的那一组点不动，所以它**不长成一颗按钮**——
+   长得像按钮而点了不动，比不给这个入口更糟 */
+.marks__ch--dead { cursor: help; }
+
+/**
+ * ⚠️ **高亮和批注在这一栏里共用同一条中性竖线，不按标记色分。** 撤掉过一版按
+ * `--mark-*` 上色的：两个理由，第二个是决定性的。
+ *   1. **量出来看不见**：`--mark-yellow` 是给正文当底色的半透明色，铺成 3px 的线
+ *      在白底上只有 1.17:1——而它当时是「这条是高亮还是批注」的唯一记号。
+ *   2. **它区分的是一个不存在的差别**：划词工具条根本不给选颜色
+ *      （`api.markHighlight` 没有 color 参数），库里所有高亮都是黄的。
+ * 真正分得开的是**内容本身**：批注底下有一段自己写的字，高亮没有；
+ * 脚注那行也照实写着「只划了线」还是一个时间。**这和把两者合成一份是同一条理由**——
+ * 回想起一句话时没人记得自己当时按的是哪个按钮，所以也不该逼人先分辨这个。
+ */
+.mark { border-left: 2px solid var(--border-strong); padding: 2px 0 2px 14px; }
+.mark__q { margin: 0; font-size: var(--fs-md); line-height: 1.75; color: var(--text-1); }
+.mark__n { margin: 8px 0 0; font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2); }
+.mark__f {
+  display: flex; align-items: baseline; gap: 14px; margin-top: 8px;
+  font-size: var(--fs-xs); color: var(--text-3);
+}
+.mark__f time { font-variant-numeric: tabular-nums; flex: none; }
+
+/* 行内的文字按钮。**不做成只在 hover 时才出现**：一屏几十条标记，
+   把入口藏起来换来的是「这条能干什么」得靠鼠标一条条试出来。安静但一直在。 */
+.btn-link {
+  padding: 0; border: 0; background: none; cursor: pointer; font: inherit;
+  color: var(--text-3); text-decoration: underline;
+  text-decoration-color: var(--border-strong); text-underline-offset: 3px;
+}
+.btn-link:hover { color: var(--text-1); text-decoration-color: currentColor; }
+
+/* 右栏的章节。⚠️ **不 sticky、不套滚动条**：59 章的书那一栏比屏幕高，
+   sticky 会把底下够不着的部分永远钉在视口外。「列不自己滚，跟着内容长」。 */
+.ch-rail__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.ch-rail__head h3 { font-size: var(--fs-base); font-weight: 600; margin: 0; }
+.ch-rail__head em { font-style: normal; font-size: var(--fs-sm); color: var(--text-3); }
+/* 同一批 DOM，右栏只是更紧一档：去掉分隔线和「阅读 ›」那一列，25 章一屏扫得完 */
+.chapter-list[data-rail] { gap: 0; }
+.chapter-list[data-rail] .chapter-row { padding: 6px 10px; border-bottom: 0; }
+.chapter-list[data-rail] .chapter-row__title { font-size: var(--fs-sm); }
+.chapter-row__marks {
+  flex: none; min-width: 17px; padding: 1px 5px; text-align: center;
+  font-size: var(--fs-2xs); font-variant-numeric: tabular-nums;
+  color: var(--text-3); background: var(--surface-2); border-radius: var(--r-pill);
+}
+.chapter-row:hover .chapter-row__marks { color: var(--text-2); }
 
 /* 阅读区左栏的章节导航：条目多，序号占一列，标题截断成一行 */
 /* 章节目录**不套自己的滚动条**：左栏整体已经能滚了，里面再框一个带滚动条的盒子，

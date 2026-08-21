@@ -1,12 +1,24 @@
-// 书详情：封面 + 元信息 + 章节目录。从 `pages/Shelf.jsx` 搬出来，函数体一字未动。
+// 书详情：封面 + 元信息 + 「我在这本书里留下了什么」+ 章节目录。
 //
 // 它是书架三层动线（封面墙 → 书详情 → 阅读区）的中间那层：一本书有几十份文档，
 // 必须有个地方让你挑章节。单篇书跳过这一层。
+//
+// ⚠️ **这一页的主角会变，判据是「这本书里有没有标记」**（`hasMarks`）：
+//
+//   - **没有标记**（还没读过）→ 章节目录占满整栏。这时候章节就是这本书的全部内容。
+//   - **有标记**（读过了）→ 标记占主栏，章节退到右边那条 300px 上。
+//
+// 理由是**这一页被打开的原因变了**：第一次打开是「从哪儿开始读」，此后每一次
+// 都是「我上次划的那句在哪」。一列文件名摆在最显眼的位置，等于让这一页永远停在
+// 第一次打开时的样子；而给一本还没读过的书画一个空的「我的标记」大栏，
+// 是把版面让给了一句「这里什么都没有」。**版面跟着内容走，不跟着页面名字走。**
+// 和「只在真有两组以上时才分组」「没有书签时整块不出现」是同一条判据。
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api.js";
 import { Cover } from "../../components/Cover.jsx";
-import { Empty, MetaItem, Select } from "../../components/ui.jsx";
+import { Empty, ErrorNote, Loading, MetaItem, Select } from "../../components/ui.jsx";
+import { BookMarks } from "./BookMarks.jsx";
 import {
   IconArrowLeft,
   IconBook2,
@@ -16,9 +28,8 @@ import {
   IconSearch,
   IconTrash,
 } from "../../components/icons.jsx";
-import { bookmarksOf, pct, readingOf, resumeEntry } from "../../lib/reading.js";
+import { bookmarksOf, pct, readingOf } from "../../lib/reading.js";
 
-// 书详情：封面 + 元信息 + 章节目录。单文件书没有目录，直接一个「开始读」。
 /**
  * 类型的记号**靠形状区分，不靠颜色**（和状态图标同一条规矩）：
  * 一张纸 = 自己攒的资料，一本书 = 别人写的书。
@@ -32,13 +43,15 @@ const kindIcon = (k) => {
   return <I size={15} stroke={1.8} aria-hidden="true" />;
 };
 
-export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind }) {
+export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onIntake }) {
   const saved = readingOf(book.dir);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState(null);   // null = 没在搜，[] = 搜了没结果
-  const marks = bookmarksOf(book.dir);
+  const [marks, setMarks] = useState(null); // null = 还在读
+  const [marksError, setMarksError] = useState(null);
+  const bookmarks = bookmarksOf(book.dir);
 
   // 搜索去服务端读文件，所以要防抖——每敲一个字打一次请求会把几十个文件反复读一遍。
   // 两个字以下不搜：中文单字命中率太高，出来的全是噪音。
@@ -57,8 +70,123 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind }) {
       clearTimeout(t);
     };
   }, [q, book.dir]);
+
+  /**
+   * 读这本书的标记。⚠️ **读失败不能把章节目录一起带走**——那是这一页的退路，
+   * 而标记读不出来是个能说清楚的意外（文件被改名、权限）。所以失败时照实说一句，
+   * 版面退回「章节占满」那一种，人还能接着读书。
+   */
+  useEffect(() => {
+    let dead = false;
+    setMarks(null);
+    setMarksError(null);
+    api
+      .bookMarks(book.dir)
+      .then((r) => !dead && setMarks(r))
+      .catch((e) => {
+        if (dead) return;
+        setMarksError(e);
+        setMarks({ chapters: [], total: 0 });
+      });
+    return () => {
+      dead = true;
+    };
+  }, [book.dir]);
+
+  // 右栏每一章后面那颗点：这一章里有几条标记。**没有的不画点**，不画一个恒空的位置
+  const markCount = useMemo(() => {
+    const m = new Map();
+    for (const ch of marks?.chapters || []) if (ch.path) m.set(ch.path, ch.items.length);
+    return m;
+  }, [marks]);
+
   const resumeEntry = saved && entries.find((e) => e.path === saved.docPath);
   const first = entries[0];
+  const multi = entries.length > 1;
+  const hasMarks = Boolean(marks?.total);
+  const jump = (path) => onOpen(entries.find((e) => e.path === path) || entries[0]);
+
+  // 书签就是「等会儿回这儿」，所以它跟着章节走——章节在哪一栏它就在哪一栏。
+  // 没有书签时整块不出现：空的收藏夹只是噪音。
+  const bookmarkBlock = bookmarks.length ? (
+    <div className="bookmarks">
+      <span className="rail-label">
+        <IconBookmark size={12} stroke={1.8} aria-hidden="true" />
+        书签 {bookmarks.length}
+      </span>
+      <div className="row-actions">
+        {bookmarks.map((b) => (
+          <button key={b.docPath} className="btn btn-sm" onClick={() => jump(b.docPath)}>
+            {b.title}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  /**
+   * 章节列表。同一批 DOM 两种密度，靠 `rail` 一个参数切——**不写第二套章节行**
+   * （和侧栏收起态同一条：写两套的话，改一次章节行要改两处）。
+   * 右栏那条 300px 装不下「阅读 ›」那一列，所以它换成一颗「这章有几条标记」的记号；
+   * 而那正是在标记主导的版面上，你扫这一列时真正想知道的事。
+   */
+  const chapterList = (rail) => (
+    <div className="chapter-list" data-rail={rail ? "" : undefined}>
+      {entries.map((e) => {
+        const n = markCount.get(e.path) || 0;
+        return (
+          <button
+            key={e.path}
+            className="chapter-row"
+            aria-current={saved?.docPath === e.path}
+            onClick={() => onOpen(e, { resume: saved?.docPath === e.path })}
+          >
+            <span className="chapter-row__num">{String(e.order).padStart(2, "0")}</span>
+            <span className="chapter-row__title">{e.title}</span>
+            {rail ? (
+              n ? (
+                <span className="chapter-row__marks" title={`这一章有 ${n} 条标记`}>{n}</span>
+              ) : null
+            ) : (
+              <span className="chapter-row__go">
+                {saved?.docPath === e.path ? `${pct(saved.progress)} · 继续` : "阅读"}
+                <IconChevronRight size={15} stroke={1.8} aria-hidden="true" />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // 搜到的直接列命中句：只给章节名的话，还得一章章点进去找
+  const searchResults = hits?.length ? (
+    <div className="booksearch">
+      {hits.map((r) =>
+        r.hits.map((h, i) => (
+          <button key={`${r.path}-${i}`} className="booksearch__hit" onClick={() => jump(r.path)}>
+            <span className="booksearch__where">
+              <b>{r.title}</b>
+              <IconChevronRight size={13} stroke={1.8} aria-hidden="true" />
+            </span>
+            <span className="booksearch__line">
+              {h.text.slice(0, h.at)}
+              <mark>{h.text.slice(h.at, h.at + h.len)}</mark>
+              {h.text.slice(h.at + h.len)}
+            </span>
+          </button>
+        ))
+      )}
+    </div>
+  ) : (
+    <Empty icon={IconSearch}>这本书里没有「{q}」</Empty>
+  );
+
+  const head = hits
+    ? { eyebrow: "SEARCH", title: "搜索结果", count: `${hits.length} 章命中` }
+    : hasMarks
+      ? { eyebrow: "MY MARKS", title: "我的标记", count: `${marks.total} 条 · 按章排` }
+      : { eyebrow: "TABLE OF CONTENTS", title: "章节目录", count: `${entries.length} 章` };
 
   return (
     <>
@@ -152,14 +280,14 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind }) {
         </div>
       </section>
 
-      {entries.length > 1 ? (
+      {multi ? (
         <section className="panel-block">
           <div className="panel-head">
             <div className="panel-head__main">
-              <span className="eyebrow">TABLE OF CONTENTS</span>
+              <span className="eyebrow">{head.eyebrow}</span>
               <h2>
-                {hits ? "搜索结果" : "章节目录"}
-                <span className="panel-head__count">{hits ? `${hits.length} 章命中` : `${entries.length} 章`}</span>
+                {head.title}
+                <span className="panel-head__count">{head.count}</span>
               </h2>
             </div>
             <div className="panel-head__aside">
@@ -175,75 +303,47 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind }) {
             </div>
           </div>
 
-          {/* 搜到的直接列命中句：只给章节名的话，还得一章章点进去找 */}
-          {hits ? (
-            hits.length ? (
-              <div className="booksearch">
-                {hits.map((r) =>
-                  r.hits.map((h, i) => (
-                    <button
-                      key={`${r.path}-${i}`}
-                      className="booksearch__hit"
-                      onClick={() => onOpen(entries.find((e) => e.path === r.path) || entries[0])}
-                    >
-                      <span className="booksearch__where">
-                        <b>{r.title}</b>
-                        <IconChevronRight size={13} stroke={1.8} aria-hidden="true" />
-                      </span>
-                      <span className="booksearch__line">
-                        {h.text.slice(0, h.at)}
-                        <mark>{h.text.slice(h.at, h.at + h.len)}</mark>
-                        {h.text.slice(h.at + h.len)}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            ) : (
-              <Empty icon={IconSearch}>这本书里没有「{q}」</Empty>
-            )
-          ) : (
-          <>
-          {/* 书签就是「等会儿回这儿」，所以它该在**挑章节的地方**露面，不是另开一页。
-              没有书签时整块不出现——空的收藏夹只是噪音。 */}
-          {marks.length ? (
-            <div className="bookmarks">
-              <span className="rail-label">
-                <IconBookmark size={12} stroke={1.8} aria-hidden="true" />
-                书签 {marks.length}
-              </span>
-              <div className="row-actions">
-                {marks.map((b) => (
-                  <button
-                    key={b.docPath}
-                    className="btn btn-sm"
-                    onClick={() => onOpen(entries.find((e) => e.path === b.docPath) || entries[0])}
-                  >
-                    {b.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <ErrorNote error={marksError} what="读取这本书的标记" />
 
-          <div className="chapter-list">
-            {entries.map((e) => (
-              <button
-                key={e.path}
-                className="chapter-row"
-                aria-current={saved?.docPath === e.path}
-                onClick={() => onOpen(e, { resume: saved?.docPath === e.path })}
-              >
-                <span className="chapter-row__num">{String(e.order).padStart(2, "0")}</span>
-                <span className="chapter-row__title">{e.title}</span>
-                <span className="chapter-row__go">
-                  {saved?.docPath === e.path ? `${pct(saved.progress)} · 继续` : "阅读"}
-                  <IconChevronRight size={15} stroke={1.8} aria-hidden="true" />
-                </span>
-              </button>
-            ))}
-          </div>
-          </>
+          {/**
+            * ⚠️ **拿不准主角是谁之前不画。** 标记读回来才知道这一页该长成哪一种，
+            * 先按其中一种画出来、几十毫秒后再换一种，用户看到的是版面自己跳了一下。
+            * 骨架屏在这儿是**便宜的**：本地读文件，而且这一跳是没法靠 CSS 抹平的。
+            */}
+          {marks === null ? (
+            <Loading rows={3} />
+          ) : hits ? (
+            searchResults
+          ) : hasMarks ? (
+            <div className="shelf-cols">
+              <div>
+                <BookMarks
+                  chapters={marks.chapters}
+                  bookName={book.name}
+                  onJump={jump}
+                  onIntake={onIntake}
+                />
+              </div>
+              <aside className="ch-rail">
+                <div className="ch-rail__head">
+                  <h3>章节</h3>
+                  <em>{entries.length}</em>
+                </div>
+                {bookmarkBlock}
+                {chapterList(true)}
+              </aside>
+            </div>
+          ) : (
+            /**
+              * ⚠️ **没有标记时什么都不说。** 这儿试过在章节目录底下挂一句
+              * 「读的时候划一句就能标记」的引导——它会出现在**每一本还没读过的书**上，
+              * 而且一直挂着。`每个都说的话等于没说`：那句引导真正该出现的地方是
+              * 划词工具条本身，它已经在正文里等着了。
+              */
+            <>
+              {bookmarkBlock}
+              {chapterList(false)}
+            </>
           )}
         </section>
       ) : null}
