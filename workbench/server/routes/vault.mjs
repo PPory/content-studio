@@ -30,6 +30,7 @@ import {
 import { DIRS, bookOfPath } from "../lib/vault-dirs.mjs";
 import { importBook, SUPPORTED } from "../lib/books.mjs";
 import { parseNotes, applyNoteEdit } from "../lib/notes.mjs";
+import { readBookMarks, readRecentMarks } from "../lib/marks.mjs";
 import { knowledgeCardLinks, saveKnowledgeCard } from "../lib/knowledge-cards.mjs";
 
 // 目录名的单一真源在 vault-dirs.mjs，这里不再抄第二份。
@@ -158,6 +159,45 @@ export const vaultRoutes = [
       const rel = url.searchParams.get("path");
       if (!rel) return fail(res, "缺少 path 参数", { status: 400 });
       json(res, { ok: true, path: rel, highlights: await readHighlights(root, rel) });
+    }),
+  },
+  {
+    /**
+     * 一本书的全部标记（高亮 + 批注），按章排。
+     *
+     * ⚠️ **和上面那条 `/api/vault/highlights` 不是一回事**：那条读**一份文档**的高亮，
+     * 给阅读区渲染正文里的 `<mark>` 用；这条读**一本书**的全部标记，
+     * 给书详情页那一栏用。两者的消费者、粒度、以及合不合并批注都不同，
+     * 合成一个端点的话，阅读区每开一章都要白读一遍整本书的 notes.md。
+     *
+     * 聚合规则全在 `lib/marks.mjs`，这里只做参数校验和转发。
+     */
+    method: "GET",
+    path: "/api/vault/book-marks",
+    handler: guard(async ({ env, res, url }) => {
+      const root = vaultRoot(env);
+      const dir = url.searchParams.get("dir");
+      if (!dir) return fail(res, "缺少 dir 参数", { status: 400 });
+      json(res, { ok: true, dir, ...(await readBookMarks(root, dir)) });
+    }),
+  },
+  {
+    /**
+     * 跨书的「最近标注」——书架右栏。
+     *
+     * ⚠️ **只有批注排得出时间，高亮排不出**（高亮文件不记时间）。所以返回值里
+     * `at` 为空的那些就是没时间的，**界面照实显示，不许给它编一个「刚刚」**。
+     * 排序口径写在 `lib/marks.mjs` 的注释里。
+     */
+    method: "GET",
+    path: "/api/vault/recent-marks",
+    handler: guard(async ({ env, res, url }) => {
+      const root = vaultRoot(env);
+      const books = await listBooks(root, SHELF_DIR);
+      // null = 书架目录还不存在。**不是错误**：界面显示建库引导，和 listBooks 同一条约定
+      if (!books) return json(res, { ok: true, items: [], total: 0, shelfMissing: true });
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 12));
+      json(res, { ok: true, ...(await readRecentMarks(root, books, limit)) });
     }),
   },
   {

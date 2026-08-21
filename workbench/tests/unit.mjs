@@ -926,6 +926,88 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
   }
 }
 
+// ---- 一本书的标记聚合（server/lib/marks.mjs） ------------------------------
+//
+// 这一段钉的是「书详情 / 书架那两栏」的数据来源。三条断言各对应一个踩过或差点踩的坑。
+{
+  const { readBookMarks, readRecentMarks } = await import("../server/lib/marks.mjs");
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "marks-"));
+  const dir = "书";
+  const abs = path.join(tmpRoot, dir);
+  await fs.mkdir(abs, { recursive: true });
+
+  await fs.writeFile(path.join(abs, "book.md"), "---\n类型: 藏书\n---\n\n入口\n", "utf8");
+  await fs.writeFile(path.join(abs, "01 第一章.md"), "# 第一章\n\n杠杆是这个时代最被低估的东西。\n", "utf8");
+  await fs.writeFile(path.join(abs, "02 第二章.md"), "# 第二章\n\n专长是不能被培训的。\n", "utf8");
+  // 一章的高亮伴生文件
+  await fs.writeFile(path.join(abs, "01 第一章.highlights.md"), "# 高亮\n\n- [黄] 杠杆是这个时代最被低估的东西。\n", "utf8");
+  // 整本一个 notes.md：一条能定位（引了第二章的原文）、一条定位不到
+  await fs.writeFile(
+    path.join(abs, "notes.md"),
+    [
+      "# 批注", "",
+      "## 2026-08-11 14:38", "",
+      "> 专长是不能被培训的。", "",
+      "只能靠热爱驱动。", "",
+      "## 2026-08-12 09:00", "",
+      "> 这句话原文里根本没有出现过所以定位不到。", "",
+      "随手记的。", "",
+    ].join("\n"),
+    "utf8"
+  );
+
+  const r = await readBookMarks(tmpRoot, dir);
+
+  /**
+   * ⚠️ **`notes.md` 不是一章。**
+   * 写这个模块时我自己写了一遍判据 `/\.(highlights|notes)\.md$/`——那个正则要求 `notes`
+   * 前面有个点，于是**目录里正牌的 `notes.md` 漏网，被当成了一章**，
+   * 界面上就会冒出一个叫「notes」的章节。这正是 `vault.mjs` 里 `isChapterFile` 那条
+   * 注释白纸黑字记着的同一个坑，隔了一个模块又踩了一次。
+   * 判据只写一处 = 只用 `isChapterFile`，这条断言钉住别人再写第二份。
+   */
+  check(
+    "notes.md / book.md 不会被当成章节",
+    !r.chapters.some((c) => /^(notes|book)$/i.test(c.label)),
+    r.chapters.map((c) => c.label).join(" / ") || "(空)"
+  );
+
+  // 高亮和批注合成一份：它们回答同一个问题，分开的话人得先想「当时是划的还是写的」
+  const ch1 = r.chapters.find((c) => c.label === "01 第一章");
+  const ch2 = r.chapters.find((c) => c.label === "02 第二章");
+  check("高亮按章归位", ch1?.items.length === 1 && ch1.items[0].kind === "highlight", ch1?.items.length + " 条");
+  check("批注靠引用的原文反查到章", ch2?.items.length === 1 && ch2.items[0].kind === "note", ch2?.items.length + " 条");
+
+  /**
+   * ⚠️ **定位不到就说定位不到，不猜。**
+   * 猜错的后果是界面上那颗「跳到原文」跳去了别的章——比不给这个入口更糟。
+   */
+  check("定位不到的批注单独成组，不硬塞进某一章", r.unplaced === 1, `未定位 ${r.unplaced}`);
+  check(
+    "未定位那组有自己的名字",
+    r.chapters.at(-1)?.label === "未定位到章节" && !r.chapters.at(-1).path,
+    r.chapters.at(-1)?.label || "(没有)"
+  );
+
+  /**
+   * ⚠️ **高亮没有时间，不许伪造一个。**
+   * 高亮文件的格式里就不记时间。拿文件 mtime 顶上去的话，一整份文件的每一条都会得到
+   * 同一个时间戳——排出来的「最近」看着像真的，其实是假的。
+   */
+  const hl = ch1?.items[0];
+  check("高亮不编时间戳", hl && hl.at === "", JSON.stringify(hl?.at));
+
+  const recent = await readRecentMarks(tmpRoot, [{ name: "书", dir }], 10);
+  check("最近标注：有时间的排在前面", recent.items[0]?.at === "2026-08-12 09:00", recent.items[0]?.at || "(空)");
+  check("最近标注带上是哪本书哪一章", recent.items[0]?.book === "书" && !!recent.items[0]?.chapter, JSON.stringify({ b: recent.items[0]?.book, c: recent.items[0]?.chapter }));
+
+  // 目录不存在不是错误：调用方按空处理，界面照实说
+  const gone = await readBookMarks(tmpRoot, "不存在的书");
+  check("书没了返回空而不是抛错", gone.total === 0 && Array.isArray(gone.chapters), JSON.stringify(gone.total));
+
+  await fs.rm(tmpRoot, { recursive: true, force: true });
+}
+
 // ---- 样式里引用到的 token 必须真的存在 --------------------------------------
 //
 // CSS 引一个没定义过的变量**不报错、不回落**：`border-radius: var(--r-md)` 直接
