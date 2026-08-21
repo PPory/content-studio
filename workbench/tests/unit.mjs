@@ -892,7 +892,11 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
 // 所以钉在这里。
 {
   const css = await fs.readFile(new URL("../src/styles.css", import.meta.url), "utf8");
-  const defined = new Set([...css.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]));
+  // ⚠️ **定义不一定在行首。** 原来的 `/^\s*(--…)\s*:/` 只认独占一行的写法，
+  // 于是单行规则里的定义（`[data-tone="done"] { --tone: var(--st-done); }`）被判成
+  // 「没定义过」，而它其实好好地定义着——判据比它要防的东西窄，就会开始误报。
+  // 现在认「行首或 `{` / `;` 之后」，一行几条也数得到。
+  const defined = new Set([...css.matchAll(/(?:^|[{;])\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]));
   // 阅读设置那一组（`--read-*`）**是运行时挂上去的**，不在样式表里：`prefsToStyle`
   // 把它们作为 inline style 写在 `.reader-overlay` 上（进 props 会让改一次字号
   // 就重渲染一次正文、把选区抹掉）。所以从那个函数里读一遍当作已定义——

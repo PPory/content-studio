@@ -395,7 +395,6 @@ export function Shelf({ onIntake, state = "" }) {
       ) : (
         <>
           <PageHeader
-            eyebrow="READING LIBRARY"
             title="书架"
             desc="导入 Markdown / EPUB / PDF，拆成章节读；划词能批注、能问 AI、能摘成素材。正文和批注都在 Obsidian 里。"
             aside={<ShelfActions onDone={reload} />}

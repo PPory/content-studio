@@ -276,7 +276,6 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
   return (
     <section className="panel-block">
       <PanelHead
-        eyebrow="LIVE PLATFORM RANKINGS"
         title="各平台实时热榜"
         count={data?.stats.total}
         desc={`${data ? cnNum(data.boards.length) : "六"}个大众榜的原始排名，不做关键词过滤——这一栏看的是大众在关心什么。`}
@@ -430,7 +429,6 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace }) {
   return (
     <section className="panel-block">
       <PanelHead
-        eyebrow="AI HOT · SELECTED"
         title="AI HOT 精选"
         count={data?.stats.shown}
         desc="按日期分组，新的在上。分类只作条目标记，不改变阅读顺序。"
@@ -588,7 +586,6 @@ function ModelsPanel() {
   return (
     <section className="panel-block">
       <PanelHead
-        eyebrow="MODEL CONSENSUS"
         title="大模型共识分"
         count={data?.count}
         desc="汇总多家公开评测榜单算出的综合分。几周才动一次，看的是牌面而不是新闻。"

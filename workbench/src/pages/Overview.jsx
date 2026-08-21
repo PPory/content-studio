@@ -99,7 +99,6 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
           而顺序本身在屏幕上就摆着——需要一句话说明才看得懂的版面，说明是白写的。
           省下的两行高度直接换成「接着上次」能不能进首屏。 */}
       <PageHeader
-        eyebrow="OVERVIEW"
         title="总览"
         aside={
           <>
@@ -485,7 +484,7 @@ export function DayPlan({ plan }) {
 
   return (
     <section className="day-plan overview-block">
-      <SectionHead icon={IconClipboardList} eyebrow="MY LIST" title="我的清单" />
+      <SectionHead icon={IconClipboardList} title="我的清单" />
 
       {/* 左边清单、右边大环。**环不放页头的 aside 里**：那儿只有一行的高度，塞进去就只能是
           一枚小徽章，而这一块要一眼看出「今天走到哪了」——那正是大环存在的理由。

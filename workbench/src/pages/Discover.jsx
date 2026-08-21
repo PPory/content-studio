@@ -10,7 +10,7 @@ const ENTRIES = [
 export function Discover({ onGo }) {
   return (
     <>
-      <PageHeader eyebrow="DISCOVER" title="发现" desc="外面的信息只在这里停留。真正要写的东西，进入内容；能复用的东西，进入素材。" />
+      <PageHeader title="发现" desc="外面的信息只在这里停留。真正要写的东西，进入内容；能复用的东西，进入素材。" />
       <div className="discover-grid">
         {ENTRIES.map(({ view, icon: Icon, eyebrow, title, desc, action }, index) => (
           <button key={view} className="discover-card" onClick={() => onGo(view)}>

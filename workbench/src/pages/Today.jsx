@@ -35,7 +35,6 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
   return (
     <>
       <PageHeader
-        eyebrow="TODAY"
         title="今天"
         desc="先推进一篇，再处理其他。系统状态退到后面，真正等你决定的事情排在前面。"
         aside={

@@ -249,6 +249,20 @@
      配上 --border 那道极浅的线，面板整个「浮」不起来——截图上看就是右边漏了一条白缝。
      #f4f4f5 差 4%，加上下面那道 --border-strong，边界才立得住。 */
   --shell: #f4f4f5;
+
+  /**
+   * ⚠️ **「选中 / 当前」的统一形态：一层轻底 + 字变实。**
+   *
+   * 改之前散落着十来处各写各的 `background: var(--accent)`（纯黑实心），
+   * 一屏能同时出现四五块：侧栏选中 + 页内 tab + 筛选芯片 + 命令面板高亮 + 设置左栏。
+   * 「你在这儿」是整屏信息量最低的一件事，却拿走了最强的视觉重量，而且**同时在五处成立
+   * 等于一处都不成立**。
+   *
+   * ⚠️ **实心黑只留给「主操作」一颗**（`.btn-primary`），以及少数几处表示「东西在这儿」
+   * 的数据记号（流水线非 0 的节点、自己发的聊天气泡）——那些不是选中态。
+   */
+  --sel-bg: var(--sunken);
+  --sel-fg: var(--ink-900);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -380,13 +394,24 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
 
 /* 全局排版件 */
-/* 小灰字压在大黑字上面 = 层次。眉标跟标题同色的话两行会互相抢。 */
+/**
+ * ⚠️ **`//` + 全大写 + 等宽 + 0.2em 字距那一套眉标撤了。**
+ *
+ * 那个形状是 brutalist 开发者作品集的语汇，是**表达型**设计——界面自己在说话。
+ * 而这个工作台每天要用八小时，该沉默：注意力全给内容。三条具体的账：
+ * - `//` 是纯装饰，零信息；
+ * - `text-transform: uppercase` 对中文是空操作，于是同一个记号在中英文眉标上长得两样；
+ * - 0.2em 字距 + 等宽把一行小字拉得比它该占的宽一倍，抢的是标题上方最值钱的位置。
+ *
+ * 现在它退成一句安静的小字：**命名它下面那块东西是什么**，不再宣告自己。
+ * 页头那一层的眉标已经在调用处删掉了（纯英文转写，说的就是标题本身）；
+ * 留下的是弹层/抽屉里那些真在命名一个界面的（INTAKE / CREATE / REFERENCES）。
+ */
 .eyebrow {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 500;
-  letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-3);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm); font-weight: 500;
+  letter-spacing: 0.01em; color: var(--text-3);
 }
-.eyebrow::before { content: "//"; color: var(--border-strong); }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ---------- 布局 ---------- */
@@ -453,7 +478,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 }
 .brand-tag {
   font-family: var(--font-mono); font-size: var(--fs-2xs); line-height: 1.4; letter-spacing: 0.18em;
-  text-transform: uppercase; color: var(--text-3); padding: 6px 8px 0;
+  color: var(--text-3); padding: 6px 8px 0;
 }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
@@ -469,11 +494,22 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .nav-item:hover { background: var(--surface-2); color: var(--text-1); }
 /* 当前项是**实心黑药丸**，不是淡色底 + 侧边线。黑白配色下淡色底几乎看不出来，
    而实心块在一列灰字里一眼就找得到。 */
-.nav-item[aria-current] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-.nav-item[aria-current]:hover { background: var(--accent); color: var(--on-accent); }
+/**
+ * ⚠️ **选中态是一层轻底，不再是实心黑块。**
+ *
+ * 「黑块 = 你在这儿」那条规则**没撤**，撤的是它的重量：在浅底上纯黑是最重的视觉元素，
+ * 而「我在哪一页」是这一屏信息量最低的一件事——它拿走了整屏最强的强调。
+ * 一屏四五个黑块（侧栏选中 + 右上主按钮 + tab + 入库）互相抢，谁都没抢到。
+ *
+ * 现在：底色 `--surface-2`（约 6%）+ 字重变实 + 图标转成正文色。
+ * 和「标记黄 = 这个我圈中的」仍然分得开——两者一个是底色、一个是荧光笔，不同色域。
+ */
+.nav-item[aria-current] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
+.nav-item[aria-current]:hover { background: var(--surface-2); color: var(--text-1); }
+.nav-item[aria-current] svg { color: var(--text-1); }
 /* 有下级的一级项只负责定位任务域，当前页由二级项承担。两层都画黑块会像有两个
    当前页，所以这里用安静底色托住分组，把最强对比留给真正打开的页面。 */
-.nav-group.has-children > .nav-item[data-current="true"] { background: var(--surface-2); color: var(--text-1); font-weight: 650; }
+.nav-group.has-children > .nav-item[data-current="true"] { background: transparent; color: var(--text-1); font-weight: 600; }
 .subnav {
   position: relative; display: flex; flex-direction: column; gap: 1px;
   margin: 1px 0 4px 20px; padding-left: 16px;
@@ -493,8 +529,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   background: var(--border-strong);
 }
 .subnav-item:hover { background: var(--surface-2); color: var(--text-1); }
-.subnav-item[aria-current="page"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-.subnav-item[aria-current="page"] > span { background: currentColor; }
+/* 二级项同理。⚠️ 一级和二级**不能都铺底**——同屏两个高亮块读不出层级，
+   所以有下级时一级只提字色（见下面 `.nav-group.has-children` 那条）。 */
+.subnav-item[aria-current="page"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
+.subnav-item[aria-current="page"] > span { background: var(--accent); }
 .nav-item__icon { position: relative; display: grid; place-items: center; flex: none; }
 .nav-icon { width: 18px; height: 18px; flex: none; }
 .nav-item__label { min-width: 0; overflow: hidden; white-space: nowrap; }
@@ -503,7 +541,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   font-variant-numeric: tabular-nums; color: var(--text-3);
   border: 1px solid var(--border); border-radius: var(--r-pill); padding: 0 6px;
 }
-.nav-item[aria-current] .count { color: var(--on-accent); border-color: rgba(127,127,127,0.45); }
+.nav-item[aria-current] .count { color: var(--text-2); }
 /* 收起态才出现的那颗点，见下面的收起规则 */
 .nav-item__dot {
   position: absolute; top: -1px; right: -2px; width: 6px; height: 6px;
@@ -692,7 +730,16 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .btn svg { width: 15px; height: 15px; flex: none; }
 .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
+/* ⚠️ **侧栏这颗退成描边，不再是第二块实心黑。**
+   一屏两颗实心主按钮（侧栏「收集」+ 正文区「新建内容」）时，
+   「哪个才是这一页要我做的事」得靠读字判断——而实心黑的全部作用就是免掉这一次判断。
+   入库仍然是侧栏最重的动作，靠占满整宽 + 一道描边说这件事，不靠涂黑。 */
 .btn-block { width: 100%; }
+.btn-primary.btn-block {
+  background: var(--surface); color: var(--text-1);
+  border-color: var(--border-strong); font-weight: 600;
+}
+.btn-primary.btn-block:hover { background: var(--sel-bg); border-color: var(--text-3); }
 .btn-sm { height: 29px; padding: 0 10px; font-size: var(--fs-sm); }
 .btn-sm svg { width: 13px; height: 13px; }
 /* 只有图标的按钮：压成正方形，否则左右各 11px 内边距会让一个 13px 的图标
@@ -954,7 +1001,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 
 .section-title {
   font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 500;
-  letter-spacing: 0.2em; text-transform: uppercase;
+  letter-spacing: 0.2em; 
   color: var(--text-3); margin: 32px 0 12px;
 }
 
@@ -973,15 +1020,12 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .section-head h2 { font-size: var(--fs-xl); letter-spacing: -0.03em; margin: 2px 0 0; }
 .section-head__count { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: 0.08em; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.chip {
-  height: 28px; padding: 0 12px; border-radius: var(--r-pill);
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: var(--fs-sm);
-  transition: border-color 0.16s var(--ease), color 0.16s var(--ease), background 0.16s var(--ease);
-}
-.chip:hover { border-color: var(--accent-soft); color: var(--accent); }
-.chip[aria-pressed="true"] { background: var(--surface); border-color: var(--text-1); color: var(--text-1); font-weight: 600; box-shadow: inset 0 0 0 1px var(--text-1); }
-.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+/* ⚠️ **这里原来有第二份 `.chip` 定义，删了。**
+   `.chip` / `.chips` / `.chip[aria-pressed]` 在这个文件里被写了**两遍**，
+   后一份（划词打标那组，见下面「标记黄」那一段）把前一份逐条盖掉，
+   所以前一份一直是死代码——改它屏幕上不会有任何反应。
+   这正是这个项目栽过的那类事故：**同一条规则两份实现，谁也不报错。**
+   前一份里唯一还活着的两条（`.chips` 的下外边距、`:disabled`）已并进活的那一份。 */
 
 /**
  * 标签有**两种重量**，因为它们回答的不是同一个问题。
@@ -1005,9 +1049,24 @@ html[data-scroll-lock] .main { overflow: hidden; }
   gap: 6px; border-color: transparent; background: var(--surface-2);
   color: var(--text-1); font-weight: 600;
 }
+/**
+ * ⚠️ **色调 → 颜色的映射只写这一处**，`[data-tone]` 是唯一入口。
+ * 谁带上这个属性谁就跟着变色：状态圆点、下拉里的状态图标、以后列表行的状态记号。
+ * 名字 ↔ 色调的判据在 `ui.jsx` 的 `stateTone`（和 `stateIcon` 同序的第二张表）。
+ */
+[data-tone="backlog"] { --tone: var(--st-backlog); }
+[data-tone="todo"]    { --tone: var(--st-todo); }
+[data-tone="doing"]   { --tone: var(--st-doing); }
+[data-tone="review"]  { --tone: var(--st-review); }
+[data-tone="done"]    { --tone: var(--st-done); }
+[data-tone="cancel"]  { --tone: var(--st-cancel); }
+[data-tone="urgent"]  { --tone: var(--st-urgent); }
+/* 下拉里的状态图标走描边，所以吃的是 color 不是 background */
+svg[data-tone] { color: var(--tone); }
+
 .tag--state::before {
   content: ""; width: 5px; height: 5px; border-radius: 50%;
-  background: var(--text-3); flex: none;
+  background: var(--tone, var(--text-3)); flex: none;
 }
 /* 自带圆点时不再补一个。数据页的平台标签要用**平台自己的系列色**当圆点（和图上那条柱、
    那条线同一个颜色），补出来的灰点会变成一排「● ● 小红书」，两个点还谁都不是主角。 */
@@ -1110,7 +1169,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label, .field > span {
   font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--text-3);
+  color: var(--text-3);
 }
 .field input, .field textarea, .field select {
   font: inherit; font-size: var(--fs-base); color: var(--text-1); background: var(--canvas);
@@ -1164,7 +1223,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .cmdk__group + .cmdk__group { margin-top: 4px; }
 .cmdk__group-label {
   font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--text-3); padding: 8px 10px 4px;
+  color: var(--text-3); padding: 8px 10px 4px;
 }
 .cmdk__row {
   width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
@@ -1173,7 +1232,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 }
 /* 当前项是**实心黑块**——「你现在在这儿」在这套配色里只有这一种说法。
    键盘和鼠标共用同一个高亮：两套的话，鼠标动一下就看不出回车会打开哪条了。 */
-.cmdk__row[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
+.cmdk__row[aria-current="true"] { background: var(--sel-bg); color: var(--sel-fg); }
 .cmdk__row[aria-current="true"] svg,
 .cmdk__row[aria-current="true"] .cmdk__snippet,
 .cmdk__row[aria-current="true"] .cmdk__type { color: inherit; opacity: 0.82; }
@@ -1322,7 +1381,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 }
 .set-nav__item:hover { background: var(--surface-2); color: var(--text-1); }
 /* 当前项是实心黑块，和侧栏导航、页内 tab 同一个记号：黑块 = 「你在这儿」 */
-.set-nav__item[aria-current="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.set-nav__item[aria-current="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .set-nav__mark { margin-left: auto; flex: none; color: var(--text-3); }
 .set-nav__item[aria-current="true"] .set-nav__mark { color: var(--on-accent); opacity: 0.75; }
 /* 只有真出问题的那一档配得上一个颜色，其余靠形状分 */
@@ -1482,7 +1541,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
   font-family: var(--font-mono); font-size: var(--fs-sm); text-align: left;
 }
 .set-pp__item:hover { background: var(--surface-2); color: var(--text-1); }
-.set-pp__item[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
+.set-pp__item[aria-current="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .set-pp__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 改到一半的挂一颗点：切文件不丢改动，但得看得出来哪个还没存 */
 .set-pp__dot { margin-left: auto; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--mark-yellow); }
@@ -1516,7 +1575,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
  * 界面上就分不出「当前」和「已选」。黄色和划词高亮同一个 token，含义也一致。
  * hover 垫一层更淡的同色：路过是预览，点下去才是确认。
  */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .chip {
   height: 30px; padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm);
   border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer;
@@ -1526,6 +1585,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .chip:hover { background: color-mix(in srgb, var(--mark-yellow) 36%, transparent); border-color: transparent; color: var(--text-1); }
 .chip[aria-pressed="true"] { background: var(--mark-yellow); border-color: transparent; color: var(--text-1); font-weight: 600; }
 .chip[aria-pressed="true"]::before { content: "✓"; font-weight: 700; }
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button {
@@ -1575,9 +1635,9 @@ html[data-scroll-lock] .main { overflow: hidden; }
  * 入库抽屉里的素材类型芯片**仍然是黄的**——那才是打标，是「我圈中了」。
  */
 .filter-bar .chip[aria-pressed="true"] {
-  background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  background: var(--sel-bg); border-color: transparent; color: var(--sel-fg); font-weight: 600;
 }
-.filter-bar .chip[aria-pressed="true"]:hover { background: var(--accent); color: var(--on-accent); }
+.filter-bar .chip[aria-pressed="true"]:hover { background: var(--sel-bg); color: var(--sel-fg); }
 .filter-bar .chips-sm { margin-bottom: 0; }
 /* 下拉按状态芯片的高度收一档，两者才在同一条线上 */
 .filter-bar .select__btn { height: 26px; padding: 0 10px; font-size: var(--fs-sm); }
@@ -1858,7 +1918,7 @@ kbd {
 }
 .md-editor__sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; flex: none; }
 .md-editor__preview { margin-left: auto; }
-.md-editor__preview.is-on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.md-editor__preview.is-on { background: var(--sel-bg); color: var(--sel-fg); border-color: transparent; }
 /* 编辑区自己滚，不撑长整页——不然工具栏和动作条都会被顶走 */
 .md-editor__body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; }
 /* ⚠️ 这条不能省。`hidden` 属性是靠浏览器默认样式表的 `[hidden]{display:none}` 生效的，
@@ -1936,7 +1996,7 @@ kbd {
 .reader-kicker {
   display: flex; align-items: center; gap: 8px;
   font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--accent);
+  color: var(--accent);
 }
 /* 46px 是给英文短标题的。中文标题动辄二十几个字，那个字号下要占满整屏五行——
    标题喧宾夺主，正文被推到折叠线以下。33px 上限是实测出来的：两行封顶。 */
@@ -2216,7 +2276,7 @@ kbd {
 .msg-agent__who {
   display: block; margin-bottom: 4px;
   font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--text-3);
+  color: var(--text-3);
 }
 /* 动作条整体压下来，不给每个按钮各加一次 margin——按钮不止一个之后，
    逐个加的话它们之间还是对齐的，但 `gap` 和 `margin` 会一起算进行高。 */
@@ -2274,7 +2334,7 @@ kbd {
 }
 .pill-tab svg { width: 15px; height: 15px; }
 .pill-tab:hover { color: var(--text-1); }
-.pill-tab[aria-selected="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.pill-tab[aria-selected="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 
 /* ---------- 数据面板（热点两个 tab 共用） ---------- */
 
@@ -2439,7 +2499,7 @@ kbd {
   color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap;
 }
 .switch button:hover { color: var(--text-1); }
-.switch button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.switch button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 
 .linkish {
   border: 0; background: transparent; padding: 0; color: var(--text-1);
@@ -2467,7 +2527,7 @@ kbd {
   transition: background .16s var(--ease), color .16s var(--ease);
 }
 .material-flow__steps button:hover { background: var(--surface-2); }
-.material-flow__steps button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.material-flow__steps button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .material-flow__number { grid-column: 1 / -1; margin-bottom: 24px; font-family: var(--font-mono); font-size: var(--fs-2xs); opacity: .55; }
 .material-flow__steps strong { min-width: 0; font-size: var(--fs-base); line-height: 1.35; }
 .material-flow__steps b { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 500; }
@@ -2788,7 +2848,7 @@ kbd {
 }
 .lb__head {
   font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--text-3);
+  color: var(--text-3);
   background: var(--surface-2); border-bottom: 1px solid var(--border);
 }
 .lb__head span:nth-child(n + 3), .lb__row span:nth-child(n + 3) { text-align: right; }
@@ -2867,7 +2927,7 @@ kbd {
 .table-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); }
 .data-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); background: var(--surface); }
 .data-table th, .data-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-.data-table th { font-family: var(--font-mono); color: var(--text-3); font-weight: 500; font-size: var(--fs-2xs); letter-spacing: 0.12em; text-transform: uppercase; }
+.data-table th { color: var(--text-3); font-weight: 500; font-size: var(--fs-2xs); letter-spacing: 0.01em; }
 .data-table tr:last-child td { border-bottom: 0; }
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .data-table .muted { color: var(--text-3); }
@@ -3168,7 +3228,7 @@ kbd {
 }
 .project-stage-filter button:last-child { border-right: 0; }
 .project-stage-filter button:hover { background: var(--surface-2); color: var(--text-1); }
-.project-stage-filter button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.project-stage-filter button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .project-stage-filter b { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500; }
 
 .project-lanes { display: grid; gap: 48px; }
@@ -3199,7 +3259,7 @@ kbd {
 .project-card[data-stage="需处理"] { border-color: color-mix(in srgb, var(--danger) 44%, var(--border)); }
 .project-card__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .project-card__stage {
-  font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2);
+  font-size: var(--fs-2xs); letter-spacing: 0.01em; color: var(--text-2);
 }
 .project-card__top time { color: var(--text-3); font-size: var(--fs-xs); }
 .project-card h3 {

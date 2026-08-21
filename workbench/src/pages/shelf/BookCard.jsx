@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { Cover } from "../../components/Cover.jsx";
 import { IconBookmark, IconChevronRight, IconFileText, IconPhoto, IconTrash } from "../../components/icons.jsx";
 import { bookProgress, pct, readingOf } from "../../lib/reading.js";
+import { stateTone } from "../../components/ui.jsx";
 
 export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
   /**
@@ -134,7 +135,7 @@ export function BookCard({ book, tick, onOpen, onTrash, onCover }) {
             <IconFileText size={13} stroke={1.7} aria-hidden="true" />
             {book.chapterCount ? `${book.chapterCount} 章` : "单篇"}
           </span>
-          {book.status ? <span className="tag tag--state">{book.status}</span> : null}
+          {book.status ? <span className="tag tag--state" data-tone={stateTone(book.status)}>{book.status}</span> : null}
         </span>
         {saved ? (
           <span className="book-card__resume">

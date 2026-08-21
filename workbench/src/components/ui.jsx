@@ -282,6 +282,27 @@ const STATE_ICONS = [
 export const stateIcon = (name) => STATE_ICONS.find(([re]) => re.test(name))?.[1] || IconCircleDashed;
 
 /**
+ * 状态的**色调**，和 `stateIcon` 一一对应、**两张表必须同序**。
+ *
+ * ⚠️ 这不是给状态新开一个颜色维度——形状仍然是主编码（虚线圈 / 进度 / 勾 / 叉），
+ * 颜色只让它在一屏几十行里被扫到。不辨色的人读形状，一样能用。
+ * 取值在 `styles.css` 的 `--st-*`，来自 Circle（即 Linear 那套）。
+ *
+ * ⚠️ **加一档状态要同时改这两张表。** 只改一张的表现是：图标对了颜色不对，
+ * 或者反过来——而两者都不报错。回落是 `backlog`（等你动手），和 `stateIcon`
+ * 回落到虚线圈是同一个默认。
+ */
+const STATE_TONES = [
+  [/失败|需人工|异常/, "urgent"],
+  [/弃用|作废/, "cancel"],
+  [/搁置|存档|备用/, "cancel"],
+  [/已发布/, "done"],
+  [/待发布|已成稿|已选题|已整理|完成/, "review"],
+  [/中$|进行/, "doing"],
+];
+export const stateTone = (name) => STATE_TONES.find(([re]) => re.test(String(name || "")))?.[1] || "backlog";
+
+/**
  * `renderIcon` 让调用方换掉那枚记号。默认是状态图标，但这个下拉也用来选**平台**——
  * 平台不是状态，给它配一个「虚线圈=等我动手」纯属答非所问。数据页传的是平台的系列色圆点，
  * 和图上那条柱、那条线同一个颜色，一眼对得上。
@@ -365,7 +386,7 @@ export function Select({ value, options, onChange, disabled, title, ariaLabel, r
       >
         {/* 按钮上用的是**同一枚记号**：按钮和菜单里那一行必须长得一样，
             不然人得在两套记号之间做一次翻译 */}
-        {renderIcon ? icon(value) : <Current size={14} stroke={1.8} aria-hidden="true" />}
+        {renderIcon ? icon(value) : <Current size={14} stroke={1.8} aria-hidden="true" data-tone={stateTone(value)} />}
         {value}
         <IconChevronDown size={13} stroke={2} aria-hidden="true" />
       </button>

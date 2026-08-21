@@ -228,7 +228,7 @@
 .creation-audience__pop { max-width: min(340px, calc(100vw - 40px)); max-height: 232px; overflow-y: auto; }
 .creation-audience__pop button > span { overflow: hidden; text-overflow: ellipsis; }
 .creation-audience__pop button { height: 34px; font-size: var(--fs-sm); }
-.creation-form .creation-audience > span { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+.creation-form .creation-audience > span { font-size: var(--fs-2xs); letter-spacing: 0.01em; color: var(--text-3); }
 .creation-writing-paths { display: grid; gap: 6px; margin-top: auto; }
 .creation-writing-paths > button { display: grid; grid-template-columns: 34px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .creation-writing-paths > button:hover:not(:disabled) { border-color: var(--text-1); transform: translateY(-1px); }
@@ -275,7 +275,7 @@
 .creation-sources > p { margin: 10px 0 12px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55; }
 .creation-source-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 .creation-source-list article { padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
-.creation-source-list article > small { color: var(--text-3); font: 600 9px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.creation-source-list article > small { color: var(--text-3); font: 600 9px/1.2 var(--font); letter-spacing: 0.01em; }
 .creation-source-list h4 { margin: 6px 0 4px; font-size: var(--fs-sm); line-height: 1.4; }
 .creation-source-list article > p { max-height: 74px; overflow: hidden; margin: 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 /* 展开后按素材里真实的换行排版（多数素材是分条写的，挤成一段就读不出结构了）。
@@ -379,7 +379,7 @@
    按位置写样式就会这样：每加一条都得记得再排除一次。 */
 .creation-msg { max-width: 78%; }
 .creation-msg[data-role="user"] { align-self: flex-end; }
-.creation-msg > span { display: block; margin-bottom: 4px; color: var(--text-3); font: 600 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+.creation-msg > span { display: block; margin-bottom: 4px; color: var(--text-3); font: 600 10px/1 var(--font); letter-spacing: 0.01em; }
 .creation-msg > p { margin: 0; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface-2); white-space: pre-wrap; line-height: 1.7; }
 .creation-msg[data-role="user"] > p { background: var(--accent); color: var(--on-accent); }
 .creation-interview-welcome { max-width: 520px; margin: 0 auto; padding: 8px 24px 4px; text-align: center; }

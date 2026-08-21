@@ -19,6 +19,7 @@ import { api } from "../lib/api.js";
 import { recentOpened, recentQueries, noteQuery } from "../lib/recent.js";
 import { normalizeMaterialOpen, setOpenTarget } from "../lib/open-target.js";
 import { bookProgress, pct, recentReadings, resumeEntry } from "../lib/reading.js";
+import { stateTone } from "./ui.jsx";
 import {
   IconBook2,
   IconBulb,
@@ -275,7 +276,7 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
                         {row.snippet ? <span className="cmdk__snippet">{row.snippet}</span> : null}
                       </span>
                       <span className="cmdk__side">
-                        {row.state ? <span className="tag tag--state">{row.state}</span> : null}
+                        {row.state ? <span className="tag tag--state" data-tone={stateTone(row.state)}>{row.state}</span> : null}
                         {/* 只有「会在 Obsidian 里打开」需要提前说：那是离开工作台的动作，
                             其余的都留在工作台里，说了反而是噪音 */}
                         {row.go?.vaultPath ? <span className="cmdk__type">在 Obsidian 打开</span> : null}

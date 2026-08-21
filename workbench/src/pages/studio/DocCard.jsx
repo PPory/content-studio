@@ -5,7 +5,7 @@
 // 没内容也渲染、标签 `margin-top: auto`，冒烟测试量三张卡同一行的像素差 ≤1px。
 
 import { useState } from "react";
-import { relTime } from "../../components/ui.jsx";
+import { relTime, stateTone } from "../../components/ui.jsx";
 import { IconArrowUpRight, IconTrash } from "../../components/icons.jsx";
 import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
 
@@ -21,7 +21,7 @@ export function DocCard({ item, onOpen, onDelete, removeLabel }) {
         <div className="wall-card__top">
           <span className="wall-card__signals">
             {item.kindLabel ? <span className="tag tag--kind">{item.kindLabel}</span> : null}
-            {item.badge ? <span className="tag tag--state">{item.badge}</span> : null}
+            {item.badge ? <span className="tag tag--state" data-tone={stateTone(item.badge)}>{item.badge}</span> : null}
           </span>
           <time>{item.time ? relTime(item.time) : ""}</time>
         </div>

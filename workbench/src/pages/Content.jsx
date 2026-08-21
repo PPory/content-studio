@@ -35,7 +35,6 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   return (
     <>
       <PageHeader
-        eyebrow="CONTENT DESK"
         title="内容"
         desc="不再在选题库和稿件库之间来回找。这里按一篇内容真正走到哪一步，把下一步摆在最前面。"
         aside={
