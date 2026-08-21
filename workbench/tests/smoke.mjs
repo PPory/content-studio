@@ -1020,13 +1020,18 @@ try {
   await page.waitForSelector(".drawer", { timeout: 4000 });
   check("入库抽屉打开", true);
   /**
-   * **默认目标是「收藏」，不是「存素材」**——先收起来、不惊动 AI 是最常见的那一次。
-   * 素材类型芯片因此只在切到「存素材」之后才存在，下面这两条断言都得先切过去。
+   * **默认目标是「稍后整理」，不是「直接作为素材」**——先收起来、不惊动 AI 是最常见的那一次。
+   * 素材类型芯片因此只在切到「直接作为素材」之后才存在，下面这两条断言都得先切过去。
    * （原来这里直接数芯片，加了收藏之后就一直是空数组。）
+   *
+   * ⚠️ **断言的是屏幕上那三个字，而抽屉的文案改过一次**（收件箱 / 素材库 →
+   * 稍后整理 / 记下想法 / 直接作为素材），底层 target 值 collection/inbox/material 没变。
+   * 上一次改文案时这里漏了，测试红了一整个 commit——**按文字点的选择器每次改文案都要回头看这儿**，
+   * 和「收起态文字 display:none，:has-text() 点不中」是同一类坑。
    */
   const defaultTarget = await page.textContent('.drawer .seg button[aria-pressed="true"]');
-  check("默认落在收件箱", defaultTarget.trim() === "收件箱", defaultTarget.trim());
-  await page.click('.drawer .seg button:has-text("素材库")');
+  check("默认落在稍后整理", defaultTarget.trim() === "稍后整理", defaultTarget.trim());
+  await page.click('.drawer .seg button:has-text("直接作为素材")');
   const typeBtns = await page.$$eval(".drawer .chip", (els) => els.map((e) => e.textContent.trim()));
   check("入库类型齐全", typeBtns.includes("自动判断") && typeBtns.includes("金句"), typeBtns.join("/"));
   /**
@@ -1662,8 +1667,21 @@ try {
      * **阅读区开着时，底下那一层不该还能滚。**
      * 覆盖层是 fixed 全屏，列表页并没有消失——不锁的话窗口右边挂着一条
      * 滚了也什么都不会动的滚动条，屏幕上同时四条，其中一条是纯噪音。
+     *
+     * ⚠️ **断言量的是效果（正文面板真的不滚了），不是机制。**
+     * 上一版写死 `document.body.style.overflow === "hidden"`，容器结构改版之后
+     * 滚的从 body 换成了 `.main`，那句断言就变成了在考「有没有用那一行代码」——
+     * 换个正确的实现照样红。量 computed 的话，以后锁法再变一次这条还成立。
      */
-    check("阅读区开着时锁住了页面滚动", (await page.evaluate(() => document.body.style.overflow)) === "hidden");
+    const locked = await page.evaluate(() => ({
+      attr: document.documentElement.hasAttribute("data-scroll-lock"),
+      mainOverflow: getComputedStyle(document.querySelector(".main")).overflow,
+    }));
+    check(
+      "阅读区开着时锁住了背后那一层的滚动",
+      locked.attr && locked.mainOverflow === "hidden",
+      `attr=${locked.attr} · .main overflow=${locked.mainOverflow}`
+    );
 
     // 两侧栏都能收起：读长文时正文该能吃满屏
     await page.click('button[title="收起目录"]');

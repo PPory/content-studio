@@ -18,6 +18,7 @@ import { MarkdownEditor } from "./MarkdownEditor.jsx";
 import { WritingAssist } from "./WritingAssist.jsx";
 import { ErrorNote, Loading, MetaItem, Select, relTime } from "./ui.jsx";
 import { readStats } from "../lib/reading.js";
+import { lockScroll } from "../lib/scroll-lock.js";
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -136,15 +137,9 @@ export function ReaderOverlay({
    * 于是窗口右边挂着一条**滚了也什么都不会动**的滚动条。屏幕上同时四条滚动条
    * （页面 / 左栏 / 正文 / 右栏），其中一条是纯噪音。
    *
-   * 恢复的是 `overflow` 而不是写死 `""`：别的地方（弹窗）也可能锁过，无脑清空会把它解开。
+   * ⚠️ 锁的是**正文面板**不是 body：容器结构改版之后 body 已经不滚了，见 `lib/scroll-lock.js`。
    */
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  useEffect(() => lockScroll(), []);
 
   /**
    * 焦点陷阱 + 背景 inert + 关掉之后焦点回到打开它的那张卡上。

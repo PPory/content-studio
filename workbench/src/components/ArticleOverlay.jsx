@@ -21,6 +21,7 @@ import { useAiRuns } from "../lib/use-ai-runs.js";
 import { Reader } from "./Reader.jsx";
 import { SideRail } from "./SideRail.jsx";
 import { ErrorNote, Loading } from "./ui.jsx";
+import { lockScroll } from "../lib/scroll-lock.js";
 import {
   IconArchive,
   IconArrowLeft,
@@ -78,14 +79,9 @@ export function ArticleOverlay({ item, onClose, onIntake, onToast }) {
 
   // Esc、焦点陷阱、背景 inert、关闭后焦点归位都在 useDialog 里。
   // 这里只剩「锁住下面那层的滚动」——不锁的话窗口右边挂着一条滚了也没反应的滚动条。
+  // 锁的是正文面板不是 body（容器结构改版之后 body 不滚了），判据在 lib/scroll-lock.js。
   const boxRef = useDialog(true, onClose, { autoFocus: false });
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  useEffect(() => lockScroll(), []);
 
   const intake = useCallback(
     (content) => onIntake({ content, source: `${item.title} · ${item.link}` }),

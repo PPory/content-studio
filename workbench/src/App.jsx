@@ -390,60 +390,65 @@ export function App() {
         </div>
       </aside>
 
+      {/* 正文面板。⚠️ **内容多包一层 `.main__inner`**：面板负责「浮起来 + 自己滚」，
+          内层负责内边距和可读宽度上限。合成一层的话，限宽会让面板本身缩窄，
+          右边露出一条应用底色——那看着是「面板没铺满」，不是「正文不该太宽」。 */}
       <main className="main" key={route.view}>
-        {route.view === "today" ? (
-          <Today
-            config={config}
-            status={status}
-            statusError={statusError}
-            statusLoading={statusLoading}
-            onRetryStatus={refreshStatus}
-            onGo={go}
-            onChanged={refreshStatus}
-            onSettings={() => setSettings(true)}
-          />
-        ) : route.view === "content" ? (
-          <Content
-            workerReady={config?.worker?.configured}
-            onGo={go}
-            onChanged={refreshStatus}
-            onSettings={() => setSettings(true)}
-          />
-        ) : route.view === "project" ? (
-          <ProjectWorkspace projectId={route.state} onGo={go} onChanged={refreshStatus} />
-        ) : route.view === "review" ? (
-          <Metrics onSettings={() => setSettings(true)} />
-        ) : route.view === "overview" ? (
-          <Overview
-            config={config}
-            status={status}
-            statusError={statusError}
-            statusLoading={statusLoading}
-            onRetryStatus={refreshStatus}
-            onGo={go}
-            onIntake={() => setIntake({})}
-            onSettings={() => setSettings(true)}
-          />
-        ) : route.view === "hot" ? (
-          <Hotspots onIntake={setIntake} />
-        ) : route.view === "typeset" ? (
-          <Typeset />
-        ) : route.view === "metrics" ? (
-          <Metrics onSettings={() => setSettings(true)} />
-        ) : route.view === "shelf" ? (
-          <Shelf onIntake={setIntake} state={route.state} />
-        ) : STUDIO.has(route.view) ? (
-          <Studio
-            sourceKey={route.view === "materials" ? "material-workspace" : route.view}
-            state={route.state}
-            counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
-            onState={(s) => go(route.view, s)}
-            onGo={go}
-            onIntake={setIntake}
-            onChanged={refreshStatus}
-            refreshKey={intakeVersion}
-          />
-        ) : null}
+        <div className="main__inner">
+          {route.view === "today" ? (
+            <Today
+              config={config}
+              status={status}
+              statusError={statusError}
+              statusLoading={statusLoading}
+              onRetryStatus={refreshStatus}
+              onGo={go}
+              onChanged={refreshStatus}
+              onSettings={() => setSettings(true)}
+            />
+          ) : route.view === "content" ? (
+            <Content
+              workerReady={config?.worker?.configured}
+              onGo={go}
+              onChanged={refreshStatus}
+              onSettings={() => setSettings(true)}
+            />
+          ) : route.view === "project" ? (
+            <ProjectWorkspace projectId={route.state} onGo={go} onChanged={refreshStatus} />
+          ) : route.view === "review" ? (
+            <Metrics onSettings={() => setSettings(true)} />
+          ) : route.view === "overview" ? (
+            <Overview
+              config={config}
+              status={status}
+              statusError={statusError}
+              statusLoading={statusLoading}
+              onRetryStatus={refreshStatus}
+              onGo={go}
+              onIntake={() => setIntake({})}
+              onSettings={() => setSettings(true)}
+            />
+          ) : route.view === "hot" ? (
+            <Hotspots onIntake={setIntake} />
+          ) : route.view === "typeset" ? (
+            <Typeset />
+          ) : route.view === "metrics" ? (
+            <Metrics onSettings={() => setSettings(true)} />
+          ) : route.view === "shelf" ? (
+            <Shelf onIntake={setIntake} state={route.state} />
+          ) : STUDIO.has(route.view) ? (
+            <Studio
+              sourceKey={route.view === "materials" ? "material-workspace" : route.view}
+              state={route.state}
+              counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
+              onState={(s) => go(route.view, s)}
+              onGo={go}
+              onIntake={setIntake}
+              onChanged={refreshStatus}
+              refreshKey={intakeVersion}
+            />
+          ) : null}
+        </div>
       </main>
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />

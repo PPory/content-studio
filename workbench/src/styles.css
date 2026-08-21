@@ -1,8 +1,18 @@
-/* 设计语言：白底 + 单一紫色点缀 + 点阵母题 + 等宽字体做技术标签。
-   参考 person_dashboard 的视觉体系（Nothing-inspired），但 token 名沿用本项目原有的
-   语义层（--surface / --text-1 / --border …），所以换皮不需要动组件里的每一处引用。
+/* 设计语言：**底色 + 浮在上面的面板**，黑白两色，等宽字体做技术标签。
+   参照 ln-dev7/circle（Linear 语汇、shadcn zinc 主题）重做外壳，但 token 名沿用本项目
+   原有的语义层（--surface / --text-1 / --border …），所以换皮不需要动组件里的每一处引用。
 
-   三层：原始色 → 语义 → 组件。组件里只准用语义层，否则暗色主题必漏。 */
+   ⚠️ **两句已经过时的话，别照着改回去**：
+   - 「单一紫色点缀」——从来没落地过，token 里的 --accent 一直是近黑。
+   - 「点阵母题」——`body::before` 那层点阵**已经撤了**，理由写在下面它原来的位置上。
+
+   三层：原始色 → 语义 → 组件。组件里只准用语义层，否则暗色主题必漏。
+
+   改版分三步走，现在做完的是第一步：
+   1. ✅ 外壳容器（本文件的 .app / .sidebar / .main / .main__inner）
+   2. ⬜ token 层（字阶、间距网格、圆角、状态色）
+   3. ⬜ 组件语汇（卡片墙 → 44px 列表行、分组色带、状态图标）
+   设计稿在 workbench/tmp/redesign-v3.html。 */
 
 :root {
   color-scheme: light;
@@ -148,6 +158,18 @@
      收起态 60px = 左右各 10px 内边距 + 一个 40px 的图标按钮，正好装下一颗图标。 */
   --sidebar-w: 200px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /**
+   * 应用底色。**面板浮在它上面，侧栏就是它本身。**
+   *
+   * ⚠️ 刻意**不复用 `--canvas`**：`--canvas` 在四十来处当「白卡片上的凹陷面」用
+   *（输入框、提示框、子面板的底），它和这里要表达的「整个应用的地」是两件事。
+   * 合成一个的话，以后想让面板和底色拉开一档，会连带把所有输入框一起改深。
+   */
+  /* ⚠️ 这个值是**量着面板边界定的**，不是挑的。#fafafa（原 --paper）和纯白只差 2%，
+     配上 --border 那道极浅的线，面板整个「浮」不起来——截图上看就是右边漏了一条白缝。
+     #f4f4f5 差 4%，加上下面那道 --border-strong，边界才立得住。 */
+  --shell: #f4f4f5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -195,6 +217,9 @@
 
     --logo-flip: 1;
 
+    /* 暗色下面板比底色**亮**（和亮色一个方向：面板永远是那块「读字的面」） */
+    --shell: #08080a;
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.34);
     --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.44);
@@ -239,19 +264,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* 点阵背景：极轻，只在右上角一片。它不承担信息，只是让大片留白不显得是「没做完」 */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
-  background-size: 26px 26px;
-  opacity: 0.35;
-  mask-image: radial-gradient(circle at 74% 8%, #000 0%, transparent 58%);
-  -webkit-mask-image: radial-gradient(circle at 74% 8%, #000 0%, transparent 58%);
-}
+/**
+ * ⚠️ **点阵背景撤了**（原来是 `body::before` 的一层 radial-gradient）。
+ *
+ * 它当初的理由是「让大片留白不显得是没做完」。容器结构改版之后这个前提没有了：
+ * 应用底色现在只从两个地方露出来——侧栏底下，和面板四周那 8px 的沟。
+ * 点阵铺在这两处的结果是**方格纸从面板边缘漏出来**，看着像没对齐的背景图，
+ * 而不是「刻意留的白」。留白问题现在由面板自己的边框解决：有边框就有边界，
+ * 有边界就不需要靠纹理证明「这儿是有意空着的」。
+ */
 
 button { font: inherit; color: inherit; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -281,20 +302,33 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 
 /* ---------- 布局 ---------- */
 
-.app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+/**
+ * ⚠️ **外壳是「底色 + 浮在上面的面板」，不是「两栏并排」。**
+ *
+ * 侧栏不再是一根有边框有底色的栏——**它就是应用底色本身**；正文是一块四周留 8px 沟、
+ * 带边框圆角的白面板。这一层结构做完，界面才有「应用感」而不是「一张长网页」。
+ *
+ * ⚠️ **滚的从 body 换成了 `.main`。** `.app` 定高吃满视口并 `overflow: hidden`，
+ * 所以侧栏永远在原地、面板边框始终贴着窗口四边（body 滚的话，滚下去面板顶边就跑没了）。
+ * **滚动区的数量没有变**，还是一条：以前是 body，现在是面板。这不违反
+ * 「不要为了少一条滚动条去套 max-height」——那条说的是把**一栏切成两半**，这里没切。
+ *
+ * 代价记在这儿：覆盖层锁滚动不能再锁 body 了，见 `lib/scroll-lock.js`。
+ */
+.app { position: relative; z-index: 1; display: flex; height: 100vh; overflow: hidden; }
 
 .sidebar {
   width: var(--sidebar-w);
   flex: none;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  padding: 24px 16px 20px;
+  /* 底色和边框都撤了：侧栏**就是**应用底色，画一层白底加一道竖线等于在底色上又贴一张纸 */
+  background: transparent;
+  padding: 24px 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  /* 不再 sticky：body 不滚了，它天然待在原地 */
+  height: 100%;
+  min-height: 0;
   z-index: 20;
 }
 
@@ -435,7 +469,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .conn__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 内容项目工作区 ---------- */
-.project-workspace { min-height: 100vh; background: var(--canvas); }
+/* 面板已经定高，这里按面板算不按视口算（视口那份会高出 16px 的沟 + 边框） */
+.project-workspace { min-height: 100%; background: var(--canvas); }
 .project-workspace-load { max-width: 860px; margin: 0 auto; padding: 48px; }
 .project-workspace__head {
   height: 64px; padding: 0 28px; border-bottom: 1px solid var(--border);
@@ -462,7 +497,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-flow li[data-state="done"] > span { background: var(--text-1); border-color: var(--text-1); color: var(--surface); }
 .project-flow li[data-state="current"] { color: var(--text-1); }
 .project-flow li[data-state="current"] > span { border-color: var(--text-1); box-shadow: inset 0 0 0 4px var(--surface), inset 0 0 0 10px var(--text-1); }
-.project-workspace__grid { display: grid; grid-template-columns: 245px minmax(480px, 1fr) 280px; min-height: calc(100vh - 112px); }
+.project-workspace__grid { display: grid; grid-template-columns: 245px minmax(480px, 1fr) 280px; min-height: calc(100% - 112px); }
 .project-brief, .project-materials { background: var(--surface); padding: 28px 22px; }
 .project-brief { border-right: 1px solid var(--border); }
 .project-brief h1 { margin: 12px 0 22px; font-family: var(--font-display); font-size: 21px; line-height: 1.28; letter-spacing: -.025em; }
@@ -512,7 +547,28 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .conn__gear:hover { background: var(--surface-2); color: var(--text-1); }
 .conn__gear svg { width: 16px; height: 16px; }
 
-.main { flex: 1 1 0; min-width: 0; padding: 38px clamp(22px, 3.4vw, 52px) 90px; max-width: 1320px; }
+/* 正文面板：四周留沟、自带边框圆角、**自己滚**。 */
+.main {
+  flex: 1 1 0; min-width: 0;
+  /* 四面都留沟（含左边）：Circle 的容器是 `p-2` 铺一圈，侧栏是并排的另一个 flex 子元素。
+     只留三面的话左上角那个圆角贴着侧栏，看着是「面板被切了一刀」而不是「浮着」。 */
+  margin: 8px;
+  background: var(--surface);
+  /* 用 --border-strong 不用 --border：面板是这一屏最外层的边界，
+     和卡片内部那些分隔线不该是同一个重量。 */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+/* 覆盖层开着时背后这一层不许滚（`lib/scroll-lock.js` 挂的属性）。
+   **锁在这儿而不是在组件里**：以后再加一个覆盖层，不用记得重写一遍这件事。 */
+html[data-scroll-lock] .main { overflow: hidden; }
+
+/* 页面内容的内边距和可读宽度上限**从面板挪到这一层**。
+   留在面板上的话，限宽 1320 会让面板自己缩到 1320 —— 右边露出一条底色，
+   看着是「面板没铺满」而不是「正文不该太宽」。 */
+.main__inner { padding: 32px clamp(22px, 3.4vw, 52px) 80px; max-width: 1320px; }
 
 /* ---------- 页头 ---------- */
 
@@ -2813,9 +2869,12 @@ kbd {
    看板退化成一堆省略号。用 `:has()` 按内容把限制解掉，不用给 App 加一个
    「这一页要多宽」的状态。内嵌工具（排版）同理——它自己的工具栏在窄容器里会挤成三行。 */
 
-.main:has(.kanban), .main:has(.embed-page) { max-width: none; }
-/* 内嵌工具那一页把内边距全去掉：工具自己有留白，外面再留一圈只是白丢面积 */
-.main:has(.embed-page) { padding: 0; overflow: hidden; height: 100vh; }
+.main__inner:has(.kanban), .main__inner:has(.embed-page) { max-width: none; }
+/* 内嵌工具那一页把内边距全去掉：工具自己有留白，外面再留一圈只是白丢面积。
+   ⚠️ 高度从 `100vh` 改成 `100%`——面板本身已经被 `.app` 定高了，
+   再按视口算会比面板高出 16px 的沟 + 两条边框，底下凭空多出一条滚动。 */
+.main__inner:has(.embed-page) { padding: 0; height: 100%; }
+.main:has(.embed-page) { overflow: hidden; }
 
 /* 越过面板的内边距去用满宽度，右边压一道渐隐：宽度再不够时「还有一列在外面」
    看着像可以滚，而不像被墙切掉了。 */
