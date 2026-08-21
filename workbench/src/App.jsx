@@ -357,7 +357,12 @@ export function App() {
                         key={child.to}
                         className="subnav-item"
                         aria-current={route.view === child.to || (route.view === "project" && child.to === "content") ? "page" : undefined}
-                        onClick={() => go(child.to, "")}
+                        // ⚠️ **不传第二个参数**。传 `""` 的话 `state === undefined` 不成立，
+                        // `go` 里那条「没指定就用适配器的 defaultState」的分支永远走不到——
+                        // 于是进选题库看到的是「全部」，而 `sources.js` 写着 `defaultState: "待写"`、
+                        // CLAUDE.md 写着「默认状态要写进 URL」。三处说法两个结果，
+                        // 而这种不一致不报错：屏幕上只是安静地少过滤了一次。
+                        onClick={() => go(child.to)}
                       >
                         <span aria-hidden="true" />{child.label}
                       </button>

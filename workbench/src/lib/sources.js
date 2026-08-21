@@ -468,9 +468,10 @@ export const DRAFTS = pipelineSource({
   mapItem: (p) => ({
     key: p.id,
     title: p.title || "（无标题）",
-    // 副标题**留空**：平台已经在底部的标签里了，同一张卡上下各写一遍是重复。
-    // 留空而不是不渲染——那一行有 min-height，撑着卡片行行对齐（见 .wall-card__sub）。
+    // 副标题**留空**：平台已经在右侧的标签里了，同一行左右各写一遍是重复。
     // 稿件条目上除了平台只有 topicIds（一串 UUID），铺出来是噪音，所以这里没有别的可填。
+    // ⚠️ 留空不等于这个字段没用：`DocRow` 的摘要行是 `preview || sub`，
+    //    没有 preview 的源（比如只有一句话的条目）靠它填第二行。
     sub: "",
     preview: stripLegacyDraftWarnings(unescapeNewlines(p.note)),
     tags: p.platform ? [p.platform] : [],

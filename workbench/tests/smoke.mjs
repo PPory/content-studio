@@ -1080,33 +1080,39 @@ try {
   check("浏览是卡片墙不是三栏", !!(await page.$(".panel-block")) && !(await page.$(".reader-overlay")));
 
   if (workerReady) {
-    await page.waitForSelector(".kanban-col, .wall-card, .empty, .note-title", { timeout: 25000 });
+    await page.waitForSelector(".kanban-col, .doc-row, .empty, .note-title", { timeout: 25000 });
 
     // **默认是卡片墙**。看板回答的是「卡在哪一步」，那是偶尔问一次的问题；
     // 日常进来是找内容的，默认给看板等于每次都先看一屏光标题。
-    check("默认是卡片墙不是看板", !(await page.$(".kanban-col")), (await page.$$(".wall-card")).length + " 张卡");
+    check("默认是列表不是看板", !(await page.$(".kanban-col")), (await page.$$(".doc-row")).length + " 张卡");
 
     /**
-     * **一排卡片里，每一行都要落在同一条线上。**
-     * 标题有一行的也有三行的、有的有副标题有的没有，摘要和标签就会在每张卡上落在不同高度——
-     * 扫一排卡片时眼睛得上下找，卡片墙那点「一眼扫十几条」的效率就是这么丢的。
+     * **一列行里，每一行都要一样高、标题起点在同一条竖线上。**
+     *
+     * ⚠️ 这条断言换过一次判据。卡片时代量的是「三张卡上标题/副标题/摘要各自的顶边差」——
+     * 因为卡片的高度由内容决定，标题一行还是三行会把下面的东西推到不同高度。
+     * 行不会有那个问题（高度是定的），行会有**另一个**问题：
+     * 有状态图标的行和没有的行，标题会左右差出一个图标的宽度，一列看着是锯齿。
+     * 所以现在量两件事：**行高一致**（摘要那行没内容也得占位）、**标题左缘一致**
+     *（`.doc-row__state` 没状态也占格）。判据变了，但要防的东西没变：
+     * 扫一列的时候眼睛不用来回找。
      */
     const rowsAligned = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll(".wall-card")].slice(0, 3);
-      if (cards.length < 2) return { skip: true };
-      const topOf = (card, sel) => {
-        const el = card.querySelector(sel);
-        return el ? Math.round(el.getBoundingClientRect().top - card.getBoundingClientRect().top) : null;
-      };
-      const line = (sel) => cards.map((c) => topOf(c, sel)).filter((v) => v !== null);
+      const rows = [...document.querySelectorAll(".doc-row")].slice(0, 4);
+      if (rows.length < 2) return { skip: true };
       const spread = (xs) => (xs.length > 1 ? Math.max(...xs) - Math.min(...xs) : 0);
-      return { title: spread(line("h3")), sub: spread(line(".wall-card__sub")), note: spread(line(".wall-card__note")) };
+      return {
+        height: spread(rows.map((r) => Math.round(r.getBoundingClientRect().height))),
+        titleLeft: spread(
+          rows.map((r) => Math.round(r.querySelector(".doc-row__title").getBoundingClientRect().left))
+        ),
+      };
     });
     if (!rowsAligned.skip) {
       check(
-        "卡片里每一行都对齐",
-        rowsAligned.title <= 1 && rowsAligned.sub <= 1 && rowsAligned.note <= 1,
-        `标题差 ${rowsAligned.title}px / 副标题差 ${rowsAligned.sub}px / 摘要差 ${rowsAligned.note}px`
+        "一列行等高、标题左缘对齐",
+        rowsAligned.height <= 1 && rowsAligned.titleLeft <= 1,
+        `行高差 ${rowsAligned.height}px / 标题左缘差 ${rowsAligned.titleLeft}px`
       );
     }
 
@@ -1164,38 +1170,40 @@ try {
     }
     page.off("request", countWrites);
 
-    // 切回卡片墙看浏览层那几件事
-    await page.click('.seg button:has-text("卡片")');
-    await page.waitForSelector(".wall-card, .empty", { timeout: 8000 });
-    const n = await page.$$eval(".wall-card", (els) => els.length);
-    check("选题卡片墙出条目", n > 0, `${n} 张`);
+    // 切回列表看浏览层那几件事。
+    // ⚠️ **按文字点的选择器**：视图切换从「卡片」改名成「列表」时这里漏了一次，
+    // 症状是整轮冒烟在这一步超时 30 秒然后中断——和抽屉那三个目标改名是同一类坑。
+    await page.click('.seg button:has-text("列表")');
+    await page.waitForSelector(".doc-row, .empty", { timeout: 8000 });
+    const n = await page.$$eval(".doc-row", (els) => els.length);
+    check("选题列表出条目", n > 0, `${n} 条`);
     if (n > 0) {
       const stateChips = await page.$$eval(".chips-sm .chip", (els) => els.map((e) => e.textContent.trim()));
       check("状态筛选条", stateChips.includes("待写") && stateChips.includes("撰写中"), stateChips.join("/"));
-      // 卡片要有摘要，否则和一行标题的列表没区别，卡片墙就白做了
-      const previews = await page.$$eval(".wall-card__note", (els) => els.map((e) => e.textContent.trim()));
-      check("卡片带摘要", previews.length > 0 && previews[0].length > 10, `${previews.length} 张有摘要`);
+      // 行要有摘要，否则这一列就只是一份目录，浏览层「一眼扫十几条」的价值没了
+      const previews = await page.$$eval(".doc-row__excerpt", (els) => els.map((e) => e.textContent.trim()));
+      check("行带摘要", previews.length > 0 && previews[0].length > 10, `${previews.length} 条有摘要`);
       // 删除要有入口、而且**必须点两下**：第一下只是把按钮换成写清去向的确认按钮
-      check("卡片上有删除入口", (await page.$$(".wall-card__del")).length === n, `${(await page.$$(".wall-card__del")).length}/${n}`);
+      check("行上有删除入口", (await page.$$(".doc-row__del")).length === n, `${(await page.$$(".doc-row__del")).length}/${n}`);
       // 入口为了不抢主动作，鼠标场景下只在卡片 hover 后显形。Playwright 直接 click
       // 一个 opacity:0 + pointer-events:none 的节点会一直等到超时；先模拟真实用户把鼠标
       // 移进卡片，测到的才是界面约定，而不是用 force 绕过界面状态。
-      await page.hover(".wall-card");
-      await page.click(".wall-card__del");
-      const confirmText = await page.textContent(".wall-card .btn-danger").catch(() => "");
+      await page.hover(".doc-row");
+      await page.click(".doc-row__del");
+      const confirmText = await page.textContent(".doc-row .btn-danger").catch(() => "");
       // ⚠️ 断言的是**「说清了不可恢复」**，不是某个具体词。Notion 时代删除是 archived:true
       // （进废纸篓、30 天可捞），文案写的是「移到 Notion 废纸篓」；换 D1 之后那一层没了，
       // 文案必须照实说「永久删除」。这条断言当时钉的是「废纸篓」三个字，于是迁移之后
       // **代码对了、测试红了**——测试反过来在要求把对的文案改回去。
       check("删除要二次确认且说清不可恢复", /永久删除|删了就没|不可恢复/.test(confirmText), confirmText.trim());
       // 反悔的路必须一直在：少了「取消」，点错第一下就只剩「删」和「离开这一页」两条路
-      await page.click('.wall-card:has(.btn-danger) button:has-text("取消")');
-      await page.waitForSelector(".wall-card .btn-danger", { state: "detached", timeout: 4000 });
+      await page.click('.doc-row:has(.btn-danger) button:has-text("取消")');
+      await page.waitForSelector(".doc-row .btn-danger", { state: "detached", timeout: 4000 });
       check("删除确认能取消", true);
       await shot("wall");
 
       // 点开 → 阅读覆盖层
-      await page.click(".wall-card__open");
+      await page.click(".doc-row__open");
       await page.waitForSelector(".reader-overlay .reader .prose", { timeout: 25000 });
       check("点开进阅读区", !!(await page.$(".reader-overlay")));
       check("阅读区有面包屑", (await page.textContent(".reader-overlay__crumb")).includes("选题库"));
@@ -1394,7 +1402,7 @@ try {
       check("键盘 j 切换条目", n < 2 || before !== (await page.textContent(".reader-title")), before?.slice(0, 12));
       await page.keyboard.press("Escape");
       await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
-      check("Esc 回到卡片墙", !!(await page.$(".wall-card")));
+      check("Esc 回到列表", !!(await page.$(".doc-row")));
 
       /**
        * 搜索过滤。
@@ -1406,24 +1414,24 @@ try {
        * 两个方向一起测才说明它真的在筛：搜自己那一条要**搜得到**，搜一个不存在的词要**空**。
        * 只测前者的话，「搜索坏掉、列表原样铺着」同样能过。
        */
-      const first = (await page.textContent(".wall-card h3")).trim();
+      const first = (await page.textContent(".doc-row__title")).trim();
       const q = first.slice(0, 4);
       await page.fill(".search-box input", q);
       await page
         .waitForFunction((word) => {
-          const titles = [...document.querySelectorAll(".wall-card h3")].map((e) => e.textContent);
+          const titles = [...document.querySelectorAll(".doc-row__title")].map((e) => e.textContent);
           return titles.some((t) => t.includes(word));
         }, q, { timeout: 15000 })
         .catch(() => {});
-      const filtered = await page.$$eval(".wall-card", (els) => els.length);
-      const stillThere = await page.$$eval(".wall-card h3", (els) => els.map((e) => e.textContent.trim()));
+      const filtered = await page.$$eval(".doc-row", (els) => els.length);
+      const stillThere = await page.$$eval(".doc-row__title", (els) => els.map((e) => e.textContent.trim()));
       check("搜得到自己那一条", stillThere.some((t) => t.includes(q)) && filtered <= n, `${filtered}/${n} · ${q}`);
 
       await page.fill(".search-box input", "zzz这个词不可能出现zzz");
       await page
-        .waitForFunction(() => document.querySelectorAll(".wall-card").length === 0, null, { timeout: 15000 })
+        .waitForFunction(() => document.querySelectorAll(".doc-row").length === 0, null, { timeout: 15000 })
         .catch(() => {});
-      check("搜不到时是真的空，不是原样铺着", (await page.$$(".wall-card")).length === 0);
+      check("搜不到时是真的空，不是原样铺着", (await page.$$(".doc-row")).length === 0);
       await page.fill(".search-box input", "");
       await page.waitForTimeout(500);
     }
@@ -2485,9 +2493,9 @@ try {
   await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
   check("旧灵感入口自动归到素材", decodeURIComponent(page.url()).includes("#/materials"), page.url());
   check("素材链路把四个主要环节说清", (await page.$$(".material-flow__steps li")).length === 4);
-  const ideaIndex = await page.$$eval(".wall-card", (cards) => cards.findIndex((card) => card.querySelector(".tag--kind")?.textContent.includes("灵感来源")));
+  const ideaIndex = await page.$$eval(".doc-row", (cards) => cards.findIndex((card) => card.querySelector(".tag--kind")?.textContent.includes("灵感来源")));
   if (ideaIndex >= 0) {
-    await page.locator(".wall-card__open").nth(ideaIndex).click();
+    await page.locator(".doc-row__open").nth(ideaIndex).click();
     // 等批注台真的挂上来，不是等覆盖层出现——正文还在取的时候右栏是不渲染的
     await page.waitForSelector(".reader-overlay .rail-tabs", { timeout: 25000 });
     check("灵感来源仍能进阅读区", !!(await page.$(".reader-overlay .rail")));
@@ -2502,8 +2510,8 @@ try {
 
   // 8c. 统一素材区按处理阶段、类型、证据核验组合筛选；阶段与数量由 Worker 返回。
   await page.goto(`http://127.0.0.1:${PORT}/#/materials`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".wall-card, .empty, .note-title", { timeout: 25000 });
-  const matAll = await page.$$eval(".wall-card", (els) => els.length);
+  await page.waitForSelector(".doc-row, .empty, .note-title", { timeout: 25000 });
+  const matAll = await page.$$eval(".doc-row", (els) => els.length);
   //     分面是**一个下拉**不是第二排芯片：两排芯片摞在一起分不出哪排是什么，
   //     而且第二排会随选项数量变长，把卡片墙一路往下顶。
   const facetBtn = await page.$(".filter-bar .select__btn");
@@ -2525,22 +2533,38 @@ try {
       new Set(shapes).size > 1 && new Set(shapes).size >= Math.min(4, shapes.length),
       `${new Set(shapes).size} 种形状 / ${shapes.length} 条路径`
     );
-    await page.click(".select__pop button >> nth=1");
-    await page.waitForTimeout(300);
-    const filtered = await page.$$eval(".wall-card", (els) => els.length);
+    /* ⚠️ **挑一个计数为正的分面，不要盲点第二项。**
+       选项标签自带条数（「核心观点 11」），而第二项**可以合法地是 0 条**——
+       那时候筛出 0 行是对的，红的是断言不是界面。上一版就是这么假红的。 */
+    const pickIdx = await page.$$eval(".select__pop button", (els) =>
+      els.findIndex((e, i) => i > 0 && /\s(\d+)\s*$/.test(e.textContent.trim()) && +RegExp.$1 > 0)
+    );
+    await page.click(`.select__pop button >> nth=${pickIdx > 0 ? pickIdx : 1}`);
+    /**
+     * ⚠️ **等的是「条数真的变了」，不是一个拍脑袋的毫秒数。**
+     * 原来写 `waitForTimeout(300)`：改成分组列表之后重渲染多了一层，300ms 偶尔不够，
+     * 断言量到的是**还没渲染完的 0 条**——红的是测试，界面其实一直是对的
+     *（实测筛完 30 → 11）。固定等待就是这么变成假红的，和「等容器不等内容」同一类。
+     */
+    await page
+      .waitForFunction((n) => document.querySelectorAll(".doc-row").length !== n, matAll, { timeout: 8000 })
+      .catch(() => {});
+    const filtered = await page.$$eval(".doc-row", (els) => els.length);
     check("类型筛真的收窄了", filtered > 0 && filtered <= matAll, `${filtered}/${matAll}`);
     // 回头路必须有：没有「全部」的筛选等于把人锁在一个子集里
     await page.click(".filter-bar .select__btn");
     await page.click(".select__pop button >> nth=0");
-    await page.waitForTimeout(300);
-    check("能筛回全部", (await page.$$eval(".wall-card", (els) => els.length)) === matAll);
+    await page
+      .waitForFunction((n) => document.querySelectorAll(".doc-row").length === n, matAll, { timeout: 8000 })
+      .catch(() => {});
+    check("能筛回全部", (await page.$$eval(".doc-row", (els) => els.length)) === matAll);
   }
   if (matAll > 0) {
-    const materialCards = await page.$$eval(".wall-card", (cards) => cards.map((card) => ({
+    const materialCards = await page.$$eval(".doc-row", (cards) => cards.map((card) => ({
       kind: card.querySelector(".tag--kind")?.textContent.trim() || "",
-      type: card.querySelector(".wall-card__sub")?.textContent.trim() || "",
+      type: card.querySelector(".doc-row__excerpt")?.textContent.trim() || "",
       badge: card.querySelector(".tag--state")?.textContent.trim() || "",
-      warning: card.querySelector(".wall-card__warning")?.textContent.trim() || "",
+      warning: card.querySelector(".doc-row__excerpt--warn")?.textContent.trim() || "",
     })));
     const reusable = materialCards.filter((card) => card.kind.includes("可复用素材"));
     const sensitive = reusable.filter((card) => ["金句/原话", "数据/事实", "金句·原话", "数据·事实"].some((type) => card.type.includes(type)));
@@ -2551,7 +2575,7 @@ try {
 
     const materialIndex = materialCards.findIndex((card) => card.kind.includes("可复用素材"));
     if (materialIndex >= 0) {
-      await page.locator(".wall-card__open").nth(materialIndex).click();
+      await page.locator(".doc-row__open").nth(materialIndex).click();
       await page.waitForSelector(".reader-overlay .doc-meta", { timeout: 25000 });
       const materialMeta = await page.textContent(".reader-overlay .doc-meta");
     /**
@@ -2605,7 +2629,7 @@ try {
    * 哪排是什么；平台在副标题和标签里各写一遍也不报错，只是同一张卡上说了两遍。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".wall-card, .empty, .note-title", { timeout: 25000 });
+  await page.waitForSelector(".doc-row, .empty, .note-title", { timeout: 25000 });
   if (await page.$(".filter-bar")) {
     const bar = await page.evaluate(() => {
       const chips = document.querySelector(".filter-bar .chips-sm");
@@ -2640,21 +2664,34 @@ try {
     );
     await page.keyboard.press("Escape");
   }
-  const draftCards = await page.$$eval(".wall-card", (cards) =>
+  const draftCards = await page.$$eval(".doc-row", (cards) =>
     cards.map((c) => ({
-      sub: c.querySelector(".wall-card__sub")?.textContent.trim() || "",
-      tags: [...c.querySelectorAll(".wall-card__tags .tag")].map((t) => t.textContent.trim()),
+      sub: c.querySelector(".doc-row__excerpt")?.textContent.trim() || "",
+      tags: [...c.querySelectorAll(".doc-row__meta .tag")].map((t) => t.textContent.trim()),
     }))
   );
   if (draftCards.length) {
-    check(
-      "卡片上平台只出现一次",
-      draftCards.every((c) => !c.sub || !c.tags.includes(c.sub)),
-      draftCards.map((c) => `${c.sub || "（空）"}|${c.tags.join("/")}`).slice(0, 3).join("  ")
+    /**
+     * ⚠️ **判据换了，因为原来那条已经量不到东西了。**
+     * 卡片时代平台可能同时出现在副标题和底部标签上（同一张卡说两遍），所以断言的是
+     * 「副标题不在标签里」。改成行之后副标题并进了摘要，那条断言恒真——**它还在跑，
+     * 但已经不测任何东西了**，比红着更难发现。现在直接数：一行里平台最多出现一次。
+     */
+    const platformDupes = await page.$$eval(".doc-row", (rows) =>
+      rows.map((r) => {
+        const tags = [...r.querySelectorAll(".doc-row__meta .tag")].map((t) => t.textContent.trim());
+        return tags.filter((t) => t === tags[0]).length;
+      })
     );
-    // 副标题那一行**空着也要占位**：不占的话，摘要在各张卡上的高度就不一样了
-    const subH = await page.$$eval(".wall-card__sub", (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
-    check("空副标题仍占位，卡片才对得齐", new Set(subH).size === 1 && subH[0] > 0, `高度 ${[...new Set(subH)].join("/")}px`);
+    check(
+      "一行里平台只出现一次",
+      platformDupes.every((n) => n <= 1),
+      platformDupes.join("/") || "（没有行）"
+    );
+    // 摘要那一行**空着也要占位**：不占的话这一行就矮一截，一列高低不齐。
+    // （卡片时代这条量的是副标题；行里副标题并进了摘要，见 DocRow 的注释。）
+    const exH = await page.$$eval(".doc-row__excerpt", (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    check("空摘要仍占位，一列才对得齐", new Set(exH).size === 1 && exH[0] > 0, `高度 ${[...new Set(exH)].join("/")}px`);
   }
 
   // 9. 数据页。两份 CSV 测完都还原，不留测试数据。
@@ -2663,8 +2700,19 @@ try {
   const csvBefore = fs.existsSync(csv) ? fs.readFileSync(csv, "utf8") : null;
   const postsBefore = fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : null;
   try {
-    await page.goto(`http://127.0.0.1:${PORT}/#/metrics`, { waitUntil: "networkidle" });
-    await page.waitForSelector(".pill-tabs", { timeout: 8000 });
+    /**
+     * ⚠️ **入口和等待的选择器都换过。**
+     * 这一段原来 `goto #/metrics` 然后等 `.pill-tabs`。导航重构（306b993）把数据页那三个
+     * 页内 tab 搬进了侧栏二级导航，`.pill-tabs` 在这一页**再也不存在**，而 `#/metrics`
+     * 现在会重定向到 `#/review-performance`（内容表现），导入 UI 在 `#/review-sources`。
+     *
+     * 这条断言因此空等了 8 秒然后抛错——**而它整段包在 try 里，异常被吞掉**，
+     * 于是二十来条断言集体不执行，冒烟测试照样报绿。这就是「红着的测试等于没有测试」
+     * 的更坏版本：**它连红都没红**。等的改成每一页都有的 `.page-title`：
+     * 页内 tab 以后还会动，页面标题不会。
+     */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
+    await page.waitForSelector(".page-title", { timeout: 8000 });
 
     /* 9a0. 自动发现：从下载目录（和项目的 data/inbox/）里翻出还没导进来的导出文件。
      *      这条路存在的理由是「能推断的不让用户填」——文件在哪、哪个最新、哪个是刚下的，
@@ -2797,6 +2845,19 @@ try {
     await page.click('button:has-text("看表格")');
     await page.waitForSelector(".data-table", { timeout: 5000 });
     check("表格视图可用（低对比度色的补偿手段）", (await page.$$eval(".data-table tbody tr", (els) => els.length)) >= 2);
+  } catch (e) {
+    /**
+     * ⚠️ **这一段原来是 `try { } finally { }`，没有 catch。**
+     *
+     * 后果分两种，都很坏：块里任何一步抛异常，要么整轮冒烟当场中断（后面几百条断言
+     * 一条都不跑），要么——如果异常恰好被别处吞了——**二十来条断言集体缺席而总数照样报绿**。
+     * 数据页的页内 tab 在导航重构（306b993）里搬进了侧栏，这一段等的选择器和点的按钮
+     * 从那以后就对不上了，而没有任何一次运行说出过这件事。
+     *
+     * 现在把它收成**一条明确的红**：后面的测试照跑，而「数据页这段没验到」写在脸上。
+     * ⚠️ 这不是修好了——修它要重新对一遍数据页现在的导入动线，那是另一件事。
+     */
+    check("数据页导入流程跑通", false, `这一段没跑完：${String(e).slice(0, 140)}`);
   } finally {
     if (csvBefore === null) fs.rmSync(csv, { force: true });
     else fs.writeFileSync(csv, csvBefore, "utf8");
@@ -2810,7 +2871,7 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/insights`, { waitUntil: "networkidle" });
   // **等到内容出来，不是等容器出现**：`.panel-block` 在数据还在取的时候就已经在了，
   // 那一刻读到的只有标题和「0 条」，断言会随机红。（这条踩过一次，同一个道理。）
-  await page.waitForSelector(".panel-block .empty, .panel-block .wall-card, .panel-block .note-title", { timeout: 20000 });
+  await page.waitForSelector(".panel-block .empty, .panel-block .doc-row, .panel-block .note-title", { timeout: 20000 });
   const insightsText = await page.textContent(".panel-block");
   /**
    * **三选一，不是写死一种外部状态。**
@@ -2822,32 +2883,39 @@ try {
    * 洞察页显示着书架的引导文案（「一本书一个子目录」）也判通过。
    */
   const insightsOk =
-    insightsText.includes("社媒洞察") || insightsText.includes("还没有洞察报告") || (await page.$(".wall-card"));
+    insightsText.includes("社媒洞察") || insightsText.includes("还没有洞察报告") || (await page.$(".doc-row"));
   check("洞察页说的是洞察自己的话", !!insightsOk && !insightsText.includes("一本书"), insightsText.replace(/\s+/g, " ").slice(0, 50));
 
   /**
-   * 卡片墙的硬要求：**一张只有标题的卡和一行列表没区别，卡片墙就白做了**。
-   * 洞察源以前正是这样——list 只走 vaultTree，拿不到正文，卡上除了标题什么都没有。
+   * 浏览层的硬要求：**一行只有标题的话，这一列就只是一份目录**。
+   * 洞察源以前正是这样——list 只走 vaultTree，拿不到正文，行上除了标题什么都没有。
    * 现在走 /api/vault/insights，摘要/覆盖周期/字数都在服务端读出来。
    */
-  if (await page.$(".wall-card")) {
+  if (await page.$(".doc-row")) {
     const card = await page.evaluate(() => {
-      const c = document.querySelector(".wall-card");
+      const c = document.querySelector(".doc-row");
+      const excerpt = c.querySelector(".doc-row__excerpt");
+      const lead = excerpt?.querySelector(".doc-row__lead");
       return {
-        preview: c.querySelector(".wall-card__note")?.textContent.trim() || "",
-        sub: c.querySelector(".wall-card__sub")?.textContent.trim() || "",
-        tags: [...c.querySelectorAll(".wall-card__tags .tag")].map((t) => t.textContent.trim()),
+        // ⚠️ **规格和摘要现在是同一行里的两段，要分开取。**
+        // 卡片时代它们是两个元素（`__sub` / `__note`），改成行之后并成了一行：
+        // 前半是规格（覆盖周期 · 字数 · 时长），后半是摘要。字数**不再是一个 tag**——
+        // 它是规格不是标签，见 DocRow 的 `isSpec`。照旧去 tags 里找的话，这条会
+        // 一直红着，而界面其实一直是对的。
+        spec: lead?.textContent.trim() || "",
+        preview: (excerpt?.textContent || "").replace(lead?.textContent || "", "").trim(),
+        tags: [...c.querySelectorAll(".doc-row__meta .tag")].map((t) => t.textContent.trim()),
       };
     });
-    check("洞察卡片有摘要，不是只有一个标题", card.preview.length > 20, card.preview.slice(0, 36));
+    check("洞察行有摘要，不是只有一个标题", card.preview.length > 20, card.preview.slice(0, 36));
     check(
-      "洞察卡片说清覆盖周期和篇幅",
-      /覆盖|生成于/.test(card.sub) && card.tags.some((t) => /字$/.test(t)),
-      `${card.sub} · ${card.tags.join(" / ")}`
+      "洞察行说清覆盖周期和篇幅",
+      /覆盖|生成于/.test(card.spec) && /字/.test(card.spec),
+      `${card.spec} · tags: ${card.tags.join(" / ") || "（无）"}`
     );
     // 伴生文件不能冒充报告：给报告写过批注之后会多出 <同名>.notes.md，
     // 上一版没排掉它，列表里就会凭空多一张卡（同书架那个「正文像凭空消失了」是一类 bug）
-    const titles = await page.$$eval(".wall-card h3", (els) => els.map((e) => e.textContent.trim()));
+    const titles = await page.$$eval(".doc-row__title", (els) => els.map((e) => e.textContent.trim()));
     check("批注文件没被当成报告列出来", !titles.some((t) => /\.(notes|highlights)$/.test(t)), titles.join(" / ").slice(0, 60));
   }
 
@@ -2884,8 +2952,8 @@ try {
    * 只是每个标题都比正文缩进 12px——一眼看不出来，但整篇正文的左边缘就不齐了。
    * 所以量的是**字的左边缘**（底衬左边 + 内边距），不是盒子的左边缘。
    */
-  if (await page.$(".wall-card")) {
-    await page.click(".wall-card__open");
+  if (await page.$(".doc-row")) {
+    await page.click(".doc-row__open");
     await page.waitForSelector(".reader .prose", { timeout: 25000 });
     const band = await page.evaluate(() => {
       const p = [...document.querySelectorAll(".reader .prose > p")].find((n) => n.textContent.trim());
@@ -2973,8 +3041,8 @@ try {
 
   // 11. agent 对话：真发一轮。这是最重的一块，只断言 UI 存在等于没测。
   await page.goto(`http://127.0.0.1:${PORT}/#/materials`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".wall-card", { timeout: 20000 });
-  await page.click(".wall-card__open");
+  await page.waitForSelector(".doc-row", { timeout: 20000 });
+  await page.click(".doc-row__open");
   await page.waitForSelector(".rail", { timeout: 15000 });
   await page.click('.rail-tabs button:has-text("对话")');
   await page.waitForSelector(".composer textarea", { timeout: 5000 });

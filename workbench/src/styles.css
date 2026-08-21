@@ -2608,75 +2608,84 @@ kbd {
   font: inherit; font-size: var(--fs-base); color: var(--text-1); outline: none;
 }
 
-.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
-.wall-card {
-  display: flex; flex-direction: column; min-width: 0;
-  border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--surface);
-  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+/* ==========================================================================
+   浏览层：**列表行**，不是卡片墙
+   卡片是给有封面图的东西用的（书架）；「标题 + 摘要」的纯文字条目包一层盒子，
+   只多了一圈用不上的边框和一次把摘要切成三行的宽度损失。
+   同屏 1440×800：卡片墙 5 条 → 行 14 条，**字号一个都没缩小**。
+   ========================================================================== */
+.doc-rows {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); overflow: hidden;
 }
-.wall-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow); }
-/* 整张卡都能点开，但底部的动作条不在按钮里——嵌套按钮是非法 HTML，
-   而且「打开来源」和「打开卡片」是两件事，套在一起点哪儿都不确定 */
-/**
- * **卡片内部要行行对齐。** 一排卡片里，标题有一行的也有三行的、有的有副标题有的没有，
- * 于是摘要和标签在每张卡上落在不同高度——扫一排卡片时眼睛得上下找，卡片墙那点
- * 「一眼扫十几条」的效率就是这么丢的。
- *
- * 做法是给每个槽位固定高度：标题**恒占两行**（一行的补空、三行的裁掉，全文在 tooltip
- * 和点开之后都还在）、副标题那行**没有内容也占位**、标签用 `margin-top: auto` 压到底。
- * 这样五条横线在整排卡片上都对得齐。
- */
-.wall-card__open {
-  flex: 1 1 auto; display: flex; flex-direction: column; width: 100%; text-align: left;
-  border: 0; background: transparent; padding: 16px 16px 12px; min-width: 0;
+
+/* ⚠️ 分组色带的底色 = 这个状态自己的颜色 @8%。颜色在这儿不装饰任何东西，
+   它就是状态本身。`--tone` 由 `[data-tone]` 给（映射只写那一处）。
+   `sticky` 让长列表滚动时永远看得见「现在读的是哪一档」。 */
+.doc-band {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 16px;
+  background: color-mix(in srgb, var(--tone) 10%, var(--surface));
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-base);
 }
-.wall-card__top {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-bottom: 12px;
+.doc-band__name { font-weight: 600; }
+.doc-band__count { color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.doc-row {
+  position: relative; display: flex; align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s var(--ease);
 }
-.wall-card__signals { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-.tag--kind { border-style: dashed; background: transparent; color: var(--text-3); }
-.wall-card__top time { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3); }
-.wall-card h3 {
-  font-size: var(--fs-md); line-height: 1.5; letter-spacing: -0.015em;
-  overflow-wrap: anywhere;  /* 有些条目的标题就是一条裸链接，不断行会顶出卡片 */
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  /* 恒占两行：一行的标题补一行空，整排卡片的副标题才落在同一条线上 */
-  min-height: 3em;
+.doc-rows section:last-child .doc-row:last-child { border-bottom: 0; }
+.doc-row:hover { background: var(--sunken); }
+
+/* 整行是主动作。⚠️ **外壳不是按钮**——删除是这颗的兄弟，button 套 button 非法 */
+.doc-row__open {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border: 0; background: none;
+  text-align: left; color: inherit; cursor: pointer;
 }
-/* 副标题那行没有内容也占位，理由同上 */
-.wall-card__sub { margin-top: 6px; min-height: 1.6em; font-size: var(--fs-xs); color: var(--text-3); }
-.wall-card__note {
-  margin: 8px 0 0; font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2);
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+/* ⚠️ 这一格**没有状态也要占位**：不占的话有状态和没状态的行标题起点差 22px，
+   一列看着就是锯齿。和卡片时代「副标题没内容也渲染」是同一条理由，只是便宜多了 */
+.doc-row__state { flex: none; width: 15px; display: grid; place-items: center; }
+
+.doc-row__main { flex: 1 1 auto; min-width: 0; display: grid; gap: 3px; }
+.doc-row__title {
+  font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.008em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.wall-card__warning {
-  margin: 10px 0 0; padding: 6px 8px;
-  border-left: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 7%, transparent);
-  color: var(--danger); font-size: var(--fs-xs); line-height: 1.55;
+/* 摘要不能省：没有摘要的列表就是一份目录，而浏览层的价值是「一眼扫十几条」 */
+.doc-row__excerpt {
+  /* ⚠️ **没内容也要占位**（min-height）：不占的话这一行矮一截，一列高低不齐。
+     和卡片时代「副标题空着也渲染」是同一条理由。冒烟测试量的就是这个高度。 */
+  min-height: 1.45em;
+  font-size: var(--fs-sm); color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.wall-card__warning strong { font-weight: 650; }
-.wall-card__trace {
-  margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border);
-  color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.5;
+.doc-row__excerpt--warn { color: var(--danger); }
+/* 规格（优先级 / 覆盖周期 / 篇幅）走这一档，比摘要再淡一级，中间一个间隔点。
+   它是「这份东西是什么规格」，摘要是「它说了什么」，同一行里靠深浅分开。 */
+.doc-row__lead { color: var(--text-2); font-weight: 500; }
+.doc-row__lead i { font-style: normal; font-weight: 400; color: var(--line-2); margin: 0 6px; }
+
+.doc-row__meta { flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; }
+.doc-row__trace { font-size: var(--fs-xs); color: var(--text-3); }
+.doc-row__time {
+  width: 62px; text-align: right; flex: none;
+  font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums;
 }
-/* 标签压到卡片体的底部：摘要长短不一，靠它把最后一行拉齐 */
-.wall-card__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 12px; }
-.wall-card__foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 12px; border-top: 1px solid var(--border);
+
+/* 动作区平时不占视觉重量，hover / 焦点 / 确认态才显形 */
+.doc-row__acts {
+  flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 0;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s var(--ease);
 }
-.wall-card__origin {
-  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  /* ⚠️ **`min-width: 0` 不能省。** flex 子项的默认最小尺寸是内容宽度，
-     `nowrap` 的长链接（`https://x.com/…`）压根不会缩，`ellipsis` 也就永远不生效——
-     它会把右边那组按钮往外顶。确认态多一颗按钮时最明显。 */
-  min-width: 0; flex: 0 1 auto;
-}
-/* 确认态的两颗按钮是**一组选择题**，要聚在一起靠右，不能被 space-between 撑散 */
-.wall-card__confirm { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.doc-row:hover .doc-row__acts,
+.doc-row:focus-within .doc-row__acts,
+.doc-row[data-confirm] .doc-row__acts { opacity: 1; pointer-events: auto; }
 
 @media (max-width: 1180px) {
   .material-flow { grid-template-columns: 230px minmax(0, 1fr); }
@@ -3249,15 +3258,16 @@ kbd {
 .btn-quiet { border-color: transparent; color: var(--text-3); }
 .btn-quiet:hover { border-color: var(--danger); color: var(--danger); }
 .doc-actions__end { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
-/* 删除挨着「打开」一起靠右：它是这张卡的动作，不该孤零零悬在中间 */
-.wall-card__del {
-  width: 26px; height: 26px; margin-left: auto; border-color: transparent; color: var(--text-3);
-  opacity: 0; pointer-events: none; transition: opacity .12s ease, border-color .12s ease, color .12s ease;
-}
-.wall-card:hover .wall-card__del,
-.wall-card:focus-within .wall-card__del { opacity: 1; pointer-events: auto; }
-.wall-card__del:hover { border-color: var(--danger); color: var(--danger); }
-@media (hover: none) { .wall-card__del { opacity: 1; pointer-events: auto; } }
+/* 显隐由 `.doc-row__acts` 整组管（hover / focus-within / 确认态），这里只管长相。
+   ⚠️ 别再给它单独写一份 opacity 规则——那正是上一版留下的问题：
+   卡片时代 `.wall-card:hover .wall-card__del` 和这条各管一半，改名时漏了一处，
+   于是选择器指向一个已经不存在的祖先，按钮再也不显形，而且不报错。 */
+.doc-row__del { width: 26px; height: 26px; border-color: transparent; color: var(--text-3);
+  transition: border-color .12s ease, color .12s ease; }
+.doc-row__del:hover { border-color: var(--danger); color: var(--danger); }
+.doc-row__src { width: 26px; height: 26px; border-color: transparent; color: var(--text-3); }
+.doc-row__src:hover { border-color: var(--border-strong); color: var(--text-1); }
+@media (hover: none) { .doc-row__acts { opacity: 1; pointer-events: auto; } }
 
 /* ---------- 新内容工作台：今日 / 内容 / 发现 ---------- */
 

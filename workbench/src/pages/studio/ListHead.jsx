@@ -1,4 +1,4 @@
-// 卡片墙 / 看板上方那一条：眉标 + 标题 + 条数 · 搜索 · 视图切换 · 新增。
+// 列表 / 看板上方那一条：眉标 + 标题 + 条数 · 搜索 · 视图切换 · 新增。
 // 从 `pages/Studio.jsx` 的 return 里原样外提，JSX 一字未动（只去掉了整体缩进）。
 //
 // **视图切换只在有状态的源上出现**（`canBoard`）：素材库在库里没有状态列，
@@ -33,9 +33,9 @@ export function ListHead({ source, list, searchRef, query, setQuery, canBoard, l
               <IconLayoutKanban aria-hidden="true" stroke={1.7} />
               看板
             </button>
-            <button aria-pressed={layout === "wall"} onClick={() => setLayout("wall")} title="卡片：看有哪些内容">
+            <button aria-pressed={layout === "wall"} onClick={() => setLayout("wall")} title="列表：看有哪些内容">
               <IconLayoutGrid aria-hidden="true" stroke={1.7} />
-              卡片
+              列表
             </button>
           </div>
         ) : null}
