@@ -49,6 +49,33 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
             * 按列表判的话，选题库、稿件库这些压根没有去向的源也不会白占一列。
             */
           <div className="doc-rows" data-cols={metaCols(shown)}>
+            {/**
+              * ⚠️ **表头必须和行走同一套结构**（同样的 `.doc-row__meta` 网格、
+              * 同样的动作区占位），否则它写着「类别」的那一格根本不在类别那一列上——
+              * 一个指错列的表头比没有表头更糟。所以这儿不另画一个 `<thead>` 式的东西，
+              * 而是复用行的类名，让 `[data-cols]` 一并管着它。
+              */}
+            <div className="doc-rows__head" role="row" aria-hidden="true">
+              {/* ⚠️ **这一层不能叫 `.doc-row__open`。** 那个类名的意思是「这一行的主动作按钮」，
+                  表头不是；共用的话 `.doc-row__open` 会凭空多出一个，**所有按序号点行的
+                  地方全部错位一位**——冒烟测试里「点开第 N 条素材」当场点开了上一条。
+                  对齐要的是那几条布局规则，共享规则就够了，不必共享类名。 */}
+              <div className="doc-rows__headline">
+                <span className="doc-row__state" />
+                <span className="doc-row__main">内容</span>
+                <span className="doc-row__meta">
+                  <span className="doc-row__trace">去向</span>
+                  <span className="doc-row__kind">类别</span>
+                  <span className="doc-row__tag">标签</span>
+                  <span className="doc-row__time">更新</span>
+                </span>
+              </div>
+              <div className="doc-row__acts">
+                <span className="doc-row__srcslot" />
+                {source.remove ? <span className="doc-row__delslot" /> : null}
+              </div>
+            </div>
+
             {groupByState(shown, source.states).map((g) => (
               <section key={g.state || "__none"}>
                 {g.state ? <StateBand state={g.state} count={g.items.length} /> : null}

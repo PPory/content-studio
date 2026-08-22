@@ -3125,7 +3125,6 @@ try {
    * 而屏幕上也看不出自己正被过滤。
    */
   check("链路上有一颗「全部」能退回来", !!(await page.$(".mflow__all")));
-
   /**
    * ⚠️ **核验下拉的三项要有三种图标。**
    * `Select` 里是 `renderIcon ? renderIcon(o) : null`——**不传就一枚都没有**，
@@ -3144,6 +3143,15 @@ try {
   }
 
   /**
+   * ⚠️ **先等列表真的有行，再量下面这几条。**
+   * `waitForSelector(".mflow")` 等到的是**链路那一块**，它在列表还在取的时候就渲染好了——
+   * 这一节后面几条量的却是行。踩过一次而且骗过了我：那几条写成
+   * `xs.length > 1 ? 最大差 : 0`，**一行都没有的时候返回 0，输出是「相差 0px」，看着全绿**。
+   * 「等容器不等内容」在这个文件里已经记过两次，这是第三次。
+   */
+  await page.waitForSelector(".doc-row, .empty", { timeout: 25000 });
+
+  /**
    * ⚠️ **右侧那几列要真的对齐。**
    * 上一版是个右对齐的 flex 簇，每行内容长短不同（「来源 → 尚未拆成素材」比「来源 1」
    * 宽一倍），同一列的东西在每行落在不同的横坐标——一列扫下去是锯齿，
@@ -3151,20 +3159,101 @@ try {
    * 不是「样式表里写了 grid」。
    */
   const colDrift = await page.evaluate(() => {
-    const xs = [...document.querySelectorAll(".doc-row__time")].map((e) => Math.round(e.getBoundingClientRect().left));
-    return xs.length > 1 ? Math.max(...xs) - Math.min(...xs) : 0;
+    const xs = [...document.querySelectorAll(".doc-row .doc-row__time")].map((e) => Math.round(e.getBoundingClientRect().left));
+    // ⚠️ 量不到就说量不到（-1），别回一个 0 冒充「对齐」
+    return xs.length > 1 ? Math.max(...xs) - Math.min(...xs) : -1;
   });
-  check("列表右侧那几列真的对齐", colDrift <= 1, `时间列左缘相差 ${colDrift}px`);
+  check("列表右侧那几列真的对齐", colDrift >= 0 && colDrift <= 1, colDrift < 0 ? "这一屏行数不够，量不到" : `时间列左缘相差 ${colDrift}px`);
   /**
    * ⚠️ **有没有外链是逐条不同的，那一格空着也要占位。**
    * 上面那条量的是时间列左缘，能抓到这个毛病——**但只有当这一屏里正好既有带链接的行、
    * 又有不带的**。所以这儿直接量那一格本身：它必须每行一样宽，和列表里有几条带链接无关。
    */
   const slotDrift = await page.evaluate(() => {
-    const ws = [...document.querySelectorAll(".doc-row__srcslot")].map((e) => Math.round(e.getBoundingClientRect().width));
-    return ws.length > 1 ? Math.max(...ws) - Math.min(...ws) : 0;
+    const ws = [...document.querySelectorAll(".doc-row .doc-row__srcslot")].map((e) => Math.round(e.getBoundingClientRect().width));
+    return ws.length > 1 ? Math.max(...ws) - Math.min(...ws) : -1;
   });
-  check("「打开来源」那一格空着也占位", slotDrift <= 1, `宽度相差 ${slotDrift}px`);
+  check("「打开来源」那一格空着也占位", slotDrift >= 0 && slotDrift <= 1, slotDrift < 0 ? "这一屏行数不够，量不到" : `宽度相差 ${slotDrift}px`);
+
+  /**
+   * ⚠️ **表头那几格必须真的落在它说的那一列上。**
+   * 一个指错列的表头比没有表头更糟。所以量的是「表头『类别』那一格」和
+   * 「行里类别那一格」的左缘差，不是「有没有一个表头」。
+   *
+   * ⚠️ **找不到表头要红，不能安静跳过。** 上一版写成 `if (headAlign >= 0) check(...)`，
+   * 于是「表头压根没渲染」和「表头对齐」在输出里长得一模一样——**一条被跳过的断言
+   * 和一条不存在的断言是同一回事**，而它跳过的时候正是最该报警的时候。
+   */
+  const headAlign = await page.evaluate(() => {
+    /* ⚠️ 表头故意**不叫** `.doc-row__open`：共用那个类名的话它会算进「行的主动作」里，
+       所有按序号点行的地方全部错位一位（冒烟测试里当场点开了上一条素材）。 */
+    const head = document.querySelector(".doc-rows__head");
+    const row = document.querySelector(".doc-row");
+    if (!head || !row) return { ok: false, why: head ? "没有数据行" : "没有表头" };
+    const pick = (root, cls) => root.querySelector(cls)?.getBoundingClientRect().left;
+    const drift = [".doc-row__trace", ".doc-row__kind", ".doc-row__tag", ".doc-row__time"]
+      .map((c) => [c, pick(head, c), pick(row, c)])
+      .filter(([, a, b]) => a != null && b != null)
+      .reduce((m, [, a, b]) => Math.max(m, Math.abs(Math.round(a - b))), 0);
+    return { ok: true, drift, cols: document.querySelector(".doc-rows")?.dataset.cols || "" };
+  });
+  check(
+    "表头每一格都落在它那一列上",
+    headAlign.ok && headAlign.drift <= 1,
+    headAlign.ok ? `最大偏差 ${headAlign.drift}px · 列 ${headAlign.cols}` : headAlign.why
+  );
+
+  /**
+   * ⚠️ **下面这两条要先筛到「已收纳」再量**，而且必须**等它真的选中了**再读样式。
+   *
+   * 不筛的话，默认那一屏三十行全是「可复用素材」——**类别只有一种，颜色分不分得开
+   * 这件事根本量不到**，而断言会安静地跳过去（上一版就是这样，看着是绿的）。
+   * 不等的话，`aria-pressed` 还没翻过来，读到的是「一个都没选中」。
+   */
+  await page.click('.mflow__steps button:has-text("已收纳")', { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('.mflow__steps button[aria-pressed="true"]', { timeout: 8000 }).catch(() => {});
+  // 同上：等的是**行**，不是那一格按下没有
+  await page.waitForSelector(".doc-row, .empty", { timeout: 20000 }).catch(() => {});
+
+  /**
+   * ⚠️ **链路那几格选中时不画黑框。**
+   * 黑在这套界面里只留给「点这儿」那一颗主操作；给一张白卡片描一道最重的黑边之后，
+   * 选中态比页头那颗按钮还抢眼。量的是**选中那一格渲染后的边框色**，不是样式表里写了什么。
+   */
+  const picked = await page.evaluate(() => {
+    const el = document.querySelector('.mflow__steps button[aria-pressed="true"]');
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { border: cs.borderTopColor, ink: getComputedStyle(document.body).color, bg: cs.backgroundColor };
+  });
+  check("链路那一排选得中", !!picked, picked ? "有一格是按下的" : "一格都没按下");
+  if (picked) {
+    check("链路选中态不是一道黑框", picked.border !== picked.ink, `边框 ${picked.border} · 正文 ${picked.ink}`);
+    check("链路选中态靠底色说话", picked.bg !== "rgba(0, 0, 0, 0)", picked.bg);
+  }
+
+  /**
+   * ⚠️ **类别那一列要有颜色，而且各类别不同色。**
+   * 上一版是一列一模一样的灰描边芯片，那一列等于只在重复「这是一条素材」。
+   * 量的是**渲染后的底色**，不是样式表里写了哪个变量。
+   */
+  const kindTints = await page.evaluate(() => {
+    const seen = new Map();
+    for (const el of document.querySelectorAll(".doc-row__kind .pill")) {
+      seen.set(el.textContent.trim(), getComputedStyle(el).backgroundColor);
+    }
+    return [...seen.entries()];
+  });
+  check(
+    "类别那一列上了色，而且各类别不同色",
+    kindTints.length > 1 && new Set(kindTints.map(([, c]) => c)).size === kindTints.length,
+    kindTints.length > 1 ? kindTints.map(([k, c]) => `${k}=${c}`).join(" · ") : `这一屏只有 ${kindTints.length} 种类别，量不到`
+  );
+
+  // 量完退回全部，后面几段要的是全量列表
+  await page.click(".mflow__all").catch(() => {});
+  await page.waitForFunction(() => !document.querySelector('.mflow__steps button[aria-pressed="true"]'), { timeout: 8000 }).catch(() => {});
+
   const ideaIndex = await page.$$eval(".doc-row", (cards) => cards.findIndex((card) => card.querySelector(".tag--kind")?.textContent.includes("灵感来源")));
   if (ideaIndex >= 0) {
     await page.locator(".doc-row__open").nth(ideaIndex).click();

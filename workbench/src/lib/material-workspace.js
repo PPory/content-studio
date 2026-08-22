@@ -15,6 +15,24 @@ const KIND_LABELS = {
   material: "可复用素材",
 };
 
+/**
+ * 类别那一列的色调。**和 `KIND_LABELS` 挨着放**，界面层不再判第二次——
+ * 这个项目的事故清一色是「同一件事写在两个地方」。
+ *
+ * ⚠️ **这是状态色板的第二个消费者，不是新开一套颜色。**
+ * 一屏上两套互不相干的配色，人得先学会哪套是哪套；而这一列本来就是分类维度，
+ * 复用同一组色至少保证「同一个颜色在这一屏里只有一个意思」。
+ * 分配上跟着链路走：素材是拆好的（`review`＝我做完了等下一步，和上面那条色带同色），
+ * 两类来源各占一档冷灰和暖黄，一眼分得出「外面收的」和「自己写的」。
+ *
+ * **文字仍然是主编码**（每颗上面写着「收藏来源」三个字），颜色只是让一列扫得更快。
+ */
+const KIND_TONES = {
+  collection: "todo",
+  idea: "doing",
+  material: "review",
+};
+
 const CHILD_SOURCES = new Set(["collections", "inbox", "materials"]);
 
 function countOf(value) {
@@ -61,6 +79,7 @@ export function mapMaterialWorkspaceItem(entry = {}) {
   const id = entry.id || record.id;
   const trace = relationTrace(entry);
   const kindLabel = KIND_LABELS[entry.kind] || "素材";
+  const kindTone = KIND_TONES[entry.kind] || "backlog";
   const verification = entry.verificationStatus || record.verificationStatus || "";
   const meta = {
     所在环节: kindLabel,
@@ -79,6 +98,7 @@ export function mapMaterialWorkspaceItem(entry = {}) {
     preview: entry.excerpt || record.note || record.selection || "",
     tags: Array.isArray(entry.tags) ? entry.tags : [],
     kindLabel,
+    kindTone,
     badge: entry.stage || "",
     time: entry.updatedAt || record.editedAt || "",
     warning: evidence?.warning || null,

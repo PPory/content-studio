@@ -239,6 +239,11 @@ const shots = [
     await page.waitForSelector(".set-guard", { timeout: 15000 }).catch(() => {});
   }],
   ["materials", "/#/materials", ".mflow, .empty, .note-title"],
+  // 「已收纳」那一档三种类别都有，专门用来看类别那一列的三个颜色分不分得开
+  ["materials-kept", "/#/materials", ".mflow, .empty, .note-title", async () => {
+    await page.click('.mflow__steps button:has-text("已收纳")', { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".doc-row, .empty", { timeout: 20000 }).catch(() => {});
+  }],
   ["topics-wall", "/#/topics", ".wall-card, .empty, .note-title"],
   ["topics-board", "/#/topics", ".wall-card, .empty, .note-title", async () => {
     await page.click('.seg button:has-text("看板")').catch(() => {});

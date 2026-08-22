@@ -85,7 +85,16 @@ export function DocRow({ item, onOpen, onDelete, removeLabel }) {
           */}
         <span className="doc-row__meta">
           <span className="doc-row__trace">{item.trace || ""}</span>
-          <span className="doc-row__kind">{item.kindLabel ? <span className="tag tag--kind">{item.kindLabel}</span> : null}</span>
+          {/* ⚠️ 色调跟着 `kindTone` 走，**判据在适配器里**（`material-workspace.js` 的
+              `KIND_TONES`，和 `KIND_LABELS` 挨着）——这一层不认识「收藏 / 灵感 / 素材」。
+              没给色调的源退回没有底色的 `.tag`，不硬给一个颜色。 */}
+          <span className="doc-row__kind">
+            {item.kindLabel ? (
+              item.kindTone
+                ? <span className="pill tag--kind" data-tone={item.kindTone}>{item.kindLabel}</span>
+                : <span className="tag tag--kind">{item.kindLabel}</span>
+            ) : null}
+          </span>
           {/* 标签只留一个：右侧这几列是定宽的，铺四个会把时间挤出可视区。
               全部标签在打开之后的元信息行里 */}
           <span className="doc-row__tag">{labels.length ? <span className="tag">{labels[0]}</span> : null}</span>

@@ -2716,7 +2716,15 @@ kbd {
   transition: border-color .14s var(--ease), background .14s var(--ease), transform .14s var(--ease);
 }
 .mflow__steps button:hover, .mflow__gate:hover { border-color: var(--border-strong); transform: translateY(-1px); }
-.mflow__steps button[aria-pressed="true"] { border-color: var(--text-1); }
+/**
+ * ⚠️ **选中不画黑框。** 这四格本身是白卡片，给它描一道最重的黑边之后，选中态
+ * **比页头那颗主操作按钮还抢眼**——而黑在这套界面里只留给「点这儿」那一颗。
+ * 走全局那一份选中态（`--sel-bg` 轻底 + 字变实），和侧栏、芯片是同一个写法。
+ */
+.mflow__steps button[aria-pressed="true"] {
+  background: var(--sel-bg); border-color: var(--border-strong); color: var(--sel-fg);
+}
+.mflow__steps button[aria-pressed="true"] strong { color: var(--sel-fg); font-weight: 600; }
 
 /* 序号那行是标签，不是数据：小、安静、和闸门那行图标同一个位置 */
 .mflow__num {
@@ -2747,7 +2755,11 @@ kbd {
   background: color-mix(in srgb, var(--mark-yellow) 26%, var(--surface));
 }
 .mflow__gate:hover { background: color-mix(in srgb, var(--mark-yellow) 40%, var(--surface)); }
-.mflow__gate[aria-pressed="true"] { background: color-mix(in srgb, var(--mark-yellow) 62%, var(--surface)); border-color: var(--text-1); }
+/* 闸门选中：加深自己的黄，同样不描黑边 */
+.mflow__gate[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--mark-yellow) 62%, var(--surface));
+  border-color: color-mix(in srgb, var(--mark-yellow) 90%, var(--text-1));
+}
 .mflow__gate .mflow__num, .mflow__gate small { color: color-mix(in srgb, var(--text-1) 62%, transparent); }
 
 @media (max-width: 1180px) {
@@ -2995,7 +3007,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .doc-row:hover { background: var(--sunken); }
 
 /* 整行是主动作。⚠️ **外壳不是按钮**——删除是这颗的兄弟，button 套 button 非法 */
-.doc-row__open {
+/* ⚠️ 表头走 `.doc-rows__headline` **共享规则、不共享类名**：叫同一个名字的话
+   `.doc-row__open` 会凭空多出一个，所有按序号点行的地方全部错位一位。 */
+.doc-row__open, .doc-rows__headline {
   flex: 1 1 auto; min-width: 0;
   display: flex; align-items: center; gap: 12px;
   padding: 10px 16px; border: 0; background: none;
@@ -3056,7 +3070,24 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 
 /* 动作区平时不占视觉重量，hover / 焦点 / 确认态才显形 */
 /* 空着也占位，理由见 DocRow 里那段注释：外链是逐条不同的，不占就把行推歪 */
-.doc-row__srcslot { flex: none; display: flex; width: 26px; }
+.doc-row__srcslot, .doc-row__delslot { flex: none; display: flex; width: 26px; }
+
+/**
+ * 表头。⚠️ **它复用行的类名和网格**，不另画一套——各写一套的话，写着「类别」的
+ * 那一格会落在类别那一列**旁边**，而一个指错列的表头比没有表头更糟。
+ * 动作区的两个占位格同理：不占的话表头整块比行右移几十像素。
+ */
+.doc-rows__head {
+  display: flex; align-items: center;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+  font-size: var(--fs-xs); color: var(--text-3);
+}
+.doc-rows__headline { padding-top: 8px; padding-bottom: 8px; cursor: default; }
+/* 表头里这几格只是列名，不继承行里的字号字重 */
+.doc-rows__head .doc-row__main,
+.doc-rows__head .doc-row__trace,
+.doc-rows__head .doc-row__time { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.doc-rows__head .doc-row__acts { opacity: 1; }
 .doc-row__acts {
   flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 0;
   opacity: 0; pointer-events: none; transition: opacity 0.12s var(--ease);
