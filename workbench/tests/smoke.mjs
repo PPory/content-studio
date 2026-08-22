@@ -170,6 +170,30 @@ try {
   await page.click('.nav-item:has-text("内容")');
   await page.waitForSelector(".crumbs", { timeout: 8000 });
   check("内容成为独立任务页", /^内容/.test((await page.textContent(".crumbs")).trim()), (await page.textContent(".crumbs")).trim());
+
+  /**
+   * 内容项目页：**顶上「需要你处理的」三张卡（要动手的少数）+ 下面一张全量表**。
+   *
+   * ⚠️ 上一版是九个阶段各一条泳道、每条两列卡——把**全集**画成了卡片，
+   * 一张卡 218px 高却只装三四行字，三个项目就占掉两屏。
+   */
+  await page.waitForSelector(".ptable__row, .kanban-col, .empty, .project-setup, .project-error", { timeout: 25000 }).catch(() => {});
+  const contentPage = await page.evaluate(() => ({
+    cards: document.querySelectorAll(".project-attention .act-card").length,
+    rows: document.querySelectorAll(".ptable__row").length,
+    heads: [...document.querySelectorAll(".ptable__head span")].map((e) => e.textContent.trim()),
+    lanes: document.querySelectorAll(".project-lane, .project-stage-filter").length,
+    seg: !!document.querySelector(".seg"),
+  }));
+  if (contentPage.rows) {
+    check("顶上最多三张「需要你处理的」卡", contentPage.cards <= 3, `${contentPage.cards} 张`);
+    check("全集是一张表不是卡片墙", contentPage.heads.length >= 5, contentPage.heads.join("/"));
+    check("泳道和那个十格筛选网格都撤了", contentPage.lanes === 0, `${contentPage.lanes} 个残留`);
+    check("有列表/看板切换", contentPage.seg);
+  } else {
+    check("内容项目页是空的或没连上，这一段跳过", true, "没有项目行");
+  }
+
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
   await page.click('.nav-item:has-text("发现")');
@@ -3235,7 +3259,15 @@ try {
     // 有新增时是主按钮，全都导过了（`added === 0`）就退成普通按钮。钉死 `.btn-primary`
     // 的话，第二次跑这个套件就是 30 秒超时 + 整套在这儿中断，后面一百多条一条都跑不到。
     await page.click(".inbox__row button");
-    await page.waitForTimeout(900);
+    /**
+     * ⚠️ **等的是「导入完成」，不是「等 900 毫秒」。**
+     * 上一版是定长 `waitForTimeout(900)`：机器慢一点或者那次写盘多花了半秒，
+     * 读到的就是还挂着「导入中…」的那一帧——**断言红着而功能是好的**，
+     * 而且它偶发，看着像个玄学。判据换成「那一行上不再有『导入中』」。
+     */
+    await page
+      .waitForFunction(() => !/导入中/.test(document.querySelector(".inbox__row")?.textContent || ""), null, { timeout: 15000 })
+      .catch(() => {});
     check("一键导入真的写进去了", fs.readFileSync(postsCsv, "utf8").includes("冒烟自动发现甲"));
     // 导过之后按钮要改口，不能还写着「导入 2 条」
     const after = await page.textContent(".inbox__row").catch(() => "");

@@ -390,17 +390,25 @@ function Inbox({ onDone, onError, onSettings }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState("");
 
-  const scan = useCallback(() => {
-    api.postsInbox().then(setData).catch(() => setData({ files: [], dirs: [] }));
-  }, []);
-  useEffect(scan, [scan]);
+  // ⚠️ **要 `return` 那个 promise**：下面 `take()` 得等它，否则「导入中」会提前收掉
+  const scan = useCallback(
+    () => api.postsInbox().then(setData).catch(() => setData({ files: [], dirs: [] })),
+    []
+  );
+  useEffect(() => { scan(); }, [scan]);
 
   async function take(f, platform) {
     setBusy(f.id);
     try {
       await api.importInbox(f.id, platform);
       onDone();
-      scan();
+      /**
+       * ⚠️ **重扫必须 `await`。** 不等的话 `finally` 立刻把「导入中…」收掉，
+       * 而 `data` 还是导入前那一份——于是有那么一段时间，界面上写着
+       * **「导入 2 条到小红书」而这 2 条已经导进去了**，点下去是重复导入一次。
+       * 「界面和数据安静地分叉」在这个项目里出过好几次，每次都是没等那一步。
+       */
+      await scan();
     } catch (e) {
       onError(e);
     } finally {

@@ -491,8 +491,19 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 这三件**跨页面不变**的事，跟着页面内容一起换位置的时候，
  * 它看起来就像一叠网页，不像一个应用。
  */
-.app { position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; overflow: hidden; }
-.app__body { display: flex; min-height: 0; }
+/**
+ * ⚠️ **`grid-template-columns: minmax(0, 1fr)` 不能省。**
+ * grid 的隐式列是 `auto`，会被**最宽的那一行**撑开——看板横过来的时候，
+ * `.app__body` 把整个 `.app` 撑到比视口还宽，而 `.topbar` 是它的另一行，
+ * 于是**顶栏右端的齿轮被推出了屏幕**。`.app` 上的 `overflow: hidden` 拦不住这个：
+ * 撑开的是 `.app` 自己的宽度，不是它内容的溢出。
+ */
+.app {
+  position: relative; z-index: 1; display: grid;
+  grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+  height: 100vh; overflow: hidden;
+}
+.app__body { display: flex; min-width: 0; min-height: 0; }
 
 /**
  * ⚠️ **三列 grid（左 1fr · 中 auto · 右 1fr），不是 flex。**
@@ -3536,37 +3547,117 @@ kbd {
 }
 .project-error__legacy span { margin-right: auto; }
 
-.project-stage-filter {
-  display: grid; grid-template-columns: repeat(7, minmax(76px, 1fr));
-  border-block: 1px solid var(--border); margin-bottom: 32px;
-}
-.project-stage-filter button {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  min-height: 52px; padding: 0 12px; border: 0; border-right: 1px solid var(--border);
-  background: transparent; color: var(--text-3); font-size: var(--fs-sm); cursor: pointer;
-}
-.project-stage-filter button:last-child { border-right: 0; }
-.project-stage-filter button:hover { background: var(--surface-2); color: var(--text-1); }
-.project-stage-filter button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
-.project-stage-filter b { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500; }
+/**
+ * ⚠️ **`.project-stage-filter`（7 列网格、10 颗按钮折成两行）和 `.project-lanes`
+ * 那一整套泳道撤了。**
+ *
+ * 泳道是把**全集**画成了卡片：九个阶段各一条横道、每条两列卡，一张卡 218px 高
+ * 却只装了三四行字——中段大片留白，三个项目就占掉两屏。
+ * 现在按新判据分工：顶上「需要你处理的」三张卡（要动手的少数），下面一张表（全集）。
+ * 筛选条换成一排 `.chip`，和选题库、稿件库那条 `.list-bar` 一套语汇。
+ */
 
-.project-lanes { display: grid; gap: 48px; }
-.project-lane { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 24px; }
-.project-lane__head { position: relative; align-self: start; display: grid; grid-template-columns: 42px 1fr; gap: 12px; }
-.project-lane__head::after {
-  content: ""; position: absolute; left: 20px; top: 46px; bottom: -48px; width: 1px; background: var(--border);
+/* 分区小标题：比 `.section-head` 轻，不带图标不带整幅下划线 */
+.section-label { font-size: var(--fs-base); font-weight: 600; color: var(--text-1); margin: 0 0 10px; }
+.project-attention { margin-bottom: 26px; }
+
+/* ── 全部内容项目：表格 ───────────────────────────────────────────── */
+.ptable { display: grid; }
+.ptable__head, .ptable__row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 88px 56px minmax(0, 168px) 104px;
+  align-items: center; gap: 14px;
+  padding: 0 10px;
 }
-.project-lane:last-child .project-lane__head::after { display: none; }
-.project-lane__index {
-  position: relative; z-index: 1; display: grid; place-items: center; width: 42px; height: 42px;
-  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--paper);
-  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-2);
+.ptable__head {
+  height: 34px; font-size: var(--fs-xs); color: var(--text-3);
+  border-bottom: 1px solid var(--border-strong);
 }
-.project-lane[data-stage="需处理"] .project-lane__index { border-color: var(--danger); color: var(--danger); }
-.project-lane__head h2 { margin: 2px 0 2px; font-size: var(--fs-lg); line-height: 1.3; }
-.project-lane__head p { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55; }
-.project-lane__count { grid-column: 2; font-family: var(--font-mono); color: var(--text-3); font-size: var(--fs-2xs); }
-.project-lane__cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ptable__row {
+  min-height: 52px; width: 100%; text-align: left; cursor: pointer;
+  border: 0; border-bottom: 1px solid var(--border); border-radius: var(--r-sm);
+  background: none; color: inherit; font: inherit;
+}
+.ptable__row:hover { background: var(--surface-2); }
+.ptable__row:last-child { border-bottom: 0; }
+.ptable__title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ptable__title b {
+  font-size: var(--fs-base); font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 阻塞压在标题下面，不另开一列——给它一列的话绝大多数行那一格是空的 */
+.ptable__blocker {
+  display: inline-flex; align-items: center; gap: 4px; font-style: normal;
+  font-size: var(--fs-xs); color: var(--danger);
+}
+.ptable__blocker svg { flex: none; }
+.ptable__dim {
+  display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;
+  font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap;
+}
+.ptable__head span:nth-child(3), .ptable__head span:nth-child(4), .ptable__head span:nth-child(6) { text-align: right; }
+.ptable__dim svg { opacity: 0; transition: opacity 0.12s; }
+.ptable__row:hover .ptable__dim svg { opacity: 1; }
+.ptable__next {
+  font-size: var(--fs-sm); color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── 看板 ────────────────────────────────────────────────────────── */
+/* ⚠️ 类名是 `kanban-*` 不是 `board-*`：`.board` 已经被热点页的榜单占了 */
+/**
+ * ⚠️ **看板自己横向滚，不许把整页撑宽。**
+ * 不加 `overflow-x` 的话五列会把 `.main` 顶出去——**顶栏右端的「新建内容」被推出屏幕**，
+ * 而屏幕上看着像是「页面坏了」。横向滚是看板的常态；
+ * 「列不自己滚」那条老规矩说的是**纵向**（列内部不套滚动区），两回事。
+ *
+ * `padding-bottom` 给横向滚动条留位，否则它会盖住最后一行卡片的下沿。
+ */
+.kanban {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(238px, 1fr);
+  gap: 12px; align-items: start;
+  overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 10px;
+}
+.kanban-col {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  padding: 8px; border-radius: var(--r-md);
+  transition: background 0.14s var(--ease), opacity 0.14s var(--ease);
+}
+/* 拖到这一列上：亮起来。**用 `--brand-wash` 不用实色**，底下的卡还要看得见 */
+.kanban-col[data-drop] { background: var(--brand-wash); outline: 1px dashed var(--brand); }
+/* ⚠️ **放不下的列在拖起来的那一刻就要变灰**，别让人拖过去再吃一个 409 */
+.kanban-col[data-dead] { opacity: 0.42; }
+.kanban-col__head { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+.kanban-col__name { font-size: var(--fs-sm); font-weight: 600; }
+.kanban-col__count { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* ⚠️ **列不自己滚，跟着内容长**（`列不自己滚` 那条老规矩） */
+.kanban-col__body { display: flex; flex-direction: column; gap: 8px; }
+.kanban-col__empty {
+  margin: 0; padding: 14px 10px; text-align: center;
+  font-size: var(--fs-xs); color: var(--text-3); line-height: 1.6;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-sm);
+}
+.kanban-card {
+  display: flex; flex-direction: column; gap: 7px; padding: 11px 12px; cursor: grab;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface);
+}
+.kanban-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card__top { display: flex; align-items: center; gap: 8px; }
+.kanban-card__top time { margin-left: auto; font-size: var(--fs-2xs); color: var(--text-3); }
+.kanban-card h3 {
+  margin: 0; font-size: var(--fs-base); font-weight: 600; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.kanban-card__note {
+  margin: 0; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.kanban-card__warn {
+  display: flex; align-items: center; gap: 5px;
+  font-size: var(--fs-2xs); color: var(--danger);
+}
 
 .project-card {
   position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 218px;
@@ -3663,22 +3754,12 @@ kbd {
 .discover-card__action svg { width: 14px; }
 
 @media (max-width: 1040px) {
-  .project-stage-filter { grid-template-columns: repeat(4, 1fr); }
-  .project-stage-filter button:nth-child(4n) { border-right: 0; }
-  .project-lane { grid-template-columns: 142px minmax(0, 1fr); }
   /* `.act-cards` 自己就是 auto-fit，窄屏自然收成一列，不用在这儿再写一条 */
   .discover-card { min-height: 340px; }
   .discover-card__icon { margin-bottom: 48px; }
 }
 
 @media (max-width: 760px) {
-  .project-stage-filter { display: flex; overflow-x: auto; }
-  .project-stage-filter button { min-width: 96px; }
-  .project-lane { grid-template-columns: 1fr; gap: 12px; }
-  .project-lane__head { grid-template-columns: 38px 1fr; }
-  .project-lane__head::after { display: none; }
-  .project-lane__index { width: 38px; height: 38px; }
-  .project-lane__cards { grid-template-columns: 1fr; }
   .discover-grid { grid-template-columns: 1fr; }
   .discover-card { min-height: 280px; }
   .discover-card__icon { margin-bottom: 24px; }
