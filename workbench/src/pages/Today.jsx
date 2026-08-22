@@ -4,6 +4,8 @@ import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/cont
 import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
 import { ErrorNote, Loading, MenuButton, PageHeader } from "../components/ui.jsx";
 import { AUTO_CARDS } from "../lib/views.js";
+import { TodayStats } from "./today/TodayStats.jsx";
+import { TodayChart } from "./today/TodayChart.jsx";
 import { IconArrowRight, IconPlus } from "../components/icons.jsx";
 import { DayPlan, usePlan } from "../components/DayPlan.jsx";
 // ⚠️ **从 `components/` 引，不是从 `./Content.jsx`。** 页面 import 另一个页面
@@ -77,10 +79,21 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
       {workerReady && error ? <ErrorNote error={error} what="读取今日内容" onRetry={load} /> : null}
       {workerReady && !result && !error ? <Loading rows={3} /> : null}
 
+      {/**
+        * ⚠️ **KPI 那一排在最上面，早于「先做这一件」。**
+        * 它回答的是**「我现在处在什么状态」**，而下面那些回答**「接下来做什么」**——
+        * 状态在前、动作在后，是因为同一件事该不该做，取决于它前面那几个数。
+        * 四个数分属四条不同的链（产出 / 待办 / 库存 / 反馈），见 `TodayStats`。
+        */}
+      {workerReady ? <TodayStats pending={pending} topStage={actions[0]?.stage || ""} onGo={onGo} /> : null}
+
       {result ? (
         <section className="today-focus">
           <div className="today-focus__head">
-            <div><span className="eyebrow">先做这一件</span><h2>{actions.length ? "接着推进" : "今天可以从容一点"}</h2></div>
+            {/* ⚠️ 区块标题**一行就够**。上一版是「眉标 + 21px 大标题」两行，
+                而它上面已经有一排数字卡、下面就是卡片——中间夹两行标题是在
+                替一屏最不需要解释的东西占地方 */}
+            <h2 className="section-label">{actions.length ? "先做这一件" : "今天可以从容一点"}</h2>
             <button className="today-focus__all" onClick={() => onGo("content")}>
               查看全部内容 <IconArrowRight aria-hidden="true" />
             </button>
@@ -94,10 +107,19 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
                 * 「阶段 · 下一步」，同一批数据在一屏上有了两种详略，扫的时候得切换两次读法。
                 * 现在三张说同样的话，轻重只靠一道边框。
                 */}
-              <div className="act-cards">
-                {actions.map((project, i) => (
-                  <ProjectCard key={project.id} project={project} lead={i === 0} onOpen={() => open(project)} />
-                ))}
+              {/**
+                * ⚠️ **卡片和图并排，不是上下堆。**
+                * 「先做这一件」和「最近产出稳不稳」是**同一个问题的两半**：
+                * 该不该现在推这一篇，取决于这个月已经发了几篇。上下堆的话，
+                * 得滚一屏才能把两半凑起来——而这一页的全部意义就是一眼看完。
+                */}
+              <div className="today-split">
+                <div className="act-cards">
+                  {actions.map((project, i) => (
+                    <ProjectCard key={project.id} project={project} lead={i === 0} onOpen={() => open(project)} />
+                  ))}
+                </div>
+                <TodayChart onGo={onGo} />
               </div>
               {/* 超出的收成一句，**点得动**——否则「还有 N 篇」是个说了不算的数字 */}
               {overflow ? (

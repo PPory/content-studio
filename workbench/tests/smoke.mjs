@@ -114,6 +114,48 @@ try {
   check("默认进入今日", (await page.textContent(".crumbs")).trim() === "今日", await page.textContent(".crumbs"));
 
   /**
+   * ⚠️ **底色关系：框架白、工作区浅灰、卡片白。**
+   *
+   * 上一版是反的——侧栏透明（露出浅灰的应用底色）、正文是一整块**白**面板浮在上面，
+   * 于是**白卡片压在白底上**，只能靠一圈边框勉强分出来。「卡片太丑」的根因就在这儿，
+   * 底色不翻过来的话，卡片的圆角、投影、边框怎么调都白搭。
+   *
+   * 量的是**渲染出来的三个颜色的关系**，不是「样式表里写了哪个变量」：
+   * 侧栏和卡片同色、正文区比它们暗（浅色）或亮（暗色），三者两两不同。
+   */
+  const ground = await page.evaluate(() => {
+    const lum = (s) => {
+      const [r, g, b] = (getComputedStyle(document.querySelector(s)).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+      const f = (c) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const card = document.querySelector(".stat, .act-card");
+    return { side: lum(".sidebar"), main: lum(".main"), card: card ? lum(".stat, .act-card") : null };
+  });
+  check(
+    "侧栏和卡片同色，正文区和它们分得开",
+    Math.abs(ground.side - (ground.card ?? ground.side)) < 0.01 && Math.abs(ground.main - ground.side) > 0.005,
+    `侧栏 ${ground.side.toFixed(3)} · 正文 ${ground.main.toFixed(3)} · 卡片 ${ground.card == null ? "(这一页没有卡)" : ground.card.toFixed(3)}`
+  );
+
+  /**
+   * 首屏那一排数字。⚠️ **四个数不能都取自流水线计数**——那四个平时全是 0
+   *（流水线自己会消化），首屏最大的四个数字大多数时候在展示「没事」。
+   * 所以判据是**至少有一半的格子拿到了非零的真实值**，而不是「画了四个格子」。
+   */
+  const stats = await page.$$eval(".stat", (els) =>
+    els.map((e) => ({ label: e.querySelector(".stat__label")?.textContent.trim(), v: e.querySelector(".stat__value")?.textContent.trim() }))
+  );
+  if (stats.length) {
+    check("首屏一排四个数", stats.length === 4, stats.map((s) => `${s.label}=${s.v}`).join(" · "));
+    const real = stats.filter((s) => s.v && s.v !== "—" && s.v !== "0").length;
+    check("这几个数不是一排 0", real >= 2, `${real}/${stats.length} 个有真实值`);
+    // 每个数都要带上让它有意义的那个参照：一个孤零零的数字回答不了「这算多还是少」
+    const withNote = await page.$$eval(".stat__note", (els) => els.filter((e) => e.textContent.trim()).length);
+    check("每个数都带一句参照", withNote === stats.length, `${withNote}/${stats.length}`);
+  }
+
+  /**
    * **今日顶部是三张等大的卡，不是「一张大卡 + 三行小条」。**
    *
    * 上一版左边那张 `min-height: 278px` 的卡里只装了三四行字、中段大片留白；
@@ -130,7 +172,20 @@ try {
     return {
       n: cards.length,
       lead: document.querySelectorAll(".act-card[data-lead]").length,
-      spread: h.length > 1 ? Math.max(...h) - Math.min(...h) : 0,
+      /**
+       * ⚠️ **判据是「同一行里的卡等高」，不是「三张都等高」。**
+       * 上一版钉的是后者，而首页现在把卡片**竖排**在左栏（右栏是那张图）——
+       * 竖排时每张自己一行，高度本来就该由内容决定，那些为横排设的 `min-height`
+       * 反而让每张凭空高出三四十像素。按行分组之后，横排竖排两种形态都验得对。
+       */
+      spread: (() => {
+        const byRow = new Map();
+        for (const c of cards) {
+          const top = Math.round(c.getBoundingClientRect().top);
+          byRow.set(top, [...(byRow.get(top) || []), Math.round(c.getBoundingClientRect().height)]);
+        }
+        return Math.max(0, ...[...byRow.values()].map((hs) => Math.max(...hs) - Math.min(...hs)));
+      })(),
       // pill 里必须有图标：形状是主编码，不辨色一样能用
       pillsWithIcon: cards.filter((c) => c.querySelector(".pill svg")).length,
       pills: cards.filter((c) => c.querySelector(".pill")).length,
@@ -144,7 +199,7 @@ try {
   if (todayTop.n) {
     check("今日顶部最多三张卡", todayTop.n <= 3, `${todayTop.n} 张`);
     check("只有一张是领头的", todayTop.lead === 1, `${todayTop.lead} 张描边`);
-    check("三张卡等高", todayTop.spread <= 1, `高度差 ${todayTop.spread}px`);
+    check("同一行里的卡片等高", todayTop.spread <= 1, `同行高度差 ${todayTop.spread}px`);
     check("每张卡都有状态 pill，且 pill 里有图标", todayTop.pills === todayTop.n && todayTop.pillsWithIcon === todayTop.n, `${todayTop.pillsWithIcon}/${todayTop.n}`);
     check("每张卡要么给进度要么给阻塞", todayTop.told === todayTop.n, `${todayTop.told}/${todayTop.n}`);
     check("「去处理」是真按钮不是一行字", todayTop.go === todayTop.n, `${todayTop.go}/${todayTop.n}`);
@@ -187,6 +242,18 @@ try {
   }));
   if (contentPage.rows) {
     check("顶上最多三张「需要你处理的」卡", contentPage.cards <= 3, `${contentPage.cards} 张`);
+    /**
+     * ⚠️ 内容页那三张是**横排**的，所以这儿要验等高——
+     * 一排卡片里标题一行还是两行会让下面每一行落在不同高度，扫的时候眼睛得上下找。
+     * （首页那三张是竖排的，判据不同，见那边的注释。）
+     */
+    const rowSpread = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll(".project-attention .act-card")];
+      if (cards.length < 2) return 0;
+      const h = cards.map((c) => Math.round(c.getBoundingClientRect().height));
+      return Math.max(...h) - Math.min(...h);
+    });
+    check("横排的那几张卡等高", rowSpread <= 1, `高度差 ${rowSpread}px`);
     check("全集是一张表不是卡片墙", contentPage.heads.length >= 5, contentPage.heads.join("/"));
     check("泳道和那个十格筛选网格都撤了", contentPage.lanes === 0, `${contentPage.lanes} 个残留`);
     check("有列表/看板切换", contentPage.seg);

@@ -53,6 +53,37 @@ import {
  * 它属于库名旁边，不属于另一个标题。
  */
 /**
+ * 一个数：**小字标题 + 大数字 + 对比 + 一行基准**。首屏那一排就是它。
+ *
+ * 三张参考图（Fincai / Nexus / Shopeers）的 KPI 卡都是这个结构，而它们的共同点
+ * 不是「好看」，是**每个数字都带着让它有意义的那个参照**：
+ * `$84,120 across 3 accounts`、`16,431 ↑15.5% · vs. 14,653 last period`。
+ * 一个孤零零的数字回答不了「这算多还是少」——而那正是看一眼首屏想知道的事。
+ *
+ * ⚠️ **`tone` 必须由调用方给，不能按涨跌自动判断。**
+ * 「粉丝 +180」是好事，「等你动手 +3」是坏事，而两者都是「涨了」。
+ * 按符号自动上色的话，首屏会把一件坏事画成绿的。
+ */
+export function StatCard({ icon: Icon, label, value, unit, delta, deltaTone = "", note, onClick, title }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag className="stat" onClick={onClick} title={title} type={onClick ? "button" : undefined}>
+      <span className="stat__head">
+        <span className="stat__label">{label}</span>
+        {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
+      </span>
+      <span className="stat__row">
+        <b className="stat__value">{value}</b>
+        {unit ? <span className="stat__unit">{unit}</span> : null}
+        {delta ? <em className="stat__delta" data-tone={deltaTone || undefined}>{delta}</em> : null}
+      </span>
+      {/* ⚠️ **基准那一行没内容也占高**，不然一排四张卡的下沿参差不齐 */}
+      <span className="stat__note">{note || ""}</span>
+    </Tag>
+  );
+}
+
+/**
  * 主按钮 + 下拉菜单。「新建内容」「新建」这类**一个动作有几种起点**的入口用它。
  *
  * ⚠️ **它省掉的是一整屏。** 「新建内容」原来点开是创作弹层的「起点选择」那一屏，

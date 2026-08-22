@@ -412,7 +412,8 @@ html, body { margin: 0; padding: 0; }
 }
 
 body {
-  background: var(--canvas);
+  /* ⚠️ 应用底色是**白**（框架色）。正文区那块浅灰画在 `.main` 上，见那儿的注释 */
+  background: var(--surface);
   color: var(--text-1);
   font-family: var(--font);
   font-size: var(--fs-md);
@@ -504,6 +505,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   height: 100vh; overflow: hidden;
 }
 .app__body { display: flex; min-width: 0; min-height: 0; }
+/* 顶栏和下面那两块之间也要一道线，否则白顶栏和白侧栏连成一片、看不出是两层 */
+.topbar { border-bottom: 1px solid var(--border); }
 
 /**
  * ⚠️ **三列 grid（左 1fr · 中 auto · 右 1fr），不是 flex。**
@@ -571,8 +574,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .sidebar {
   width: var(--sidebar-w);
   flex: none;
-  /* 底色和边框都撤了：侧栏**就是**应用底色，画一层白底加一道竖线等于在底色上又贴一张纸 */
-  background: transparent;
+  /* ⚠️ **侧栏是白的**（上一版是透明、露出浅灰的应用底色）。翻过来之后：
+     白的是**框架**（顶栏 + 侧栏 + 卡片），浅灰的是**工作区**。 */
+  background: var(--surface);
   padding: 24px 12px 16px;
   display: flex;
   flex-direction: column;
@@ -812,19 +816,28 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 /* 和 .rail-toggle 同一形态：侧栏里的工具按钮是一套语汇，各画各的就是两种记号 */
 
 /* 正文面板：四周留沟、自带边框圆角、**自己滚**。 */
+/**
+ * ⚠️ **底色关系翻过来了：顶栏和侧栏是白的，正文区是浅灰的，卡片是白的。**
+ *
+ * 上一版是反的——侧栏透明（露出浅灰的应用底色）、正文是一整块**白**面板浮在上面。
+ * 那套语汇来自 Circle，而 Circle 的内容是**列表行**：行不需要从背景里浮起来。
+ * 这一版到处是卡片，于是**白卡片压在白底上**，只能靠一圈边框勉强分出来——
+ * 「卡片太丑」的根因就在这儿。底色不翻过来，卡片的圆角、投影、边框怎么调都白搭。
+ *
+ * 翻过来之后卡片天然浮起，边框反而可以更淡。三张参考图（Fincai / Nexus / Shopeers）
+ * 一致都是这个关系：**侧栏白 · 主体浅灰 · 卡片白**。
+ *
+ * 分隔靠**一道 1px 竖线**，不靠沟和圆角——沟是「两块浮着的板」的语汇，
+ * 而侧栏和正文是同一个平面上的两个区域。
+ */
 .main {
   flex: 1 1 0; min-width: 0;
-  /* 四面都留沟（含左边）：Circle 的容器是 `p-2` 铺一圈，侧栏是并排的另一个 flex 子元素。
-     只留三面的话左上角那个圆角贴着侧栏，看着是「面板被切了一刀」而不是「浮着」。 */
-  margin: 8px;
-  background: var(--surface);
-  /* 用 --border-strong 不用 --border：面板是这一屏最外层的边界，
-     和卡片内部那些分隔线不该是同一个重量。 */
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
+  background: var(--sunken);
+  border-left: 1px solid var(--border);
   overflow: auto;
   overscroll-behavior: contain;
 }
+
 /* 覆盖层开着时背后这一层不许滚（`lib/scroll-lock.js` 挂的属性）。
    **锁在这儿而不是在组件里**：以后再加一个覆盖层，不用记得重写一遍这件事。 */
 html[data-scroll-lock] .main { overflow: hidden; }
@@ -2821,6 +2834,41 @@ kbd {
 .act-card__go svg { width: 15px; height: 15px; }
 /* 一排卡片 */
 /**
+ * 首屏那一排数字卡。**卡片白、正文区浅灰**——底色关系见 `.main` 那条注释。
+ * ⚠️ 边框用 `--border` 不用 `--border-strong`：翻过底色之后卡片本来就浮着，
+ * 再加一道重边框等于把「浮起来」这件事说了两遍。
+ */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0; text-align: left;
+  padding: 15px 16px 14px; font: inherit; color: inherit;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+button.stat { cursor: pointer; }
+button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.stat__head { display: flex; align-items: center; gap: 8px; }
+.stat__label { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.stat__head svg { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.stat__row { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.stat__value {
+  font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700;
+  line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+}
+.stat__unit { font-size: var(--fs-sm); color: var(--text-2); }
+/* 对比：**颜色由调用方给**——「等你动手 +3」是坏事，按涨跌自动上色会把它画成绿的 */
+.stat__delta {
+  font-style: normal; font-size: var(--fs-xs); font-weight: 600;
+  padding: 2px 7px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-2);
+}
+.stat__delta[data-tone="up"] { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--st-done-ink); }
+.stat__delta[data-tone="down"] { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); color: var(--danger); }
+.stat__delta[data-tone="warn"] { background: color-mix(in srgb, var(--st-urgent) 16%, var(--surface)); color: var(--st-urgent-ink); }
+/* 基准那一行**没内容也占高**，不然一排四张卡下沿参差 */
+.stat__note { min-height: 1.5em; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
+
+/**
  * 主按钮 + 下拉菜单。用在「新建内容」这种**一个动作有几种起点**的入口上。
  * ⚠️ 菜单默认**靠右对齐**（`data-align="end"`）：这类按钮几乎都贴着内容区右缘，
  * 左对齐的话一个 300px 的菜单会直接出界。和 `.select__pop` 那条是同一个坑。
@@ -3715,6 +3763,49 @@ kbd {
  * 扫的时候得切换两次读法。现在三张等大（`.act-cards`），轻重只靠 `[data-lead]` 一道边框。
  * `.today-queue*` 那十几条规则跟着一起删了。
  */
+/**
+ * 「先做这一件」和那张图并排。
+ * ⚠️ **左栏窄一档**（卡片竖排三张）、右栏宽：图要横向铺开才读得出趋势，
+ * 而卡片竖着排本来就不需要宽度。窄屏收成一列。
+ */
+.today-split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; align-items: start; }
+.today-split .act-cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+/**
+ * ⚠️ **竖排的卡要收紧：`min-height` 那几条撤掉。**
+ * 它们是为**横排**设的——一排三张时，标题一行还是两行会让下面每一行落在不同高度，
+ * 所以标题和摘要都钉死了高度。竖着排的时候卡本来就左对齐、上下堆叠，
+ * 那些占位一个都不解决问题，只是让每张卡凭空高出三四十像素：
+ * 三张加起来比右边那张图高一倍，而它们说的是同一个问题的两半。
+ */
+.today-split .act-card { gap: 7px; padding: 13px 14px 12px; }
+.today-split .act-card__title { min-height: 0; font-size: var(--fs-base); }
+.today-split .act-card__note { min-height: 0; -webkit-line-clamp: 1; }
+.today-split .act-card__foot { margin: 4px -14px -12px; padding: 9px 14px; }
+@media (max-width: 1080px) { .today-split { grid-template-columns: minmax(0, 1fr); } }
+
+.today-chart {
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  padding: 15px 16px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+}
+.today-chart__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.today-chart__label { display: block; font-size: var(--fs-sm); color: var(--text-2); margin-bottom: 4px; }
+.today-chart__head b {
+  font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 700;
+  letter-spacing: -0.03em; line-height: 1;
+}
+.today-chart__head b em { font-style: normal; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); margin-left: 4px; }
+.today-chart__go {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: var(--text-2);
+}
+.today-chart__go:hover { color: var(--text-1); }
+.today-chart__empty {
+  margin: 0; padding: 26px 8px; text-align: center;
+  font-size: var(--fs-sm); color: var(--text-3); line-height: 1.7;
+}
+
 /* 超出三张的收成一句，**它是可点的**——否则「还有 N 篇」只是个说了不算的数字 */
 .today-more {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
