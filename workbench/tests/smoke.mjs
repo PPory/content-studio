@@ -211,7 +211,13 @@ try {
     const h = cards.map((e) => Math.round(e.getBoundingClientRect().height));
     return {
       n: cards.length,
-      lead: document.querySelectorAll(".act-card[data-lead]").length,
+      /**
+       * ⚠️ **三张卡的边框必须一模一样，不许有一张被描重。**
+       * 做过一版「第一张描边重一档」，撤了：卡片本来就按优先级排序，第一张就在第一个
+       * 位置、上面还顶着「先做这一件」——那道边框是同一件事说第三遍，而它是这一屏里
+       * 最重的一道线，**看着像那张卡被选中了**。量的是渲染后的边框色有几种。
+       */
+      borders: [...new Set(cards.map((c) => getComputedStyle(c).borderTopColor))].length,
       /**
        * ⚠️ **判据是「同一行里的卡等高」，不是「三张都等高」。**
        * 上一版钉的是后者，而首页现在把卡片**竖排**在左栏（右栏是那张图）——
@@ -252,7 +258,7 @@ try {
   });
   if (todayTop.n) {
     check("今日顶部最多三张卡", todayTop.n <= 3, `${todayTop.n} 张`);
-    check("只有一张是领头的", todayTop.lead === 1, `${todayTop.lead} 张描边`);
+    check("没有哪一张被描重", todayTop.borders === 1, `${todayTop.borders} 种边框色`);
     check("同一行里的卡片等高", todayTop.spread <= 1, `同行高度差 ${todayTop.spread}px`);
     check("每张卡都有状态 pill，且 pill 里有图标", todayTop.pills === todayTop.n && todayTop.pillsWithIcon === todayTop.n, `${todayTop.pillsWithIcon}/${todayTop.n}`);
     check("每张卡要么给进度要么给阻塞", todayTop.told === todayTop.n, `${todayTop.told}/${todayTop.n}`);
@@ -328,7 +334,7 @@ try {
   const shelfHash = await page.evaluate(() => location.hash);
   check("二级导航能直接打开书架", shelfHash.startsWith("#/shelf"), shelfHash);
   await page.click('.nav-item:has-text("素材")');
-  await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
+  await page.waitForSelector(".mflow, .empty, .note-title", { timeout: 25000 });
   check("素材不再拆成三个二级入口", (await page.$$(".subnav-item")).length === 0);
   check("素材直接进入统一工作区", /素材/.test(await page.textContent(".crumbs")));
   await page.click('.nav-item:has-text("今日")');
@@ -3102,9 +3108,63 @@ try {
 
   // 8b. 三个旧库只保留兼容跳转；用户看到的是同一个素材工作区与同一条处理链。
   await page.goto(`http://127.0.0.1:${PORT}/#/inbox`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
+  await page.waitForSelector(".mflow, .empty, .note-title", { timeout: 25000 });
   check("旧灵感入口自动归到素材", decodeURIComponent(page.url()).includes("#/materials"), page.url());
-  check("素材链路把四个主要环节说清", (await page.$$(".material-flow__steps li")).length === 4);
+  check("素材链路把四个主要环节说清", (await page.$$(".mflow__steps li")).length === 4);
+  /**
+   * ⚠️ **链路那一排就是状态筛选器，下面不许再画一排状态芯片。**
+   * 上一版两者同时在屏幕上：链路里写着「已收纳 8 / 可用素材 14 / 已进入项目 18」，
+   * 下面一行芯片又写一遍同样三个数字，而点哪一份效果完全一样。
+   * 量的是「素材页的筛选条里没有状态芯片」，不是「芯片总数是几」——
+   * 别的库还在用它，写死数量的话改别的库这条会跟着红。
+   */
+  check("链路和状态芯片不同时出现", (await page.$$(".mflow ~ * .chips[aria-label*='状态']")).length === 0);
+  /**
+   * ⚠️ **筛到某一段之后要有一条明摆着的退路。**
+   * 唯一的退路本来是「再点一次那一格」——那是个没人猜得到的动作，
+   * 而屏幕上也看不出自己正被过滤。
+   */
+  check("链路上有一颗「全部」能退回来", !!(await page.$(".mflow__all")));
+
+  /**
+   * ⚠️ **核验下拉的三项要有三种图标。**
+   * `Select` 里是 `renderIcon ? renderIcon(o) : null`——**不传就一枚都没有**，
+   * 三项只剩三行字。而这三项恰恰最该靠形状分：盾牌=核过了、减号=压根不需要核、
+   * 虚线圈=等你去核。量的是 svg 第一条 path 的 `d`，比数 class 靠谱（class 都一样）。
+   */
+  const vBtns = await page.$$(".filter-bar .select__btn");
+  if (vBtns.length >= 2) {
+    await vBtns[vBtns.length - 1].click();
+    await page.waitForSelector(".select__pop", { timeout: 4000 });
+    const vShapes = await page.$$eval(".select__pop button svg path", (els) =>
+      els.map((e) => e.getAttribute("d")).filter(Boolean)
+    );
+    check("核验下拉三项的图标不一样", new Set(vShapes).size >= 3, `${new Set(vShapes).size} 种形状 / ${vShapes.length} 条路径`);
+    await page.keyboard.press("Escape");
+  }
+
+  /**
+   * ⚠️ **右侧那几列要真的对齐。**
+   * 上一版是个右对齐的 flex 簇，每行内容长短不同（「来源 → 尚未拆成素材」比「来源 1」
+   * 宽一倍），同一列的东西在每行落在不同的横坐标——一列扫下去是锯齿，
+   * 而这一层的全部价值就是「一眼扫十几条」。量的是**渲染后每行时间列的左缘**，
+   * 不是「样式表里写了 grid」。
+   */
+  const colDrift = await page.evaluate(() => {
+    const xs = [...document.querySelectorAll(".doc-row__time")].map((e) => Math.round(e.getBoundingClientRect().left));
+    return xs.length > 1 ? Math.max(...xs) - Math.min(...xs) : 0;
+  });
+  check("列表右侧那几列真的对齐", colDrift <= 1, `时间列左缘相差 ${colDrift}px`);
+  /**
+   * ⚠️ **有没有外链是逐条不同的，那一格空着也要占位。**
+   * 上面那条量的是时间列左缘，能抓到这个毛病——**但只有当这一屏里正好既有带链接的行、
+   * 又有不带的**。所以这儿直接量那一格本身：它必须每行一样宽，和列表里有几条带链接无关。
+   */
+  const slotDrift = await page.evaluate(() => {
+    const ws = [...document.querySelectorAll(".doc-row__srcslot")].map((e) => Math.round(e.getBoundingClientRect().width));
+    return ws.length > 1 ? Math.max(...ws) - Math.min(...ws) : 0;
+  });
+  check("「打开来源」那一格空着也占位", slotDrift <= 1, `宽度相差 ${slotDrift}px`);
   const ideaIndex = await page.$$eval(".doc-row", (cards) => cards.findIndex((card) => card.querySelector(".tag--kind")?.textContent.includes("灵感来源")));
   if (ideaIndex >= 0) {
     await page.locator(".doc-row__open").nth(ideaIndex).click();

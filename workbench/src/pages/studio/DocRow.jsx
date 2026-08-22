@@ -28,7 +28,7 @@ import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
  * ⚠️ 上一版把它们混在 tags 里、而右侧只显示 `tags[0]`，于是**洞察卡的篇幅整个消失了**
  *（冒烟测试抓到的第二处丢失）。判据只写这一处。
  */
-const isSpec = (t) => /(?:字|分钟|条|篇)$/.test(String(t || "").trim());
+export const isSpec = (t) => /(?:字|分钟|条|篇)$/.test(String(t || "").trim());
 
 export function DocRow({ item, onOpen, onDelete, removeLabel }) {
   const [confirm, setConfirm] = useState(false);
@@ -77,22 +77,38 @@ export function DocRow({ item, onOpen, onDelete, removeLabel }) {
           )}
         </span>
 
+        {/**
+          * ⚠️ **这几格「没内容也要占位」**，和左边那枚状态图标是同一条理由：
+          * 不占的话，没有去向的那几行会把类别挪进去向那一列，同一列的东西在每行
+          * 落在不同的横坐标——一列扫下去是锯齿。**哪几列存在**由 `DocList`
+          * 按整份列表算一次（`data-cols`），所以没有去向的源不会白占一列。
+          */}
         <span className="doc-row__meta">
-          {item.trace ? <span className="doc-row__trace">{item.trace}</span> : null}
-          {item.kindLabel ? <span className="tag tag--kind">{item.kindLabel}</span> : null}
-          {/* 标签只留一个：右侧这一簇是定宽的，铺四个会把时间挤出可视区。
+          <span className="doc-row__trace">{item.trace || ""}</span>
+          <span className="doc-row__kind">{item.kindLabel ? <span className="tag tag--kind">{item.kindLabel}</span> : null}</span>
+          {/* 标签只留一个：右侧这几列是定宽的，铺四个会把时间挤出可视区。
               全部标签在打开之后的元信息行里 */}
-          {labels.length ? <span className="tag">{labels[0]}</span> : null}
+          <span className="doc-row__tag">{labels.length ? <span className="tag">{labels[0]}</span> : null}</span>
           <time className="doc-row__time">{item.time ? relTime(item.time) : ""}</time>
         </span>
       </button>
 
       <div className="doc-row__acts">
-        {item.raw?.link ? (
-          <a className="icon-btn doc-row__src" href={item.raw.link} target="_blank" rel="noreferrer" title="打开来源" aria-label="打开来源">
-            <IconArrowUpRight aria-hidden="true" size={15} stroke={1.7} />
-          </a>
-        ) : null}
+        {/**
+          * ⚠️ **「打开来源」这一格没有链接也要占位。**
+          * 有没有外链是**逐条不同**的，不占的话有链接的行整块元信息被往左推 26px——
+          * 右边那几列刚排齐，又被这一颗按钮重新推成锯齿。
+          *
+          * 删除那颗不用占位：它有没有由**源**决定（`source.remove`），
+          * 一份列表里要么每行都有、要么每行都没有，不会把某几行推歪。
+          */}
+        <span className="doc-row__srcslot">
+          {item.raw?.link ? (
+            <a className="icon-btn doc-row__src" href={item.raw.link} target="_blank" rel="noreferrer" title="打开来源" aria-label="打开来源">
+              <IconArrowUpRight aria-hidden="true" size={15} stroke={1.7} />
+            </a>
+          ) : null}
+        </span>
         {onDelete ? (
           confirm ? (
             /**

@@ -511,17 +511,21 @@ export function relTime(iso) {
 const STATE_ICONS = [
   [/失败|需人工|异常/, IconAlertCircle],   // 出事了，等人管
   [/弃用|作废/, IconCircleX],              // 不要了
-  [/搁置|存档|备用/, IconArchive],         // 收起来
+  [/搁置|存档|归档|备用/, IconArchive],    // 收起来
   // ⚠️ **核验那三个值必须在这儿有落点。** 「待核验 / 已核验 / 不适用」以前一个都不命中，
   // 三个全落到默认的虚线圈——素材页那个核验下拉里三项**图标和颜色一模一样**，
   // 而下拉的记号本来就是用来免掉读字的。（`待核验` 命中不了任何一条是**对的**：
   // 它落到 `backlog`＝「等我动手」，语义正好，所以只补另外两条。）
   [/已核验/, IconShieldCheck],             // 核过了，能进成稿
   [/不适用|无需/, IconCircleMinus],        // 这条压根不需要核验
-  [/已发布/, IconCircleDot],               // 已经出去了（终态）
-  [/待发布|已成稿|已选题|已整理|完成/, IconCircleCheck], // 我做完了，等下一步
+  [/已发布|已使用/, IconCircleDot],        // 已经出去了（终态）
+  [/待发布|已成稿|已选题|已整理|可用|完成/, IconCircleCheck], // 我做完了，等下一步
   [/中$|进行/, IconProgress],              // 正在跑
-  // 剩下的都是「等我动手」（待写 / 待修改 / 待初筛 / 待选题）→ 空的虚线圈
+  // 剩下的都是「等我动手」（待写 / 待修改 / 待初筛 / 待选题 / 待处理 / 已收纳 / 需核验）
+  // → 空的虚线圈。⚠️ **素材那六个环节里有三个是故意落在这儿的**：
+  // 「待处理」「已收纳」「需核验」说的都是「轮到你了」，而另外三个各有终点——
+  // 「可用素材」＝我做完了等下一步、「已使用」＝已经出去了、「已归档」＝收起来了。
+  // 补这三条之前，素材页一列十几行的状态记号**全是同一枚灰圈**，那一格等于没有。
 ];
 export const stateIcon = (name) => STATE_ICONS.find(([re]) => re.test(name))?.[1] || IconCircleDashed;
 
@@ -539,11 +543,11 @@ export const stateIcon = (name) => STATE_ICONS.find(([re]) => re.test(name))?.[1
 const STATE_TONES = [
   [/失败|需人工|异常/, "urgent"],
   [/弃用|作废/, "cancel"],
-  [/搁置|存档|备用/, "cancel"],
+  [/搁置|存档|归档|备用/, "cancel"],
   [/已核验/, "done"],
   [/不适用|无需/, "cancel"],
-  [/已发布/, "done"],
-  [/待发布|已成稿|已选题|已整理|完成/, "review"],
+  [/已发布|已使用/, "done"],
+  [/待发布|已成稿|已选题|已整理|可用|完成/, "review"],
   [/中$|进行/, "doing"],
 ];
 export const stateTone = (name) => STATE_TONES.find(([re]) => re.test(String(name || "")))?.[1] || "backlog";

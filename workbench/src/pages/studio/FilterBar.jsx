@@ -3,14 +3,21 @@
 //
 // **「要不要显示」留在页面那边**，这里只管「显示成什么样」——那个条件同时看
 // `source.states`、`layout` 和 `facetPick` 三样，是页面的编排问题不是这一条的事。
-import { Select, fieldIcon, valueIcon } from "../../components/ui.jsx";
+import { Select, fieldIcon, stateIcon, valueIcon } from "../../components/ui.jsx";
+import { IconShieldCheck } from "../../components/icons.jsx";
 
-export function FilterBar({ source, layout, state, onState, facet, setFacet, facetPick, verification, setVerification, counts = {} }) {
+export function FilterBar({ source, showStates, state, onState, facet, setFacet, facetPick, verification, setVerification, counts = {} }) {
   const verificationOptions = source.verificationFilters || [];
   const verificationAll = "全部核验状态";
   return (
     <div className="filter-bar">
-      {source.stateTabs?.length && layout === "wall" ? (
+      {/**
+        * ⚠️ **要不要画状态芯片由调用方给（`showStates`），这儿不再自己判一遍。**
+        * 素材页的那排芯片已经撤了——那一页的链路块（`MaterialFlow`）本身就是状态筛选器，
+        * 两者同时在屏幕上时是**同一组数字一屏两份**，而点哪一份效果完全一样。
+        * 判据只写一处：写两处的话，加一个源就会出现「壳画了、里面空着」那种半死状态。
+        */}
+      {showStates ? (
         <div className="chips chips-sm" aria-label="按处理状态筛选">
           <button className="chip" aria-pressed={!state} onClick={() => onState("")}>全部{counts.total != null ? ` ${counts.total}` : ""}</button>
           {source.stateTabs.map((s) => (
@@ -47,6 +54,16 @@ export function FilterBar({ source, layout, state, onState, facet, setFacet, fac
           value={verification || verificationAll}
           options={[verificationAll, ...verificationOptions]}
           onChange={(value) => setVerification(value === verificationAll ? "" : value)}
+          /**
+           * ⚠️ **`renderIcon` 不传的话这个下拉里一枚图标都没有**（`Select` 里
+           * `renderIcon ? renderIcon(o) : null`），三项只剩三行字。而这三项恰恰是
+           * 靠形状分辨最省事的：盾牌=核过了、减号=压根不需要核、虚线圈=等你去核。
+           * 「全部核验状态」代表整个维度而不是某个值，所以给它盾牌那枚字段记号。
+           */
+          renderIcon={(label) => {
+            const I = label === verificationAll ? IconShieldCheck : stateIcon(label);
+            return <I size={15} stroke={1.8} aria-hidden="true" />;
+          }}
           ariaLabel="按核验状态筛选"
           title="只看某一种证据核验状态"
         />

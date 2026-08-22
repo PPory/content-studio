@@ -268,6 +268,15 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
    * 选项标签带计数（`公众号 2`），所以要在**同一个数组里**同时算出标签和值——
    * 各拼一次的话，平台名里只要有个空格，回读就会对不上。
    */
+  /**
+   * 状态芯片画不画。**判据只写这一处**——`FilterBar` 里原来还有一份一模一样的判断，
+   * 而两处对不上的表现是「壳画出来了、里面空着」那种半死状态。
+   *
+   * ⚠️ **素材页排除在外**：那一页的链路块（`MaterialFlow`）本身就是状态筛选器，
+   * 芯片再画一排就是同一组数字一屏两份。
+   */
+  const showStates = !!source.stateTabs?.length && layout === "wall" && !source.isMaterialWorkspace;
+
   const facetPick = useMemo(() => {
     if (!source.facet || facetOptions.length < 2) return null;
     const all = `全部${source.facet.label}`;
@@ -611,6 +620,11 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         <InsightRunProgress run={insightRun.run} onCancel={insightRun.cancel} />
       ) : null}
 
+      {/**
+        * ⚠️ **素材页的链路块本身就是状态筛选器**，所以那一页不再画 `FilterBar` 的状态芯片
+        *（判据是上面那个 `showStates`）。两者同时在屏幕上时是**同一组数字一屏两份**，
+        * 而且点哪一份效果完全一样。
+        */}
       {source.isMaterialWorkspace ? (
         <MaterialFlow counts={list?.counts || {}} active={state} onPick={onState} />
       ) : null}
@@ -623,10 +637,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           * 包装留在页面这一层：`FilterBar` 要不要画由三个条件决定，那是编排问题。
           */}
         <div className="list-bar">
-          {(source.stateTabs?.length && layout === "wall") || facetPick || source.verificationFilters?.length ? (
+          {showStates || facetPick || source.verificationFilters?.length ? (
             <FilterBar
               source={source}
-              layout={layout}
+              showStates={showStates}
               state={state}
               onState={onState}
               facet={facet}

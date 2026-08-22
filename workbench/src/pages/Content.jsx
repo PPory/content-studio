@@ -131,8 +131,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             <section className="project-attention">
               <h2 className="section-label">需要你处理的</h2>
               <div className="act-cards">
-                {attention.map((p, i) => (
-                  <ProjectCard key={p.id} project={p} lead={i === 0} onOpen={() => open(p)} />
+                {attention.map((p) => (
+                  <ProjectCard key={p.id} project={p} onOpen={() => open(p)} />
                 ))}
               </div>
             </section>

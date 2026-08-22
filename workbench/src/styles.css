@@ -2680,38 +2680,82 @@ kbd {
 
 /* ---------- 素材工作区：从来源到成稿的一条链 ---------- */
 
-.material-flow {
-  display: grid; grid-template-columns: minmax(220px, .78fr) minmax(500px, 1.9fr) minmax(180px, .62fr);
-  margin-bottom: 20px; border: 1px solid var(--border-strong); border-radius: var(--r-lg);
-  background: var(--surface); overflow: hidden;
+/* --------------------------------------------------------------------------
+   素材链路（`pages/studio/MaterialFlow.jsx`）
+   ⚠️ **这一排就是素材页的状态筛选器**，`FilterBar` 那排状态芯片在这一页不再画——
+   两者同时在屏幕上时，同一组数字一屏两份，而点哪一份效果完全一样。
+   ⚠️ **上一版那个三栏的大盒子撤了**（左栏一句宣言 + 中间四格 + 右边闸门，外面一圈
+   `--border-strong` 的框）。三个毛病：宣言和页头那句 `sub` 是同一个意思、占的却是
+   整块最先被读到的一栏；四格中间用竖线切开，看不出**顺序**（而顺序正是这一排的全部
+   信息）；外面那圈框是白框套在白面板上。现在是四张独立的格子 + 中间的箭头。
+   -------------------------------------------------------------------------- */
+.mflow { margin-bottom: 18px; }
+.mflow__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.mflow__end { display: flex; align-items: center; gap: 6px; }
+.mflow__all, .mflow__quiet {
+  height: 26px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); cursor: pointer;
+  transition: background .14s var(--ease), color .14s var(--ease), border-color .14s var(--ease);
 }
-.material-flow__intro { padding: 24px 20px; border-right: 1px solid var(--border); }
-.material-flow__intro h2 { margin: 8px 0 0; font-size: var(--fs-xl); line-height: 1.2; letter-spacing: -.035em; }
-.material-flow__intro p { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.7; }
-.material-flow__steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
-.material-flow__steps li { min-width: 0; border-right: 1px solid var(--border); }
-.material-flow__steps li:last-child { border-right: 0; }
-.material-flow__steps button {
-  display: grid; grid-template-columns: 1fr auto; align-content: start; width: 100%; min-height: 100%;
-  padding: 20px 16px; border: 0; background: transparent; color: var(--text-1); text-align: left;
-  transition: background .16s var(--ease), color .16s var(--ease);
+.mflow__all:hover, .mflow__quiet:hover { color: var(--text-1); border-color: var(--border-strong); }
+/* 选中态走全局那一份（`--sel-bg` / `--sel-fg`），别在这儿另写一个实心黑 */
+.mflow__all[aria-pressed="true"], .mflow__quiet[aria-pressed="true"] {
+  background: var(--sel-bg); border-color: transparent; color: var(--sel-fg); font-weight: 600;
 }
-.material-flow__steps button:hover { background: var(--surface-2); }
-.material-flow__steps button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
-.material-flow__number { grid-column: 1 / -1; margin-bottom: 24px; font-family: var(--font-mono); font-size: var(--fs-2xs); opacity: .55; }
-.material-flow__steps strong { min-width: 0; font-size: var(--fs-base); line-height: 1.35; }
-.material-flow__steps b { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 500; }
-.material-flow__steps small { grid-column: 1 / -1; margin-top: 8px; font-size: var(--fs-2xs); line-height: 1.55; opacity: .6; }
-.material-flow__check {
-  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end;
-  padding: 20px 16px; border: 0; border-left: 1px solid var(--border-strong);
-  background: color-mix(in srgb, var(--mark-yellow) 34%, var(--surface)); color: var(--text-1); text-align: left;
+
+/* 闸门定宽：它不是链上的一环，跟着四格一起等分会让人以为它是第五步 */
+.mflow__body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, .34fr); gap: 22px; align-items: stretch; }
+.mflow__steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin: 0; padding: 0; list-style: none; }
+.mflow__steps li { position: relative; min-width: 0; display: flex; }
+
+.mflow__steps button, .mflow__gate {
+  display: grid; grid-template-columns: auto 1fr; align-content: start; gap: 0 8px;
+  flex: 1 1 auto; width: 100%; padding: 12px 14px 13px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  color: var(--text-1); text-align: left; cursor: pointer;
+  transition: border-color .14s var(--ease), background .14s var(--ease), transform .14s var(--ease);
 }
-.material-flow__check:hover { background: color-mix(in srgb, var(--mark-yellow) 54%, var(--surface)); }
-.material-flow__check[aria-pressed="true"] { background: var(--mark-yellow); }
-.material-flow__check span { margin-bottom: auto; font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: .08em; opacity: .62; }
-.material-flow__check strong { margin-top: 32px; font-size: var(--fs-md); }
-.material-flow__check small { margin-top: 8px; font-size: var(--fs-2xs); line-height: 1.55; opacity: .68; }
+.mflow__steps button:hover, .mflow__gate:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.mflow__steps button[aria-pressed="true"] { border-color: var(--text-1); }
+
+/* 序号那行是标签，不是数据：小、安静、和闸门那行图标同一个位置 */
+.mflow__num {
+  grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 9px;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
+}
+.mflow__num svg { flex: none; }
+/* 数字是这一格里最大的东西：这一排回答的就是「每一段各有多少」 */
+.mflow__count { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 600; line-height: 1; letter-spacing: -.02em; }
+.mflow__steps strong, .mflow__gate strong { align-self: end; min-width: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.mflow__steps small, .mflow__gate small {
+  grid-column: 1 / -1; margin-top: 8px; font-size: var(--fs-2xs); line-height: 1.5; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* 箭头落在两格中间那 22px 的空隙里，不占格子自己的宽度 */
+.mflow__arrow {
+  position: absolute; right: -19px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--line-2); pointer-events: none;
+}
+
+/**
+ * 闸门保持黄（`--mark-yellow`）：标记黄是「我圈中的」，闸门是「等你核对」，语义对得上。
+ * 旁边四格是纯白的，黄一出现就知道这格不一样——不用读字就分得出它不在链上。
+ */
+.mflow__gate {
+  border-color: color-mix(in srgb, var(--mark-yellow) 62%, var(--border));
+  background: color-mix(in srgb, var(--mark-yellow) 26%, var(--surface));
+}
+.mflow__gate:hover { background: color-mix(in srgb, var(--mark-yellow) 40%, var(--surface)); }
+.mflow__gate[aria-pressed="true"] { background: color-mix(in srgb, var(--mark-yellow) 62%, var(--surface)); border-color: var(--text-1); }
+.mflow__gate .mflow__num, .mflow__gate small { color: color-mix(in srgb, var(--text-1) 62%, transparent); }
+
+@media (max-width: 1180px) {
+  .mflow__body { grid-template-columns: minmax(0, 1fr); }
+  .mflow__steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 换行之后箭头指的方向就是错的 */
+  .mflow__arrow { display: none; }
+}
 
 .search-box {
   display: inline-flex; align-items: center; gap: 8px;
@@ -2791,7 +2835,6 @@ kbd {
 }
 .act-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 /* 「先做这一件」那张：描边加重一档。**不涂底色**——白底 + 彩色状态元素是这一版的基调 */
-.act-card[data-lead] { border-color: var(--text-3); }
 .act-card__top { display: flex; align-items: center; gap: 8px; }
 .act-card__top time { margin-left: auto; flex: none; font-size: var(--fs-xs); color: var(--text-3); }
 .act-card__title {
@@ -2981,14 +3024,39 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .doc-row__lead { color: var(--text-2); font-weight: 500; }
 .doc-row__lead i { font-style: normal; font-weight: 400; color: var(--line-2); margin: 0 6px; }
 
-.doc-row__meta { flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; }
-.doc-row__trace { font-size: var(--fs-xs); color: var(--text-3); }
+/**
+ * ⚠️ **右侧是几列定宽的格子，不是一个右对齐的 flex 簇。**
+ * 簇那一版每行内容长短不同，同一列的东西在每行落在不同的横坐标——素材页尤其明显
+ *（「来源 → 尚未拆成素材」比「来源 1」宽一倍），一列扫下去是锯齿，
+ * 而这一层的全部价值就是「一眼扫十几条」。
+ *
+ * **哪几列存在由 `.doc-rows[data-cols]` 决定**，`DocList` 按整份列表算一次：
+ * 按行判的话没有去向的行会把类别挪进去向那一列（那正是要治的锯齿），
+ * 而选题库、稿件库这些压根没有去向的源也不该白占一列。
+ */
+.doc-row__meta { flex: none; display: grid; align-items: center; gap: 10px; padding-left: 12px; grid-template-columns: 62px; }
+.doc-rows[data-cols~="tag"]   .doc-row__meta { grid-template-columns: 88px 62px; }
+.doc-rows[data-cols~="kind"]  .doc-row__meta { grid-template-columns: 82px 62px; }
+.doc-rows[data-cols~="kind"][data-cols~="tag"] .doc-row__meta { grid-template-columns: 82px 88px 62px; }
+.doc-rows[data-cols~="trace"] .doc-row__meta { grid-template-columns: 148px 62px; }
+.doc-rows[data-cols~="trace"][data-cols~="tag"] .doc-row__meta { grid-template-columns: 148px 88px 62px; }
+.doc-rows[data-cols~="trace"][data-cols~="kind"] .doc-row__meta { grid-template-columns: 148px 82px 62px; }
+.doc-rows[data-cols~="trace"][data-cols~="kind"][data-cols~="tag"] .doc-row__meta { grid-template-columns: 148px 82px 88px 62px; }
+/* 用不上的那几格整个不画，否则它们仍会各占一列 */
+.doc-rows:not([data-cols~="trace"]) .doc-row__trace,
+.doc-rows:not([data-cols~="kind"]) .doc-row__kind,
+.doc-rows:not([data-cols~="tag"]) .doc-row__tag { display: none; }
+.doc-row__trace { min-width: 0; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-row__kind, .doc-row__tag { min-width: 0; display: flex; }
+.doc-row__kind .tag, .doc-row__tag .tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-row__time {
   width: 62px; text-align: right; flex: none;
   font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums;
 }
 
 /* 动作区平时不占视觉重量，hover / 焦点 / 确认态才显形 */
+/* 空着也占位，理由见 DocRow 里那段注释：外链是逐条不同的，不占就把行推歪 */
+.doc-row__srcslot { flex: none; display: flex; width: 26px; }
 .doc-row__acts {
   flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 0;
   opacity: 0; pointer-events: none; transition: opacity 0.12s var(--ease);
@@ -2996,23 +3064,6 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .doc-row:hover .doc-row__acts,
 .doc-row:focus-within .doc-row__acts,
 .doc-row[data-confirm] .doc-row__acts { opacity: 1; pointer-events: auto; }
-
-@media (max-width: 1180px) {
-  .material-flow { grid-template-columns: 230px minmax(0, 1fr); }
-  .material-flow__check { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 12px; padding: 12px 20px; border-left: 0; border-top: 1px solid var(--border-strong); }
-  .material-flow__check span { margin: 0 auto 0 0; }
-  .material-flow__check strong, .material-flow__check small { margin: 0; }
-}
-
-@media (max-width: 780px) {
-  .material-flow { grid-template-columns: 1fr; }
-  .material-flow__intro { border-right: 0; border-bottom: 1px solid var(--border); }
-  .material-flow__steps { overflow-x: auto; }
-  .material-flow__steps li { min-width: 128px; }
-  .material-flow__steps button { min-height: 150px; }
-  .material-flow__check { grid-column: 1; flex-wrap: wrap; }
-  .material-flow__check span { width: 100%; }
-}
 
 
 /* 面板里的补充说明：挂掉的源、边界情况。它不该抢戏，但也不能没有。 */
@@ -3769,7 +3820,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  *
  * 两个毛病：那张卡 `min-height: 278px` 而里面只有三四行字，**中段大片留白**；
  * 而右边三条只剩标题和一句「阶段 · 下一步」——**同一批数据在一屏上有了两种详略**，
- * 扫的时候得切换两次读法。现在三张等大（`.act-cards`），轻重只靠 `[data-lead]` 一道边框。
+ * 扫的时候得切换两次读法。现在三张一模一样（`.act-cards`）。
+ *
+ * ⚠️ **「第一张描边重一档」那道黑框也撤了**（`[data-lead]`）。卡片本来就按优先级排序，
+ * 第一张就在第一个位置，上面还顶着「先做这一件」——那道边框是同一件事说第三遍，
+ * 而它是这一屏里最重的一道线，**看着像那张卡被选中了**。
  * `.today-queue*` 那十几条规则跟着一起删了。
  */
 /**

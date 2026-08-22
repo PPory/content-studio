@@ -238,7 +238,7 @@ const shots = [
     await page.click('.set-nav__item[data-key="prompts-local"]').catch(() => {});
     await page.waitForSelector(".set-guard", { timeout: 15000 }).catch(() => {});
   }],
-  ["materials", "/#/materials", ".material-flow, .empty, .note-title"],
+  ["materials", "/#/materials", ".mflow, .empty, .note-title"],
   ["topics-wall", "/#/topics", ".wall-card, .empty, .note-title"],
   ["topics-board", "/#/topics", ".wall-card, .empty, .note-title", async () => {
     await page.click('.seg button:has-text("看板")').catch(() => {});

@@ -100,11 +100,14 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
           {actions.length ? (
             <>
               {/**
-                * ⚠️ **三张等大，第一张只是描边重一档**（`lead`）。
+                * ⚠️ **三张一模一样，第一张不描边。**
                 * 上一版是「左边一张 278px 的大卡 + 右边三行小条」，两个毛病：
                 * 大卡里只有三四行字，**中段大片留白**；而右边那三条只剩标题和一句
                 * 「阶段 · 下一步」，同一批数据在一屏上有了两种详略，扫的时候得切换两次读法。
-                * 现在三张说同样的话，轻重只靠一道边框。
+                *
+                * 后来给第一张加过一道重边框，也撤了：卡片本来就按优先级排序，
+                * 第一张就在第一个位置、上面顶着「先做这一件」——**边框是同一件事说第三遍**，
+                * 而它是这一屏里最重的一道线，看着像那张卡被选中了。
                 */}
               {/**
                 * ⚠️ **卡片和图并排，不是上下堆。**
@@ -114,8 +117,8 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
                 */}
               <div className="today-split">
                 <div className="act-cards">
-                  {actions.map((project, i) => (
-                    <ProjectCard key={project.id} project={project} lead={i === 0} onOpen={() => open(project)} />
+                  {actions.map((project) => (
+                    <ProjectCard key={project.id} project={project} onOpen={() => open(project)} />
                   ))}
                 </div>
                 <TodayChart onGo={onGo} />

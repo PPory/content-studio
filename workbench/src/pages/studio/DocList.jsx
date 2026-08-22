@@ -6,7 +6,7 @@
 import { Board } from "../../components/Board.jsx";
 import { Empty, ErrorNote, Loading } from "../../components/ui.jsx";
 import { IconBulb } from "../../components/icons.jsx";
-import { DocRow } from "./DocRow.jsx";
+import { DocRow, isSpec } from "./DocRow.jsx";
 import { stateIcon, stateTone } from "../../components/ui.jsx";
 import { SourceSetup } from "./SourceSetup.jsx";
 
@@ -37,7 +37,18 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
             dangerState={source.askPlatformsOn}
           />
         ) : (
-          <div className="doc-rows">
+          /**
+            * ⚠️ **右侧那几列的宽度按整份列表算一次，不按每行各算各的。**
+            * 上一版右端是个右对齐的 flex 簇（去向 / 类别 / 标签 / 时间），
+            * 每行内容长短不同，于是同一列的东西在每行落在不同的横坐标——
+            * 素材页那一列尤其明显（「来源 → 尚未拆成素材」比「来源 1」宽一倍）。
+            * 一列扫下去看着是锯齿，而这一层的全部价值就是「一眼扫十几条」。
+            *
+            * ⚠️ **判据是「这份列表里有没有」，不是「这一行有没有」。** 按行判的话，
+            * 没有去向的那几行会把类别挪进去向那一列——那正是要治的锯齿。
+            * 按列表判的话，选题库、稿件库这些压根没有去向的源也不会白占一列。
+            */
+          <div className="doc-rows" data-cols={metaCols(shown)}>
             {groupByState(shown, source.states).map((g) => (
               <section key={g.state || "__none"}>
                 {g.state ? <StateBand state={g.state} count={g.items.length} /> : null}
@@ -67,6 +78,19 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
     ) : null}
     </>
   );
+}
+
+/**
+ * 右侧那几列画哪些。**按整份列表算一次**，理由见调用处那段注释。
+ * 时间列永远在，所以不进这个串——它是唯一一个每条都有的。
+ */
+function metaCols(items = []) {
+  const has = (fn) => (items.some(fn) ? 1 : 0);
+  return [
+    has((i) => i.trace) && "trace",
+    has((i) => i.kindLabel) && "kind",
+    has((i) => (i.tags || []).some((t) => !isSpec(t))) && "tag",
+  ].filter(Boolean).join(" ") || "none";
 }
 
 /**

@@ -33,7 +33,7 @@ export function stageProgress(stage) {
   return Math.max(0, Math.min(1, n / last));
 }
 
-export function ProjectCard({ project, onOpen, lead = false }) {
+export function ProjectCard({ project, onOpen }) {
   const canOpen = !!projectOpenTarget(project);
   const blockers = Array.isArray(project.blockers) ? project.blockers : [];
   const title = project.title || "未命名内容";
@@ -46,7 +46,6 @@ export function ProjectCard({ project, onOpen, lead = false }) {
      */
     <article
       className="act-card"
-      data-lead={lead ? "" : undefined}
       data-stage={project.stage}
       onClick={canOpen ? onOpen : undefined}
     >
