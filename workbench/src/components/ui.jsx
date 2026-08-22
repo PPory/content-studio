@@ -22,11 +22,13 @@ import {
   IconCircleCheck,
   IconCircleDashed,
   IconCircleDot,
+  IconCircleMinus,
   IconCircleX,
   IconCoin,
   IconFlag,
   IconInbox,
   IconList,
+  IconShieldCheck,
   IconMessageQuestion,
   IconNotebook,
   IconProgress,
@@ -50,6 +52,52 @@ import {
  * 同一个名字一屏出现两次，中间只隔了一行描述。计数是**这个库此刻的事实**，
  * 它属于库名旁边，不属于另一个标题。
  */
+/**
+ * 状态 pill：**浅底 + 深字 + 那枚状态图标**。
+ *
+ * ⚠️ **图标不能省，它才是主编码。** 参考产品里这个位置放的是一个纯色圆点，
+ * 但那套东西**不辨色就完全读不出来**。这里放的是 `stateIcon` 那枚形状
+ *（虚线圈 / 扇形 / 勾 / 叉 / 盾），颜色只是让它在一屏几十行里被扫到——
+ * 这是这个项目从一开始就守着的那条，换成圆点等于把它悄悄丢了。
+ *
+ * ⚠️ **字色走 `--tone-ink` 不是 `--tone`。** `--tone` 那七个值是给图标描边挑的，
+ * `--st-doing` 在白底上只有 1.7:1，拿来当文字就是糊的。两者的分工写在 styles.css 的 token 注释里。
+ */
+export function StatePill({ state, size = "" }) {
+  if (!state) return null;
+  const Icon = stateIcon(state);
+  return (
+    <span className={`pill ${size}`} data-tone={stateTone(state)}>
+      <Icon size={13} stroke={1.9} aria-hidden="true" />
+      {state}
+    </span>
+  );
+}
+
+/**
+ * 进度条：槽 + 墨绿填充 + 右侧百分比。
+ *
+ * ⚠️ **`value` 为 null 时整条不画**，不是画一条 0%。两者在界面上不是同一件事：
+ * null = 这东西没有「进度」这个概念（已搁置、需处理），0% = 开了但还没动。
+ * 混在一起的话，一屏上每一行底下都挂着一条空槽，「哪些动过」这个信息就没了——
+ * 和书架封面那条进度是同一条规矩。
+ *
+ * ⚠️ **百分比数字要跟着**：一条没有数字的进度条只能读出「大概过半」，
+ * 而这一版正是为了让人不用再猜。
+ */
+export function Meter({ value, label = "进度" }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
+  return (
+    <span className="meter" role="img" aria-label={`${label} ${pct}%`}>
+      <span className="meter__track">
+        <i style={{ width: `${pct}%` }} />
+      </span>
+      <b>{pct}%</b>
+    </span>
+  );
+}
+
 /**
  * 搜索框。⚠️ **三处调用方共用这一个**（内容工作台的工具条、书架页头、书详情），
  * 别再各写各的 `<label className="search-box">`。
@@ -329,6 +377,12 @@ const STATE_ICONS = [
   [/失败|需人工|异常/, IconAlertCircle],   // 出事了，等人管
   [/弃用|作废/, IconCircleX],              // 不要了
   [/搁置|存档|备用/, IconArchive],         // 收起来
+  // ⚠️ **核验那三个值必须在这儿有落点。** 「待核验 / 已核验 / 不适用」以前一个都不命中，
+  // 三个全落到默认的虚线圈——素材页那个核验下拉里三项**图标和颜色一模一样**，
+  // 而下拉的记号本来就是用来免掉读字的。（`待核验` 命中不了任何一条是**对的**：
+  // 它落到 `backlog`＝「等我动手」，语义正好，所以只补另外两条。）
+  [/已核验/, IconShieldCheck],             // 核过了，能进成稿
+  [/不适用|无需/, IconCircleMinus],        // 这条压根不需要核验
   [/已发布/, IconCircleDot],               // 已经出去了（终态）
   [/待发布|已成稿|已选题|已整理|完成/, IconCircleCheck], // 我做完了，等下一步
   [/中$|进行/, IconProgress],              // 正在跑
@@ -351,6 +405,8 @@ const STATE_TONES = [
   [/失败|需人工|异常/, "urgent"],
   [/弃用|作废/, "cancel"],
   [/搁置|存档|备用/, "cancel"],
+  [/已核验/, "done"],
+  [/不适用|无需/, "cancel"],
   [/已发布/, "done"],
   [/待发布|已成稿|已选题|已整理|完成/, "review"],
   [/中$|进行/, "doing"],

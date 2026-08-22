@@ -1032,6 +1032,68 @@ check("空值显示成横杠不是 0", fmtNum(null) === "—");
   const used = new Set([...css.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]));
   const missing = [...used].filter((v) => !defined.has(v));
   check("样式里引用的 CSS 变量都定义过", missing.length === 0, missing.join(", "));
+
+  /**
+   * ⚠️ **状态色的 pill 字色（`--st-*-ink`）必须真的看得清。**
+   *
+   * 上面那七个 `--st-*` 是给**图标描边**挑的中饱和色——`--st-doing: #f2c94c`
+   * 在白底上只有 1.7:1，**当文字色是看不清的**。ink 是另配的深色版。
+   * 量的是真实合成出来的对比度，不是「这个变量存在」：只断言存在的话，
+   * 随手填一个和原色一样浅的值照样能过，而屏幕上那一档 pill 的字就是糊的。
+   */
+  const tones = ["backlog", "todo", "doing", "review", "done", "cancel", "urgent"];
+  const lum = ([r, g, b]) => {
+    const f = (c) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const hexOf = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const ratio = (a, b) => {
+    const [hi, lo] = [lum(hexOf(a)), lum(hexOf(b))].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  // 浅色取 `:root` 那一段，暗色取媒体查询那一段——两套都要量
+  const darkAt = css.indexOf("@media (prefers-color-scheme: dark)");
+  // ⚠️ 正则里不写 `\s`：这一行是靠脚本生成的，反斜杠会被中间那层 shell 吃掉一次，
+  // 变成匹配字面的 `s`，于是七档全都「读不到值」而看着像 token 没写。用 `[^#]*` 绕开
+  const pick = (name, from, to) =>
+    css.slice(from, to).match(new RegExp("--" + name + ":[^#]*(#[0-9a-f]{6})", "i"))?.[1] || "";
+  const bad = [];
+  for (const t of tones) {
+    const light = pick(`st-${t}-ink`, 0, darkAt);
+    const dark = pick(`st-${t}-ink`, darkAt);
+    if (!light || !dark) { bad.push(`${t}:缺(${light || "浅"}/${dark || "暗"})`); continue; }
+    const rl = ratio(light, "#ffffff");   // --surface 浅色 = --white
+    const rd = ratio(dark, "#151518");    // --surface 暗色
+    if (rl < 4.5 || rd < 4.5) bad.push(`${t}:${rl.toFixed(2)}/${rd.toFixed(2)}`);
+  }
+  check("状态 pill 的字色两套都够清楚（≥4.5:1）", bad.length === 0, bad.join(" ") || `${tones.length} 档全过`);
+
+  /**
+   * ⚠️ **`stateIcon` 和 `stateTone` 两张表必须逐行同序。**
+   * 只改一张的表现是「图标对了颜色不对」，而两者都不报错——文档里白纸黑字记了这条，
+   * 但没有任何东西在钉它。加核验那三个值的时候正是同时改两张表。
+   */
+  const uiSrc = await fs.readFile(new URL("../src/components/ui.jsx", import.meta.url), "utf8");
+  const rows = (name) => {
+    const i = uiSrc.indexOf(`const ${name} = [`);
+    return uiSrc
+      .slice(i, uiSrc.indexOf("];", i))
+      .split(/\r?\n/)
+      .filter((l) => l.trim().startsWith("[/"))
+      .map((l) => l.trim().match(/^\[(\/.*?\/),/)?.[1] || "?");
+  };
+  const iconRes = rows("STATE_ICONS");
+  const toneRes = rows("STATE_TONES");
+  check(
+    "状态的图标表和色调表逐行同序",
+    iconRes.length > 0 && iconRes.length === toneRes.length && iconRes.every((re, i) => re === toneRes[i]),
+    iconRes.length === toneRes.length ? `${iconRes.length} 行对齐` : `图标 ${iconRes.length} 行 / 色调 ${toneRes.length} 行`
+  );
+
+  // ⚠️ 核验那三个值以前**全落到同一档**，下拉里三项长得一模一样
+  const toneOf = (name) => toneRes.findIndex((re) => new RegExp(re.slice(1, -1)).test(name));
+  const vt = ["待核验", "已核验", "不适用"].map(toneOf);
+  check("核验三个值分得开", new Set(vt).size === 3, vt.map((i, n) => `${["待核验", "已核验", "不适用"][n]}→${i < 0 ? "默认" : i}`).join(" "));
 }
 
 // ---- vault 目录布局：单一真源 + 那个一次性迁移 ------------------------------

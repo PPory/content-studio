@@ -106,6 +106,7 @@ export {
   IconChevronDown,
   IconLink,
   IconCircleDashed,
+  IconCircleMinus,
   IconCircleCheck,
   IconCircleX,
   IconCircleDot,

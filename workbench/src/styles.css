@@ -47,6 +47,23 @@
   /* 实心黑块上的字色。暗色下 --accent 翻成近白，白字就看不见了，必须跟着翻。 */
   --on-accent: #ffffff;
 
+  /**
+   * 强调色：墨绿。**整套界面只有这一个强调色。**
+   *
+   * ⚠️ **它和上面那个黑是分工的，别把黑换成绿。**
+   *   - **黑（`--accent`）管「位置和文字」**：正文、边框、「你在这儿」（`--sel-bg`/`--sel-fg`）。
+   *   - **绿（`--brand`）管「动作和进展」**：主操作、进度、正在动的状态。
+   * 全换成绿的话，「你在这儿」和「你该点这儿」又变回同一个视觉重量——
+   * 那正是上一轮「实心黑块只留一颗」要解决的问题，只是把黑噪音换成了绿噪音。
+   *
+   * 只用在三处：**主操作**（`.btn-primary`）、**进度**（`.meter` 填充、进度环、流程线）、
+   * **活跃状态**（「进行中 / 写作中」那一档）。
+   */
+  --brand: #10513f;
+  --brand-strong: #0a3d2f;
+  --brand-wash: #eaf3ef;
+  --on-brand: #ffffff;
+
   --ok: #16a34a;
   --warn: #d97706;
   --danger: #dc2626;
@@ -205,6 +222,25 @@
   --st-cancel:  #95a2b3;   /* 搁置 / 取消 —— 叉 */
   --st-urgent:  #f2994a;   /* 需处理 —— 实心感叹号 */
 
+  /**
+   * 状态色的**文字版**。给 pill 用（浅底 + 深字 + 图标）。
+   *
+   * ⚠️ **为什么要另配一组，而不是直接拿上面那七个当字色。**
+   * 上面那组是给**图标描边**挑的中饱和色，作为一枚 14px 的线条图标正合适；
+   * 但 `--st-doing: #f2c94c` 在白底上只有 **1.7:1**，当文字色是**看不清的**。
+   * 这一组是同色相压深的版本，`tests/unit.mjs` 量了对 `--surface` 的对比度（≥4.5:1）。
+   *
+   * ⚠️ **两组必须逐档对应**，少一个的表现是那一档的 pill 字色回落到继承值，
+   * 而它看着只是「颜色有点淡」，不像出错。
+   */
+  --st-backlog-ink: #5b6270;
+  --st-todo-ink:    #565c66;
+  --st-doing-ink:   #8a6410;
+  --st-review-ink:  #3f49a8;
+  --st-done-ink:    #1e7a52;
+  --st-cancel-ink:  #576373;
+  --st-urgent-ink:  #a8560c;
+
   --r-ctl: 8px;
   /**
    * ⚠️ `--r-md` 被十五处引用，但**从来没有定义过**——CSS 里引一个不存在的变量
@@ -300,6 +336,21 @@
     --st-done:    #5fc999;
     --st-cancel:  #7b8695;
     --st-urgent:  #f5a962;
+
+    /* pill 的字色在深底上要往**亮**里翻 */
+    --st-backlog-ink: #8e96a6;
+    --st-todo-ink:    #98a0ad;
+    --st-doing-ink:   #f0c74e;
+    --st-review-ink:  #98a1f0;
+    --st-done-ink:    #5fd7a4;
+    --st-cancel-ink:  #9aa6b6;
+    --st-urgent-ink:  #f7b478;
+
+    /* 墨绿在近黑底上要提亮，否则那颗主按钮和背景糊在一起 */
+    --brand: #46b98d;
+    --brand-strong: #63d0a5;
+    --brand-wash: #12261f;
+    --on-brand: #08130f;
 
     /* 暗色下蒙版要更透一点，否则压在深色正文上会糊成一团 */
     --mark-yellow: rgba(250, 204, 21, 0.26);
@@ -786,8 +837,10 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn:disabled:hover { border-color: var(--border-strong); color: var(--text-2); }
 .btn svg { width: 15px; height: 15px; flex: none; }
-.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
-.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
+/* ⚠️ **主按钮是墨绿，不是黑。** 黑留给「你在这儿」，绿是「你该点这儿」——
+   两件事同一个颜色的话，一屏上最重的那块又变成了信息量最低的那件事。 */
+.btn-primary { background: var(--brand); color: var(--on-brand); border-color: var(--brand); font-weight: 600; }
+.btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); color: var(--on-brand); }
 /* ⚠️ **侧栏这颗退成描边，不再是第二块实心黑。**
    一屏两颗实心主按钮（侧栏「收集」+ 正文区「新建内容」）时，
    「哪个才是这一页要我做的事」得靠读字判断——而实心黑的全部作用就是免掉这一次判断。
@@ -1112,13 +1165,15 @@ html[data-scroll-lock] .main { overflow: hidden; }
  * 谁带上这个属性谁就跟着变色：状态圆点、下拉里的状态图标、以后列表行的状态记号。
  * 名字 ↔ 色调的判据在 `ui.jsx` 的 `stateTone`（和 `stateIcon` 同序的第二张表）。
  */
-[data-tone="backlog"] { --tone: var(--st-backlog); }
-[data-tone="todo"]    { --tone: var(--st-todo); }
-[data-tone="doing"]   { --tone: var(--st-doing); }
-[data-tone="review"]  { --tone: var(--st-review); }
-[data-tone="done"]    { --tone: var(--st-done); }
-[data-tone="cancel"]  { --tone: var(--st-cancel); }
-[data-tone="urgent"]  { --tone: var(--st-urgent); }
+/* ⚠️ **每一档要同时给 `--tone`（图标/圆点）和 `--tone-ink`（文字）两个值。**
+   只给前者的表现是那一档 pill 的字色回落到继承值——看着只是「颜色有点淡」，不像出错。 */
+[data-tone="backlog"] { --tone: var(--st-backlog); --tone-ink: var(--st-backlog-ink); }
+[data-tone="todo"]    { --tone: var(--st-todo);    --tone-ink: var(--st-todo-ink); }
+[data-tone="doing"]   { --tone: var(--st-doing);   --tone-ink: var(--st-doing-ink); }
+[data-tone="review"]  { --tone: var(--st-review);  --tone-ink: var(--st-review-ink); }
+[data-tone="done"]    { --tone: var(--st-done);    --tone-ink: var(--st-done-ink); }
+[data-tone="cancel"]  { --tone: var(--st-cancel);  --tone-ink: var(--st-cancel-ink); }
+[data-tone="urgent"]  { --tone: var(--st-urgent);  --tone-ink: var(--st-urgent-ink); }
 /* 下拉里的状态图标走描边，所以吃的是 color 不是 background */
 svg[data-tone] { color: var(--tone); }
 
@@ -2643,6 +2698,100 @@ kbd {
 }
 .search-box__clear:hover { background: var(--text-3); color: var(--surface); }
 .search-box__clear svg { width: 11px; height: 11px; }
+
+
+/* ==========================================================================
+   2026-08 第三轮加的三件组件语汇：状态 pill / 进度条 / 卡片
+   取舍写在 docs/design-system.md「一个强调色 + 一组状态色」和「什么时候用卡片」两节
+   ========================================================================== */
+
+/**
+ * 状态 pill。⚠️ **图标不能省** —— 形状是主编码，颜色只让它跳出来，不辨色一样能用。
+ * 底是 `--tone` 混出来的淡层，字是另配的 `--tone-ink`（见 token 那儿的注释）。
+ */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  height: 22px; padding: 0 9px 0 7px; border-radius: var(--r-pill);
+  font-size: var(--fs-xs); font-weight: 550; line-height: 1; white-space: nowrap;
+  background: color-mix(in srgb, var(--tone, var(--text-3)) 14%, var(--surface));
+  color: var(--tone-ink, var(--text-2));
+}
+.pill svg { width: 13px; height: 13px; flex: none; }
+.pill.pill-lg { height: 26px; padding: 0 11px 0 9px; font-size: var(--fs-sm); }
+
+/**
+ * 进度条。填充是墨绿——**进度属于「进展」，那是墨绿管的三件事之一**。
+ * ⚠️ 百分比数字要跟着：没有数字的进度条只能读出「大概过半」。
+ */
+.meter { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.meter__track {
+  flex: 1 1 auto; min-width: 40px; height: 6px; border-radius: var(--r-pill);
+  background: var(--border); overflow: hidden;
+}
+.meter__track i { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
+.meter b {
+  flex: none; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * 卡片。**只给「要动手的少数」用**（≤4 张），全集一律走列表行——
+ * 判据和上限写在 design-system 的「什么时候用卡片，什么时候用条目」。
+ *
+ * ⚠️ **叫 `.act-card` 不叫 `.card`。** `.card` 早就被占了（上面那条 `.card, .panel`
+ * 的面板底、Loading 骨架、数据页两个录入表单）。第一版就叫了 `.card`，
+ * 后果是那三处**全部变成了可点的悬停卡片**——而 CSS 不会为此报任何错。
+ * 和 `.chip` 定义两遍、看板不能叫 `.board` 是同一类事故。
+ *
+ * ⚠️ **外壳不是按钮**：里面有真按钮，button 套 button 是非法结构。
+ * 整卡点击留着（那是鼠标的便利，不需要 role 也成立）。
+ */
+.act-card {
+  position: relative; display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 16px 14px; min-width: 0; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); color: inherit; cursor: pointer;
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease), transform 0.14s var(--ease);
+}
+.act-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+/* 「先做这一件」那张：描边加重一档。**不涂底色**——白底 + 彩色状态元素是这一版的基调 */
+.act-card[data-lead] { border-color: var(--text-3); }
+.act-card__top { display: flex; align-items: center; gap: 8px; }
+.act-card__top time { margin-left: auto; flex: none; font-size: var(--fs-xs); color: var(--text-3); }
+.act-card__title {
+  font-size: var(--fs-lg); font-weight: 650; line-height: 1.35; letter-spacing: -0.015em;
+  color: var(--text-1); margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.7em;   /* ⚠️ 固定两行高，否则一排卡片下面每一行都落在不同高度 */
+}
+.act-card__note {
+  font-size: var(--fs-sm); line-height: 1.6; color: var(--text-2); margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.6em;
+}
+/* 阻塞：这一版**唯一**用红的地方，和它原来在项目卡上的用法一致 */
+.act-card__warn {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 7px 9px; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--danger); font-size: var(--fs-xs); line-height: 1.5;
+}
+.act-card__warn svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+/* 底部动作条：贴底出血，和卡片其余部分用一条线分开 */
+.act-card__foot {
+  display: flex; align-items: center; gap: 10px; margin: auto -16px -14px;
+  padding: 11px 16px; border-top: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--text-2);
+}
+.act-card__foot b { font-weight: 600; color: var(--text-1); }
+.act-card__go {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--brand);
+}
+.act-card:hover .act-card__go { color: var(--brand-strong); }
+.act-card__go svg { width: 15px; height: 15px; }
+/* 一排卡片 */
+.act-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 
 /* ==========================================================================
    浏览层：**列表行**，不是卡片墙

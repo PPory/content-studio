@@ -1148,8 +1148,20 @@ try {
    * 「新稿」——而它们点下去是**同一个调用**（`onCreate("choose")`）。
    * 看到两颗的人第一反应是去猜区别，而答案是没有区别。
    */
-  const primaries = await page.$$eval(".main .btn-primary", (els) => els.map((e) => e.textContent.trim()));
-  check("一屏只有一颗实心黑主按钮", primaries.length <= 1, primaries.join("/") || "(一颗都没有)");
+  const primaries = await page.$$eval(".main .btn-primary", (els) =>
+    els.map((e) => ({ text: e.textContent.trim(), bg: getComputedStyle(e).backgroundColor }))
+  );
+  check("主操作一屏只有一颗", primaries.length <= 1, primaries.map((p) => p.text).join("/") || "(一颗都没有)");
+  /**
+   * ⚠️ **顺带钉住颜色：`.btn-primary` 是墨绿不是黑。**
+   * 黑管「你在这儿」，绿管「你该点这儿」——同一个颜色的话，
+   * 一屏上最重的那块又变回了信息量最低的那件事。
+   * 量的是**渲染后的颜色**，不是「样式表里写了 var(--brand)」。
+   */
+  if (primaries.length) {
+    const [r, g, b] = (primaries[0].bg.match(/[\d.]+/g) || []).map(Number);
+    check("主按钮是墨绿不是黑", g > r && g > b && g > 40, primaries[0].bg);
+  }
 
   if (workerReady) {
     await page.waitForSelector(".kanban-col, .doc-row, .empty, .note-title", { timeout: 25000 });
@@ -1189,24 +1201,38 @@ try {
     }
 
 
-    await page.click('.seg button:has-text("看板")');
-    await page.waitForSelector(".kanban-col", { timeout: 8000 });
-    const cols = await page.$$eval(".kanban-col__name", (els) => els.map((e) => e.textContent.trim()));
-    check("看板按状态分列", cols.includes("待写") && cols.includes("撰写中"), cols.join("/"));
-    check("每列都有计数", (await page.$$(".kanban-col__count")).length === cols.length, `${cols.length} 列`);
-    // 「搁置」是成稿全失败的落点，正常永远是空的——空着就不该占一列的宽度。
-    // 但**不能直接删掉**，真掉进去的选题得看得见，所以有内容时它必须出现。
-    const quietCount = await page.$$eval(".kanban-col", (els) =>
-      els.filter((e) => e.getAttribute("aria-label") === "搁置").map((e) => e.querySelectorAll(".kanban-card").length)
-    );
-    check("空的「搁置」不占列，有内容才出现", quietCount.length === 0 || quietCount[0] > 0, quietCount.length ? `有 ${quietCount[0]} 条` : "空着，已隐藏");
-    // 看板的卡片要有摘要，否则它就只是「竖着排的标题列表」，换视图没意义
-    const kanbanNotes = await page.$$eval(".kanban-card__note", (els) => els.length);
-    check("看板卡片带摘要", kanbanNotes > 0, `${kanbanNotes} 张有摘要`);
-    // 看板天生是横向的，不该被正文栏的 1320 上限切掉
-    const wide = await page.$eval(".main", (el) => getComputedStyle(el).maxWidth);
-    check("看板下正文栏放开宽度限制", wide === "none", wide);
-    await shot("board");
+    /**
+     * ⚠️ **看板这一段只在真有条目时才验。**
+     * 上一版直接 `waitForSelector(".kanban-col")`，而库里一条「待写」都没有的那天，
+     * 它等满 30 秒然后把**后面整条流水线一起中断**——报出来的是一句超时，
+     * 和「看板坏了」长得一模一样。这正是「别写死某一种外部状态」那条：
+     * 写死的话外部一变测试就红，而红着的测试等于没有测试。
+     *
+     * **跳过要出声**：显式记一条，不能静默 return——那样报告全绿而这一段根本没跑。
+     */
+    const hasTopicRows = (await page.$$(".doc-row")).length > 0;
+    if (!hasTopicRows) {
+      check("选题库这会儿是空的，看板这一段跳过", true, "0 条 · 有条目时才验得了分列");
+    } else {
+      await page.click('.seg button:has-text("看板")');
+      await page.waitForSelector(".kanban-col", { timeout: 8000 });
+      const cols = await page.$$eval(".kanban-col__name", (els) => els.map((e) => e.textContent.trim()));
+      check("看板按状态分列", cols.includes("待写") && cols.includes("撰写中"), cols.join("/"));
+      check("每列都有计数", (await page.$$(".kanban-col__count")).length === cols.length, `${cols.length} 列`);
+      // 「搁置」是成稿全失败的落点，正常永远是空的——空着就不该占一列的宽度。
+      // 但**不能直接删掉**，真掉进去的选题得看得见，所以有内容时它必须出现。
+      const quietCount = await page.$$eval(".kanban-col", (els) =>
+        els.filter((e) => e.getAttribute("aria-label") === "搁置").map((e) => e.querySelectorAll(".kanban-card").length)
+      );
+      check("空的「搁置」不占列，有内容才出现", quietCount.length === 0 || quietCount[0] > 0, quietCount.length ? `有 ${quietCount[0]} 条` : "空着，已隐藏");
+      // 看板的卡片要有摘要，否则它就只是「竖着排的标题列表」，换视图没意义
+      const kanbanNotes = await page.$$eval(".kanban-card__note", (els) => els.length);
+      check("看板卡片带摘要", kanbanNotes > 0, `${kanbanNotes} 张有摘要`);
+      // 看板天生是横向的，不该被正文栏的 1320 上限切掉
+      const wide = await page.$eval(".main", (el) => getComputedStyle(el).maxWidth);
+      check("看板下正文栏放开宽度限制", wide === "none", wide);
+      await shot("board");
+    }
 
     // **闸门必须拦住写入**。这条守的是一个真事故：`askPlatformsOn` 只写进了 TOPICS 的配置、
     // 漏了 `notionSource()` 的参数解构，于是 `source.askPlatformsOn` 恒为 undefined，
@@ -1248,7 +1274,22 @@ try {
     await page.click('.seg button:has-text("列表")');
     await page.waitForSelector(".doc-row, .empty", { timeout: 8000 });
     const n = await page.$$eval(".doc-row", (els) => els.length);
-    check("选题列表出条目", n > 0, `${n} 条`);
+    /**
+     * ⚠️ **二选一：出条目，或者出一句说清「是哪一档空了」的空态。**
+     *
+     * 写死「一定有条目」的那一版，在库里 5 条选题全都不在**默认那一档**（待写）的那天红了——
+     * 而那不是坏，是真实的库状态。进选题库默认落在「待写」是用户点名要的，
+     * 空态本来就该出现。
+     *
+     * 但空态**必须说清是哪一档空了**（「没有『待写』的条目」），不能只说「暂无数据」——
+     * 否则用户看到的是「我的选题库空了」，而其实只是被默认筛选挡住了。
+     */
+    const emptyText = n ? "" : (await page.textContent(".empty").catch(() => "")).trim();
+    check(
+      "选题列表出条目，或空态说清是哪一档空的",
+      n > 0 || /待写/.test(emptyText),
+      n > 0 ? `${n} 条` : `0 条 · 空态说「${emptyText.slice(0, 20)}」`
+    );
     if (n > 0) {
       const stateChips = await page.$$eval(".chips-sm .chip", (els) => els.map((e) => e.textContent.trim()));
       check("状态筛选条", stateChips.includes("待写") && stateChips.includes("撰写中"), stateChips.join("/"));
