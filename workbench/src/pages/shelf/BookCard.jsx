@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from "react";
 import { Cover } from "../../components/Cover.jsx";
-import { IconBook2, IconBookmark, IconCheck, IconChevronRight, IconFileText, IconListDetails, IconPhoto, IconTrash } from "../../components/icons.jsx";
+import { IconBook2, IconBookmark, IconCheck, IconChevronRight, IconFileText, IconListDetails, IconPhoto, IconTrash, IconX } from "../../components/icons.jsx";
 import { bookProgress, pct, readingOf } from "../../lib/reading.js";
 import { stateTone } from "../../components/ui.jsx";
 
@@ -38,44 +38,6 @@ export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
   }, [book, saved]);
   const done = progress != null && progress >= 0.995;
 
-  /**
-   * 下架的二次确认。
-   *
-   * ⚠️ **它盖在这一格上，不换成另一种东西。** 上一版是整张卡换成一条
-   * `grid-column: 1 / -1` 的横条——**点一下删除，整面墙当场重排**：后面的书全部
-   * 挪位置，而你要删的那本从原地消失、变成一条横在中间的长条。
-   * 你只是想删一本书，不该换来一次「这一页怎么了」。
-   *
-   * 现在这一格的尺寸一个像素都不变，确认就发生在**那本书原来待的地方**。
-   */
-  const confirmLayer = confirm ? (
-    <div className="book-card__confirm" onClick={(e) => e.stopPropagation()}>
-      <strong>下架这本书？</strong>
-      {/* **写清东西去哪**，不写「确定吗」。批注也跟着走，这一句不能省 */}
-      <span>
-        正文和你写的批注一起移到 vault 的 <code>.trash/</code>，在 Obsidian 的废纸篓里能找回来。
-      </span>
-      <div className="book-card__confirm-acts">
-        <button
-          className="btn btn-sm btn-danger"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await onTrash();
-            } finally {
-              setBusy(false);
-              setConfirm(false);
-            }
-          }}
-        >
-          {busy ? "处理中…" : "移到废纸篓"}
-        </button>
-        <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
-      </div>
-    </div>
-  ) : null;
-
   return (
     /**
      * **卡片外壳不是按钮。**
@@ -90,21 +52,67 @@ export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
      * 那个真按钮**（书名 + 元信息那一整块）。整卡点击留着——那是鼠标的便利，
      * 不需要 role 也成立；`.book-card__del` / `__coverbtn` 于是成了它的兄弟而不是子孙。
      */
-    /* ⚠️ 确认层开着时整卡点击要失效：不掐的话，点「取消」旁边一点就把书打开了 */
+    /* ⚠️ 确认开着时整卡点击要失效：不掐的话，点「取消」旁边一点就把书打开了 */
     <div className="book-card" data-confirm={confirm ? "" : undefined} onClick={confirm ? undefined : onOpen}>
-      {confirmLayer}
+      {/**
+        * 下架：**点两下，第二下就在第一下那个位置上。**
+        *
+        * ⚠️ 试过两版更大的确认，都撤了：
+        *   1. 整张卡换成 `grid-column: 1 / -1` 的横条——点一下删除**整面墙当场重排**，
+        *      要删的那本从原地消失、变成一条横在中间的长条。
+        *   2. 一张盖住整格的确认卡——墙不动了，但封面和书名被整个遮掉，
+        *      而你要确认的正是「是不是这一本」。
+        * 现在垃圾桶原地展开成两颗按钮，**封面一直看得见**。
+        *
+        * ⚠️ **那句「正文和批注一起进 .trash/、能找回来」在这儿放不下，是有意省的。**
+        * 这个尺寸里要么放不下、要么把封面盖掉（就是上面第 2 版）。三重保护还在：
+        * 要点两下、按钮上**写清东西去哪**（不写「确定吗」）、回执 toast 带撤销。
+        * 完整那句留在书详情那一层的下架确认里。
+        */}
       {onTrash ? (
-        <button
-          className="icon-btn book-card__del"
-          title="下架这本书"
-          aria-label={`下架《${book.name}》`}
-          onClick={(e) => {
-            e.stopPropagation();   // 不然点删除会顺手把书打开
-            setConfirm(true);
-          }}
-        >
-          <IconTrash size={14} stroke={1.7} aria-hidden="true" />
-        </button>
+        confirm ? (
+          <span className="book-card__del book-card__del--confirm" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="book-card__del-go"
+              disabled={busy}
+              title={`《${book.name}》的正文和你写的批注一起移到 vault 的 .trash/，在 Obsidian 的废纸篓里能找回来`}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onTrash();
+                } finally {
+                  setBusy(false);
+                  setConfirm(false);
+                }
+              }}
+            >
+              {busy ? "处理中…" : "移到废纸篓"}
+            </button>
+            <button
+              type="button"
+              className="icon-btn book-card__del-no"
+              title="取消"
+              aria-label="取消下架"
+              disabled={busy}
+              onClick={() => setConfirm(false)}
+            >
+              <IconX size={13} stroke={2} aria-hidden="true" />
+            </button>
+          </span>
+        ) : (
+          <button
+            className="icon-btn book-card__del"
+            title="下架这本书"
+            aria-label={`下架《${book.name}》`}
+            onClick={(e) => {
+              e.stopPropagation();   // 不然点删除会顺手把书打开
+              setConfirm(true);
+            }}
+          >
+            <IconTrash size={14} stroke={1.7} aria-hidden="true" />
+          </button>
+        )
       ) : null}
       {/**
         * **封面本身是「打开这本书」，换封面是压在角上的一个小按钮。**

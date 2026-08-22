@@ -2557,7 +2557,7 @@ try {
     const cellBefore = await cell(mdBook);
     const wallBefore = await page.$$eval(".bookshelf .book-card", (els) => els.map((e) => `${e.offsetLeft},${e.offsetTop}`));
     await page.click(`.book-card:has-text("${mdBook}") .book-card__del`);
-    await page.waitForSelector(".book-card__confirm", { timeout: 4000 });
+    await page.waitForSelector(".book-card__del--confirm", { timeout: 4000 });
     const after = await cell(mdBook);
     const wallAfter = await page.$$eval(".bookshelf .book-card", (els) => els.map((e) => `${e.offsetLeft},${e.offsetTop}`));
     check(
@@ -2566,9 +2566,37 @@ try {
       `${cellBefore.w}×${cellBefore.h}@${cellBefore.x},${cellBefore.y} → ${after.w}×${after.h}@${after.x},${after.y}`
     );
     check("确认时整面墙不重排", wallAfter.join(" ") === wallBefore.join(" "), `${wallBefore.length} 张卡都没挪`);
-    const trashText = await page.textContent(".book-card__confirm").catch(() => "");
-    check("下架要二次确认且说清去哪", trashText.includes(".trash") && trashText.includes("批注"), trashText.replace(/\s+/g, " ").slice(0, 46));
-    await page.click('.book-card__confirm button:has-text("移到废纸篓")');
+    /**
+     * ⚠️ **确认时这一格上只剩两条路：删，或者取消。**
+     * 封面上那三颗（接着读 / 查看章节 / 加封面）各自 `stopPropagation` 自己带路，
+     * 掐掉整卡点击拦不住它们——留着的话，一个「你确定要删这本书吗」的时刻，
+     * 屏幕上同时还有三个会**打开**这本书的入口。
+     */
+    const live = await page.evaluate((n) => {
+      const card = [...document.querySelectorAll(".book-card")].find((x) => x.textContent.includes(n));
+      return [...card.querySelectorAll("button")]
+        .filter((b) => b.offsetParent !== null && getComputedStyle(b).pointerEvents !== "none")
+        .map((b) => (b.textContent.trim() || b.getAttribute("aria-label") || "?").slice(0, 8));
+    }, mdBook);
+    check("确认时这一格上只剩删和取消两条路", live.length === 2, live.join("/"));
+    // ⚠️ **书名要「显示但点不动」，不能藏**——藏掉就看不出在删哪一本，而那正是要确认的
+    const nameVisible = await page.evaluate((n) => {
+      const card = [...document.querySelectorAll(".book-card")].find((x) => x.textContent.includes(n));
+      const el = card.querySelector(".book-card__open");
+      return { shown: !!el && el.offsetParent !== null, dead: el && getComputedStyle(el).pointerEvents === "none" };
+    }, mdBook);
+    check("确认时书名还看得见但点不动", nameVisible.shown && nameVisible.dead, `显示=${nameVisible.shown} 点不动=${nameVisible.dead}`);
+    const trashText = await page.textContent(".book-card__del--confirm").catch(() => "");
+    /**
+     * ⚠️ **按钮上的字要写清东西去哪**，不写「确定吗」。
+     * 完整那句（正文 + 批注一起进 `.trash/`、能找回来）在 25px 的角标里放不下，
+     * 挂在 `title` 上；书详情那一层的下架确认里是完整写出来的。
+     * 三重保护仍在：要点两下、按钮写清去哪、回执 toast 带撤销。
+     */
+    const trashTip = await page.getAttribute(".book-card__del-go", "title");
+    check("下架按钮上写清去哪", /废纸篓/.test(trashText), trashText.replace(/\s+/g, " ").slice(0, 24));
+    check("完整说明没丢，挂在提示里", /\.trash/.test(trashTip || "") && /批注/.test(trashTip || ""), (trashTip || "").slice(0, 40));
+    await page.click(".book-card__del-go");
     await page.waitForTimeout(1500);
     check("下架后书架上没了", !(await page.$(`.book-card:has-text("${mdBook}")`)));
     check("下架是移进 .trash 不是删掉", fs.readdirSync(path.join(VAULT_ROOT, ".trash")).some((n) => n.includes(mdBook)));

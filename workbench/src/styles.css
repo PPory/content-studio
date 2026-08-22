@@ -3870,33 +3870,49 @@ kbd {
 }
 .book-card:hover .book-card__del, .book-card__del:focus-visible { opacity: 1; }
 .book-card__del:hover { border-color: var(--danger); color: var(--danger); }
-/* 下架确认仍然是一张**横向的实卡**：这个动作连着批注一起走，值得占满注意力，
-   不能挤在 132px 的封面位里。所以把上面撤掉的边框和内边距在这一支补回来。 */
 /**
- * 下架的二次确认：**盖在这一格上**，格子尺寸一个像素都不变。
+ * 下架的二次确认：**就在垃圾桶那个位置上原地展开**，封面一直看得见。
  *
- * ⚠️ 上一版是 `grid-column: 1 / -1` 的整行横条——**点一下删除，整面墙当场重排**：
- * 后面的书全部挪位置，而要删的那本从原地消失、变成一条横在中间的长条。
- * 你只是想删一本书，不该换来一次「这一页怎么了」。
+ * ⚠️ 试过两版更大的，都撤了：
+ *   1. 整张卡换成 `grid-column: 1 / -1` 的横条——点一下删除**整面墙当场重排**，
+ *      要删的那本从原地消失、变成一条横在中间的长条。
+ *   2. 一张盖住整格的确认卡——墙不动了，但**封面和书名被整个遮掉**，
+ *      而你要确认的正是「是不是这一本」。
  *
- * 盖的是**整格**（封面 + 书名 + 作者）不只是封面：那句「批注也跟着走」是这个动作里
- * 最要紧的一句，挤在 135×190 的封面里放不下，而它一个字都不能省。
+ * 所以它只是那颗 25px 圆钮长出来的一条：`top`/`right` 和垃圾桶完全一样，向左延展。
+ * **第二下就落在第一下那个位置附近**，手不用挪。
  */
 .book-card[data-confirm] { cursor: default; }
 .book-card[data-confirm] .cover { transform: none; }
-.book-card__confirm {
-  position: absolute; inset: -8px; z-index: 8; cursor: default;
-  display: flex; flex-direction: column; justify-content: center; gap: 8px;
-  padding: 12px; border-radius: var(--r-md);
-  border: 1px solid var(--danger); background: var(--surface); box-shadow: var(--shadow);
+/**
+ * ⚠️ **确认时把封面上其余能点的东西全藏掉**（接着读 / 查看章节 / 加封面）。
+ * 整卡点击已经掐了，但这三颗各自 `stopPropagation` 自己带路——留着的话，
+ * 一个「你确定要删这本书吗」的时刻，屏幕上同时还有三个会**打开**这本书的入口。
+ * 藏掉之后这一格上只剩两条路：删，或者取消。
+ *
+ * ⚠️ **书名那颗是「显示但点不动」，不能藏。** 它也会打开这本书，但藏掉的话
+ * 你就看不出在删哪一本了——而那正是这一刻要确认的事。
+ */
+.book-card[data-confirm] .book-card__ov,
+.book-card[data-confirm] .book-card__coverbtn { display: none; }
+.book-card[data-confirm] .book-card__open { pointer-events: none; }
+.book-card__del--confirm {
+  display: flex; align-items: center; gap: 3px;
+  width: auto; height: 26px; padding: 0 3px 0 0;
+  opacity: 1; border-radius: var(--r-pill);
+  border: 1px solid var(--danger); background: var(--surface); box-shadow: var(--shadow-sm);
 }
-.book-card__confirm strong { font-size: var(--fs-base); font-weight: 650; line-height: 1.35; }
-/* 说明文字**不许缩到 13px 以下**：这是「操作说明」类，那条下限在这儿同样成立 */
-.book-card__confirm span { font-size: var(--fs-base); line-height: 1.6; color: var(--text-2); }
-.book-card__confirm code { font-size: var(--fs-sm); }
-/* 按钮竖排：135px 宽里并排放不下，挤成两行字更难读 */
-.book-card__confirm-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-.book-card__confirm-acts .btn { justify-content: center; }
+.book-card__del-go {
+  height: 20px; padding: 0 9px; border: 0; border-radius: var(--r-pill); cursor: pointer;
+  font: inherit; font-size: var(--fs-xs); font-weight: 600; white-space: nowrap;
+  background: var(--danger); color: #fff;
+}
+.book-card__del-go:disabled { opacity: 0.7; cursor: default; }
+.book-card__del-no {
+  width: 20px; height: 20px; flex: none;
+  border-color: transparent; background: none; color: var(--text-3);
+}
+.book-card__del-no:hover { color: var(--text-1); }
 
 /* 抬起的是封面，不是整张卡——文字跟着动会让一排书名上下抖 */
 .book-card:hover .cover { transform: translateY(-3px); box-shadow: var(--shadow); }
