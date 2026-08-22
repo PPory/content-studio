@@ -2813,13 +2813,17 @@ kbd {
   color: var(--danger); font-size: var(--fs-xs); line-height: 1.5;
 }
 .act-card__warn svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
-/* 底部动作条：贴底出血，和卡片其余部分用一条线分开 */
+/**
+ * 底部一行：**进度 + 下一步**。
+ * ⚠️ 上一版是「一道分隔线 + 一整条 48px 的出血动作区」，装的只有一句
+ * 「下一步 · 去处理」——一张卡因此高出快五十像素，三张竖排就是一屏半。
+ * 现在和进度条并成一行，不画线也不出血。
+ */
 .act-card__foot {
-  display: flex; align-items: center; gap: 10px; margin: auto -16px -14px;
-  padding: 11px 16px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; margin-top: auto;
   font-size: var(--fs-sm); color: var(--text-2);
 }
-.act-card__foot b { font-weight: 600; color: var(--text-1); }
+.act-card__foot .meter { flex: 1 1 auto; min-width: 0; }
 /* ⚠️ 这颗是**真 button**（键盘要够得着），但**不该长得像个按钮**：
    卡片上最重的已经是标题和进度，底部这一行是「下一步是什么」，
    给它画个框会让一排三张卡的底部出现三个抢眼的方块。所以退成一行绿字 + 箭头。 */
@@ -2830,6 +2834,9 @@ kbd {
 }
 .act-card__go:disabled { color: var(--text-3); cursor: default; }
 .act-card__go:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
+/* 按钮上写的是 `nextAction` 本身（「去排版发布」），长短不一，要能截断而不撑破那一行 */
+.act-card__go { margin-left: auto; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-card__go svg { flex: none; }
 .act-card:hover .act-card__go { color: var(--brand-strong); }
 .act-card__go svg { width: 15px; height: 15px; }
 /* 一排卡片 */
@@ -3325,7 +3332,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* ---------- 每周发布量：堆叠柱 ----------
    为什么不是折线：发布量是整数、量级只有 0~4，折线会在 1 和 2 之间画斜线，
    等于宣称「周三发了 1.5 篇」——那个数不存在。 */
-.bars__plot { display: flex; align-items: flex-end; gap: 10px; }
+/* 默认高度；首页那张图把它换成「填满剩下的」，柱高是按百分比算的所以跟着走 */
+.bars { --bars-h: 168px; }
+.bars__plot { display: flex; align-items: flex-end; gap: 10px; height: var(--bars-h); }
 .bars__col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; height: 100%; }
 .bars__value { font-family: var(--font-display); font-size: var(--fs-base); color: var(--text-1); line-height: 1; }
 .bars__value[data-zero] { color: var(--text-3); }
@@ -3784,10 +3793,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * 那些占位一个都不解决问题，只是让每张卡凭空高出三四十像素：
  * 三张加起来比右边那张图高一倍，而它们说的是同一个问题的两半。
  */
-.today-split .act-card { gap: 7px; padding: 13px 14px 12px; }
+.today-split .act-card { gap: 6px; padding: 12px 14px; }
 .today-split .act-card__title { min-height: 0; font-size: var(--fs-base); }
 .today-split .act-card__note { min-height: 0; -webkit-line-clamp: 1; }
-.today-split .act-card__foot { margin: 4px -14px -12px; padding: 9px 14px; }
 @media (max-width: 1080px) { .today-split { grid-template-columns: minmax(0, 1fr); } }
 
 .today-chart {
@@ -3813,7 +3821,13 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   font-size: var(--fs-sm); color: var(--text-3); line-height: 1.7;
 }
 /* 图撑开剩下的高度，图例和「看数字」压到底——两栏底边才齐 */
-.today-chart .bars { display: flex; flex-direction: column; flex: 1 1 auto; }
+/**
+ * ⚠️ **首页这张图要吃满它那一栏的高度**：柱区 `flex: 1`，图例贴底。
+ * 写死 168px 的那一版，左边三张卡比它高一截，右边下半屏是空的——
+ * 而这两栏是同一个问题的两半，右边短一截时看着像还没加载完。
+ */
+.today-chart .bars { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.today-chart .bars__plot { flex: 1 1 auto; height: auto; min-height: 132px; }
 .today-chart .bars__legend, .today-chart .bars__foot { margin-top: auto; }
 
 /* ── 最近发了什么 ─────────────────────────────────────────────────── */

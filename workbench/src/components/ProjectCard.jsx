@@ -37,6 +37,7 @@ export function ProjectCard({ project, onOpen, lead = false }) {
   const canOpen = !!projectOpenTarget(project);
   const blockers = Array.isArray(project.blockers) ? project.blockers : [];
   const title = project.title || "未命名内容";
+  const note = (project.stageReason || "").trim();
 
   return (
     /**
@@ -56,9 +57,15 @@ export function ProjectCard({ project, onOpen, lead = false }) {
 
       <h3 className="act-card__title" title={title}>{title}</h3>
 
-      {/* ⚠️ 没有 stageReason 也要占高（`.act-card__note` 有 min-height），
-          不占的话一排卡片里下面每一行都落在不同高度，扫的时候眼睛得上下找 */}
-      <p className="act-card__note">{project.stageReason || ""}</p>
+      {/**
+        * ⚠️ 没有 stageReason 也要占高（`.act-card__note` 有 min-height），
+        * 不占的话一排卡片里下面每一行都落在不同高度，扫的时候眼睛得上下找。
+        *
+        * ⚠️ **但它和下面那条阻塞常常是同一句话**（「缺少目标读者」既是卡住的原因、
+        * 也是要解决的那件事），照直画就是同一句话在一张卡上印两遍——
+        * 一遍灰字一遍红框，看着像界面出了什么错。重了就让阻塞那条说，它带下一步。
+        */}
+      <p className="act-card__note">{note === blockers[0] ? "" : note}</p>
 
       {/**
         * 阻塞：这张卡上**唯一**用红的地方。只显示第一条——
@@ -70,14 +77,21 @@ export function ProjectCard({ project, onOpen, lead = false }) {
           <IconAlertTriangle aria-hidden="true" stroke={1.8} />
           <span>{blockers[0]}</span>
         </div>
-      ) : (
-        <Meter value={stageProgress(project.stage)} label={`${title} 的进度`} />
-      )}
+      ) : null}
 
+      {/**
+        * ⚠️ **进度和动作合成一行，不再是一条出血的底栏。**
+        * 上一版底部是「一道分隔线 + 一整条 48px 的动作区」，而它装的只有一句
+        * 「下一步 · 去处理」——一张卡因此高出快五十像素，三张竖排就是一屏半。
+        *
+        * ⚠️ **按钮上写的是 `nextAction` 本身，不是「去处理」。**
+        * 「去处理」是个泛指，读完还得往左看一眼才知道要去干嘛；
+        * 而「去排版发布」「继续写作」自己就说完了。按钮上的字要说清会发生什么。
+        */}
       <div className="act-card__foot">
-        <b>{project.nextAction || "检查项目状态"}</b>
+        <Meter value={blockers.length ? null : stageProgress(project.stage)} label={`${title} 的进度`} />
         {/**
-          * ⚠️ **这里必须是一颗真 button，不能退成 `<span>` 靠整卡点击。**
+          * ⚠️ **必须是一颗真 button，不能退成 `<span>` 靠整卡点击。**
           * 整卡 onClick 只是**鼠标**的便利；写成 span 的话键盘用户根本打不开这个项目，
           * 而屏幕上什么都看不出来。外壳仍然不是 button（button 套 button 非法结构）。
           */}
@@ -85,13 +99,13 @@ export function ProjectCard({ project, onOpen, lead = false }) {
           type="button"
           className="act-card__go"
           disabled={!canOpen}
-          aria-label={`打开：${title}`}
+          aria-label={`${project.nextAction || "打开"}：${title}`}
           onClick={(e) => {
             e.stopPropagation();   // 不然整卡那一层会再触发一次
             onOpen?.();
           }}
         >
-          去处理
+          {project.nextAction || "检查项目状态"}
           <IconArrowRight stroke={1.9} aria-hidden="true" />
         </button>
       </div>

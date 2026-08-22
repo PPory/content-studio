@@ -11,10 +11,15 @@ import { useState } from "react";
 import { platformColor } from "./TrendChart.jsx";
 import { IconTable } from "./icons.jsx";
 
+/**
+ * 柱顶那个数字 + 底下那行周次 + 两道 gap 一共占掉的高度。
+ * 柱子本身只能用**剩下**的那截，所以是 `calc((100% - CHROME) * 比例)`。
+ */
+const CHROME = 46;
+
 export function WeeklyBars({ weeks, platforms, dark }) {
   const [table, setTable] = useState(false);
   const max = Math.max(1, ...weeks.map((w) => w.total));
-  const H = 168;
 
   return (
     <div className="bars">
@@ -44,11 +49,17 @@ export function WeeklyBars({ weeks, platforms, dark }) {
           </table>
         </div>
       ) : (
-        <div className="bars__plot" style={{ height: H }}>
+        /**
+          * ⚠️ **高度由 CSS 给，不写死在 JS 里。**
+          * 写死 168px 的后果是首页那张图**填不满它那一栏**——左边三张卡多高，
+          * 这一栏就多高，而柱子只占上面一截，下面空出一大片，看着像还没加载完。
+          * 柱高改成按百分比算之后，它给多高就画多高（`--bars-h` 是默认值）。
+          */
+        <div className="bars__plot">
           {weeks.map((w) => (
             <div key={w.key} className="bars__col" title={`${w.label}：${w.total} 篇`}>
               <span className="bars__value" data-zero={w.total === 0 ? "" : undefined}>{w.total}</span>
-              <div className="bars__stack" style={{ height: `${(w.total / max) * (H - 46)}px` }}>
+              <div className="bars__stack" style={{ height: `calc((100% - ${CHROME}px) * ${w.total / max})` }}>
                 {platforms.map((p) =>
                   w.byPlatform[p] ? (
                     <span

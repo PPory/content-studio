@@ -170,6 +170,19 @@ try {
     return {
       split: !!l && !!r,
       gap: l && r ? Math.abs(Math.round(l.getBoundingClientRect().bottom - r.getBoundingClientRect().bottom)) : -1,
+      /**
+        * ⚠️ **图那一栏不能只在上半截画柱子、下半截空着。**
+        * 柱高一度写死 168px（`WeeklyBars` 里的常量），而这一栏的高度是左边三张卡给的——
+        * 高出来的那一大片就是块空地，看着和「还没加载完」一模一样。
+        * 量的是**柱区底边到图例顶边**的距离：这才是那片空地本身，
+        * 量「柱子有多高」会随数据变，量整栏高度又量不出空的是哪一段。
+        */
+      dead: (() => {
+        const plot = document.querySelector(".today-chart .bars__plot");
+        const foot = document.querySelector(".today-chart .bars__foot");
+        if (!plot || !foot) return -1;
+        return Math.round(foot.getBoundingClientRect().top - plot.getBoundingClientRect().bottom);
+      })(),
       table: document.querySelectorAll(".rtable__row").length,
       tableHead: [...document.querySelectorAll(".rtable__head span")].map((e) => e.textContent.trim()),
       // ⚠️ 清单撤了：上半部已经全是待办，手写清单是同一屏里的**第三份**待办
@@ -178,6 +191,7 @@ try {
   });
   if (home.split) {
     check("卡片那栏和图那栏底边齐平", home.gap <= 1, `底边差 ${home.gap}px`);
+    if (home.dead >= 0) check("图那一栏里没有一大片空地", home.dead <= 24, `柱区底下空了 ${home.dead}px`);
   }
   check("首屏最下面是一张表，不是第三份待办", home.table > 0 && !home.plan, `${home.table} 行 · ${home.tableHead.join("/")}`);
 
@@ -217,9 +231,23 @@ try {
       pills: cards.filter((c) => c.querySelector(".pill")).length,
       // 每张卡要么给进度、要么给阻塞——两者都没有的话，这张卡只剩标题
       told: cards.filter((c) => c.querySelector(".meter, .act-card__warn")).length,
+      /**
+       * ⚠️ **卡住的原因和那条阻塞常常是同一句话**（「缺少目标读者」既是原因也是要办的事），
+       * 照直画就是同一句话在一张卡上印两遍——一遍灰字一遍红框，看着像界面出了什么错。
+       */
+      echoed: cards.filter((c) => {
+        const n = (c.querySelector(".act-card__note")?.textContent || "").trim();
+        const w = (c.querySelector(".act-card__warn")?.textContent || "").trim();
+        return n && w && n === w;
+      }).length,
       more: document.querySelector(".today-more")?.tagName || "",
-      // 「去处理」得是**真按钮**，键盘要够得着
+      // 那颗动作得是**真按钮**，键盘要够得着
       go: cards.filter((c) => c.querySelector("button.act-card__go")).length,
+      /**
+       * ⚠️ **按钮上写的是下一步本身**（「去排版发布」「继续写作」），不是泛指的「去处理」。
+       * 泛指的那一版读完还得往左看一眼才知道要去干嘛，而按钮上的字要说清会发生什么。
+       */
+      vague: cards.filter((c) => (c.querySelector(".act-card__go")?.textContent || "").trim() === "去处理").length,
     };
   });
   if (todayTop.n) {
@@ -228,7 +256,9 @@ try {
     check("同一行里的卡片等高", todayTop.spread <= 1, `同行高度差 ${todayTop.spread}px`);
     check("每张卡都有状态 pill，且 pill 里有图标", todayTop.pills === todayTop.n && todayTop.pillsWithIcon === todayTop.n, `${todayTop.pillsWithIcon}/${todayTop.n}`);
     check("每张卡要么给进度要么给阻塞", todayTop.told === todayTop.n, `${todayTop.told}/${todayTop.n}`);
-    check("「去处理」是真按钮不是一行字", todayTop.go === todayTop.n, `${todayTop.go}/${todayTop.n}`);
+    check("同一句话不在一张卡上印两遍", todayTop.echoed === 0, `${todayTop.echoed} 张重了`);
+    check("卡片上那颗动作是真按钮不是一行字", todayTop.go === todayTop.n, `${todayTop.go}/${todayTop.n}`);
+    check("按钮上写的是下一步本身，不是「去处理」", todayTop.vague === 0, `${todayTop.vague} 颗写着「去处理」`);
     // ⚠️ 「还有 N 篇」必须**点得动**，否则它只是个说了不算的数字
     check("超出的那几篇收成一句可点的话", !todayTop.more || todayTop.more === "BUTTON", todayTop.more || "(没有超出)");
   } else {

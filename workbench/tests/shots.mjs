@@ -189,7 +189,7 @@ await page.route("**/api/pipe/projects*", (route) => route.fulfill({
 // [文件名, hash, 等这个出现, 进页面后再做点什么]
 const shots = [
   ["today", "/", ".today-focus, .project-setup, .note-danger"],
-  ["content", "/#/content", ".project-lanes, .project-setup, .project-error"],
+  ["content", "/#/content", ".act-cards, .ptable, .project-setup, .project-error"],
   ["discover", "/#/discover", ".discover-grid"],
   ["overview", "/#/overview", ".todo-card, .note-title"],
   ["hot-boards", "/#/hot", ".board, .empty, .note-title"],
