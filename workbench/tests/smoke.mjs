@@ -113,6 +113,59 @@ try {
   check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
   check("默认进入今日", (await page.textContent(".page-title")) === "今天", await page.textContent(".page-title"));
 
+  /**
+   * **今日顶部是三张等大的卡，不是「一张大卡 + 三行小条」。**
+   *
+   * 上一版左边那张 `min-height: 278px` 的卡里只装了三四行字、中段大片留白；
+   * 而右边三条只剩标题和一句「阶段 · 下一步」——**同一批数据在一屏上两种详略**，
+   * 扫的时候得切换两次读法。
+   *
+   * ⚠️ **上限是硬的**：卡片是给「要动手的少数」的，没有上限它就退化成第二个卡片墙，
+   * 而全集本来就在「内容」那一页。超出的收成一句**可点的**「还有 N 篇」。
+   */
+  await page.waitForSelector(".act-card, .today-clear, .project-setup", { timeout: 20000 });
+  const todayTop = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll(".act-card")];
+    const h = cards.map((e) => Math.round(e.getBoundingClientRect().height));
+    return {
+      n: cards.length,
+      lead: document.querySelectorAll(".act-card[data-lead]").length,
+      spread: h.length > 1 ? Math.max(...h) - Math.min(...h) : 0,
+      // pill 里必须有图标：形状是主编码，不辨色一样能用
+      pillsWithIcon: cards.filter((c) => c.querySelector(".pill svg")).length,
+      pills: cards.filter((c) => c.querySelector(".pill")).length,
+      // 每张卡要么给进度、要么给阻塞——两者都没有的话，这张卡只剩标题
+      told: cards.filter((c) => c.querySelector(".meter, .act-card__warn")).length,
+      more: document.querySelector(".today-more")?.tagName || "",
+      // 「去处理」得是**真按钮**，键盘要够得着
+      go: cards.filter((c) => c.querySelector("button.act-card__go")).length,
+    };
+  });
+  if (todayTop.n) {
+    check("今日顶部最多三张卡", todayTop.n <= 3, `${todayTop.n} 张`);
+    check("只有一张是领头的", todayTop.lead === 1, `${todayTop.lead} 张描边`);
+    check("三张卡等高", todayTop.spread <= 1, `高度差 ${todayTop.spread}px`);
+    check("每张卡都有状态 pill，且 pill 里有图标", todayTop.pills === todayTop.n && todayTop.pillsWithIcon === todayTop.n, `${todayTop.pillsWithIcon}/${todayTop.n}`);
+    check("每张卡要么给进度要么给阻塞", todayTop.told === todayTop.n, `${todayTop.told}/${todayTop.n}`);
+    check("「去处理」是真按钮不是一行字", todayTop.go === todayTop.n, `${todayTop.go}/${todayTop.n}`);
+    // ⚠️ 「还有 N 篇」必须**点得动**，否则它只是个说了不算的数字
+    check("超出的那几篇收成一句可点的话", !todayTop.more || todayTop.more === "BUTTON", todayTop.more || "(没有超出)");
+  } else {
+    check("今日没有待推进的项目，顶部卡这一段跳过", true, "空态或未连接");
+  }
+
+  /**
+   * ⚠️ **后台那三个计数从 `views.js` 的 `AUTO_CARDS` 来，不许再抄一份。**
+   * 原来是三行硬编码，跳转目标和那份常量逐字相同——以后往 `AUTO_CARDS` 里加一档，
+   * 这儿会安静地少一个，而谁也不报错。断言的判据是**条数对得上**，不是文案。
+   */
+  const autoN = await page.$$eval(".today-background button", (els) => els.length);
+  if (autoN) {
+    const autoSrc = await fs.promises.readFile(new URL("../src/lib/views.js", import.meta.url), "utf8");
+    const want = (autoSrc.match(/export const AUTO_CARDS = \[([\s\S]*?)\];/)?.[1].match(/\{ key:/g) || []).length;
+    check("后台计数条数跟着 AUTO_CARDS 走", autoN === want, `界面 ${autoN} 个 / 常量 ${want} 条`);
+  }
+
   // 一级任务展开后，稳定目的地直接出现在左栏；不再先进入一张页内中转页。
   await page.click('.nav-item:has-text("内容")');
   await page.waitForSelector(".page-title", { timeout: 8000 });
@@ -1153,14 +1206,15 @@ try {
   );
   check("主操作一屏只有一颗", primaries.length <= 1, primaries.map((p) => p.text).join("/") || "(一颗都没有)");
   /**
-   * ⚠️ **顺带钉住颜色：`.btn-primary` 是墨绿不是黑。**
-   * 黑管「你在这儿」，绿管「你该点这儿」——同一个颜色的话，
-   * 一屏上最重的那块又变回了信息量最低的那件事。
-   * 量的是**渲染后的颜色**，不是「样式表里写了 var(--brand)」。
+   * ⚠️ **顺带钉住颜色：`.btn-primary` 是实心黑，不是墨绿。**
+   * 做过一版墨绿的，撤了：「新建」这类是一页里最该被点的那颗，而黑是这套界面里
+   * 最重的色；墨绿再深也是个彩色，摆在一屏彩色状态 pill 中间就不再是最重的那一块。
+   * **绿说「走到哪儿了」，黑说「点这儿」。**
+   * 量的是**渲染后的颜色**，不是「样式表里写了 var(--accent)」。
    */
   if (primaries.length) {
     const [r, g, b] = (primaries[0].bg.match(/[\d.]+/g) || []).map(Number);
-    check("主按钮是墨绿不是黑", g > r && g > b && g > 40, primaries[0].bg);
+    check("主按钮是实心黑不是彩色", r < 60 && g < 60 && b < 60 && Math.max(r, g, b) - Math.min(r, g, b) < 12, primaries[0].bg);
   }
 
   if (workerReady) {

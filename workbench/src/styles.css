@@ -56,8 +56,11 @@
    * 全换成绿的话，「你在这儿」和「你该点这儿」又变回同一个视觉重量——
    * 那正是上一轮「实心黑块只留一颗」要解决的问题，只是把黑噪音换成了绿噪音。
    *
-   * 只用在三处：**主操作**（`.btn-primary`）、**进度**（`.meter` 填充、进度环、流程线）、
-   * **活跃状态**（「进行中 / 写作中」那一档）。
+   * 只用在两处：**进度**（`.meter` 填充、进度环、流程线）和**活跃状态**。
+   * ⚠️ **主操作按钮不在里面** —— 那颗仍然是实心黑。试过墨绿，撤了：
+   * 黑是这套界面里最重的色，而墨绿再深也是个彩色，
+   * 摆在一屏彩色状态 pill 中间就不再是最重的那一块了。
+   * 一句话：**绿说「走到哪儿了」，黑说「点这儿」。**
    */
   --brand: #10513f;
   --brand-strong: #0a3d2f;
@@ -837,10 +840,12 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn:disabled:hover { border-color: var(--border-strong); color: var(--text-2); }
 .btn svg { width: 15px; height: 15px; flex: none; }
-/* ⚠️ **主按钮是墨绿，不是黑。** 黑留给「你在这儿」，绿是「你该点这儿」——
-   两件事同一个颜色的话，一屏上最重的那块又变成了信息量最低的那件事。 */
-.btn-primary { background: var(--brand); color: var(--on-brand); border-color: var(--brand); font-weight: 600; }
-.btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); color: var(--on-brand); }
+/* ⚠️ **主操作按钮是实心黑，不是墨绿。** 试过一版墨绿，撤了：
+   「新建」这类按钮是这一页最该被点的那颗，而**黑是这套界面里最重的那个色**——
+   墨绿再深也是个彩色，在一屏彩色状态 pill 中间反而不再是最重的那一块。
+   墨绿管的是**进展**（进度条、流程线、活跃状态），不管**动作**。 */
+.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
 /* ⚠️ **侧栏这颗退成描边，不再是第二块实心黑。**
    一屏两颗实心主按钮（侧栏「收集」+ 正文区「新建内容」）时，
    「哪个才是这一页要我做的事」得靠读字判断——而实心黑的全部作用就是免掉这一次判断。
@@ -2784,13 +2789,32 @@ kbd {
   font-size: var(--fs-sm); color: var(--text-2);
 }
 .act-card__foot b { font-weight: 600; color: var(--text-1); }
+/* ⚠️ 这颗是**真 button**（键盘要够得着），但**不该长得像个按钮**：
+   卡片上最重的已经是标题和进度，底部这一行是「下一步是什么」，
+   给它画个框会让一排三张卡的底部出现三个抢眼的方块。所以退成一行绿字 + 箭头。 */
 .act-card__go {
   margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px;
-  font-size: var(--fs-sm); font-weight: 600; color: var(--brand);
+  padding: 0; border: 0; background: none;
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--brand);
 }
+.act-card__go:disabled { color: var(--text-3); cursor: default; }
+.act-card__go:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
 .act-card:hover .act-card__go { color: var(--brand-strong); }
 .act-card__go svg { width: 15px; height: 15px; }
 /* 一排卡片 */
+/* 清单空态：一句下一步，不是一片空白 */
+.plan-empty {
+  display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left;
+  padding: 14px 14px; margin-top: 4px;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+  background: none; color: inherit;
+}
+.plan-empty:hover { border-color: var(--text-3); background: var(--surface-2); }
+.plan-empty svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.plan-empty span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.plan-empty b { font-size: var(--fs-base); font-weight: 600; }
+.plan-empty em { font-style: normal; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.6; }
+
 .act-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 
 /* ==========================================================================
@@ -3557,25 +3581,23 @@ kbd {
 }
 .today-focus__all:hover { color: var(--text-1); }
 .today-focus__all svg { width: 14px; }
-.today-focus__grid { display: grid; grid-template-columns: minmax(320px, .85fr) minmax(360px, 1.15fr); gap: 12px; }
-.today-focus__grid > .project-card { min-height: 278px; border-color: var(--accent); }
-.today-focus__grid > .project-card h3 { margin-top: 24px; font-size: clamp(22px, 2.1vw, 29px); }
-.today-queue {
-  display: flex; flex-direction: column; min-height: 278px; padding: 20px 20px 8px;
-  border-block: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 76%, transparent);
+/**
+ * ⚠️ **「左边一张大卡 + 右边三行小条」那一版撤了。**
+ *
+ * 两个毛病：那张卡 `min-height: 278px` 而里面只有三四行字，**中段大片留白**；
+ * 而右边三条只剩标题和一句「阶段 · 下一步」——**同一批数据在一屏上有了两种详略**，
+ * 扫的时候得切换两次读法。现在三张等大（`.act-cards`），轻重只靠 `[data-lead]` 一道边框。
+ * `.today-queue*` 那十几条规则跟着一起删了。
+ */
+/* 超出三张的收成一句，**它是可点的**——否则「还有 N 篇」只是个说了不算的数字 */
+.today-more {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font-size: var(--fs-sm); color: var(--text-2);
 }
-.today-queue__row {
-  display: grid; grid-template-columns: 28px minmax(0, 1fr) 18px; align-items: center; gap: 10px;
-  width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid var(--border); background: none; color: inherit; text-align: left; cursor: pointer;
-}
-.today-queue__row:hover b { text-decoration: underline; text-underline-offset: 3px; }
-.today-queue__row:last-of-type { border-bottom: 0; }
-.today-queue__num { font-family: var(--font-mono); color: var(--text-3); font-size: var(--fs-2xs); }
-.today-queue__row > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
-.today-queue__row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-base); }
-.today-queue__row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-xs); }
-.today-queue__row svg { width: 14px; color: var(--text-3); }
-.today-queue__empty { margin: auto 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.7; }
+.today-more:hover { color: var(--text-1); }
+.today-more svg { width: 14px; height: 14px; }
+
 .today-clear { padding: 32px; border: 1px dashed var(--border-strong); border-radius: var(--r-lg); text-align: center; }
 .today-clear p { color: var(--text-2); }
 
@@ -3609,7 +3631,7 @@ kbd {
   .project-stage-filter { grid-template-columns: repeat(4, 1fr); }
   .project-stage-filter button:nth-child(4n) { border-right: 0; }
   .project-lane { grid-template-columns: 142px minmax(0, 1fr); }
-  .today-focus__grid { grid-template-columns: 1fr; }
+  /* `.act-cards` 自己就是 auto-fit，窄屏自然收成一列，不用在这儿再写一条 */
   .discover-card { min-height: 340px; }
   .discover-card__icon { margin-bottom: 48px; }
 }
