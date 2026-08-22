@@ -12,21 +12,18 @@
 // **视图切换只在有状态的源上出现**（`canBoard`）：素材库在库里没有状态列，
 // 给它一个「看板」按钮，点开是一列空的。**新增只在流水线四段上出现**——
 // 书架和洞察的新增各有各的入口，混进来只会让这颗按钮的含义随页面变。
-import { IconLayoutGrid, IconLayoutKanban, IconPlus, IconSearch } from "../../components/icons.jsx";
+import { IconLayoutGrid, IconLayoutKanban, IconPlus } from "../../components/icons.jsx";
+import { SearchBox } from "../../components/ui.jsx";
 
 export function ListHead({ source, list, searchRef, query, setQuery, canBoard, layout, setLayout, isPipeline, sourceKey, onIntake, onCreate, onOrganize }) {
   return (
     <div className="list-tools">
-    <label className="search-box">
-      <IconSearch aria-hidden="true" stroke={1.7} />
-      <input
-        ref={searchRef}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={source.isMaterialWorkspace ? "搜索来源、素材或标签 /" : "搜索标题、内容或标签 /"}
-        onKeyDown={(e) => e.key === "Escape" && (setQuery(""), e.currentTarget.blur())}
-      />
-    </label>
+    <SearchBox
+      inputRef={searchRef}
+      value={query}
+      onChange={setQuery}
+      placeholder={source.isMaterialWorkspace ? "搜索来源、素材或标签 /" : "搜索标题、内容或标签 /"}
+    />
     {canBoard ? (
       <div className="seg" role="group" aria-label="视图">
         <button aria-pressed={layout === "board"} onClick={() => setLayout("board")} title="看板：看东西卡在哪一步">

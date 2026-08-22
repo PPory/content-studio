@@ -2634,6 +2634,15 @@ kbd {
   flex: 1 1 auto; min-width: 0; border: 0; background: transparent;
   font: inherit; font-size: var(--fs-base); color: var(--text-1); outline: none;
 }
+/* 清空。**看得见的那条退路**——只给 Esc 的话，人不会去猜快捷键 */
+.search-box__clear {
+  flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-right: -4px;
+  padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--border); color: var(--text-2);
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.search-box__clear:hover { background: var(--text-3); color: var(--surface); }
+.search-box__clear svg { width: 11px; height: 11px; }
 
 /* ==========================================================================
    浏览层：**列表行**，不是卡片墙
@@ -3899,9 +3908,21 @@ kbd {
    每本都挂「在读」等于没说；而「读到哪了」是书架上唯一必需的动态信息。
    有线 = 在读 · 线满 + 右上角勾 = 读完 · 没线 = 还没开。三种状态**都不用文字**。
    （Komga 的 ItemCard 用 6px，这里 5px。） */
+/**
+ * 封面底边那条进度。
+ *
+ * ⚠️ **它压在一张任意颜色的图上，所以两个颜色都不能取自主题 token。**
+ * 上一版是 30% 黑的槽 + 白色填充：在**浅色封面**上（白底的书居多），
+ * 槽是一层几乎看不见的浅灰、白填充和封面本身一个色——整条等于没画，
+ * 用户看到的只是封面底下一道说不清是什么的浅痕。
+ *
+ * 现在槽压到 55% 黑：浅封面上它是明确的深灰、深封面上它融进去，
+ * 而白色填充在两种情况下都跳得出来。**两种封面各靠一半，合起来总看得见。**
+ * 高度也从 5px 提到 6px（Komga 用的就是 6）。
+ */
 .book-card__prog {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 5px; z-index: 2;
-  background: rgba(0, 0, 0, .3);
+  position: absolute; left: 0; right: 0; bottom: 0; height: 6px; z-index: 2;
+  background: rgba(0, 0, 0, .55);
 }
 .book-card__prog i { display: block; height: 100%; background: #fff; }
 /* 读完那枚勾放**左上**：右上让给下架按钮。两者都在右上的话，读完的书上

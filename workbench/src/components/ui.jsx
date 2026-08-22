@@ -50,6 +50,52 @@ import {
  * 同一个名字一屏出现两次，中间只隔了一行描述。计数是**这个库此刻的事实**，
  * 它属于库名旁边，不属于另一个标题。
  */
+/**
+ * 搜索框。⚠️ **三处调用方共用这一个**（内容工作台的工具条、书架页头、书详情），
+ * 别再各写各的 `<label className="search-box">`。
+ *
+ * 各写一份的直接后果已经出过：**书架那处既没有 Esc 也没有清空按钮**，
+ * 搜完只能把字一个个删掉——而另外两处有 Esc。同一个控件在三个页面上三种脾气，
+ * 而且没有任何地方会报错。
+ *
+ * 两条退路都要给：**× 是看得见的那条，Esc 是快的那条**。只给 Esc 不够——
+ * 一个框里有字、旁边没有任何清除的记号，人不会去猜快捷键。
+ */
+export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel }) {
+  return (
+    <label className="search-box">
+      <IconSearch aria-hidden="true" stroke={1.7} />
+      <input
+        ref={inputRef}
+        value={value}
+        aria-label={ariaLabel || placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          // ⚠️ **不能冒泡上去**：阅读区和弹层都在监听 Esc，
+          // 不掐掉的话「清空搜索」会顺手把整层关掉
+          e.stopPropagation();
+          onChange("");
+          e.currentTarget.blur();
+        }}
+      />
+      {/* 有字才画。空框上挂一颗永远点不出效果的 × 是噪音 */}
+      {value ? (
+        <button
+          type="button"
+          className="search-box__clear"
+          title="清空（Esc）"
+          aria-label="清空搜索"
+          onClick={() => onChange("")}
+        >
+          <IconX size={13} stroke={2} aria-hidden="true" />
+        </button>
+      ) : null}
+    </label>
+  );
+}
+
 export function PageHeader({ eyebrow, title, count, desc, aside }) {
   return (
     <header className="page-header">

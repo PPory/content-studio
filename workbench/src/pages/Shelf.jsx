@@ -27,7 +27,7 @@ import { RecentMarks } from "./shelf/RecentMarks.jsx";
 import { BookCard } from "./shelf/BookCard.jsx";
 import { BookDetail } from "./shelf/BookDetail.jsx";
 import { ShelfActions } from "./shelf/ShelfActions.jsx";
-import { ErrorNote, Empty, Loading, Note, PageHeader, Toast } from "../components/ui.jsx";
+import { ErrorNote, Empty, Loading, Note, PageHeader, SearchBox, Toast } from "../components/ui.jsx";
 import { bookProgress, bookmarksOf, contextOf, isBookmarked, latestReading, pct, readingOf, resumeEntry, saveReading, toggleBookmark } from "../lib/reading.js";
 import {
   IconArrowLeft,
@@ -40,7 +40,6 @@ import {
   IconFileText,
   IconPhoto,
   IconPlus,
-  IconSearch,
   IconTrash,
 } from "../components/icons.jsx";
 
@@ -451,10 +450,7 @@ export function Shelf({ onIntake, state = "" }) {
              * 撑到换行，搜索框反而被顶下去了。
              */
             aside={
-              <label className="search-box">
-                <IconSearch aria-hidden="true" stroke={1.7} />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜书名、作者、标签" />
-              </label>
+              <SearchBox value={query} onChange={setQuery} placeholder="搜书名、作者、标签" />
             }
           />
 

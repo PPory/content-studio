@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api.js";
 import { Cover } from "../../components/Cover.jsx";
-import { Empty, ErrorNote, Loading, MetaItem, Select } from "../../components/ui.jsx";
+import { Empty, ErrorNote, Loading, MetaItem, SearchBox, Select } from "../../components/ui.jsx";
 import { BookMarks } from "./BookMarks.jsx";
 import {
   IconArrowLeft,
@@ -296,15 +296,7 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onI
               </h2>
             </div>
             <div className="panel-head__aside">
-              <label className="search-box">
-                <IconSearch aria-hidden="true" stroke={1.7} />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="在这本书里搜一句话"
-                  onKeyDown={(e) => e.key === "Escape" && setQ("")}
-                />
-              </label>
+              <SearchBox value={q} onChange={setQ} placeholder="在这本书里搜一句话" />
             </div>
           </div>
 

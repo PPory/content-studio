@@ -1638,6 +1638,85 @@ try {
     check("加书菜单没向右出界", pop.rightOk, pop.rightOk ? "在墙内" : "超出墙的右缘");
     await page.keyboard.press("Escape");
 
+    /**
+     * 封面底边那条进度**压在一张任意颜色的图上**，所以它的两个颜色都不能取自主题 token。
+     *
+     * ⚠️ 上一版是 30% 黑的槽 + 白填充：**在浅色封面上整条等于没画**——槽是一层几乎
+     * 看不见的浅灰，白填充和封面本身一个色。用户圈出来说「看不出来」的就是这个。
+     *
+     * 断言量的是**槽和填充在白底上的对比度**，不是「背景色等于某个字符串」：
+     * 写死颜色的话，改成另一个同样看不清的值照样能过。3:1 是非文字图形的下限。
+     */
+    // 进度存 localStorage，所以这条得自己造一条——**书架上现有哪本书都行**，
+    // 从接口现取，不依赖这个文件里别处的夹具（那些常量在这一行还没声明）
+    const seeded = await page.evaluate(async () => {
+      const r = await (await fetch("/api/vault/books")).json();
+      const bk = (r.books || []).find((b) => b.chapters?.length) || (r.books || [])[0];
+      if (!bk) return null;
+      const doc = bk.chapters?.[0]?.path || bk.bookPath;
+      localStorage.setItem(
+        "workbench:reading:v1",
+        JSON.stringify({ version: 1, books: { [bk.dir]: { docPath: doc, title: "x", scrollTop: 100, progress: 0.4, updatedAt: Date.now() } } })
+      );
+      // ⚠️ **挑一本多章的**：封面上那条画的是**整本**进度，单章书里
+      // 「本章」和「全书」是同一个数，区分不出来
+      return { name: bk.name, chapters: bk.chapters?.length || 0 };
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForSelector(".book-card__prog", { timeout: 8000 });
+    const bar = await page.evaluate(() => {
+      const el = document.querySelector(".book-card__prog");
+      const px = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+      const onWhite = (c) => {
+        const v = px(c), a = v.length > 3 ? v[3] : 1;
+        return v.slice(0, 3).map((x) => x * a + 255 * (1 - a));
+      };
+      const lum = ([r, g, b]) => {
+        const f = (c) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      const track = onWhite(getComputedStyle(el).backgroundColor);
+      const fill = onWhite(getComputedStyle(el.querySelector("i")).backgroundColor);
+      const [hi, lo] = [lum(track), lum(fill)].sort((a, b) => b - a);
+      return { ratio: (hi + 0.05) / (lo + 0.05), h: getComputedStyle(el).height, w: el.querySelector("i").style.width };
+    });
+    check("封面上的进度条在浅色封面上也分得出来", bar.ratio >= 3, `槽 vs 填充 ${bar.ratio.toFixed(2)}:1 · ${bar.h} · 用《${seeded?.name}》`);
+    /**
+     * ⚠️ **封面上那条画的是「整本」，不是「本章」**（`bookProgress`）。
+     * 造的这条是「第 1 章读了 40%」，所以它该显示 `0.4 / 章数`，不是 40%。
+     * 两者差一个数量级，画错了会让人以为一本刚开头的书快读完了——
+     * 而「本章百分之多少」在「正在阅读」那一栏的文字里已经说了。
+     */
+    const want = seeded?.chapters ? (0.4 / seeded.chapters) * 100 : 40;
+    check(
+      "封面上的进度画的是整本不是本章",
+      Math.abs(parseFloat(bar.w) - want) < 0.6,
+      `${bar.w}，${seeded?.chapters} 章时应为 ${want.toFixed(1)}%`
+    );
+    await page.evaluate(() => localStorage.removeItem("workbench:reading:v1"));
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForSelector(".add-book__tile", { timeout: 8000 });
+
+    /**
+     * ⚠️ **搜索框只有一份实现**（`ui.jsx` 的 `SearchBox`），三处调用方共用。
+     * 各写各的直接后果已经出过：**书架那处既没有 Esc 也没有清空按钮**，
+     * 搜完只能把字一个个删掉，而另外两处有 Esc——同一个控件三种脾气，还不报错。
+     *
+     * 两条退路都要有：**× 是看得见的那条，Esc 是快的那条。**
+     * 只给 Esc 不够——框里有字、旁边没有任何清除的记号，人不会去猜快捷键。
+     */
+    const box = ".page-header__aside .search-box";
+    check("没输入时不画清空按钮", (await page.$(`${box} .search-box__clear`)) === null);
+    await page.fill(`${box} input`, "内容");
+    await page.waitForSelector(`${box} .search-box__clear`, { timeout: 4000 });
+    await page.click(`${box} .search-box__clear`);
+    check("点 × 能清空", (await page.inputValue(`${box} input`)) === "", await page.inputValue(`${box} input`));
+    await page.fill(`${box} input`, "内容");
+    await page.keyboard.press("Escape");
+    check("按 Esc 能清空", (await page.inputValue(`${box} input`)) === "", await page.inputValue(`${box} input`));
+    // ⚠️ Esc 清空**不能顺手把别的层收掉**：书架这一层要还在
+    check("Esc 清空不会把这一页也退掉", !!(await page.$(".bookshelf")));
+
     // 导入走的是**原始字节 + 服务端解析**那条路，不是把文本塞进 JSON。
     // 三个以上一级标题就该自动拆章，拆完在磁盘上是一个个独立文件（Obsidian 里才能双链、能单独打标签）。
     const mdBook = `${BOOK}_md`;

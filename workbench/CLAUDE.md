@@ -186,6 +186,8 @@ node tests/shots.mjs   # 截图到 tmp/shot-*.png（末尾加 dark 出暗色版�
 - ⚠️ **`--emph`（`#de7802`）在白底上只有 3.1:1**，这是**有意选的观感，不是疏忽**——以后觉得长文读着费劲，先动这个值。
 - **图标统一从 `src/components/icons.jsx` 出去**（5000+ 图标的 barrel，别处不直接 import），线宽 `stroke={1.7}`。
 - **不用原生 `<select>`，用 `ui.jsx` 的 `<Select>`**；它的 `renderIcon` **必传且要逐项不同**，状态图标靠形状区分不靠颜色。
+- ⚠️ **搜索框走 `ui.jsx` 的 `SearchBox`，别再各写各的 `<label className="search-box">`。** 三处调用方（内容工作台工具条 / 书架页头 / 书详情）共用。各写一份的后果出过：书架那处既没 Esc 也没清空按钮，另外两处有——同一个控件三种脾气，不报错。`×` 和 Esc **两条退路都要有**；Esc 要 `stopPropagation`（阅读区和弹层都在监听它）。
+- ⚠️ **封面底边那条进度的两个颜色不能取主题 token**，它压在一张任意颜色的图上：槽 `rgba(0,0,0,.55)` + 白填充。30% 黑那一版在浅色封面上整条等于没画。**它画的是整本（`bookProgress`）不是本章**——两者差一个数量级。冒烟测试量的是合成后的对比度（≥3:1），不是颜色字符串。
 - **共用页头件在 `src/components/ui.jsx`**（`PageHeader` / `SectionHead` / `MetaItem` / `fieldIcon`）——两个调用方，谁也不该 import 另一个页面的私有常量。
 - ⚠️ **一屏一个标题、一层容器。** 页头已经写了库名，**下面不许再画一个写着同一个库名的小标题**（撤掉过：`ListHead` 和书架的 `SHELF / 在架上`、书详情的 `MY MARKS`）。条数挂 `PageHeader` 的 `count`。**`.panel-block` 不是框**（没有边框、白底、投影）——`.main` 本身就是浮在底色上的白面板，里面再套一张就是白框套白框。分区靠标题和留白分。
 - ⚠️ **实心黑一屏一颗，就是页头右上那颗。** 库内的「选题 / 入库」是 `.btn`，不是 `.btn-primary`；稿件库工具条上那颗「新稿」已经撤掉（它和页头「新建」是同一个 `onCreate("choose")`）。冒烟测试钉了 `.main .btn-primary` 最多一颗。
