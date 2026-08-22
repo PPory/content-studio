@@ -2541,10 +2541,34 @@ try {
     await page.getByRole("button", { name: "返回书架" }).first().click();
     await page.waitForSelector(".book-card", { timeout: 15000 });
 
+    /**
+     * ⚠️ **确认发生在那本书原来待的那一格上，墙不重排。**
+     * 上一版是 `grid-column: 1 / -1` 的整行横条：点一下删除，后面的书全部挪位置，
+     * 而要删的那本从原地消失、变成一条横在中间的长条——你只是想删一本书。
+     * 断言量的是**这一格的矩形有没有变**，不是类名。
+     */
+    // ⚠️ **量 `offset*` 不量 `getBoundingClientRect`**：点击会把目标滚进视野，
+    // 视口坐标于是跟着变——那是滚动，不是版面动了。offset 是相对于定位父级的，不受滚动影响。
+    const cell = (name) =>
+      page.evaluate((n) => {
+        const e = [...document.querySelectorAll(".book-card")].find((x) => x.textContent.includes(n));
+        return { w: e.offsetWidth, h: e.offsetHeight, x: e.offsetLeft, y: e.offsetTop };
+      }, name);
+    const cellBefore = await cell(mdBook);
+    const wallBefore = await page.$$eval(".bookshelf .book-card", (els) => els.map((e) => `${e.offsetLeft},${e.offsetTop}`));
     await page.click(`.book-card:has-text("${mdBook}") .book-card__del`);
-    const trashText = await page.textContent(".book-card--confirm").catch(() => "");
+    await page.waitForSelector(".book-card__confirm", { timeout: 4000 });
+    const after = await cell(mdBook);
+    const wallAfter = await page.$$eval(".bookshelf .book-card", (els) => els.map((e) => `${e.offsetLeft},${e.offsetTop}`));
+    check(
+      "确认就在那本书原来那一格上",
+      after.w === cellBefore.w && after.h === cellBefore.h && after.x === cellBefore.x && after.y === cellBefore.y,
+      `${cellBefore.w}×${cellBefore.h}@${cellBefore.x},${cellBefore.y} → ${after.w}×${after.h}@${after.x},${after.y}`
+    );
+    check("确认时整面墙不重排", wallAfter.join(" ") === wallBefore.join(" "), `${wallBefore.length} 张卡都没挪`);
+    const trashText = await page.textContent(".book-card__confirm").catch(() => "");
     check("下架要二次确认且说清去哪", trashText.includes(".trash") && trashText.includes("批注"), trashText.replace(/\s+/g, " ").slice(0, 46));
-    await page.click('.book-card--confirm button:has-text("移到废纸篓")');
+    await page.click('.book-card__confirm button:has-text("移到废纸篓")');
     await page.waitForTimeout(1500);
     check("下架后书架上没了", !(await page.$(`.book-card:has-text("${mdBook}")`)));
     check("下架是移进 .trash 不是删掉", fs.readdirSync(path.join(VAULT_ROOT, ".trash")).some((n) => n.includes(mdBook)));

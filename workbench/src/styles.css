@@ -3872,15 +3872,32 @@ kbd {
 .book-card__del:hover { border-color: var(--danger); color: var(--danger); }
 /* 下架确认仍然是一张**横向的实卡**：这个动作连着批注一起走，值得占满注意力，
    不能挤在 132px 的封面位里。所以把上面撤掉的边框和内边距在这一支补回来。 */
-.book-card--confirm {
-  cursor: default; display: flex; gap: 12px; padding: 12px;
-  grid-column: 1 / -1;
-  border: 1px solid var(--danger); border-radius: var(--r-lg); background: var(--surface);
+/**
+ * 下架的二次确认：**盖在这一格上**，格子尺寸一个像素都不变。
+ *
+ * ⚠️ 上一版是 `grid-column: 1 / -1` 的整行横条——**点一下删除，整面墙当场重排**：
+ * 后面的书全部挪位置，而要删的那本从原地消失、变成一条横在中间的长条。
+ * 你只是想删一本书，不该换来一次「这一页怎么了」。
+ *
+ * 盖的是**整格**（封面 + 书名 + 作者）不只是封面：那句「批注也跟着走」是这个动作里
+ * 最要紧的一句，挤在 135×190 的封面里放不下，而它一个字都不能省。
+ */
+.book-card[data-confirm] { cursor: default; }
+.book-card[data-confirm] .cover { transform: none; }
+.book-card__confirm {
+  position: absolute; inset: -8px; z-index: 8; cursor: default;
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  padding: 12px; border-radius: var(--r-md);
+  border: 1px solid var(--danger); background: var(--surface); box-shadow: var(--shadow);
 }
-.book-card--confirm .book-card__body { margin-top: 0; flex: 1 1 auto; }
-.book-card--confirm strong { font-family: var(--font-display); font-size: var(--fs-md); letter-spacing: -0.02em; }
-.book-card--confirm .book-card__author { line-height: 1.65; }
-.book-card--confirm code { font-size: var(--fs-xs); }
+.book-card__confirm strong { font-size: var(--fs-base); font-weight: 650; line-height: 1.35; }
+/* 说明文字**不许缩到 13px 以下**：这是「操作说明」类，那条下限在这儿同样成立 */
+.book-card__confirm span { font-size: var(--fs-base); line-height: 1.6; color: var(--text-2); }
+.book-card__confirm code { font-size: var(--fs-sm); }
+/* 按钮竖排：135px 宽里并排放不下，挤成两行字更难读 */
+.book-card__confirm-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.book-card__confirm-acts .btn { justify-content: center; }
+
 /* 抬起的是封面，不是整张卡——文字跟着动会让一排书名上下抖 */
 .book-card:hover .cover { transform: translateY(-3px); box-shadow: var(--shadow); }
 /* 书卡上也能换封面。**这是主要入口**：单篇书从书架直接进正文、根本不经过书详情，
@@ -3909,22 +3926,24 @@ kbd {
    有线 = 在读 · 线满 + 右上角勾 = 读完 · 没线 = 还没开。三种状态**都不用文字**。
    （Komga 的 ItemCard 用 6px，这里 5px。） */
 /**
- * 封面底边那条进度。
+ * 封面底边那条进度：**浅灰底 + 黑条**。
  *
- * ⚠️ **它压在一张任意颜色的图上，所以两个颜色都不能取自主题 token。**
- * 上一版是 30% 黑的槽 + 白色填充：在**浅色封面**上（白底的书居多），
- * 槽是一层几乎看不见的浅灰、白填充和封面本身一个色——整条等于没画，
- * 用户看到的只是封面底下一道说不清是什么的浅痕。
+ * ⚠️ **两个颜色都不透明，都不取自主题 token。** 这条线压在一张任意颜色的图上——
+ * 半透明的话它就跟着封面变，而封面什么颜色都有。不透明 = 在 16 本封面上长得一模一样，
+ * 这正是它能被一眼认出来的原因。
  *
- * 现在槽压到 55% 黑：浅封面上它是明确的深灰、深封面上它融进去，
- * 而白色填充在两种情况下都跳得出来。**两种封面各靠一半，合起来总看得见。**
- * 高度也从 5px 提到 6px（Komga 用的就是 6）。
+ * 走过两版才对：
+ *   1. 30% 黑的槽 + 白填充 —— **浅色封面上整条等于没画**（槽几乎透明，白填充和封面同色）。
+ *   2. 55% 黑的槽 + 白填充 —— 看得见了，但「已读」是白的、「没读」是深的，
+ *      **深浅的方向和直觉相反**，而且在深色封面上整条又糊回去。
+ * 现在是浅灰槽 + 近黑的条：**深的那截就是读过的**，两者对比 11:1，
+ * 在白封面和深蓝封面上是同一个样子。
  */
 .book-card__prog {
   position: absolute; left: 0; right: 0; bottom: 0; height: 6px; z-index: 2;
-  background: rgba(0, 0, 0, .55);
+  background: #d4d4d8;
 }
-.book-card__prog i { display: block; height: 100%; background: #fff; }
+.book-card__prog i { display: block; height: 100%; background: #18181b; }
 /* 读完那枚勾放**左上**：右上让给下架按钮。两者都在右上的话，读完的书上
    那颗勾会盖住下架的入口——而勾是常驻的、下架是 hover 才出现的，被盖的永远是后者。 */
 .book-card__done {
@@ -4014,9 +4033,9 @@ kbd {
 /* ⚠️ **墙上不再铺章数 / 状态 / 「查看章节」那三行。**
    进度已经画在封面上了，其余的进书详情再说——封面墙回答的是「我有什么」，
    不是「这本书的全部元信息」。留在这儿的每一行都在挤下一本书的位置。
-   （`.book-card--confirm` 那一支仍然要用它们，所以规则留着。） */
+   （这里原来还留着一条 `.book-card--confirm .book-card__stats`，注释说确认态要用它——
+   **那是假的**，确认态从来没渲染过 `__stats`。确认态改成盖在格子上之后一起删了。） */
 .book-card__stats { display: none; }
-.book-card--confirm .book-card__stats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-3); }
 .book-card__stats span { display: inline-flex; align-items: center; gap: 4px; }
 .book-card__resume { display: none; }
 .book-card__enter { display: none; }

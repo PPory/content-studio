@@ -38,40 +38,43 @@ export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
   }, [book, saved]);
   const done = progress != null && progress >= 0.995;
 
-  // 确认态把整张卡换掉，不是在角落加个小按钮：下架一本书连着批注一起走，
-  // 这个动作值得占满一张卡的注意力。
-  if (confirm) {
-    return (
-      <div className="book-card book-card--confirm">
-        <Cover book={book} size="cover--sm" />
-        <div className="book-card__body">
-          <strong>下架《{book.name}》？</strong>
-          <span className="book-card__author">
-            整个目录（正文 + 你写的批注）移到 vault 的 <code>.trash/</code>，
-            在 Obsidian 的废纸篓里能找回来。
-          </span>
-          <div className="row-actions" style={{ marginTop: 8 }}>
-            <button
-              className="btn btn-sm btn-danger"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onTrash();
-                } finally {
-                  setBusy(false);
-                  setConfirm(false);
-                }
-              }}
-            >
-              {busy ? "处理中…" : "移到废纸篓"}
-            </button>
-            <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
-          </div>
-        </div>
+  /**
+   * 下架的二次确认。
+   *
+   * ⚠️ **它盖在这一格上，不换成另一种东西。** 上一版是整张卡换成一条
+   * `grid-column: 1 / -1` 的横条——**点一下删除，整面墙当场重排**：后面的书全部
+   * 挪位置，而你要删的那本从原地消失、变成一条横在中间的长条。
+   * 你只是想删一本书，不该换来一次「这一页怎么了」。
+   *
+   * 现在这一格的尺寸一个像素都不变，确认就发生在**那本书原来待的地方**。
+   */
+  const confirmLayer = confirm ? (
+    <div className="book-card__confirm" onClick={(e) => e.stopPropagation()}>
+      <strong>下架这本书？</strong>
+      {/* **写清东西去哪**，不写「确定吗」。批注也跟着走，这一句不能省 */}
+      <span>
+        正文和你写的批注一起移到 vault 的 <code>.trash/</code>，在 Obsidian 的废纸篓里能找回来。
+      </span>
+      <div className="book-card__confirm-acts">
+        <button
+          className="btn btn-sm btn-danger"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onTrash();
+            } finally {
+              setBusy(false);
+              setConfirm(false);
+            }
+          }}
+        >
+          {busy ? "处理中…" : "移到废纸篓"}
+        </button>
+        <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
       </div>
-    );
-  }
+    </div>
+  ) : null;
 
   return (
     /**
@@ -87,7 +90,9 @@ export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
      * 那个真按钮**（书名 + 元信息那一整块）。整卡点击留着——那是鼠标的便利，
      * 不需要 role 也成立；`.book-card__del` / `__coverbtn` 于是成了它的兄弟而不是子孙。
      */
-    <div className="book-card" onClick={onOpen}>
+    /* ⚠️ 确认层开着时整卡点击要失效：不掐的话，点「取消」旁边一点就把书打开了 */
+    <div className="book-card" data-confirm={confirm ? "" : undefined} onClick={confirm ? undefined : onOpen}>
+      {confirmLayer}
       {onTrash ? (
         <button
           className="icon-btn book-card__del"
