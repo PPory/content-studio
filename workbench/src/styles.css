@@ -483,7 +483,79 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  *
  * 代价记在这儿：覆盖层锁滚动不能再锁 body 了，见 `lib/scroll-lock.js`。
  */
-.app { position: relative; z-index: 1; display: flex; height: 100vh; overflow: hidden; }
+/**
+ * 外壳：**顶栏在最上面跨全宽，侧栏和正文并排在它下面。**
+ *
+ * ⚠️ 加顶栏之前这个工作台没有外壳，只有一叠文档——每一页都从一个巨大的中文标题
+ * 开始，搜索框在侧栏里、设置在侧栏最底下。「我在哪」「搜什么」「设置在哪」
+ * 这三件**跨页面不变**的事，跟着页面内容一起换位置的时候，
+ * 它看起来就像一叠网页，不像一个应用。
+ */
+.app { position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; overflow: hidden; }
+.app__body { display: flex; min-height: 0; }
+
+/**
+ * ⚠️ **三列 grid（左 1fr · 中 auto · 右 1fr），不是 flex。**
+ * 用 flex + `margin: 0 auto` 的话，搜索框会停在**剩余空间**的中心，
+ * 而左段（logo + 会变长的面包屑）和右段（两个图标）宽度差一大截——
+ * 结果是每换一页搜索框就往旁边挪一次。两侧各占 1fr，中间那格才真的在视口中心。
+ */
+.topbar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 10px; flex: none;
+  height: 48px; padding: 0 12px 0 14px;
+}
+.topbar__left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.topbar__brand { display: flex; align-items: center; gap: 9px; flex: none; padding-right: 12px; }
+/* 一道竖线把「身份」和「位置」分开——它们是两件事，而中间只有 10px 的话读起来是一串 */
+.topbar__brand::after { content: ""; width: 1px; height: 18px; margin-left: 3px; background: var(--border-strong); }
+.topbar__brand .brand-mark,
+.topbar__brand > svg { width: 22px; height: 22px; flex: none; border-radius: var(--r-sm); }
+.topbar__name { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; }
+.topbar__rail {
+  display: grid; place-items: center; width: 26px; height: 26px; flex: none;
+  padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3);
+}
+.topbar__rail:hover { background: var(--surface-2); color: var(--text-1); }
+.topbar__rail svg { width: 16px; height: 16px; }
+
+/* 面包屑：一级 + 二级。**「我在哪」唯一的常驻答案** */
+.crumbs { display: flex; align-items: center; gap: 6px; flex: none; font-size: var(--fs-sm); color: var(--text-2); min-width: 0; }
+.crumbs svg { width: 15px; height: 15px; flex: none; color: var(--text-3); }
+.crumbs b { font-weight: 600; color: var(--text-1); }
+.crumbs i { font-style: normal; color: var(--text-3); }
+.crumbs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/**
+ * 居中的搜索框。⚠️ **`margin: 0 auto` 配 `max-width`，不是 flex 的 1fr**：
+ * 用 1fr 的话它会跟着左右两侧内容的宽度左右漂——而左边是会变的面包屑。
+ * 居中要真的居中，否则每换一页它就挪一次位置。
+ */
+.topbar__find {
+  display: flex; align-items: center; gap: 9px;
+  width: min(440px, 34vw); min-width: 0;
+  height: 30px; padding: 0 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-pill);
+  background: var(--canvas); color: var(--text-3); font: inherit; font-size: var(--fs-sm);
+}
+.topbar__find:hover { border-color: var(--text-3); }
+.topbar__find svg { width: 15px; height: 15px; flex: none; }
+.topbar__find > span { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar__find kbd {
+  flex: none; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
+  padding: 2px 5px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+}
+
+.topbar__end { display: flex; align-items: center; gap: 8px; justify-self: end; }
+.topbar__icon {
+  display: grid; place-items: center; width: 28px; height: 28px;
+  padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3);
+}
+.topbar__icon:hover { background: var(--surface-2); color: var(--text-1); }
+.topbar__icon svg { width: 16px; height: 16px; }
+
+/* 侧栏顶部原来那一大块品牌区没了，上内边距跟着收 */
+.app__body .sidebar { padding-top: 10px; }
 
 .sidebar {
   width: var(--sidebar-w);
@@ -500,22 +572,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   z-index: 20;
 }
 
-.brand-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; min-width: 0; }
-.rail-toggle {
-  flex: none; width: 26px; height: 26px; display: grid; place-items: center;
-  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3);
-}
-.rail-toggle:hover { background: var(--surface-2); color: var(--text-1); }
-.rail-toggle svg { width: 17px; height: 17px; }
 /* 形状、底色、字色全在 `BrandMark` 那个 SVG 里（它自带「三圆角 + 右下直角」的块），
    所以容器不再画底色和圆角，只管尺寸。 */
-.brand-mark {
-  width: 26px; height: 26px; flex: none; padding: 0; border: 0;
-  background: none;
-  display: grid; place-items: center;
-  transition: transform 0.16s var(--ease), width 0.16s var(--ease), height 0.16s var(--ease);
-}
 .brandmark { width: 100%; height: 100%; display: block; }
 /* 素材本身是黑底白字，这里改吃语义 token：暗色模式下 `--accent` 会翻成近白，
    写死黑底的话 logo 会糊进深色背景，成为整屏唯一一个不认主题的东西。 */
@@ -523,17 +581,6 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .brandmark__x { fill: var(--on-accent); }
 /* 展开态它只是标识：点它既不该收侧栏也不该回首页，那种「点了会怎样」的犹豫
    本身就是成本。收起态才接管展开这个动作（见下面的收起规则）。 */
-.app[data-rail="open"] .brand-mark { pointer-events: none; }
-.brand-name {
-  font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg);
-  line-height: 1.2; letter-spacing: -0.025em;
-  /* 宁可溢出也不折行：品牌名折成两行会把整个侧栏顶高一截，而且「Xenho / OS」读着像两个词 */
-  white-space: nowrap;
-}
-.brand-tag {
-  font-family: var(--font-mono); font-size: var(--fs-2xs); line-height: 1.4; letter-spacing: 0.18em;
-  color: var(--text-3); padding: 6px 8px 0;
-}
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
@@ -610,19 +657,12 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    迟早有一处漏掉。 */
 .app[data-rail="collapsed"] { --sidebar-w: 60px; }
 .app[data-rail="collapsed"] .sidebar { padding-left: 10px; padding-right: 10px; }
-.app[data-rail="collapsed"] .brand { padding: 0; }
 /* 收起态 **logo 自己就是展开按钮**，收放按钮藏起来：60px 宽的一条里摆两个方块显得挤，
    而 logo 已经在最顺手的位置上了。hover 时轻轻放大——黑白配色下这是最省的「能点」提示，
    加个描边或换底色都要引进第二个颜色。 */
-.app[data-rail="collapsed"] .rail-toggle { display: none; }
 /* **收起态放大到和导航项的方块同宽**（40px = 60 - 左右各 10 的内边距）。
    26px 的 logo 挂在一列 40px 宽的图标块上面，比谁都小一圈，看着像还没加载完；
    等宽之后左右边缘和下面所有图标连成一条竖线。 */
-.app[data-rail="collapsed"] .brand-mark { width: 40px; height: 40px; cursor: pointer; }
-.app[data-rail="collapsed"] .brand-mark:hover { transform: scale(1.08); }
-.app[data-rail="collapsed"] .brand-mark:active { transform: scale(0.96); }
-.app[data-rail="collapsed"] .brand-name,
-.app[data-rail="collapsed"] .brand-tag,
 .app[data-rail="collapsed"] .nav-item__label,
 .app[data-rail="collapsed"] .nav-item .count { display: none; }
 .app[data-rail="collapsed"] .subnav { display: none; }
@@ -633,21 +673,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 /* 收起态的连接行：文字没了，齿轮居中，**状态点绝对定位到齿轮右上角当角标**。
    和 .nav-item__dot 是同一条规则（60px 里放不下就退成一颗点），
    所以两种形态用的是同一批 DOM——写两套的话，以后动这一行要改两处。 */
-.app[data-rail="collapsed"] .conn { justify-content: center; padding-left: 0; padding-right: 0; }
-.app[data-rail="collapsed"] .conn__gear { margin-left: 0; width: 40px; height: 40px; }
-.app[data-rail="collapsed"] .conn > .dot {
-  position: absolute; top: 12px; right: 11px; width: 6px; height: 6px;
-  box-shadow: 0 0 0 2px var(--surface);
-}
 
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
-.conn {
-  position: relative;
-  display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs);
-  color: var(--text-3); padding: 10px 8px 0; border-top: 1px solid var(--border);
-}
 /* 长文案（「本地服务连接中…」）不许把齿轮挤出去 */
-.conn__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 内容项目工作区 ---------- */
 /* 面板已经定高，这里按面板算不按视口算（视口那份会高出 16px 的沟 + 边框） */
@@ -771,14 +799,6 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-publish__record { margin-top: 8px; }
 .project-publish__truth { display: block; margin-top: 12px; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.55; }
 /* 和 .rail-toggle 同一形态：侧栏里的工具按钮是一套语汇，各画各的就是两种记号 */
-.conn__gear {
-  margin-left: auto; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border: 0; border-radius: var(--r-ctl);
-  background: transparent; color: var(--text-3); cursor: pointer;
-}
-.conn__gear:hover { background: var(--surface-2); color: var(--text-1); }
-.conn__gear svg { width: 16px; height: 16px; }
 
 /* 正文面板：四周留沟、自带边框圆角、**自己滚**。 */
 .main {
@@ -1377,17 +1397,6 @@ svg[data-tone] { color: var(--tone); }
 
 /* 侧栏里的搜索入口。长得像输入框而不是按钮——**看不见的功能等于不存在**，
    而一个方框加「搜索」两个字，不用学就知道点了会发生什么。 */
-.rail-find {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 8px 10px; margin-bottom: 10px;
-  border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
-  background: var(--canvas); color: var(--text-3); font: inherit; font-size: var(--fs-base); cursor: pointer;
-}
-.rail-find:hover { border-color: var(--accent-soft); color: var(--text-2); }
-.rail-find kbd {
-  margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-2xs);
-  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 1px 4px;
-}
 /**
  * 收起态：**只剩一个图标，边框和底色一起去掉**，长得和导航项一模一样。
  *
@@ -1398,13 +1407,6 @@ svg[data-tone] { color: var(--tone); }
  *
  * hover 跟着 `.nav-item` 走（`--surface-2` 的圆角块），这样一列图标从上到下是同一种反馈。
  */
-.app[data-rail="collapsed"] .rail-find {
-  justify-content: center; padding: 10px 0; gap: 0;
-  border-color: transparent; background: none; border-radius: var(--r-lg);
-}
-.app[data-rail="collapsed"] .rail-find:hover {
-  background: var(--surface-2); border-color: transparent; color: var(--text-1);
-}
 
 /* ---------- 备份与恢复 ----------
  *
@@ -4369,7 +4371,6 @@ kbd {
   .subnav-item { width: auto; }
   .nav-item[aria-current]::before { display: none; }
   .sidebar-foot { margin: 0; flex-direction: row; }
-  .conn { border: 0; padding: 0; }
   .workspace { flex-direction: column; height: auto; }
   .ws-list, .rail { width: 100%; border: 0; border-bottom: 1px solid var(--border); }
   .main-wide { height: auto; }

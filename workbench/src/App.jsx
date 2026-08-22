@@ -282,48 +282,96 @@ export function App() {
 
   return (
     <div className="app" data-rail={railCollapsed ? "collapsed" : "open"}>
-      <aside className="sidebar">
-        <div>
-          <div className="brand-row">
-            <div className="brand">
-              {/**
-               * 收起态下 logo 自己就是展开按钮，那时收放按钮是藏起来的：60px 宽的一条里
-               * 摆两个方块（logo + 开关）显得挤，而 logo 本来就在最顺手的位置上。
-               * 展开态它退回纯标识（`pointer-events: none` + 移出无障碍树），
-               * 免得「点 logo 是回首页还是收侧栏」变成一个要想一下的问题。
-               * **DOM 只有一套**，两种形态的差别全在 CSS 和 title 上。
-               */}
-              <button
-                className="brand-mark"
-                onClick={toggleRail}
-                tabIndex={railCollapsed ? 0 : -1}
-                aria-hidden={!railCollapsed}
-                aria-label={railCollapsed ? "展开侧栏" : undefined}
-                title={railCollapsed ? "展开侧栏" : undefined}
-              >
-                <BrandMark />
-              </button>
-              <div className="brand-name">Xenho OS</div>
-            </div>
-            {/* 展开态常驻，不做成 hover 才现身：收放侧栏是随手就要用的动作，
-                藏起来的话每次都得先拿鼠标去扫一遍才找得到 */}
-            <button className="rail-toggle" onClick={toggleRail} aria-label="收起侧栏" title="收起侧栏">
-              <IconLayoutSidebar aria-hidden="true" stroke={1.7} />
-            </button>
-          </div>
-          {/* 副标解释主名：「OS」本身不说明这是干什么的，这一行才说明 */}
-          <div className="brand-tag">CREATOR WORKBENCH</div>
+      {/**
+        * ⚠️ **应用顶栏。跨全宽，侧栏在它下面。**
+        *
+        * 加它是因为在这之前**这个工作台没有外壳，只有一叠文档**：每一页都从一个巨大的
+        * 中文标题开始，搜索框塞在侧栏里，设置和连接状态挤在侧栏最底下。
+        * 「我在哪」「搜什么」「设置在哪」这三件**跨页面不变**的事，本来就该待在一条
+        * 跨页面不变的横条里——它们跟着页面内容一起滚动、一起换位置的时候，
+        * 这东西看起来就像一叠网页而不像一个应用。
+        *
+        * 四段，从左到右：**身份**（logo + 折叠）· **位置**（面包屑）·
+        * **找东西**（居中搜索）· **状态与设置**（连接点 + 齿轮）。
+        */}
+      <header className="topbar">
+        {/* 左段包一层：顶栏是三列 grid（左 1fr · 中 auto · 右 1fr），
+            中间那格才真的落在视口中心——见 styles.css 里那条注释 */}
+        <div className="topbar__left">
+        <div className="topbar__brand">
+          <BrandMark />
+          <span className="topbar__name">Xenho OS</span>
+          {/* 折叠钮**常驻在顶栏**。搬上来之前它长在侧栏里，收起态时 logo 还得兼职当
+              展开按钮（因为 60px 宽的一条里放不下两个方块）——那套「两种形态」的
+              绕法现在整个不需要了：顶栏的宽度不受侧栏收放影响。 */}
+          <button
+            className="topbar__rail"
+            onClick={toggleRail}
+            aria-label={railCollapsed ? "展开侧栏" : "收起侧栏"}
+            title={railCollapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            <IconLayoutSidebar aria-hidden="true" stroke={1.7} />
+          </button>
         </div>
 
-        {/* **快捷键不能是唯一的入口。** Ctrl+K 学一次就记住了，但没人会去猜一个
-            看不见的功能存不存在——所以搜索框长成一个真的能点的东西，
-            按键提示压在右边（收起态只剩放大镜图标）。 */}
-        <button className="rail-find" onClick={() => setFinder(true)} title="全局检索（Ctrl+K）">
-          <IconSearch className="nav-icon" aria-hidden="true" stroke={1.7} />
-          <span className="nav-item__label">搜索</span>
-          <kbd className="nav-item__label">Ctrl K</kbd>
+        {/* 面包屑：一级任务 +（有的话）二级页面。**这是「我在哪」唯一的常驻答案** */}
+        <nav className="crumbs" aria-label="当前位置">
+          {(() => {
+            const item = NAV.find((n) => (n.match ? n.match(route.view) : route.view === n.key));
+            const Icon = item ? NAV_ICONS[item.key] : null;
+            const child = item?.children?.find(
+              (c) => c.to === route.view || (route.view === "project" && c.to === "content")
+            );
+            return (
+              <>
+                {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
+                <b>{item ? NAV_LABELS[item.key] : "工作台"}</b>
+                {child ? <><i aria-hidden="true">/</i><span>{child.label}</span></> : null}
+              </>
+            );
+          })()}
+        </nav>
+        </div>
+
+        {/**
+          * ⚠️ **搜索框居中，而且是一句问句。**
+          * 它原来在侧栏里，宽度只有 200px 出头、写着两个字「搜索」——那看着是个
+          * 「侧栏功能」，而它其实是整个工作台唯一一个**跨四个库 + vault + posts + 热点**
+          * 的入口。放中间、给足宽度、用一句话说清它能干什么，是在说「这是主路」。
+          * **快捷键仍然不能是唯一入口**（没人会去猜一个看不见的功能存不存在）。
+          */}
+        <button className="topbar__find" onClick={() => setFinder(true)} title="全局检索（Ctrl+K）">
+          <IconSearch aria-hidden="true" stroke={1.7} />
+          <span>搜选题、稿件、素材、书里的一句话…</span>
+          <kbd>Ctrl K</kbd>
         </button>
 
+        {/**
+          * 右端：连接状态 + 设置。**它们说的是同一件事的两面**——这颗点报的就是
+          * 「WORKER_URL / WORKBENCH_KEY 配没配、通不通」，而齿轮是去改它的地方。
+          * ⚠️ **点本身不做成按钮**：它只有 7px，一个点看不出可点；齿轮才是入口。
+          */}
+        <div className="topbar__end">
+          <span
+            className={`dot ${connTone(config, statusError, status, statusRetrying)}`}
+            title={connLabel(config, statusError, status, statusRetrying)}
+          />
+          <button
+            className="topbar__icon"
+            onClick={() => setSettings(true)}
+            aria-label="设置"
+            title="设置：vault 路径、流水线、密钥、本机路径"
+          >
+            <IconSettings aria-hidden="true" stroke={1.7} />
+          </button>
+        </div>
+      </header>
+
+      <div className="app__body">
+      <aside className="sidebar">
+        {/* ⚠️ **品牌块和搜索框都搬去顶栏了。** 副标 `CREATOR WORKBENCH` 一起撤掉：
+            顶栏一行放不下两行字，而那句话是说给「第一次见」听的——天天看着它，
+            它就是「每个都说的话等于没说」里的那一个。 */}
         <nav className="nav">
           {NAV.map((item) => {
             const Icon = NAV_ICONS[item.key];
@@ -381,30 +429,6 @@ export function App() {
             <IconPlus aria-hidden="true" stroke={2} />
             <span className="nav-item__label">收集</span>
           </button>
-          {/**
-            * 连接状态 + 设置入口住在一起，因为它们说的是同一件事的两面：
-            * 这一行报的就是「WORKER_URL / WORKBENCH_KEY 配没配、通不通」，
-            * 而齿轮是去改它的地方。
-            *
-            * **这一行本身不做成按钮**：收起态下它只剩一颗 7px 的点，
-            * 一个点是看不出可点的。齿轮才是那个可点的东西。
-            *
-            * 收起态**不写第二套 DOM**：状态点绝对定位到齿轮右上角当角标
-            *（复用「60px 里放不下就退成一颗点」那条规则，见 .nav-item__dot），
-            * 差别全在 CSS 里。
-            */}
-          <div className="conn" title={connLabel(config, statusError, status, statusRetrying)}>
-            <span className={`dot ${connTone(config, statusError, status, statusRetrying)}`} />
-            <span className="nav-item__label conn__label">{connLabel(config, statusError, status, statusRetrying)}</span>
-            <button
-              className="conn__gear"
-              onClick={() => setSettings(true)}
-              aria-label="设置"
-              title="设置：vault 路径、流水线、密钥、本机路径"
-            >
-              <IconSettings aria-hidden="true" stroke={1.7} />
-            </button>
-          </div>
         </div>
       </aside>
 
@@ -470,6 +494,7 @@ export function App() {
           ) : null}
         </div>
       </main>
+      </div>
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />
 

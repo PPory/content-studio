@@ -100,8 +100,8 @@ try {
 
   // 1. 渲染了，不是白屏
   // 首次冷启动要转译编辑器和中文字体，8 秒在 Windows 上偶尔只截到空白首帧。
-  await page.waitForSelector(".brand-name", { timeout: 20000 });
-  check("界面渲染", (await page.textContent(".brand-name")) === "Xenho OS");
+  await page.waitForSelector(".topbar__name", { timeout: 20000 });
+  check("界面渲染", (await page.textContent(".topbar__name")) === "Xenho OS");
 
   // 2. 侧栏只放用户任务。数据库对象、后台状态和单个工具都不再抢一级入口。
   const nav = await page.$$eval(".nav-item", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
@@ -193,64 +193,46 @@ try {
    * 收起态只剩一列图标：文字是 `display:none` 而不是换一套 DOM——同一批节点两种形态，
    * 加一个导航项才不会要改两处。**测完必须展开回去**：后面还要按可见标签点击导航。
    */
-  await page.click(".rail-toggle");
+  /**
+   * 收起侧栏。
+   *
+   * ⚠️ **这一段整个重写过。** 上一版验的是「收起后 logo 兼职当展开按钮」「收起态搜索
+   * 只剩一个图标」「收起态齿轮不能消失」——那三条的前提是**搜索、设置、收放按钮都长在
+   * 侧栏里**，而 60px 宽的一条里塞不下它们。这些东西现在都在**顶栏**，
+   * 顶栏的宽度不受侧栏收放影响，所以那三个问题连同那套绕法一起没有了。
+   *
+   * 换来的是一条**更该钉的**：收侧栏时顶栏必须纹丝不动。那才是把它们搬上去的理由。
+   */
+  const topBefore = await page.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
+    return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
+  });
+  await page.click(".topbar__rail");
   await page.waitForTimeout(250);
   const railW = await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width));
   check("收起后只剩一列图标的宽度", railW <= 64, `${railW}px`);
   check("收起后文字不占位", (await page.$eval(".nav-item", (e) => e.innerText.trim())) === "", await page.$eval(".nav-item", (e) => e.innerText));
   check("收起后图标还在", (await page.$$(".nav-item .nav-icon")).length === 5);
-  // 收起后收放按钮让位给 logo：60px 一条里摆两个方块太挤，而 logo 已经在最顺手的位置
-  check("收起后收放按钮不出现", !(await page.isVisible(".rail-toggle")));
-  // logo 要和下面那一列图标块等宽：小一圈的话它看着像还没加载完，左右边缘也连不成一条竖线
-  const [logoW, itemW] = await page.evaluate(() => [
-    Math.round(document.querySelector(".brand-mark").getBoundingClientRect().width),
-    Math.round(document.querySelector(".nav-item").getBoundingClientRect().width),
-  ]);
-  check("收起态 logo 和导航项等宽", Math.abs(logoW - itemW) <= 2, `${logoW} vs ${itemW}`);
   // 角标退成一颗点：60px 里放不下数字，而「这儿有没有事」才是这一刻要回答的
   const dotOk = await page.evaluate(() => {
     const d = document.querySelector(".nav-item__dot");
     return !d || getComputedStyle(d).display !== "none";
   });
   check("角标退成一颗点", dotOk);
-  /**
-   * 收起态的搜索**只剩一个图标，不要容器**。
-   *
-   * 展开态那个方框有用（让「搜索」看起来像输入框）；收起后框里只剩一个放大镜，
-   * 而放大镜本身就是全世界都认得的记号，框不再解释任何东西，只是在一列**没有框**的
-   * 图标上面多出一个有框的——看着像它和下面那些不是一类东西。
-   */
-  const findBox = await page.evaluate(() => {
-    const cs = getComputedStyle(document.querySelector(".rail-find"));
-    const nav = getComputedStyle(document.querySelector(".nav-item"));
-    return { border: cs.borderTopColor, bg: cs.backgroundColor, r: cs.borderTopLeftRadius, navR: nav.borderTopLeftRadius };
+
+  const topAfter = await page.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
+    return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
   });
   check(
-    "收起态搜索没有容器",
-    /(, ?0\)|transparent)$/.test(findBox.border) && /(, ?0\)|transparent)$/.test(findBox.bg),
-    `边框 ${findBox.border} / 底色 ${findBox.bg}`
+    "收侧栏时顶栏纹丝不动",
+    topAfter.find === topBefore.find && topAfter.gear === topBefore.gear && topAfter.crumb === topBefore.crumb,
+    `搜索 ${topBefore.find}→${topAfter.find} · 齿轮 ${topBefore.gear}→${topAfter.gear} · 面包屑 ${topBefore.crumb}→${topAfter.crumb}`
   );
-  check("收起态搜索的圆角和导航项一致", findBox.r === findBox.navR, `${findBox.r} vs ${findBox.navR}`);
-
-  /**
-   * 收起态下**设置入口不能消失**：它是「工作台没配好」时唯一那条能走的路，
-   * 而收起侧栏是个会一直保持的状态——藏了的话，收着侧栏的人永远看不见它。
-   *
-   * 状态点这时退成齿轮右上角的角标（和 `.nav-item__dot` 同一条规则），
-   * 靠的是绝对定位而不是第二套 DOM。量 `position` 就是在量这一条。
-   */
-  check("收起态齿轮还在", await page.isVisible(".conn__gear"));
-  const gearBox = await page.evaluate(() => {
-    const gear = document.querySelector(".conn__gear").getBoundingClientRect();
-    const dot = document.querySelector(".conn > .dot");
-    return {
-      w: Math.round(gear.width),
-      pos: dot ? getComputedStyle(dot).position : "",
-      inside: dot ? dot.getBoundingClientRect().left >= gear.left && dot.getBoundingClientRect().top >= gear.top - 4 : false,
-    };
-  });
-  check("收起态齿轮和导航项等宽", Math.abs(gearBox.w - itemW) <= 2, `${gearBox.w} vs ${itemW}`);
-  check("收起态状态点退成角标", gearBox.pos === "absolute" && gearBox.inside, `${gearBox.pos} / 落在齿轮上 ${gearBox.inside}`);
+  // ⚠️ **设置入口在收起态下不能消失**：工作台没配好时它是唯一那条能走的路，
+  // 而收起是个会一直保持的状态。搬去顶栏之后这条是天然成立的，但仍要钉着。
+  check("收起态设置入口还在", await page.isVisible(".topbar__icon"));
+  check("收起态搜索框还在", await page.isVisible(".topbar__find"));
 
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector(".nav-item", { timeout: 8000 });
@@ -258,12 +240,11 @@ try {
     "刷新后记得收着",
     (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) <= 64
   );
-  // 收起态下**点 logo 展开**——收放按钮这时是藏着的，点它只会超时
-  await page.click(".brand-mark");
+  // 收放按钮**两种状态都在顶栏上**，不再需要「收起后 logo 兼职」那套
+  check("收起态收放按钮仍在", await page.isVisible(".topbar__rail"));
+  await page.click(".topbar__rail");
   await page.waitForTimeout(250);
-  check("点 logo 能再展开回去", (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) > 150);
-  // 展开后 logo 退回纯标识：点它既不收侧栏也不跳页，省掉一次「点了会怎样」的犹豫
-  check("展开后 logo 不再抢点击", await page.$eval(".brand-mark", (e) => getComputedStyle(e).pointerEvents === "none"));
+  check("再点一下展开回去", (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) > 150);
 
   /**
    * 2.5 设置：整屏覆盖层，左栏分类、右栏一段。
@@ -288,7 +269,7 @@ try {
     // 而且标签本来就会改字——按文字点的选择器在这个项目里已经栽过一次（收起态的「创作」）
     const go = (key) => page.click(`.set-nav__item[data-key="${key}"]`);
     try {
-      await page.click(".conn__gear");
+      await page.click(".topbar__icon");
       await page.waitForSelector(".set-overlay .set-nav__item", { timeout: 8000 });
 
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
@@ -482,7 +463,7 @@ try {
       await page.waitForTimeout(300);
       check("Esc 关得掉设置面板", !(await page.isVisible(".set-overlay")));
       // 关闭后焦点回到打开它的那个按钮上，不掉回 body
-      check("焦点回到齿轮上", await page.evaluate(() => document.activeElement?.classList.contains("conn__gear")));
+      check("焦点回到齿轮上", await page.evaluate(() => document.activeElement?.classList.contains("topbar__icon")));
     } finally {
       page.off("request", countWrites);
     }
@@ -3747,9 +3728,13 @@ try {
    * vault 里的书和洞察——写死某一种外部状态的话，外部一变测试就红。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".rail-find", { timeout: 8000 });
-  // 快捷键不能是唯一入口：看不见的功能没人会去猜它存不存在
-  check("侧栏有看得见的搜索入口", await page.isVisible(".rail-find"));
+  await page.waitForSelector(".topbar__find", { timeout: 8000 });
+  // 快捷键不能是唯一入口：看不见的功能没人会去猜它存不存在。
+  // ⚠️ 它现在在**顶栏正中**，不在侧栏里——那是整个工作台唯一一个跨四个库 + vault +
+  // posts + 热点的入口，塞在侧栏 200px 的一条里、只写两个字「搜索」，看着像个侧栏功能。
+  check("顶栏正中有看得见的搜索入口", await page.isVisible(".topbar__find"));
+  const findHint = await page.textContent(".topbar__find");
+  check("搜索框说清它能搜什么", /选题|稿件|素材/.test(findHint), findHint.replace(/\s+/g, " ").trim().slice(0, 30));
   await page.keyboard.press("Control+k");
   await page.waitForSelector(".cmdk input", { timeout: 5000 });
   check("Ctrl+K 打开全局检索", await page.isVisible(".cmdk"));
@@ -3891,10 +3876,33 @@ try {
     "打开就落在正文上（点入库的意图只有一个）",
     await page.evaluate(() => document.activeElement?.tagName === "TEXTAREA")
   );
-  // 背景对键盘和读屏整块消失
+  /**
+   * 背景对键盘和读屏整块消失。
+   *
+   * ⚠️ **判据是「它在某个 inert 子树里」，不是「它自己带着 inert 属性」。**
+   * 上一版写的是 `.sidebar.inert === true`，那隐含假设了**侧栏是弹层的直接兄弟**——
+   * 外壳加了一层 `.app__body`（顶栏跨全宽，侧栏和正文并排在它下面）之后，
+   * 被打上 inert 的是 `.app__body`，侧栏是**继承**来的，而 `element.inert`
+   * 这个 IDL 属性只反映元素自己的属性、不反映继承。于是断言红了而功能是好的。
+   *
+   * 再补一条**量效果**的：真去 focus 侧栏里那颗按钮，焦点不该落上去。
+   * 属性可以对而效果不对（浏览器不支持 inert 时），效果这条才是要守的东西。
+   */
   check(
     "背景被 inert 掉了",
-    await page.evaluate(() => document.querySelector(".sidebar")?.inert === true)
+    await page.evaluate(() => !!document.querySelector(".sidebar")?.closest("[inert]"))
+  );
+  check(
+    "背景里的按钮真的聚不上焦",
+    await page.evaluate(() => {
+      const btn = document.querySelector(".sidebar .btn-primary");
+      if (!btn) return false;
+      const before = document.activeElement;
+      btn.focus();
+      const moved = document.activeElement === btn;
+      if (moved) before?.focus?.();
+      return !moved;
+    })
   );
   /**
    * Tab 转一圈都不能跑出去。**必须真按 Tab**（`page.keyboard.press`）——
