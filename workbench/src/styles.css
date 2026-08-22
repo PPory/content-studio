@@ -3749,9 +3749,60 @@ kbd {
    一条标注都没有），那时这个 div 在 DOM 里是真空的——不写这条的话，
    一个全新的书架顶上会凭空多出 32px 的空隙，而没有任何东西在那儿。 */
 .shelf-top:empty { display: none; }
+/* 「正在阅读」列两条，条与条之间只靠间距分，不画分隔线——两条不需要一条线来数 */
+.shelf-top__col .continue + .continue { margin-top: 4px; }
+
 /* 两栏的小标题共用一套，才落在同一条基线上 */
 .shelf-top__label { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-base); font-weight: 600; margin: 0 0 12px; }
 .shelf-top__label em { font-style: normal; font-size: var(--fs-sm); font-weight: 400; color: var(--text-3); }
+
+/**
+ * 墙尾那个「加一本书」的格子。
+ *
+ * ⚠️ **它和封面一样高、一样宽**（同一个 `aspect-ratio`），否则那一排会缺一角。
+ * 虚线而不是实线：它不是一本书，是**一个还没被填上的位置**——
+ * 而这套界面里实线框已经被撤得差不多了，留一处虚线正好只表示「这儿是空的」。
+ */
+.add-book { position: relative; }
+.add-book__tile {
+  width: 100%; aspect-ratio: 1 / 1.414; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+  background: none; color: var(--text-3); cursor: pointer;
+  transition: color 0.14s var(--ease), border-color 0.14s var(--ease), background 0.14s var(--ease);
+}
+.add-book__tile:hover, .add-book__tile[aria-expanded="true"] {
+  color: var(--text-1); border-color: var(--text-3); background: var(--surface-2);
+}
+.add-book__busy { font-size: var(--fs-xs); }
+
+/**
+ * 菜单**向上弹**，宽度按最长那行说明定。
+ *
+ * ⚠️ **方向不是随便选的：这个格子永远在整面墙的末尾，也就是页面内容的最底部。**
+ * 向下弹的话它必然掉在视口外——实测第二项「建空书」直接看不见，而用户根本不知道
+ * 还有第二项。向上弹的那一侧是整面书墙，空间管够。
+ * 左右由 `data-flip` 决定，见 `ShelfActions.jsx` 里那个 effect。
+ */
+.add-book__pop {
+  position: absolute; z-index: 20; bottom: calc(100% + 6px); left: 0; width: 320px; max-width: 78vw;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.add-book[data-flip] .add-book__pop { left: auto; right: 0; }
+.add-book__row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 10px; border: 0; border-radius: var(--r-sm); background: none; color: inherit; cursor: pointer;
+}
+.add-book__row:hover:not(:disabled) { background: var(--surface-2); }
+.add-book__row:disabled { opacity: 0.55; cursor: default; }
+.add-book__row svg { flex: none; margin-top: 2px; color: var(--text-2); }
+.add-book__row span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.add-book__row b { font-size: var(--fs-base); font-weight: 600; }
+.add-book__row em { font-style: normal; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.55; }
+.add-book__pop .field-hint { padding: 2px 10px 6px; }
+.add-book__pop .row-actions { padding: 4px; }
+.add-book__pop input { flex: 1 1 auto; min-width: 0; }
 
 .shelf-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
 .shelf-cols > * { min-width: 0; }

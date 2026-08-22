@@ -1574,10 +1574,69 @@ try {
     );
     check("建书", made.ok, made.error || "");
 
-    // 导入：书架的入口是「导入书籍」+「建空书」，两个都得常驻。
-    // 之前只在书架目录已存在时才显示，目录没建时按钮藏在引导文案里，两头都不顺手。
-    const shelfBtns = await page.$$eval(".page-header__aside button", (els) => els.map((e) => e.textContent.trim()));
-    check("书架有导入和新建两个入口", shelfBtns.some((b) => b.includes("导入")) && shelfBtns.some((b) => b.includes("建空书")), shelfBtns.join("/"));
+    /**
+     * 加书的入口是**封面墙末尾那个 `＋` 格**，两条路（导入书籍 / 建空书）都在它的菜单里。
+     *
+     * ⚠️ **`＋` 只有一个，不是每组一个。** 一本书导进来落在「藏书」还是「资料」由
+     * `类型` 决定（epub / pdf 一定是藏书），不由你点了哪个组的 `＋` 决定——
+     * 每组一个的话，位置本身在暗示一个它保证不了的去处。
+     *
+     * ⚠️ **页头右上角只留搜索框。** 加书那两颗按钮连同「支持 .md / .txt / …」那行说明
+     * 挤在页头里，会把这一行撑到换行、把搜索框顶下去。
+     */
+    const shelfHead = await page.evaluate(() => ({
+      buttons: [...document.querySelectorAll(".page-header__aside button")].map((e) => e.textContent.trim()),
+      search: !!document.querySelector(".page-header__aside .search-box input"),
+      tiles: document.querySelectorAll(".add-book__tile").length,
+    }));
+    check("页头右上角只有搜索框", shelfHead.search && shelfHead.buttons.length === 0, shelfHead.buttons.join("/") || "(没有按钮)");
+    check("墙尾只有一个加书格", shelfHead.tiles === 1, `${shelfHead.tiles} 个`);
+
+    /**
+     * 「正在阅读」列**两条**：同时读两本是常态（一本正经书 + 一本随手翻的），
+     * 只给最近那一条的话，另一本每次都要去墙上找。
+     *
+     * ⚠️ **但有几本给几本，不凑数**——拿书架上没动过的书填那块空白，等于把
+     * 「你正在读这些」变成「书架上有这些」，而后者下面那面墙自己就是。
+     * 所以断言写成双向的：条数不超过 2，**而且「有没有标题」必须和「有没有条目」一致**。
+     * 只断言上限的话，一个「永远画着标题的空栏」照样能过。
+     */
+    const cont = await page.evaluate(() => ({
+      rows: document.querySelectorAll(".continue").length,
+      label: [...document.querySelectorAll(".shelf-top__label")].some((e) => e.textContent.includes("正在阅读")),
+    }));
+    check(
+      "「正在阅读」最多两条，一条都没有时标题也不画",
+      cont.rows <= 2 && cont.rows > 0 === cont.label,
+      `${cont.rows} 条 · 标题${cont.label ? "在" : "不在"}`
+    );
+
+    // ⚠️ **格子和封面一样高**，否则那一排会缺一角
+    const tileFit = await page.evaluate(() => {
+      const t = document.querySelector(".add-book__tile").getBoundingClientRect();
+      const c = document.querySelector(".book-card__cover .cover").getBoundingClientRect();
+      return { d: Math.abs(t.height - c.height), h: Math.round(t.height) };
+    });
+    check("加书格和封面一样高", tileFit.d <= 2, `差 ${tileFit.d.toFixed(1)}px（${tileFit.h}px 高）`);
+
+    await page.click(".add-book__tile");
+    await page.waitForSelector(".add-book__pop", { timeout: 4000 });
+    const pop = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll(".add-book__row b")].map((e) => e.textContent.trim());
+      const p = document.querySelector(".add-book__pop").getBoundingClientRect();
+      const t = document.querySelector(".add-book__tile").getBoundingClientRect();
+      const wall = document.querySelector(".bookshelf").getBoundingClientRect();
+      return { rows, up: p.bottom <= t.top + 1, inViewport: p.top >= 0, rightOk: p.right <= wall.right + 1 };
+    });
+    check("两条加书的路都在菜单里", pop.rows.join("/") === "导入书籍/建空书", pop.rows.join("/"));
+    /**
+     * ⚠️ **菜单必须向上弹。** 这个格子永远在整面墙的末尾，也就是页面内容的**最底部**——
+     * 向下弹的话它必然掉在视口外，实测第二项「建空书」直接看不见，
+     * 而用户根本不知道还有第二项。
+     */
+    check("加书菜单向上弹且在视口内", pop.up && pop.inViewport, `up=${pop.up} inViewport=${pop.inViewport}`);
+    check("加书菜单没向右出界", pop.rightOk, pop.rightOk ? "在墙内" : "超出墙的右缘");
+    await page.keyboard.press("Escape");
 
     // 导入走的是**原始字节 + 服务端解析**那条路，不是把文本塞进 JSON。
     // 三个以上一级标题就该自动拆章，拆完在磁盘上是一个个独立文件（Obsidian 里才能双链、能单独打标签）。

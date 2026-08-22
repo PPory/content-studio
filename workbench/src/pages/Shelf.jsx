@@ -444,18 +444,17 @@ export function Shelf({ onIntake, state = "" }) {
             count={list ? `${books.length} 本` : ""}
             desc="导入 Markdown / EPUB / PDF，拆成章节读；划词能批注、能问 AI、能摘成素材。正文和批注都在 Obsidian 里。"
             /**
-             * ⚠️ **搜索框在页头，不在书单上方单独占一行。**
-             * 它筛的就是标题旁边那「16 本」，放页头语义正好；而单独占一行的那一版
-             * 左边是一整片空白、右端吊着一个框，看着像它不属于任何东西。
+             * ⚠️ **页头右上角只有搜索框。**
+             * 它筛的就是标题旁边那「16 本」，语义正好。加书的两颗按钮**搬去了墙尾那个
+             * `＋` 格**——加书这件事发生在书堆的尽头，那儿正是「这儿还能再放一本」的
+             * 位置；而它们连同那行「支持 .md / .txt / …」的说明挤在页头里，把这一行
+             * 撑到换行，搜索框反而被顶下去了。
              */
             aside={
-              <>
-                <label className="search-box">
-                  <IconSearch aria-hidden="true" stroke={1.7} />
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜书名、作者、标签" />
-                </label>
-                <ShelfActions onDone={reload} />
-              </>
+              <label className="search-box">
+                <IconSearch aria-hidden="true" stroke={1.7} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜书名、作者、标签" />
+              </label>
             }
           />
 
@@ -471,7 +470,8 @@ export function Shelf({ onIntake, state = "" }) {
                   书架是 vault 里的 <code>{list.shelfDir || "书架"}/</code>，一本书一个子目录。
                   导入一本书会自动把它建出来。
                 </p>
-                <ShelfActions onDone={reload} />
+                {/* 这一刻墙还不存在，`＋` 格无处可放，所以用按钮形态 */}
+                <ShelfActions onDone={reload} variant="buttons" />
               </Note>
             ) : books.length ? (
               <>
@@ -499,7 +499,7 @@ export function Shelf({ onIntake, state = "" }) {
                   * 「这一本里我留下了什么」，两者不重复。
                   */}
                 <div className="shelf-wall">
-                    {groups.map((g) => (
+                    {groups.map((g, gi) => (
                       <div key={g.key}>
                         {g.label ? (
                           <div className="shelf-group">
@@ -528,6 +528,13 @@ export function Shelf({ onIntake, state = "" }) {
                               onTrash={() => trash(b)}
                             />
                           ))}
+                          {/**
+                            * ⚠️ **`＋` 只在最后一组的末尾出现一次。**
+                            * 每组一个的话，位置本身在暗示一个它保证不了的去处——
+                            * 一本书落在「藏书」还是「资料」由 `类型` 决定（epub 一定是藏书），
+                            * 不由你点了哪个组的 `＋` 决定。理由写在 `ShelfActions.jsx` 开头。
+                            */}
+                          {gi === groups.length - 1 ? <ShelfActions onDone={reload} /> : null}
                         </div>
                       </div>
                     ))}
