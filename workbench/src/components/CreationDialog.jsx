@@ -32,7 +32,17 @@ import {
 import "./creation.css";
 
 const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"];
-const firstScreen = (preset) => preset === "topic" ? "topic" : preset === "blank" ? "editor" : "choose";
+/**
+ * 打开时落在哪一屏。
+ * ⚠️ **`material` / `interview` 要认**：页头那颗「新建」下拉现在直接指定起点，
+ * 不认的话它们会落回「起点选择」——用户刚在下拉里选过一次，又被问了一遍。
+ */
+const firstScreen = (preset) =>
+  preset === "topic" ? "topic"
+  : preset === "blank" ? "editor"
+  : preset === "material" ? "material"
+  : preset === "interview" ? "interview"
+  : "choose";
 const newRevisionScope = () => `creation:${crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 
 export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreated }) {
@@ -405,7 +415,12 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
    */
   const back = (() => {
     const go = (to) => () => { abortRef.current?.abort(); setScreen(to); };
-    if (screen === "material" || screen === "interview") return { label: "起稿方式", go: go("choose") };
+    // ⚠️ **`preset` 指定的入口屏不画返回**：那一层用户从来没经过。
+    // 从下拉直接进「从素材开始」时，一个「← 起稿方式」会把人退到一屏他没见过的地方。
+    if (screen === "material" || screen === "interview") {
+      if (preset === screen) return null;
+      return { label: "起稿方式", go: go("choose") };
+    }
     if (screen === "editor" && preset !== "blank") {
       if (draftMode === "material") return { label: "从素材开始", go: go("material") };
       if (draftMode === "interview") return { label: "访谈起稿", go: go("interview") };
@@ -519,7 +534,17 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
  * 数字键 1/2/3 直接选，键号画在卡的右上角。这一屏没有输入框，裸键不会和打字打架
  * （和全局那条「裸键 `n` 在输入框里绝不触发」是同一条规矩的另一面）。
  */
-const MODES = [
+/**
+ * 起稿的三个起点。
+ *
+ * ⚠️ **导出给页头那颗「新建」下拉用**（`MenuButton`）。别在那边抄第二份：
+ * 抄了的话，改一个起点的说明要改两处，而漏掉的那处不报错——
+ * 这个项目的事故清一色是「同一件事写在两个地方」。
+ *
+ * 下拉里点一条 = 直接进那一屏（`preset`），**跳过「起点选择」那一屏**：
+ * 那一屏原来的全部作用就是问这三选一，而下拉已经问过了。
+ */
+export const MODES = [
   { key: "blank", icon: IconFileText, title: "空白文章", hint: "打开编辑器，标题最后再想。", mark: "想到就写" },
   { key: "material", icon: IconStack2, title: "从素材开始", hint: "先挑依据，再决定谁来写。", mark: "手上有料" },
   { key: "interview", icon: IconMessageQuestion, title: "访谈起稿", hint: "边聊边把想法梳成初稿。", mark: "只有想法" },

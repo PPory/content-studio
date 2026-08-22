@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { CreationDialog } from "../components/CreationDialog.jsx";
-import { Empty, ErrorNote, Loading, PageHeader, relTime } from "../components/ui.jsx";
+import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { Empty, ErrorNote, Loading, PageHeader, relTime , MenuButton} from "../components/ui.jsx";
 import { IconArrowRight, IconFileText, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 export function Content({ workerReady, onGo, onChanged, onSettings }) {
@@ -44,9 +44,11 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               <IconRefresh aria-hidden="true" className={loading ? "spinning" : ""} />
             </button>
             {workerReady ? (
-              <button className="btn btn-primary" onClick={() => setCreation("choose")}>
-                <IconPlus aria-hidden="true" stroke={2} />新建内容
-              </button>
+              <MenuButton
+                label="新建内容"
+                icon={IconPlus}
+                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
+              />
             ) : null}
           </>
         }

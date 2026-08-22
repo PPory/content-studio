@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { CreationDialog } from "../components/CreationDialog.jsx";
-import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
+import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { ErrorNote, Loading, MenuButton, PageHeader } from "../components/ui.jsx";
 import { AUTO_CARDS } from "../lib/views.js";
 import { IconArrowRight, IconPlus } from "../components/icons.jsx";
 import { DayPlan, usePlan } from "../components/DayPlan.jsx";
@@ -47,7 +47,20 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
         aside={
           <>
             {result ? <span className="project-total">{pending ? `${pending} 件事等你` : "今天没有内容待办"}</span> : null}
-            {workerReady ? <button className="btn btn-primary" onClick={() => setCreation("choose")}><IconPlus aria-hidden="true" />新建内容</button> : null}
+            {/**
+              * ⚠️ **「新建内容」是个下拉，不是直接开弹层。**
+              * 点它原来落在创作弹层的「起点选择」那一屏——整屏只干一件事：问你三选一。
+              * 下拉在**点之前**就把三条路摊开了，选完直接进对应那一屏，
+              * 同一个决定少一次全屏切换。三条起点的真源是 `CreationDialog` 的 `MODES`，
+              * **这儿不抄第二份**。
+              */}
+            {workerReady ? (
+              <MenuButton
+                label="新建内容"
+                icon={IconPlus}
+                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
+              />
+            ) : null}
           </>
         }
       />

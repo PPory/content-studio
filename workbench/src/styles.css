@@ -825,27 +825,32 @@ html[data-scroll-lock] .main { overflow: hidden; }
 
 /* ---------- 页头 ---------- */
 
-.page-header {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
+/**
+ * 页面顶部那一条：一句说明（左）+ 计数和动作（右）。
+ *
+ * ⚠️ **`.page-header` / `.page-title` / `.page-sub` 那一整套撤了。**
+ * 每一页原来都从一个 `clamp(28px, 3.4vw, 38px)` 的大标题开始——顶栏有了面包屑之后，
+ * 那是同一个词一屏说两遍，而且它拿走首屏最大的一块地方去说这一屏信息量最低的一件事。
+ */
+.page-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px 20px; flex-wrap: wrap; margin-bottom: 20px; min-height: 34px;
 }
-.page-header__main { min-width: 0; }
-.page-title {
-  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-  font-family: var(--font-display); font-size: clamp(28px, 3.4vw, 38px);
-  font-weight: 700; line-height: 1.1; letter-spacing: -0.035em; margin: 10px 0 0;
+.page-bar__desc {
+  margin: 0; min-width: 0; max-width: 620px;
+  font-size: var(--fs-base); line-height: 1.65; color: var(--text-2);
 }
-/* 条数挂在库名旁边——它是这个库此刻的事实，属于库名，不属于另一个标题 */
-.page-title__count {
-  font-family: var(--font); font-size: var(--fs-base); font-weight: 500;
-  letter-spacing: 0; color: var(--text-3);
-}
+.page-bar__end { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+.page-bar__count { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
+
+/* ⚠️ **`.page-sub` 留着，它不只是页头在用**：阅读区的编辑提示、洞察就绪面板、
+   正文空态、抓取中的说明——六处。跟着 `.page-header` 一起删掉的话，
+   那六处会安静地掉回默认字号和颜色，而没有任何地方会报错。 */
 .page-sub { color: var(--text-2); font-size: var(--fs-base); line-height: 1.7; margin: 10px 0 0; max-width: 620px; }
-.page-header__aside { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* 旧结构（总览等页面仍在用）保持可用 */
 .page-head { margin-bottom: 24px; }
-.page-head .page-title { margin-top: 0; }
+/* `.page-head .page-title` 那条撤了：`.page-title` 已经不存在。 */
 
 /* ---------- 通用件 ---------- */
 
@@ -2804,6 +2809,34 @@ kbd {
 .act-card:hover .act-card__go { color: var(--brand-strong); }
 .act-card__go svg { width: 15px; height: 15px; }
 /* 一排卡片 */
+/**
+ * 主按钮 + 下拉菜单。用在「新建内容」这种**一个动作有几种起点**的入口上。
+ * ⚠️ 菜单默认**靠右对齐**（`data-align="end"`）：这类按钮几乎都贴着内容区右缘，
+ * 左对齐的话一个 300px 的菜单会直接出界。和 `.select__pop` 那条是同一个坑。
+ */
+.menu-btn { position: relative; display: inline-flex; }
+.menu-btn__pop {
+  position: absolute; z-index: 30; top: calc(100% + 6px); width: 300px; max-width: 78vw;
+  display: flex; flex-direction: column; gap: 1px; padding: 6px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.menu-btn[data-align="end"] .menu-btn__pop { right: 0; }
+.menu-btn[data-align="start"] .menu-btn__pop { left: 0; }
+.menu-btn__row {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 9px 10px; border: 0; border-radius: var(--r-sm);
+  background: none; color: inherit; font: inherit;
+}
+.menu-btn__row:hover, .menu-btn__row[data-at] { background: var(--surface-2); }
+.menu-btn__row > svg { width: 17px; height: 17px; flex: none; color: var(--text-2); }
+.menu-btn__row span { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.menu-btn__row b { font-size: var(--fs-base); font-weight: 600; }
+.menu-btn__row em { font-style: normal; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
+/* 右端那个 `+` 是装饰不是信息（每行都一样），所以最轻 */
+.menu-btn__plus { flex: none; font-style: normal; font-size: var(--fs-md); color: var(--text-3); line-height: 1; }
+.menu-btn__row:hover .menu-btn__plus, .menu-btn__row[data-at] .menu-btn__plus { color: var(--text-1); }
+
 /* 清单空态：一句下一步，不是一片空白 */
 .plan-empty {
   display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left;
@@ -4598,7 +4631,7 @@ kbd {
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--r-lg); box-shadow: 0 18px 40px rgba(0, 0, 0, .12);
 }
-.page-header__aside { position: relative; }
+.page-bar__end { position: relative; }
 
 .run-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .run-panel__head b { font-size: var(--fs-md); }

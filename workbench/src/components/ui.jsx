@@ -53,6 +53,98 @@ import {
  * 它属于库名旁边，不属于另一个标题。
  */
 /**
+ * 主按钮 + 下拉菜单。「新建内容」「新建」这类**一个动作有几种起点**的入口用它。
+ *
+ * ⚠️ **它省掉的是一整屏。** 「新建内容」原来点开是创作弹层的「起点选择」那一屏，
+ * 整屏只干一件事：问你三选一。下拉在**点之前**就把三条路摊开了，
+ * 选完直接进对应那一屏——同一个决定，少一次全屏切换。
+ *
+ * ⚠️ **每条要带一句话说明。** 参考产品那种菜单（Add Contact / Add Deal）不需要，
+ * 因为选项自解释；我们这三条不是——「从素材开始」和「访谈起稿」的差别
+ * 恰恰在那句「先挑依据」和「边聊边梳」上。
+ *
+ * 键盘规矩和 `Select` 一套：上下键只是**在看**，回车才算选中；Esc 和点外面都收。
+ */
+export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" }) {
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState(-1);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const pick = (item) => {
+    setOpen(false);
+    item.onPick?.();
+  };
+
+  return (
+    <div className="menu-btn" ref={ref} data-align={align}>
+      <button
+        className="btn btn-primary"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={ariaLabel || label}
+        onClick={() => (setAt(-1), setOpen((v) => !v))}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowDown") return;
+          e.preventDefault();
+          setOpen(true);
+          setAt(0);
+        }}
+      >
+        {Icon ? <Icon aria-hidden="true" stroke={2} /> : null}
+        {label}
+      </button>
+
+      {open ? (
+        <div
+          className="menu-btn__pop"
+          role="menu"
+          onKeyDown={(e) => {
+            // ⚠️ 全在捕获阶段之外也够用：这一层没有嵌套弹层。
+            // 但 Esc 要自己吃掉——不然会一路冒到阅读区/弹层那些监听上去
+            if (e.key === "Escape") { e.stopPropagation(); setOpen(false); return; }
+            if (e.key === "ArrowDown") { e.preventDefault(); setAt((i) => (i + 1) % items.length); }
+            if (e.key === "ArrowUp") { e.preventDefault(); setAt((i) => (i - 1 + items.length) % items.length); }
+            if (e.key === "Enter" && items[at]) { e.preventDefault(); pick(items[at]); }
+          }}
+        >
+          {items.map((item, i) => {
+            const RowIcon = item.icon;
+            return (
+              <button
+                key={item.key}
+                className="menu-btn__row"
+                role="menuitem"
+                data-at={i === at ? "" : undefined}
+                autoFocus={i === at}
+                onMouseEnter={() => setAt(i)}
+                onClick={() => pick(item)}
+              >
+                {RowIcon ? <RowIcon aria-hidden="true" stroke={1.7} /> : null}
+                <span>
+                  <b>{item.title}</b>
+                  {item.hint ? <em>{item.hint}</em> : null}
+                </span>
+                {/* 右端那个 `+`：**它不区分任何东西**（四行都一样），
+                    作用是给每一行一个「这会新建一个东西」的一致记号和右锚点。
+                    它是装饰，所以 `aria-hidden`——读屏念的是标题和说明。 */}
+                <i className="menu-btn__plus" aria-hidden="true">+</i>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * 状态 pill：**浅底 + 深字 + 那枚状态图标**。
  *
  * ⚠️ **图标不能省，它才是主编码。** 参考产品里这个位置放的是一个纯色圆点，
@@ -144,18 +236,30 @@ export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel })
   );
 }
 
-export function PageHeader({ eyebrow, title, count, desc, aside }) {
+/**
+ * 页面顶部那一条：**一句说明 + 计数 + 动作**。
+ *
+ * ⚠️ **标题撤了，页名只在顶栏的面包屑里出现一次。**
+ * 之前每一页都从一个 38px 的大标题开始，而顶栏有了面包屑之后，那就是**同一个词
+ * 一屏说两遍**——而且它拿走了首屏最大的一块地方，去说这一屏信息量最低的一件事
+ *（你自己点进来的，你知道这是哪儿）。
+ *
+ * ⚠️ **`eyebrow` 一起撤了。** 它和 `desc` 是同一件事的两个详略
+ *（「准备要写的东西」/「改成『撰写中』就开始成稿——先选一个主平台」）；
+ * 没有标题夹在中间之后，两句连着念就是重复。留具体的那句。
+ *
+ * `title` 这个参数**故意留着**：调用方还在传，而它现在只进 `aria-label`——
+ * 这一条对读屏来说仍然需要一个名字。
+ */
+export function PageHeader({ title, count, desc, aside }) {
+  if (!desc && !count && !aside) return null;
   return (
-    <header className="page-header">
-      <div className="page-header__main">
-        {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
-        <h1 className="page-title">
-          {title}
-          {count ? <span className="page-title__count">{count}</span> : null}
-        </h1>
-        {desc ? <p className="page-sub">{desc}</p> : null}
+    <header className="page-bar" aria-label={title || undefined}>
+      {desc ? <p className="page-bar__desc">{desc}</p> : <span />}
+      <div className="page-bar__end">
+        {count ? <span className="page-bar__count">{count}</span> : null}
+        {aside}
       </div>
-      {aside ? <div className="page-header__aside">{aside}</div> : null}
     </header>
   );
 }

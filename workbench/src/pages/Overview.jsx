@@ -16,7 +16,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_CARDS, TODO_CARDS } from "../lib/views.js";
 import { SOURCES } from "../lib/sources.js";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note, PageHeader, SectionHead, relTime } from "../components/ui.jsx";
+import { ErrorNote, Loading, Note, PageHeader, SectionHead, relTime , MenuButton} from "../components/ui.jsx";
 import { Cover } from "../components/Cover.jsx";
 // ⚠️ 每日清单那一块**搬去了 `components/DayPlan.jsx`**，因为 `Today.jsx` 也要用它，
 // 而页面 import 另一个页面是这个项目明令禁止的（改总览会顺手改坏今日，且不报错）。
@@ -42,7 +42,7 @@ import {
   IconClipboardList,
 } from "../components/icons.jsx";
 import { BackupDrawer } from "../components/BackupDrawer.jsx";
-import { CreationDialog } from "../components/CreationDialog.jsx";
+import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
 import { setOpenTarget } from "../lib/open-target.js";
 
 /**
@@ -114,9 +114,11 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
             {/* 和「创作」页右上角是**同一个按钮、同一个弹层**（`preset` 不传就是选择页）。
                 复制一份简化版的话，以后加一种创建方式会漏掉这一处。 */}
             {workerReady ? (
-              <button className="btn btn-primary" onClick={() => setCreation("choose")}>
-                <IconPlus aria-hidden="true" stroke={2} />新建
-              </button>
+              <MenuButton
+                label="新建内容"
+                icon={IconPlus}
+                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
+              />
             ) : null}
           </>
         }

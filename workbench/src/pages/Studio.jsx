@@ -28,7 +28,7 @@ import { ACTIONS } from "../components/Reader.jsx";
 import { PlatformGate } from "../components/PlatformGate.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { MaterialVerificationPanel } from "../components/MaterialVerificationPanel.jsx";
-import { CreationDialog } from "../components/CreationDialog.jsx";
+import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
 import { CollectionActions, CollectionOrganizer } from "../components/CollectionOrganizer.jsx";
 import { IconPlus } from "../components/icons.jsx";
 // 展示件搬进 pages/studio/。**页面只留组合和状态边界。**
@@ -38,7 +38,7 @@ import { ListHead } from "./studio/ListHead.jsx";
 import { FilterBar } from "./studio/FilterBar.jsx";
 import { DocList } from "./studio/DocList.jsx";
 import { MaterialFlow } from "./studio/MaterialFlow.jsx";
-import { PageHeader, Toast } from "../components/ui.jsx";
+import { PageHeader, Toast , MenuButton} from "../components/ui.jsx";
 import { InsightRunButton, InsightRunProgress, useInsightRun } from "../components/InsightRun.jsx";
 
 // 流水线源的划词动作 = 全套减去「高亮」。高亮靠原文文本锚在一个 .highlights.md 上，
@@ -594,9 +594,11 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
               <IconPlus aria-hidden="true" stroke={2} />收集
             </button>
           ) : isPipeline ? (
-            <button className="btn btn-primary" onClick={() => setCreation("choose")}>
-              <IconPlus aria-hidden="true" stroke={2} />新建
-            </button>
+            <MenuButton
+                label="新建"
+                icon={IconPlus}
+                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
+              />
           ) : sourceKey === "insights" ? (
             <InsightRunButton run={insightRun.run} onStarted={insightRun.markStarted} />
           ) : null

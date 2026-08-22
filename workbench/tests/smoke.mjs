@@ -111,7 +111,7 @@ try {
     nav.join("/")
   );
   check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
-  check("默认进入今日", (await page.textContent(".page-title")) === "今天", await page.textContent(".page-title"));
+  check("默认进入今日", (await page.textContent(".crumbs")).trim() === "今日", await page.textContent(".crumbs"));
 
   /**
    * **今日顶部是三张等大的卡，不是「一张大卡 + 三行小条」。**
@@ -168,13 +168,13 @@ try {
 
   // 一级任务展开后，稳定目的地直接出现在左栏；不再先进入一张页内中转页。
   await page.click('.nav-item:has-text("内容")');
-  await page.waitForSelector(".page-title", { timeout: 8000 });
-  check("内容成为独立任务页", (await page.textContent(".page-title")) === "内容");
+  await page.waitForSelector(".crumbs", { timeout: 8000 });
+  check("内容成为独立任务页", /^内容/.test((await page.textContent(".crumbs")).trim()), (await page.textContent(".crumbs")).trim());
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
   await page.click('.nav-item:has-text("发现")');
-  await page.waitForSelector(".page-title", { timeout: 8000 });
-  check("发现直接进入热点而非中转页", (await page.textContent(".page-title")) === "近期热点");
+  await page.waitForSelector(".crumbs", { timeout: 8000 });
+  check("发现直接进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
   check("发现二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "热点/洞察/书架");
   await page.click('.subnav-item:has-text("书架")');
   await page.waitForSelector(".bookshelf, .empty, .note-title", { timeout: 8000 });
@@ -183,9 +183,9 @@ try {
   await page.click('.nav-item:has-text("素材")');
   await page.waitForSelector(".material-flow, .empty, .note-title", { timeout: 25000 });
   check("素材不再拆成三个二级入口", (await page.$$(".subnav-item")).length === 0);
-  check("素材直接进入统一工作区", (await page.textContent(".page-title")) === "素材工作区");
+  check("素材直接进入统一工作区", /素材/.test(await page.textContent(".crumbs")));
   await page.click('.nav-item:has-text("今日")');
-  await page.waitForSelector(".page-title", { timeout: 8000 });
+  await page.waitForSelector(".crumbs", { timeout: 8000 });
 
   /**
    * 侧栏能收起，而且**记得住**。
@@ -633,13 +633,34 @@ try {
      * ⚠️ 用的是和「创作」页右上角**同一个弹层**（`CreationDialog`）——复制一份简化版的话，
      * 以后加一种创建方式会漏掉这一处。
      */
-    const createBtn = await page.$('.page-header__aside .btn-primary');
+    const createBtn = await page.$('.page-bar__end .btn-primary');
     check("首页有新建入口", !!createBtn);
     if (createBtn) {
+      /**
+       * ⚠️ **「新建」现在是个下拉，起点在点之前就摊开了。**
+       *
+       * 上一版这三条测的是弹层里那一屏「起点选择」——整屏只干一件事：问你三选一。
+       * 下拉把那个问题提到了点击之前，选完直接进对应那一屏，**同一个决定少一次全屏切换**。
+       * 那一屏本身还在（弹层内部「← 起稿方式」退回来时要用），只是不再是主路。
+       *
+       * ⚠️ **三条起点的真源是 `CreationDialog` 的 `MODES`**，下拉不抄第二份——
+       * 所以这里断言的条数直接跟那份常量比，抄漏一条会红。
+       */
       await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      const modesSrc = await fs.promises.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
+      const wantModes = (modesSrc.match(/export const MODES = \[([\s\S]*?)\];/)?.[1].match(/\{ key:/g) || []).length;
+      const rows = await page.$$eval(".menu-btn__row b", (els) => els.map((e) => e.textContent.trim()));
+      check("新建是个下拉，三条起点直接摊开", rows.length === wantModes && wantModes > 0, `${rows.join("/")}（常量 ${wantModes} 条）`);
+      // 每条都要带一句话：「从素材开始」和「访谈起稿」的差别恰恰在那句说明上
+      const hints = await page.$$eval(".menu-btn__row em", (els) => els.length);
+      check("每条起点都带一句说明", hints === rows.length, `${hints}/${rows.length}`);
+
+      // 选第一条（空白文章）→ 直接进编辑器，**不再经过「起点选择」那一屏**
+      await page.click(".menu-btn__row");
       await page.waitForSelector(".creation", { timeout: 6000 }).catch(() => {});
-      check("新建能打开创作弹层", !!(await page.$(".creation")));
-      check("三个起点并排摆着", (await page.$$(".creation-mode")).length === 3);
+      check("选一条起点直接打开创作弹层", !!(await page.$(".creation")));
+      check("下拉选过之后不再问第二遍", !(await page.$(".creation-mode")));
 
       /**
        * **手滑关掉不能把正在写的东西弄没。**
@@ -650,9 +671,8 @@ try {
        *
        * 全程只写测试浏览器自己的 localStorage，一个写请求都不发（草稿缓冲本来就没有服务端）。
        */
-      await page.keyboard.press("1");
       await page.waitForSelector(".creation-editor .cm-content", { timeout: 6000 }).catch(() => {});
-      check("数字键 1 直接进空白文章", !!(await page.$(".creation-editor")));
+      check("空白文章直接落在编辑器上", !!(await page.$(".creation-editor")));
       await page.click(".creation-editor .cm-content").catch(() => {});
       await page.keyboard.type("误关之前写下的这一段必须还在。", { delay: 5 });
       await page.waitForTimeout(1200);
@@ -665,7 +685,10 @@ try {
       // 点了等于没点，而后面那句「再打开」会卡在超时上——现象是整轮冒烟测试从这儿断掉。
       await page.mouse.click(8, 8);
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      // ⚠️ 重开也要走下拉：那颗按钮现在展开菜单，不再直接开弹层
       await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      await page.click(".menu-btn__row");
       await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
       check("重开时问要不要接着写", !!(await page.$(".creation-recover")), (await page.textContent(".creation-recover").catch(() => "")).slice(0, 40));
       await page.click('.creation-recover button:has-text("接着写")').catch(() => {});
@@ -679,6 +702,8 @@ try {
       await page.keyboard.press("Escape");
       await page.waitForTimeout(300);
       await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      await page.click(".menu-btn__row");
       await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
       await page.click('.creation-recover button:has-text("丢弃")').catch(() => {});
       await page.waitForTimeout(200);
@@ -692,7 +717,12 @@ try {
        * 顶掉了居中，正文被套上聊天气泡的灰底。**代码在跑、测试全绿，只有肉眼看得见。**
        * 量的是渲染后的颜色和背景，不是有没有加 class。
        */
-      await page.keyboard.press("3");
+      // ⚠️ 从**下拉的第三条**进访谈，不再是起点屏上按数字键——那一屏已经不是主路了
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      await page.click(".menu-btn__row >> nth=2");
       await page.waitForSelector(".creation-interview-welcome", { timeout: 6000 }).catch(() => {});
       const welcome = await page.evaluate(() => {
         const svg = document.querySelector(".creation-interview-welcome > span svg");
@@ -740,17 +770,24 @@ try {
        * 编辑器在页脚），同一个动作换一屏就要重新找一次。这条钉的是「三屏都在同一处、
        * 而且别处不再有第二个」——只断言「有返回按钮」的话，旧的那几个留在原地也照样绿。
        */
-      check("访谈屏的返回在眉标那一行", !!(await page.$(".creation__head .creation__crumb")));
+      /**
+       * ⚠️ **从下拉直接进的那一屏不画返回。**
+       * 「起点选择」那一屏用户根本没经过——给一个「← 起稿方式」，点下去会把人
+       * 退到一屏他从没见过的地方。这条和「`preset` 指定的入口屏不画返回」是同一条，
+       * 只是入口从「首页那颗按钮」换成了「下拉里的那一条」。
+       */
+      check("从下拉直接进的访谈屏不画返回", !(await page.$(".creation__head .creation__crumb")));
       const strayInterview = await page.$$eval(".creation-interview button", (els) => els.filter((e) => e.textContent.includes("返回")).length);
       check("访谈屏别处没有第二个返回", strayInterview === 0, `${strayInterview} 个`);
-      await page.click(".creation__crumb");
-      await page.waitForSelector(".creation-mode", { timeout: 5000 }).catch(() => {});
 
-      await page.keyboard.press("2");
+      // 换一条起点：素材屏。同样从下拉进，同样是入口屏
+      await page.keyboard.press("Escape");
+      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
+      await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      await page.click(".menu-btn__row >> nth=1");
       await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
-      // 面包屑要写明**退回去是哪儿**：光一个箭头说不了这件事
-      const crumb = (await page.textContent(".creation__head .creation__crumb")).trim();
-      check("素材屏的返回写明退回哪儿", crumb.includes("起稿方式"), crumb);
+      check("从下拉直接进的素材屏也不画返回", !(await page.$(".creation__head .creation__crumb")));
       const strayMaterial = await page.$$eval(".creation-material-workspace button", (els) => els.filter((e) => e.textContent.includes("返回")).length);
       check("素材屏别处没有第二个返回", strayMaterial === 0, `${strayMaterial} 个`);
       // 已选素材空着时只占一行：那句「选中的素材会留在这里…」原来占了 128px 去讲一件做一次就懂的事
@@ -961,14 +998,18 @@ try {
       await page.unroute("**/api/pipe/search/materials*").catch(() => {});
       await page.keyboard.press("Escape");
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
-      await page.click('button:has-text("新建")').catch(() => {});
-      await page.waitForSelector(".creation-mode", { timeout: 6000 }).catch(() => {});
-      await page.click(".creation-mode >> nth=1");
+      await createBtn.click();
+      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      await page.click(".menu-btn__row >> nth=1");
       await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
-
-      await page.click(".creation__crumb");
-      await page.waitForSelector(".creation-mode", { timeout: 5000 }).catch(() => {});
-      check("返回退回起点屏", !!(await page.$(".creation-mode")));
+      /**
+       * ⚠️ **「起点选择」那一屏还在，但它不再是主路。**
+       * 它现在只剩一个到达方式：首页在**一条可推进内容都没有**的时候，
+       * 空态里那颗「开始一篇新的」（`setCreation("choose")`）。留着它是因为那条路真实存在；
+       * 而从下拉进来的三条各自是入口屏，退回去反而是错的（见上面那两条）。
+       */
+      const chooserSrc = await fs.promises.readFile(new URL("../src/pages/Today.jsx", import.meta.url), "utf8");
+      check("起点屏还留着一个入口", /setCreation\("choose"\)/.test(chooserSrc), "今日空态的「开始一篇新的」");
 
       await page.keyboard.press("Escape");
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
@@ -977,7 +1018,7 @@ try {
 
     // 「N 件事等你」只数等你动手的两项。把 Worker 正在跑的活也算进去，
     // 会让人以为自己欠着事——「撰写中 3」并不需要你做任何动作。
-    const badge = await page.textContent(".page-header__aside").catch(() => "");
+    const badge = await page.textContent(".page-bar__end").catch(() => "");
     const sum = nums.reduce((n, x) => n + Number(x), 0);
     check(
       "待办数只算等你动手的",
@@ -1148,14 +1189,16 @@ try {
   const nest = await page.evaluate(() => {
     const pb = document.querySelector(".panel-block");
     const cs = pb && getComputedStyle(pb);
-    const label = document.querySelector(".page-title")?.firstChild?.textContent?.trim() || "";
+    // ⚠️ 页名现在**只在顶栏的面包屑里**，正文区一个标题都不该有
+    const crumb = document.querySelector(".crumbs")?.innerText.replace(/\s+/g, "") || "";
     return {
-      label,
-      // 页头之外还有几处写着同一个库名
-      echoes: [...document.querySelectorAll("h2, h3")].filter((e) => e.textContent.includes(label)).length,
+      crumb,
+      h1s: document.querySelectorAll(".main h1").length,
+      // 正文里还有几处在复述面包屑上那个词
+      echoes: [...document.querySelectorAll(".main h2")].filter((e) => crumb.includes(e.textContent.trim())).length,
       border: cs?.borderTopWidth,
       shadow: cs?.boxShadow,
-      count: document.querySelector(".page-title__count")?.textContent.trim() || "",
+      count: document.querySelector(".page-bar__count")?.textContent.trim() || "",
       // Worker 连不上时列表是空的、条数本来就没有——断言要写成二选一，
       // 不能写死「一定有条数」，那样外部一挂测试就红
       loaded: !!document.querySelector(".doc-row, .kanban-col"),
@@ -1168,9 +1211,17 @@ try {
       })(),
     };
   });
-  check("库名一屏只出现一次", nest.label === "选题库" && nest.echoes === 0, `${nest.label} · 另有 ${nest.echoes} 处`);
+  /**
+   * ⚠️ **页名一屏只出现一次，而且只在顶栏。**
+   * 走过三版：①「页头大标题 + 正文里 TOPICS/选题库 的小标题」两遍；
+   * ② 撤掉小标题，只剩页头那个 38px 的大标题；
+   * ③ 顶栏有了面包屑之后，那个大标题又成了第二遍——而且它拿走首屏最大的一块地方，
+   * 去说这一屏信息量最低的一件事（你自己点进来的，你知道这是哪儿）。
+   * 所以判据是**正文区一个 `h1` 都没有**，且没有 `h2` 在复述面包屑上那个词。
+   */
+  check("页名只在顶栏，正文里不再重复", nest.h1s === 0 && nest.echoes === 0, `正文 h1 ${nest.h1s} 个 · 复述 ${nest.echoes} 处 · 面包屑「${nest.crumb}」`);
   check(
-    "条数挂在页标题旁边",
+    "条数挂在动作条上",
     !nest.loaded || /条$/.test(nest.count),
     nest.loaded ? nest.count || "(列表有内容却没有条数)" : "(列表是空的，这一条不适用)"
   );
@@ -1661,8 +1712,8 @@ try {
      * 挤在页头里，会把这一行撑到换行、把搜索框顶下去。
      */
     const shelfHead = await page.evaluate(() => ({
-      buttons: [...document.querySelectorAll(".page-header__aside button")].map((e) => e.textContent.trim()),
-      search: !!document.querySelector(".page-header__aside .search-box input"),
+      buttons: [...document.querySelectorAll(".page-bar__end button")].map((e) => e.textContent.trim()),
+      search: !!document.querySelector(".page-bar__end .search-box input"),
       tiles: document.querySelectorAll(".add-book__tile").length,
     }));
     check("页头右上角只有搜索框", shelfHead.search && shelfHead.buttons.length === 0, shelfHead.buttons.join("/") || "(没有按钮)");
@@ -1781,7 +1832,7 @@ try {
      * 两条退路都要有：**× 是看得见的那条，Esc 是快的那条。**
      * 只给 Esc 不够——框里有字、旁边没有任何清除的记号，人不会去猜快捷键。
      */
-    const box = ".page-header__aside .search-box";
+    const box = ".page-bar__end .search-box";
     check("没输入时不画清空按钮", (await page.$(`${box} .search-box__clear`)) === null);
     await page.fill(`${box} input`, "内容");
     await page.waitForSelector(`${box} .search-box__clear`, { timeout: 4000 });
@@ -2921,7 +2972,7 @@ try {
   /* ⚠️ 这里原来写的是 `.page-head`，而共用页头件（`ui.jsx` 的 `PageHeader`）的类名一直是
      `.page-header`——**选择器指着一个不存在的类**，于是这条恒红，而按钮从头到尾都在。
      `.catch(() => "")` 把「找不到元素」和「按钮文案不对」抹成了同一种结果，所以看不出是哪种。 */
-  const collectAction = (await page.textContent(".page-header .btn-primary").catch(() => "")).trim();
+  const collectAction = (await page.textContent(".page-bar__end .btn-primary").catch(() => "")).trim();
   check("统一素材页保留收集入口", collectAction.includes("收集"), collectAction || "（没有这颗按钮）");
   await shot("ideas");
 
@@ -3147,11 +3198,11 @@ try {
      *
      * 这条断言因此空等了 8 秒然后抛错——**而它整段包在 try 里，异常被吞掉**，
      * 于是二十来条断言集体不执行，冒烟测试照样报绿。这就是「红着的测试等于没有测试」
-     * 的更坏版本：**它连红都没红**。等的改成每一页都有的 `.page-title`：
+     * 的更坏版本：**它连红都没红**。等的改成每一页都有的顶栏面包屑 `.crumbs`：
      * 页内 tab 以后还会动，页面标题不会。
      */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
-    await page.waitForSelector(".page-title", { timeout: 8000 });
+    await page.waitForSelector(".crumbs", { timeout: 8000 });
 
     /* 9a0. 自动发现：从下载目录（和项目的 data/inbox/）里翻出还没导进来的导出文件。
      *      这条路存在的理由是「能推断的不让用户填」——文件在哪、哪个最新、哪个是刚下的，
@@ -3375,7 +3426,7 @@ try {
    *（vault 没配 / 服务没起）。写死「一定看到材料清单」的话，换台机器就红，
    * 而红着的测试等于没有测试。
    */
-  const runBtn = await page.$(".page-header__aside .btn-primary");
+  const runBtn = await page.$(".page-bar__end .btn-primary");
   check("洞察页有跑批入口", !!runBtn, runBtn ? await runBtn.textContent() : "没找到页头按钮");
   if (runBtn) {
     await runBtn.click().catch(() => {});
@@ -3980,7 +4031,7 @@ try {
       const [r, g, b] = rgb.match(/\d+/g).map(Number);
       return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
     };
-    const el = [...document.querySelectorAll(".field-hint, .empty, .page-sub")].find((e) => e.offsetParent);
+    const el = [...document.querySelectorAll(".field-hint, .empty, .page-sub, .page-bar__desc")].find((e) => e.offsetParent);
     if (!el) return null;
     const s = getComputedStyle(el);
     const [a, b] = [L(s.color), L(getComputedStyle(document.body).backgroundColor)].sort((x, y) => y - x);
@@ -3990,7 +4041,7 @@ try {
     check("辅助文字过 WCAG AA（4.5:1）", contrast.ratio >= 4.5, `${contrast.ratio}:1 · ${contrast.color}`);
     check("辅助文字不小于 13px", contrast.size >= 13, `${contrast.size}px`);
   } else {
-    check("辅助文字能量到", false, "这一页上没有 .field-hint / .empty / .page-sub");
+    check("辅助文字能量到", false, "这一页上没有 .field-hint / .empty / .page-sub / .page-bar__desc");
   }
 
   /**

@@ -262,7 +262,7 @@ const shots = [
   // 跑批面板：页头按钮点开之后那一屏。它是这一页唯一的动作入口，
   // 而且里面全是「要不要花钱」这类需要看清楚的信息——不截图就等于没验。
   ["insight-run", "/#/insights", ".wall-card, .empty, .note-title", async () => {
-    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.click(".page-bar__end .btn-primary").catch(() => {});
     await page.waitForSelector(".run-panel", { timeout: 8000 }).catch(() => {});
   }],
   ["insight", "/#/insights", ".wall-card, .empty, .note-title", async () => {
@@ -337,14 +337,14 @@ const shots = [
   // 起点选择：三行一屏。这一屏光靠断言全绿——上一版就是三张并排的卡，
   // 图标钉在左上角、文字沉在底部，中间挖出一块空白，测试一条没红。
   ["create", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.click(".page-bar__end .btn-primary").catch(() => {});
     await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
   }],
   // 编辑器：**背景该比上一张糊得多**（沉浸），底部要能看见字数和留底状态。
   // 这里会往编辑器里敲字，触发一次自动保存——写的是**测试浏览器自己的 localStorage**，
   // 不碰服务端也不碰真数据，符合截图脚本「点了不写」的规矩。
   ["create-editor", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.click(".page-bar__end .btn-primary").catch(() => {});
     await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
     await page.click(".creation-mode").catch(() => {});
     await page.waitForSelector(".creation-editor .cm-content", { timeout: 8000 }).catch(() => {});
@@ -355,7 +355,7 @@ const shots = [
   // 从素材开始：**平台下拉展开着截**。它贴在右栏最右端，而菜单比按钮宽 50 多像素，
   // 默认 `left:0` 就会顶出面板边缘——这种事断言看不出来，只有图上看得见。
   ["create-material", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.click(".page-bar__end .btn-primary").catch(() => {});
     await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
     await page.keyboard.press("2");
     await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
@@ -365,7 +365,7 @@ const shots = [
   // 访谈起稿的欢迎区：那枚圆形图标和这段话曾经被聊天气泡的样式串了台
   //（图标涂成灰的、正文套上灰底），代码在跑、测试全绿，只有肉眼看得见
   ["create-interview", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-header__aside .btn-primary").catch(() => {});
+    await page.click(".page-bar__end .btn-primary").catch(() => {});
     await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
     await page.keyboard.press("3");
     await page.waitForSelector(".creation-interview-welcome", { timeout: 8000 }).catch(() => {});
