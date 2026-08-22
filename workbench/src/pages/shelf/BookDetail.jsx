@@ -182,11 +182,16 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onI
     <Empty icon={IconSearch}>这本书里没有「{q}」</Empty>
   );
 
+  /**
+   * ⚠️ **不给这几块配英文眉标。** 试过 `MY MARKS` / `TABLE OF CONTENTS` / `SEARCH`，
+   * 全是正下方那个中文标题的英文转写——设计系统里早就否决过这种眉标：
+   * 正下方就是同一个词，占的却是整块的第一行。
+   */
   const head = hits
-    ? { eyebrow: "SEARCH", title: "搜索结果", count: `${hits.length} 章命中` }
+    ? { title: "搜索结果", count: `${hits.length} 章命中` }
     : hasMarks
-      ? { eyebrow: "MY MARKS", title: "我的标记", count: `${marks.total} 条 · 按章排` }
-      : { eyebrow: "TABLE OF CONTENTS", title: "章节目录", count: `${entries.length} 章` };
+      ? { title: "我的标记", count: `${marks.total} 条 · 按章排` }
+      : { title: "章节目录", count: `${entries.length} 章` };
 
   return (
     <>
@@ -201,7 +206,8 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onI
             那也是主要入口（单篇书压根不经过这一层）。 */}
         <Cover book={book} />
         <div className="book-hero__body">
-          <span className="eyebrow">CURRENT BOOK</span>
+          {/* 原来这儿有一行 `CURRENT BOOK`。你是点着一本书的封面进来的，
+              用不着再有一行英文说「这是当前这本书」——同一条否决理由。 */}
           <h1>{book.name}</h1>
           {/**
             * 元信息和动作**贴着封面底边**，不跟着书名长短上下浮动。
@@ -284,7 +290,6 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onI
         <section className="panel-block">
           <div className="panel-head">
             <div className="panel-head__main">
-              <span className="eyebrow">{head.eyebrow}</span>
               <h2>
                 {head.title}
                 <span className="panel-head__count">{head.count}</span>

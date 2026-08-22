@@ -54,6 +54,12 @@ npm run app:stop     # 停掉后台的 dev server（图标那条路关窗就自�
 
 **但最省事的还是：完整跑完，输出重定向到文件再看**（`node tests/shots.mjs > tmp/shots.log 2>&1`）。
 
+⚠️ **别用 `cmd &` 把它丢进后台。** shell 退出时不会带走它，而你会以为它死了。真实后果是一串的：
+以为它死了 → 手动删掉 `tmp/.shots-restore.json` → 再起一个新的 → 新的因为 **5198 端口被老的占着**
+起不来 → 老的跑完退出时读不到账本，**什么都没还原**。判断它还在不在只有一个可靠办法：
+`netstat -ano | grep :5198` 看谁占着端口，**别看有没有新图出来**（它两张图之间能隔好几分钟）。
+⚠️ **老进程还活着时绝不能删账本、也绝不能再起一个** —— 那正是「两个进程抢同一份账本」那次事故的翻版。
+
 ## 验证
 
 ```bash
@@ -181,6 +187,8 @@ node tests/shots.mjs   # 截图到 tmp/shot-*.png（末尾加 dark 出暗色版�
 - **图标统一从 `src/components/icons.jsx` 出去**（5000+ 图标的 barrel，别处不直接 import），线宽 `stroke={1.7}`。
 - **不用原生 `<select>`，用 `ui.jsx` 的 `<Select>`**；它的 `renderIcon` **必传且要逐项不同**，状态图标靠形状区分不靠颜色。
 - **共用页头件在 `src/components/ui.jsx`**（`PageHeader` / `SectionHead` / `MetaItem` / `fieldIcon`）——两个调用方，谁也不该 import 另一个页面的私有常量。
+- ⚠️ **一屏一个标题、一层容器。** 页头已经写了库名，**下面不许再画一个写着同一个库名的小标题**（撤掉过：`ListHead` 和书架的 `SHELF / 在架上`、书详情的 `MY MARKS`）。条数挂 `PageHeader` 的 `count`。**`.panel-block` 不是框**（没有边框、白底、投影）——`.main` 本身就是浮在底色上的白面板，里面再套一张就是白框套白框。分区靠标题和留白分。
+- ⚠️ **实心黑一屏一颗，就是页头右上那颗。** 库内的「选题 / 入库」是 `.btn`，不是 `.btn-primary`；稿件库工具条上那颗「新稿」已经撤掉（它和页头「新建」是同一个 `onCreate("choose")`）。冒烟测试钉了 `.main .btn-primary` 最多一颗。
 - **浏览层默认是列表行不是卡片墙**（`pages/studio/DocRow.jsx` / `.doc-row`）。卡片留给**有封面图**的东西（书架）。
   - **行仍然必须有摘要**，所以是两行高的；省掉摘要就是把浏览层降级成一份目录。
   - ⚠️ **`.doc-row__state` 没状态也要占格**，`.doc-row__excerpt` 没内容也要占高——

@@ -44,12 +44,21 @@ import {
 
 // 页头：一行等宽小字（这一页属于哪一层）+ 大标题 + 右侧状态/动作。
 // 三段式是这套设计的骨架，每页都长一样，所以用户不用重新找「刷新在哪」。
-export function PageHeader({ eyebrow, title, desc, aside }) {
+/**
+ * ⚠️ **计数挂在页标题上，不在下面再画一个写着同一个库名的小标题。**
+ * 之前是「页头说一遍『选题库』，正文顶上那个框里再说一遍『TOPICS / 选题库 1 条』」——
+ * 同一个名字一屏出现两次，中间只隔了一行描述。计数是**这个库此刻的事实**，
+ * 它属于库名旁边，不属于另一个标题。
+ */
+export function PageHeader({ eyebrow, title, count, desc, aside }) {
   return (
     <header className="page-header">
       <div className="page-header__main">
         {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
-        <h1 className="page-title">{title}</h1>
+        <h1 className="page-title">
+          {title}
+          {count ? <span className="page-title__count">{count}</span> : null}
+        </h1>
         {desc ? <p className="page-sub">{desc}</p> : null}
       </div>
       {aside ? <div className="page-header__aside">{aside}</div> : null}

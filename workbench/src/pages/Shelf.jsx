@@ -436,29 +436,30 @@ export function Shelf({ onIntake, state = "" }) {
         />
       ) : (
         <>
+          {/* ⚠️ **这一页只有一个标题。** 原来是页头写「书架」、正文顶上那个框里
+              再写一遍「SHELF / 在架上 16 本」——同一件事一屏说两遍，而 `SHELF`
+              正是设计系统里否决过的那种眉标（标题的英文转写）。本数挂在页标题旁边。 */}
           <PageHeader
             title="书架"
+            count={list ? `${books.length} 本` : ""}
             desc="导入 Markdown / EPUB / PDF，拆成章节读；划词能批注、能问 AI、能摘成素材。正文和批注都在 Obsidian 里。"
-            aside={<ShelfActions onDone={reload} />}
-          />
-
-          <section className="panel-block">
-            <div className="panel-head">
-              <div className="panel-head__main">
-                <span className="eyebrow">SHELF</span>
-                <h2>
-                  在架上
-                  {list ? <span className="panel-head__count">{books.length} 本</span> : null}
-                </h2>
-              </div>
-              <div className="panel-head__aside">
+            /**
+             * ⚠️ **搜索框在页头，不在书单上方单独占一行。**
+             * 它筛的就是标题旁边那「16 本」，放页头语义正好；而单独占一行的那一版
+             * 左边是一整片空白、右端吊着一个框，看着像它不属于任何东西。
+             */
+            aside={
+              <>
                 <label className="search-box">
                   <IconSearch aria-hidden="true" stroke={1.7} />
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜书名、作者、标签" />
                 </label>
-              </div>
-            </div>
+                <ShelfActions onDone={reload} />
+              </>
+            }
+          />
 
+          <section className="panel-block">
             <ErrorNote error={listError} what="加载书架" />
 
             {!list && !listError ? (
@@ -474,19 +475,30 @@ export function Shelf({ onIntake, state = "" }) {
               </Note>
             ) : books.length ? (
               <>
-                <ContinueCard
-                  books={books}
-                  tick={progressTick}
-                  onResume={(b, entry) => openDoc(b, entry, { resume: true, detail: b.chapterCount > 1 })}
-                />
                 {/**
-                  * 封面墙 + 右栏「最近标注」。⚠️ **标注放书架不放书详情**：
-                  * 放详情页意味着你得先想起「是哪本书」才能看到自己写过什么，
-                  * 而标记是**跨书**的——「我最近在想什么」根本不按书分。
-                  * 书详情那一栏仍然留着，那儿回答的是「这一本里我留下了什么」，两者不重复。
+                  * 顶部两栏是**上次的落点**（左：读到哪儿；右：写过什么），
+                  * 底下是通栏的书单。
+                  *
+                  * ⚠️ **「最近标注」原来竖在书单右边**，把封面墙挤成窄栏、自己也被压成
+                  * 一条细长的引文，两边都没落到好。它和「正在阅读」本来就是同一类东西，
+                  * 并排放在书单上方，书单才吃得满整个宽度——而书单是这一页的主体。
+                  * 两栏任何一栏空掉时整块不画，剩下的那栏自己铺满（`auto-fit`）。
                   */}
-                <div className="shelf-cols">
-                  <div className="shelf-cols__wall">
+                <div className="shelf-top">
+                  <ContinueCard
+                    books={books}
+                    tick={progressTick}
+                    onResume={(b, entry) => openDoc(b, entry, { resume: true, detail: b.chapterCount > 1 })}
+                  />
+                  <RecentMarks onOpen={(m) => openDocByPath(m)} />
+                </div>
+                {/**
+                  * ⚠️ **标注放书架不放书详情**：放详情页意味着你得先想起「是哪本书」
+                  * 才能看到自己写过什么，而标记是**跨书**的——「我最近在想什么」
+                  * 根本不按书分。书详情那一栏仍然留着，那儿回答的是
+                  * 「这一本里我留下了什么」，两者不重复。
+                  */}
+                <div className="shelf-wall">
                     {groups.map((g) => (
                       <div key={g.key}>
                         {g.label ? (
@@ -519,8 +531,6 @@ export function Shelf({ onIntake, state = "" }) {
                         </div>
                       </div>
                     ))}
-                  </div>
-                  <RecentMarks onOpen={(m) => openDocByPath(m)} />
                 </div>
               </>
             ) : (

@@ -757,8 +757,14 @@ html[data-scroll-lock] .main { overflow: hidden; }
 }
 .page-header__main { min-width: 0; }
 .page-title {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
   font-family: var(--font-display); font-size: clamp(28px, 3.4vw, 38px);
   font-weight: 700; line-height: 1.1; letter-spacing: -0.035em; margin: 10px 0 0;
+}
+/* 条数挂在库名旁边——它是这个库此刻的事实，属于库名，不属于另一个标题 */
+.page-title__count {
+  font-family: var(--font); font-size: var(--fs-base); font-weight: 500;
+  letter-spacing: 0; color: var(--text-3);
 }
 .page-sub { color: var(--text-2); font-size: var(--fs-base); line-height: 1.7; margin: 10px 0 0; max-width: 620px; }
 .page-header__aside { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1674,7 +1680,18 @@ svg[data-tone] { color: var(--tone); }
 /* 筛选条一行装完：状态芯片 + 分面下拉。两排芯片摞在一起时第一眼分不出
    「上面是状态、下面是平台」（长得一模一样），而且第二排会随选项数量变长，
    把卡片墙一路往下顶。 */
-.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+/**
+ * 筛选条和工具条并排一行：左「筛哪些」、右「怎么看、加一条」。
+ * ⚠️ **两边都要能换行**（`flex-wrap`）：稿件库是 6 枚状态芯片 + 一个平台下拉，
+ * 窄窗口下挤不下时该是工具条整块掉到下一行，不是把芯片压扁。
+ */
+.list-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px 20px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.list-bar > :first-child { min-width: 0; }
+.list-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /**
  * 选中的状态芯片是**实心黑块**，不是标记黄。
  *
@@ -2390,19 +2407,29 @@ kbd {
 
 /* ---------- 数据面板（热点两个 tab 共用） ---------- */
 
-.panel-block {
-  border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--surface); box-shadow: var(--shadow-sm);
-  padding: 24px 24px 20px; margin-bottom: 24px;
-}
+/**
+ * ⚠️ **`.panel-block` 不再是一个框。**
+ *
+ * 它原来是「1px 边框 + 白底 + 圆角 + 投影」的面板。但容器改版之后 `.main` 本身
+ * 就已经是浮在底色上的那一张白面板了——里面再套一张白框，屏幕上是**白框套白框**，
+ * 而两层的圆角、边框、投影全都在争同一件事：「这是一块内容」。
+ * 说两遍不会更清楚，只会更乱。
+ *
+ * 现在它只剩「一段内容之间的间距」这一个职责。**分区靠标题和留白分，不靠画框分**——
+ * 这和「提示框不画左边那道彩色竖线」是同一条：最不假思索的那个形状，套哪儿都长一样。
+ */
+.panel-block { margin-bottom: 28px; }
+.panel-block:last-child { margin-bottom: 0; }
 .panel-head {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: 20px; flex-wrap: wrap; margin-bottom: 16px;
 }
 .panel-head__main { min-width: 0; }
+/* ⚠️ **分区标题比页标题小一档**（21 / 26）。同尺寸时一屏上有两个「最大的字」，
+   而它们说的不是同一层的事——页标题说「你在哪个库」，分区标题说「这一块是什么」。 */
 .panel-head__main h2 {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  font-size: var(--fs-2xl); letter-spacing: -0.03em; margin: 6px 0 0;
+  font-size: var(--fs-xl); letter-spacing: -0.02em; margin: 4px 0 0;
 }
 /**
  * 面板里的小字统一成一套（`.micro` + 下面这几个别名）。
@@ -3663,14 +3690,20 @@ kbd {
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 
+/**
+ * ⚠️ **「正在阅读」不再是一个框。** 它原来是 `1px solid var(--text-1)` ——一道**纯黑**
+ * 实线，一屏上最重的形状，而它框住的只是「上次读到哪」。现在它是一块可点的区域：
+ * 悬停变底色，右端那句「回到上次位置 →」本身就在说这儿能点。
+ * 和 `.panel-block` 撤掉边框是同一条：**分区靠标题和留白分，不靠画框分。**
+ */
 .continue {
-  width: 100%; display: flex; align-items: center; gap: 16px; text-align: left; cursor: pointer;
-  margin-bottom: 16px; padding: 12px 16px;
-  border: 1px solid var(--text-1); border-radius: var(--r-lg);
-  background: var(--surface); color: inherit; box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.16s, transform 0.16s;
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; cursor: pointer;
+  padding: 10px 12px; margin: 0 0 0 -12px;
+  border: 0; border-radius: var(--r-md);
+  background: none; color: inherit;
+  transition: background 0.14s var(--ease);
 }
-.continue:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.continue:hover { background: var(--surface-2); }
 .continue__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .continue__body strong { font-family: var(--font-display); font-size: var(--fs-lg); letter-spacing: -0.02em; }
 .continue__where { font-size: var(--fs-xs); color: var(--text-3); }
@@ -3698,6 +3731,28 @@ kbd {
 /* 书架分两栏：封面墙 + 最近标注。
    ⚠️ 右栏 `sticky`：封面墙可能很长，而「最近标注」是**扫读时的旁注**，
    滚下去之后它还该在——不 sticky 的话它只在第一屏有用。 */
+/**
+ * 书架顶部两栏：左「正在阅读」、右「最近标注」，下面才是通栏的书单。
+ *
+ * ⚠️ **「最近标注」原来是竖在书单右边的一条**，把封面墙挤成了窄栏、自己也被压成
+ * 一条细长的引文——两边都没落到好。它和「正在阅读」是同一类东西（**上次的落点**），
+ * 该并排在书单**上方**；书单是这一页的主体，它应该吃满整个宽度。
+ *
+ * `auto-fit` 不是装饰：两栏里任何一栏都可能整块不画（没在读任何书 / 一条标注都没有），
+ * 那时剩下的一栏自己铺满，而不是留半屏空白。
+ */
+.shelf-top {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px 36px; align-items: start; margin-bottom: 32px;
+}
+/* ⚠️ **两栏都空掉时整块不占位。** 两个子组件各自会 `return null`（没在读任何书 /
+   一条标注都没有），那时这个 div 在 DOM 里是真空的——不写这条的话，
+   一个全新的书架顶上会凭空多出 32px 的空隙，而没有任何东西在那儿。 */
+.shelf-top:empty { display: none; }
+/* 两栏的小标题共用一套，才落在同一条基线上 */
+.shelf-top__label { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-base); font-weight: 600; margin: 0 0 12px; }
+.shelf-top__label em { font-style: normal; font-size: var(--fs-sm); font-weight: 400; color: var(--text-3); }
+
 .shelf-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
 .shelf-cols > * { min-width: 0; }
 @media (max-width: 1180px) { .shelf-cols { grid-template-columns: minmax(0, 1fr); } }
@@ -3705,15 +3760,11 @@ kbd {
 .shelf-group { display: flex; align-items: baseline; gap: 8px; margin: 0 0 16px; }
 .shelf-group h3 { font-size: var(--fs-base); font-weight: 600; margin: 0; }
 .shelf-group em { font-style: normal; font-size: var(--fs-sm); color: var(--text-3); }
-.shelf-cols__wall > div + div { margin-top: 32px; }
+.shelf-wall > div + div { margin-top: 32px; }
 
-.recent-marks {
-  position: sticky; top: 8px;
-  padding: 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--canvas);
-}
-.recent-marks__head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; }
-.recent-marks__head h3 { font-size: var(--fs-base); font-weight: 600; margin: 0; }
-.recent-marks__head em { font-style: normal; font-size: var(--fs-sm); color: var(--text-3); }
+/* ⚠️ **不再是一个框、也不再 sticky**：它搬到了书单**上方**的右栏，
+   既不需要跟着书单滚，也不该再用边框把自己从页面上圈出来。 */
+.recent-marks { min-width: 0; }
 .recent-mark {
   padding-left: 12px; border-left: 2px solid var(--mark-yellow); margin-bottom: 16px;
   transition: border-color .12s var(--ease);
@@ -3866,11 +3917,18 @@ kbd {
   border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer;
 }
 /* 书名是这张卡的主动作（键盘走它）。样式沿用原来那个 strong，只是换成了真按钮 */
+/**
+ * ⚠️ **书名固定两行高**（`min-height` = 2 × 1.4em），一行的书名底下留白。
+ * 不定高的话，一行的书名和两行的书名让**作者行落在不同高度**——一排八本
+ * 扫过去是锯齿。和 `.doc-row__excerpt` 没内容也要占高是同一条：
+ * 对齐要靠占位保证，不能指望内容长度碰巧一致。
+ */
 .book-card__body strong,
 .book-card__open {
   font-size: var(--fs-base); line-height: 1.4; letter-spacing: -0.008em;
   font-weight: 600; text-align: left; color: inherit;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.8em;
   border: 0; background: none; padding: 0; cursor: pointer;
 }
 .book-card__open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-sm); }

@@ -583,6 +583,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       <PageHeader
         eyebrow={source.eyebrowCn || "个人内容运营"}
         title={source.label}
+        // 条数挂在库名旁边。**下面不再画第二个写着同一个库名的小标题**——
+        // 页头刚说完「选题库」、正文顶上再来一个「TOPICS / 选题库 1 条」，
+        // 同一个名字一屏出现两次，中间只隔一行描述
+        count={list ? `${list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条` : ""}
         desc={source.sub}
         aside={
           source.isMaterialWorkspace ? (
@@ -610,43 +614,48 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       ) : null}
 
       <section className="panel-block">
-<ListHead
-          source={source}
-          list={list}
-          searchRef={searchRef}
-          query={query}
-          setQuery={setQuery}
-          canBoard={canBoard}
-          layout={layout}
-          setLayout={setLayout}
-          isPipeline={isPipeline}
-          sourceKey={sourceKey}
-          onIntake={onIntake}
-          onCreate={setCreation}
-          onOrganize={() => {
-            const candidates = (query.trim() ? searchList : list)?.items || [];
-            setOrganizerItems(source.isMaterialWorkspace
-              ? candidates.filter((item) => item.raw?.sourceKey === "collections").map((item) => source.childItem(item))
-              : candidates);
-          }}
-        />
-
-        {/* 筛选条**只占一行**：状态是芯片（互斥的分流，一眼看全），平台是下拉（选项会变多）。
-            状态筛选在看板里是多余的——看板每一列就是一个状态。 */}
-        {(source.stateTabs?.length && layout === "wall") || facetPick || source.verificationFilters?.length ? (
-<FilterBar
+        {/**
+          * ⚠️ **筛选条和工具条并排在同一行**（左「筛哪些」/ 右「怎么看、加一条」）。
+          * 两件事本来就分居一行的两端，各占一行是白白多出一条空行；而工具条那半边
+          * 撤掉标题之后只剩右端几颗按钮，自己占一整行更空。
+          * 包装留在页面这一层：`FilterBar` 要不要画由三个条件决定，那是编排问题。
+          */}
+        <div className="list-bar">
+          {(source.stateTabs?.length && layout === "wall") || facetPick || source.verificationFilters?.length ? (
+            <FilterBar
+              source={source}
+              layout={layout}
+              state={state}
+              onState={onState}
+              facet={facet}
+              setFacet={setFacet}
+              facetPick={facetPick}
+              verification={verification}
+              setVerification={setVerification}
+              counts={{ total: list?.total, ...(list?.counts || {}) }}
+            />
+          ) : <span />}
+            <ListHead
             source={source}
+            list={list}
+            searchRef={searchRef}
+            query={query}
+            setQuery={setQuery}
+            canBoard={canBoard}
             layout={layout}
-            state={state}
-            onState={onState}
-            facet={facet}
-            setFacet={setFacet}
-            facetPick={facetPick}
-            verification={verification}
-            setVerification={setVerification}
-            counts={{ total: list?.total, ...(list?.counts || {}) }}
+            setLayout={setLayout}
+            isPipeline={isPipeline}
+            sourceKey={sourceKey}
+            onIntake={onIntake}
+            onCreate={setCreation}
+            onOrganize={() => {
+              const candidates = (query.trim() ? searchList : list)?.items || [];
+              setOrganizerItems(source.isMaterialWorkspace
+                ? candidates.filter((item) => item.raw?.sourceKey === "collections").map((item) => source.childItem(item))
+                : candidates);
+            }}
           />
-        ) : null}
+        </div>
 
 <DocList
           list={query.trim() ? (searchList || list) : list}

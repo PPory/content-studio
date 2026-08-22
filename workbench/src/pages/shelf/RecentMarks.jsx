@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { ErrorNote, Loading } from "../../components/ui.jsx";
 import { IconChevronRight, IconQuote } from "../../components/icons.jsx";
 
-export function RecentMarks({ onOpen, limit = 8 }) {
+export function RecentMarks({ onOpen, limit = 3 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -35,11 +35,12 @@ export function RecentMarks({ onOpen, limit = 8 }) {
   if (data?.shelfMissing) return null;
 
   return (
-    <aside className="recent-marks">
-      <div className="recent-marks__head">
-        <h3>最近标注</h3>
+    <section className="recent-marks shelf-top__col">
+      {/* 标题和左栏「正在阅读」共用一套，两栏才落在同一条基线上 */}
+      <h3 className="shelf-top__label">
+        最近标注
         <em>跨书</em>
-      </div>
+      </h3>
 
       <ErrorNote error={error} what="读取标注" />
 
@@ -82,7 +83,7 @@ export function RecentMarks({ onOpen, limit = 8 }) {
           })}
           {data.total > data.items.length ? (
             <div className="recent-marks__more">
-              还有 {data.total - data.items.length} 条，在书详情里按书看
+              还有 {data.total - data.items.length} 条 · 点进一本书能看全这一本的
             </div>
           ) : null}
         </>
@@ -94,6 +95,6 @@ export function RecentMarks({ onOpen, limit = 8 }) {
           <span>读的时候划一句、或写一条批注，这儿就会有。</span>
         </div>
       )}
-    </aside>
+    </section>
   );
 }

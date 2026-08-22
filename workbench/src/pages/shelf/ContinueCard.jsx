@@ -17,10 +17,17 @@ export function ContinueCard({ books, tick, onResume }) {
   if (!entry) return null;
 
   return (
-    <button className="continue" onClick={() => onResume(book, entry)}>
+    /**
+     * ⚠️ **标题在卡片外面**，和右栏「最近标注」用同一套 `.shelf-top__label`——
+     * 两栏的标题因此落在同一条基线上。原来那句 `CURRENTLY READING` 是**标题的英文
+     * 转写**，还长在卡片里面：设计系统里早就否决过这种眉标（正下方就是同一个词）。
+     * **整块不画时标题跟着一起不画**，所以标题属于这个组件、不属于调用方。
+     */
+    <section className="shelf-top__col">
+      <h3 className="shelf-top__label">正在阅读</h3>
+      <button className="continue" onClick={() => onResume(book, entry)}>
       <Cover book={book} size="cover--sm" />
       <span className="continue__body">
-        <span className="eyebrow">CURRENTLY READING</span>
         <strong>{book.name}</strong>
         <span className="continue__where">
           上次读到「{entry.title}」· 本章 {pct(reading.progress)}
@@ -36,6 +43,7 @@ export function ContinueCard({ books, tick, onResume }) {
         回到上次位置
         <IconArrowRight size={16} stroke={1.8} aria-hidden="true" />
       </span>
-    </button>
+      </button>
+    </section>
   );
 }

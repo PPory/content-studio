@@ -1096,6 +1096,61 @@ try {
   check("选题页归到内容导航", activeNav.includes("内容"), activeNav.trim());
   check("浏览是卡片墙不是三栏", !!(await page.$(".panel-block")) && !(await page.$(".reader-overlay")));
 
+  /**
+   * ⚠️ **一屏只有一个「选题库」，而且列表不再装在一个框里。**
+   *
+   * 上一版是：页头写「选题库」，正下方那个白框里再写一遍「TOPICS / 选题库 1 条」——
+   * 同一个名字一屏出现两次、中间只隔一行描述，而 `TOPICS` 正是设计系统里否决过的
+   * 那种眉标（标题的英文转写）。外面那个框更糟：`.main` 本身已经是浮在底色上的
+   * 白面板，里面再套一张白框就是**白框套白框**，两层的边框圆角投影全在争同一件事。
+   *
+   * 三条一起钉，因为它们是同一个毛病的三种长法，各修一处都会留下另外两处。
+   */
+  // ⚠️ **等列表真的出内容再量条数**：条数是 `list` 回来才有的，
+  // navigate 完立刻量到的必然是空——那不是「没画」，是「还没到」
+  await page
+    .waitForFunction(() => !!document.querySelector(".doc-row, .empty, .note-title, .kanban-col"), null, { timeout: 25000 })
+    .catch(() => {});
+  const nest = await page.evaluate(() => {
+    const pb = document.querySelector(".panel-block");
+    const cs = pb && getComputedStyle(pb);
+    const label = document.querySelector(".page-title")?.firstChild?.textContent?.trim() || "";
+    return {
+      label,
+      // 页头之外还有几处写着同一个库名
+      echoes: [...document.querySelectorAll("h2, h3")].filter((e) => e.textContent.includes(label)).length,
+      border: cs?.borderTopWidth,
+      shadow: cs?.boxShadow,
+      count: document.querySelector(".page-title__count")?.textContent.trim() || "",
+      // Worker 连不上时列表是空的、条数本来就没有——断言要写成二选一，
+      // 不能写死「一定有条数」，那样外部一挂测试就红
+      loaded: !!document.querySelector(".doc-row, .kanban-col"),
+      // 筛选条和工具条在同一行
+      oneRow: (() => {
+        const f = document.querySelector(".list-bar .filter-bar");
+        const t = document.querySelector(".list-bar .list-tools");
+        if (!f || !t) return null;
+        return Math.abs(f.getBoundingClientRect().top - t.getBoundingClientRect().top) < 30;
+      })(),
+    };
+  });
+  check("库名一屏只出现一次", nest.label === "选题库" && nest.echoes === 0, `${nest.label} · 另有 ${nest.echoes} 处`);
+  check(
+    "条数挂在页标题旁边",
+    !nest.loaded || /条$/.test(nest.count),
+    nest.loaded ? nest.count || "(列表有内容却没有条数)" : "(列表是空的，这一条不适用)"
+  );
+  check("列表不再套在一个框里", nest.border === "0px" && nest.shadow === "none", `border=${nest.border} shadow=${nest.shadow}`);
+  check("筛选条和工具条并排一行", nest.oneRow !== false, nest.oneRow === null ? "(这一页没有筛选条)" : "同一行");
+
+  /**
+   * ⚠️ **实心黑只留给主操作一颗。** 稿件库上曾经有两颗：页头的「新建」和工具条的
+   * 「新稿」——而它们点下去是**同一个调用**（`onCreate("choose")`）。
+   * 看到两颗的人第一反应是去猜区别，而答案是没有区别。
+   */
+  const primaries = await page.$$eval(".main .btn-primary", (els) => els.map((e) => e.textContent.trim()));
+  check("一屏只有一颗实心黑主按钮", primaries.length <= 1, primaries.join("/") || "(一颗都没有)");
+
   if (workerReady) {
     await page.waitForSelector(".kanban-col, .doc-row, .empty, .note-title", { timeout: 25000 });
 
