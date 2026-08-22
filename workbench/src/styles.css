@@ -3768,7 +3768,14 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * ⚠️ **左栏窄一档**（卡片竖排三张）、右栏宽：图要横向铺开才读得出趋势，
  * 而卡片竖着排本来就不需要宽度。窄屏收成一列。
  */
-.today-split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; align-items: start; }
+/**
+ * ⚠️ **两栏要等高（`stretch`），别写 `align-items: start`。**
+ * 写 start 的那一版，左边三张卡 640px、右边那张图 380px，**底边差一大截**——
+ * 参考图里这两块是齐平的，而齐平不是装饰：它们是同一个问题的两半，
+ * 底边不齐的时候，右边那块看着像「还没加载完」。
+ * 图表卡内部用 `flex` 把图例压到底（`margin-top: auto`），高度就自己吃满了。
+ */
+.today-split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; }
 .today-split .act-cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 /**
  * ⚠️ **竖排的卡要收紧：`min-height` 那几条撤掉。**
@@ -3802,9 +3809,46 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 }
 .today-chart__go:hover { color: var(--text-1); }
 .today-chart__empty {
-  margin: 0; padding: 26px 8px; text-align: center;
+  margin: auto 0; padding: 26px 8px; text-align: center;
   font-size: var(--fs-sm); color: var(--text-3); line-height: 1.7;
 }
+/* 图撑开剩下的高度，图例和「看数字」压到底——两栏底边才齐 */
+.today-chart .bars { display: flex; flex-direction: column; flex: 1 1 auto; }
+.today-chart .bars__legend, .today-chart .bars__foot { margin-top: auto; }
+
+/* ── 最近发了什么 ─────────────────────────────────────────────────── */
+.recent-posts { margin-top: 22px; }
+.recent-posts__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.recent-posts__head .section-label { margin-bottom: 0; }
+.rtable {
+  display: grid; margin-top: 10px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); overflow: hidden;
+}
+.rtable__head, .rtable__row {
+  display: grid; grid-template-columns: 104px minmax(0, 1fr) 104px minmax(0, 232px);
+  align-items: center; gap: 14px; padding: 0 16px;
+}
+.rtable__head { height: 36px; font-size: var(--fs-xs); color: var(--text-3); border-bottom: 1px solid var(--border); }
+.rtable__row { min-height: 48px; border-bottom: 1px solid var(--border); }
+.rtable__row:last-child { border-bottom: 0; }
+.rtable__row:hover { background: var(--surface-2); }
+.rtable__plat { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; }
+.rtable__plat i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.rtable__title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.rtable__title b {
+  font-size: var(--fs-base); font-weight: 500; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rtable__title a { flex: none; display: inline-flex; color: var(--text-3); opacity: 0; transition: opacity 0.12s; }
+.rtable__row:hover .rtable__title a { opacity: 1; }
+.rtable__title a:hover { color: var(--text-1); }
+.rtable__dim { font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rtable__data { display: inline-flex; align-items: baseline; gap: 5px; flex-wrap: wrap; font-size: var(--fs-sm); }
+.rtable__data b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.rtable__data em { font-style: normal; font-size: var(--fs-xs); color: var(--text-3); margin-right: 6px; }
+/* ⚠️ 「还没有数据」和「数据是 0」是两件事——写成 0 是在报一个没发生过的事实 */
+.rtable__none { font-size: var(--fs-sm); color: var(--text-3); }
 
 /* 超出三张的收成一句，**它是可点的**——否则「还有 N 篇」只是个说了不算的数字 */
 .today-more {

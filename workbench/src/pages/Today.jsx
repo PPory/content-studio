@@ -6,8 +6,8 @@ import { ErrorNote, Loading, MenuButton, PageHeader } from "../components/ui.jsx
 import { AUTO_CARDS } from "../lib/views.js";
 import { TodayStats } from "./today/TodayStats.jsx";
 import { TodayChart } from "./today/TodayChart.jsx";
+import { RecentPosts } from "./today/RecentPosts.jsx";
 import { IconArrowRight, IconPlus } from "../components/icons.jsx";
-import { DayPlan, usePlan } from "../components/DayPlan.jsx";
 // ⚠️ **从 `components/` 引，不是从 `./Content.jsx`。** 页面 import 另一个页面
 // 是这个项目明令禁止的——现状原来是破的，这一轮顺手修了。
 import { ProjectCard } from "../components/ProjectCard.jsx";
@@ -17,7 +17,6 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [creation, setCreation] = useState(null);
-  const plan = usePlan(config?.vault?.configured);
 
   const load = useCallback(() => {
     if (!workerReady) return;
@@ -138,7 +137,15 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
         </section>
       ) : null}
 
-      <DayPlan plan={plan} />
+      {/**
+        * ⚠️ **这儿原来是「我的清单」，撤了，换成「最近发了什么」。**
+        * 这一页的上半部已经全是待办（等你动手 5 件 + 先做这一件三张卡），
+        * 手写清单是**第三份待办**——一屏里同一件事说三遍。
+        * 换成已经发生的事，四个数字说「现在什么状态」、图说「最近趋势」、
+        * 表说「具体是哪几条」，三层各答一问。
+        * 清单本身没删，`components/DayPlan.jsx` 还在，旧总览页仍然用它。
+        */}
+      <RecentPosts onGo={onGo} />
 
       {status ? (
         <section className="today-background" aria-label="后台流水线状态">

@@ -156,6 +156,32 @@ try {
   }
 
   /**
+   * 首屏是**三层**，各答一问：数字说「现在什么状态」、图说「最近趋势」、
+   * 表说「具体是哪几条」。
+   *
+   * ⚠️ **卡片那一栏和图那一栏底边必须齐平。** 写过一版 `align-items: start`，
+   * 左边三张卡 640px、右边那张图 380px——底边差一大截，右边那块看着像**还没加载完**。
+   * 齐平不是装饰：这两块是同一个问题的两半（该不该现在推这一篇，
+   * 取决于这个月已经发了几篇）。
+   */
+  const home = await page.evaluate(() => {
+    const l = document.querySelector(".today-split .act-cards");
+    const r = document.querySelector(".today-chart");
+    return {
+      split: !!l && !!r,
+      gap: l && r ? Math.abs(Math.round(l.getBoundingClientRect().bottom - r.getBoundingClientRect().bottom)) : -1,
+      table: document.querySelectorAll(".rtable__row").length,
+      tableHead: [...document.querySelectorAll(".rtable__head span")].map((e) => e.textContent.trim()),
+      // ⚠️ 清单撤了：上半部已经全是待办，手写清单是同一屏里的**第三份**待办
+      plan: !!document.querySelector(".day-plan"),
+    };
+  });
+  if (home.split) {
+    check("卡片那栏和图那栏底边齐平", home.gap <= 1, `底边差 ${home.gap}px`);
+  }
+  check("首屏最下面是一张表，不是第三份待办", home.table > 0 && !home.plan, `${home.table} 行 · ${home.tableHead.join("/")}`);
+
+  /**
    * **今日顶部是三张等大的卡，不是「一张大卡 + 三行小条」。**
    *
    * 上一版左边那张 `min-height: 278px` 的卡里只装了三四行字、中段大片留白；
