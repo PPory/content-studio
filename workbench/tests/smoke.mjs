@@ -323,6 +323,93 @@ try {
     check("内容项目页是空的或没连上，这一段跳过", true, "没有项目行");
   }
 
+  /**
+   * 项目详情页。**这一页此前一条断言都没有**（截图脚本里也没有它），
+   * 于是改样式看不见后果——这一轮把它重做成「中间正文 + 右边事实」两栏时才发现，
+   * 那一栏的类名 `.prefs` 早被阅读设置面板占了，而 CSS 一个字都不报。
+   *
+   * ⚠️ **点进去要挑一条真能打开的**：表格第一行不一定有主稿，
+   * 而这一段要验的东西（正文、右栏、流程线）在没有主稿的空态下本来就不存在。
+   */
+  if (contentPage.rows) {
+    await page.click(".ptable__row");
+    /* ⚠️ **等的是页面本身，不是那个加载壳。** `.project-workspace-load` 在项目还在取的
+       时候就渲染好了，等它等于「等容器不等内容」——下面整段会安静地跳过去，
+       而跳过去的输出和「这一段通过了」长得一模一样。这个坑这一轮已经踩到第三次。 */
+    await page.waitForSelector(".project-workspace, .project-workspace-load .note-danger", { timeout: 25000 }).catch(() => {});
+    const proj = await page.evaluate(() => {
+      const ws = document.querySelector(".project-workspace");
+      if (!ws) return null;
+      const flow = [...document.querySelectorAll(".project-flow li")];
+      const ink = getComputedStyle(document.body).color;
+      const done = flow.find((li) => li.dataset.state === "done");
+      return {
+        // ⚠️ **左边那条 245px 的简报栏撤了**：中间是你动手的东西，右边才是关于它的事实
+        oldBrief: document.querySelectorAll(".project-brief, .project-materials").length,
+        cols: getComputedStyle(document.querySelector(".project-workspace__grid")).gridTemplateColumns.split(" ").length,
+        // 标题在这一页只有一份，而且是能改的那一份
+        titles: document.querySelectorAll(".project-workspace h1, .project-draft__title").length,
+        editable: document.querySelectorAll("input.project-draft__title").length,
+        flow: flow.length,
+        current: flow.filter((li) => li.dataset.state === "current").length,
+        /* 走过的那几段是墨绿不是黑：黑在这套界面里是「你在这儿 / 点这儿」，
+           一条线上七颗黑点等于同时在七处喊。量的是渲染后的颜色。 */
+        doneInk: done ? getComputedStyle(done.querySelector("span")).backgroundColor : "",
+        ink,
+        /**
+         * ⚠️ **右栏是二选一，不能钉死其中一种。**
+         * 「待发布」那一档右栏换成发布准备（`ProjectReleaseRail`），这是对的行为；
+         * 只断言「简报 + 素材」的话，库里第一条恰好走到待发布，测试当场变红而代码没问题——
+         * 「写死外部状态的断言等于没有断言」在这个文件里已经栽过三次。
+         */
+        rail: (!!document.querySelector(".project-rail .pfacts") && !!document.querySelector(".project-rail .pmat"))
+          ? "简报+素材"
+          : document.querySelector(".project-publish") ? "发布准备" : "",
+        /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目素材那一栏必须叫别的 */
+        clash: document.querySelectorAll(".project-rail .prefs").length,
+      };
+    });
+    if (proj) {
+      check("项目详情页是两栏，不是三栏", proj.cols === 2 && proj.oldBrief === 0, `${proj.cols} 栏 · ${proj.oldBrief} 处旧简报栏`);
+      check("标题只有一份，而且是能改的那一份", proj.titles === 1 && proj.editable === 1, `${proj.titles} 个标题 · ${proj.editable} 个可改`);
+      check("七段流程线只有一段是当前", proj.flow === 7 && proj.current === 1, `${proj.flow} 段 · ${proj.current} 段当前`);
+      check("走过的那几段是墨绿不是黑", !proj.doneInk || proj.doneInk !== proj.ink, `${proj.doneInk || "(还没走过)"} · 正文 ${proj.ink}`);
+      check("右栏要么是简报+素材，要么是发布准备", !!proj.rail, proj.rail || "两种都不是");
+      check("项目素材那一栏没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
+      /**
+       * ⚠️ **正文那一栏要吃满宽度**（`.main__inner:has(.project-workspace)` 解掉 1320 的上限）。
+       * 不解的话正文和右栏一起被压到 900 出头，编辑器一行只剩三十来个字。
+       * 量的是**渲染后的宽度**，不是样式表里写了 `max-width: none`。
+       */
+      const wide = await page.evaluate(() => {
+        const inner = document.querySelector(".main__inner");
+        const main = document.querySelector(".main");
+        return inner && main ? Math.round(main.clientWidth - inner.getBoundingClientRect().width) : -1;
+      });
+      check("项目详情页吃满正文栏宽度", wide >= 0 && wide <= 1, `比容器窄 ${wide}px`);
+      /**
+       * ⚠️ **这一页也只准有一颗实心黑。**
+       * 发布准备那一栏的版本切换器原来选中即涂成实心黑，而右上角还有一颗黑的「去排版」——
+       * 黑在这套界面里的意思是「点这儿」，一屏两处就等于没说。
+       * 量的是**渲染后有几个元素的底色等于正文黑**，不是「样式表里写了几次 --accent」。
+       */
+      const solids = await page.evaluate(() => {
+        const ink = getComputedStyle(document.body).color;
+        return [...document.querySelectorAll(".project-workspace *")]
+          .filter((el) => getComputedStyle(el).backgroundColor === ink)
+          .map((el) => el.className.toString().slice(0, 40));
+      });
+      check("这一页只有一颗实心黑", solids.length <= 1, solids.join(" · ") || "(一颗都没有)");
+    } else {
+      /* 打不开就照实说是**哪一种**打不开，别写成一句「跳过」——
+         「没连上流水线」和「页面本身坏了」在输出里必须分得开 */
+      const why = (await page.textContent(".project-workspace-load .note-danger").catch(() => "")).replace(/\s+/g, " ").trim();
+      check("项目详情页没打开", !!why, why || "既没有页面也没有错误提示");
+    }
+    await page.goBack();
+    await page.waitForSelector(".ptable__row, .kanban-col, .empty, .project-setup", { timeout: 25000 }).catch(() => {});
+  }
+
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
   await page.click('.nav-item:has-text("发现")');

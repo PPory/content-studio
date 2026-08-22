@@ -174,6 +174,77 @@ const PROJECT_SHOT_SEED = [
   { id: "shot-writing", title: "别再把收藏当成学会", stage: "写作中", stageReason: "已有稿件，继续收紧观点", nextAction: "继续写作", blockers: [], topic: { id: "shot-writing" }, masterDraft: { id: "shot-draft" }, updatedAt: new Date(Date.now() - 3600000).toISOString() },
   { id: "shot-review", title: "信息过载最先杀死的是判断力", stage: "待复盘", stageReason: "内容已发布，尚未进行表现判断", nextAction: "开始复盘", blockers: [], topic: { id: "shot-review" }, masterDraft: { id: "shot-review-draft" }, updatedAt: new Date(Date.now() - 7200000).toISOString() },
 ];
+/**
+ * 项目详情页那一张图同样得有内容才验得了。
+ *
+ * ⚠️ **上面那条 `**\/api/pipe/projects*` 拦不到详情**：glob 的 `*` 不跨 `/`，
+ * 所以 `/api/pipe/projects/<id>` 会漏过去打到真流水线，而那边不认识 `shot-planning`
+ * 这种假 id，回的是 400——截出来的是一张「project id 不合法」的错误页。
+ * 踩过一次，而且错得很像产品坏了。
+ */
+const PROJECT_SHOT_DETAIL = {
+  id: "shot-writing",
+  title: "别再把收藏当成学会",
+  stage: "写作中",
+  stageReason: "主稿正在编辑，尚未提交诊断",
+  nextAction: "完成写作，提交诊断",
+  blockers: [],
+  updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  brief: { audience: "想把输入变成产出的人", viewpoint: "收藏这个动作本身会带来「已经学会」的错觉", platform: "公众号", priority: "高" },
+  masterDraft: {
+    id: "shot-draft",
+    platform: "公众号",
+    status: "撰写中",
+    title: "别再把收藏当成学会",
+    body: [
+      "## 收藏键是个情绪按钮",
+      "",
+      "点下收藏的那一刻，大脑得到的反馈和真的读完一篇长文几乎一样：一件事被处理掉了。",
+      "但被处理掉的只是**焦虑**，不是内容本身。",
+      "",
+      "> 你收藏的不是知识，是「以后会看」这个承诺。",
+      "",
+      "## 检验的办法只有一个",
+      "",
+      "合上文章，用自己的话把它讲给一个不懂的人听。讲不下去的地方，就是你其实没读懂的地方——",
+      "而收藏夹永远不会告诉你这些地方在哪。",
+    ].join("\n"),
+  },
+  variants: [],
+  materials: [
+    { id: "m1", type: "核心观点", title: "收藏是把焦虑处理掉，不是把内容处理掉", content: "点收藏时大脑得到的反馈和读完几乎一样，被处理掉的是焦虑而不是内容。" },
+    { id: "m2", type: "金句/原话", title: "你收藏的不是知识，是「以后会看」这个承诺", content: "你收藏的不是知识，是「以后会看」这个承诺。" },
+    { id: "m3", type: "框架/模型", title: "费曼检验：讲不下去的地方就是没读懂的地方", content: "合上材料用自己的话讲一遍，卡住的位置就是理解的缺口所在。" },
+    { id: "m4", type: "反直觉点", title: "收藏夹越满，实际读完的比例越低", content: "清单一长，挑选成本就超过阅读成本，于是每一条都不再被打开。" },
+  ],
+  publication: { status: "未发布", latest: null },
+  releaseOptions: [],
+};
+/**
+ * 「待发布」那一档右栏整个换成发布准备（`ProjectReleaseRail`）——**两栏各是一套版面**，
+ * 只截其中一张的话，另一张改坏了没有任何地方看得见。所以详情这一路可以切两份。
+ */
+const PROJECT_SHOT_RELEASE = {
+  ...PROJECT_SHOT_DETAIL,
+  stage: "待发布",
+  stageReason: "主稿已通过诊断，可以进入排版和发布",
+  nextAction: "去排版发布",
+  masterDraft: {
+    ...PROJECT_SHOT_DETAIL.masterDraft,
+    status: "已成稿",
+    release: { spec: { coverLabel: "首图", coverRatio: "2.35:1" }, summary: "", cover: "" },
+  },
+  releaseOptions: [
+    { platform: "小红书", coverLabel: "封面", coverRatio: "3:4" },
+    { platform: "知乎", coverLabel: "题图", coverRatio: "16:9" },
+  ],
+};
+let projectDetailShot = PROJECT_SHOT_DETAIL;
+await page.route("**/api/pipe/projects/*", (route) => route.fulfill({
+  status: 200,
+  contentType: "application/json",
+  body: JSON.stringify({ ok: true, project: projectDetailShot }),
+}));
 await page.route("**/api/pipe/projects*", (route) => route.fulfill({
   status: 200,
   contentType: "application/json",
@@ -190,6 +261,25 @@ await page.route("**/api/pipe/projects*", (route) => route.fulfill({
 const shots = [
   ["today", "/", ".today-focus, .project-setup, .note-danger"],
   ["content", "/#/content", ".act-cards, .ptable, .project-setup, .project-error"],
+  /**
+   * 项目详情页。⚠️ **它没有固定地址**（`#/project/<id>`，id 是库里的），
+   * 所以从列表点进去，不写死一个 id——写死的那一刻这张图就绑在某一条数据上了。
+   */
+  ["project", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
+    await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
+    await page.click(".ptable__row", { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".project-workspace, .project-workspace-load", { timeout: 25000 }).catch(() => {});
+    // 等正文真的挂上来，不是等外壳——正文还在取的时候截出来的是一张骨架图
+    await page.waitForSelector(".project-workspace .cm-content, .project-draft__empty, .project-review", { timeout: 25000 }).catch(() => {});
+  }],
+  ["project-release", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
+    projectDetailShot = PROJECT_SHOT_RELEASE;
+    await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
+    await page.click(".ptable__row", { timeout: 8000 }).catch(() => {});
+    // 等页面本身，不是那个加载壳——壳在项目还在取的时候就渲染好了
+    await page.waitForSelector(".project-publish, .project-rail", { timeout: 25000 }).catch(() => {});
+    projectDetailShot = PROJECT_SHOT_DETAIL;
+  }],
   ["discover", "/#/discover", ".discover-grid"],
   ["overview", "/#/overview", ".todo-card, .note-title"],
   ["hot-boards", "/#/hot", ".board, .empty, .note-title"],

@@ -5,7 +5,9 @@ import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { WritingAssist } from "../components/WritingAssist.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
-import { ErrorNote, Loading } from "../components/ui.jsx";
+import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
+import { ProjectFacts } from "./project/ProjectFacts.jsx";
+import { ProjectRefs } from "./project/ProjectRefs.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
 import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh, IconTag, IconTarget } from "../components/icons.jsx";
@@ -28,7 +30,6 @@ function materialText(item) {
 function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, onPublished }) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const isWechat = draft?.platform === "公众号";
   const used = new Set(drafts.map((item) => item.platform));
   const available = (project.releaseOptions || []).filter((item) => !used.has(item.platform));
   const spec = draft?.release?.spec || {};
@@ -91,15 +92,18 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
 
       {dirty ? <button className="btn project-publish__save" onClick={onSave} disabled={busy}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}保存当前版本</button> : null}
 
-      {isWechat ? (
-        <button className="btn btn-primary project-publish__primary" onClick={onTypeset} disabled={busy}>
-          <IconBrandWechat aria-hidden="true" />载入排版工具<IconArrowRight aria-hidden="true" />
-        </button>
-      ) : (
-        <button className="btn btn-primary project-publish__primary" onClick={onCopy} disabled={busy}>
-          <IconCopy aria-hidden="true" />复制当前发布稿
-        </button>
-      )}
+      {/**
+        * ⚠️ **这儿不再重复「去排版」。**
+        * 上一版公众号那一档在这里画的是「载入排版工具」，而顶栏那颗主操作按的是
+        * **同一个 `onTypeset`**——**一个动作两颗按钮、两个名字，还都是实心黑**，
+        * 而实心黑一屏只留一颗（它的意思是「点这儿」，两处就等于没说）。
+        * 留顶栏那一颗：那是每个阶段主操作固定的位置。
+        *
+        * 复制是这一栏自己的动作（排版工具之外的平台也用得上），所以留下，但退成次级。
+        */}
+      <button className="btn project-publish__primary" onClick={onCopy} disabled={busy}>
+        <IconCopy aria-hidden="true" />复制当前发布稿
+      </button>
 
       <PublishPanel
         item={{
@@ -323,12 +327,20 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
 
   return (
     <div className="project-workspace">
-      <header className="project-workspace__head">
-        <div className="project-workspace__crumb">
-          <button onClick={() => onGo("content", "")}><IconArrowLeft aria-hidden="true" />内容</button>
-          <span>/</span><span>{project.title}</span>
+      {/**
+        * ⚠️ **这一行不再写标题。** 上一版这儿是「← 内容 / 《标题》」，而右边的
+        * 简报栏里有个 `<h1>` 写同一句、正文顶上还有个可编辑的标题输入框——
+        * **同一句话一屏三份，其中两份还不能改**。留下的是能改的那一份。
+        * 顶栏的面包屑不可点，所以「← 内容」这条退路留着。
+        */}
+      <header className="project-bar">
+        <div className="project-bar__left">
+          <button className="project-back" onClick={() => onGo("content", "")}>
+            <IconArrowLeft aria-hidden="true" />内容
+          </button>
+          <StatePill state={project.stage} />
         </div>
-        <div className="project-workspace__actions">
+        <div className="project-bar__end">
           {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
           {saved && !dirty ? <span className="project-saved"><IconCheck aria-hidden="true" />已保存</span> : null}
           {draft && (draftEditable || releaseEditable) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
@@ -342,11 +354,21 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
         </div>
       </header>
 
+      {/**
+        * 七段流程线。⚠️ **走过的那几段是墨绿，不是黑。**
+        * 「走到哪儿了」是墨绿管的三件事之一；上一版用实心黑圆点，而黑在这套界面里
+        * 的意思是「你在这儿 / 点这儿」，一条线上七颗黑点等于同时在七处喊。
+        */}
       <ol className="project-flow" aria-label="内容项目进度">
         {FLOW.map((stage, index) => {
           const meta = PROJECT_STAGE_META[stage];
           const state = index < phaseIndex ? "done" : index === phaseIndex ? "current" : "later";
-          return <li key={stage} data-state={state}><span>{index < phaseIndex ? "✓" : meta.index}</span><b>{meta.label}</b></li>;
+          return (
+            <li key={stage} data-state={state}>
+              <span aria-hidden="true">{index < phaseIndex ? <IconCheck stroke={2.4} /> : null}</span>
+              <b>{meta.label}</b>
+            </li>
+          );
         })}
       </ol>
 
@@ -354,28 +376,6 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
         {["待复盘", "已完成"].includes(project.stage) ? (
           <ProjectReviewStage project={project} busy={busy} onSave={saveReview} />
         ) : <>
-        <aside className="project-brief">
-          <span className="eyebrow">PROJECT BRIEF</span>
-          <h1>{project.title}</h1>
-          <div className="project-stage-note"><b>{project.stage}</b><p>{project.stageReason}</p></div>
-          <dl>
-            <div><dt>目标读者</dt><dd>{project.brief?.audience || "尚未填写"}</dd></div>
-            <div><dt>核心观点</dt><dd>{project.brief?.viewpoint || "尚未填写"}</dd></div>
-            <div><dt>主平台</dt><dd>{project.brief?.platform || "尚未选择"}</dd></div>
-          </dl>
-          {project.blockers?.length ? (
-            <div className="project-blockers"><b>需要处理</b>{project.blockers.map((item) => <p key={item}>{item}</p>)}</div>
-          ) : null}
-          {draft && ["待诊断", "待发布"].includes(project.stage) ? (
-            <button className="project-return" onClick={() => transition("return-writing")} disabled={busy}>退回写作修改</button>
-          ) : null}
-          {project.variants?.length && project.stage !== "待发布" ? (
-            <div className="project-variants"><b>{project.masterDraft ? "内容变体" : "请选择母版"}</b>{project.variants.map((item) => (
-              <span key={item.id}>{item.platform} · {item.title}{!project.masterDraft ? <button onClick={() => transition("set-primary", { draftId: item.id })}>设为母版</button> : null}</span>
-            ))}</div>
-          ) : null}
-        </aside>
-
         <main className="project-draft">
           {draft ? (
             <>
@@ -399,12 +399,12 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
             </>
           ) : project.variants?.length ? (
             <div className="project-draft__empty">
-              <span>01</span><h2>这个项目有多篇稿件，还没有确定母版</h2>
-              <p>请先在左侧选择一篇设为母版。确认后，项目阶段和后续变体都会围绕它推进。</p>
+              <h2>这个项目有多篇稿件，还没有确定母版</h2>
+              <p>先在右边选一篇设为母版。确认后，项目阶段和后续变体都会围绕它推进。</p>
             </div>
           ) : (
             <div className="project-draft__empty">
-              <span>01</span><h2>简报已经建好，主稿还没开始</h2>
+              <h2>简报已经建好，主稿还没开始</h2>
               <p>建立主稿后，这个地址会一直保留；关闭再打开，仍然回到同一篇内容。</p>
               <button className="btn btn-primary" onClick={() => transition("start-writing")} disabled={busy}><IconPlus aria-hidden="true" />建立空白主稿</button>
             </div>
@@ -429,21 +429,29 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
             onCopy={copyRelease}
             onPublished={handlePublished}
           />
-        ) : <aside className="project-materials">
-          <div className="project-materials__head"><div><span className="eyebrow">REFERENCES</span><h2>项目素材</h2></div><b>{project.materials?.length || 0}</b></div>
-          <p>素材不会自动改写正文。需要哪条，插入到当前光标处。</p>
-          {project.materials?.length ? project.materials.map((item, index) => (
-            <article key={item.id}>
-              <small>{String(index + 1).padStart(2, "0")} · {item.type}</small>
-              <h3>{item.title}</h3>
-              <p>{item.content || "这条素材没有正文。"}</p>
-              <button className="btn btn-sm" onClick={() => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })} disabled={!draftEditable || !item.content}>
-                <IconPlus aria-hidden="true" />插到光标处
-              </button>
-            </article>
-          )) : <div className="project-materials__empty">这个项目还没有关联素材。</div>}
-          <button className="project-refresh" onClick={load} disabled={loading}><IconRefresh aria-hidden="true" />重新读取项目</button>
-        </aside>}
+        ) : (
+          /**
+           * ⚠️ **右栏是「关于这一篇的事实」，不是第二个正文区。**
+           * 上一版是三栏：左边 245px 的简报、中间正文、右边 320px 的素材——
+           * 每次要读自己写的字，眼睛得先越过一整栏元信息。四张参考图在这一点上一致：
+           * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
+           */
+          <aside className="project-rail">
+            <ProjectFacts
+              project={project}
+              busy={busy}
+              onReturn={draft && ["待诊断", "待发布"].includes(project.stage) ? () => transition("return-writing") : undefined}
+              onSetPrimary={(draftId) => transition("set-primary", { draftId })}
+            />
+            <ProjectRefs
+              materials={project.materials || []}
+              canInsert={draftEditable}
+              loading={loading}
+              onReload={load}
+              onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}
+            />
+          </aside>
+        )}
         </>}
       </div>
       {["待复盘", "已完成"].includes(project.stage) ? <ErrorNote error={error} what="保存复盘" /> : null}
