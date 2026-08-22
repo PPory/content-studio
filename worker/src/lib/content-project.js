@@ -12,7 +12,6 @@ export const PROJECT_STAGES = Object.freeze([
   "策划中",
   "生成中",
   "写作中",
-  "待诊断",
   "待发布",
   "待复盘",
   "已完成",
@@ -24,12 +23,18 @@ const REVIEW_DONE = new Set(["样本不足", "普通", "表现突出", "已沉�
 const asText = (value) => String(value || "").trim();
 const iso = (unix) => (unix ? new Date(unix * 1000).toISOString() : null);
 
-export const PROJECT_ACTIONS = Object.freeze(["start-writing", "set-primary", "submit-diagnosis", "approve-diagnosis", "return-writing", "abandon"]);
+export const PROJECT_ACTIONS = Object.freeze(["start-writing", "set-primary", "finish-writing", "return-writing", "abandon"]);
 
+/**
+ * ⚠️ **`submit-diagnosis` + `approve-diagnosis` 合并成了 `finish-writing`。**
+ * 那两条中间夹着的「待诊断」没有任何实现，见 `values.js` 里 `DRAFT_WORKFLOW` 那段。
+ *
+ * ⚠️ **历史值 `待诊断` 仍要能走出去**：库里可能还有旧行，不放行的话它们会永远卡住。
+ * 所以 `finish-writing` 和 `return-writing` 的 `from` 都带着它——**只出不进**。
+ */
 export function nextDraftWorkflow(current, action) {
   const rules = {
-    "submit-diagnosis": { from: [DRAFT_WORKFLOW.WRITING], to: DRAFT_WORKFLOW.DIAGNOSIS },
-    "approve-diagnosis": { from: [DRAFT_WORKFLOW.DIAGNOSIS], to: DRAFT_WORKFLOW.READY },
+    "finish-writing": { from: [DRAFT_WORKFLOW.WRITING, DRAFT_WORKFLOW.DIAGNOSIS], to: DRAFT_WORKFLOW.READY },
     "return-writing": { from: [DRAFT_WORKFLOW.DIAGNOSIS, DRAFT_WORKFLOW.READY, DRAFT_WORKFLOW.ABANDONED], to: DRAFT_WORKFLOW.WRITING },
     abandon: { from: [DRAFT_WORKFLOW.WRITING, DRAFT_WORKFLOW.DIAGNOSIS, DRAFT_WORKFLOW.READY], to: DRAFT_WORKFLOW.ABANDONED },
   };
@@ -37,6 +42,18 @@ export function nextDraftWorkflow(current, action) {
   if (!rule) throw new Error("action 不合法");
   if (!rule.from.includes(current)) throw new Error(`当前是“${current}”，不能执行这个动作`);
   return rule.to;
+}
+
+/**
+ * 写完了才能进「待发布」。
+ *
+ * ⚠️ **这道闸门必须在服务端。** 工作台的「建立空白主稿」建的是 `body=''` 的空壳，
+ * 而空壳照样能被推进后面的状态——真出过：库里 6 篇稿子有 3 篇正文长度是 0，
+ * 其中一篇已经走到了下一档，**于是界面在要求你审阅一篇不存在的文章**。
+ * 前端把按钮置灰只是"给人看的那一层"，挡住的是误点，挡不住直接打接口。
+ */
+export function draftReadyToFinish(draft) {
+  return asText(draft?.body).length > 0;
 }
 
 function newestFirst(a, b) {
@@ -124,8 +141,16 @@ function reviewFrom(drafts, publication, topic = null, materials = []) {
 }
 
 /** 旧数据没有 workflow_status 时保守回落到写作中，不让历史稿跳过诊断门槛。 */
-const workflowOf = (draft) => asText(draft?.workflow_status)
-  || (draft?.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING);
+/**
+ * ⚠️ **历史值 `待诊断` 一律当「写作中」读。**
+ * 不翻译的话，库里那些旧行会一个分支都命中不了，最后掉进「需处理」——
+ * 而「需处理」的意思是"关系有歧义，需要你决定"，那是句假话：它们只是状态旧了。
+ */
+const workflowOf = (draft) => {
+  const raw = asText(draft?.workflow_status)
+    || (draft?.status === DRAFT_STATUS.PUBLISHED ? DRAFT_WORKFLOW.PUBLISHED : DRAFT_WORKFLOW.WRITING);
+  return raw === DRAFT_WORKFLOW.DIAGNOSIS ? DRAFT_WORKFLOW.WRITING : raw;
+};
 
 export function deriveProjectStage({ topic = null, drafts = [], materials = [], master = null, masterBlocker = null } = {}) {
   const blockers = [];
@@ -199,14 +224,6 @@ export function deriveProjectStage({ topic = null, drafts = [], materials = [], 
 
   if (drafts.length) {
     const workflow = workflowOf(master || drafts[0]);
-    if (workflow === DRAFT_WORKFLOW.DIAGNOSIS) {
-      return {
-        stage: "待诊断",
-        stageReason: "主稿已经完成，等待发布前诊断",
-        nextAction: "开始诊断",
-        blockers: [], publication, review,
-      };
-    }
     if (workflow === DRAFT_WORKFLOW.READY) {
       return {
         stage: "待发布",
@@ -215,10 +232,16 @@ export function deriveProjectStage({ topic = null, drafts = [], materials = [], 
         blockers: [], publication, review,
       };
     }
+    /**
+     * ⚠️ **空稿要说出来。** 「建立空白主稿」建的是 `body=''` 的空壳，
+     * 而它和一篇写了一半的稿子在库里唯一的区别就是这个长度。
+     * 不说的话，界面显示的是「主稿正在编辑」——一句关于空文件的假话。
+     */
+    const empty = !draftReadyToFinish(master || drafts[0]);
     return {
       stage: "写作中",
-      stageReason: "主稿正在编辑，尚未提交诊断",
-      nextAction: "继续写作",
+      stageReason: empty ? "主稿还是空的，写点东西再往下走" : "主稿正在编辑，还没提交发布",
+      nextAction: empty ? "开始写" : "写完了，去发布",
       blockers: [], publication, review,
     };
   }

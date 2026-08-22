@@ -33,14 +33,14 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const grouped = useMemo(() => groupProjects(projects), [projects]);
   /** 筛了阶段就只看那一档，否则全量。表格是「全集」那一侧，不分组。 */
   const shown = useMemo(() => (stage ? grouped[stage] || [] : projects), [stage, grouped, projects]);
-  /** 顶上那三张：和今日页同一个优先级（需处理 → 待发布 → 待诊断 → 写作中 → 待复盘 → 策划中） */
+  /** 顶上那三张：和今日页同一个优先级（需处理 → 待发布 → 写作中 → 待复盘 → 策划中） */
   const attention = useMemo(() => actionableProjects(projects, 3), [projects]);
   /**
    * 看板列。⚠️ **只画能落脚的那几档**：九个阶段全铺出来的话，一屏横着排九列，
    * 而 `已完成` / `生成中` 这两档要么是终点、要么是流水线自己在跑，拖不进去也拖不出来。
    * `已搁置` 留着——它是 `abandon` 的落点，真掉进去的项目得看得见。
    */
-  const boardStages = ["策划中", "写作中", "待诊断", "待发布", "已搁置"];
+  const boardStages = ["策划中", "写作中", "待发布", "已搁置"];
 
   /**
    * 拖一张卡到另一列 = 推进阶段。

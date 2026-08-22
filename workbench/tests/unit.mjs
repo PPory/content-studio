@@ -41,7 +41,7 @@ import { strToU8, unzipSync, zipSync } from "fflate";
 import { cardMarkdown, knowledgeCardLinks, saveKnowledgeCard } from "../server/lib/knowledge-cards.mjs";
 import { listEditorRevisions, moveEditorRevisions, normalizeRevision, saveEditorRevision, verifyRevisionStore } from "../server/lib/editor-revisions.mjs";
 import { pipeRoutes, workerPostTimeout } from "../server/routes/pipe.mjs";
-import { actionableProjects, groupProjects, projectOpenTarget, PROJECT_STAGES } from "../src/lib/content-projects.js";
+import { actionableProjects, groupProjects, projectOpenTarget, projectPhase, PROJECT_STAGES } from "../src/lib/content-projects.js";
 import { normalizeMaterialOpen, normalizeMaterialRoute } from "../src/lib/open-target.js";
 import { mapMaterialWorkspaceItem, materialWorkspaceCounts, materialWorkspaceQuery, MATERIAL_STAGES } from "../src/lib/material-workspace.js";
 import { mergeTypesetState, typesetMarkdown } from "../src/lib/typeset-handoff.js";
@@ -122,7 +122,23 @@ check("主稿改版后新建排版稿，不覆盖上一版", next.mode === "crea
   ];
   const grouped = groupProjects(projects);
   check("未知项目阶段归到需处理而不是消失", grouped.需处理.map((x) => x.id).join("/") === "blocked/unknown");
-  check("项目阶段顺序只有一份", PROJECT_STAGES.join("/") === "策划中/生成中/写作中/待诊断/待发布/待复盘/已完成/已搁置/需处理");
+  check("项目阶段顺序只有一份", PROJECT_STAGES.join("/") === "策划中/生成中/写作中/待发布/待复盘/已完成/已搁置/需处理");
+  /**
+   * ⚠️ **「待诊断」那一档撤了**：它在 Worker 里没有任何实现（没有功能、没有提示词、
+   * 没有端点），全部含义是"发出去前你自己再读一遍"。**没有工具的闸门只是一个多出来的状态。**
+   */
+  check("撤掉的那一档没长回来", !PROJECT_STAGES.includes("待诊断"), PROJECT_STAGES.join("/"));
+  /**
+   * 详情页那三档的判据只写一处（`projectPhase`）。这儿钉住两件事：
+   * 每个真实阶段都有落点、而**不在那条线上的两个（已搁置/需处理）照实说自己的名字**——
+   * 硬塞进三档里等于对着一个卡住的项目说「在写」。
+   */
+  check(
+    "详情页三档覆盖每一个阶段",
+    PROJECT_STAGES.every((s) => !!projectPhase(s)) && ["在写", "写完了", "发出去了"].every((p) => PROJECT_STAGES.some((s) => projectPhase(s) === p)),
+    PROJECT_STAGES.map((s) => `${s}→${projectPhase(s)}`).join(" "),
+  );
+  check("搁置和需处理不硬塞进三档", projectPhase("已搁置") === "已搁置" && projectPhase("需处理") === "需处理");
   check("今日先摆阻塞，再摆正在写的", actionableProjects(projects).slice(0, 2).map((x) => x.id).join("/") === "blocked/write");
   check("生成中是后台状态，不冒充用户待办", !actionableProjects(projects).some((x) => x.id === "generating"));
   check("有母版时仍打开同一个内容项目", JSON.stringify(projectOpenTarget(projects[1])) === JSON.stringify({ view: "project", id: "write" }));

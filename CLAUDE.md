@@ -1,6 +1,8 @@
 # content-studio
 
-个人 AI 内容创作流水线。产品说明看 [`README.md`](README.md)，这里只写**改代码时不看到就会犯错**的约束。
+个人 AI 内容创作流水线。产品说明看 [`README.md`](README.md)，
+**整条链上"哪几步自动、哪几步必须你出现"看 [`docs/工作流.md`](docs/工作流.md)**——
+加功能之前先回答它属于「收 / 拍板 / 写」哪一件。这里只写**改代码时不看到就会犯错**的约束。
 
 ```
 worker/      Cloudflare Worker：D1、三个定时任务、两个 Bot 入口、/wb/* 端点

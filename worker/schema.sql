@@ -185,6 +185,12 @@ CREATE TABLE IF NOT EXISTS drafts (
   -- 创作流程和发布事实是两条轴。旧 status 保留给现有发布链，workflow_status 决定
   -- 项目此刻该写、该诊断还是该发布，避免再从“待修改”猜下一步。
   workflow_status TEXT NOT NULL DEFAULT '写作中'
+  -- ⚠️ **'待诊断' 是历史值：代码不再写入，读到时按 '写作中' 处理**
+  --（`lib/content-project.js` 的 `workflowOf`）。撤掉它是因为那一档在 Worker 里
+  -- 没有任何实现——没有功能、没有提示词、没有端点，全部含义是"发出去前你自己再读一遍"。
+  -- CHECK 没跟着改是有意的：SQLite 改 CHECK 要重建表（新建+拷贝+删+改名），
+  -- 为删一个不再写入的值在有真实数据的线上库上做这套，风险和收益不成比例。
+  -- 以后有计划的迁移时一起收。**新代码绝不能再往里写这个值。**
              CHECK (workflow_status IN ('写作中','待诊断','待发布','已发布','已弃用')),
   parent_draft_id TEXT REFERENCES drafts(id) ON DELETE SET NULL,
 

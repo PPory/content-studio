@@ -340,42 +340,79 @@ try {
     const proj = await page.evaluate(() => {
       const ws = document.querySelector(".project-workspace");
       if (!ws) return null;
-      const flow = [...document.querySelectorAll(".project-flow li")];
-      const ink = getComputedStyle(document.body).color;
-      const done = flow.find((li) => li.dataset.state === "done");
+      const pill = document.querySelector(".project-bar .pill");
       return {
         // ⚠️ **左边那条 245px 的简报栏撤了**：中间是你动手的东西，右边才是关于它的事实
-        oldBrief: document.querySelectorAll(".project-brief, .project-materials").length,
+        oldBrief: document.querySelectorAll(".project-brief, .project-materials, .pfacts").length,
         cols: getComputedStyle(document.querySelector(".project-workspace__grid")).gridTemplateColumns.split(" ").length,
         // 标题在这一页只有一份，而且是能改的那一份
         titles: document.querySelectorAll(".project-workspace h1, .project-draft__title").length,
         editable: document.querySelectorAll("input.project-draft__title").length,
-        flow: flow.length,
-        current: flow.filter((li) => li.dataset.state === "current").length,
-        /* 走过的那几段是墨绿不是黑：黑在这套界面里是「你在这儿 / 点这儿」，
-           一条线上七颗黑点等于同时在七处喊。量的是渲染后的颜色。 */
-        doneInk: done ? getComputedStyle(done.querySelector("span")).backgroundColor : "",
-        ink,
+        /**
+         * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机不是用户动线，
+         * 七段里三段用户根本不出现；而且它会骗人——一篇 0 字的空稿子照样能走到第 4 格
+         * 并显示"三段已完成"，**进度条画的是流程走了多远，不是内容写了多少**。
+         */
+        flow: document.querySelectorAll(".project-flow, .project-flow li").length,
+        // 顶栏那颗 pill 是三档之一（判据在 `projectPhase` 一处）
+        phase: pill ? pill.textContent.trim() : "",
         /**
          * ⚠️ **右栏是二选一，不能钉死其中一种。**
          * 「待发布」那一档右栏换成发布准备（`ProjectReleaseRail`），这是对的行为；
-         * 只断言「简报 + 素材」的话，库里第一条恰好走到待发布，测试当场变红而代码没问题——
+         * 只断言其中一种的话，库里第一条恰好走到那一档时测试当场变红而代码没问题——
          * 「写死外部状态的断言等于没有断言」在这个文件里已经栽过三次。
          */
-        rail: (!!document.querySelector(".project-rail .pfacts") && !!document.querySelector(".project-rail .pmat"))
-          ? "简报+素材"
+        rail: document.querySelector(".project-rail .pmat") ? "素材"
           : document.querySelector(".project-publish") ? "发布准备" : "",
         /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目素材那一栏必须叫别的 */
         clash: document.querySelectorAll(".project-rail .prefs").length,
+        /* 「待诊断」那一档撤了：不许在这一页任何地方长回来 */
+        ghost: ws.textContent.includes("诊断"),
       };
     });
     if (proj) {
       check("项目详情页是两栏，不是三栏", proj.cols === 2 && proj.oldBrief === 0, `${proj.cols} 栏 · ${proj.oldBrief} 处旧简报栏`);
       check("标题只有一份，而且是能改的那一份", proj.titles === 1 && proj.editable === 1, `${proj.titles} 个标题 · ${proj.editable} 个可改`);
-      check("七段流程线只有一段是当前", proj.flow === 7 && proj.current === 1, `${proj.flow} 段 · ${proj.current} 段当前`);
-      check("走过的那几段是墨绿不是黑", !proj.doneInk || proj.doneInk !== proj.ink, `${proj.doneInk || "(还没走过)"} · 正文 ${proj.ink}`);
-      check("右栏要么是简报+素材，要么是发布准备", !!proj.rail, proj.rail || "两种都不是");
+      check("七段流程线撤干净了", proj.flow === 0, `还剩 ${proj.flow} 个节点`);
+      check("顶栏那颗 pill 是三档之一", ["在写", "写完了", "发出去了", "已搁置", "需处理"].includes(proj.phase), proj.phase || "(没有 pill)");
+      check("「诊断」在这一页一个字都没有", !proj.ghost, proj.ghost ? "正文里还写着「诊断」" : "");
+      check("右栏要么是素材，要么是发布准备", !!proj.rail, proj.rail || "两种都不是");
       check("项目素材那一栏没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
+
+      /**
+       * ⚠️ **两种右栏都要钉得住，而且都要能自己滚。**
+       * 上一版只给 `.project-rail` 加了 sticky，而「待发布」那一档右栏换成的是**兄弟节点**
+       * `.project-publish`——它是 `position: static`，实测滚 900px 跟着走了 900px。
+       * 而且光 sticky 不够：`.project-rail` 实测 975px 高、视口 852px，
+       * **比视口还高的 sticky 会钉在顶上、然后你永远看不到它的底部**。
+       * 量的是**滚动前后那一栏的 top 差**，不是"样式表里写了 sticky"。
+       */
+      const stuck = await page.evaluate(async () => {
+        const rail = document.querySelector(".project-rail, .project-publish");
+        const main = document.querySelector(".main");
+        if (!rail || !main) return null;
+        const cs = getComputedStyle(rail);
+        const out = { which: rail.className, position: cs.position, scrolls: cs.overflowY, drift: -1 };
+        // 正文够长时再量真实位移；不够长也不能跳过——`position` 本身就是当初坏掉的那一处
+        if (main.scrollHeight > main.clientHeight + 200) {
+          const before = rail.getBoundingClientRect().top;
+          main.scrollTop = 600;
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          out.drift = Math.abs(Math.round(before - rail.getBoundingClientRect().top));
+          main.scrollTop = 0;
+        }
+        return out;
+      });
+      if (stuck) {
+        /* ⚠️ **两种右栏都要 sticky。** 上一版只给 `.project-rail` 加了，
+           而「待发布」那一档换成的是**兄弟节点** `.project-publish`，它是 `static`——
+           实测滚 900px 跟着走了 900px。量的是渲染后的 `position`，两种形态各跑到一次。 */
+        check("右栏是钉住的", stuck.position === "sticky", `${stuck.which} → position: ${stuck.position}`);
+        /* 光 sticky 不够：比视口还高的 sticky 会钉在顶上、然后你永远看不到它的底部 */
+        check("右栏比视口高时自己能滚", ["auto", "scroll"].includes(stuck.scrolls), `overflow-y: ${stuck.scrolls}`);
+        // 正文够长时才量得到真实位移；量不到就照实说，别回一个 0 冒充「钉住了」
+        check("滚正文时右栏不跟着走", stuck.drift < 0 || stuck.drift <= 1, stuck.drift < 0 ? "这一页不够长，位移量不到" : `跟着滚了 ${stuck.drift}px`);
+      }
       /**
        * ⚠️ **正文那一栏要吃满宽度**（`.main__inner:has(.project-workspace)` 解掉 1320 的上限）。
        * 不解的话正文和右栏一起被压到 900 出头，编辑器一行只剩三十来个字。

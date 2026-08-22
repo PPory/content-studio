@@ -62,8 +62,13 @@ export function releasePackage(row = {}) {
   const missing = [];
   if (!text(row.summary)) missing.push("摘要");
   if (spec.coverRecommended && !text(row.cover_url)) missing.push(spec.coverLabel);
-  if (!keywords.length) missing.push("关键词");
-  if (!text(row.interaction_goal)) missing.push("互动目标");
+  /**
+   * ⚠️ **`missing` 只列「屏幕上真有地方填」的项。**
+   * 撤掉了「关键词」和「互动目标」：那两个输入框已经从发布栏里去掉了
+   *（`interaction_goal` 在任何平台后台都没有对应字段，纯内部笔记），
+   * 而留在这儿的后果是界面一直催你补一个没有输入框的东西——
+   * **一句你照做不了的提示，比不提示更糟。** 列还在表上，只是不再当成"缺"。
+   */
   return {
     summary: row.summary || "",
     coverUrl: row.cover_url || "",

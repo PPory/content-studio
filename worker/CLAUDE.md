@@ -54,7 +54,20 @@ npx wrangler deploy
 - **列名英文、值中文**：SQL 里中文列名要处处加引号，得不偿失；而状态值要显示给人看。所有枚举值的真源是 `schema.sql` 的 CHECK 约束，JS 侧的镜像在 `lib/values.js`——**只有这一份**，改之前先改 schema 并写迁移语句。关键映射：LLM 输出素材类型用 `·`（金句·原话）→ 库里是 `/`（金句/原话），由 `normMaterialType` 归一；价值判断 高/中/低 → 值得深挖/存档备用/建议弃用。
 - 灵感库状态机：待初筛 →(任务1，按价值分流)→ 待选题(高·待聚类) | 存档备用(中·留存不聚类) | 已弃用(低) | 初筛失败/需人工。其中「待选题」→(任务2)→「已选题」。任务1 只对「待选题」产素材卡；任务2 只读「待选题」。状态由 triage.js 的 `STATUS_BY_VALUE` 从 value 推导（也信任 LLM 给的合法 status）。
 - 选题库状态机：待写 →(人工)→ 撰写中 →(任务3)→ 已成稿。
-- 稿件库 `drafts`：任务3 产出的初稿存这里。旧 `status` 只保留发布事实（待修改/已发布）；现役创作阶段看 `workflow_status`（写作中/待诊断/待发布/已发布/已弃用）。`topic_id` **可以为空**——`/推` 是绕过全流程的轻路径，产出的候选本来就没有选题。`topics.primary_draft_id` 是母版真源，`drafts.parent_draft_id` 记录变体父稿；阶段只能通过 `/wb/projects/:id/transition` 推进。发布链接、时间和五个数据指标在 drafts 上；项目复盘另存判断依据、复盘判断、下一次实验与复盘时间。记录发布只让项目进入待复盘，**不能自动沉淀有效素材**；只有 `/wb/projects/:id/review` 收到“表现突出”并且用户明确确认后才回流。发布包（封面、关键词、互动目标）同样存在 drafts 上，平台规格只在 `lib/release-package.js` 定义。部署这套代码前必须按顺序应用 `migrations/0002_content_projects_v2.sql`、`migrations/0003_release_packages_v1.sql` 和 `migrations/0004_project_reviews_v1.sql`。
+  ⚠️ **「撰写中」这一步是整条链上唯一的自动化闸门，而且必须由人来推。** 任务3 只领取
+  `status = 撰写中` 的选题；选题默认落在「待写」，**你不动它，自动成稿永远不会发生**。
+  2026-08 查库时库里 5 个选题全是「已成稿」、0 个「撰写中」——**这条路一次都没跑过**。
+  界面上要把这件事说出来：用户会以为选题会自己变成文章，于是觉得失控，而实际是它根本没启动。
+- 稿件库 `drafts`：任务3 产出的初稿存这里。旧 `status` 只保留发布事实（待修改/已发布）；现役创作阶段看 `workflow_status`。
+  ⚠️ **创作阶段只有三档：写作中 → 待发布 → 已发布**（另有 已弃用）。
+  ⚠️ **`待诊断` 是历史值：CHECK 约束里还留着它，代码不再写入，读到时按「写作中」处理。**
+  撤掉的理由是它**没有任何实现**——没有功能、没有提示词、没有端点，全部含义是"发出去前你自己再读一遍"，
+  而界面上同时有三处指着它、其中一处指向一个不存在的动作。**没有工具的闸门只是一个多出来的状态。**
+  CHECK 没跟着改是有意的：SQLite 改 CHECK 要重建表，为删一个不再写入的值在有数据的线上库上做这套，
+  风险和收益不成比例。以后有计划的迁移时一起收。
+  ⚠️ **`finish-writing`（写作中 → 待发布）必须挡空稿。** 工作台的「建立空白主稿」建的是
+  `body=''` 的空壳，而空壳照样能被推进后面的状态——**界面会要求你审阅一篇不存在的文章**，
+  真出过。前端把按钮置灰只是"给人看的那一层"，闸门要在这儿。`topic_id` **可以为空**——`/推` 是绕过全流程的轻路径，产出的候选本来就没有选题。`topics.primary_draft_id` 是母版真源，`drafts.parent_draft_id` 记录变体父稿；阶段只能通过 `/wb/projects/:id/transition` 推进。发布链接、时间和五个数据指标在 drafts 上；项目复盘另存判断依据、复盘判断、下一次实验与复盘时间。记录发布只让项目进入待复盘，**不能自动沉淀有效素材**；只有 `/wb/projects/:id/review` 收到“表现突出”并且用户明确确认后才回流。发布包（封面、关键词、互动目标）同样存在 drafts 上，平台规格只在 `lib/release-package.js` 定义。部署这套代码前必须按顺序应用 `migrations/0002_content_projects_v2.sql`、`migrations/0003_release_packages_v1.sql` 和 `migrations/0004_project_reviews_v1.sql`。
 - 提示词全部外置在 `prompt/*.md`（wrangler Text 模块，部署时打包进 Worker）。改提示词直接编辑对应 `.md` 再 `wrangler deploy`，不用动代码；`voice.md` 改一处，`draft.md`/`tweet.md` 都跟着变。三段主 prompt 仍与 Notion《外部自动化技术方案》第七节保持一致。
 - **每个环节用哪个模型是可配的，真源在 D1 的 `settings` 表**（`lib/models.js` 的 `MODEL_TASKS` 是环节清单）。判断力重的活（初筛 / 整理 / 成稿）值得用强模型，只做归类排序的（挑素材 / 打标签 / 提标题）用便宜快的就够——全局一个 `LLM_MODEL` 时这件事没法表达。
   - **没配过的环节一律退回 `env.LLM_MODEL`**，所以「什么都没设」和加这套之前逐字等价。
@@ -236,7 +249,7 @@ npx wrangler d1 execute content-pipeline --remote --file=tmp/restore.sql
 - `GET /wb/ping` 连通性探针，**不碰数据库**——工作台判断「Worker 通不通」不该顺带查库。
 - `GET /wb/status` 各库计数（复用 `lib/status.js` 的 `pipelineCounts`）。
 - `GET /wb/list/{inbox|materials|topics|drafts}?state=&cursor=&pageSize=` 分页列表。**一律「最近动过的在最前」**（按 `updated_at`，也就是卡片上显示的那个日期），见下面「列表排序」那条。`cursor` 对调用方是**不透明串**（现在是 `updated_at.id`，别去解析它）。选题那一档除了 `draftIds`（关联草稿）还回 **`inspirationIds`（来源灵感）和 `materialIds`（关联素材）**——工作台的热点转化链（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）靠它反查：拿热点 URL 在灵感/素材里找到那一条，再用它的 id 命中选题。这两条现在从 `topic_inbox` / `topic_materials` 关联表读，`enrich()` 按批查（一页 25 行固定 3 次查询），**不要退回成每行查一次**。
-- `GET /wb/projects?stage=&cursor=&pageSize=` 和 `GET /wb/projects/:id` 是内容项目聚合。它们不新建表，以 `topics` 为项目根、`draft:<id>` 表示孤立稿件，并批量带回真实关联的素材、来源、母版、平台版本和发布包。新数据通过 `workflow_status` 证明“待诊断”和“待发布”；历史稿没有该事实时仍不得猜。母版以 `primary_draft_id` 为真源，平台版本必须通过 `parent_draft_id` 指向母版。列表的查询数是固定的，不得改回逐项查询。
+- `GET /wb/projects?stage=&cursor=&pageSize=` 和 `GET /wb/projects/:id` 是内容项目聚合。它们不新建表，以 `topics` 为项目根、`draft:<id>` 表示孤立稿件，并批量带回真实关联的素材、来源、母版、平台版本和发布包。新数据通过 `workflow_status` 证明“待发布”；历史稿没有该事实时仍不得猜。母版以 `primary_draft_id` 为真源，平台版本必须通过 `parent_draft_id` 指向母版。列表的查询数是固定的，不得改回逐项查询。
 - `POST /wb/projects/:id/variants` 从已确认母版幂等创建平台版本；`POST /wb/projects/:id/variants/:draftId/remove` 只能移除未发布的派生版；`POST /wb/projects/:id/releases/:draftId` 保存当前版本的标题、正文和发布包。母版在待发布阶段的标题和正文不可通过发布包接口改写；正文确实改变时才重跑真实性硬闸。
 - `POST /wb/projects/:id/review` 只接受待复盘或已完成项目。判断限定为样本不足、普通、表现突出；依据、复盘判断和下一次实验都不能为空，指标留空就存 `NULL`，不能伪装成 0。表现突出时也只有 `captureFeedback:true` 才沉淀标题、角度、平台反馈并标记本篇故事素材；任务键保证重试不会重复造素材。
 - `GET /wb/page/{id}` 单页正文，**返回 Markdown**（`getPageMarkdown`）。正文本来就是 `mdToBlocks` 从 Markdown 转过去的，读回来就该转回去——老的 `getPageText` 把每个块打平成一行，标题/列表/引用/代码围栏全丢，工作台的阅读区只能显示一大坨段落。`getPageText` 保留给 `triage.js` 用（那边只要纯文本）。**不递归子块**：嵌套列表和 toggle 要多打 N 次 `/blocks/{id}/children`，而单次调用 subrequest ≤50；表格同理（行是子块）暂不还原。

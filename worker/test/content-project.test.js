@@ -7,6 +7,7 @@ import {
   chooseMasterDraft,
   deriveProjectStage,
   nextDraftWorkflow,
+  draftReadyToFinish,
 } from "../src/lib/content-project.js";
 
 const topic = (fields = {}) => ({
@@ -53,9 +54,12 @@ const draft = (fields = {}) => ({
 });
 
 test("内容项目阶段是固定契约，创作门槛有明确阶段", () => {
-  assert.deepEqual(PROJECT_STAGES, ["策划中", "生成中", "写作中", "待诊断", "待发布", "待复盘", "已完成", "已搁置", "需处理"]);
+  assert.deepEqual(PROJECT_STAGES, ["策划中", "生成中", "写作中", "待发布", "待复盘", "已完成", "已搁置", "需处理"]);
   assert.ok(!PROJECT_STAGES.includes("待修改"));
   assert.ok(PROJECT_STAGES.includes("待发布"));
+  // ⚠️ 「待诊断」是撤掉的那一档：它在这个 Worker 里没有任何实现，
+  // 全部含义是"发出去前你自己再读一遍"。**没有工具的闸门只是一个多出来的状态。**
+  assert.ok(!PROJECT_STAGES.includes("待诊断"));
 });
 
 test("只有一篇稿件时直接作为母版", () => {
@@ -108,21 +112,56 @@ test("撰写中选题尚无稿件时是生成中", () => {
 });
 
 test("旧待修改稿安全兼容为写作中", () => {
-  const state = deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft()] });
+  const state = deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ body: "已经写了一些" })] });
   assert.equal(state.stage, "写作中");
-  assert.match(state.stageReason, /尚未提交诊断/);
+  assert.match(state.stageReason, /正在编辑/);
 });
 
-test("稿件创作状态直接决定待诊断和待发布", () => {
-  assert.equal(deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ workflow_status: "待诊断" })] }).stage, "待诊断");
+/**
+ * ⚠️ **空稿要说出来，而且不能装成"正在编辑"。**
+ * 工作台的「建立空白主稿」建的是 `body=''` 的空壳。它和一篇写了一半的稿子在库里
+ * 唯一的区别就是这个长度——不区分的话，界面对着一个空文件说「主稿正在编辑」。
+ * 库里真出过：6 篇稿子有 3 篇正文长度是 0。
+ */
+test("空主稿照实说是空的", () => {
+  const state = deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ body: "" })] });
+  assert.equal(state.stage, "写作中");
+  assert.match(state.stageReason, /空的/);
+  assert.match(state.nextAction, /开始写/);
+});
+
+test("空稿不许进待发布，写了字才行", () => {
+  assert.equal(draftReadyToFinish({ body: "有内容" }), true);
+  assert.equal(draftReadyToFinish({ body: "   \n  " }), false);
+  assert.equal(draftReadyToFinish({ body: "" }), false);
+  assert.equal(draftReadyToFinish({}), false);
+});
+
+test("稿件创作状态直接决定待发布", () => {
   assert.equal(deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ workflow_status: "待发布" })] }).stage, "待发布");
 });
 
+/**
+ * ⚠️ **库里的历史值「待诊断」要当「写作中」读。**
+ * CHECK 约束里还留着这个值（改 CHECK 要重建表，不值得），所以旧行还会出现。
+ * 不翻译的话它们一个分支都命中不了，最后掉进「需处理」——而「需处理」的意思是
+ * "关系有歧义，需要你决定"，那是句假话：它们只是状态旧了。
+ */
+test("历史值待诊断读出来是写作中", () => {
+  const state = deriveProjectStage({ topic: topic({ status: "已成稿" }), drafts: [draft({ workflow_status: "待诊断", body: "有正文" })] });
+  assert.equal(state.stage, "写作中");
+});
+
 test("阶段命令只允许相邻门槛和明确退回", () => {
-  assert.equal(nextDraftWorkflow("写作中", "submit-diagnosis"), "待诊断");
-  assert.equal(nextDraftWorkflow("待诊断", "approve-diagnosis"), "待发布");
+  assert.equal(nextDraftWorkflow("写作中", "finish-writing"), "待发布");
   assert.equal(nextDraftWorkflow("待发布", "return-writing"), "写作中");
-  assert.throws(() => nextDraftWorkflow("写作中", "approve-diagnosis"), /不能执行/);
+  // 历史值只出不进：旧行要走得出去，但没有任何命令能把它写回去
+  assert.equal(nextDraftWorkflow("待诊断", "finish-writing"), "待发布");
+  assert.equal(nextDraftWorkflow("待诊断", "return-writing"), "写作中");
+  assert.ok(!Object.values({ a: nextDraftWorkflow("写作中", "finish-writing"), b: nextDraftWorkflow("待发布", "return-writing") }).includes("待诊断"));
+  assert.throws(() => nextDraftWorkflow("待发布", "finish-writing"), /不能执行/);
+  assert.throws(() => nextDraftWorkflow("写作中", "submit-diagnosis"), /action 不合法/);
+  assert.throws(() => nextDraftWorkflow("写作中", "approve-diagnosis"), /action 不合法/);
   assert.throws(() => nextDraftWorkflow("写作中", "unknown"), /action 不合法/);
 });
 

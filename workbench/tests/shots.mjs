@@ -186,8 +186,8 @@ const PROJECT_SHOT_DETAIL = {
   id: "shot-writing",
   title: "别再把收藏当成学会",
   stage: "写作中",
-  stageReason: "主稿正在编辑，尚未提交诊断",
-  nextAction: "完成写作，提交诊断",
+  stageReason: "主稿正在编辑，还没提交发布",
+  nextAction: "写完了，去发布",
   blockers: [],
   updatedAt: new Date(Date.now() - 3600000).toISOString(),
   brief: { audience: "想把输入变成产出的人", viewpoint: "收藏这个动作本身会带来「已经学会」的错觉", platform: "公众号", priority: "高" },
@@ -227,7 +227,7 @@ const PROJECT_SHOT_DETAIL = {
 const PROJECT_SHOT_RELEASE = {
   ...PROJECT_SHOT_DETAIL,
   stage: "待发布",
-  stageReason: "主稿已通过诊断，可以进入排版和发布",
+  stageReason: "主稿已写完，可以进入排版和发布",
   nextAction: "去排版发布",
   masterDraft: {
     ...PROJECT_SHOT_DETAIL.masterDraft,

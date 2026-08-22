@@ -1,13 +1,16 @@
 // 内容项目看板：阶段成列，拖一张卡过去就是推进阶段。
 //
-// ⚠️ **合法的推进只有五条，不是「任意阶段到任意阶段」**（真源在
+// ⚠️ **合法的推进只有四条，不是「任意阶段到任意阶段」**（真源在
 // `worker/src/lib/content-project.js` 的命令白名单 + `nextDraftWorkflow` 状态机）：
 //
 //   start-writing      策划中 → 写作中
-//   submit-diagnosis   写作中 → 待诊断
-//   approve-diagnosis  待诊断 → 待发布
-//   return-writing     待诊断 / 待发布 → 写作中
-//   abandon            前三态 → 已搁置
+//   finish-writing     写作中 → 待发布   ⚠️ 正文为空时 Worker 会拒（409）
+//   return-writing     待发布 → 写作中
+//   abandon            前两态 → 已搁置
+//
+// ⚠️ **「待诊断」那一档整个撤了**：它在 Worker 里没有任何实现，
+// 全部含义是"发出去前你自己再读一遍"。原来的 `submit-diagnosis` + `approve-diagnosis`
+// 合并成了 `finish-writing`。
 //
 // **所以拖起来的那一刻就要把放不下的列标出来**，不能让人拖过去再吃一个 409——
 // 一个「看起来能放、放下去报错」的目标，比一个明确说「这儿不行」的灰列糟得多。
@@ -30,12 +33,9 @@ import { PROJECT_STAGE_META } from "../../lib/content-projects.js";
  */
 export const TRANSITIONS = {
   "策划中→写作中": "start-writing",
-  "写作中→待诊断": "submit-diagnosis",
-  "待诊断→待发布": "approve-diagnosis",
-  "待诊断→写作中": "return-writing",
+  "写作中→待发布": "finish-writing",
   "待发布→写作中": "return-writing",
   "写作中→已搁置": "abandon",
-  "待诊断→已搁置": "abandon",
   "待发布→已搁置": "abandon",
 };
 

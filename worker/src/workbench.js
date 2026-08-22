@@ -46,7 +46,7 @@ import {
 import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
-import { getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
+import { draftReadyToFinish, getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
 import {
   MATERIAL_LIBRARY_CTE,
   MATERIAL_LIBRARY_STAGES,
@@ -750,6 +750,16 @@ async function transitionProject(env, rawId, body) {
     ]);
   } else {
     if (!draft) return json({ ok: false, error: "项目还没有主稿" }, 409);
+    /**
+     * ⚠️ **空稿不能进「待发布」，而且这道闸门必须在这儿。**
+     * 工作台的「建立空白主稿」建的是 `body=''` 的空壳，空壳照样能被推到下一档——
+     * 真出过：库里 6 篇稿子有 3 篇正文长度是 0，其中一篇已经走过去了，
+     * **于是界面在要求你审阅一篇不存在的文章**。
+     * 前端把按钮置灰挡的是误点，挡不住直接打这个接口。
+     */
+    if (action === "finish-writing" && !draftReadyToFinish(draft)) {
+      return json({ ok: false, error: "正文还是空的", hint: "先写点东西，再往发布走" }, 409);
+    }
     const current = draft.status;
     let next;
     try { next = nextDraftWorkflow(current, action); }

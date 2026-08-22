@@ -1,24 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { PROJECT_STAGES, PROJECT_STAGE_META } from "../lib/content-projects.js";
+import { projectPhase } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { WritingAssist } from "../components/WritingAssist.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
-import { ProjectFacts } from "./project/ProjectFacts.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
-import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh, IconTag, IconTarget } from "../components/icons.jsx";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh, IconTag } from "../components/icons.jsx";
 
-const FLOW = ["策划中", "生成中", "写作中", "待诊断", "待发布", "待复盘", "已完成"];
-
+/**
+ * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机，不是你的动线：
+ * 七段里有三段你根本不出现（生成中＝等 cron、待复盘＝等平台数据、已完成＝终点）。
+ * 而且它会骗人——一篇 0 字的空稿子照样能走到第 4 格并显示"三段已完成"，
+ * **进度条画的是流程走了多远，不是内容写了多少**，那一页上这两件事长得一模一样。
+ * 这一页只需要回答一句话：**现在轮到谁、要做什么**。三档 pill + 一句原因 + 一颗按钮。
+ */
 const PRIMARY_ACTION = {
   策划中: { action: "start-writing", label: "建立主稿" },
   生成中: null,
-  写作中: { action: "submit-diagnosis", label: "完成写作，提交诊断" },
-  待诊断: { action: "approve-diagnosis", label: "诊断通过，进入发布" },
+  // ⚠️ 「诊断」那一档撤了：Worker 里没有任何实现。两条命令合并成了 finish-writing
+  写作中: { action: "finish-writing", label: "写完了，去发布" },
   已搁置: { action: "return-writing", label: "恢复写作" },
 };
 
@@ -66,6 +70,18 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
           : <button type="button" className="release-remove__start" onClick={() => setRemoving(true)} disabled={dirty || busy} title={dirty ? "先保存或还原当前修改" : "移除未发布的平台版本"}>移除这个平台版本</button>
       ) : null}
 
+      {/**
+        * ⚠️ **这一栏装的是「你去平台后台时要粘贴的东西」，不是系统需要的表单。**
+        * 追过下游：`摘要` 进 vault 归档的 frontmatter，其余几项**只写进 D1，没有任何
+        * 地方读**（排版工具只拿 title + body）。原来界面像是在等你填，而其实是在替你
+        * 记草稿——两回事，所以这行小字不能省。
+        *
+        * ⚠️ **「画面备注」和「互动目标」两个框撤了**：它们在任何平台后台都没有对应字段，
+        * 是纯内部笔记，而且 `readiness.missing` 还在催你补「互动目标」——
+        * **一句你照做不了的提示，比不提示更糟。** 列还在 drafts 表上，只是界面不再要。
+        */}
+      <p className="release-hint">下面这些是发布时你要往平台后台填的，工作台只替你记着，不会自动填过去。</p>
+
       <label className="release-field">
         <span>摘要</span>
         <textarea rows="3" value={form.summary} onChange={(event) => onChange("summary", event.target.value)} placeholder="这篇内容给读者什么价值" />
@@ -74,20 +90,15 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
       <section className="release-cover">
         <div className="release-cover__head"><span><IconPhoto aria-hidden="true" />{spec.coverLabel || "封面"}</span><small>{spec.coverRatio || "按平台尺寸"}</small></div>
         <div className="release-cover__preview" data-empty={!form.coverUrl || undefined}>
-          {form.coverUrl ? <img src={form.coverUrl} alt={form.coverText || "发布封面预览"} /> : <div><b>{form.coverText || "封面待补"}</b><small>{form.coverNote || "先定文案和视觉方向，图片地址可以最后补。"}</small></div>}
+          {form.coverUrl ? <img src={form.coverUrl} alt={form.coverText || "发布封面预览"} /> : <div><b>{form.coverText || "封面待补"}</b><small>先定文案，图片地址可以最后补。</small></div>}
         </div>
         <input value={form.coverUrl} onChange={(event) => onChange("coverUrl", event.target.value)} placeholder="封面图片地址 https://…" aria-label="封面图片地址" />
         <input value={form.coverText} onChange={(event) => onChange("coverText", event.target.value)} placeholder="封面上的主文案" aria-label="封面文案" />
-        <textarea rows="2" value={form.coverNote} onChange={(event) => onChange("coverNote", event.target.value)} placeholder="画面、人物、配色或构图备注" aria-label="封面视觉备注" />
       </section>
 
       <label className="release-field release-field--icon">
         <span><IconTag aria-hidden="true" />关键词</span>
         <input value={form.keywords} onChange={(event) => onChange("keywords", event.target.value)} placeholder="写作，复利，个人成长" />
-      </label>
-      <label className="release-field release-field--icon">
-        <span><IconTarget aria-hidden="true" />互动目标</span>
-        <textarea rows="2" value={form.interactionGoal} onChange={(event) => onChange("interactionGoal", event.target.value)} placeholder="希望读者评论、收藏或转发什么" />
       </label>
 
       {dirty ? <button className="btn project-publish__save" onClick={onSave} disabled={busy}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}保存当前版本</button> : null}
@@ -323,7 +334,15 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   }
 
   const mainAction = PRIMARY_ACTION[project.stage];
-  const phaseIndex = FLOW.indexOf(project.stage);
+  /**
+   * 主操作此刻为什么点不动。空串＝能点。
+   * ⚠️ **判据要和 Worker 那道闸门一致**（`draftReadyToFinish`：正文去空白后非空）。
+   * 库里真出过：6 篇稿子里 3 篇正文长度是 0，其中一篇已经被推到了下一档——
+   * **界面于是在要求你审阅一篇不存在的文章**。
+   */
+  const blockedReason = mainAction?.action === "finish-writing" && !String(form.body || "").trim()
+    ? "正文还是空的，先写点东西再往发布走"
+    : "";
 
   return (
     <div className="project-workspace">
@@ -338,39 +357,43 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
           <button className="project-back" onClick={() => onGo("content", "")}>
             <IconArrowLeft aria-hidden="true" />内容
           </button>
-          <StatePill state={project.stage} />
+          {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
+          <StatePill state={projectPhase(project.stage)} />
+          {project.stageReason ? <span className="project-bar__why">{project.stageReason}</span> : null}
         </div>
         <div className="project-bar__end">
           {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
           {saved && !dirty ? <span className="project-saved"><IconCheck aria-hidden="true" />已保存</span> : null}
+          {/**
+            * ⚠️ **「退回写作修改」搬到顶栏了。**
+            * 它是这一页唯一的后退键，而且只在稿子锁住的那一档出现——那时候正文是只读的，
+            * 没有它，发现一处错字就只剩「重新走一遍流程」这一条路。挂在右栏底部太容易漏。
+            */}
+          {draft && project.stage === "待发布" ? (
+            <button className="btn btn-sm" onClick={() => transition("return-writing")} disabled={busy}>退回写作</button>
+          ) : null}
           {draft && (draftEditable || releaseEditable) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
           {project.stage === "待发布" ? (
             draft?.platform === "公众号" ? <button className="btn btn-primary" onClick={openTypeset}><IconBrandWechat aria-hidden="true" />去排版<IconArrowRight aria-hidden="true" /></button> : null
           ) : mainAction ? (
-            <button className="btn btn-primary" onClick={() => transition(mainAction.action)} disabled={busy}>
+            /**
+             * ⚠️ **正文为空时这颗按钮必须点不动。**
+             * Worker 那侧会拒（409），这儿置灰是它的可见对应物——**光靠服务端拒绝的话，
+             * 你会点下去、等一下、然后收到一句报错**，而屏幕上从头到尾没说过为什么不行。
+             * `title` 里写清原因，因为一颗灰按钮自己说不了话。
+             */
+            <button
+              className="btn btn-primary"
+              onClick={() => transition(mainAction.action)}
+              disabled={busy || blockedReason !== ""}
+              title={blockedReason || undefined}
+            >
               {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{mainAction.label}
             </button>
           ) : null}
         </div>
       </header>
-
-      {/**
-        * 七段流程线。⚠️ **走过的那几段是墨绿，不是黑。**
-        * 「走到哪儿了」是墨绿管的三件事之一；上一版用实心黑圆点，而黑在这套界面里
-        * 的意思是「你在这儿 / 点这儿」，一条线上七颗黑点等于同时在七处喊。
-        */}
-      <ol className="project-flow" aria-label="内容项目进度">
-        {FLOW.map((stage, index) => {
-          const meta = PROJECT_STAGE_META[stage];
-          const state = index < phaseIndex ? "done" : index === phaseIndex ? "current" : "later";
-          return (
-            <li key={stage} data-state={state}>
-              <span aria-hidden="true">{index < phaseIndex ? <IconCheck stroke={2.4} /> : null}</span>
-              <b>{meta.label}</b>
-            </li>
-          );
-        })}
-      </ol>
+      {blockedReason ? <p className="project-bar__blocked">{blockedReason}</p> : null}
 
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (
@@ -381,6 +404,23 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
             <>
               <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>
               <input className="project-draft__title" value={form.title} onChange={(e) => changeForm("title", e.target.value)} aria-label={draft.id === masterDraft?.id ? "主稿标题" : `${draft.platform} 版本标题`} disabled={!draftEditable} />
+
+              {/**
+                * ⚠️ **简报贴在标题下面，不在右栏。**
+                * 目标读者和核心观点是**你写的时候要瞟的东西**——你就是照着这两条写的。
+                * 隔一条沟摆在右边，等于每写几句就要横跨整屏看一眼。
+                * 右栏那张「简报卡」原来还有四项：stageReason（顶栏说过第三遍）、
+                * 下一步（和按钮说同一件事）、主平台（写作时用不上）、「更新：刚刚」
+                *（你刚打开这一页）——整卡已经撤掉。
+                *
+                * ⚠️ **缺的那一项要看得出是缺的**，不能一律写「—」：那样这一行看着只是留白。
+                */}
+              {project.brief?.audience || project.brief?.viewpoint ? (
+                <dl className="project-brief-line">
+                  <div><dt>写给</dt><dd data-empty={project.brief?.audience ? undefined : ""}>{project.brief?.audience || "还没定目标读者"}</dd></div>
+                  <div><dt>要说</dt><dd data-empty={project.brief?.viewpoint ? undefined : ""}>{project.brief?.viewpoint || "还没定核心观点"}</dd></div>
+                </dl>
+              ) : null}
               <MarkdownEditor
                 key={`${draft.id}:${draftEditable ? "edit" : "locked"}`}
                 value={form.body}
@@ -437,12 +477,21 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <aside className="project-rail">
-            <ProjectFacts
-              project={project}
-              busy={busy}
-              onReturn={draft && ["待诊断", "待发布"].includes(project.stage) ? () => transition("return-writing") : undefined}
-              onSetPrimary={(draftId) => transition("set-primary", { draftId })}
-            />
+            {/**
+              * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，
+              * 剩下两项（目标读者/核心观点）已经搬到正文标题下面——你写的时候要瞟的是它们。
+              */}
+            {project.variants?.length && !project.masterDraft ? (
+              <section className="pmat" aria-label="选择母版">
+                <h2 className="section-label">这个项目有多篇稿件</h2>
+                <p className="pmat__note">先选一篇设为母版，项目阶段和后续变体都会围绕它推进。</p>
+                {project.variants.map((item) => (
+                  <button key={item.id} type="button" className="btn btn-sm btn-block" style={{ marginTop: 6 }} onClick={() => transition("set-primary", { draftId: item.id })}>
+                    {item.platform} · {item.title}
+                  </button>
+                ))}
+              </section>
+            ) : null}
             <ProjectRefs
               materials={project.materials || []}
               canInsert={draftEditable}
