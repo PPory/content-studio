@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { projectPhase } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
+import { useDocChat } from "../lib/use-doc-chat.js";
+import { renderMarkdown } from "../lib/markdown.js";
 import { WritingAssist } from "../components/WritingAssist.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
@@ -11,7 +13,7 @@ import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
-import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPlus, IconRefresh } from "../components/icons.jsx";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 /**
  * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机，不是你的动线：
@@ -33,7 +35,7 @@ function materialText(item) {
   return `> ${item.content || item.title}${source}`;
 }
 
-function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, onPublished }) {
+function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, onPublished, cover, coverOpen, onCover }) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
   const used = new Set(drafts.map((item) => item.platform));
@@ -108,6 +110,34 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
         <IconCopy aria-hidden="true" />复制当前发布稿
       </button>
 
+      {/**
+        * 配封面。**从稿件库那一页搬过来的**——那一页从导航拿掉了，
+        * 而这是它身上唯一一件项目页没有的能力。
+        *
+        * ⚠️ **结果不落库**：它给的是你去平台后台要粘的几句文案，
+        * 存进 D1 也没有任何地方读（和刚砍掉的封面地址/文案是同一类）。
+        * 所以只显示 + 让你复制。
+        */}
+      <button className="btn project-publish__cover" onClick={onCover} disabled={busy || cover?.chat?.running}>
+        {cover?.chat?.running ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconPhoto aria-hidden="true" />}
+        配封面
+      </button>
+      {coverOpen ? (
+        <div className="project-cover">
+          {cover.chat.error ? <p className="project-cover__err">{cover.chat.error.message || "没跑起来"}</p> : null}
+          {/* ⚠️ 走的是本机 CLI，第一次要把它拉起来，十几秒是正常的——所以这句必须在 */}
+          {cover.chat.running && !coverText(cover) ? <p className="project-cover__wait">正在想…（走的是本机 CLI，第一次要等它启动）</p> : null}
+          {coverText(cover) ? (
+            <>
+              <div className="project-cover__out prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(coverText(cover)) }} />
+              <button className="btn btn-sm" onClick={() => navigator.clipboard?.writeText(coverText(cover))}>
+                <IconCopy size={13} stroke={1.8} aria-hidden="true" />复制这几句
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <PublishPanel
         item={{
           key: draft.id,
@@ -150,6 +180,16 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
    * 下次进来看到的是「没抓到 + 再试一次」，点一下就重新拿到准确原因。
    */
   const [srcFetch, setSrcFetch] = useState({ state: "idle", why: "" });
+  /**
+   * 配封面。**从稿件库那一页搬过来的**——那一页从导航里拿掉了，
+   * 而这是它身上唯一一件项目页没有的能力。
+   *
+   * ⚠️ **走的是本机 CLI 那条通道**（`useDocChat`），不是 Worker：
+   * 提示词的真源在服务端的 `config/prompts.json`，**前端不留第二份默认文案**——
+   * 留了的话用户改完设置发现「配封面」还是老样子，而且不报错。
+   */
+  const cover = useDocChat({ docTitle: project?.title || "" });
+  const [coverOpen, setCoverOpen] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
   const cursor = useRef(null);
   const selectedDraftRef = useRef("");
@@ -184,7 +224,15 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const draft = drafts.find((item) => item.id === selectedDraftId) || masterDraft;
   const dirty = !!draft && releaseChanged(draft, form);
   const writingEditable = project?.stage === "写作中" && draft?.id === masterDraft?.id;
-  const releaseContentEditable = project?.stage === "待发布" && draft?.id !== masterDraft?.id;
+  /**
+   * ⚠️ **「待发布」那一档的正文也能就地改，母版也一样。**
+   *
+   * 原来母版在这一档只读，屏上写着「发布版已锁定 · 需修改时先退回写作」。
+   * 撤掉的理由：**那道锁一键就能绕过**——「退回写作」按钮就在同一屏上——
+   * 所以它挡不住任何东西，只是在「发现一个错字」和「改掉它」之间多插一步。
+   * Worker 那侧同步放开了；真正的闸门是**正文一变就重跑真实性硬闸**。
+   */
+  const releaseContentEditable = project?.stage === "待发布";
   const draftEditable = writingEditable || releaseContentEditable;
   const releaseEditable = project?.stage === "待发布";
 
@@ -290,6 +338,20 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   useEffect(() => {
     if (project?.seed) fetchSource(project.seed);
   }, [project?.seed?.id, fetchSource]);
+
+  async function runCover() {
+    if (!draft) return;
+    setCoverOpen(true);
+    const { values } = await api.prompts();
+    const head = String(values?.cover?.instruction || "").replaceAll("{platform}", draft.platform || "公众号");
+    // 标题和正文由这儿拼，不进模板——删掉占位符也只是少一个词，不会把上下文带没
+    cover.sendChat(`${head}
+
+标题：${form.title}
+
+正文：
+${(form.body || "").slice(0, 3000)}`);
+  }
 
   async function openTypeset() {
     if (!draft) return;
@@ -536,6 +598,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
             onTypeset={openTypeset}
             onCopy={copyRelease}
             onPublished={handlePublished}
+            cover={cover}
+            coverOpen={coverOpen}
+            onCover={runCover}
           />
         ) : (
           /**
@@ -601,4 +666,10 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
       {["待复盘", "已完成"].includes(project.stage) ? <ErrorNote error={error} what="保存复盘" /> : null}
     </div>
   );
+}
+
+/** agent 最后那条回复。没有就是还没开口。 */
+function coverText(cover) {
+  const last = [...(cover?.chat?.messages || [])].reverse().find((m) => m.role === "agent");
+  return last?.text || "";
 }

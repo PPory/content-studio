@@ -196,3 +196,20 @@ test("来源正文的改动走白名单，而且会截断", () => {
   // ⚠️ 白名单：没列进去的字段一个都不许漏进来（和 /wb/update 的 EDITABLE 同一条）
   assert.throws(() => normalizeSeedPatch({ sourceUrl: "https://evil/" }), /没有可改的字段/);
 });
+
+/**
+ * ⚠️ **建的时候也要收来源正文，不能只有改的时候收。**
+ *
+ * 从「找题」记种子时，那张完整的卡是**当场就有的**——跟着建库请求一起来。
+ * 只在 patch 里收的话，它被**静默丢掉**：种子建出来了、界面不报错，
+ * 只是项目页右栏永远是空的。真踩过这一次。
+ */
+test("建种子时就能带上来源正文", () => {
+  const input = normalizeSeedInput({ take: "一句话", sourceExcerpt: "**给谁看**：某某人", sourceFetchedAt: 1_700_000_000 });
+  assert.equal(input.sourceExcerpt, "**给谁看**：某某人");
+  assert.equal(input.sourceFetchedAt, 1_700_000_000);
+  // 不给这两个时是空值，不是 undefined——INSERT 那一行按位置绑参数，undefined 会写成 null 违反 NOT NULL
+  const bare = normalizeSeedInput({ take: "一句话" });
+  assert.equal(bare.sourceExcerpt, "");
+  assert.equal(bare.sourceFetchedAt, 0);
+});

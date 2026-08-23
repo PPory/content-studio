@@ -782,10 +782,12 @@ async function createSeed(env, body) {
   const ts = now();
   await run(
     env,
-    `INSERT INTO seeds (id, reaction, take, source_kind, source_id, source_title, source_url, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO seeds (id, reaction, take, source_kind, source_id, source_title, source_url,
+                        source_excerpt, source_fetched_at, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, input.reaction, input.take, input.sourceKind, input.sourceId,
-    input.sourceTitle, input.sourceUrl, SEED_STATUS.KEEPING, ts, ts
+    input.sourceTitle, input.sourceUrl, input.sourceExcerpt, input.sourceFetchedAt,
+    SEED_STATUS.KEEPING, ts, ts
   );
   const row = await first(env, "SELECT * FROM seeds WHERE id = ?", id);
   return json({ ok: true, seed: mapSeed(row) });
@@ -1006,15 +1008,16 @@ async function updateProjectRelease(env, rawId, draftId, body) {
   if (!current) return json({ ok: false, error: "所选版本不属于这个内容项目" }, 400);
   if (current.publicationStatus === DRAFT_STATUS.PUBLISHED) return json({ ok: false, error: "已发布版本不能再改写" }, 409);
 
-  const isMaster = current.id === project.masterDraft?.id;
-  if (isMaster) {
-    const requestedTitle = String(body?.title ?? current.title).trim();
-    const requestedBody = String(body?.body ?? current.body);
-    if (requestedTitle !== current.title || requestedBody !== current.body) {
-      return json({ ok: false, error: "主稿已锁定；需要改正文时请先退回写作" }, 409);
-    }
-  }
-
+  /**
+   * ⚠️ **「待发布」那一档的正文**可以就地改**，母版也一样。**
+   *
+   * 原来这儿挡着母版的标题和正文，要人先点「退回写作」。撤掉的理由：
+   * **那道锁一键就能绕过**——「退回写作」按钮就在同一屏上，点一下就能改，
+   * 所以它挡不住任何东西，只是在「发现一个错字」和「改掉它」之间多插一步。
+   *
+   * **真正的闸门是下面那行**：正文一变就重跑 `assertGroundedGeneratedText`。
+   * 那条拦的是「凭空写出来的第一人称经历」，它和你在哪一档改没有关系。
+   */
   let fields;
   try { fields = normalizeReleaseInput(body, current); }
   catch (error) { return json({ ok: false, error: error.message }, 400); }

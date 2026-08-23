@@ -72,6 +72,10 @@ npx wrangler deploy
   **加组和加条是同一件事**：十条平铺的话你每次都得从头扫到尾，分了组才只看相关那三条。
   两份手写清单迟早对不上，那时的症状是「界面上能选的某一条，存进去被清空了」
   （`normalizeSeedInput` 认不出就清空）——**两边都不报错**。
+- ⚠️ **`source_excerpt` / `source_fetched_at` 建的时候也要收，不能只有改的时候收。**
+  从「找题」记一颗种子时，那张完整的卡是**当场就有的**——它跟着建库请求一起来。
+  只在 `normalizeSeedPatch` 里收的话这两个字段被**静默丢掉**：种子建出来了、
+  界面也不报错，只是项目页右栏永远是空的。真踩过一次，`test/seeds.test.js` 钉着。
 - ⚠️ **来源正文存在 `source_excerpt`，配一个 `source_fetched_at` 当「抓过没有」的开关。**
   抓取在**工作台侧**（Readability 要 Node，Worker 跑不了），抓完 `POST /wb/seeds/:id` 存回来。
   两列缺一不可：公众号 / 知乎 / 小红书 / 抖音 / B站都要浏览器，**抓不到是常态**——
@@ -341,7 +345,7 @@ npx wrangler d1 execute content-pipeline --remote --file=tmp/restore.sql
 - `GET /wb/status` 各库计数（复用 `lib/status.js` 的 `pipelineCounts`）。
 - `GET /wb/list/{inbox|materials|topics|drafts}?state=&cursor=&pageSize=` 分页列表。**一律「最近动过的在最前」**（按 `updated_at`，也就是卡片上显示的那个日期），见下面「列表排序」那条。`cursor` 对调用方是**不透明串**（现在是 `updated_at.id`，别去解析它）。选题那一档除了 `draftIds`（关联草稿）还回 **`inspirationIds`（来源灵感）和 `materialIds`（关联素材）**——工作台的热点转化链（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）靠它反查：拿热点 URL 在灵感/素材里找到那一条，再用它的 id 命中选题。这两条现在从 `topic_inbox` / `topic_materials` 关联表读，`enrich()` 按批查（一页 25 行固定 3 次查询），**不要退回成每行查一次**。
 - `GET /wb/projects?stage=&cursor=&pageSize=` 和 `GET /wb/projects/:id` 是内容项目聚合。它们不新建表，以 `topics` 为项目根、`draft:<id>` 表示孤立稿件，并批量带回真实关联的素材、来源、母版、平台版本和发布包。新数据通过 `workflow_status` 证明“待发布”；历史稿没有该事实时仍不得猜。母版以 `primary_draft_id` 为真源，平台版本必须通过 `parent_draft_id` 指向母版。列表的查询数是固定的，不得改回逐项查询。
-- `POST /wb/projects/:id/variants` 从已确认母版幂等创建平台版本；`POST /wb/projects/:id/variants/:draftId/remove` 只能移除未发布的派生版；`POST /wb/projects/:id/releases/:draftId` 保存当前版本的标题、正文和发布包。母版在待发布阶段的标题和正文不可通过发布包接口改写；正文确实改变时才重跑真实性硬闸。
+- `POST /wb/projects/:id/variants` 从已确认母版幂等创建平台版本；`POST /wb/projects/:id/variants/:draftId/remove` 只能移除未发布的派生版；`POST /wb/projects/:id/releases/:draftId` 保存当前版本的标题、正文和发布包。**待发布阶段的正文可以就地改，母版也一样**——原来那道「先退回写作」的锁撤了，因为它一键就能绕过（退回按钮就在同一屏），挡不住东西只是多一步。真正的闸门是**正文一变就重跑真实性硬闸**（`assertGroundedGeneratedText`），它和你在哪一档改无关。
 - `POST /wb/projects/:id/review` 只接受待复盘或已完成项目。判断限定为样本不足、普通、表现突出；依据、复盘判断和下一次实验都不能为空，指标留空就存 `NULL`，不能伪装成 0。表现突出时也只有 `captureFeedback:true` 才沉淀标题、角度、平台反馈并标记本篇故事素材；任务键保证重试不会重复造素材。
 - `GET /wb/page/{id}` 单页正文，**返回 Markdown**（`getPageMarkdown`）。正文本来就是 `mdToBlocks` 从 Markdown 转过去的，读回来就该转回去——老的 `getPageText` 把每个块打平成一行，标题/列表/引用/代码围栏全丢，工作台的阅读区只能显示一大坨段落。`getPageText` 保留给 `triage.js` 用（那边只要纯文本）。**不递归子块**：嵌套列表和 toggle 要多打 N 次 `/blocks/{id}/children`，而单次调用 subrequest ≤50；表格同理（行是子块）暂不还原。
 - `POST /wb/delete` `{view, pageId}` **是真删除**。Notion 时代这是 `archived:true`——进废纸篓、30 天可恢复，所以工作台上写的是「移到废纸篓」；D1 没有这一层，**删了就没了，界面文案必须跟着改，别再承诺能恢复**。关联表靠 `ON DELETE CASCADE` 一起清掉。仍要求传 `view`：pageId 是从工作台某个列表点出来的，view 对不上说明前端串台了，这时宁可 400 也不要照着一个来路不明的 id 删东西。

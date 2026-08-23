@@ -6,7 +6,7 @@
 // 谁也说不清、也不报错的差别——这个项目所有事故都是这么来的。
 
 import { api } from "./api.js";
-import { creationApi, deriveDraftTitle } from "./creation-api.js";
+import { creationApi } from "./creation-api.js";
 
 /**
  * @returns {Promise<string>} 项目 id，调用方拿它 `onGo("project", id)`
@@ -31,9 +31,16 @@ export async function startWriting({
     kind: "draft",
     mode,
     platform,
-    // 标题此刻只是个临时值——到项目页第一件事就能改它，所以**不为它多问一步**。
-    // `deriveDraftTitle` 自己兜到「未命名稿」，空标题会被 Worker 直接拒。
-    title: deriveDraftTitle(title, body),
+    /**
+     * ⚠️ **标题不拿正文的第一句顶上。**
+     *
+     * 从种子过来时正文第一段就是你记的那句话（或那条角度），
+     * `deriveDraftTitle` 会把它整句抓成标题——于是标题框里是一句四十字的判断，
+     * **你得先删掉它才能起标题，比空着还烦**。标题是要打磨的东西，
+     * 空着（「未命名」）反而在提醒你「这儿还没定」。
+     * 调用方明确给了标题时才用它（素材屏和访谈屏那两条有「暂定标题」）。
+     */
+    title: String(title || "").trim() || "未命名",
     body,
     materialIds,
     viewpoint,

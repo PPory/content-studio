@@ -378,7 +378,7 @@ try {
          */
         seed: document.querySelector(".pseed") ? (document.querySelector(".pseed__take")?.textContent.trim().length || 0) : -1,
         /* 「找相关素材」那颗：只在素材那一档出现（发布准备那一档换了整个右栏） */
-        find: document.querySelectorAll(".pmat__findbtn").length,
+        find: document.querySelectorAll(".pmat__find-btn").length,
         /* 挂上的候选**不能**混在已挂的列表里——两者语义不同 */
         cands: document.querySelectorAll(".pmat__list .pmat__cands").length,
       };
@@ -407,7 +407,8 @@ try {
        */
       check("有种子就摆出那句话，没有就整块不画", proj.seed === -1 || proj.seed > 0,
         proj.seed === -1 ? "这个项目不是种子长出来的" : `${proj.seed} 字`);
-      // 素材那一档才有「找相关素材」；发布准备那一档整个右栏都换掉了，没有它是对的
+      // 素材那一档才有「找相关素材」；发布准备那一档整个右栏都换掉了，没有它是对的。
+      // ⚠️ 它现在是标题行右上角一枚图标（原来是铺满整栏的按钮，和下面那列素材抢重量）
       check("素材栏上有「找相关素材」", proj.rail !== "素材" || proj.find === 1, `${proj.find} 颗`);
       // ⚠️ 候选和已挂上的必须分开画：混在一起你会以为它们已经算进「已用 N 条」了
       check("AI 候选没混进已挂上的那份清单", proj.cands === 0, `${proj.cands} 处混在里面`);
@@ -456,13 +457,26 @@ try {
             return hit ? `${hit.tag}.${hit.cls} 戳出右栏 ${hit.out}px` : "";
           })(),
         };
-        // 正文够长时再量真实位移；不够长也不能跳过——`position` 本身就是当初坏掉的那一处
-        if (main.scrollHeight > main.clientHeight + 200) {
-          const before = rail.getBoundingClientRect().top;
+        /**
+         * ⚠️ **量的是「吸住之后还动不动」，不是「一滚就不许动」。**
+         *
+         * 右栏起始位置在顶栏下面，`top: 14px` 意味着**头一段滚动它本来就该跟着走**，
+         * 直到它的上沿顶到 14px 才吸住。拿「滚 600px 之后位移是不是 0」当判据，
+         * 会把这段完全正常的位移判成失效——而它在这一页够长之前一直量不到，
+         * 所以那条判据错了很久都没露出来。
+         *
+         * 正确的判据：**滚到吸住之后再滚一次，位置不该再变**。
+         */
+        if (main.scrollHeight > main.clientHeight + 900) {
+          const settle = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           main.scrollTop = 600;
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          out.drift = Math.abs(Math.round(before - rail.getBoundingClientRect().top));
+          await settle();
+          const stuckAt = rail.getBoundingClientRect().top;
+          main.scrollTop = 1200;
+          await settle();
+          out.drift = Math.abs(Math.round(stuckAt - rail.getBoundingClientRect().top));
           main.scrollTop = 0;
+          await settle();
         }
         return out;
       });
@@ -474,7 +488,8 @@ try {
         /* 光 sticky 不够：比视口还高的 sticky 会钉在顶上、然后你永远看不到它的底部 */
         check("右栏比视口高时自己能滚", ["auto", "scroll"].includes(stuck.scrolls), `overflow-y: ${stuck.scrolls}`);
         // 正文够长时才量得到真实位移；量不到就照实说，别回一个 0 冒充「钉住了」
-        check("滚正文时右栏不跟着走", stuck.drift < 0 || stuck.drift <= 1, stuck.drift < 0 ? "这一页不够长，位移量不到" : `跟着滚了 ${stuck.drift}px`);
+        check("吸住之后再滚，右栏不动", stuck.drift < 0 || stuck.drift <= 1,
+          stuck.drift < 0 ? "这一页不够长，位移量不到" : `吸住之后又滑了 ${stuck.drift}px`);
         /**
          * ⚠️ **右栏不许横向被撑破。** 这条和上面那条是同一个根因的两个症状——
          * 修完只量 sticky 的话，下次某个 `nowrap` 的长标题回来时，
@@ -613,8 +628,14 @@ try {
     const prefilled = await page.inputValue(".rpick__take").catch(() => "");
     check("从候选进来时那句话已经预填好了", prefilled.trim().length > 4, prefilled.slice(0, 40));
     // 反应清单分三个 tab：十条平铺时输入框被挤到屏幕最下面，而那句话才是主角
-    const tabs = await page.$$eval(".rpick__tab", (els) => els.map((e) => e.textContent.trim()));
-    check("反应清单分成 tab，不是一长条", tabs.length >= 2, tabs.join(" / "));
+    const picked = await page.evaluate(() => ({
+      tabs: [...document.querySelectorAll(".rpick__tab")].map((e) => e.textContent.trim()),
+      // ⚠️ 带上选项数：tabs 和 opts 同时为 0 说明**清单压根没送到**（不是 tab 没画出来），
+      //    那是两个完全不同的毛病，只报 tabs 的话得自己去猜
+      opts: document.querySelectorAll(".rpick__opt").length,
+    }));
+    check("反应清单分成 tab，不是一长条", picked.tabs.length >= 2,
+      `${picked.tabs.join(" / ") || "没有 tab"} · ${picked.opts} 个选项`);
 
     await page.keyboard.press("Escape");
     await page.waitForSelector(".rpick", { state: "detached", timeout: 5000 }).catch(() => {});

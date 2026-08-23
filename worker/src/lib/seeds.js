@@ -60,6 +60,16 @@ export function normalizeSeedInput(body = {}) {
     // ⚠️ 标题和链接**冗余存**：热点不在库里，只存 id 的话几天后这颗种子说不清自己从哪来
     sourceTitle: text(body.sourceTitle).slice(0, 300),
     sourceUrl: text(body.sourceUrl).slice(0, 2000),
+    /**
+     * ⚠️ **建的时候也要收这两个，不能只有改的时候收。**
+     *
+     * 从「找题」记一颗种子时，那张完整的卡是**当场就有的**——它跟着建库请求一起来。
+     * 只在 `normalizeSeedPatch` 里收的话，这两个字段被**静默丢掉**：
+     * 种子建出来了、界面也没报错，只是项目页右栏永远是空的。
+     * 「漏一个字段不报错、只少一个功能」是这个项目最熟的一类事故。
+     */
+    sourceExcerpt: String(body.sourceExcerpt ?? "").slice(0, 6000),
+    sourceFetchedAt: Math.max(0, Number(body.sourceFetchedAt) || 0),
   };
 }
 

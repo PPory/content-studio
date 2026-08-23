@@ -41,6 +41,23 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
       <div className="pmat__head">
         <h2 className="section-label">项目素材</h2>
         <span className="pmat__count">{materials.length}</span>
+        {/**
+          * ⚠️ **「找相关素材」是这一栏的次要动作，收成标题行右上角一枚图标。**
+          * 它原来是一颗铺满整栏的按钮，和下面那列素材抢同一份视觉重量——
+          * 而你打开这一页十次里有九次是来插素材的，不是来找的。
+          */}
+        {onAttach ? (
+          <button
+            type="button"
+            className="icon-btn pmat__find-btn"
+            onClick={findRelated}
+            disabled={pick.busy || !String(query || "").trim()}
+            aria-label="找相关素材"
+            title={String(query || "").trim() ? "让 AI 通读整库，按意思挑几条" : "还没有可用来找的线索（先写一句核心观点）"}
+          >
+            {pick.busy ? <IconLoader2 size={14} className="spin" aria-hidden="true" /> : <IconSearch size={14} stroke={1.8} aria-hidden="true" />}
+          </button>
+        ) : null}
       </div>
       {/**
         * ⚠️ **这句话的意思不能删**（屏幕上只有这一处说明「插入不会自动改写正文」），
@@ -104,9 +121,7 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
             );
           })}
         </ul>
-      ) : (
-        <div className="pmat__empty">这个项目还没有关联素材。</div>
-      )}
+      ) : null}
 
       {/**
         * 「按意思找」补的是关键词搜不到的那一块：搜「成长」时，
@@ -116,14 +131,10 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
         * ⚠️ **查询串取的是那句话本身**（种子的 take，没有种子时退回核心观点/标题）——
         * 你要找的是「支持这个判断的依据」，不是「和这个标题字面像的东西」。
         */}
-      {onAttach ? (
+      {/* ⚠️ **没东西可说时整块不画。** 只留一个带上边框的空 div，
+          屏幕上就是一条没有内容的分隔线——看着像有什么没加载出来 */}
+      {onAttach && (pick.error || pick.ran || candidates.length) ? (
         <div className="pmat__find">
-          <button type="button" className="pmat__findbtn" onClick={findRelated} disabled={pick.busy || !String(query || "").trim()}
-            title={String(query || "").trim() ? "让 AI 通读整库，按意思挑几条" : "还没有可用来找的线索（先写一句核心观点）"}>
-            {pick.busy ? <IconLoader2 size={13} className="spin" aria-hidden="true" /> : <IconSearch size={13} stroke={1.8} aria-hidden="true" />}
-            找相关素材
-          </button>
-
           {pick.error ? <p className="pmat__finderr">{pick.error.message || "没找成"}</p> : null}
 
           {/* 挑不出来是正常结果，照实说，不要留一个转完圈什么都没有的空白 */}
