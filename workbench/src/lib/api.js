@@ -149,7 +149,7 @@ export const api = {
 
   // 两个 tab 各刷各的：热搜按分钟变、AI 精选按天变，合成一个请求就只能迁就快的那个
   /**
-   * 「找题」那一屏的三段。
+   * 「选种」那一屏的三段。
    * ⚠️ **两条 Worker 端点都只读，一行都不往库里写**——候选变成种子必须经过你补一句 take。
    */
   ideaCandidates: (refresh) => req(`/api/insights/candidates${refresh ? "?refresh=1" : ""}`),

@@ -307,6 +307,28 @@ export function PageHeader({ title, count, desc, aside }) {
   );
 }
 
+/**
+ * 「找题」「种子」那两页的页头：**一排芯片 + 一颗动作在最上面，说明贴在它正下方，整体居中。**
+ *
+ * ⚠️ **和 `PageHeader` 分开是因为这两页的页头回答的问题不一样。**
+ * `PageHeader` 是「左边一句说明、右边计数和动作」——那是给**内容已经在那儿**的页用的。
+ * 而这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
+ * **那排芯片才是这一屏的第一件事**，说明是它的注脚，不是反过来。
+ *
+ * ⚠️ **两页共用这一份，别各写一遍。** 这个项目的事故清一色是「同一件事写在两个地方」。
+ */
+export function FilterHeader({ title, desc, chips, action }) {
+  return (
+    <header className="filter-head" aria-label={title || undefined}>
+      <div className="filter-head__row">
+        {chips}
+        {action}
+      </div>
+      {desc ? <p className="filter-head__desc">{desc}</p> : null}
+    </header>
+  );
+}
+
 export function SectionHead({ icon: Icon, eyebrow, title, count, aside }) {
   return (
     <div className="section-head">

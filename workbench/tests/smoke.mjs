@@ -105,10 +105,18 @@ try {
 
   // 2. 侧栏只放用户任务。数据库对象、后台状态和单个工具都不再抢一级入口。
   const nav = await page.$$eval(".nav-item", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
+  /**
+   * ⚠️ **和 `NAV_LABELS` 常量比，不写死那一串。**
+   * 写死的话改一次名字这条就红，而代码完全正确——旁边那条「一律两个字」
+   * 才是真正的规矩，它不会因为改名而红。这个文件里已经为同一件事栽过两次
+   *（内容二级导航那两条）。
+   */
+  const { NAV_LABELS } = await import("../src/lib/views.js");
+  const wantNav = Object.values(NAV_LABELS);
   check(
     "侧栏按内容任务排",
-    nav.join("/") === "今日/内容/素材/发现/复盘",
-    nav.join("/")
+    nav.join("/") === wantNav.join("/"),
+    `${nav.join("/")}（常量 ${wantNav.join("/")}）`
   );
   check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
   check("默认进入今日", (await page.textContent(".crumbs")).trim() === "今日", await page.textContent(".crumbs"));
@@ -634,7 +642,7 @@ try {
    * 量的是**渲染后的位置**，不是「元素存在」——存在但在第三屏等于不存在。
    */
   const srcChips = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll(".list-bar .chip")];
+    const chips = [...document.querySelectorAll(".filter-head .chip")];
     return {
       labels: chips.map((c) => c.textContent.trim()),
       // 最后一颗芯片的底边还在视口内，才算「都在首屏」
@@ -643,6 +651,20 @@ try {
     };
   });
   check("三个来源在同一排芯片上", srcChips.labels.length === 3, srcChips.labels.join(" / "));
+  /**
+   * ⚠️ **芯片在说明的上面，不是下面。**
+   * 这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
+   * 那排芯片才是第一件事，说明是它的注脚——反过来的话你得先读完一句
+   * 早就知道的话，才看到真正要点的东西。
+   */
+  const headOrder = await page.evaluate(() => {
+    const row = document.querySelector(".filter-head__row");
+    const desc = document.querySelector(".filter-head__desc");
+    if (!row || !desc) return null;
+    return Math.round(desc.getBoundingClientRect().top - row.getBoundingClientRect().bottom);
+  });
+  check("芯片在上、说明在它正下方", headOrder === null || headOrder >= 0,
+    headOrder === null ? "这一页没有说明" : `说明在芯片下方 ${headOrder}px`);
   check("三个入口都在首屏", srcChips.lastBottom > 0 && srcChips.lastBottom < srcChips.viewport,
     `最后一颗在 ${srcChips.lastBottom}px / 视口 ${srcChips.viewport}px`);
 
@@ -735,7 +757,8 @@ try {
   };
   page.on("request", countSeedWrites);
 
-  await page.click(".page-bar__end .btn-primary");
+  // ⚠️ 「记一句」现在是紧挨着芯片的一颗 `+`（`.filter-head__add`），不再是右上角那条长按钮
+  await page.click(".filter-head__add");
   await page.waitForSelector(".rpick", { timeout: 8000 });
 
   const picker = await page.evaluate(() => {

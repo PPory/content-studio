@@ -1679,7 +1679,9 @@ svg[data-tone] { color: var(--tone); }
   background: var(--surface-2); padding: 2px 6px; border-radius: var(--r-sm);
 }
 
-.empty { text-align: center; color: var(--text-3); padding: 40px 16px; }
+/* ⚠️ **限宽 + 居中**：不限宽的话空态那句引导会摊成横跨整屏的一行，
+   一眼扫不完，而且和它上面居中的芯片排不成一条中轴 */
+.empty { text-align: center; color: var(--text-3); padding: 40px 16px; max-width: 56ch; margin-inline: auto; }
 .empty-icon { color: var(--accent-soft); margin-bottom: 10px; }
 .empty-icon svg { width: 26px; height: 26px; }
 
@@ -2171,6 +2173,30 @@ svg[data-tone] { color: var(--tone); }
  * 那儿居中会把两组东西挤到中间打架。
  */
 .list-bar--center { justify-content: center; }
+
+/**
+ * 「找题」「种子」的页头（`FilterHeader`）：**芯片在最上面，说明贴在它正下方，整体居中。**
+ *
+ * ⚠️ **顺序是有意的**：这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
+ * 那排芯片才是第一件事，说明是它的注脚。说明在上、芯片在下的那一版
+ * 让你先读完一句你早就知道的话，才看到真正要点的东西。
+ */
+.filter-head { display: grid; justify-items: center; gap: 8px; margin-bottom: 16px; }
+.filter-head__row { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.filter-head__desc {
+  margin: 0; max-width: 62ch; text-align: center;
+  color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6;
+}
+/**
+ * ⚠️ **主动作在这儿是一颗只有 `+` 的圆钮，紧挨着芯片。**
+ * 它原来是右上角一颗写着「记一句」的实心黑长条——那个位置和那个宽度
+ * 让它看起来像页面级的「新建」，而它其实是这一排的一部分。
+ * 实心黑保留（这一页就这一颗），但收成图标：字写在 `title` 和 `aria-label` 里。
+ */
+.filter-head__add {
+  width: 30px; height: 30px; padding: 0; border-radius: var(--r-pill);
+  display: grid; place-items: center; flex: none;
+}
 .list-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /**

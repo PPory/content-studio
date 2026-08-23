@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { PageHeader, StatePill, ErrorNote, Loading, Empty, MenuButton, relTime, valueIcon } from "../components/ui.jsx";
+import { FilterHeader, StatePill, ErrorNote, Loading, Empty, MenuButton, relTime, valueIcon } from "../components/ui.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import { PLATFORMS } from "../lib/platforms.js";
 import { startWriting } from "../lib/start-writing.js";
@@ -112,32 +112,38 @@ export function Seeds({ onGo, onChanged }) {
 
   return (
     <>
-      <PageHeader
+      <FilterHeader
         title="种子"
         desc="看到一个东西，说一句你的看法——那句话就是一篇的起点。"
-        count={counts[KEEPING] ? `${counts[KEEPING]} 个能写` : ""}
-        aside={
+        chips={
+          <div className="chips chips-sm" aria-label="按状态筛选">
+            {["攒着", "写了", "不写了"].map((s) => (
+              <button key={s} className="chip" aria-pressed={status === s} onClick={() => setStatus(s)}>
+                {s} {counts[s] ?? 0}
+              </button>
+            ))}
+          </div>
+        }
+        action={
           /**
-           * ⚠️ **「记一句」是这一页的主操作。** 干活时想到的那类没有触发物，
-           * 而**那往往是你最有话说的**——入口不能藏在某个二级菜单里。
+           * ⚠️ **「记一句」是这一页的主操作，收成紧挨着芯片的一颗 `+`。**
+           * 干活时想到的那类没有触发物，而**那往往是你最有话说的**——
+           * 入口不能藏起来。但它原来是右上角一条写着「记一句」的实心黑长条，
+           * 那个位置和宽度让它看起来像页面级的「新建」，而它其实是这一排的一部分。
+           * 字写进 `title` 和 `aria-label`，不占版面。
            */
-          <button className="btn btn-primary" onClick={() => { setSaveError(""); setPicking(true); }}>
-            <IconPlus aria-hidden="true" stroke={2} />记一句
+          <button
+            className="btn btn-primary filter-head__add"
+            onClick={() => { setSaveError(""); setPicking(true); }}
+            aria-label="记一句"
+            title="记一句：干活时想到的那类没有触发物，直接写下来"
+          >
+            <IconPlus size={16} aria-hidden="true" stroke={2.2} />
           </button>
         }
       />
 
       <ErrorNote error={error} what="读取种子" onRetry={load} />
-
-      <div className="list-bar list-bar--center">
-        <div className="chips chips-sm" aria-label="按状态筛选">
-          {["攒着", "写了", "不写了"].map((s) => (
-            <button key={s} className="chip" aria-pressed={status === s} onClick={() => setStatus(s)}>
-              {s} {counts[s] ?? 0}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {!data && !error ? <Loading rows={3} /> : null}
 

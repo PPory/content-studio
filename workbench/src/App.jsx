@@ -29,10 +29,12 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts"]);
+const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts", "review"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
-const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", "metrics"]);
+// ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
+// 留在这儿的话点进去侧栏会同时亮两处。
+const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]);
 
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
@@ -58,10 +60,12 @@ const NAV = [
        *
        * 丢掉的另一样是「按平台横着看全部稿子」，需要时走 Ctrl+K。
        */
-      { to: "ideas", label: "找题" },
+      { to: "ideas", label: "选种" },
       { to: "seeds", label: "种子" },
-      { to: "content", label: "项目" },
+      { to: "content", label: "发芽" },
       { to: "typeset", label: "排版" },
+      // 「待复盘」本来就是项目的一个阶段，所以它在这一栏而不是单开一级
+      { to: "review", label: "收成" },
     ],
   },
   {
@@ -76,11 +80,10 @@ const NAV = [
     ],
   },
   {
-    key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v),
+    key: "review", to: "review-performance", match: (v) => REVIEW_VIEWS.has(v),
     children: [
-      { to: "review", label: "待复盘" },
-      { to: "review-performance", label: "内容表现" },
-      { to: "review-sources", label: "数据来源" },
+      { to: "review-performance", label: "表现" },
+      { to: "review-sources", label: "来源" },
     ],
   },
 ];

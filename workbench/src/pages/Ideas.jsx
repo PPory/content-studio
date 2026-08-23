@@ -1,4 +1,4 @@
-// 找题：**我现在想写，但还没有种子**。
+// 选种：**我现在想写，但还没有种子**。
 //
 // ⚠️ **这一页不产出选题，它产出候选。**
 // 使用者问过「是不是应该一键获取选题」——不应该。他自己贴的参考里第一句就是
@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { PageHeader, ErrorNote, Loading, Empty } from "../components/ui.jsx";
+import { FilterHeader, ErrorNote, Loading, Empty } from "../components/ui.jsx";
 import { IdeaCard } from "../components/IdeaCard.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import { IconBulb, IconSearch } from "../components/icons.jsx";
@@ -122,24 +122,24 @@ export function Ideas({ onGo, onChanged }) {
 
   return (
     <>
-      <PageHeader
-        title="找题"
-        desc="还没有想写的东西时从这儿开始。挑一条、说一句你的看法，它就是一颗种子。"
-      />
-
       {/**
-        * ⚠️ **三个来源站在同一排。** 上一版三段并列，洞察那 8 张卡把另外两个
-        * 入口挤到了屏外——而那两个恰恰是「我主动想找点什么写」时最该按的。
+        * ⚠️ **三个来源站在同一排，而且排在最上面。**
+        * 上一版三段并列，洞察那 8 张卡把另外两个入口挤到了屏外——
+        * 而那两个恰恰是「我主动想找点什么写」时最该按的。
         */}
-      <div className="list-bar list-bar--center">
-        <div className="chips chips-sm" aria-label="候选从哪来">
-          {chips.map((c) => (
-            <button key={c.key} className="chip" aria-pressed={from === c.key} onClick={() => setFrom(c.key)}>
-              {c.label}{c.count == null ? "" : ` ${c.count}`}
-            </button>
-          ))}
-        </div>
-      </div>
+      <FilterHeader
+        title="选种"
+        desc="还没有想写的东西时从这儿开始。挑一条、说一句你的看法，它就长成一颗种子。"
+        chips={
+          <div className="chips chips-sm" aria-label="候选从哪来">
+            {chips.map((c) => (
+              <button key={c.key} className="chip" aria-pressed={from === c.key} onClick={() => setFrom(c.key)}>
+                {c.label}{c.count == null ? "" : ` ${c.count}`}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {from === "insight" ? (
         <section className="ideas__sec">
