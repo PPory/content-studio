@@ -29,10 +29,20 @@ test("平台发布包明确返回还缺哪些准备项", () => {
   const pkg = releasePackage({ platform: "公众号", summary: "", cover_url: "", keywords_json: "[]", interaction_goal: "" });
   assert.equal(pkg.readiness.complete, false);
   /**
-    * ⚠️ **`missing` 只列「屏幕上真有地方填」的项。**
-    * 「关键词」和「互动目标」那两个输入框已经从发布栏撤了（后者在任何平台后台
-    * 都没有对应字段，纯内部笔记）。留在这儿的后果是界面一直催你补一个没有输入框
-    * 的东西——**一句你照做不了的提示，比不提示更糟。**
+    * ⚠️ **`missing` 只列「屏幕上真有地方填」的项，现在只剩摘要。**
+    *
+    * 陆续撤掉的是关键词、互动目标、**头图**——它们的输入框都已经从发布栏去掉了。
+    * 追下游追到底：除了摘要（进 vault 归档的 frontmatter）和发布链接
+    *（项目进复盘的唯一开关），其余存进 D1 之后**没有任何消费者**。
+    * 催你补一个没有输入框的东西，**比不提示更糟**。
+    *
+    * ⚠️ **这条只钉「不催没地方填的」，不钉具体条数**——真源是发布栏画了什么。
     */
-  assert.deepEqual(pkg.readiness.missing, ["摘要", "头图"]);
+  assert.deepEqual(pkg.readiness.missing, ["摘要"]);
+  // 撤掉输入框的那几样，一个都不许再出现在 missing 里
+  for (const gone of ["头图", "封面", "关键词", "互动目标", "画面备注"]) {
+    assert.ok(!pkg.readiness.missing.includes(gone), `${gone} 又回到 missing 里了，可界面上没有它的输入框`);
+  }
+  // 摘要填了就齐活——它是唯一还有下游的那一项
+  assert.equal(releasePackage({ platform: "公众号", summary: "有摘要", cover_url: "" }).readiness.complete, true);
 });

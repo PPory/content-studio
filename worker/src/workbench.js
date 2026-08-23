@@ -20,7 +20,7 @@ import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
 import { chat, chatJson } from "./lib/llm.js";
-import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT, TEXT_REVISION_PROMPT, WRITING_ASSIST_PROMPT } from "./prompts.js";
+import { EXPLAIN_PROMPT, PICK_MATERIALS_PROMPT, MATERIAL_DRAFT_PROMPT, TEXT_REVISION_PROMPT, WRITING_ASSIST_PROMPT, IDEAS_ANGLES_PROMPT, IDEAS_MATERIALS_PROMPT, IDEAS_CARD_PROMPT } from "./prompts.js";
 import {
   assertGroundedGeneratedText,
   auditPersonalNarrative,
@@ -30,6 +30,7 @@ import {
 } from "./lib/integrity.js";
 import { citeText } from "./lib/cite.js";
 import { normalizeCreationRequest, keepRealPicks } from "./lib/creation.js";
+import { keepRealAngles, keepGroundedAngles, rangeSeconds, normalizeCards } from "./lib/ideas.js";
 import { normalizeWritingAssistRequest } from "./lib/writing-assist.js";
 import { normalizeTextRevisionRequest } from "./lib/text-revision.js";
 import { MODEL_TASKS, availableModels, readModelMap, writeModelMap } from "./lib/models.js";
@@ -367,6 +368,11 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "text-revision" && request.method === "POST") return await textRevision(env, await request.json());
 
     if (path === "pick/materials" && request.method === "POST") return await pickMaterials(env, await request.json());
+
+    // 「找题」两条。**都只读，一行都不往库里写**——见 lib/ideas.js 开头
+    if (path === "ideas/angles" && request.method === "POST") return await ideaAngles(env, await request.json());
+    if (path === "ideas/materials" && request.method === "POST") return await ideaMaterials(env, await request.json());
+    if (path === "ideas/cards" && request.method === "POST") return await ideaCards(env, await request.json());
 
     if (path === "draft/material" && request.method === "POST") return await draftFromMaterials(env, await request.json());
 
@@ -800,6 +806,8 @@ async function patchSeed(env, id, body) {
   if (patch.take !== undefined) { sets.push("take = ?"); params.push(patch.take); }
   if (patch.status !== undefined) { sets.push("status = ?"); params.push(patch.status); }
   if (patch.draftId !== undefined) { sets.push("draft_id = ?"); params.push(patch.draftId || null); }
+  if (patch.sourceExcerpt !== undefined) { sets.push("source_excerpt = ?"); params.push(patch.sourceExcerpt); }
+  if (patch.sourceFetchedAt !== undefined) { sets.push("source_fetched_at = ?"); params.push(patch.sourceFetchedAt); }
   sets.push("updated_at = ?");
   params.push(now(), id);
 
@@ -1874,7 +1882,125 @@ async function citeDraft(env, body) {
 // D1 查询用了 4 条（候选 1 + 命中行 1 + enrich 2），离每次调用 50 条的上限很远。
 
 const PICK_LIMIT = 6;     // 再多就不是「挑」而是「又给了一屏要读的东西」
+// 一段时间的素材上限。**比 PICK_SCAN 小**：那条是全库找相关（要广），
+// 这条是一段时间内聚类（几周的量本来就有限），而且它要模型**读懂每一条之间的关系**，
+// 塞太多只会让连接变浅。
+const IDEA_SCAN = 120;
 const PICK_SCAN = 300;    // 候选上限：一条摘要掐到 160 字，300 条约 1.5 万字，塞得进上下文
+
+/**
+ * 一批角度 → 一批**完整的选题卡**。三条来源（洞察 / 素材 / 争点）共用这一个出口。
+ *
+ * ⚠️ **卡片必须在「出候选的那一刻」就写好，而不是点开再算。**
+ * 一句标题回答不了「该不该写、怎么下笔」，而那正是这一屏存在的理由。
+ *
+ * ⚠️ **出卡只能在这儿。** 卡上最值钱的一项是「手上有哪些素材能用」，
+ * 它要求**同时看得到角度和素材库**——洞察那条 skill 跑在本机 vault 上，
+ * 够不着 D1，所以「跑批时就写好卡」那条路天然给不出这一项。
+ *
+ * ⚠️ **一次调用出一批**，不是一条一次：8 条候选跑 8 次 LLM 既慢又贵，
+ * 而且模型看不到彼此、会给出几张几乎一样的卡。
+ */
+async function ideaCards(env, body) {
+  const angles = (Array.isArray(body?.items) ? body.items : [])
+    .map((x) => String((typeof x === "string" ? x : x?.angle) || "").trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!angles.length) return json({ ok: false, error: "没有给要出卡的角度" }, 400);
+
+  // 素材清单：只取模型判断需要的四列，整行拉回来会把提示词撑爆（`pickMaterials` 的经验）
+  const materials = await all(
+    env,
+    `SELECT id, title, type, substr(content, 1, 120) AS brief FROM materials ${LIST_ORDER} LIMIT ?`,
+    PICK_SCAN
+  );
+
+  const user = [
+    `【要出卡的角度】\n${angles.map((a, i) => `${i + 1}. ${a}`).join("\n")}`,
+    materials.length
+      ? `【素材库清单】\n${materials.map((c) => `id=${c.id} | ${c.type} | ${c.title}${c.brief ? ` | ${String(c.brief).replace(/\s+/g, " ")}` : ""}`).join("\n")}`
+      // 库里一条素材都没有时也要出卡：其余几项照样有用，`material_ids` 给空数组就是了
+      : "【素材库清单】（空的，material_ids 一律给空数组）",
+  ].join("\n\n");
+
+  const { json: out } = await chatJson(env, { system: IDEAS_CARD_PROMPT, user, maxTokens: 2600, task: "pick" });
+  return json({ ok: true, cards: normalizeCards(out, angles, materials) });
+}
+
+/**
+ * 从一件事里拆出**争点**：谁和谁在为什么吵。
+ *
+ * ⚠️ **这和反应清单不是一件事。** 反应清单问「你什么反应」——那个问题在你还没找到
+ * 抓手的时候是答不上来的。争点问「这件事的分歧在哪」，是**在你还没有反应的时候，
+ * 帮你找到可以有反应的地方**。所以它排在反应之前，不是替代它。
+ *
+ * ⚠️ **只吃标题和摘要，不去抓原文。** 抓原文要 Readability（Node 才有），
+ * 而且热点条目本来就带摘要。要真读原文，那是工作台侧「读原文」那条路的事。
+ */
+async function ideaAngles(env, body) {
+  const title = String(body?.title || "").trim();
+  if (!title) return json({ ok: false, error: "没有给要拆的那件事" }, 400);
+  const user = [
+    `【这件事】${title.slice(0, 300)}`,
+    body?.summary ? `【摘要】${String(body.summary).slice(0, 2000)}` : "",
+    body?.url ? `【链接】${String(body.url).slice(0, 500)}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const { json: out } = await chatJson(env, { system: IDEAS_ANGLES_PROMPT, user, maxTokens: 700, task: "pick" });
+  // 拆不出真分歧是**正常结果**，不是错误——硬凑的争点比没有更糟
+  const found = keepRealAngles(out?.angles, 4);
+  if (!found.length) return json({ ok: true, cards: [] });
+  // ⚠️ **拆完当场出卡**：候选出来的那一刻就该是完整的一张，而不是让人点开再等一次
+  const cards = await ideaCards(env, { items: found.map((a) => a.angle) });
+  return cards;
+}
+
+/**
+ * 把一段时间的素材聚成几个角度。
+ *
+ * ⚠️ **不写 topics 表。** `tasks/synthesize.js` 那条定时任务干的是同一类活但**写库**，
+ * 这一条不是它：写库会触发已有流转（选题进「撰写中」五分钟内就自动成稿），
+ * 而且 topics 已经是作废的一层。这儿只回候选给人看。
+ *
+ * ⚠️ **只传 id / type / title / brief，不传正文全文**（`pickMaterials` 的经验：
+ * 几百条整行拉回来会把提示词撑爆）。
+ */
+async function ideaMaterials(env, body) {
+  let span;
+  try {
+    span = rangeSeconds(body?.from, body?.to);
+  } catch (error) {
+    return json({ ok: false, error: error.message, hint: error.hint }, error.status || 400);
+  }
+
+  const rows = await all(
+    env,
+    `SELECT id, title, type, substr(content, 1, 160) AS brief FROM materials
+      WHERE updated_at BETWEEN ? AND ? ORDER BY updated_at DESC LIMIT ?`,
+    span.start, span.end, IDEA_SCAN
+  );
+  // 这段时间一条素材都没有是**正常结果**，界面照实说，不报错
+  if (rows.length < 2) return json({ ok: true, items: [], scanned: rows.length });
+
+  const user = [
+    `【时间范围】${body.from} 到 ${body.to}`,
+    `【这段时间的素材】\n${rows
+      .map((c) => `id=${c.id} | ${c.type} | ${c.title}${c.brief ? ` | ${String(c.brief).replace(/\s+/g, " ")}` : ""}`)
+      .join("\n")}`,
+  ].join("\n\n");
+
+  const { json: out } = await chatJson(env, { system: IDEAS_MATERIALS_PROMPT, user, maxTokens: 1200, task: "pick" });
+  const found = keepGroundedAngles(out?.angles, rows, 6);
+  // 这段时间凑不出角度是**正常结果**（一个角度至少要连上两条素材），照实回空
+  if (!found.length) return json({ ok: true, cards: [], scanned: rows.length });
+  /**
+   * ⚠️ **聚完当场出卡**，和争点那条同一条：候选出来的那一刻就该是完整的一张。
+   * 这一步会**再打一次 LLM**——值得，因为聚类那一步给的是「哪几条能连起来」，
+   * 而卡片要回答的是「给谁看、卡在哪、怎么写」，两件事。
+   */
+  const cards = await ideaCards(env, { items: found.map((a) => a.angle) });
+  return cards;
+}
 
 async function pickMaterials(env, body) {
   const want = String(body?.want || "").trim();

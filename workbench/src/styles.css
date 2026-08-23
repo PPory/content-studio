@@ -806,7 +806,25 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   max-height: calc(100vh - var(--project-bar-h) - 28px);
   overflow-y: auto; overscroll-behavior: contain;
 }
-.project-rail { min-width: 0; display: grid; gap: 14px; align-content: start; }
+/**
+ * ⚠️ **`grid-template-columns: minmax(0, 1fr)` 不能省，`min-width: 0` 顶不上它。**
+ *
+ * grid 的**隐式列是 `auto`**——列本身就会被最宽的那个子项撑开，
+ * 给容器加 `min-width: 0` 管不着列宽。`.app` 当初被看板撑到顶栏齿轮出屏，
+ * 就是同一条（那次的修法也是这一行）。
+ */
+.project-rail { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
+/**
+ * ⚠️ **子项也要 `min-width: 0`，不能只给容器。**
+ *
+ * grid 子项默认 `min-width: auto`——**它可以比自己所在的轨道更宽**。
+ * 右栏里有一条 `nowrap` 的来源标题（`.pseed__from`），够长时会把整栏顶出去；
+ * 而栏一被顶宽，祖先就多出一个横向滚动容器，**`position: sticky` 跟着失效**。
+ *
+ * 所以「右栏被截断」和「右栏跟着正文滚」**是同一个根因的两个症状**——
+ * 只修其中一个会以为修好了，另一个下次再来。
+ */
+.project-rail > *, .project-publish > * { min-width: 0; }
 /* ⚠️ **叫 `.pmat` 不叫 `.prefs`。** `.prefs` 早被阅读设置面板占了
    （`components/ReadingPrefs.jsx`），撞名的后果是项目素材那一栏被那边的 flex 规则
    接管——标题竖着排、按钮挤成一列。和 `.card` / `.board` / `.chip` 是同一类事故：
@@ -816,12 +834,114 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   border: 1px solid var(--border); border-radius: var(--r-lg);
 }
 
+/* --------------------------------------------------------------------------
+   找题（`pages/Ideas.jsx` + `components/IdeaCard.jsx`）
+   **这一页不产出选题，它产出候选**——变成种子仍然要你补一句。
+   -------------------------------------------------------------------------- */
+
+.ideas__sec { margin-top: 26px; }
+.ideas__sec:first-of-type { margin-top: 6px; }
+/* 说明贴在小标题下面，和别处的 `.page-sub` 同一个身份，不新造一个类 */
+.ideas__sec .page-sub { margin: 4px 0 0; }
+
+/* 触发那一行：范围/挑一条 + 一颗按钮。**两段共用一个形状**，动作在同一个位置 */
+.ideas__run { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ideas__run label {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--text-3); font-size: var(--fs-xs);
+}
+.ideas__run input[type="date"], .ideas__pick {
+  padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs);
+}
+.ideas__run input[type="date"]:focus, .ideas__pick:focus { outline: 0; border-color: var(--text-1); }
+/* 热点标题很长，给它吃掉整行剩下的宽度而不是把按钮挤下去 */
+.ideas__pick { flex: 1 1 320px; min-width: 0; max-width: 640px; }
+
+/* 「没找出来」不是错误，是正常结果——安静一行，不涂红 */
+.ideas__note { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+
+.ideas__list { display: grid; gap: 8px; margin-top: 12px; }
+
+/**
+ * 一条候选。
+ * ⚠️ **角度是主角**（正文字号），理由退一档，依据再退一档——
+ * 你扫这一列时判断的是「这句我想不想说」，不是「它靠哪几条素材」。
+ */
+.idea {
+  padding: 13px 15px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  transition: border-color .14s var(--ease);
+}
+.idea:hover { border-color: var(--border-strong); }
+.idea__angle { margin: 0; color: var(--text-1); font-size: var(--fs-md); font-weight: 600; line-height: 1.55; }
+.idea__why { margin: 6px 0 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.65; }
+/* 依据：一串素材标题。**只在真有依据时画**，空的话这一行是零信息的噪音 */
+.idea__evi {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 7px; margin: 8px 0 0;
+  color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.5;
+}
+.idea__evi span { flex: none; }
+.idea__evi em { font-style: normal; }
+.idea__evi em:not(:last-child)::after { content: " ·"; }
+
+.idea__foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+/* 来源标签：这条候选是从哪来的。三个来源合成一列之后，它是唯一的区分 */
+.idea__src {
+  padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--r-pill);
+  color: var(--text-3); font-size: var(--fs-2xs);
+  max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/**
+ * ⚠️ **靠「第一颗按钮」把动作推到右边，不要给两颗都写 `margin-left: auto`。**
+ * 两个 auto 会把剩余空间**平分**，于是「展开」飘到一行正中间——
+ * 而卡上没有可展开的东西时它压根不存在，那时该轮到「记成种子」顶上去。
+ * `button:first-of-type` 正好覆盖这两种情况。
+ */
+.idea__foot > button:first-of-type { margin-left: auto; }
+.idea__more {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 0; border: 0; background: none; color: var(--text-3); font-size: var(--fs-xs); cursor: pointer;
+}
+.idea__more:hover { color: var(--text-1); }
+.idea__more svg { transition: transform .14s var(--ease); }
+.idea__more[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/**
+ * 展开之后那几项。
+ * ⚠️ **展开不发任何请求**——卡片在「出候选的那一刻」就写好了。
+ * 哪天这儿开始转圈，说明那个设计被绕回去了。
+ */
+.idea__detail {
+  display: grid; gap: 9px; margin: 12px 0 0; padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+.idea__detail > div { display: grid; grid-template-columns: 6em minmax(0, 1fr); gap: 10px; }
+.idea__detail dt { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.7; }
+.idea__detail dd { margin: 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.idea__mats { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.idea__mats b { display: block; color: var(--text-1); font-weight: 600; }
+/* 「用在哪」是它和这个角度的关系，不是复述素材内容——所以退一档，但必须在 */
+.idea__mats span { display: block; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.6; }
+/* 状态照实标出来（能写了 / 还要查资料 / 多少分），**不替你过滤** */
+.idea__tag {
+  padding: 2px 7px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-3); font-size: var(--fs-2xs);
+}
+.idea__tag[data-tone] { background: color-mix(in srgb, var(--tone-ink, var(--text-3)) 10%, transparent); color: var(--tone-ink, var(--text-2)); }
+.idea__tag[data-tone="done"] { --tone-ink: var(--st-done-ink); }
+.idea__tag[data-tone="doing"] { --tone-ink: var(--st-doing-ink); }
+.idea__tag[data-tone="backlog"] { --tone-ink: var(--st-backlog-ink); }
+/* ⚠️ 这颗**不是实心黑**：实心黑一屏一颗，而这一页一屏能有十几张卡 */
+.idea__seed { flex: none; }
+
 /**
  * 种子块：**这一篇是从哪句话来的**（`pages/project/ProjectSeed.jsx`）。
  * 排在素材上面——素材说「凭什么信我」，这句话说「我要说什么」，
  * 而写不下去的时候回来读的是后者。
  */
-.pseed { display: grid; gap: 9px; }
+/* 同上：这一层也是 grid，隐式列同样是 auto——里面那条 nowrap 的来源标题会把它顶宽 */
+.pseed { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
 .pseed__take {
   display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 7px; margin: 0;
   color: var(--text-1); font-size: var(--fs-sm); line-height: 1.65;
@@ -829,13 +949,50 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .pseed__take svg { margin-top: 4px; color: var(--text-3); }
 .pseed__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .pseed__from {
-  display: inline-flex; align-items: center; gap: 3px; min-width: 0;
+  /* ⚠️ `max-width` 不是保险：flex-wrap 的行里，一个 nowrap 的长项**独占一行时
+     仍然能溢出**。`min-width: 0` 让它可缩，`max-width: 100%` 定住上界，两个一起才够 */
+  display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text-3); font-size: var(--fs-xs); text-decoration: none;
 }
 a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
 /* 「自己想到的」不是缺了来源，是**另一种来源** */
 .pseed__from--own { font-style: italic; }
+
+/**
+ * 来源正文。**就地展开，不开弹层**——右栏的活儿是「对着正文说话」，
+ * 弹层会盖住你正在写的字，等于没看。
+ */
+.pseed__src { display: grid; gap: 8px; padding-top: 9px; border-top: 1px solid var(--border); }
+.pseed__toggle {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0;
+  border: 0; background: none; color: var(--text-3); font-size: var(--fs-xs); cursor: pointer;
+}
+.pseed__toggle:hover { color: var(--text-1); }
+.pseed__toggle svg { transition: transform .14s var(--ease); }
+.pseed__toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.pseed__toggle em { margin-left: auto; font-style: normal; font-variant-numeric: tabular-nums; }
+/**
+ * ⚠️ **定高 + 自己滚。** 不限高的话一篇长文会把右栏撑到几千像素，
+ * 而右栏是 sticky 的——比视口高的 sticky 会钉在顶上、你永远看不到它的底部。
+ */
+.pseed__body {
+  max-height: 320px; overflow-y: auto;
+  padding: 10px 11px; border-radius: var(--r-ctl); background: var(--surface-2);
+  font-size: var(--fs-xs); line-height: 1.7;
+}
+.pseed__body > :first-child { margin-top: 0; }
+.pseed__body > :last-child { margin-bottom: 0; }
+
+/* 等待和「抓不到」共用一行：两者说的都是「这儿为什么还没有正文」 */
+.pseed__wait {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 0;
+  padding-top: 9px; border-top: 1px solid var(--border);
+  color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55;
+}
+/* ⚠️ 抓不到不是错误，是这类站点的常态——所以不涂红，只是照实说 */
+.pseed__wait--bad span { color: var(--text-2); }
+.pseed__wait .link-btn { display: inline-flex; align-items: center; gap: 3px; }
 
 /**
  * 「找相关素材」的候选区。
@@ -891,12 +1048,6 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 /* ⚠️ 缺的那几项要**看得出是缺的**：一律写「—」的话，这一栏看着只是排版留白 */
 .pfacts__row dd[data-empty] { color: var(--text-3); }
 
-.pfacts__return, .pmat__reload {
-  padding: 0; border: 0; background: none; color: var(--text-3);
-  font-size: var(--fs-xs); text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
-}
-.pfacts__return { margin-top: 12px; }
-.pfacts__return:hover, .pmat__reload:hover { color: var(--text-1); }
 .pfacts__variants { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .pfacts__variants b { display: block; margin-bottom: 4px; font-size: var(--fs-xs); }
 .pfacts__variants span { display: block; padding: 5px 0; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
@@ -928,7 +1079,6 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 /* 「插到光标处」和「看原文」并排；后者只在真有来源时才画 */
 .pmat__acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .pmat__empty { margin-top: 10px; padding: 20px 10px; border: 1px dashed var(--border); border-radius: var(--r-ctl); color: var(--text-3); text-align: center; font-size: var(--fs-xs); }
-.pmat__reload { display: inline-flex; align-items: center; gap: 4px; margin-top: 12px; }
 
 @media (max-width: 1200px) {
   .project-workspace__grid { grid-template-columns: minmax(0, 1fr); }
@@ -973,19 +1123,9 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 .release-remove button { padding: 3px 0; border: 0; background: none; color: var(--text-2); font-size: var(--fs-2xs); }
 .release-remove button:first-of-type { color: var(--danger); }
 .release-field { display: grid; gap: 6px; margin-top: 14px; }
-.release-field > span, .release-cover__head { color: var(--text-2); font-size: var(--fs-2xs); letter-spacing: .04em; }
-.release-field textarea, .release-field input, .release-cover input, .release-cover textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); line-height: 1.5; resize: vertical; }
-.release-field textarea:focus, .release-field input:focus, .release-cover input:focus, .release-cover textarea:focus { outline: 0; border-color: var(--text-1); }
-.release-field--icon > span, .release-cover__head > span { display: inline-flex; align-items: center; gap: 5px; }
-.release-field--icon svg, .release-cover__head svg { width: 14px; height: 14px; }
-.release-cover { display: grid; gap: 7px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-.release-cover__head { display: flex; align-items: center; justify-content: space-between; }
-.release-cover__head small { color: var(--text-3); font-size: var(--fs-2xs); }
-.release-cover__preview { position: relative; display: grid; place-items: center; min-height: 112px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--canvas); }
-.release-cover__preview img { width: 100%; height: 150px; object-fit: cover; }
-.release-cover__preview > div { display: grid; gap: 4px; max-width: 210px; padding: 18px; text-align: center; }
-.release-cover__preview b { font-family: var(--font-display); font-size: var(--fs-md); line-height: 1.35; }
-.release-cover__preview small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
+.release-field > span { color: var(--text-2); font-size: var(--fs-2xs); letter-spacing: .04em; }
+.release-field textarea, .release-field input { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); line-height: 1.5; resize: vertical; }
+.release-field textarea:focus, .release-field input:focus { outline: 0; border-color: var(--text-1); }
 .project-publish__save { width: 100%; justify-content: center; margin-top: 14px; }
 .project-publish__primary, .project-publish__record { width: 100%; justify-content: center; }
 .project-publish__primary { margin-top: 14px; }
@@ -2911,15 +3051,21 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 
 .rpick__list { display: grid; gap: 6px; }
 /**
- * 分组小标题。**它是标签不是选项**——告诉你「这一组是对着什么说的」，点不动。
- * 分组本身不是装饰：第一版七条全假设触发物是「一个观点」，
- * 而热点里大量是发布和事件，你没法「同意」一件事实。
+ * 三组变成 tab。**一次只看一组。**
+ *
+ * 平铺那一版整屏被十个按钮占满，而**要你打的那句话才是这一屏的主角**——
+ * 输入框被挤到了屏幕最下面。分组本来就在（`SEED_REACTION_GROUPS`），
+ * tab 只是把它画成一次一组：你对着一条新闻时，「对着一个观点」那五条不该占地方。
  */
-.rpick__group {
-  margin: 0; padding: 6px 2px 1px;
-  color: var(--text-3); font-size: var(--fs-2xs); letter-spacing: .02em;
+.rpick__tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); }
+.rpick__tab {
+  padding: 7px 11px 8px; border: 0; border-bottom: 2px solid transparent;
+  background: none; color: var(--text-3); font-size: var(--fs-xs); cursor: pointer;
+  transition: color .12s var(--ease), border-color .12s var(--ease);
 }
-.rpick__group:not(:first-child) { margin-top: 5px; }
+.rpick__tab:hover { color: var(--text-1); }
+/* 选中态走边框 + 字变实，不涂底色——底色是「你圈中了」，这儿说的是「你在看这一组」 */
+.rpick__tab[aria-selected="true"] { color: var(--text-1); border-bottom-color: var(--text-1); font-weight: 600; }
 .rpick__opt {
   display: flex; align-items: center; gap: 9px; padding: 8px 11px;
   border: 1px solid var(--border); border-radius: var(--r-ctl);

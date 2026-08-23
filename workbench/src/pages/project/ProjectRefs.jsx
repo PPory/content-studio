@@ -10,10 +10,10 @@
 
 import { useState } from "react";
 import { creationApi } from "../../lib/creation-api.js";
-import { IconFileText, IconLoader2, IconPlus, IconRefresh, IconSearch, IconSparkles, IconX } from "../../components/icons.jsx";
+import { IconFileText, IconLoader2, IconPlus, IconSearch, IconSparkles, IconX } from "../../components/icons.jsx";
 import { valueIcon, fieldIcon } from "../../components/ui.jsx";
 
-export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loading, onOpenSource, query = "", onAttach, onDetach, busy = false }) {
+export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource, query = "", onAttach, onDetach, busy = false }) {
   /**
    * 「按意思找」的候选。**它们不在库里的关联表上**——只有点过「用这条」的才写进去。
    *
@@ -42,8 +42,12 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loa
         <h2 className="section-label">项目素材</h2>
         <span className="pmat__count">{materials.length}</span>
       </div>
-      {/* ⚠️ 这句不能删：它是屏幕上唯一说明「插入不会自动改写正文」的地方 */}
-      <p className="pmat__note">素材不会自动改写正文。需要哪条，插到当前光标处。</p>
+      {/**
+        * ⚠️ **这句话的意思不能删**（屏幕上只有这一处说明「插入不会自动改写正文」），
+        * 但**没必要一直占两行**：一条素材都没有的时候压根没东西可插，
+        * 那时它就是纯占位。所以只在真有素材时画，而且收成半句。
+        */}
+      {materials.length ? <p className="pmat__note">需要哪条，插到光标处——不会自动改写正文。</p> : null}
 
       {materials.length ? (
         <ul className="pmat__list">
@@ -149,10 +153,6 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loa
           ) : null}
         </div>
       ) : null}
-
-      <button type="button" className="pmat__reload" onClick={onReload} disabled={loading}>
-        <IconRefresh size={13} stroke={1.7} aria-hidden="true" />重新读取项目
-      </button>
     </section>
   );
 }

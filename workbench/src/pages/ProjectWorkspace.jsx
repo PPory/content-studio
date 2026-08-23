@@ -11,7 +11,7 @@ import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
-import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh, IconTag } from "../components/icons.jsx";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 /**
  * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机，不是你的动线：
@@ -38,7 +38,6 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
   const [removing, setRemoving] = useState(false);
   const used = new Set(drafts.map((item) => item.platform));
   const available = (project.releaseOptions || []).filter((item) => !used.has(item.platform));
-  const spec = draft?.release?.spec || {};
   return (
     <aside className="project-publish" aria-label="发布准备">
       <div className="project-publish__head">
@@ -78,29 +77,20 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
         * 地方读**（排版工具只拿 title + body）。原来界面像是在等你填，而其实是在替你
         * 记草稿——两回事，所以这行小字不能省。
         *
-        * ⚠️ **「画面备注」和「互动目标」两个框撤了**：它们在任何平台后台都没有对应字段，
-        * 是纯内部笔记，而且 `readiness.missing` 还在催你补「互动目标」——
-        * **一句你照做不了的提示，比不提示更糟。** 列还在 drafts 表上，只是界面不再要。
+        * ⚠️ **撤了五个框，分两批：**「画面备注」「互动目标」（它们在任何平台后台
+        * 都没有对应字段），以及**「封面图片地址」「封面上的主文案」「关键词」**——
+        * 后三个追下游追到底是：`release-package.js` 存进 D1、再读出来画给你自己看，
+        * **没有任何消费者**。它们让你在工作台里抄一遍你反正要在平台后台填的东西，
+        * 而上面那行小字自己写着「不会自动填过去」。
+        *
+        * ⚠️ **撤的是界面，列留在 drafts 表上。** 删列的话，以后真接了自动发布要重新加，
+        * 而库里那几行历史值也就一起没了。`releasePackage` 照旧接受这几个字段。
         */}
       <p className="release-hint">下面这些是发布时你要往平台后台填的，工作台只替你记着，不会自动填过去。</p>
 
       <label className="release-field">
         <span>摘要</span>
         <textarea rows="3" value={form.summary} onChange={(event) => onChange("summary", event.target.value)} placeholder="这篇内容给读者什么价值" />
-      </label>
-
-      <section className="release-cover">
-        <div className="release-cover__head"><span><IconPhoto aria-hidden="true" />{spec.coverLabel || "封面"}</span><small>{spec.coverRatio || "按平台尺寸"}</small></div>
-        <div className="release-cover__preview" data-empty={!form.coverUrl || undefined}>
-          {form.coverUrl ? <img src={form.coverUrl} alt={form.coverText || "发布封面预览"} /> : <div><b>{form.coverText || "封面待补"}</b><small>先定文案，图片地址可以最后补。</small></div>}
-        </div>
-        <input value={form.coverUrl} onChange={(event) => onChange("coverUrl", event.target.value)} placeholder="封面图片地址 https://…" aria-label="封面图片地址" />
-        <input value={form.coverText} onChange={(event) => onChange("coverText", event.target.value)} placeholder="封面上的主文案" aria-label="封面文案" />
-      </section>
-
-      <label className="release-field release-field--icon">
-        <span><IconTag aria-hidden="true" />关键词</span>
-        <input value={form.keywords} onChange={(event) => onChange("keywords", event.target.value)} placeholder="写作，复利，个人成长" />
       </label>
 
       {dirty ? <button className="btn project-publish__save" onClick={onSave} disabled={busy}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}保存当前版本</button> : null}
@@ -152,6 +142,14 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const [notice, setNotice] = useState("");
   // 挂/摘素材自己一个 busy：它和阶段推进互不相干，共用会让整条操作条一起变灰
   const [materialBusy, setMaterialBusy] = useState(false);
+  /**
+   * 来源正文的抓取状态：`idle | fetching | failed`，外加抓不到时那句原因。
+   *
+   * ⚠️ **原因只活在这一次会话里，不进库。** 它是**域名的函数**（`whyNot`，服务端），
+   * 而不是某一次抓取的偶然结果——为它单开一列，是把一个能算出来的东西存成了状态。
+   * 下次进来看到的是「没抓到 + 再试一次」，点一下就重新拿到准确原因。
+   */
+  const [srcFetch, setSrcFetch] = useState({ state: "idle", why: "" });
   const [insertRequest, setInsertRequest] = useState(null);
   const cursor = useRef(null);
   const selectedDraftRef = useRef("");
@@ -256,6 +254,42 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
       setMaterialBusy(false);
     }
   }
+
+  /**
+   * 把来源正文抓回来存进种子。
+   *
+   * ⚠️ **抓取只能在工作台侧**：`readArticle` 要 linkedom + Readability，Worker 跑不了。
+   * 所以链路是「本机抓 → 存回 D1」，而不是让 Worker 去抓。
+   *
+   * ⚠️ **抓不到也要记 `sourceFetchedAt`。** 公众号 / 知乎 / 小红书 / 抖音 / B站
+   * 都要浏览器，抓不到是常态；不记的话，每次打开这一页都会再徒劳地抓一遍。
+   *
+   * ⚠️ **不阻塞页面**：正文先渲染，抓到再补。这一步失败绝不能让项目页打不开。
+   */
+  const fetchSource = useCallback(async (seed, { force = false } = {}) => {
+    const url = seed?.source?.url || "";
+    if (!url || srcFetch.state === "fetching") return;
+    if (!force && (seed.sourceExcerpt || seed.sourceFetchedAt)) return;
+    setSrcFetch({ state: "fetching", why: "" });
+    let excerpt = "";
+    let why = "";
+    try {
+      const r = await api.readArticle(url);
+      excerpt = r.article?.markdown || "";
+    } catch (e) {
+      why = [e.message, e.hint].filter(Boolean).join(" · ");
+    }
+    setSrcFetch(excerpt ? { state: "idle", why: "" } : { state: "failed", why });
+    // 记账失败不能让这件事看起来失败：正文已经在屏幕上了
+    await api.updateSeed(seed.id, { sourceExcerpt: excerpt, sourceFetchedAt: Math.floor(Date.now() / 1000) })
+      .then(() => load())
+      .catch((e) => console.warn("来源正文没存下来（这次仍然读得到）:", e.message));
+  }, [srcFetch.state, load]);
+
+  // 打开就抓一次。判据在 `fetchSource` 里，这儿只负责触发
+  useEffect(() => {
+    if (project?.seed) fetchSource(project.seed);
+  }, [project?.seed?.id, fetchSource]);
 
   async function openTypeset() {
     if (!draft) return;
@@ -531,7 +565,12 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
               * 素材说「凭什么信我」，种子说「我要说什么」——写不下去的时候
               * 回来读的是后者。没有种子的项目整块不画（组件里自己判）。
               */}
-            <ProjectSeed seed={project.seed} />
+            <ProjectSeed
+              seed={project.seed}
+              fetching={srcFetch.state === "fetching"}
+              failedWhy={srcFetch.state === "failed" ? srcFetch.why : ""}
+              onRetry={() => fetchSource(project.seed, { force: true })}
+            />
             <ProjectRefs
               materials={project.materials || []}
               canInsert={draftEditable}
@@ -544,8 +583,6 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
                 setOpenTarget("materials", `inbox:${inspirationId}`);
                 onGo("materials", "");
               }}
-              loading={loading}
-              onReload={load}
               /**
                * 「找相关素材」拿什么去找。**优先那句话本身**——你要找的是
                * 「支持这个判断的依据」，不是「和标题字面像的东西」。

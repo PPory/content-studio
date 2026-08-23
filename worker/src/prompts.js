@@ -19,6 +19,9 @@ import FRAMEWORKS_MD from "../prompt/frameworks.md";
 import TAGS_MD from "../prompt/tags.md";
 import EXPLAIN_MD from "../prompt/explain.md";
 import PICK_MATERIALS_MD from "../prompt/pick-materials.md";
+import IDEAS_ANGLES_MD from "../prompt/ideas-angles.md";
+import IDEAS_MATERIALS_MD from "../prompt/ideas-materials.md";
+import IDEAS_CARD_MD from "../prompt/ideas-card.md";
 import MATERIAL_DRAFT_MD from "../prompt/material-draft.md";
 import COLLECTION_ORGANIZE_MD from "../prompt/collection-organize.md";
 import KNOWLEDGE_CARD_MD from "../prompt/knowledge-card.md";
@@ -70,6 +73,24 @@ export const SYNTHESIZE_PROMPT = compose(SYNTHESIZE_MD);
 export const EXPLAIN_PROMPT = compose(EXPLAIN_MD);
 // creator-workbench 创作弹层「按意思找素材」：关键词搜不到时，让模型在整库候选里挑
 export const PICK_MATERIALS_PROMPT = compose(PICK_MATERIALS_MD);
+/**
+ * 「找题」那一屏的两条。**两个都只读，不往库里写一行。**
+ *
+ * `ideas-angles`：从一件事里拆出**争点**——和反应清单不是一件事。
+ *   反应清单问「你什么反应」，争点问「这件事的分歧在哪」；
+ *   后者是在你**还没有反应**的时候，帮你找到可以有反应的地方。
+ * `ideas-materials`：把一段时间的素材聚成几个角度。
+ *   ⚠️ 和任务2（`synthesize.md`）分开：那条定时任务**写 topics 表**，
+ *   这条只回候选给你看——写库会触发已有流转，而 topics 已经是作废的一层。
+ */
+export const IDEAS_ANGLES_PROMPT = compose(IDEAS_ANGLES_MD);
+export const IDEAS_MATERIALS_PROMPT = compose(IDEAS_MATERIALS_MD);
+/**
+ * 出卡：**三条来源共用这一份**。
+ * ⚠️ 它要同时看得到「角度」和「素材库」——所以出卡只能在 Worker，
+ * 洞察那条 skill 跑在本机 vault 上，够不着素材库，**给不出最值钱的那一项**。
+ */
+export const IDEAS_CARD_PROMPT = compose(IDEAS_CARD_MD);
 // creator-workbench 创作弹层「让 AI 生成初稿」：用户挑好的素材 + 简报 → 一份可编辑初稿。
 // 和任务3 的成稿（`draft.md`）分开：那边是流水线按选题自动跑，这边是人挑好素材当场要一版
 export const MATERIAL_DRAFT_PROMPT = compose(MATERIAL_DRAFT_MD);

@@ -282,6 +282,7 @@ const shots = [
     await page.waitForSelector(".project-publish, .project-rail", { timeout: 25000 }).catch(() => {});
     projectDetailShot = PROJECT_SHOT_DETAIL;
   }],
+  ["ideas", "/#/ideas", ".ideas__sec"],
   ["seeds", "/#/seeds", ".seeds, .empty, .note-danger"],
   // 反应选择器：这一屏是「看到一个观点 → 说一句」的全部动作，光看列表看不出它长什么样
   ["seed-pick", "/#/seeds", ".seeds, .empty, .note-danger", async () => {

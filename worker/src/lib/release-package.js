@@ -59,16 +59,19 @@ export function normalizeReleaseInput(input = {}, current = {}) {
 export function releasePackage(row = {}) {
   const spec = releaseSpec(row.platform);
   const keywords = parseKeywords(row.keywords_json);
+  /**
+   * ⚠️ **`missing` 只列「屏幕上真有地方填」的项，现在只剩摘要一项。**
+   *
+   * 陆续撤掉的是：关键词、互动目标、**封面（头图）**。它们的输入框都已经从
+   * 发布栏里去掉了——追下游追到底，除了摘要（进 vault 归档的 frontmatter）
+   * 和发布链接（项目进复盘的开关），其余存进 D1 之后**没有任何消费者**，
+   * 只是让你在工作台里抄一遍反正要在平台后台填的东西。
+   *
+   * 留在这儿的后果是界面一直催你补一个**没有输入框**的东西——
+   * **一句你照做不了的提示，比不提示更糟。** 列全都还在表上，只是不再当成「缺」。
+   */
   const missing = [];
   if (!text(row.summary)) missing.push("摘要");
-  if (spec.coverRecommended && !text(row.cover_url)) missing.push(spec.coverLabel);
-  /**
-   * ⚠️ **`missing` 只列「屏幕上真有地方填」的项。**
-   * 撤掉了「关键词」和「互动目标」：那两个输入框已经从发布栏里去掉了
-   *（`interaction_goal` 在任何平台后台都没有对应字段，纯内部笔记），
-   * 而留在这儿的后果是界面一直催你补一个没有输入框的东西——
-   * **一句你照做不了的提示，比不提示更糟。** 列还在表上，只是不再当成"缺"。
-   */
   return {
     summary: row.summary || "",
     coverUrl: row.cover_url || "",

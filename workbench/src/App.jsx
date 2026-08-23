@@ -10,6 +10,7 @@ import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, Brand
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Content } from "./pages/Content.jsx";
+import { Ideas } from "./pages/Ideas.jsx";
 import { Seeds } from "./pages/Seeds.jsx";
 import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
 import { Studio } from "./pages/Studio.jsx";
@@ -28,7 +29,7 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["seeds", "content", "project", "topics", "drafts"]);
+const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
 const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", "metrics"]);
@@ -39,7 +40,9 @@ const NAV = [
   {
     key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || v === "typeset",
     children: [
-      // ⚠️ 种子排第一：它是这条链的最前面（看到东西 → 说一句 → 才有得写）
+      // ⚠️ **顺序就是流程**：还没有想写的 → 找题；已经有话说的 → 种子；开始写了 → 项目。
+      //    找题排第一是因为它回答的是更前面那个问题（「我现在想写，但没得写」）。
+      { to: "ideas", label: "找题" },
       { to: "seeds", label: "种子" },
       { to: "content", label: "项目" },
       { to: "topics", label: "选题" },
@@ -70,7 +73,7 @@ const NAV = [
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "ideas", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -453,6 +456,8 @@ export function App() {
               onChanged={refreshStatus}
               onSettings={() => setSettings(true)}
             />
+          ) : route.view === "ideas" ? (
+            <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
           ) : route.view === "seeds" ? (
             <Seeds onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
           ) : route.view === "content" ? (

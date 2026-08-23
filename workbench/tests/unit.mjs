@@ -564,6 +564,29 @@ check("太短的不报预计时长", readStats("只有一句话") === null);
 check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../src/lib/creation-draft.js", import.meta.url)));
 
 /**
+ * ⚠️ **屏幕上永远不许出现 `[object Object]`。**
+ *
+ * 真踩过：洞察候选那一段拿 `score_basis` 当「为什么」，而它是一组分项打分
+ *（`{novelty:5, importance:5, …}`）不是一句话——`String()` 之后每张卡上都是
+ * `[object Object]`。**冒烟测试数条数是数得过去的**（条数完全正确），
+ * 只有截图看得出来。这条把它变成一个测得到的东西。
+ *
+ * 同一批数据里 `top_card` 也是布尔而不是文本——**registry 的字段名读着像文本，
+ * 实际类型全靠你去看真实数据**，所以这条钉的是结果不是某一个字段。
+ */
+{
+  const { latestCandidates } = await import("../server/lib/insight-candidates.mjs");
+  const reg = await latestCandidates();
+  const dumped = JSON.stringify(reg);
+  check("洞察候选里没有 [object Object]", !/\[object /.test(dumped),
+    reg.items.length ? `${reg.items.length} 条` : "本地还没有 registry，这条跳过不了空气");
+  // 每条都要有标题；`why` 允许为空（registry 里确实可能什么就绪度都没写）
+  check("每条候选都有标题", reg.items.every((c) => c.title && typeof c.title === "string"), `${reg.items.length} 条`);
+  // 分数和状态是**显示**用的，别在这一层就过滤掉——过滤了界面看不出自己在过滤
+  check("候选一条都没被这一层过滤掉", reg.items.every((c) => typeof c.status === "string"));
+}
+
+/**
  * ⚠️ **写作只有一个地方。** 这两条钉的是「弹层里的编辑器没有长回来」：
  * 同一件事（写字）曾经有两个界面，而那两个界面的能力还不一样
  *（项目页有素材栏、发布准备、阶段推进，弹层没有）。

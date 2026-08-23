@@ -308,6 +308,14 @@ CREATE TABLE IF NOT EXISTS seeds (
   source_title TEXT NOT NULL DEFAULT '',
   source_url   TEXT NOT NULL DEFAULT '',
 
+  -- 抓回来的来源正文，给项目页右栏就地读——**一个链接意味着跳出去、读完、再跳回来，
+  -- 而跳出去那一刻你就离开写作了**。工作台侧抓（Readability 要 Node），存回这儿。
+  -- ⚠️ `source_fetched_at` 是「抓过没有」的开关，不能省：没有它的话，一篇
+  --    永远抓不到的文章（公众号/知乎/小红书/抖音/B站都要浏览器）会在你每次
+  --    打开项目页时重试一遍。`fetched_at > 0 且 excerpt 为空` = 抓过、确实抓不到。
+  source_excerpt    TEXT    NOT NULL DEFAULT '',
+  source_fetched_at INTEGER NOT NULL DEFAULT 0,
+
   -- status 是**真状态**（影响流转），所以它加 CHECK，reaction 不加。
   status       TEXT NOT NULL DEFAULT '攒着'
                CHECK (status IN ('攒着','写了','不写了')),

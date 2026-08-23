@@ -8,11 +8,20 @@
 // 几乎总是你自己的经历和判断，而它只存在你脑子里，除非有人问你。
 // 一旦补上「我不同意，因为___」，一篇短文的骨架当场就有了。
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconLoader2, IconX } from "./icons.jsx";
 import { useDialog } from "../lib/use-dialog.js";
 
-export function ReactionPicker({ open, groups = [], source, busy, error, onClose, onSave }) {
+export function ReactionPicker({ open, groups = [], source, prefill = "", busy, error, onClose, onSave }) {
+  /**
+   * ⚠️ **十条分三个 tab，不再一长条平铺。**
+   * 平铺那一版整屏被十个按钮占满，输入框被挤到屏幕最下面——而**要你打的那句话
+   * 才是这一屏的主角**，反应清单只是帮你起头的提示。
+   *
+   * 分组本来就在（`SEED_REACTION_GROUPS`），tab 只是把它画成一次看一组：
+   * 你对着一条新闻时，「对着一个观点」那五条根本不该占地方。
+   */
+  const [tab, setTab] = useState(0);
   /**
    * ⚠️ **扁平这份只用来算快捷键序号，画的是分组那份。**
    * 分组不是装饰：第一版七条**全都假设触发物是「一个观点」**，于是
@@ -20,7 +29,8 @@ export function ReactionPicker({ open, groups = [], source, busy, error, onClose
    * 补上事件那一组之后有十条，平铺的话每次都得从头扫到尾；
    * 分了组，看到一条新闻只会看中间那三条。
    */
-  const flat = groups.flatMap((g) => g.items || []);
+  const group = groups[Math.min(tab, Math.max(groups.length - 1, 0))] || { items: [] };
+  const shown = group.items || [];
   const [reaction, setReaction] = useState("");
   const [take, setTake] = useState("");
   const areaRef = useRef(null);
@@ -31,8 +41,16 @@ export function ReactionPicker({ open, groups = [], source, busy, error, onClose
   useEffect(() => {
     if (!open) return;
     setReaction("");
-    setTake("");
-  }, [open, source?.url, source?.title]);
+    setTab(0);
+    /**
+     * ⚠️ **从候选进来时预填那条角度。**
+     * 使用者说「暂时没想法但觉得可以写，应该可以直接记」——而候选卡的角度
+     * **本身就是一句判断**，直接当 take 用。**规则一个字没松**
+     *（种子仍然必须有一句话），只是不用你从零打字。
+     * 手动「记一句」那条不传 `prefill`，仍然要自己写——那儿没有别的东西可用。
+     */
+    setTake(prefill || "");
+  }, [open, source?.url, source?.title, prefill]);
 
   /**
    * ⚠️ **数字键只在没聚焦到输入框时才认。**
@@ -44,17 +62,18 @@ export function ReactionPicker({ open, groups = [], source, busy, error, onClose
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const el = document.activeElement;
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return;
-      // 1–9 是前九条，`0` 给第十条——数字键盘上就这个顺序
-      if (!/^[0-9]$/.test(event.key)) return;
-      const index = event.key === "0" ? 9 : Number(event.key) - 1;
-      if (!flat[index]) return;
+      // ⚠️ **数字键只认当前 tab 里的那几条**：分了 tab 之后「第 7 条」这个说法
+      //    在屏幕上不存在了，而键号必须和你看得见的那个数字对上
+      if (!/^[1-9]$/.test(event.key)) return;
+      const index = Number(event.key) - 1;
+      if (!shown[index]) return;
       event.preventDefault();
-      setReaction(flat[index]);
+      setReaction(shown[index]);
       areaRef.current?.focus();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, flat.join("")]);
+  }, [open, shown.join("")]);
 
   if (!open) return null;
 
@@ -80,28 +99,34 @@ export function ReactionPicker({ open, groups = [], source, busy, error, onClose
           * ⚠️ **组名和条目的文案全从 Worker 来，前端一个字都不写死。**
           * 抄一份的话，那边改了措辞这边还是老的，而且**不报错**。
           */}
+        {/* 组名从标签变成 tab：一次只看一组，而不是让十条一起占屏 */}
+        <div className="rpick__tabs" role="tablist" aria-label="这条是对着什么说的">
+          {groups.map((g, i) => (
+            <button
+              key={g.label}
+              type="button"
+              role="tab"
+              className="rpick__tab"
+              aria-selected={i === tab}
+              onClick={() => setTab(i)}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+
         <div className="rpick__list" role="group" aria-label="你对它是什么反应">
-          {groups.map((group) => (
-            <Fragment key={group.label}>
-              {/* 组名是**标签不是选项**：它告诉你「这一组是对着什么说的」，点不动 */}
-              <p className="rpick__group">{group.label}</p>
-              {(group.items || []).map((item) => {
-                const index = flat.indexOf(item);
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    className="rpick__opt"
-                    aria-pressed={reaction === item}
-                    onClick={() => { setReaction(reaction === item ? "" : item); areaRef.current?.focus(); }}
-                  >
-                    {/* 第十条的键是 `0`；超过十条就不给键了，硬编下去只会给出按不出的提示 */}
-                    <kbd aria-hidden="true">{index < 9 ? index + 1 : index === 9 ? 0 : ""}</kbd>
-                    {item}
-                  </button>
-                );
-              })}
-            </Fragment>
+          {shown.map((item, index) => (
+            <button
+              key={item}
+              type="button"
+              className="rpick__opt"
+              aria-pressed={reaction === item}
+              onClick={() => { setReaction(reaction === item ? "" : item); areaRef.current?.focus(); }}
+            >
+              <kbd aria-hidden="true">{index + 1}</kbd>
+              {item}
+            </button>
           ))}
         </div>
 

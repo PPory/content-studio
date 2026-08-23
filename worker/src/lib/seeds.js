@@ -90,6 +90,15 @@ export function normalizeSeedPatch(body = {}) {
     patch.status = status;
   }
   if (body.draftId !== undefined) patch.draftId = text(body.draftId).slice(0, 64);
+  /**
+   * 抓回来的来源正文。**工作台抓（Readability 要 Node），存回这儿。**
+   *
+   * ⚠️ **允许存空串，而且那不等于「没抓过」。** 公众号 / 知乎 / 小红书 / 抖音 / B站
+   * 都要浏览器，抓不到是常态；这时也要把 `sourceFetchedAt` 记上，
+   * 否则每次打开项目页都会再徒劳地抓一遍。所以这两个字段**一起收**。
+   */
+  if (body.sourceExcerpt !== undefined) patch.sourceExcerpt = String(body.sourceExcerpt ?? "").slice(0, 6000);
+  if (body.sourceFetchedAt !== undefined) patch.sourceFetchedAt = Math.max(0, Number(body.sourceFetchedAt) || 0);
   if (!Object.keys(patch).length) {
     const err = new Error("没有可改的字段");
     err.status = 400;
@@ -113,6 +122,12 @@ export function mapSeed(row = {}) {
       title: row.source_title || "",
       url: row.source_url || "",
     },
+    /**
+     * `excerpt` 空 + `fetchedAt` 有值 = **抓过，确实抓不到**（要浏览器的那几个站）。
+     * 两者都空 = 还没抓过。界面要分得出这两种：前者该说清为什么，后者该去抓。
+     */
+    sourceExcerpt: row.source_excerpt || "",
+    sourceFetchedAt: row.source_fetched_at ? new Date(row.source_fetched_at * 1000).toISOString() : null,
     status: row.status || SEED_STATUS.KEEPING,
     draftId: row.draft_id || null,
     createdAt: row.created_at ? new Date(row.created_at * 1000).toISOString() : null,

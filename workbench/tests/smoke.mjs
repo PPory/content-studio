@@ -425,7 +425,37 @@ try {
         const main = document.querySelector(".main");
         if (!rail || !main) return null;
         const cs = getComputedStyle(rail);
-        const out = { which: rail.className, position: cs.position, scrolls: cs.overflowY, drift: -1 };
+        const out = {
+          which: rail.className, position: cs.position, scrolls: cs.overflowY, drift: -1,
+          /**
+           * ⚠️ **横向被撑破和 sticky 失效是同一个根因。**
+           * grid 子项默认 `min-width: auto`——右栏里一条 `nowrap` 的长标题
+           * 就能把整栏顶出去；栏一被顶宽，祖先多出一个横向滚动容器，
+           * **`position: sticky` 跟着失效**。只量其中一个会以为修好了。
+           */
+          overhang: Math.round(rail.scrollWidth - rail.clientWidth),
+          // 子项自己溢出也算——外壳没被撑破，不代表里面那一行没跑出去
+          childOverhang: Math.max(0, ...[...rail.children].map((el) => Math.round(el.scrollWidth - el.clientWidth))),
+          /**
+           * ⚠️ **点名真的戳出右栏边界的那个元素。**
+           *
+           * 量的是 `getBoundingClientRect().right` 超没超过右栏的右边界，
+           * **不是 `scrollWidth - clientWidth`**——后者在 `overflow:hidden + ellipsis`
+           * 的元素上恒为正（那正是省略号在工作），拿它当判据会报出一堆假阳性，
+           * 而屏幕上什么事都没有。用户看见的「被截断」是**戳出去**，不是「内部被裁」。
+           */
+          worst: (() => {
+            const edge = rail.getBoundingClientRect().right;
+            let hit = null;
+            for (const el of rail.querySelectorAll("*")) {
+              const out = Math.round(el.getBoundingClientRect().right - edge);
+              if (out > 1 && (!hit || out > hit.out)) {
+                hit = { out, cls: el.className.toString().slice(0, 40), tag: el.tagName };
+              }
+            }
+            return hit ? `${hit.tag}.${hit.cls} 戳出右栏 ${hit.out}px` : "";
+          })(),
+        };
         // 正文够长时再量真实位移；不够长也不能跳过——`position` 本身就是当初坏掉的那一处
         if (main.scrollHeight > main.clientHeight + 200) {
           const before = rail.getBoundingClientRect().top;
@@ -445,6 +475,19 @@ try {
         check("右栏比视口高时自己能滚", ["auto", "scroll"].includes(stuck.scrolls), `overflow-y: ${stuck.scrolls}`);
         // 正文够长时才量得到真实位移；量不到就照实说，别回一个 0 冒充「钉住了」
         check("滚正文时右栏不跟着走", stuck.drift < 0 || stuck.drift <= 1, stuck.drift < 0 ? "这一页不够长，位移量不到" : `跟着滚了 ${stuck.drift}px`);
+        /**
+         * ⚠️ **右栏不许横向被撑破。** 这条和上面那条是同一个根因的两个症状——
+         * 修完只量 sticky 的话，下次某个 `nowrap` 的长标题回来时，
+         * 你会先看到「右栏又跟着滚了」，而真正坏的是这一条。
+         */
+        /**
+         * ⚠️ **判据是「有没有东西戳出右栏」，不是「有没有元素内部被裁」。**
+         * `.pseed__from` 那种 `overflow:hidden + ellipsis` 的元素**天生内部被裁**——
+         * 拿 `scrollWidth` 当判据的话这条会一直红（或者更糟：绿着却在消息里
+         * 报一个吓人的数字，那是这个项目最熟的一种假绿）。
+         */
+        check("右栏没被内容撑破", stuck.overhang <= 1 && !stuck.worst,
+          stuck.worst || `外壳溢出 ${stuck.overhang}px`);
       }
       /**
        * ⚠️ **正文那一栏要吃满宽度**（`.main__inner:has(.project-workspace)` 解掉 1320 的上限）。
@@ -481,6 +524,107 @@ try {
   }
 
   /**
+   * 找题：**我现在想写，但还没有种子**。
+   *
+   * ⚠️ **这一页不产出选题，它产出候选。** 使用者问过「是不是应该一键获取选题」——
+   * 不应该：一键产出的选题**不带你的判断**，而那正是这条链要问出来的东西。
+   *
+   * ⚠️ **这一段同样不许真写库**：数写请求次数（`writes === 0`）。
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/#/ideas`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".ideas__sec", { timeout: 25000 }).catch(() => {});
+  /**
+   * ⚠️ **等的是「真有卡了」，不是那个壳。** 这一周第一次打开要跑一次出卡（LLM），
+   * 等 `.ideas__sec` 会在还在转圈的时候就返回——量到 0 条，看着像功能坏了。
+   * 出完会缓存，所以只有一周里的第一次会等这么久。
+   */
+  await page.waitForSelector(".idea, .ideas__sec .empty", { timeout: 90000 }).catch(() => {});
+
+  /**
+   * ⚠️ **三个来源站在同一排，而且都要在首屏。**
+   * 上一版三段并列，洞察那 8 张卡把另外两个入口挤到了屏外——你得滚很久才看得到
+   * 「从素材里找」和「拆争点」，而那两个恰恰是「我主动想找点什么写」时最该按的。
+   * 量的是**渲染后的位置**，不是「元素存在」——存在但在第三屏等于不存在。
+   */
+  const srcChips = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll(".list-bar .chip")];
+    return {
+      labels: chips.map((c) => c.textContent.trim()),
+      // 最后一颗芯片的底边还在视口内，才算「都在首屏」
+      lastBottom: chips.length ? Math.round(chips[chips.length - 1].getBoundingClientRect().bottom) : -1,
+      viewport: window.innerHeight,
+    };
+  });
+  check("三个来源在同一排芯片上", srcChips.labels.length === 3, srcChips.labels.join(" / "));
+  check("三个入口都在首屏", srcChips.lastBottom > 0 && srcChips.lastBottom < srcChips.viewport,
+    `最后一颗在 ${srcChips.lastBottom}px / 视口 ${srcChips.viewport}px`);
+
+  /**
+   * 洞察那段的条数**和本地 registry 里的候选数相等**。
+   * ⚠️ 钉这条是因为界面**不许按 `queue_status` 过滤**：「还要查资料」的那些
+   * 也可能正是你想写的，偷偷过滤的界面看不出自己在过滤。
+   * ⚠️ 二选一：还没跑过洞察时本来就没有 registry，那时该出空态引导。
+   */
+  const { latestCandidates } = await import("../server/lib/insight-candidates.mjs");
+  const reg = await latestCandidates();
+  const ideaCards = await page.$$eval(".idea", (els) => els.length);
+  const ideaEmpty = !!(await page.$(".ideas__sec .empty"));
+  check("洞察候选一条不漏地摆出来", reg.items.length ? ideaCards === reg.items.length : ideaEmpty,
+    reg.items.length ? `界面 ${ideaCards} / registry ${reg.items.length}` : "还没跑过洞察，给的是空态引导");
+
+  if (ideaCards) {
+    let ideaWrites = 0;
+    let expandReqs = 0;
+    const countIdeaWrites = (req) => {
+      if (req.method() === "POST" && /\/api\/pipe\/seeds/.test(req.url())) ideaWrites += 1;
+    };
+    const countAny = () => { expandReqs += 1; };
+    page.on("request", countIdeaWrites);
+
+    /**
+     * ⚠️ **展开不许发任何请求。** 卡片在「出候选的那一刻」就写好了——
+     * 这是那次重做的**全部意义**。哪天这儿开始点开才去算，说明设计被绕回去了。
+     */
+    const more = await page.$(".idea__more");
+    if (more) {
+      page.on("request", countAny);
+      await more.click();
+      await page.waitForTimeout(700);
+      page.off("request", countAny);
+      const detail = await page.$$eval(".idea__detail dd", (els) => els.map((e) => e.textContent.trim()).filter(Boolean));
+      check("展开就能看到卡片内容", detail.length > 0, `${detail.length} 项`);
+      check("展开一个请求都不发", expandReqs === 0, `${expandReqs} 个请求`);
+    } else {
+      check("这批候选还没写成完整的卡，展开这一段量不了", true, "没有可展开的");
+    }
+
+    await page.click(".idea__seed");
+    await page.waitForSelector(".rpick", { timeout: 8000 }).catch(() => {});
+    /**
+     * ⚠️ **候选不能一键落库。** 点「记成种子」弹出来的必须是反应选择器——
+     * 它问的正是「你能加什么」，而那个问题的答案只存在你脑子里。
+     */
+    check("候选不能一键变成种子，得先问你一句", !!(await page.$(".rpick")));
+    /**
+     * ⚠️ **take 已经预填成这条卡的角度。**
+     * 使用者说「暂时没想法但觉得可以写，应该可以直接记」——预填之后
+     * 你可以直接按「记下来」。**规则没松**：种子仍然必须有一句话。
+     */
+    const prefilled = await page.inputValue(".rpick__take").catch(() => "");
+    check("从候选进来时那句话已经预填好了", prefilled.trim().length > 4, prefilled.slice(0, 40));
+    // 反应清单分三个 tab：十条平铺时输入框被挤到屏幕最下面，而那句话才是主角
+    const tabs = await page.$$eval(".rpick__tab", (els) => els.map((e) => e.textContent.trim()));
+    check("反应清单分成 tab，不是一长条", tabs.length >= 2, tabs.join(" / "));
+
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".rpick", { state: "detached", timeout: 5000 }).catch(() => {});
+    page.off("request", countIdeaWrites);
+    check("找题这一段没往库里写一行", ideaWrites === 0, `${ideaWrites} 次写请求`);
+  } else {
+    check("洞察那段这会儿是空的，记成种子这一段量不了", true, "空态");
+  }
+
+  /**
    * 种子：这条链的新起点（`docs/工作流.md`）。
    * **种子 = 你看到的东西 + 你对它的一句话**，它解决的是「看到一个观点想写，
    * 但不知道自己能加什么」——而「能加什么」的答案几乎总是你自己的经历和判断。
@@ -503,7 +647,8 @@ try {
 
   const picker = await page.evaluate(() => {
     const opts = [...document.querySelectorAll(".rpick__opt")];
-    const groups = [...document.querySelectorAll(".rpick__group")].map((g) => g.textContent.trim());
+    // 组名现在画成 tab（十条平铺时输入框被挤到屏幕最下面，而那句话才是主角）
+    const groups = [...document.querySelectorAll(".rpick__tab")].map((g) => g.textContent.trim());
     const save = document.querySelector(".rpick .btn-primary");
     return {
       count: opts.length,
@@ -515,6 +660,8 @@ try {
       groups,
       // 有没有一组是冲着「一件事/一个发布」去的——发布类的东西全靠它
       hasEvent: groups.some((g) => /事|发布/.test(g)),
+      // 当前 tab 里看得见几条：分 tab 之后一屏只该出现一组
+      shownNow: [...document.querySelectorAll(".rpick__opt")].length,
     };
   });
   /**
@@ -530,8 +677,13 @@ try {
    * 而热点里大量是发布和事件。**没有那一组，这个清单对一半的触发物就是空的。**
    */
   check("反应逐条不同", picker.count > 0 && picker.count === picker.unique, `${picker.count} 条 / ${picker.unique} 种`);
-  check("反应分了组，不是一长条平铺", picker.groups.length >= 2, picker.groups.join(" / "));
+  check("反应分成 tab，不是一长条平铺", picker.groups.length >= 2, picker.groups.join(" / "));
   check("有一组是对着「一件事 / 一个发布」的", picker.hasEvent, picker.groups.join(" / "));
+  /**
+   * ⚠️ **一次只画一组。** 十条平铺那一版整屏被按钮占满，
+   * **而要你打的那句话才是这一屏的主角**——输入框被挤到了屏幕最下面。
+   */
+  check("一次只画当前那一组", picker.shownNow > 0 && picker.shownNow < 7, `${picker.shownNow} 条`);
   check("没写看法时保存点不动，而且说了为什么", picker.disabled && /看法/.test(picker.hint), `${picker.disabled ? "灰的" : "能点"} · ${picker.hint.slice(0, 30)}`);
 
   // 填上字，按钮该活过来——但**仍然不提交**
@@ -581,13 +733,20 @@ try {
 
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   /**
-   * ⚠️ **顺序有意义：种子排第一。** 它是这条链的最前面（看到东西 → 说一句 → 才有得写），
-   * 而这一排是按流程从左往右排的，不是按重要性。
-   * ⚠️ 而且**每一项都必须两个字**（`NAV_LABELS` 那条规矩），下面那条量的就是这个。
+   * ⚠️ **顺序有意义**：这一排是按流程从左往右排的，不是按重要性——
+   * 还没有想写的 → 找题；已经有话说的 → 种子；开始写了 → 项目。
+   *
+   * ⚠️ **和 `App.jsx` 的 NAV 常量比，不写死那一串。**
+   * 写死的话加一页这条就红，而代码完全正确（这个文件里已经栽过，
+   * 旁边那条「每项两个字」就是当时留下的正确写法）。
    */
+  const navSrc = await fs.promises.readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const wantSubnav = [...(navSrc.match(/key: "content"[\s\S]*?children: \[([\s\S]*?)\]/)?.[1] || "")
+    .matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
   const contentSubnav = (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()))).join("/");
   // ⚠️ 带上量到的值：这条原来一个诊断信息都没有，红了只能靠猜
-  check("内容二级导航可直接进入", contentSubnav === "种子/项目/选题/稿件/排版", contentSubnav);
+  check("内容二级导航可直接进入", wantSubnav.length > 0 && contentSubnav === wantSubnav.join("/"),
+    `${contentSubnav}（常量 ${wantSubnav.join("/")}）`);
   await page.click('.nav-item:has-text("发现")');
   /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
      那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
@@ -1494,7 +1653,8 @@ try {
   check("筛选条上「待写」是亮的", onChip.some((t) => t.includes("待写")), onChip.join("/") || "(没有选中项)");
 
   const subnav = await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()));
-  check("内容二级导航名称统一", subnav.join("/") === "种子/项目/选题/稿件/排版", subnav.join("/"));
+  // 同上：跟 `App.jsx` 的常量比，不写死那一串
+  check("内容二级导航名称统一", subnav.join("/") === wantSubnav.join("/"), `${subnav.join("/")}（常量 ${wantSubnav.join("/")}）`);
   // 导航标签一律两个字——写死那一串会在加页时红，这条不会，而它钉的是真正的规矩
   check("二级导航每项都是两个字", subnav.every((n) => n.length === 2), subnav.join("/"));
   check("页面内部不再重复跨页面 Tab", !(await page.$(".main > .pill-tabs")));

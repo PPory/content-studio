@@ -9,6 +9,8 @@ import { json, readJsonBody } from "../lib/http.mjs";
 import { vaultRoot, safeJoin } from "../lib/vault.mjs";
 import { DIRS } from "../lib/vault-dirs.mjs";
 import { startRun, getRun, cancelRun, WORKBENCH_ROOT } from "../lib/insight-run.mjs";
+import { insightWeeks, readRegistry } from "../lib/insight-candidates.mjs";
+import { insightCards } from "../lib/insight-cards.mjs";
 
 const SOURCES = ["reddit", "x", "aihot"];
 
@@ -54,27 +56,18 @@ async function readiness(env, week) {
   // 只看上一周的话，隔一周没跑就把它漏了，而这类东西本来就是「一直没顾上做」才挂着的。
   // 路径从 WORKBENCH_ROOT 起算，不用 process.cwd()：dev server 的 cwd 取决于
   // 你在哪儿敲的 npm run dev，拿它拼路径是个安静出错的写法。
+  /**
+   * ⚠️ **扫周目录 + 读 registry 走 `lib/insight-candidates.mjs` 那一份。**
+   * 这儿原来自己写了一遍，而「找题」那一屏也要读同一批文件——
+   * 各写一份的话，改了工件布局会漏掉其中一处，而漏掉的那处**不报错**：
+   * 读不到就当成「这一周没有」，界面显示的是空态引导，看着像「你还没跑过」。
+   */
   const pending = [];
-  try {
-    const workRoot = path.join(WORKBENCH_ROOT, "tmp", "insight-work");
-    const weeks = (await fs.readdir(workRoot, { withFileTypes: true }))
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort();
-    for (const w of weeks) {
-      try {
-        const reg = JSON.parse(
-          await fs.readFile(path.join(workRoot, w, "candidate-registry.json"), "utf8")
-        );
-        for (const p of reg.pending_actions || []) {
-          if (p.status === "open") pending.push({ ...p, from_week: p.created_week || w });
-        }
-      } catch {
-        /* 某一周没有 registry 或坏了，跳过——不该因此拦着不让跑 */
-      }
+  for (const w of await insightWeeks()) {
+    const reg = await readRegistry(w);
+    for (const p of reg?.pending_actions || []) {
+      if (p.status === "open") pending.push({ ...p, from_week: p.created_week || w });
     }
-  } catch {
-    /* tmp/insight-work 还不存在：第一次跑，没有挂账很正常 */
   }
 
   return {
@@ -91,6 +84,20 @@ async function readiness(env, week) {
 }
 
 export const insightsRoutes = [
+  {
+    /**
+     * 「找题」那一屏第一段的数据。**跑批产出的候选原来进不了任何地方**——
+     * 每周花着 credits 产出十来条带优先级和证据就绪度的候选，然后没有界面读它。
+     */
+    method: "GET",
+    path: "/api/insights/candidates",
+    async handler({ env, req, res }) {
+      // `?refresh=1` 强制重出一次卡（改了提示词之后要用）
+      const refresh = new URL(req.url, "http://127.0.0.1").searchParams.get("refresh") === "1";
+      return json(res, { ok: true, ...(await insightCards(env, { refresh })) });
+    },
+  },
+
   {
     method: "GET",
     path: "/api/insights/ready",

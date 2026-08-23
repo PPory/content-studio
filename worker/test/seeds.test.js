@@ -171,3 +171,28 @@ test("库里的行压平成对外契约", () => {
   assert.ok(!("source_kind" in seed));
   assert.ok(!("updated_at" in seed));
 });
+
+/**
+ * ⚠️ **「还没抓过」和「抓过但抓不到」必须分得开。**
+ *
+ * 公众号 / 知乎 / 小红书 / 抖音 / B站都要浏览器，抓不到是常态。
+ * 不分的话，一篇永远抓不到的文章会在你**每次**打开项目页时被再抓一遍——
+ * 而且界面也说不清「这儿为什么是空的」。判据是 `sourceFetchedAt`，不是正文空不空。
+ */
+test("抓过但抓不到，和还没抓过，不是一回事", () => {
+  const never = mapSeed({ id: "a", take: "x" });
+  assert.equal(never.sourceExcerpt, "");
+  assert.equal(never.sourceFetchedAt, null, "还没抓过时 fetchedAt 必须是 null");
+
+  const tried = mapSeed({ id: "b", take: "x", source_excerpt: "", source_fetched_at: 1_700_000_000 });
+  assert.equal(tried.sourceExcerpt, "");
+  assert.ok(tried.sourceFetchedAt, "抓过就要留下时间戳，哪怕一个字都没抓到");
+});
+
+test("来源正文的改动走白名单，而且会截断", () => {
+  const patch = normalizeSeedPatch({ sourceExcerpt: "正".repeat(9000), sourceFetchedAt: 1_700_000_000 });
+  assert.equal(patch.sourceExcerpt.length, 6000, "存进库前要截断，别把一整篇长文塞进一行");
+  assert.equal(patch.sourceFetchedAt, 1_700_000_000);
+  // ⚠️ 白名单：没列进去的字段一个都不许漏进来（和 /wb/update 的 EDITABLE 同一条）
+  assert.throws(() => normalizeSeedPatch({ sourceUrl: "https://evil/" }), /没有可改的字段/);
+});

@@ -193,6 +193,16 @@ export const pipeRoutes = [
      * 还等于让工作台持有「素材怎么挑」这条数据规则。**规则跟着数据走。**
      */
     method: "POST",
+    path: "/api/pipe/ideas/angles",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "ideas/angles"),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/ideas/materials",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "ideas/materials"),
+  },
+  {
+    method: "POST",
     path: "/api/pipe/pick/materials",
     handler: ({ env, req, res }) => forwardPost(env, req, res, "pick/materials"),
   },
