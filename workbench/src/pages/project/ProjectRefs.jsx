@@ -8,10 +8,34 @@
 // 消失的话，待发布那一档打开这一栏会看到一列点不动的素材、而屏幕上没有任何地方
 // 说得清为什么——禁用 + `title` 至少把原因摆在那儿。
 
-import { IconFileText, IconPlus, IconRefresh } from "../../components/icons.jsx";
+import { useState } from "react";
+import { creationApi } from "../../lib/creation-api.js";
+import { IconFileText, IconLoader2, IconPlus, IconRefresh, IconSearch, IconSparkles, IconX } from "../../components/icons.jsx";
 import { valueIcon, fieldIcon } from "../../components/ui.jsx";
 
-export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loading, onOpenSource }) {
+export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loading, onOpenSource, query = "", onAttach, onDetach, busy = false }) {
+  /**
+   * 「按意思找」的候选。**它们不在库里的关联表上**——只有点过「用这条」的才写进去。
+   *
+   * ⚠️ **`topic_materials` 的语义是「这篇真的用了它」。** 右栏的计数、归档时的
+   * 证据链、复盘时的「有效故事」标记全建立在这个意思上。找到就自动挂等于把
+   * 「我用了」偷偷换成「系统猜它相关」——那几处从此都在说假话。
+   */
+  const [pick, setPick] = useState({ items: [], busy: false, error: null, ran: false, scanned: 0 });
+
+  const attached = new Set(materials.map((m) => m.id));
+  const candidates = pick.items.filter((item) => !attached.has(item.id));
+
+  function findRelated() {
+    const q = String(query || "").trim();
+    if (pick.busy || !q) return;
+    setPick((prev) => ({ ...prev, busy: true, error: null }));
+    // ⚠️ 字段名照 Worker 那侧的 `pickMaterials`：`want` 不是 `query`。
+    //    `exclude` 传已挂上的，省得它把已经在栏里的又挑一遍
+    creationApi.pickMaterials({ want: q, exclude: [...attached] })
+      .then((r) => setPick({ items: r.items || [], busy: false, error: null, ran: true, scanned: r.scanned || 0 }))
+      .catch((err) => setPick((prev) => ({ ...prev, busy: false, error: err, ran: true })));
+  }
   return (
     <section className="pmat" aria-label="项目素材">
       <div className="pmat__head">
@@ -57,6 +81,20 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loa
                       <IconFileText size={13} stroke={1.8} aria-hidden="true" />看原文
                     </button>
                   ) : null}
+                  {/* ⚠️ **摘掉靠右，离那两个常用动作远一点。**
+                      它是破坏性的，夹在「插到光标处」和「看原文」中间等于把它放在最顺手的位置。
+                      和种子页那颗删除按钮同一条规矩。 */}
+                  {onDetach ? (
+                    <button
+                      type="button"
+                      className="pmat__insert pmat__drop"
+                      onClick={() => onDetach(item.id)}
+                      disabled={busy}
+                      title="从这个项目上摘掉（素材本身还在库里）"
+                    >
+                      <IconX size={13} stroke={1.8} aria-hidden="true" />摘掉
+                    </button>
+                  ) : null}
                 </div>
               </li>
             );
@@ -65,6 +103,52 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onReload, loa
       ) : (
         <div className="pmat__empty">这个项目还没有关联素材。</div>
       )}
+
+      {/**
+        * 「按意思找」补的是关键词搜不到的那一块：搜「成长」时，
+        * 那条「复利不是利滚利」正是想要的，只是它一个字都没提「成长」。
+        * 整件事在 Worker 那侧做（候选清单是整库素材、LLM 代理也在那儿）。
+        *
+        * ⚠️ **查询串取的是那句话本身**（种子的 take，没有种子时退回核心观点/标题）——
+        * 你要找的是「支持这个判断的依据」，不是「和这个标题字面像的东西」。
+        */}
+      {onAttach ? (
+        <div className="pmat__find">
+          <button type="button" className="pmat__findbtn" onClick={findRelated} disabled={pick.busy || !String(query || "").trim()}
+            title={String(query || "").trim() ? "让 AI 通读整库，按意思挑几条" : "还没有可用来找的线索（先写一句核心观点）"}>
+            {pick.busy ? <IconLoader2 size={13} className="spin" aria-hidden="true" /> : <IconSearch size={13} stroke={1.8} aria-hidden="true" />}
+            找相关素材
+          </button>
+
+          {pick.error ? <p className="pmat__finderr">{pick.error.message || "没找成"}</p> : null}
+
+          {/* 挑不出来是正常结果，照实说，不要留一个转完圈什么都没有的空白 */}
+          {pick.ran && !pick.busy && !pick.error && !candidates.length ? (
+            <p className="pmat__findnote">通读完了，库里确实没有更多相关的。</p>
+          ) : null}
+
+          {candidates.length ? (
+            <ul className="pmat__cands">
+              {candidates.map((item) => (
+                <li key={item.id}>
+                  {/* ⚠️ **AI 挑的要能看出是 AI 挑的**：多一行「为什么是它」。
+                      推荐可能牵强，混进已挂上的那批里，人就没法判断该不该信 */}
+                  <h3 title={item.title}><IconSparkles size={12} stroke={1.8} aria-hidden="true" />{item.title}</h3>
+                  {item.why ? <p className="pmat__why">{item.why}</p> : null}
+                  <div className="pmat__acts">
+                    <button type="button" className="pmat__insert" disabled={busy} onClick={() => onAttach(item.id)}>
+                      <IconPlus size={13} stroke={1.9} aria-hidden="true" />用这条
+                    </button>
+                    <button type="button" className="pmat__insert" onClick={() => setPick((p) => ({ ...p, items: p.items.filter((x) => x.id !== item.id) }))}>
+                      <IconX size={13} stroke={1.8} aria-hidden="true" />不用
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <button type="button" className="pmat__reload" onClick={onReload} disabled={loading}>
         <IconRefresh size={13} stroke={1.7} aria-hidden="true" />重新读取项目

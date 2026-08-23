@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, relTime , MenuButton} from "../components/ui.jsx";
 import { IconFileText, IconLayoutGrid, IconLayoutKanban, IconPlus, IconRefresh } from "../components/icons.jsx";
 import { ProjectCard } from "../components/ProjectCard.jsx";
@@ -13,7 +13,6 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState("");
-  const [creation, setCreation] = useState(null);
   const [layout, setLayout] = useState("list");
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState(null);
@@ -87,13 +86,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             <button className="icon-btn" onClick={load} disabled={loading || !workerReady} aria-label="刷新内容项目" title="刷新">
               <IconRefresh aria-hidden="true" className={loading ? "spinning" : ""} />
             </button>
-            {workerReady ? (
-              <MenuButton
-                label="新建内容"
-                icon={IconPlus}
-                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
-              />
-            ) : null}
+            {/* 四处共用一颗（`components/NewContentButton.jsx`），别在这儿再拼一份菜单 */}
+            {workerReady ? <NewContentButton onGo={onGo} onChanged={onChanged} /> : null}
           </>
         }
       />
@@ -182,19 +176,6 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
         </>
       ) : null}
 
-      <CreationDialog
-        open={!!creation}
-        preset={creation}
-        onClose={() => setCreation(null)}
-        onCreated={(draft, project) => {
-          onChanged?.();
-          onGo("project", project?.id || draft.topicId);
-        }}
-        onTopicCreated={(topic, project) => {
-          onChanged?.();
-          onGo("project", project?.id || topic.id);
-        }}
-      />
     </>
   );
 }

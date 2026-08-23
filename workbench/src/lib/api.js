@@ -34,6 +34,12 @@ export const api = {
   projects: (stage = "") => req(`/api/pipe/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
   project: (id) => req(`/api/pipe/projects/${encodeURIComponent(id)}`),
   transitionProject: (id, action, input = {}) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
+  /**
+   * 给项目挂上 / 摘掉素材。
+   * ⚠️ **只有点过「用这条」的才走这儿**——AI 挑出来的候选不自动挂，
+   * `topic_materials` 的语义是「这篇真的用了它」，见 worker 那侧的注释。
+   */
+  updateProjectMaterials: (id, body) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/materials`, body),
   createProjectVariant: (id, platform) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants`, { platform }),
   removeProjectVariant: (id, draftId) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),
   saveProjectRelease: (id, draftId, release) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/releases/${encodeURIComponent(draftId)}`, release),

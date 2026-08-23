@@ -811,10 +811,65 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    （`components/ReadingPrefs.jsx`），撞名的后果是项目素材那一栏被那边的 flex 规则
    接管——标题竖着排、按钮挤成一列。和 `.card` / `.board` / `.chip` 是同一类事故：
    **CSS 不报任何错，只有看图才发现。** */
-.pfacts, .pmat {
+.pfacts, .pmat, .pseed {
   padding: 15px 16px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--r-lg);
 }
+
+/**
+ * 种子块：**这一篇是从哪句话来的**（`pages/project/ProjectSeed.jsx`）。
+ * 排在素材上面——素材说「凭什么信我」，这句话说「我要说什么」，
+ * 而写不下去的时候回来读的是后者。
+ */
+.pseed { display: grid; gap: 9px; }
+.pseed__take {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 7px; margin: 0;
+  color: var(--text-1); font-size: var(--fs-sm); line-height: 1.65;
+}
+.pseed__take svg { margin-top: 4px; color: var(--text-3); }
+.pseed__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.pseed__from {
+  display: inline-flex; align-items: center; gap: 3px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-3); font-size: var(--fs-xs); text-decoration: none;
+}
+a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
+/* 「自己想到的」不是缺了来源，是**另一种来源** */
+.pseed__from--own { font-style: italic; }
+
+/**
+ * 「找相关素材」的候选区。
+ *
+ * ⚠️ **候选和已挂上的必须看得出不是一回事**（虚线框 + 每条带一行「为什么是它」）：
+ * 关联表只存真实引用，而这些还没写进去。混在一起画的话，
+ * 你会以为「已用 N 条」里包含了它们。
+ */
+.pmat__find { display: grid; gap: 8px; margin-top: 10px; padding-top: 11px; border-top: 1px solid var(--border); }
+.pmat__findbtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-ctl);
+  background: transparent; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer;
+}
+.pmat__findbtn:hover:not(:disabled) { color: var(--text-1); border-color: var(--text-1); }
+.pmat__findbtn:disabled { opacity: .5; cursor: default; }
+.pmat__finderr { margin: 0; color: var(--danger); font-size: var(--fs-xs); }
+/* 挑不出来是正常结果，照实说——不要留一个转完圈什么都没有的空白 */
+.pmat__findnote { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.pmat__cands { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.pmat__cands > li {
+  padding: 9px 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-ctl);
+  background: var(--surface-2);
+}
+.pmat__cands h3 {
+  display: flex; align-items: center; gap: 5px; margin: 0;
+  font-size: var(--fs-xs); font-weight: 600; line-height: 1.45;
+}
+.pmat__cands h3 svg { flex: none; color: var(--text-3); }
+/* ⚠️ **AI 挑的要能看出是 AI 挑的**：推荐可能牵强，不给理由人就没法判断该不该信 */
+.pmat__why { margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.55; }
+/* 摘掉是破坏性的：**推到最右**离常用动作远一点，颜色只在悬停时出现——它不是主操作 */
+.pmat__drop { margin-left: auto; }
+.pmat__drop:hover { color: var(--danger); }
 /* ⚠️ 这一栏从**为什么在这一档**开始，不再重画一遍阶段和进度——
    顶栏那颗 pill 和上面那条七段流程线已经各说过一遍了 */
 .pfacts__why { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.6; }
@@ -2855,6 +2910,16 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 .rpick__source a:hover { color: var(--text-1); }
 
 .rpick__list { display: grid; gap: 6px; }
+/**
+ * 分组小标题。**它是标签不是选项**——告诉你「这一组是对着什么说的」，点不动。
+ * 分组本身不是装饰：第一版七条全假设触发物是「一个观点」，
+ * 而热点里大量是发布和事件，你没法「同意」一件事实。
+ */
+.rpick__group {
+  margin: 0; padding: 6px 2px 1px;
+  color: var(--text-3); font-size: var(--fs-2xs); letter-spacing: .02em;
+}
+.rpick__group:not(:first-child) { margin-top: 5px; }
 .rpick__opt {
   display: flex; align-items: center; gap: 9px; padding: 8px 11px;
   border: 1px solid var(--border); border-radius: var(--r-ctl);
@@ -3163,6 +3228,19 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 }
 .menu-btn[data-align="end"] .menu-btn__pop { right: 0; }
 .menu-btn[data-align="start"] .menu-btn__pop { left: 0; }
+/**
+ * 菜单里的分节小标题。**同一层里分节，不做二级飞出菜单**——
+ * 「空白文章」要先问发哪个平台（主稿的平台建完就改不了），飞出菜单意味着
+ * 一个动作要悬停两层，而这个项目里没有先例。
+ *
+ * 它是**标签不是选项**：字更小、更灰、不可点、不占图标位。
+ * 长得像一行的话，人会去点它然后发现点不动。
+ */
+.menu-btn__section {
+  margin: 0; padding: 9px 12px 4px;
+  color: var(--text-3); font-size: var(--fs-2xs); letter-spacing: .02em;
+}
+.menu-btn__section:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--border); padding-top: 9px; }
 .menu-btn__row {
   display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
   padding: 9px 10px; border: 0; border-radius: var(--r-sm);
@@ -3246,8 +3324,13 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* 摘要不能省：没有摘要的列表就是一份目录，而浏览层的价值是「一眼扫十几条」 */
 .doc-row__excerpt {
   /* ⚠️ **没内容也要占位**（min-height）：不占的话这一行矮一截，一列高低不齐。
-     和卡片时代「副标题空着也渲染」是同一条理由。冒烟测试量的就是这个高度。 */
-  min-height: 1.45em;
+     和卡片时代「副标题空着也渲染」是同一条理由。冒烟测试量的就是这个高度。
+
+     ⚠️ **`line-height` 必须显式写死，而且和 `min-height` 同一个值。**
+     只写 min-height 的话，有内容那一行的行高来自继承（实测 20px），
+     空的那一行是 min-height（17px）——**两者差 3px，一列扫下去还是锯齿**，
+     而「没内容也占位」这句注释还挂在上面，看着像已经处理过了。 */
+  line-height: 1.5; min-height: 1.5em;
   font-size: var(--fs-sm); color: var(--text-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }

@@ -8,6 +8,8 @@
  */
 
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { PLATFORMS } from "../src/lib/platforms.js";
 import os from "node:os";
 import path from "node:path";
 import { safeName } from "../server/routes/archive.mjs";
@@ -15,7 +17,6 @@ import { writeVaultFile, readFile, fileExists, listFiles, cleanupSnapshots, pars
 import { startRun, patchRun, endRun } from "../src/lib/ai-runs.js";
 import { countWords, readStats } from "../src/lib/reading.js";
 import { normalizeAudiences } from "../server/lib/audiences.mjs";
-import { draftHasContent } from "../src/lib/creation-draft.js";
 import { STARTING_LINE_COUNT, startingLine } from "../src/lib/writing-prompts.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
@@ -553,11 +554,39 @@ check("最多留 24 条", normalizeAudiences(Array.from({ length: 40 }, (_, i) =
 check("中文按非空白字符数", countWords("一二三 四五\n六") === 6, String(countWords("一二三 四五\n六")));
 check("readStats 用的是同一个口径", readStats("字".repeat(400)).words === countWords("字".repeat(400)));
 check("太短的不报预计时长", readStats("只有一句话") === null);
-// ⚠️ 空草稿必须判成「没内容」：自动保存拿它当依据决定写不写，判错了就会在编辑器还空着的
-// 时候把上一篇没保存的稿子覆盖成空。
-check("标题正文都空 = 没内容", draftHasContent({ title: "  ", body: "\n" }) === false);
-check("只有标题也算有内容", draftHasContent({ title: "先起个名", body: "" }) === true);
-check("null 不炸", draftHasContent(null) === false);
+/**
+ * ⚠️ **草稿缓冲（`lib/creation-draft.js`）连同弹层里的编辑器一起删掉了。**
+ * 它存在的唯一理由是「正在写、还没入库的那一篇**此刻没有家**」——
+ * 写作搬到项目页之后，稿子从第一秒起就在 D1 里，这个前提不成立了。
+ * 这一条钉的是**它没有偷偷长回来**：要再开第二处用 localStorage 存内容的例外，
+ * 得先回答「这份数据除了这里还有没有别的家」。
+ */
+check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../src/lib/creation-draft.js", import.meta.url)));
+
+/**
+ * ⚠️ **写作只有一个地方。** 这两条钉的是「弹层里的编辑器没有长回来」：
+ * 同一件事（写字）曾经有两个界面，而那两个界面的能力还不一样
+ *（项目页有素材栏、发布准备、阶段推进，弹层没有）。
+ */
+{
+  const dialog = await fs.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
+  check("创作弹层里没有编辑器屏了", !/screen === "editor"/.test(dialog));
+  check("创作弹层不再自己往库里存稿", !/creationApi\.create\(\{\s*kind: "draft"/.test(dialog),
+    "起稿一律走 lib/start-writing.js，别在这儿再开一条");
+}
+
+/**
+ * ⚠️ **平台名单和 Worker 那份必须逐字一致。**
+ * 对不上不报错：Worker 会把认不出的平台 filter 掉然后静默不写那一个，
+ * 界面上看不出任何异常，只是稿子永远不来。
+ */
+{
+  const values = await fs.readFile(new URL("../../worker/src/lib/values.js", import.meta.url), "utf8");
+  const inWorker = values.match(/PLATFORMS = new Set\(\[([^\]]+)\]/)?.[1] || "";
+  const names = [...inWorker.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  check("前端平台名单 = Worker 那份", names.length > 0 && JSON.stringify(names) === JSON.stringify(PLATFORMS),
+    `worker=${names.join("/")} · workbench=${PLATFORMS.join("/")}`);
+}
 // 起始句不是一份写死的巨型数组，而是三个独立语义库的组合；数量必须真的过“数千”这条线。
 check("内置起始句超过两千条", STARTING_LINE_COUNT >= 2000, String(STARTING_LINE_COUNT));
 check("起始句能带上当前主题", startingLine({ topic: "独立思考", seed: "fixed" }).startsWith("关于“独立思考”"));

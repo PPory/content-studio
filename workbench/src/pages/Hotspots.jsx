@@ -72,10 +72,10 @@ export function Hotspots({ onIntake }) {
   const [tab, setTab] = useState("boards");
   /**
    * 种子：这条链的新起点（`docs/工作流.md`）。
-   * ⚠️ **反应清单从 Worker 来**（`api.seeds()` 的响应里带 `reactions`），前端不写死。
+   * ⚠️ **反应清单从 Worker 来**（`api.seeds()` 的响应里带 `reactionGroups`），前端不写死。
    * ⚠️ **`seeded` 是已经反应过的那些 url**——不标出来的话你每天扫这一批会重复反应同一条。
    */
-  const [seedInfo, setSeedInfo] = useState({ reactions: [], seeded: new Set() });
+  const [seedInfo, setSeedInfo] = useState({ groups: [], seeded: new Set() });
   const [seeding, setSeeding] = useState(null);   // 正在对哪一条说话
   const [seedBusy, setSeedBusy] = useState(false);
   const [seedError, setSeedError] = useState("");
@@ -84,12 +84,12 @@ export function Hotspots({ onIntake }) {
     try {
       const data = await api.seeds();
       setSeedInfo({
-        reactions: data.reactions || [],
+        groups: data.reactionGroups || [],
         seeded: new Set((data.seeds || []).map((s) => s.source?.url).filter(Boolean)),
       });
     } catch {
       // 种子读不到不该让整页热点跟着挂——这一页的主业是看热点
-      setSeedInfo({ reactions: [], seeded: new Set() });
+      setSeedInfo({ groups: [], seeded: new Set() });
     }
   }, []);
   useEffect(() => { loadSeeds(); }, [loadSeeds]);
@@ -169,7 +169,7 @@ export function Hotspots({ onIntake }) {
 
       <ReactionPicker
         open={!!seeding}
-        reactions={seedInfo.reactions}
+        groups={seedInfo.groups}
         source={seeding ? { title: seeding.title, url: seeding.link } : null}
         busy={seedBusy}
         error={seedError}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { NewContentButton } from "../components/NewContentButton.jsx";
 import { ErrorNote, Loading, MenuButton, PageHeader } from "../components/ui.jsx";
 import { AUTO_CARDS } from "../lib/views.js";
 import { TodayStats } from "./today/TodayStats.jsx";
@@ -16,7 +16,6 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
   const workerReady = config?.worker?.configured;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [creation, setCreation] = useState(null);
 
   const load = useCallback(() => {
     if (!workerReady) return;
@@ -49,19 +48,12 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
           <>
             {result ? <span className="project-total">{pending ? `${pending} 件事等你` : "今天没有内容待办"}</span> : null}
             {/**
-              * ⚠️ **「新建内容」是个下拉，不是直接开弹层。**
-              * 点它原来落在创作弹层的「起点选择」那一屏——整屏只干一件事：问你三选一。
-              * 下拉在**点之前**就把三条路摊开了，选完直接进对应那一屏，
-              * 同一个决定少一次全屏切换。三条起点的真源是 `CreationDialog` 的 `MODES`，
-              * **这儿不抄第二份**。
+              * ⚠️ **四个页面共用同一颗 `NewContentButton`。**
+              * 这儿原来是 `MODES.map(...)` + 一份 `onCreated` 跳转，
+              * 而内容页 / 素材工作台 / 旧总览各有逐行相同的一份——
+              * 改一条起点的走法要改四处，漏掉一处不报错。
               */}
-            {workerReady ? (
-              <MenuButton
-                label="新建内容"
-                icon={IconPlus}
-                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
-              />
-            ) : null}
+            {workerReady ? <NewContentButton onGo={onGo} onChanged={onChanged} /> : null}
           </>
         }
       />
@@ -134,7 +126,7 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
           ) : (
             <div className="today-clear">
               <p>没有正在推进或等待复盘的内容。</p>
-              <button className="btn" onClick={() => setCreation("choose")}>开始一篇新的</button>
+              <NewContentButton onGo={onGo} onChanged={onChanged} label="开始一篇新的" className="btn" />
             </div>
           )}
         </section>
@@ -168,13 +160,6 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
         </section>
       ) : null}
 
-      <CreationDialog
-        open={!!creation}
-        preset={creation}
-        onClose={() => setCreation(null)}
-        onCreated={(draft, project) => { onChanged?.(); onGo("project", project?.id || draft.topicId); }}
-        onTopicCreated={(topic, project) => { onChanged?.(); onGo("project", project?.id || topic.id); }}
-      />
     </>
   );
 }

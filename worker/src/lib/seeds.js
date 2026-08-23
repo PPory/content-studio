@@ -6,12 +6,20 @@
 //（wrangler 的 Text 模块），node 加载不了它——**放那儿就等于这段校验没有测试**。
 // `keepRealPicks` 和 `contextLine` 都是因为同一个原因挪出来的。
 
-import { SEED_REACTIONS, SEED_SOURCE_KINDS, SEED_STATUS } from "./values.js";
+import { SEED_REACTIONS, SEED_REACTION_GROUPS, SEED_SOURCE_KINDS, SEED_STATUS } from "./values.js";
 
 const text = (v) => String(v ?? "").trim();
 
 /** 界面要在**一条种子都没有**的时候就画出选择器，所以这份清单跟着列表响应一起回。 */
 export const seedReactions = () => [...SEED_REACTIONS];
+
+/**
+ * 分组版。**界面画的是这一份**，扁平那份只用来校验。
+ *
+ * ⚠️ **两份都回，但工作台一个字都不许写死。** 分组的组名和条目全在 `values.js`，
+ * 前端抄一份的话，Worker 改了措辞界面还是老的——**而且不报错**。
+ */
+export const seedReactionGroups = () => SEED_REACTION_GROUPS.map((g) => ({ label: g.label, items: [...g.items] }));
 
 export const seedStatuses = () => Object.values(SEED_STATUS);
 

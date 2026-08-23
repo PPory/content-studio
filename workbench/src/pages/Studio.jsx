@@ -28,7 +28,8 @@ import { ACTIONS } from "../components/Reader.jsx";
 import { PlatformGate } from "../components/PlatformGate.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { MaterialVerificationPanel } from "../components/MaterialVerificationPanel.jsx";
-import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { NewContentButton } from "../components/NewContentButton.jsx";
+import { CreationDialog } from "../components/CreationDialog.jsx";
 import { CollectionActions, CollectionOrganizer } from "../components/CollectionOrganizer.jsx";
 import { IconPlus } from "../components/icons.jsx";
 // 展示件搬进 pages/studio/。**页面只留组合和状态边界。**
@@ -65,7 +66,12 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
 
   const [gate, setGate] = useState(null);   // { item, next } 等待选平台
   const [toast, setToast] = useState(null); // { text, undo? }
-  const [creation, setCreation] = useState(null); // choose | topic | blank
+  /**
+   * ⚠️ **这个 state 现在只可能是 `"topic"`。** 选题库工具条上那颗「选题」是
+   * 直接建一条选题（`ListHead` 的 `onCreate("topic")`），它和页头那颗「新建」不是一件事。
+   * 起稿那三条路全归 `NewContentButton` 管了，**别再往这儿加第二个值**。
+   */
+  const [creation, setCreation] = useState(null);
   const [organizerItems, setOrganizerItems] = useState(null);
 
   const [railMode, setRailMode] = useState("notes");
@@ -624,11 +630,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
               <IconPlus aria-hidden="true" stroke={2} />收集
             </button>
           ) : isPipeline ? (
-            <MenuButton
-                label="新建"
-                icon={IconPlus}
-                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
-              />
+            /* 四处共用一颗（`components/NewContentButton.jsx`），别在这儿再拼一份菜单 */
+            <NewContentButton label="新建" onGo={onGo} onChanged={onChanged} onToast={(text) => setToast({ text })} />
           ) : sourceKey === "insights" ? (
             <InsightRunButton run={insightRun.run} onStarted={insightRun.markStarted} />
           ) : null
@@ -844,26 +847,24 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         />
       ) : null}
 
-      <CreationDialog
-        open={!!creation}
-        preset={creation}
-        onClose={() => setCreation(null)}
-        onCreated={(draft, project) => {
-          onChanged?.();
-          onGo("project", project?.id || draft.topicId);
-        }}
-        onTopicCreated={(topic, project) => {
-          onChanged?.();
-          setToast({ text: `选题《${topic.title}》已建立` });
-          onGo("project", project?.id || topic.id);
-        }}
-      />
 
       <CollectionOrganizer
         open={Array.isArray(organizerItems)}
         items={organizerItems || []}
         onClose={() => setOrganizerItems(null)}
         onDone={() => { reload(); onChanged?.(); }}
+      />
+
+      {/* 只剩「新建选题」这一屏。起稿的三条路在 `NewContentButton` 里 */}
+      <CreationDialog
+        open={creation === "topic"}
+        preset="topic"
+        onClose={() => setCreation(null)}
+        onTopicCreated={(topic, project) => {
+          onChanged?.();
+          setToast({ text: `选题《${topic.title}》已建立` });
+          onGo("project", project?.id || topic.id);
+        }}
       />
 
       <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />

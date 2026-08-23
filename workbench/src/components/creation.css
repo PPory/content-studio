@@ -40,8 +40,6 @@
 }
 
 .creation[data-screen="material"],
-.creation[data-screen="editor"] { width: min(1080px, calc(100vw - 48px)); height: min(720px, 86vh); }
-.creation[data-screen="editor"][data-mode="material"] { width: min(1160px, calc(100vw - 48px)); }
 
 /**
  * 访谈是**一栏对话**，所以它比另外两屏窄（880 而不是 1080）：一栏文字宽过 720px 就难读了，
@@ -81,56 +79,18 @@
    ⚠️ **不写死卡高、不用 `margin-top:auto` 把文字沉到底。** 上一版正是这么做的
    （`min-height:142px` + 图标钉左上），于是图标和文字之间挖出一块谁也不属于的空白——
    那才是「难看」的来源，不是配色。现在内容从上往下自然排，卡有多高由字决定。 */
-.creation[data-screen="choose"] { width: min(716px, calc(100vw - 48px)); }
 
 .creation-choose { padding: 16px 20px 24px; }
 .creation-choose__lead { margin: 0 0 12px; color: var(--text-2); font-size: var(--fs-base); }
-.creation-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.creation-mode {
-  display: flex; flex-direction: column; gap: 16px;
-  padding: 16px 16px 16px; text-align: left; cursor: pointer;
-  border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--canvas); color: inherit;
-  transition: transform .16s var(--ease), border-color .16s var(--ease), box-shadow .16s var(--ease), background .16s var(--ease);
-}
 /* hover 时卡片**抬起来并翻白**：从纸底浮到最上层。卡片可以抬，行不行——上一版做成三行时
    用的是横向位移，因为清单抬起来会散成三张卡；现在它本来就是卡。 */
-.creation-mode:hover, .creation-mode:focus-visible {
-  transform: translateY(-2px); border-color: var(--text-1); background: var(--surface); box-shadow: var(--shadow); outline: none;
-}
-.creation-mode__top { display: flex; align-items: flex-start; justify-content: space-between; }
 /* 图标块平时是描边、命中时才填成实心黑：黑块说的是「你在这儿」，
    三个常驻的黑圆块等于三个地方同时在喊 */
-.creation-mode__icon {
-  width: 38px; height: 38px; display: grid; place-items: center;
-  border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface); color: var(--text-1);
-  transition: background .16s var(--ease), color .16s var(--ease), border-color .16s var(--ease);
-}
-.creation-mode__icon svg { width: 19px; height: 19px; }
-.creation-mode:hover .creation-mode__icon, .creation-mode:focus-visible .creation-mode__icon { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.creation-mode__copy { min-width: 0; display: grid; gap: 2px; }
 /* 「想到就写 / 手上有料 / 只有想法」是中文，**不套等宽**（等宽栈里没有中文字形，
    兜底回落到正文字体，看着就是这一行和别处不一个字体） */
-.creation-mode__copy small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
-.creation-mode__copy strong { font-family: var(--font-display); font-size: var(--fs-lg); letter-spacing: -.035em; }
-.creation-mode__copy em { color: var(--text-3); font-size: var(--fs-sm); font-style: normal; line-height: 1.55; }
 /* 键号挂右上角：它是这张卡的编号，不是内容的一部分 */
-.creation-mode__key {
-  width: 22px; height: 22px; flex: none; display: grid; place-items: center;
-  border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface);
-  color: var(--text-3); font: 600 11px/1 var(--font-mono);
-}
-.creation-mode:hover .creation-mode__key, .creation-mode:focus-visible .creation-mode__key { border-color: var(--text-1); color: var(--text-1); }
 
 /* 上次没保存的那篇。夹在标题栏和内容之间，一行说完「有什么 / 多少字 / 什么时候」 */
-.creation-recover {
-  display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 8px 10px 8px 12px;
-  border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--canvas);
-}
-.creation[data-screen="editor"] .creation-recover { margin: 12px 24px 0; }
-.creation-recover > svg { flex: none; width: 18px; height: 18px; color: var(--text-3); }
-.creation-recover__copy { min-width: 0; margin-right: auto; display: grid; gap: 2px; }
-.creation-recover__copy strong { font-size: var(--fs-sm); }
-.creation-recover__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-xs); }
 
 .creation-platform { display: inline-flex; }
 .creation-platform .select__btn { height: 34px; min-width: 126px; justify-content: flex-start; padding: 0 10px; border-radius: var(--r-md); background: var(--canvas); font-size: var(--fs-sm); }
@@ -229,6 +189,44 @@
 .creation-audience__pop button > span { overflow: hidden; text-overflow: ellipsis; }
 .creation-audience__pop button { height: 34px; font-size: var(--fs-sm); }
 .creation-form .creation-audience > span { font-size: var(--fs-2xs); letter-spacing: 0.01em; color: var(--text-3); }
+/**
+ * 素材屏底部的三态：**在生成 / 生成完了 / 还没开始**。
+ * 三个都长在同一个位置（`margin-top: auto` 贴着这一栏的底），
+ * 换态时按钮不跳位——跳位的话人会以为是另一块东西。
+ */
+.creation-generating,
+.creation-generated { margin-top: auto; }
+
+/* 等几十秒是正常的（整篇收齐 + 过真实性闸门），所以这一格必须说清在等什么 */
+.creation-generating {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 10px;
+  padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
+  color: var(--text-2);
+}
+.creation-generating strong { display: block; font-size: var(--fs-sm); color: var(--text-1); }
+.creation-generating small { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+
+.creation-generated {
+  display: grid; gap: 8px; padding: 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface);
+}
+.creation-generated__head { display: flex; align-items: center; gap: 7px; margin: 0; font-size: var(--fs-sm); }
+.creation-generated__head svg { color: var(--st-done-ink); }
+.creation-generated__head em { margin-left: auto; color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-variant-numeric: tabular-nums; }
+/**
+ * ⚠️ **剔掉了哪几条必须在这儿说完。** 待核验的金句和数据不进稿，
+ * 挑了 5 条只用了 3 条——跳进项目页就没地方说了（那一页没有
+ * 「刚才生成时发生了什么」这个概念，Worker 也不存它）。
+ * 全用上时也照实说一句：沉默既可能是「都用了」也可能是「这一行没渲染」。
+ */
+.creation-generated__skip {
+  display: flex; align-items: flex-start; gap: 6px; margin: 0;
+  color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6;
+}
+.creation-generated__skip svg { flex: none; margin-top: 2px; width: 14px; height: 14px; color: var(--st-doing-ink); }
+.creation-generated__skip--ok { color: var(--text-3); }
+.creation-generated__acts { display: flex; justify-content: flex-end; gap: 8px; }
+
 .creation-writing-paths { display: grid; gap: 6px; margin-top: auto; }
 .creation-writing-paths > button { display: grid; grid-template-columns: 34px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .creation-writing-paths > button:hover:not(:disabled) { border-color: var(--text-1); transform: translateY(-1px); }
@@ -242,24 +240,6 @@
 .creation-writing-paths .is-primary small { color: color-mix(in srgb, var(--on-accent) 68%, transparent); }
 .creation-path-arrow { width: 15px; transform: rotate(180deg); }
 
-.creation-editor { min-height: 0; flex: 1; display: flex; }
-.creation-editor__document { position: relative; min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; padding: 0 24px; background: var(--surface); }
-.creation-editor__meta { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
-.creation-editor__title { width: 100%; padding: 16px 2px 12px; border: 0; outline: 0; background: transparent; color: inherit; font: 700 23px/1.25 var(--font-display); letter-spacing: -.035em; }
-.creation-editor__meta .creation-platform .select__pop { right: 0; left: auto; }
-.creation-editor__document > .md-editor { min-height: 0; flex: 1; border: 0; border-radius: 0; }
-.creation-editor__foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 12px; border-top: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-xs); }
-.creation-editor__foot > div { min-width: 0; display: flex; align-items: center; gap: 10px; }
-.creation-editor__foot .btn-quiet { flex: none; }
-/* 事实（字数、留底时间）挨着那颗按钮：按之前最后扫过的就是这一截 */
-.creation-editor__foot > .creation-editor__status { flex: none; gap: 12px; }
-.creation-count { color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; }
-.creation-count b { color: var(--text-1); font: 600 12.5px/1 var(--font-mono); }
-.creation-autosave { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--text-3); font-size: var(--fs-xs); transition: opacity .2s var(--ease); }
-.creation-autosave .dot { width: 6px; height: 6px; }
-/* 还没写回去的那 0.7 秒只是淡一下，不换文案——每敲一个字就闪一次字，比不显示还烦 */
-.creation-autosave.is-dirty { opacity: .45; }
-.creation-autosave.is-bad { color: var(--danger); }
 .creation-generating { position: absolute; z-index: 3; align-self: center; top: 48%; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--shadow-md); }
 .creation-generating > svg { width: 22px; }
 .creation-generating > span { display: grid; gap: 2px; }
@@ -268,25 +248,8 @@
 .spin-soft { animation: creation-pulse 1.1s ease-in-out infinite; }
 @keyframes creation-pulse { 50% { opacity: .35; transform: rotate(10deg) scale(.9); } }
 
-.creation-sources { width: 300px; min-height: 0; flex: none; display: flex; flex-direction: column; padding: 20px 16px 16px; border-left: 1px solid var(--border); background: var(--canvas); }
-.creation-sources > header { display: flex; align-items: flex-start; justify-content: space-between; }
-.creation-sources h3 { margin: 4px 0 0; font-size: var(--fs-lg); }
-.creation-sources > header b { min-width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--on-accent); font: 600 10px/1 var(--font-mono); }
-.creation-sources > p { margin: 10px 0 12px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55; }
-.creation-source-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
-.creation-source-list article { padding: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
-.creation-source-list article > small { color: var(--text-3); font: 600 9px/1.2 var(--font); letter-spacing: 0.01em; }
-.creation-source-list h4 { margin: 6px 0 4px; font-size: var(--fs-sm); line-height: 1.4; }
-.creation-source-list article > p { max-height: 74px; overflow: hidden; margin: 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 /* 展开后按素材里真实的换行排版（多数素材是分条写的，挤成一段就读不出结构了）。
    高度给上限而不是不限：一条几千字的复盘能把右栏撑成一根长条，别的素材全被挤出视野 */
-.creation-source-list article > p[data-open="true"] {
-  display: block; max-height: 320px; overflow-y: auto; white-space: pre-wrap;
-  margin-top: 2px; padding-right: 4px;
-}
-.creation-source-list footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
-.creation-source-list .btn { height: 28px; padding: 0 8px; font-size: var(--fs-2xs); }
-.creation-source-list .icon-btn { width: 28px; height: 28px; }
 
 /* ---- 引用标注：这一条素材进正文了没有 -----------------------------------
 
@@ -295,41 +258,8 @@
    留白和实心块。何况「用过了」这件事已经有两个说法（序号反白 + 「已用 N 处」），
    再加一道线是第三遍，三样东西叠在一起就是截图里那种杂乱。
 
-   选中态也不用外发光的圈：圈是浮在卡片外面的一层，而「选中」说的是这张卡本身。
-   直接换底色——**和正文里那句的底纹是同一个蓝**，两边一眼就串得起来。 */
-.creation-source-list article { transition: background-color .12s, border-color .12s; }
-.creation-source-list article[data-used="true"] { cursor: pointer; }
-.creation-source-list article[data-used="true"]:hover { border-color: var(--border-strong); }
-.creation-source-list article[data-active="true"],
-.creation-source-list article[data-active="true"]:hover {
-  border-color: var(--cite-line);
-  background: var(--cite-wash);
-}
-/* 序号是正文脚标的对照凭据，所以它得比后面那串类型/核验状态显眼一档 */
-.creation-source__no { color: var(--text-2); }
-.creation-source-list article[data-used="true"] .creation-source__no {
-  display: inline-grid; place-items: center; min-width: 15px; height: 15px; padding: 0 2px;
-  border-radius: var(--r-sm); background: var(--text-1); color: var(--surface);
-}
-.creation-source__used { display: block; margin-top: 4px; color: var(--text-2); letter-spacing: .04em; }
 
-.creation-source__more {
-  display: flex; align-items: center; gap: 2px; margin-top: 6px; padding: 0;
-  border: 0; background: transparent; color: var(--text-3); font-size: var(--fs-2xs); cursor: pointer;
-}
-.creation-source__more:hover { color: var(--text-1); }
-.creation-source__more svg { width: 12px; height: 12px; transition: transform .15s; }
-.creation-source__more svg[data-open="true"] { transform: rotate(180deg); }
 
-.creation-sources__lede b { color: var(--text-1); }
-.creation-sources__recheck {
-  display: flex; align-items: center; gap: 6px; width: 100%; margin: -4px 0 12px;
-  padding: 6px 8px; border: 1px dashed var(--border-strong); border-radius: var(--r-ctl);
-  background: transparent; color: var(--text-2); font-size: var(--fs-xs); text-align: left; cursor: pointer;
-}
-.creation-sources__recheck:hover:not(:disabled) { border-style: solid; background: var(--surface); color: var(--text-1); }
-.creation-sources__recheck:disabled { cursor: default; opacity: .6; }
-.creation-sources__recheck svg { width: 13px; height: 13px; flex: none; }
 
 /* ⚠️ **这三个值定义了整块访谈屏的对齐轴，改一个就要几处一起对。**
    所以写成变量而不是各处手抄一个数——手抄的那一版就是下面那条注释记的事故。 */
@@ -456,12 +386,10 @@
 
 @media (max-width: 800px) {
   .creation-scrim { padding: 12px; }
-  .creation, .creation[data-screen="choose"], .creation[data-screen="material"], .creation[data-screen="editor"], .creation[data-screen="interview"], .creation[data-screen="editor"][data-mode="material"] { width: calc(100vw - 24px); }
-  .creation-modes, .creation-form__grid, .creation-material-workspace { grid-template-columns: 1fr; }
-  .creation-material-plan, .creation-sources { display: none; }
+  .creation, .creation[data-screen="material"], .creation[data-screen="interview"] { width: calc(100vw - 24px); }
+  .creation-form__grid, .creation-material-workspace { grid-template-columns: 1fr; }
+  .creation-material-plan { display: none; }
   .creation-material-browser { border-right: 0; }
-  /* 收掉的是那句说明，**不是字数和留底状态**——正在写的时候那两个才是要看的 */
-  .creation-editor__foot > div:first-child span { display: none; }
 }
 
 /* 起稿时被剔掉的素材（待核验的金句/数据不进稿）。

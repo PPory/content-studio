@@ -317,6 +317,8 @@ CREATE TABLE IF NOT EXISTS seeds (
   updated_at   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_seeds_status ON seeds(status, updated_at);
+-- 项目详情页每次打开都按 draft_id 反查种子（「这篇是从哪句话来的」），走这条索引
+CREATE INDEX IF NOT EXISTS idx_seeds_draft ON seeds(draft_id);
 
 -- ⚠️ **没有 task_key，是有意的。** 对同一条热点反应两次是**合法的**——
 -- 那是两个不同角度，不该被去重挡住。防误双击是前端的事。

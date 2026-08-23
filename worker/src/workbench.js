@@ -48,7 +48,7 @@ import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
 import { draftReadyToFinish, getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
-import { mapSeed, normalizeSeedInput, normalizeSeedPatch, seedCounts, seedReactions } from "./lib/seeds.js";
+import { mapSeed, normalizeSeedInput, normalizeSeedPatch, seedCounts, seedReactionGroups, seedReactions } from "./lib/seeds.js";
 import {
   MATERIAL_LIBRARY_CTE,
   MATERIAL_LIBRARY_STAGES,
@@ -314,6 +314,11 @@ export async function handleWorkbench(request, env, ctx, url) {
     const projectReviewMatch = path.match(/^projects\/(.+)\/review$/);
     if (projectReviewMatch && request.method === "POST") {
       return await submitProjectReview(env, projectReviewMatch[1], await request.json());
+    }
+
+    const projectMaterialsMatch = path.match(/^projects\/(.+)\/materials$/);
+    if (projectMaterialsMatch && request.method === "POST") {
+      return await updateProjectMaterials(env, projectMaterialsMatch[1], await request.json());
     }
 
     const projectTransitionMatch = path.match(/^projects\/(.+)\/transition$/);
@@ -750,6 +755,9 @@ async function listSeeds(env, url) {
     // 计数**按全部行算，不按筛选后的算**——不然点进「写了」那一档，
     // 「攒着 12」会变成 0，看着像东西全没了。
     counts: seedCounts(rows),
+    // ⚠️ 两份都回：`reactionGroups` 是界面画的那一份，`reactions` 拍平的这份
+    // 留给校验和旧标签页。**扁平那份是从分组算出来的**，不存在对不上的可能。
+    reactionGroups: seedReactionGroups(),
     reactions: seedReactions(),
   });
 }
@@ -813,6 +821,55 @@ async function deleteSeed(env, id) {
 }
 
 // 项目阶段只允许通过命令推进。前端不直接写状态值，非法跨级会在这里被拒绝。
+/**
+ * 给项目挂上 / 摘掉素材。
+ *
+ * ⚠️ **只有点过「用这条」的才进来，AI 挑出来的候选不自动挂。**
+ * `topic_materials` 的语义是**「这篇真的用了它」**，右栏的「已用 N 处」、
+ * 归档时的证据链、复盘时的「有效故事」标记全建立在这个意思上。
+ * 自动挂等于把「我用了」偷偷换成「系统猜它相关」——**那三处从此都在说假话**。
+ *
+ * ⚠️ **必须有 `remove`。** 挂错一条却没有退路，比不给这个功能更糟：
+ * 你会为了删掉一条素材去动整个项目。
+ */
+async function updateProjectMaterials(env, rawId, body) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+  // 独立稿件没有选题，也就没有 topic_materials 这张关联表可挂——照实说，别静默什么都不做
+  if (id.startsWith("draft:")) {
+    return json({ ok: false, error: "这是一篇独立稿件，还没有选题，挂不了素材", hint: "先在项目里建选题，或者从素材开始起稿" }, 409);
+  }
+  if (!isId(id)) return json({ ok: false, error: "project id 不合法" }, 400);
+
+  const ids = (v) => [...new Set((Array.isArray(v) ? v : []).map((x) => String(x || "")).filter(isId))].slice(0, 30);
+  const add = ids(body?.add);
+  const remove = ids(body?.remove);
+  if (!add.length && !remove.length) return json({ ok: false, error: "没有要挂上或摘掉的素材" }, 400);
+
+  const topic = await first(env, "SELECT id FROM topics WHERE id = ?", id);
+  if (!topic) return json({ ok: false, error: "内容项目不存在" }, 404);
+
+  // 挂之前先确认素材真的还在：挂一条已经被删掉的行，界面上会多出一张点不开的卡
+  if (add.length) {
+    const holes = add.map(() => "?").join(",");
+    const found = await all(env, `SELECT id FROM materials WHERE id IN (${holes})`, ...add);
+    if (found.length !== add.length) return json({ ok: false, error: "有素材已经不存在，请重新挑一次" }, 409);
+  }
+
+  const ops = [];
+  for (const materialId of add) {
+    ops.push(stmt(env, "INSERT OR IGNORE INTO topic_materials (topic_id, material_id) VALUES (?, ?)", id, materialId));
+  }
+  for (const materialId of remove) {
+    ops.push(stmt(env, "DELETE FROM topic_materials WHERE topic_id = ? AND material_id = ?", id, materialId));
+  }
+  // 挂素材是对这个项目动了手，时间戳跟着走——否则列表页的排序会说它「很久没动了」
+  ops.push(stmt(env, "UPDATE topics SET updated_at = ? WHERE id = ?", now(), id));
+  await batch(env, ops);
+
+  return json({ ok: true, project: await getContentProject(env, id) });
+}
+
 async function transitionProject(env, rawId, body) {
   let id;
   try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }

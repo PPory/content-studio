@@ -7,6 +7,7 @@ import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
+import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
@@ -149,6 +150,8 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
+  // 挂/摘素材自己一个 busy：它和阶段推进互不相干，共用会让整条操作条一起变灰
+  const [materialBusy, setMaterialBusy] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
   const cursor = useRef(null);
   const selectedDraftRef = useRef("");
@@ -228,6 +231,29 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
       setError(e);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * 挂上 / 摘掉一条素材。
+   *
+   * ⚠️ **和 `transition` 分开一个 busy 状态。** 共用的话，挂一条素材期间
+   * 整条操作条（去排版、写完了、退回写作）会一起变灰——而那两件事互不相干。
+   *
+   * ⚠️ **不先保存正文**：`transition` 那条要保存是因为它会锁住正文，
+   * 而挂素材不动正文一个字。顺手加一次保存等于给一个无关动作绑上一次失败可能。
+   */
+  async function changeMaterials(change) {
+    if (materialBusy) return;
+    setMaterialBusy(true); setError(null);
+    try {
+      const result = await api.updateProjectMaterials(projectId, change);
+      acceptProject(result.project);
+      onChanged?.();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setMaterialBusy(false);
     }
   }
 
@@ -444,10 +470,17 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
               <p>先在右边选一篇设为母版。确认后，项目阶段和后续变体都会围绕它推进。</p>
             </div>
           ) : (
+            /**
+             * ⚠️ **这儿不再画第二颗「建立主稿」。**
+             * 顶栏那颗（`PRIMARY_ACTION.策划中`）走的是**同一个 `start-writing`**——
+             * 一个动作两颗实心黑、名字还不一样（「建立主稿」/「建立空白主稿」），
+             * 看到的人第一反应是去猜它们有什么区别，而答案是没有区别。
+             * 和撤掉的那颗「载入排版工具」是同一类，处理方式也一样：**留顶栏那一颗**
+             *（每个阶段主操作固定的位置），这儿只说清楚该按哪儿。
+             */
             <div className="project-draft__empty">
               <h2>简报已经建好，主稿还没开始</h2>
-              <p>建立主稿后，这个地址会一直保留；关闭再打开，仍然回到同一篇内容。</p>
-              <button className="btn btn-primary" onClick={() => transition("start-writing")} disabled={busy}><IconPlus aria-hidden="true" />建立空白主稿</button>
+              <p>点右上角的<b>「{PRIMARY_ACTION[project.stage]?.label || "建立主稿"}」</b>开始写。建好之后这个地址会一直保留；关闭再打开，仍然回到同一篇内容。</p>
             </div>
           )}
           <ErrorNote error={error} what="更新内容项目" />
@@ -493,6 +526,12 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
                 ))}
               </section>
             ) : null}
+            {/**
+              * ⚠️ **种子块排在素材上面，因为它回答的是更前面那个问题。**
+              * 素材说「凭什么信我」，种子说「我要说什么」——写不下去的时候
+              * 回来读的是后者。没有种子的项目整块不画（组件里自己判）。
+              */}
+            <ProjectSeed seed={project.seed} />
             <ProjectRefs
               materials={project.materials || []}
               canInsert={draftEditable}
@@ -507,6 +546,15 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
               }}
               loading={loading}
               onReload={load}
+              /**
+               * 「找相关素材」拿什么去找。**优先那句话本身**——你要找的是
+               * 「支持这个判断的依据」，不是「和标题字面像的东西」。
+               * 没有种子时退回核心观点，再退回标题。
+               */
+              query={project.seed?.take || project.brief?.viewpoint || project.title || ""}
+              busy={materialBusy}
+              onAttach={(id) => changeMaterials({ add: [id] })}
+              onDetach={(id) => changeMaterials({ remove: [id] })}
               onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}
             />
           </aside>

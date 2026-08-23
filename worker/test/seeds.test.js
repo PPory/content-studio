@@ -11,10 +11,11 @@ import {
   normalizeSeedInput,
   normalizeSeedPatch,
   seedCounts,
+  seedReactionGroups,
   seedReactions,
   seedStatuses,
 } from "../src/lib/seeds.js";
-import { SEED_REACTIONS, SEED_STATUS } from "../src/lib/values.js";
+import { SEED_REACTIONS, SEED_REACTION_GROUPS, SEED_STATUS } from "../src/lib/values.js";
 
 test("没有那句话就不是种子", () => {
   assert.throws(() => normalizeSeedInput({ sourceTitle: "某篇文章", sourceUrl: "https://x/1" }), /还没写你的看法/);
@@ -99,20 +100,57 @@ test("计数三档都在，空的也报 0", () => {
 /**
  * ⚠️ **清单跟着响应回，工作台绝不抄第二份。**
  * `sources.js` 那几处 `states` 抄了一份，CLAUDE.md 里记着「对不上就是 400」。
- * 而这七条还会边用边调措辞——抄一份的话改完那边还是老的，**并且不报错**。
+ * 而这些措辞还会边用边调——抄一份的话改完那边还是老的，**并且不报错**。
+ *
+ * ⚠️ **这里不钉条数。** 钉了的话，以后补一条反应这条就红，而代码完全正确；
+ * 要钉的是**不变量**：分组拍平 === 扁平清单、逐条不同、返回的是副本。
  */
 test("反应清单就是 values.js 那一份", () => {
   assert.deepEqual(seedReactions(), [...SEED_REACTIONS]);
-  assert.equal(seedReactions().length, 7);
-  // 逐条不同：七行一样的提示语等于没有提示
-  assert.equal(new Set(seedReactions()).size, 7);
-  // 前两条是最常用也最好下笔的，顺序有意义
-  assert.match(seedReactions()[0], /同意/);
-  assert.match(seedReactions()[1], /不同意/);
+  // 逐条不同：一模一样的两行提示语等于少了一条
+  assert.equal(new Set(seedReactions()).size, seedReactions().length);
   // 返回的是副本，调用方改不动真源
   const copy = seedReactions();
   copy.push("外来的");
-  assert.equal(seedReactions().length, 7);
+  assert.equal(seedReactions().length, SEED_REACTIONS.length);
+});
+
+/**
+ * ⚠️ **扁平清单是从分组算出来的，不是手写的第二份。**
+ * 两份手写清单迟早对不上，那时的症状是「界面上能选的某一条，存进去被清空了」
+ *（`normalizeSeedInput` 认不出就清空）——**两边都不报错**。
+ */
+test("分组拍平之后就是扁平清单", () => {
+  const groups = seedReactionGroups();
+  assert.deepEqual(groups.flatMap((g) => g.items), [...SEED_REACTIONS]);
+  assert.deepEqual(groups.map((g) => g.label), SEED_REACTION_GROUPS.map((g) => g.label));
+  // 每组都要有名字、都要有条目——空组在界面上就是一个孤零零的小标题
+  for (const g of groups) {
+    assert.ok(g.label.trim(), "分组必须有名字");
+    assert.ok(g.items.length, `「${g.label}」是空的`);
+  }
+  // 返回的是副本，调用方改不动真源
+  seedReactionGroups()[0].items.push("外来的");
+  assert.deepEqual(seedReactionGroups().flatMap((g) => g.items), [...SEED_REACTIONS]);
+});
+
+/**
+ * 第一版七条**全都假设触发物是「一个观点」**，于是
+ * 「DeepSeek 发布了 V4-Flash，我想写」一条都选不上——你没法「同意」一件事实。
+ * 这条钉的就是那个缺口被补上了，**而且旧的七条一条没删**（库里已有的种子还得认）。
+ */
+test("事件类反应在清单里，而且旧的七条一条没少", () => {
+  const flat = seedReactions();
+  for (const kept of [
+    "同意，而且我有个例子", "不同意，因为…", "这让我想起另一件事",
+    "这解释了我一直没想明白的", "这个说法有个前提没说出来",
+    "我以前也这么以为，后来发现…", "说得对，但只在某种情况下成立",
+  ]) {
+    assert.ok(flat.includes(kept), `旧反应「${kept}」不见了，库里已有的种子会被清空`);
+  }
+  const eventGroup = seedReactionGroups().find((g) => /事|发布/.test(g.label));
+  assert.ok(eventGroup, "没有「对着一件事」那一组，发布类的东西还是没得选");
+  assert.ok(eventGroup.items.some((x) => /试了/.test(x)), "缺「我试了」——体感是只有你有的东西");
 });
 
 test("状态清单和 values.js 对得上", () => {

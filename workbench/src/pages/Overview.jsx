@@ -42,7 +42,7 @@ import {
   IconClipboardList,
 } from "../components/icons.jsx";
 import { BackupDrawer } from "../components/BackupDrawer.jsx";
-import { CreationDialog, MODES } from "../components/CreationDialog.jsx";
+import { NewContentButton } from "../components/NewContentButton.jsx";
 import { setOpenTarget } from "../lib/open-target.js";
 
 /**
@@ -94,7 +94,6 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
   const plan = usePlan(config?.vault?.configured);
   // 「新建」和侧栏常驻的「入库」不是一回事：入库是**存一条素材**（已经有的东西），
   // 新建是**开一篇新的**（还不存在的东西）。同一个动作两个入口才该合并，这是两个动作。
-  const [creation, setCreation] = useState(null);
 
   return (
     <>
@@ -111,15 +110,9 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
                 {pending ? `${pending} 件事等你` : "手上没有待办"}
               </div>
             ) : null}
-            {/* 和「创作」页右上角是**同一个按钮、同一个弹层**（`preset` 不传就是选择页）。
+            {/* 和别处是**同一颗按钮**（`components/NewContentButton.jsx`）。
                 复制一份简化版的话，以后加一种创建方式会漏掉这一处。 */}
-            {workerReady ? (
-              <MenuButton
-                label="新建内容"
-                icon={IconPlus}
-                items={MODES.map((m) => ({ key: m.key, icon: m.icon, title: m.title, hint: m.hint, onPick: () => setCreation(m.key) }))}
-              />
-            ) : null}
+            {workerReady ? <NewContentButton onGo={onGo} /> : null}
           </>
         }
       />
@@ -173,17 +166,6 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
 
       {/* 建完直接跳去那一条。**不留在总览**：新建完最想做的是接着写，
           而总览上那几个计数要等下一轮心跳才会变，留在这儿看着像没建成功。 */}
-      <CreationDialog
-        open={!!creation}
-        preset={creation}
-        onClose={() => setCreation(null)}
-        onCreated={(draft, project) => {
-          onGo("project", project?.id || draft.topicId);
-        }}
-        onTopicCreated={(topic, project) => {
-          onGo("project", project?.id || topic.id);
-        }}
-      />
     </>
   );
 }

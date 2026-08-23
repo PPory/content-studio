@@ -1,7 +1,7 @@
 // 共用的小件。错误一律走 <Note>，它会把服务端的 hint 一起显示出来——
 // 只报告问题（「连接失败」）而不给下一步，是这个项目明确要避免的反馈方式。
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -28,6 +28,7 @@ import {
   IconFlag,
   IconInbox,
   IconList,
+  IconLoader2,
   IconShieldCheck,
   IconMessageQuestion,
   IconNotebook,
@@ -95,8 +96,16 @@ export function StatCard({ icon: Icon, label, value, unit, delta, deltaTone = ""
  * 恰恰在那句「先挑依据」和「边聊边梳」上。
  *
  * 键盘规矩和 `Select` 一套：上下键只是**在看**，回车才算选中；Esc 和点外面都收。
+ *
+ * ⚠️ **分节靠 `item.section` 起一个小标题，不做二级飞出菜单。**
+ * 「空白文章」要先问发哪个平台（主稿的平台建完就改不了），飞出菜单意味着
+ * 一个动作要悬停两层、还得处理鼠标斜着穿过去那套判定——**这个项目里没有先例，
+ * 也不该为一个五选一开这个头**。同一层里分节，一眼看全。
+ *
+ * `busy` 是给「点完要等一下才跳走」的入口用的（建项目那条）：不给的话
+ * 用户会以为没点上，然后再点一次——那就是两个项目。
  */
-export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" }) {
+export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end", busy = false, className = "btn btn-primary" }) {
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(-1);
   const ref = useRef(null);
@@ -116,7 +125,8 @@ export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" 
   return (
     <div className="menu-btn" ref={ref} data-align={align}>
       <button
-        className="btn btn-primary"
+        className={className}
+        disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={ariaLabel || label}
@@ -128,7 +138,7 @@ export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" 
           setAt(0);
         }}
       >
-        {Icon ? <Icon aria-hidden="true" stroke={2} /> : null}
+        {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : Icon ? <Icon aria-hidden="true" stroke={2} /> : null}
         {label}
       </button>
 
@@ -148,8 +158,9 @@ export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" 
           {items.map((item, i) => {
             const RowIcon = item.icon;
             return (
+              <Fragment key={item.key}>
+                {item.section ? <p className="menu-btn__section">{item.section}</p> : null}
               <button
-                key={item.key}
                 className="menu-btn__row"
                 role="menuitem"
                 data-at={i === at ? "" : undefined}
@@ -167,6 +178,7 @@ export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end" 
                     它是装饰，所以 `aria-hidden`——读屏念的是标题和说明。 */}
                 <i className="menu-btn__plus" aria-hidden="true">+</i>
               </button>
+              </Fragment>
             );
           })}
         </div>

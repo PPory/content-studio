@@ -7,6 +7,7 @@ import { all, first } from "./db.js";
 import { DRAFT_STATUS, DRAFT_WORKFLOW, TOPIC_STATUS } from "./values.js";
 import { releaseOptions, releasePackage } from "./release-package.js";
 import { winningFeedbackPlan } from "./project-review.js";
+import { mapSeed } from "./seeds.js";
 
 export const PROJECT_STAGES = Object.freeze([
   "策划中",
@@ -318,7 +319,7 @@ function mapSource(row) {
   };
 }
 
-export function buildContentProject({ topic = null, drafts = [], materials = [], sources = [] } = {}) {
+export function buildContentProject({ topic = null, drafts = [], materials = [], sources = [], seed = null } = {}) {
   const orderedDrafts = [...drafts].sort(newestFirst);
   const selected = chooseMasterDraft(topic, orderedDrafts);
   const state = deriveProjectStage({ topic, drafts: orderedDrafts, materials, master: selected.master, masterBlocker: selected.blocker });
@@ -340,6 +341,14 @@ export function buildContentProject({ topic = null, drafts = [], materials = [],
       priority: topic.priority || "",
     } : null,
     topic: mapTopic(topic),
+    /**
+     * 这篇是从哪颗种子来的。**没有种子的项目这里是 null，界面整块不画**——
+     * 画一个写着「无来源」的空壳等于在每一页上重复一句零信息的话。
+     *
+     * ⚠️ **它必须从库里反查，不能靠前端交接。** 交接条（`open-target.js`）是一次性的，
+     * 而你写到一半刷新是常事——刷完来源就没了，而那正是你最需要看一眼它的时候。
+     */
+    seed: seed ? mapSeed(seed) : null,
     masterDraft: mapDraft(selected.master),
     variants: selected.variants.map(mapDraft),
     materials: materials.map(mapMaterial),
@@ -438,7 +447,7 @@ export async function listContentProjects(env, { stage = "", cursor = "", pageSi
 export async function getContentProject(env, projectId) {
   if (String(projectId).startsWith("draft:")) {
     const draft = await first(env, "SELECT * FROM drafts WHERE id = ? AND topic_id IS NULL", String(projectId).slice(6));
-    return draft ? buildContentProject({ drafts: [draft] }) : null;
+    return draft ? buildContentProject({ drafts: [draft], seed: await seedOfDrafts(env, [draft]) }) : null;
   }
 
   const topic = await first(env, "SELECT * FROM topics WHERE id = ?", projectId);
@@ -450,5 +459,22 @@ export async function getContentProject(env, projectId) {
     all(env, `SELECT i.* FROM topic_inbox ti JOIN inbox i ON i.id = ti.inbox_id
       WHERE ti.topic_id = ? ORDER BY i.updated_at DESC, i.id DESC`, projectId),
   ]);
-  return buildContentProject({ topic, drafts, materials, sources });
+  return buildContentProject({ topic, drafts, materials, sources, seed: await seedOfDrafts(env, drafts) });
+}
+
+/**
+ * 这些稿子里，有没有哪一篇是某颗种子长出来的。
+ *
+ * ⚠️ **查的是 `seeds.draft_id`，一次查完不逐篇问**——平台变体常有三四篇，
+ * 逐篇一次 D1 调用会顶到 subrequest 预算上，而这条路每开一次项目页就走一遍。
+ *
+ * 一个项目理论上只挂得上一颗种子（种子那侧「写了」是一次性的），
+ * 真撞上多颗时取最新那颗——**不报错**：这是记账问题，不该让整页打不开。
+ */
+async function seedOfDrafts(env, drafts = []) {
+  const ids = drafts.map((d) => d?.id).filter(Boolean);
+  if (!ids.length) return null;
+  const holes = ids.map(() => "?").join(",");
+  const rows = await all(env, `SELECT * FROM seeds WHERE draft_id IN (${holes}) ORDER BY updated_at DESC LIMIT 1`, ...ids);
+  return rows[0] || null;
 }

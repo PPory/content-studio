@@ -32,7 +32,6 @@ page.on("pageerror", (error) => errors.push(String(error)));
 page.on("console", (message) => {
   if (message.type() === "error" && !/Failed to load resource/i.test(message.text())) errors.push(message.text());
 });
-await page.addInitScript(() => localStorage.removeItem("workbench:creation-draft:v1"));
 
 let nudges = 0;
 const requests = [];
@@ -92,11 +91,30 @@ function editorValue(selector) {
 }
 
 try {
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
-  await page.click(".page-header__aside .btn-primary");
-  await page.waitForSelector(".creation-mode");
-  await page.keyboard.press("1");
-  await page.waitForSelector(".creation-editor .cm-content");
+  /**
+   * ⚠️ **上半段原来走的是创作弹层里那块编辑器，那一屏整个撤了。**
+   * 写作只有一个地方（`#/project/:id`），所以「新稿编辑器」不再是一个独立的东西——
+   * 这一段现在和下半段一样，测的都是**真正在用的那块编辑器**，只是入口不同：
+   * 这儿从项目页进，下半段从稿件库的阅读区进。
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".act-card, .project-table, .empty", { timeout: 20000 });
+  /**
+   * ⚠️ **必须挑一个正文可编辑的项目。**
+   * 「推动一下」（`WritingAssist`）只在 `writingEditable` 时才画——待发布、待复盘那几档
+   * 正文是只读的。盲点第一个的话，这一段会挂在「等 `.writing-assist__trigger`」上超时，
+   * 看着像功能坏了，而其实只是打开了一篇锁住的稿子。
+   */
+  const opened = await page.evaluate(() => {
+    const card = [...document.querySelectorAll(".act-card")].find((c) => /继续写作|开始写/.test(c.textContent));
+    const go = card?.querySelector(".act-card__go") || card;
+    if (go) { go.click(); return "卡片"; }
+    const row = [...document.querySelectorAll(".project-table tbody tr")].find((r) => /写作中/.test(r.textContent));
+    if (row) { row.click(); return "表格行"; }
+    return "";
+  });
+  assert(opened, "库里此刻没有一个「写作中」的项目，这一段验不了（不是缺陷，换条数据再跑）");
+  await page.waitForSelector(".project-draft .cm-content", { timeout: 20000 });
 
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__result");
@@ -116,7 +134,7 @@ try {
   await page.waitForFunction((text) => document.querySelector(".cm-content")?.textContent.includes(text), secondStarter);
 
   // 新稿编辑器同样支持选区工具条；Esc 只收起工具条，不改正文。
-  await page.click(".creation-editor .cm-content");
+  await page.click(".project-draft .cm-content");
   await page.keyboard.press("Control+Home");
   for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
   await page.waitForSelector(".text-revision-menu");
@@ -126,7 +144,7 @@ try {
   await page.waitForSelector(".text-revision-menu", { state: "detached" });
 
   // 光标放在正文中间：请求位置、浮层位置和等待动画必须都以真实界面为准。
-  await page.click(".creation-editor .cm-content");
+  await page.click(".project-draft .cm-content");
   await page.keyboard.press("Control+Home");
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
@@ -209,9 +227,21 @@ try {
 
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
   await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".wall-card__open, .empty", { timeout: 25000 });
-  assert((await page.$$(".wall-card__open")).length > 0, "稿件库没有可用于验证的稿件");
-  await page.click(".wall-card__open");
+  /**
+   * ⚠️ **浏览层早就从卡片墙换成列表行了**（`.wall-card__open` → `.doc-row__open`），
+   * 这几行一直指着一个不存在的类名——**这个脚本没进 `package.json`，
+   * 所以烂了很久也没人发现**。要加断言就顺手把它跑一遍。
+   *
+   * 挑一条**真有正文**的：后面几条量的是编辑器里的字，空稿会让它们全部落空。
+   */
+  await page.waitForSelector(".doc-row__open, .empty", { timeout: 25000 });
+  assert((await page.$$(".doc-row__open")).length > 0, "稿件库没有可用于验证的稿件");
+  const pickDraft = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".doc-row")];
+    const full = rows.find((r) => (r.querySelector(".doc-row__excerpt")?.textContent || "").trim().length > 10);
+    return rows.indexOf(full || rows[0]);
+  });
+  await page.click(`.doc-row__open >> nth=${Math.max(pickDraft, 0)}`);
   await page.waitForSelector('.doc-actions button:has-text("编辑")', { timeout: 25000 });
   await page.click('.doc-actions button:has-text("编辑")');
   await page.waitForSelector(".ws-edit .cm-content", { timeout: 8000 });

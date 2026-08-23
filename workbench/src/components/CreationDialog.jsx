@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
-import { cleanGeneratedDraft, creationApi, deriveDraftTitle, formatMaterialQuote, interviewStream } from "../lib/creation-api.js";
-import { clearCreationDraft, loadCreationDraft, saveCreationDraft } from "../lib/creation-draft.js";
-import { countWords, readStats } from "../lib/reading.js";
+import { cleanGeneratedDraft, creationApi, deriveDraftTitle, interviewStream } from "../lib/creation-api.js";
+import { readStats } from "../lib/reading.js";
 import { verificationBadge } from "../lib/sources.js";
-import { MarkdownEditor } from "./MarkdownEditor.jsx";
-import { WritingAssist } from "./WritingAssist.jsx";
+import { PLATFORMS } from "../lib/platforms.js";
+import { startWriting } from "../lib/start-writing.js";
 import { ErrorNote, Select, valueIcon } from "./ui.jsx";
 import {
   IconAlertTriangle,
@@ -13,14 +12,11 @@ import {
   IconCheck,
   IconChevronDown,
   IconFileText,
-  IconExternalLink,
-  IconHistory,
   IconLoader2,
   IconMessageQuestion,
   IconNotebook,
   IconPencil,
   IconPlus,
-  IconRefresh,
   IconSearch,
   IconSend,
   IconSparkles,
@@ -31,26 +27,23 @@ import {
 } from "./icons.jsx";
 import "./creation.css";
 
-const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"];
 /**
  * 打开时落在哪一屏。
- * ⚠️ **`material` / `interview` 要认**：页头那颗「新建」下拉现在直接指定起点，
- * 不认的话它们会落回「起点选择」——用户刚在下拉里选过一次，又被问了一遍。
+ *
+ * ⚠️ **这个弹层里已经没有编辑器了。** 它只剩「起稿准备」：挑素材、访谈、新建选题。
+ * 写作统一在 `#/project/:id`（见 `lib/start-writing.js`）——同一件事（写字）
+ * 曾经有两个界面，而那两个界面的能力还不一样。
+ *
+ * 所以 `blank` 不在这儿：空白文章根本不开弹层，`NewContentButton` 里选完平台
+ * 就直接建项目跳过去了。认不出的 preset 一律当成「从素材开始」，
+ * 而不是退回一个已经不存在的「起点选择」屏。
  */
 const firstScreen = (preset) =>
   preset === "topic" ? "topic"
-  : preset === "blank" ? "editor"
-  : preset === "material" ? "material"
   : preset === "interview" ? "interview"
-  : "choose";
-const newRevisionScope = () => `creation:${crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+  : "material";
 
-/**
- * `seed` = 从种子页「写这个」带过来的那句话。
- * ⚠️ **它只当正文的起点，不当标题**——那句话是你的判断（「不同意，因为…」），
- * 而标题是要打磨的东西。塞进标题框的话你得先删掉它才能起标题，比空着还烦。
- */
-export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopicCreated }) {
+export function CreationDialog({ open, preset, onClose, onStarted, onTopicCreated }) {
   const [screen, setScreen] = useState(firstScreen(preset));
   const [draftMode, setDraftMode] = useState("blank");
   const [title, setTitle] = useState("");
@@ -60,47 +53,31 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
   const [query, setQuery] = useState("");
   const [materials, setMaterials] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftBody, setDraftBody] = useState("");
   const [interviewEvidence, setInterviewEvidence] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [phase, setPhase] = useState("interviewing");
-  const [materialWritingMode, setMaterialWritingMode] = useState("manual");
-  const [insertRequest, setInsertRequest] = useState(null);
-  const [revisionScope, setRevisionScope] = useState(newRevisionScope);
-  // 草稿缓冲：`recover` 是上次没保存的那篇（有就在顶上问一句），`autosave` 是这一篇的存盘状态
-  const [recover, setRecover] = useState(null);
-  const [autosave, setAutosave] = useState({ at: 0, dirty: false, failed: false });
+  /**
+   * AI 起稿的结果：`{ body, title, skipped }`。**它停在素材那一屏上，不跳走。**
+   *
+   * ⚠️ **`skipped` 必须在跳走之前让人看见。** 待核验的金句和数据不进稿，
+   * 挑了 5 条只用了 3 条——不说的话用户以为模型漏用了。跳进项目页再说就晚了：
+   * 那一页没有地方讲「刚才生成时发生了什么」，而 Worker 也不存这件事。
+   */
+  const [generated, setGenerated] = useState(null);
   // 目标读者的预设清单（服务端 config/audiences.json）。取不到就是空数组——
   // 那时这一格退化成一个普通输入框，仍然能填，不挡路
   const [audiences, setAudiences] = useState([]);
-  // 起稿时被剔掉的素材（待核验的金句/数据不进稿）。**必须说出来**，否则用户以为模型漏用了
-  const [draftNotice, setDraftNotice] = useState(null);
-  /**
-   * 引用标注。`citations` 是 Worker 算出来的那一批（起稿时白拿，或点「重新核对」再要一次），
-   * `citeState` 是编辑器回报的**当下**状态——位置跟着编辑挪过了，`stale` 也重算过。
-   *
-   * 两份不是冗余：右侧面板要按当下状态说「已用 2 处」，而重新核对要拿原始那批去比。
-   */
-  const [citations, setCitations] = useState([]);
-  const [citeState, setCiteState] = useState([]);
-  const [citeBusy, setCiteBusy] = useState(false);
-  // `active` 是「此刻在看哪条素材」，`reveal` 是「请正文滚过去」。分开是因为在正文里
-  // 点一句话时只该高亮右边那张卡，不该把已经在眼前的这一句再滚一次
-  const [active, setActive] = useState("");
-  const [reveal, setReveal] = useState(null);
   const abortRef = useRef(null);
   const sessionRef = useRef("");
-  const autosaveTimer = useRef(0);
 
   const close = useCallback(() => {
     abortRef.current?.abort();
     onClose();
   }, [onClose]);
-  const boxRef = useDialog(open, close, { autoFocus: screen !== "editor" });
+  const boxRef = useDialog(open, close, { autoFocus: true });
 
   useEffect(() => {
     if (!open) return;
@@ -109,47 +86,9 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     setScreen(firstScreen(preset));
     setDraftMode("blank");
     setTitle(""); setPlatform("公众号"); setViewpoint(""); setAudience("");
-    setQuery(""); setMaterials([]); setSelected([]); setDraftTitle("");
-    // 带着种子进来时，那句话就是第一段——**种子定下来就等于选题定了**，
-    // 不该再对着一张白纸从头想
-    setDraftBody(seed?.take ? `${seed.take}\n\n` : "");
+    setQuery(""); setMaterials([]); setSelected([]); setGenerated(null);
     setInterviewEvidence(""); setBusy(false); setError(null); setMessages([]); setMessage(""); setPhase("interviewing");
-    setMaterialWritingMode("manual"); setInsertRequest(null);
-    setRevisionScope(newRevisionScope());
-    setAutosave({ at: 0, dirty: false, failed: false });
-    setDraftNotice(null);
-    setCitations([]); setCiteState([]); setCiteBusy(false); setReveal(null); setActive("");
-    setRecover(loadCreationDraft());
-  }, [open, preset, seed?.id]);
-
-  /**
-   * 自动保存。**只在编辑器这一屏、且真有字的时候写**。
-   *
-   * ⚠️ **没字的时候什么都不做，绝不写空值。** 写空值等于「清掉缓冲」——而这一屏在
-   * 刚打开、上面还挂着「接着写上次那篇」的时候正好就是空的，一进来就会把要恢复的东西
-   * 自己抹掉，然后那条提示还挂在屏幕上。缓冲只在两处清：保存进稿件库成功、用户点丢弃。
-   */
-  useEffect(() => {
-    if (!open || screen !== "editor") return;
-    if (!draftTitle.trim() && !draftBody.trim()) return;
-    setAutosave((prev) => ({ ...prev, dirty: true }));
-    // 定时器 id 记在 ref 里：入库成功那一步要把它掐掉再清缓冲，
-    // 否则「敲完最后一个字立刻点保存」会让这一发在清完之后又把缓冲写回去
-    const timer = setTimeout(() => {
-      const at = saveCreationDraft({
-        mode: draftMode,
-        writingMode: materialWritingMode,
-        title: draftTitle,
-        body: draftBody,
-        platform,
-        materials: selected,
-        revisionScope,
-      });
-      setAutosave({ at, dirty: false, failed: !at });
-    }, 700);
-    autosaveTimer.current = timer;
-    return () => clearTimeout(timer);
-  }, [open, screen, draftMode, materialWritingMode, draftTitle, draftBody, platform, selected, revisionScope]);
+  }, [open, preset]);
 
   // 预设清单只取一次。取不到不报错也不挡路：那一格照旧能手打
   useEffect(() => {
@@ -180,40 +119,7 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     return [...messages].reverse().find((item) => item.role === "agent")?.text || "";
   }, [messages, phase]);
 
-  /**
-   * 给标注编号。**编号就是右侧面板里那条素材的序号**——脚标写 3，右边第 3 条就是它，
-   * 中间不需要再有一张对照表。所以面板**不按「用没用上」重排**：排序一变，
-   * 同一条素材的号码就会跟着跳，而号码是用户唯一的对照凭据。
-   *
-   * 匹配不上的（Worker 返回了一条已经不在选中列表里的素材）直接丢掉，不显示无主脚标。
-   *
-   * ⚠️ **必须待在 `if (!open)` 上面**：hook 不能在提前返回之后调用，
-   * 放下面的话弹层一开一关，React 就报「Rendered more hooks than during the previous render」。
-   */
-  const numberedCitations = useMemo(() => {
-    const order = new Map(selected.map((item, index) => [item.id, index + 1]));
-    return (citations || [])
-      .filter((c) => order.has(c.id))
-      .map((c) => ({ ...c, num: order.get(c.id), label: selected.find((m) => m.id === c.id)?.title || "" }));
-  }, [citations, selected]);
-
   if (!open) return null;
-
-  /** 接着写上次没保存的那篇：连平台和素材一起接回来，不只是一段文字。 */
-  function restoreDraft() {
-    if (!recover) return;
-    setPlatform(recover.platform || "公众号");
-    setSelected(Array.isArray(recover.materials) ? recover.materials : []);
-    setRevisionScope(recover.revisionScope || newRevisionScope());
-    openEditor(recover.mode || "blank", recover.body || "", recover.title || "", recover.writingMode || "manual");
-    setAutosave({ at: recover.savedAt || 0, dirty: false, failed: false });
-    setRecover(null);
-  }
-
-  function discardDraft() {
-    clearCreationDraft();
-    setRecover(null);
-  }
 
   /**
    * 用过的目标读者记进预设，下次就在下拉里。**失败一律吞掉**——
@@ -223,52 +129,6 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     const value = audience.trim();
     if (!value) return;
     creationApi.rememberAudience(value).catch(() => {});
-  }
-
-  /**
-   * 重新核对引用。改完正文之后，哪些标注还成立由 Worker 重算——**不在前端自己判**，
-   * 那套归一化和闸门是同一份（`worker/src/lib/cite.js`），抄一份过来两边迟早会漂。
-   *
-   * 失败就静默保留现有标注：核对不上不是错误，用户正在写字，弹一条红的报错纯属打断。
-   */
-  function recheckCitations() {
-    if (citeBusy || !selected.length || !draftBody.trim()) return;
-    setCiteBusy(true);
-    creationApi
-      .cite({ body: draftBody, materialIds: selected.map((item) => item.id) })
-      .then((result) => setCitations(result.citations || []))
-      .catch(() => {})
-      .finally(() => setCiteBusy(false));
-  }
-
-  /**
-   * 从右侧卡片跳到正文里的引用。**同一条素材用了多处时，连点就依次看下一处**——
-   * 每次都跳回第一处的话，第二处第三处永远看不到，而「已用 3 处」正是在告诉你有三处。
-   */
-  /**
-   * 正文里点了一下：点在标注上就选中它，点在空白处就取消选中。
-   *
-   * ⚠️ `reveal` 要跟着走一份（带 `silent`），否则接着去点那张卡时，
-   * seq 从一个陈旧的值 +1，会跳到一个你没预期的那一处。
-   * `silent` 是「只记位置、别滚」——刚点过的那句就在眼前，再居中一次是白晃一下。
-   */
-  function onBodyCite(hit) {
-    setActive(hit?.id || "");
-    setReveal(hit ? { id: hit.id, seq: hit.seq, at: Date.now(), silent: true } : null);
-  }
-
-  function jumpToCitation(id) {
-    setActive(id);
-    setReveal((prev) => ({ id, seq: prev?.id === id ? (prev.seq || 0) + 1 : 0, at: Date.now() }));
-  }
-
-  function openEditor(mode, body = "", suggestedTitle = "", writingMode = "manual") {
-    setDraftMode(mode);
-    setMaterialWritingMode(writingMode);
-    setDraftTitle(suggestedTitle);
-    setDraftBody(body);
-    setError(null);
-    setScreen("editor");
   }
 
   async function createTopic() {
@@ -286,32 +146,31 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     }
   }
 
-  async function saveAndFinish() {
-    if (busy || (!draftTitle.trim() && !draftBody.trim())) return;
+  /**
+   * 准备完了，开始写。**这是这个弹层的出口，也是唯一的出口。**
+   *
+   * ⚠️ **建完项目就跳到 `#/project/:id`，不在这儿写字。**
+   * 写作只有一个地方——同一件事曾经有两个界面（弹层里的编辑器和项目页），
+   * 而那两个界面的能力还不一样：项目页有素材栏、有发布准备、有阶段推进，弹层没有。
+   * 用户的原话是「写作应该统一使用一个页面吧」。
+   */
+  async function beginWriting({ mode, body = "", title: suggested = "", evidence = "" }) {
+    if (busy) return;
     setBusy(true); setError(null);
     try {
-      const finalTitle = deriveDraftTitle(draftTitle, draftBody);
-      const result = await creationApi.create({
-        kind: "draft",
-        mode: draftMode,
-        title: finalTitle,
+      keepAudience();
+      const projectId = await startWriting({
         platform,
+        mode,
+        title: suggested || title.trim(),
+        body,
         viewpoint,
         audience,
         materialIds: selected.map((item) => item.id),
-        body: draftBody,
-        interviewEvidence,
+        // 访谈那条传的是闭包里的证据：`setInterviewEvidence` 这一帧还没生效
+        interviewEvidence: evidence || interviewEvidence,
       });
-      if (revisionScope && result.draft?.id) {
-        await creationApi.moveRevisions(revisionScope, `pipeline:drafts:${result.draft.id}`).catch((moveError) => {
-          console.warn("AI 修订历史迁移失败（稿件已保存）:", moveError.message);
-        });
-      }
-      // 有家了，缓冲必须立刻空掉——留着的话同一篇稿子有两份，而它们迟早不一样
-      clearTimeout(autosaveTimer.current);
-      clearCreationDraft();
-      keepAudience();
-      onCreated?.(result.draft, result.project);
+      onStarted?.(projectId);
       close();
     } catch (err) {
       setError(err);
@@ -354,13 +213,11 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     abortRef.current = ac;
     keepAudience();
     setDraftMode("material");
-    setMaterialWritingMode("ai");
-    setDraftTitle(title.trim());
-    setDraftBody("");
-    setScreen("editor");
+    // ⚠️ **生成期间留在这一屏**，不跳走。它要等几十秒（整篇收齐 + 过完真实性闸门），
+    // 而写完之后还有一句话必须让人看见（剔掉了哪几条）——跳进项目页就没地方说了。
+    setGenerated(null);
     setBusy(true);
     setError(null);
-    setDraftNotice(null);
     /**
      * ⚠️ **这条不流式，是有意的。**
      *
@@ -378,12 +235,12 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
       viewpoint: viewpoint.trim(),
       audience: audience.trim(),
     }, ac.signal).then((result) => {
-      setDraftBody(result.body || "");
-      if (!title.trim()) setDraftTitle(deriveDraftTitle("", result.body || ""));
-      // 剔掉的素材要说出来：挑了 5 条只用了 3 条，不说的话用户会以为模型漏用了
-      if (result.skipped?.length) setDraftNotice(result.skipped);
-      // 引用标注：Worker 起稿时顺手算好了（两边文本都在它手上），不用额外再要一次
-      setCitations(result.citations || []);
+      setGenerated({
+        body: result.body || "",
+        title: title.trim() || deriveDraftTitle("", result.body || ""),
+        // 剔掉的素材要说出来：挑了 5 条只用了 3 条，不说的话用户会以为模型漏用了
+        skipped: result.skipped || [],
+      });
     }).catch((err) => {
       if (err.name !== "AbortError") setError(err);
     }).finally(() => setBusy(false));
@@ -398,44 +255,36 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     sendInterview("【工作台动作：生成初稿】我确认上一轮访谈共识准确。请按已确认内容生成初稿。", {
       control: true,
       nextPhase: "drafting",
-      after: (full) => {
+      after: async (full) => {
         const body = cleanGeneratedDraft(full);
         setInterviewEvidence(evidence);
-        openEditor("interview", body, deriveDraftTitle("", body));
+        /**
+         * ⚠️ **访谈这条直接跳，不像素材那条停一下。**
+         * 差别在于「有没有话必须先说」：素材起稿会剔掉素材，那句话跳走就没地方说了；
+         * 访谈的初稿你刚刚一行行看着它流出来，没有任何新信息要交代。
+         *
+         * `interviewEvidence` 靠闭包里的 `evidence` 直接传——`setInterviewEvidence`
+         * 这一帧还没生效，读 state 会拿到空串，而那正是真实性闸门要的证据。
+         */
+        await beginWriting({ mode: "interview", body, title: deriveDraftTitle("", body), evidence });
       },
     });
   }
 
-  const heading = screen === "editor" ? draftMode === "blank" ? "空白文章" : draftMode === "material" ? "素材起稿" : "访谈初稿"
-    : screen === "topic" ? "新建选题"
-      : screen === "material" ? "从素材开始"
-        : screen === "interview" ? "访谈起稿"
-          : "开始创作";
-
-  const showRecover = !!recover && (screen === "choose" || screen === "editor") && !draftTitle.trim() && !draftBody.trim();
+  const heading = screen === "topic" ? "新建选题"
+    : screen === "material" ? "从素材开始"
+      : screen === "interview" ? "访谈起稿"
+        : "开始创作";
 
   /**
-   * 「退一层」是哪一层，**只在这里算一次**。
+   * ⚠️ **这个弹层现在只有一层，所以没有返回。**
    *
-   * `preset` 指定的那一屏是入口，退无可退——从首页点「新建」直接进空白编辑器时，
-   * 「返回起稿方式」是一个用户从来没经过的地方。这种时候不画那颗按钮，
-   * 而不是画一个把人送去陌生页面的按钮。
+   * 「起点选择」那一屏整个撤了——问三选一的活已经在页头那颗下拉里干完了
+   *（`NewContentButton`），而每一屏都是 `preset` 直接指定的入口。
+   * 面包屑仍然留在结构里（`back` 恒为 null），因为**加第四屏时它还得回来**：
+   * 退到哪一层由这一处算出来，别再各屏就地画一颗。
    */
-  const back = (() => {
-    const go = (to) => () => { abortRef.current?.abort(); setScreen(to); };
-    // ⚠️ **`preset` 指定的入口屏不画返回**：那一层用户从来没经过。
-    // 从下拉直接进「从素材开始」时，一个「← 起稿方式」会把人退到一屏他没见过的地方。
-    if (screen === "material" || screen === "interview") {
-      if (preset === screen) return null;
-      return { label: "起稿方式", go: go("choose") };
-    }
-    if (screen === "editor" && preset !== "blank") {
-      if (draftMode === "material") return { label: "从素材开始", go: go("material") };
-      if (draftMode === "interview") return { label: "访谈起稿", go: go("interview") };
-      return { label: "起稿方式", go: go("choose") };
-    }
-    return null;
-  })();
+  const back = null;
 
   return (
     // ⚠️ **虚化深度跟着屏走**（`data-deep`）：选起点时背后那一页还是「你刚才在看的东西」，
@@ -443,7 +292,7 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
     // 那一下渐深本身就是「现在开始写了」的信号。
     <div
       className="scrim scrim--center creation-scrim"
-      data-deep={screen === "editor" || screen === "interview" ? "true" : "false"}
+      data-deep={screen === "interview" ? "true" : "false"}
       onMouseDown={(event) => event.target === event.currentTarget && close()}
     >
       {/**
@@ -482,10 +331,6 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
           <button className="icon-btn" onClick={close} aria-label="关闭" title="关闭（Esc）"><IconX aria-hidden="true" /></button>
         </header>
 
-        {showRecover ? <DraftRecovery draft={recover} onRestore={restoreDraft} onDiscard={discardDraft} /> : null}
-
-        {screen === "choose" ? <ModeChooser onPick={(mode) => mode === "blank" ? openEditor("blank") : setScreen(mode)} /> : null}
-
         {screen === "topic" ? (
           <TopicForm title={title} setTitle={setTitle} platform={platform} setPlatform={setPlatform}
             viewpoint={viewpoint} setViewpoint={setViewpoint} audience={audience} setAudience={setAudience}
@@ -498,7 +343,10 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
             audiences={audiences}
             query={query} setQuery={setQuery} materials={materials} selected={selected} setSelected={setSelected}
             busy={busy}
-            onWrite={() => openEditor("material", "", title.trim(), "manual")} onGenerate={startMaterialDraft} />
+            generated={generated} onDiscardGenerated={() => setGenerated(null)}
+            onWrite={() => beginWriting({ mode: "material" })}
+            onGenerate={startMaterialDraft}
+            onUseGenerated={() => beginWriting({ mode: "material", body: generated.body, title: generated.title })} />
         ) : null}
 
         {screen === "interview" ? (
@@ -509,19 +357,6 @@ export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopic
             onConfirm={confirmDraft} />
         ) : null}
 
-        {screen === "editor" ? (
-          <DraftEditor mode={draftMode} title={draftTitle} setTitle={setDraftTitle} body={draftBody} setBody={setDraftBody}
-            platform={platform} setPlatform={setPlatform} materials={selected} writingMode={materialWritingMode} notice={draftNotice}
-            revisionScope={revisionScope}
-            insertRequest={insertRequest} onInsertHandled={() => setInsertRequest(null)}
-            onInsertMaterial={(item) => setInsertRequest({ id: `${item.id}-${Date.now()}`, text: formatMaterialQuote(item) })}
-            onInsertWriting={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
-            citations={numberedCitations} citeState={citeState} onCiteState={setCiteState}
-            citeBusy={citeBusy} onRecheck={recheckCitations}
-            active={active} onActivate={onBodyCite}
-            reveal={reveal} onReveal={jumpToCitation}
-            busy={busy} autosave={autosave} onSave={saveAndFinish} />
-        ) : null}
 
         <ErrorNote error={error} what="创建" />
       </section>
@@ -557,66 +392,6 @@ export const MODES = [
   { key: "material", icon: IconStack2, title: "从素材开始", hint: "先挑依据，再决定谁来写。", mark: "手上有料" },
   { key: "interview", icon: IconMessageQuestion, title: "访谈起稿", hint: "边聊边把想法梳成初稿。", mark: "只有想法" },
 ];
-
-function ModeChooser({ onPick }) {
-  // 走 ref 不进依赖：调用方写的是内联箭头，进依赖的话每渲染一次就重挂一次监听
-  const pickRef = useRef(onPick);
-  pickRef.current = onPick;
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const index = Number(event.key) - 1;
-      if (!MODES[index]) return;
-      event.preventDefault();
-      pickRef.current(MODES[index].key);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  return (
-    <div className="creation-choose">
-      <p className="creation-choose__lead">选择最接近你此刻状态的起点。</p>
-      <div className="creation-modes">
-        {MODES.map(({ key, icon: Icon, title, hint, mark }, index) => (
-          <button key={key} className="creation-mode" onClick={() => onPick(key)} data-autofocus={index === 0 ? "" : undefined}>
-            <span className="creation-mode__top">
-              <span className="creation-mode__icon"><Icon aria-hidden="true" stroke={1.7} /></span>
-              <kbd className="creation-mode__key" aria-hidden="true">{index + 1}</kbd>
-            </span>
-            <span className="creation-mode__copy">
-              <small>{mark}</small>
-              <strong>{title}</strong>
-              <em>{hint}</em>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * 「上次那篇还在」。
- *
- * **只在这一篇还空着时出现**——已经写上字了再来问「要不要恢复」，等于给一个点了就覆盖
- * 自己刚写的东西的按钮。两个出口都写清后果：接着写 / 丢弃（丢了不回来）。
- */
-function DraftRecovery({ draft, onRestore, onDiscard }) {
-  const words = countWords(draft.body);
-  const when = draft.savedAt ? new Date(draft.savedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-  return (
-    <div className="creation-recover">
-      <IconHistory aria-hidden="true" stroke={1.7} />
-      <span className="creation-recover__copy">
-        <strong>上次有一篇没保存到稿件库</strong>
-        <small>{[draft.title?.trim() || "未命名", `${words} 字`, when].filter(Boolean).join(" · ")}</small>
-      </span>
-      <button className="btn btn-sm" onClick={onRestore}>接着写</button>
-      <button className="btn btn-quiet btn-sm" onClick={onDiscard} title="丢弃之后就找不回来了">丢弃</button>
-    </div>
-  );
-}
 
 function PlatformSelect({ value, onChange }) {
   return (
@@ -796,7 +571,7 @@ function MaterialRow({ item, on, onToggle, why }) {
   );
 }
 
-function MaterialSetup({ title, setTitle, platform, setPlatform, viewpoint, setViewpoint, audience, setAudience, audiences, query, setQuery, materials, selected, setSelected, busy, onWrite, onGenerate }) {
+function MaterialSetup({ title, setTitle, platform, setPlatform, viewpoint, setViewpoint, audience, setAudience, audiences, query, setQuery, materials, selected, setSelected, busy, generated, onWrite, onGenerate, onUseGenerated, onDiscardGenerated }) {
   const toggle = (item) => setSelected((items) => items.some((picked) => picked.id === item.id) ? items.filter((picked) => picked.id !== item.id) : [...items, item]);
   const isOn = (item) => selected.some((picked) => picked.id === item.id);
   const q = query.trim();
@@ -915,230 +690,58 @@ function MaterialSetup({ title, setTitle, platform, setPlatform, viewpoint, setV
           <label className="creation-brief-field"><span>暂定标题</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="可最后再写" /></label>
           <AudienceField value={audience} onChange={setAudience} options={audiences} />
         </div>
-        <div className="creation-writing-paths">
-          <button onClick={onWrite} disabled={busy || !selected.length}>
-            <IconPencil aria-hidden="true" /><span><strong>带着素材自己写</strong><small>打开空稿，素材留在右侧，需要时再插入。</small></span><IconArrowLeft className="creation-path-arrow" aria-hidden="true" />
-          </button>
-          <button className="is-primary" onClick={onGenerate} disabled={busy || !selected.length || !viewpoint.trim()}>
-            <IconSparkles aria-hidden="true" /><span><strong>让 AI 生成初稿</strong><small>只使用上面的简报与已选素材。</small></span><IconArrowLeft className="creation-path-arrow" aria-hidden="true" />
-          </button>
-        </div>
+        {/**
+          * 三态：**在生成 / 生成完了 / 还没开始**。
+          *
+          * ⚠️ **生成完那一态不能跳过。** 待核验的金句和数据不进稿，
+          * 挑了 5 条只用了 3 条——这句话跳进项目页就没地方说了（那一页
+          * 没有「刚才生成时发生了什么」这个概念，Worker 也不存它）。
+          * 所以这一屏在这儿停一下，把结果说清楚再走。
+          */}
+        {busy && !generated ? (
+          <div className="creation-generating" role="status">
+            <IconLoader2 className="spin" aria-hidden="true" />
+            <span>
+              <strong>正在写…</strong>
+              {/* 说清此刻在等什么：这条不流式是有意的，等几十秒是正常的 */}
+              <small>写完会先整篇过一遍真实性校验再给你，所以要等一会儿。</small>
+            </span>
+          </div>
+        ) : generated ? (
+          <div className="creation-generated">
+            <p className="creation-generated__head">
+              <IconCheck aria-hidden="true" />
+              <strong>初稿写好了</strong>
+              <em>{readStats(generated.body).words} 字</em>
+            </p>
+            {generated.skipped.length ? (
+              <p className="creation-generated__skip">
+                <IconAlertTriangle aria-hidden="true" />
+                有 {generated.skipped.length} 条没进稿（待核验的金句和数据不会被引用）：
+                {generated.skipped.map((item) => item.title || item).join("、")}
+              </p>
+            ) : (
+              <p className="creation-generated__skip creation-generated__skip--ok">选中的 {selected.length} 条素材都用上了。</p>
+            )}
+            <div className="creation-generated__acts">
+              <button className="btn" onClick={onDiscardGenerated} disabled={busy}>重写一版</button>
+              <button className="btn btn-primary" onClick={onUseGenerated} disabled={busy}>
+                {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconPencil aria-hidden="true" />}去写
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="creation-writing-paths">
+            <button onClick={onWrite} disabled={busy || !selected.length}>
+              <IconPencil aria-hidden="true" /><span><strong>带着素材自己写</strong><small>建一篇空稿，素材挂在项目里，写的时候随时插入。</small></span><IconArrowLeft className="creation-path-arrow" aria-hidden="true" />
+            </button>
+            <button className="is-primary" onClick={onGenerate} disabled={busy || !selected.length || !viewpoint.trim()}>
+              <IconSparkles aria-hidden="true" /><span><strong>让 AI 生成初稿</strong><small>只使用上面的简报与已选素材。</small></span><IconArrowLeft className="creation-path-arrow" aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </aside>
     </div>
-  );
-}
-
-/**
- * 底部那一行从左到右是**说明 → 事实 → 动作**：
- * 「标题留空会怎样」是提示，字数和草稿状态是此刻的事实，最右边才是那颗要按的按钮。
- * 字数放在保存按钮左边而不是标题那一行，是因为写的时候视线在正文里，
- * 抬头看一眼底部就够；顶上那一行是给标题和平台的。
- */
-function DraftEditor({
-  mode, title, setTitle, body, setBody, platform, setPlatform, materials, writingMode, notice,
-  revisionScope,
-  insertRequest, onInsertHandled, onInsertMaterial, onInsertWriting,
-  citations, citeState, onCiteState, citeBusy, onRecheck, reveal, onReveal, active, onActivate,
-  busy, autosave, onSave,
-}) {
-  const writingCursor = useRef(0);
-  const note = mode === "blank" ? "标题留空时，会用正文第一条标题或首句命名。" : mode === "material" ? `${materials.length} 条参考素材会与稿件保持关联。` : "已确认的访谈内容会作为真实素材随稿保存。";
-  const words = countWords(body);
-  const stats = readStats(body);
-  return (
-    <div className={`creation-editor${mode === "material" ? " creation-editor--sources" : ""}`}>
-      <main className="creation-editor__document">
-        <div className="creation-editor__meta">
-          <input className="creation-editor__title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="标题可以最后再写" aria-label="文章标题" />
-          <PlatformSelect value={platform} onChange={setPlatform} />
-        </div>
-        {busy && mode === "material" && writingMode === "ai" && !body ? (
-          /* ⚠️ **不逐字流式是有意的**（要先过真实性闸门），所以这块必须讲清在等什么——
-             一个转圈图标配一句「生成中」，等到三十秒时看着就是卡死了 */
-          <div className="creation-generating">
-            <IconSparkles className="spin-soft" aria-hidden="true" />
-            <span>
-              <strong>正在按简报和已选素材起稿</strong>
-              <small>写完会先过一遍真实性校验再整篇给你，几十秒是正常的</small>
-            </span>
-          </div>
-        ) : null}
-        {notice?.length ? (
-          <div className="creation-skipped">
-            <IconAlertTriangle aria-hidden="true" stroke={1.8} />
-            <span>
-              有 {notice.length} 条素材没进这一版：{notice.map((m) => m.title).join("、")}
-              <small>金句和数据要先核验过才能进稿——核验完再生成一次就会用上。</small>
-            </span>
-          </div>
-        ) : null}
-        <MarkdownEditor value={body} onChange={setBody} ariaLabel="新稿正文" insertRequest={insertRequest} onInsertHandled={onInsertHandled}
-          revisionScope={revisionScope} revisionTitle={title} revisionPlatform={platform}
-          onCursorChange={(position) => { writingCursor.current = position; }}
-          citations={citations} onCitations={onCiteState} onCiteClick={onActivate} revealRequest={reveal}
-          toolbarExtra={<WritingAssist title={title} body={body} platform={platform} getCursor={() => writingCursor.current} onInsert={onInsertWriting} />} />
-        <div className="creation-editor__foot">
-          <div><span>{note}</span></div>
-          <div className="creation-editor__status">
-            {words ? (
-              <span className="creation-count" title={stats ? `按 400 字/分钟估算` : undefined}>
-                <b>{words.toLocaleString("en-US")}</b> 字{stats ? ` · 约 ${stats.minutes} 分钟` : ""}
-              </span>
-            ) : null}
-            <AutosaveNote autosave={autosave} has={!!(title.trim() || body.trim())} />
-            <button className="btn btn-primary" onClick={onSave} disabled={busy || (!title.trim() && !body.trim())}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconCheck aria-hidden="true" />}保存到稿件库</button>
-          </div>
-        </div>
-      </main>
-      {mode === "material" ? (
-        <MaterialDock materials={materials} onInsert={onInsertMaterial} cites={citeState}
-          active={active} onReveal={onReveal} busy={citeBusy} onRecheck={onRecheck} />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * 自动保存的状态。
- *
- * ⚠️ **措辞不能让人以为已经入库了。** 这里存的是本机的一份留底，稿件库里还没有这篇；
- * 写「已保存」的话，用户会理直气壮地关掉弹层然后去稿件库找——那儿什么都没有。
- * 所以说「留底」，并在 `title` 里把两件事的分工讲清。
- *
- * 存不下（隐私模式、配额满）要**照实说并给下一步**，不能悄悄不显示：
- * 自动保存最坏的失败方式就是「用户以为它在工作」。
- */
-function AutosaveNote({ autosave, has }) {
-  if (!has) return null;
-  if (autosave.failed) {
-    return (
-      <span className="creation-autosave is-bad" title="浏览器存不下这份留底（隐私模式或存储已满）。这篇请直接保存到稿件库。">
-        <i className="dot dot-bad" aria-hidden="true" />留不了底
-      </span>
-    );
-  }
-  if (!autosave.at) return <span className="creation-autosave is-wait">正在留底…</span>;
-  const time = new Date(autosave.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  return (
-    <span className={`creation-autosave${autosave.dirty ? " is-dirty" : ""}`} title="关掉也不会丢，下次打开可以接着写。真正入库还要点右边那颗按钮。">
-      <i className="dot dot-ok" aria-hidden="true" />已留底 {time}
-    </span>
-  );
-}
-
-/**
- * 右侧参考栏。**每条素材要回答的是「它进正文了没有」**，而不只是「它长什么样」。
- *
- * 原来这儿写的是「它们不会自动进入正文」——那句话在「带着素材自己写」那条路上是对的，
- * 在 AI 起稿这条路上是**反的**：素材就是喂给模型写出来的。同一块地方说反话，
- * 比不说更糟。现在改成照实说这一版用了几条。
- *
- * **不按用没用上重排**：序号就是正文里的脚标号，排序一变号码就跟着跳，
- * 而号码是用户唯一的对照凭据。用没用上靠标记说，不靠位置说。
- */
-/**
- * 素材正文里可能存着**字面的 `\n`**（两个字符），不是真换行。
- *
- * 来源不在这一侧：模型往 JSON 里写 `\\n` 双重转义，`parseLooseJson` 正确地解成了
- * 一个反斜杠加一个 n，于是库里存的就是那两个字符。**存储那侧已经归一化了**
- * （`worker/src/lib/store.js`），这里兜的是**加这条之前入的老数据**——
- * 展开看全文时，满屏 `\n` 比截断还难读。
- */
-function readableNote(value) {
-  return String(value || "").replace(/\\r\\n|\\n/g, "\n").trim();
-}
-
-function MaterialDock({ materials, onInsert, cites = [], active, onReveal, busy, onRecheck }) {
-  // 展开哪几条。**默认全折叠**：这一栏的主职责是「对照」不是「阅读」，
-  // 三条素材全铺开就成了一屏读不完的东西，而正文才是此刻该读的
-  const [open, setOpen] = useState(() => new Set());
-  const cards = useRef(new Map());
-
-  /**
-   * 正文那边点了一句引用 → 对应卡片要**滚进视野**，不能只是变个色。
-   * 素材多的时候那张卡多半在折叠区外面，只改样式的话用户看到的是「点了没反应」。
-   * `block: "nearest"` 而不是 "center"：已经在视野里的就别动，滚一下反而丢失位置感。
-   */
-  useEffect(() => {
-    if (active) cards.current.get(active)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [active]);
-  const toggleOpen = (id) => setOpen((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-  const hits = new Map();
-  let stale = 0;
-  for (const c of cites) {
-    const seen = hits.get(c.id) || { total: 0, stale: 0 };
-    seen.total++;
-    if (c.stale) { seen.stale++; stale++; }
-    hits.set(c.id, seen);
-  }
-  const used = hits.size;
-  return (
-    <aside className="creation-sources">
-      <header><div><span className="eyebrow">REFERENCES</span><h3>参考素材</h3></div><b>{materials.length}</b></header>
-      <p className="creation-sources__lede">
-        {cites.length
-          ? <>这一版用上了 <b>{used}</b> / {materials.length} 条。正文里带底纹的句子就是它们，点卡片可以跳过去。</>
-          : "需要哪一条，插到当前光标处。"}
-      </p>
-      {stale ? (
-        /* 位置跟着编辑挪了，但被改写过的那几句已经不能再声称有出处——
-           照实说「不确定了」并给出下一步，而不是继续举着一个可能不成立的标注 */
-        <button className="creation-sources__recheck" onClick={onRecheck} disabled={busy}>
-          {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconRefresh aria-hidden="true" />}
-          有 {stale} 处改过了，重新核对
-        </button>
-      ) : null}
-      <div className="creation-source-list">
-        {materials.map((item, index) => {
-          const hit = hits.get(item.id);
-          const note = readableNote(item.note);
-          const expanded = open.has(item.id);
-          return (
-            <article
-              key={item.id}
-              ref={(el) => { if (el) cards.current.set(item.id, el); else cards.current.delete(item.id); }}
-              data-used={hit ? "true" : undefined}
-              data-active={active === item.id ? "true" : undefined}
-              /* 用过的卡片**整张都能点**：卡片本身就是「这条素材」，让人去瞄那颗小按钮
-                 等于把一个明显的目标缩小成一个不明显的。里面的控件各自 stopPropagation。
-                 键盘和读屏走下面那颗真按钮，所以这儿不加 role——
-                 可交互元素里再套一个可交互元素，语义上是坏的。 */
-              onClick={hit ? () => onReveal?.(item.id) : undefined}>
-              <small>
-                <span className="creation-source__no">{String(index + 1).padStart(2, "0")}</span>
-                {" · "}{item.type || "素材"}{verificationBadge(item.verificationStatus) ? ` · ${verificationBadge(item.verificationStatus)}` : ""}
-                {hit ? <b className="creation-source__used">已用 {hit.total} 处{hit.stale ? " · 有改动" : ""}</b> : null}
-              </small>
-              <h4>{item.title}</h4>
-              {/* 折叠时截三行，展开就地铺开——不弹层。弹层会盖住正文，
-                  而看素材全文的目的**就是对着正文看**，盖住了等于没看 */}
-              <p data-open={expanded ? "true" : undefined}>{note || "这条素材没有正文。"}</p>
-              {note ? (
-                <button className="creation-source__more" onClick={(e) => { e.stopPropagation(); toggleOpen(item.id); }} aria-expanded={expanded}>
-                  <IconChevronDown aria-hidden="true" data-open={expanded ? "true" : undefined} />
-                  {expanded ? "收起" : "看全文"}
-                </button>
-              ) : null}
-              <footer>
-                {hit ? (
-                  <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); onReveal?.(item.id); }}>
-                    <IconArrowLeft aria-hidden="true" />
-                    {hit.total > 1 ? `看这 ${hit.total} 处` : "看正文里的这处"}
-                  </button>
-                ) : (
-                  <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); onInsert(item); }} disabled={!item.note}><IconPlus aria-hidden="true" />插入引用</button>
-                )}
-                {item.link ? <a className="icon-btn" href={item.link} target="_blank" rel="noreferrer" aria-label="打开素材来源" onClick={(e) => e.stopPropagation()}><IconExternalLink aria-hidden="true" /></a> : null}
-              </footer>
-            </article>
-          );
-        })}
-      </div>
-    </aside>
   );
 }
 

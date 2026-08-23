@@ -8,11 +8,19 @@
 // 几乎总是你自己的经历和判断，而它只存在你脑子里，除非有人问你。
 // 一旦补上「我不同意，因为___」，一篇短文的骨架当场就有了。
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { IconLoader2, IconX } from "./icons.jsx";
 import { useDialog } from "../lib/use-dialog.js";
 
-export function ReactionPicker({ open, reactions = [], source, busy, error, onClose, onSave }) {
+export function ReactionPicker({ open, groups = [], source, busy, error, onClose, onSave }) {
+  /**
+   * ⚠️ **扁平这份只用来算快捷键序号，画的是分组那份。**
+   * 分组不是装饰：第一版七条**全都假设触发物是「一个观点」**，于是
+   * 「DeepSeek 发布了 V4-Flash，我想写」一条都选不上——你没法「同意」一件事实。
+   * 补上事件那一组之后有十条，平铺的话每次都得从头扫到尾；
+   * 分了组，看到一条新闻只会看中间那三条。
+   */
+  const flat = groups.flatMap((g) => g.items || []);
   const [reaction, setReaction] = useState("");
   const [take, setTake] = useState("");
   const areaRef = useRef(null);
@@ -36,15 +44,17 @@ export function ReactionPicker({ open, reactions = [], source, busy, error, onCl
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const el = document.activeElement;
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return;
-      const index = Number(event.key) - 1;
-      if (!reactions[index]) return;
+      // 1–9 是前九条，`0` 给第十条——数字键盘上就这个顺序
+      if (!/^[0-9]$/.test(event.key)) return;
+      const index = event.key === "0" ? 9 : Number(event.key) - 1;
+      if (!flat[index]) return;
       event.preventDefault();
-      setReaction(reactions[index]);
+      setReaction(flat[index]);
       areaRef.current?.focus();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, reactions]);
+  }, [open, flat.join("")]);
 
   if (!open) return null;
 
@@ -67,21 +77,31 @@ export function ReactionPicker({ open, reactions = [], source, busy, error, onCl
         </header>
 
         {/**
-          * ⚠️ **七条的文案从 Worker 来，前端一个字都不写死。**
+          * ⚠️ **组名和条目的文案全从 Worker 来，前端一个字都不写死。**
           * 抄一份的话，那边改了措辞这边还是老的，而且**不报错**。
           */}
         <div className="rpick__list" role="group" aria-label="你对它是什么反应">
-          {reactions.map((item, index) => (
-            <button
-              key={item}
-              type="button"
-              className="rpick__opt"
-              aria-pressed={reaction === item}
-              onClick={() => { setReaction(reaction === item ? "" : item); areaRef.current?.focus(); }}
-            >
-              <kbd aria-hidden="true">{index + 1}</kbd>
-              {item}
-            </button>
+          {groups.map((group) => (
+            <Fragment key={group.label}>
+              {/* 组名是**标签不是选项**：它告诉你「这一组是对着什么说的」，点不动 */}
+              <p className="rpick__group">{group.label}</p>
+              {(group.items || []).map((item) => {
+                const index = flat.indexOf(item);
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    className="rpick__opt"
+                    aria-pressed={reaction === item}
+                    onClick={() => { setReaction(reaction === item ? "" : item); areaRef.current?.focus(); }}
+                  >
+                    {/* 第十条的键是 `0`；超过十条就不给键了，硬编下去只会给出按不出的提示 */}
+                    <kbd aria-hidden="true">{index < 9 ? index + 1 : index === 9 ? 0 : ""}</kbd>
+                    {item}
+                  </button>
+                );
+              })}
+            </Fragment>
           ))}
         </div>
 
@@ -105,7 +125,7 @@ export function ReactionPicker({ open, reactions = [], source, busy, error, onCl
             * 而收藏那条路已经有了。
             */}
           <span className="rpick__hint">
-            {ready ? "反应可以不选——有话说但不属于那七种时，硬塞一个分类更糟" : "写一句你的看法才算一颗种子，只有链接的话用「收集」就够了"}
+            {ready ? "反应可以不选——有话说但不属于清单里那几种时，硬塞一个分类更糟" : "写一句你的看法才算一颗种子，只有链接的话用「收集」就够了"}
           </span>
           <button
             className="btn btn-primary"

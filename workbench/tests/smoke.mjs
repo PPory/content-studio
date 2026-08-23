@@ -348,6 +348,8 @@ try {
         // 标题在这一页只有一份，而且是能改的那一份
         titles: document.querySelectorAll(".project-workspace h1, .project-draft__title").length,
         editable: document.querySelectorAll("input.project-draft__title").length,
+        // 还没有主稿的项目（`kind: "topic"` 建出来的选题）正文区是一个空态，本来就没有标题框
+        noDraft: !!document.querySelector(".project-draft__empty"),
         /**
          * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机不是用户动线，
          * 七段里三段用户根本不出现；而且它会骗人——一篇 0 字的空稿子照样能走到第 4 格
@@ -368,16 +370,47 @@ try {
         clash: document.querySelectorAll(".project-rail .prefs").length,
         /* 「待诊断」那一档撤了：不许在这一页任何地方长回来 */
         ghost: ws.textContent.includes("诊断"),
+        /**
+         * 种子块：**这一篇是从哪句话来的**。
+         * ⚠️ **二选一，不能钉死其中一种**——库里第一条恰好不是种子长出来的时候，
+         * 钉死「必须有」当场变红而代码没问题。要量的是：**有种子就有那句话，
+         * 没种子就整块不画**（不是画一个写着「无来源」的空壳）。
+         */
+        seed: document.querySelector(".pseed") ? (document.querySelector(".pseed__take")?.textContent.trim().length || 0) : -1,
+        /* 「找相关素材」那颗：只在素材那一档出现（发布准备那一档换了整个右栏） */
+        find: document.querySelectorAll(".pmat__findbtn").length,
+        /* 挂上的候选**不能**混在已挂的列表里——两者语义不同 */
+        cands: document.querySelectorAll(".pmat__list .pmat__cands").length,
       };
     });
     if (proj) {
       check("项目详情页是两栏，不是三栏", proj.cols === 2 && proj.oldBrief === 0, `${proj.cols} 栏 · ${proj.oldBrief} 处旧简报栏`);
-      check("标题只有一份，而且是能改的那一份", proj.titles === 1 && proj.editable === 1, `${proj.titles} 个标题 · ${proj.editable} 个可改`);
+      /**
+       * ⚠️ **二选一，不能写死「一定有标题」。**
+       * 库里第一条恰好是个**还没有主稿的选题**时（`kind: "topic"` 建出来的），
+       * 正文区本来就是一个空态——写死的话测试当场变红而代码没问题。
+       * 有主稿时钉的仍然是那条：**标题只有一份，而且是能改的那一份**
+       *（上一版顶栏一份、简报栏一份、正文顶上一份，其中两份还不能改）。
+       */
+      check("标题只有一份，而且是能改的那一份",
+        proj.noDraft ? proj.titles === 0 : (proj.titles === 1 && proj.editable === 1),
+        proj.noDraft ? "这个项目还没有主稿，正文区是空态" : `${proj.titles} 个标题 · ${proj.editable} 个可改`);
       check("七段流程线撤干净了", proj.flow === 0, `还剩 ${proj.flow} 个节点`);
       check("顶栏那颗 pill 是三档之一", ["在写", "写完了", "发出去了", "已搁置", "需处理"].includes(proj.phase), proj.phase || "(没有 pill)");
       check("「诊断」在这一页一个字都没有", !proj.ghost, proj.ghost ? "正文里还写着「诊断」" : "");
       check("右栏要么是素材，要么是发布准备", !!proj.rail, proj.rail || "两种都不是");
       check("项目素材那一栏没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
+      /**
+       * ⚠️ **二选一：有种子就得看得见那句话，没种子就整块不画。**
+       * `-1` = 没画（没有种子），`>0` = 画了而且真有字。**`0` 必须红**——
+       * 那是「画了一个空壳」，比不画更糟：屏幕上多了一块什么都不说的东西。
+       */
+      check("有种子就摆出那句话，没有就整块不画", proj.seed === -1 || proj.seed > 0,
+        proj.seed === -1 ? "这个项目不是种子长出来的" : `${proj.seed} 字`);
+      // 素材那一档才有「找相关素材」；发布准备那一档整个右栏都换掉了，没有它是对的
+      check("素材栏上有「找相关素材」", proj.rail !== "素材" || proj.find === 1, `${proj.find} 颗`);
+      // ⚠️ 候选和已挂上的必须分开画：混在一起你会以为它们已经算进「已用 N 条」了
+      check("AI 候选没混进已挂上的那份清单", proj.cands === 0, `${proj.cands} 处混在里面`);
 
       /**
        * ⚠️ **两种右栏都要钉得住，而且都要能自己滚。**
@@ -470,6 +503,7 @@ try {
 
   const picker = await page.evaluate(() => {
     const opts = [...document.querySelectorAll(".rpick__opt")];
+    const groups = [...document.querySelectorAll(".rpick__group")].map((g) => g.textContent.trim());
     const save = document.querySelector(".rpick .btn-primary");
     return {
       count: opts.length,
@@ -478,14 +512,26 @@ try {
       // take 空着时保存点不动，**而且屏幕上要写出原因**（灰按钮自己说不了话）
       disabled: !!save?.disabled,
       hint: document.querySelector(".rpick__hint")?.textContent.trim() || "",
+      groups,
+      // 有没有一组是冲着「一件事/一个发布」去的——发布类的东西全靠它
+      hasEvent: groups.some((g) => /事|发布/.test(g)),
     };
   });
   /**
-   * ⚠️ **七条的文案真源在 Worker 的 `values.js`，前端一个字都不写死。**
-   * 所以这儿只钉「有七条且逐条不同」，不钉具体措辞——钉了措辞的话，
-   * Worker 那边调一个字这条就红，而代码完全正确。
+   * ⚠️ **文案的真源在 Worker 的 `values.js`，前端一个字都不写死。**
+   * 所以这儿不钉具体措辞——钉了的话 Worker 那边调一个字这条就红，而代码完全正确。
    */
-  check("反应清单有七条且逐条不同", picker.count === 7 && picker.unique === 7, `${picker.count} 条 / ${picker.unique} 种`);
+  /**
+   * ⚠️ **不钉条数。** 钉了的话以后补一条反应这条就红，而代码完全正确。
+   * 要钉的是**不变量**：逐条不同、分了组、而且有一组是对着「一件事」的。
+   *
+   * 最后那条不是凑数：第一版七条**全都假设触发物是「一个观点」**，
+   * 于是「DeepSeek 发布了 V4-Flash，我想写」一条都选不上——你没法「同意」一件事实。
+   * 而热点里大量是发布和事件。**没有那一组，这个清单对一半的触发物就是空的。**
+   */
+  check("反应逐条不同", picker.count > 0 && picker.count === picker.unique, `${picker.count} 条 / ${picker.unique} 种`);
+  check("反应分了组，不是一长条平铺", picker.groups.length >= 2, picker.groups.join(" / "));
+  check("有一组是对着「一件事 / 一个发布」的", picker.hasEvent, picker.groups.join(" / "));
   check("没写看法时保存点不动，而且说了为什么", picker.disabled && /看法/.test(picker.hint), `${picker.disabled ? "灰的" : "能点"} · ${picker.hint.slice(0, 30)}`);
 
   // 填上字，按钮该活过来——但**仍然不提交**
@@ -1021,66 +1067,68 @@ try {
        */
       await createBtn.click();
       await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
-      const modesSrc = await fs.promises.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
-      const wantModes = (modesSrc.match(/export const MODES = \[([\s\S]*?)\];/)?.[1].match(/\{ key:/g) || []).length;
-      const rows = await page.$$eval(".menu-btn__row b", (els) => els.map((e) => e.textContent.trim()));
-      check("新建是个下拉，三条起点直接摊开", rows.length === wantModes && wantModes > 0, `${rows.join("/")}（常量 ${wantModes} 条）`);
-      // 每条都要带一句话：「从素材开始」和「访谈起稿」的差别恰恰在那句说明上
-      const hints = await page.$$eval(".menu-btn__row em", (els) => els.length);
-      check("每条起点都带一句说明", hints === rows.length, `${hints}/${rows.length}`);
-
-      // 选第一条（空白文章）→ 直接进编辑器，**不再经过「起点选择」那一屏**
-      await page.click(".menu-btn__row");
-      await page.waitForSelector(".creation", { timeout: 6000 }).catch(() => {});
-      check("选一条起点直接打开创作弹层", !!(await page.$(".creation")));
-      check("下拉选过之后不再问第二遍", !(await page.$(".creation-mode")));
 
       /**
-       * **手滑关掉不能把正在写的东西弄没。**
+       * 菜单摊开的是**平台 + 两条准备起点**，分两节。
        *
-       * 这一段测的是一条闭环：数字键选起点 → 敲字 → 自动留底 → 点背景关掉 → 重开时
-       * 问一句「接着写」→ 正文原样回来。任何一环断了，用户丢的是刚写完的一整段，
-       * 而**没有任何地方会报错**——这正是「安静的错」那一类里代价最高的。
+       * ⚠️ **「空白文章」展开成平台，不是一颗按钮。** 主稿的平台建完就改不了
+       *（Worker 的 `EDITABLE.drafts` 里没有 `platform`，只能再加平台变体），
+       * 所以必须在点下去之前问清楚——默认一个「大概是公众号吧」的代价是
+       * 你写完才发现，只能重开一篇。
        *
-       * 全程只写测试浏览器自己的 localStorage，一个写请求都不发（草稿缓冲本来就没有服务端）。
+       * 两份清单的真源都在别处（平台在 `lib/platforms.js`、起点在 `MODES`），
+       * **这儿跟常量比条数，不写死数字**——写死的话加一个平台这条就红，而代码是对的。
        */
-      await page.waitForSelector(".creation-editor .cm-content", { timeout: 6000 }).catch(() => {});
-      check("空白文章直接落在编辑器上", !!(await page.$(".creation-editor")));
-      await page.click(".creation-editor .cm-content").catch(() => {});
-      await page.keyboard.type("误关之前写下的这一段必须还在。", { delay: 5 });
-      await page.waitForTimeout(1200);
-      check("底部有实时字数", ((await page.textContent(".creation-count")) || "").includes("字"), await page.textContent(".creation-count").catch(() => ""));
-      // ⚠️ 措辞钉死在「留底」：写「已保存」的人会关掉弹层去稿件库找，那儿什么都没有
-      const savedNote = (await page.textContent(".creation-autosave").catch(() => "")) || "";
-      check("说的是留底不是已保存", savedNote.includes("已留底") && !savedNote.includes("已保存"), savedNote);
+      const dialogSrc = await fs.promises.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
+      const platformSrc = await fs.promises.readFile(new URL("../src/lib/platforms.js", import.meta.url), "utf8");
+      const wantModes = (dialogSrc.match(/export const MODES = \[([\s\S]*?)\];/)?.[1].match(/\{ key:/g) || []).length;
+      const wantPlatforms = (platformSrc.match(/PLATFORMS = \[([^\]]+)\]/)?.[1].match(/"/g) || []).length / 2;
+      const rows = await page.$$eval(".menu-btn__row b", (els) => els.map((e) => e.textContent.trim()));
+      const sections = await page.$$eval(".menu-btn__section", (els) => els.map((e) => e.textContent.trim()));
+      check("新建下拉里是平台 + 准备起点", wantPlatforms > 0 && rows.length === wantPlatforms + (wantModes - 1),
+        `${rows.join("/")}（平台 ${wantPlatforms} + 起点 ${wantModes - 1}）`);
+      check("菜单分了节，不是十条平铺", sections.length === 2, sections.join(" / "));
 
-      // 手滑点在背景上。**坐标要挑左上角**：底部那一片在窄一点的视口里可能压根不在屏幕上，
-      // 点了等于没点，而后面那句「再打开」会卡在超时上——现象是整轮冒烟测试从这儿断掉。
-      await page.mouse.click(8, 8);
-      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
-      // ⚠️ 重开也要走下拉：那颗按钮现在展开菜单，不再直接开弹层
-      await createBtn.click();
-      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      /**
+       * ⚠️ **这一条是这一轮的核心：选一个平台**不开弹层**，直接落在项目页上。**
+       *
+       * 写作只有一个地方（`#/project/:id`）。同一件事（写字）曾经有两个界面，
+       * 而那两个界面的能力还不一样——项目页有素材栏、发布准备、阶段推进，弹层没有。
+       *
+       * ⚠️ **建项目那一发要拦掉。** 真让它建的话，每跑一次冒烟测试就往线上库里
+       * 塞一个空项目。拦掉之后量的仍然是**真实的路由决定**（跳没跳、跳去哪），
+       * 而那正是这一轮改的东西。
+       */
+      let created = 0;
+      await page.route("**/api/pipe/create", (route) => {
+        created += 1;
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, draft: { id: "smoke-draft", topicId: "smoke-topic" }, project: { id: "smoke-topic" } }),
+        });
+      });
       await page.click(".menu-btn__row");
-      await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
-      check("重开时问要不要接着写", !!(await page.$(".creation-recover")), (await page.textContent(".creation-recover").catch(() => "")).slice(0, 40));
-      await page.click('.creation-recover button:has-text("接着写")').catch(() => {});
-      await page.waitForSelector(".creation-editor .cm-content", { timeout: 6000 }).catch(() => {});
-      const restored = await page.textContent(".creation-editor .cm-content").catch(() => "");
-      check("正文原样回来了", restored.includes("误关之前写下的这一段必须还在"), restored.slice(0, 30));
-      // 已经有字之后不能再问「要不要恢复」——那是一个点了就覆盖自己刚写的东西的按钮
-      check("恢复之后那条提示收起来了", !(await page.$(".creation-recover")));
+      await page.waitForFunction(() => location.hash.startsWith("#/project/"), { timeout: 8000 }).catch(() => {});
+      const landed = await page.evaluate(() => location.hash);
+      check("选平台直接落在项目页，不开弹层", landed.startsWith("#/project/") && created === 1, `${landed} · ${created} 次建项目`);
+      check("空白文章这条路上没有弹层", !(await page.$(".creation")));
+      await page.unroute("**/api/pipe/create").catch(() => {});
 
-      // 收尾：丢弃掉这份缓冲，别把测试写的字留给下一次
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(300);
-      await createBtn.click();
-      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
-      await page.click(".menu-btn__row");
-      await page.waitForSelector(".creation-recover", { timeout: 6000 }).catch(() => {});
-      await page.click('.creation-recover button:has-text("丢弃")').catch(() => {});
-      await page.waitForTimeout(200);
-      check("丢弃之后不再问", !(await page.$(".creation-recover")));
+      /**
+       * 回首页继续测准备屏那两条。
+       * ⚠️ **回来之后不能再用 `createBtn` 那个句柄**——整页重挂过了，
+       * 旧句柄指向的元素已经脱离 DOM（`Element is not attached to the DOM`）。
+       * 后面一律用选择器现点。
+       */
+      // ⚠️ **回的是总览页，不是首页**——这一整块跑在 `#/overview` 上（待办卡、
+      //    流水线流程线、底部那条系统行都只在那儿）。回错页的话后面几条量的是另一页。
+      await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
+      await page.waitForSelector(".page-bar__end .btn-primary", { timeout: 15000 }).catch(() => {});
+      const openCreate = async () => {
+        await page.click(".page-bar__end .btn-primary");
+        await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
+      };
 
       /**
        * 访谈欢迎区**不能被聊天气泡的样式串台**。
@@ -1093,9 +1141,10 @@ try {
       // ⚠️ 从**下拉的第三条**进访谈，不再是起点屏上按数字键——那一屏已经不是主路了
       await page.keyboard.press("Escape");
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
-      await createBtn.click();
-      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
-      await page.click(".menu-btn__row >> nth=2");
+      await openCreate();
+      // ⚠️ **按文字点，不按序号。** 菜单里现在是「五个平台 + 两条准备起点」，
+      //    按序号点的话加一个平台就会错位——而错位之后点开的是另一屏，测试却照跑。
+      await page.click('.menu-btn__row:has-text("访谈起稿")');
       await page.waitForSelector(".creation-interview-welcome", { timeout: 6000 }).catch(() => {});
       const welcome = await page.evaluate(() => {
         const svg = document.querySelector(".creation-interview-welcome > span svg");
@@ -1156,9 +1205,8 @@ try {
       // 换一条起点：素材屏。同样从下拉进，同样是入口屏
       await page.keyboard.press("Escape");
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
-      await createBtn.click();
-      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
-      await page.click(".menu-btn__row >> nth=1");
+      await openCreate();
+      await page.click('.menu-btn__row:has-text("从素材开始")');
       await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
       check("从下拉直接进的素材屏也不画返回", !(await page.$(".creation__head .creation__crumb")));
       const strayMaterial = await page.$$eval(".creation-material-workspace button", (els) => els.filter((e) => e.textContent.includes("返回")).length);
@@ -1235,154 +1283,56 @@ try {
       const picked = await page.$$eval(".creation-picked .creation-chip", (els) => els.length).catch(() => -1);
       check("点素材就进右栏的已选", picked === 2, `${picked} 条`);
       await page.fill(".creation-brief-field--grow textarea", "想说清楚信息过载真正的代价是什么");
+      /**
+       * ⚠️ **生成完停在这一屏，不跳走。**
+       *
+       * 待核验的金句和数据不进稿——挑了 2 条只用了 1 条这件事，
+       * **跳进项目页就没地方说了**（那一页没有「刚才生成时发生了什么」这个概念，
+       * Worker 也不存它）。所以这一屏在这儿停一下，把结果说清楚再走。
+       *
+       * mock 里故意剔掉一条，量的就是那句话真的出现在屏幕上。
+       */
+      await page.unroute("**/api/pipe/draft/material").catch(() => {});
+      await page.route("**/api/pipe/draft/material", (route) =>
+        route.fulfill({
+          status: 200, contentType: "application/json",
+          body: JSON.stringify({ ok: true, body: MOCK_BODY, used: 1, skipped: [{ id: mocks[1].id, title: mocks[1].title }] }),
+        }));
       await page.click('.creation-writing-paths button:has-text("让 AI 生成初稿")');
-      await page.waitForSelector(".cm-cite", { timeout: 8000 }).catch(() => {});
+      await page.waitForSelector(".creation-generated", { timeout: 10000 }).catch(() => {});
 
-      const cite = await page.evaluate(() => {
-        const mark = document.querySelector(".cm-cite");
-        const num = document.querySelector(".cm-cite-num");
-        return {
-          text: mark?.textContent || "",
-          wash: mark ? getComputedStyle(mark).backgroundColor : "",
-          num: num?.textContent || "",
-          doc: document.querySelector(".creation-editor .cm-content")?.innerText || "",
-        };
-      });
-      check("被引用的那句在正文里标出来了", cite.text.includes("信息过载导致的结果"), cite.text.slice(0, 30));
-      check("标注有底纹不是纯文字", !/(, ?0\)|transparent)$/.test(cite.wash), cite.wash);
-      check("脚标号和右侧素材序号一致", cite.num === "1", cite.num);
-      // 文档里只能有正文，脚标是渲染出来的
-      check("脚标不是正文里的字符", !/\[\^|\^1/.test(cite.doc), cite.doc.slice(0, 40).replace(/\n/g, "⏎"));
-
-      const dock = await page.evaluate(() => {
-        const card = document.querySelector(".creation-source-list article");
-        return {
-          used: card?.dataset.used || "",
-          badge: card?.querySelector(".creation-source__used")?.textContent || "",
-          lede: document.querySelector(".creation-sources__lede")?.textContent || "",
-        };
-      });
-      check("右侧标出这条被用了", dock.used === "true" && /已用/.test(dock.badge), dock.badge);
-      /**
-       * ⚠️ **「不适用」是核验状态，不是「不适用于这篇文章」。** 完整含义是「这条不是
-       * 金句/数据，无需逐字核验」——跟着字段名读得懂，孤零零跟在类型后面就被读成
-       * 「这条素材不适用」，于是和旁边的「已用 1 处」并排看着自相矛盾。
-       * mock 的这条素材核验状态正是「不适用」，卡片上不该出现它。
-       */
-      const meta = await page.textContent('.creation-source-list article[data-used="true"] > small').catch(() => "");
-      check("卡片不说没有主语的「不适用」", !/不适用/.test(meta), meta.replace(/\s+/g, " ").trim());
-
-      // 素材正文能就地展开看全文——右栏的活儿是「对着正文核对」，弹层会盖住正文，等于没看
-      const folded = await page.$eval('.creation-source-list article[data-used="true"] > p', (e) => getComputedStyle(e).webkitLineClamp).catch(() => "");
-      await page.click('.creation-source-list article[data-used="true"] .creation-source__more');
-      const opened = await page.$eval('.creation-source-list article[data-used="true"] > p', (e) => ({
-        open: e.dataset.open, wrap: getComputedStyle(e).whiteSpace,
-      })).catch(() => ({}));
-      check("素材能就地展开看全文", folded === "3" && opened.open === "true", `折叠 ${folded} 行 → 展开 ${opened.open}`);
-      // 展开后按素材里真实的换行排版：多数素材是分条写的，挤成一段就读不出结构
-      check("展开后保留素材自己的换行", opened.wrap === "pre-wrap", opened.wrap);
-      await page.click('.creation-source-list article[data-used="true"] .creation-source__more');
-      // 原来这儿写着「它们不会自动进入正文」——在 AI 起稿这条路上那句话是反的
-      check("右侧不再说素材不会进正文", !/不会自动进入正文/.test(dock.lede), dock.lede.replace(/\s+/g, " ").slice(0, 50));
-
-      // 用上了的卡片给的是「跳过去看」，不是「插入引用」——它已经在正文里了，再插一遍是错的动作
-      const jump = await page.textContent('.creation-source-list article[data-used="true"] footer .btn').catch(() => "");
-      check("用过的素材给的动作是跳过去看", /看正文里的这处/.test(jump), jump.trim());
-
-      /**
-       * **两个方向都要通。**
-       * 卡片 → 正文：整张卡可点（不只是那颗小按钮），正文里对应那处加重高亮。
-       * 正文 → 卡片：点被标注的句子，右侧那张卡亮起来。
-       * 只做一个方向的话，用户在两栏之间对照时总有一半是死的。
-       */
-      // 先点第二条卡片（整张卡可点，不只是那颗小按钮）
-      await page.click(".creation-source-list article >> nth=1 >> h4");
-      const fromCard = await page.evaluate(() => {
-        const card = document.querySelector('.creation-source-list article[data-active="true"]');
-        const focus = document.querySelector('.cm-cite[data-focus="true"]');
-        return {
-          title: card?.querySelector("h4")?.textContent || "",
-          focused: focus?.textContent || "",
-          // 同一条素材的其他几处也该跟着亮一档，但当前这一处要能单独认出来
-          actives: document.querySelectorAll('.cm-cite[data-active="true"]').length,
-        };
-      });
-      check("点卡片本身就能定位到正文", fromCard.title === mocks[1].title && fromCard.focused.includes("大脑想要舒服"), JSON.stringify(fromCard));
-
-      // 反方向：点正文里**第一条**素材的那句 → 右侧高亮要从第二条切回第一条
-      await page.click(".cm-cite >> nth=0");
-      const fromBody = await page.evaluate(() => {
-        const card = document.querySelector('.creation-source-list article[data-active="true"]');
-        return { title: card?.querySelector("h4")?.textContent || "", focus: document.querySelector('.cm-cite[data-focus="true"]')?.textContent || "" };
-      });
-      check("点正文里的引用，右侧那条素材亮起来", fromBody.title === mocks[0].title, `${fromBody.title} ← ${fromBody.focus.slice(0, 14)}`);
-
-      // 点正文里没标注的地方 = 退出选中。只能换不能退的话，想安静读一遍正文时右边永远亮着一张卡
-      await page.click(".creation-editor .cm-content .cm-line >> nth=0");
-      const cleared = await page.evaluate(() => ({
-        card: !!document.querySelector('.creation-source-list article[data-active="true"]'),
-        focus: !!document.querySelector('.cm-cite[data-focus="true"]'),
-        marks: document.querySelectorAll(".cm-cite").length,
+      const gen = await page.evaluate(() => ({
+        panel: !!document.querySelector(".creation-generated"),
+        skip: document.querySelector(".creation-generated__skip")?.textContent.trim() || "",
+        // 写完了要给字数：屏幕上唯一说明「它真写出东西了」的地方
+        words: document.querySelector(".creation-generated__head em")?.textContent.trim() || "",
+        // ⚠️ 弹层里**不能**有编辑器——写作只在 #/project/:id
+        editor: document.querySelectorAll(".creation .cm-content").length,
+        go: document.querySelector(".creation-generated__acts .btn-primary")?.textContent.trim() || "",
       }));
-      check("点正文空白处取消选中", !cleared.card && !cleared.focus && cleared.marks === 2, JSON.stringify(cleared));
-      // ⚠️ 取消的是**选中**，不是标注本身——标注没了的话「哪句有出处」这件事就跟着没了
-      check("取消选中不会把标注一起清掉", cleared.marks === 2, `${cleared.marks} 处`);
-
-      // 卡片高亮不靠左侧那道竖线（`.note` 当初撤掉它的理由在这儿一样成立），也不靠外发光的圈
-      await page.click(".creation-source-list article >> nth=1 >> h4");
-      // ⚠️ 等那张卡真的变成 active 再量。React 的重渲染是异步的，点完立刻读
-      // 会量到上一张卡——而它各项样式都「正常」，于是断言绿着，测的却是错的元素
-      // ⚠️ **不能等到 `[data-active]` 出现就量。** 底色有 .12s 过渡，而过渡期间
-      // `getComputedStyle` 回的是**当前插值**、不是目标值——量到的会是一个还没变完的白，
-      // 于是断言红着，样式其实是对的。等的条件写成「颜色真的和没选中那张不一样了」。
-      await page
-        .waitForFunction(() => {
-          const on = document.querySelector('.creation-source-list article[data-active="true"]');
-          const off = document.querySelector(".creation-source-list article:not([data-active])");
-          return on && off && getComputedStyle(on).backgroundColor !== getComputedStyle(off).backgroundColor;
-        }, { timeout: 4000 })
-        .catch(() => {});
-      const look = await page.$eval('.creation-source-list article[data-active="true"]', (el) => ({
-        bar: getComputedStyle(el, "::before").content,
-        shadow: getComputedStyle(el).boxShadow,
-        bg: getComputedStyle(el).backgroundColor,
-        border: getComputedStyle(el).borderTopColor,
-      })).catch(() => ({}));
-      const plain = await page.$eval('.creation-source-list article:not([data-active])', (el) => getComputedStyle(el).backgroundColor).catch(() => "");
-      check("卡片选中态没有左侧竖线", look.bar === "none", String(look.bar));
-      // 靠换底色 + 换边框色，不靠外发光的圈——圈是浮在卡外面的一层，而「选中」说的是这张卡本身
-      check("卡片选中态靠换底色，不是外发光的圈",
-        /^(none|)$/.test(look.shadow || "none") && look.bg !== plain && /^rgba?\(/.test(look.bg || ""),
-        `底 ${look.bg}（未选 ${plain}）· 边 ${look.border} · 圈 ${look.shadow}`);
-
-      // 改写被标注的那一句 → 标注不能继续声称有出处。
-      // 用真的敲字而不是 dispatch 一个事务：要测的正是「用户在这句里打字之后会怎样」
-      await page.click(".cm-cite");
-      await page.keyboard.type("（这里是我自己后来加的一句）");
-      await page.waitForTimeout(300);
-      const afterEdit = await page.evaluate(() => ({
-        stale: document.querySelector(".cm-cite")?.dataset.stale || "",
-        recheck: document.querySelector(".creation-sources__recheck")?.textContent || "",
-      }));
-      check("改写过的标注变成待核对", afterEdit.stale === "true", afterEdit.stale);
-      check("并且给出重新核对这一步", /重新核对/.test(afterEdit.recheck), afterEdit.recheck.replace(/\s+/g, " "));
+      check("生成完停在素材屏，给出结果", gen.panel && !!gen.words, `${gen.words}`);
+      check("剔掉的素材在跳走之前就说了", gen.skip.includes(mocks[1].title), gen.skip.slice(0, 50));
+      /**
+       * ⚠️ **这条是这一轮的另一半：弹层里一个编辑器都没有。**
+       * 同一件事（写字）曾经有两个界面，而那两个界面的能力还不一样——
+       * 项目页有素材栏、发布准备、阶段推进，弹层没有。
+       */
+      check("弹层里没有编辑器", gen.editor === 0, `${gen.editor} 个`);
+      check("结果条上那颗是「去写」", /去写/.test(gen.go), gen.go);
 
       await page.unroute("**/api/pipe/draft/material").catch(() => {});
       await page.unroute("**/api/pipe/search/materials*").catch(() => {});
-      await page.keyboard.press("Escape");
-      await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
-      await createBtn.click();
-      await page.waitForSelector(".menu-btn__pop", { timeout: 6000 });
-      await page.click(".menu-btn__row >> nth=1");
-      await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
+
       /**
-       * ⚠️ **「起点选择」那一屏还在，但它不再是主路。**
-       * 它现在只剩一个到达方式：首页在**一条可推进内容都没有**的时候，
-       * 空态里那颗「开始一篇新的」（`setCreation("choose")`）。留着它是因为那条路真实存在；
-       * 而从下拉进来的三条各自是入口屏，退回去反而是错的（见上面那两条）。
+       * ⚠️ **「起点选择」那一屏整个撤了。**
+       * 它的全部作用是问三选一，而那个问题已经在页头那颗下拉里问完了
+       *（`NewContentButton`）——留着等于同一个问题问两遍。
+       * 这条钉的是它**没有偷偷长回来**：源码里不该再有 `"choose"` 这个屏。
        */
-      const chooserSrc = await fs.promises.readFile(new URL("../src/pages/Today.jsx", import.meta.url), "utf8");
-      check("起点屏还留着一个入口", /setCreation\("choose"\)/.test(chooserSrc), "今日空态的「开始一篇新的」");
+      const dialogNow = await fs.promises.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
+      check("起点选择那一屏撤干净了", !/screen === "choose"/.test(dialogNow));
+      const todaySrc = await fs.promises.readFile(new URL("../src/pages/Today.jsx", import.meta.url), "utf8");
+      check("首页空态那颗也走同一颗按钮", !/setCreation\("choose"\)/.test(todaySrc) && /NewContentButton/.test(todaySrc));
 
       await page.keyboard.press("Escape");
       await page.waitForSelector(".creation", { state: "detached", timeout: 4000 }).catch(() => {});
@@ -1391,12 +1341,18 @@ try {
 
     // 「N 件事等你」只数等你动手的两项。把 Worker 正在跑的活也算进去，
     // 会让人以为自己欠着事——「撰写中 3」并不需要你做任何动作。
+    /**
+     * ⚠️ **两个数必须同一刻采样。**
+     * 这一块中间跳去过项目页再回来（测「选平台直接落在项目页」），页面重挂过——
+     * 拿跳转之前那份 `nums` 去比现在的角标，差的是**时间**不是代码。
+     */
     const badge = await page.textContent(".page-bar__end").catch(() => "");
-    const sum = nums.reduce((n, x) => n + Number(x), 0);
+    const numsNow = await page.$$eval(".todo-card__value", (els) => els.map((e) => e.textContent));
+    const sum = (numsNow.length ? numsNow : nums).reduce((n, x) => n + Number(x), 0);
     check(
       "待办数只算等你动手的",
       sum ? badge.includes(`${sum} 件事`) : badge.includes("没有待办"),
-      `${badge} / ${nums.join("+")}`
+      `${badge} / ${(numsNow.length ? numsNow : nums).join("+")}`
     );
   } else {
     const guide = await page.textContent(".note-title").catch(() => "");
@@ -1675,6 +1631,9 @@ try {
     if (!hasTopicRows) {
       check("选题库这会儿是空的，看板这一段跳过", true, "0 条 · 有条目时才验得了分列");
     } else {
+      // 切过去之前先量列表侧：这一档此刻**有没有条目真带摘要**。
+      // 看板那条断言要跟它对齐，见下面。
+      const listPreviews = await page.$$eval(".doc-row__excerpt", (els) => els.filter((e) => e.textContent.trim().length > 10).length);
       await page.click('.seg button:has-text("看板")');
       await page.waitForSelector(".kanban-col", { timeout: 8000 });
       const cols = await page.$$eval(".kanban-col__name", (els) => els.map((e) => e.textContent.trim()));
@@ -1687,8 +1646,17 @@ try {
       );
       check("空的「搁置」不占列，有内容才出现", quietCount.length === 0 || quietCount[0] > 0, quietCount.length ? `有 ${quietCount[0]} 条` : "空着，已隐藏");
       // 看板的卡片要有摘要，否则它就只是「竖着排的标题列表」，换视图没意义
+      /**
+       * 看板的卡片要有摘要，否则它就只是「竖着排的标题列表」，换视图没意义。
+       *
+       * ⚠️ **但判据要跟列表侧对齐，不能写死「一定有」。**
+       * `Board.jsx` 只在 `it.preview` 有值时才画那一行——某一档里恰好全是
+       * 刚建的空选题（没写正文）时，看板上一条摘要都没有是**对的**。
+       * 写死的话，那种再正常不过的数据会让这条变红而代码没问题。
+       */
       const kanbanNotes = await page.$$eval(".kanban-card__note", (els) => els.length);
-      check("看板卡片带摘要", kanbanNotes > 0, `${kanbanNotes} 张有摘要`);
+      check("列表里有摘要的，看板上也有", listPreviews === 0 ? kanbanNotes === 0 : kanbanNotes > 0,
+        `列表 ${listPreviews} 条有摘要 · 看板 ${kanbanNotes} 张`);
       // 看板天生是横向的，不该被正文栏的 1320 上限切掉
       const wide = await page.$eval(".main", (el) => getComputedStyle(el).maxWidth);
       check("看板下正文栏放开宽度限制", wide === "none", wide);
@@ -1756,7 +1724,20 @@ try {
       check("状态筛选条", stateChips.includes("待写") && stateChips.includes("撰写中"), stateChips.join("/"));
       // 行要有摘要，否则这一列就只是一份目录，浏览层「一眼扫十几条」的价值没了
       const previews = await page.$$eval(".doc-row__excerpt", (els) => els.map((e) => e.textContent.trim()));
-      check("行带摘要", previews.length > 0 && previews[0].length > 10, `${previews.length} 条有摘要`);
+      /**
+       * ⚠️ **看的是「有没有一行真带摘要」，不是「第一行带不带」。**
+       * 库里排最前的可能是一条刚建的空选题（没写正文，摘要自然是空的）——
+       * 钉 `previews[0]` 的话，那种再正常不过的数据会让这条变红而代码没问题。
+       * 每行都要有摘要**位**（哪怕空着）那条在别处单独钉着。
+       */
+      /**
+       * ⚠️ **钉的是「每行都有摘要位」，不是「此刻有没有字」。**
+       * 浏览层不能退化成一份目录——所以摘要那一格**行行都要在**（空着也占高，
+       * 否则一列扫下去是锯齿）。而某一档里恰好全是刚建的空选题是**再正常不过的数据**，
+       * 拿它当失败条件的话，这条会在库里没问题的时候变红。
+       */
+      const rowCount = await page.$$eval(".doc-rows .doc-row", (els) => els.length);
+      check("每行都有摘要位", rowCount > 0 && previews.length === rowCount, `${previews.length}/${rowCount} 行有摘要位`);
       // 删除要有入口、而且**必须点两下**：第一下只是把按钮换成写清去向的确认按钮
       check("行上有删除入口", (await page.$$(".doc-row__del")).length === n, `${(await page.$$(".doc-row__del")).length}/${n}`);
       // 入口为了不抢主动作，鼠标场景下只在卡片 hover 后显形。Playwright 直接 click
@@ -1777,9 +1758,38 @@ try {
       await shot("wall");
 
       // 点开 → 阅读覆盖层
-      await page.click(".doc-row__open");
-      await page.waitForSelector(".reader-overlay .reader .prose", { timeout: 25000 });
+      /**
+       * ⚠️ **挑一条真有正文的打开，别盲点第一条。**
+       * 后面这一整段测的是**阅读区的能力**（面包屑、批注台、状态下拉、排版/封面入口、
+       * 元信息行）——它们里有几样只在稿子真有内容时才画。而列表排最前的可能是一条
+       * 刚建的空选题，那时后面十几条全会挂在超时上，看着像阅读区坏了。
+       * 空正文本身另有一条断言（就在下面），不靠这一段覆盖。
+       */
+      // ⚠️ **先切到「全部」。** 默认那一档（待写）里可能一条有正文的都没有——
+      //    刚建的空选题就落在那儿。后面十几条量的是阅读区的能力，需要一篇真有字的。
+      await page.click('.chips-sm .chip:has-text("全部")').catch(() => {});
+      await page.waitForTimeout(900);
+      const pickRow = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".doc-row")];
+        const withBody = rows.find((r) => (r.querySelector(".doc-row__excerpt")?.textContent || "").trim().length > 10);
+        return rows.indexOf(withBody || rows[0]);
+      });
+      await page.click(`.doc-row__open >> nth=${Math.max(pickRow, 0)}`);
+      /**
+       * ⚠️ **等的是「这一层真的有东西了」，不是正文本身。**
+       * 等 `.prose` 的话，点开一条**还没写正文的选题**（刚建的空选题就是这样）
+       * 会一直等到超时——而那是再正常不过的数据，不是缺陷。
+       * `.rail-tabs` 是这一层加载完的标志，正文有没有字另说。
+       */
+      await page.waitForSelector(".reader-overlay .rail-tabs", { timeout: 25000 });
       check("点开进阅读区", !!(await page.$(".reader-overlay")));
+      // 正文有字就渲染成 `.prose`，一个字都没有时给空态——两种都算通过
+      const bodyOrEmpty = await page.evaluate(() => ({
+        prose: (document.querySelector(".reader-overlay .reader .prose")?.textContent || "").trim().length,
+        empty: !!document.querySelector(".reader-overlay .reader .reader-empty"),
+      }));
+      check("正文渲染出来了，或者照实说这篇还没写", bodyOrEmpty.prose > 0 || bodyOrEmpty.empty,
+        `正文 ${bodyOrEmpty.prose} 字 · 空态 ${bodyOrEmpty.empty}`);
       check("阅读区有面包屑", (await page.textContent(".reader-overlay__crumb")).includes("选题库"));
       check("阅读区有批注台", !!(await page.$(".reader-overlay .rail")));
       check("有状态下拉（可直接改库里的状态）", !!(await page.$(".select__btn")));

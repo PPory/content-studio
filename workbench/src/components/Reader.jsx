@@ -192,7 +192,7 @@ export function Reader({
       {content?.trim() ? (
         <Prose html={html} plain={content} innerRef={proseRef} />
       ) : (
-        <p className="page-sub">这份文档还没有正文。在 Obsidian 里写点东西，回来刷新即可。</p>
+        <p className="page-sub reader-empty">这一篇还没有正文。写好之后回来刷新就能看到。</p>
       )}
 
       {bar && (

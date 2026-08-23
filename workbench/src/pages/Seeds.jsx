@@ -8,17 +8,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { PageHeader, StatePill, ErrorNote, Loading, Empty, relTime } from "../components/ui.jsx";
+import { PageHeader, StatePill, ErrorNote, Loading, Empty, MenuButton, relTime, valueIcon } from "../components/ui.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
-import { CreationDialog } from "../components/CreationDialog.jsx";
-import { IconArrowUpRight, IconBulb, IconPencil, IconPlus, IconTrash } from "../components/icons.jsx";
+import { PLATFORMS } from "../lib/platforms.js";
+import { startWriting } from "../lib/start-writing.js";
+import { IconArrowUpRight, IconBulb, IconPencil, IconPlus, IconTrash, IconWorld } from "../components/icons.jsx";
 
 const KEEPING = "攒着";
 
 export function Seeds({ onGo, onChanged }) {
-  // 「写这个」在这一页自己开编辑器：App 层没有 creation 状态，
-  // 而这条动线（种子 → 写）只属于这一页
-  const [writing, setWriting] = useState(null);
+  // 正在建项目的那颗种子的 id（按钮上转圈用）。
+  // ⚠️ **不是弹层**——「写这个」直接建项目跳 `#/project/:id`，写作只有那一个地方。
+  const [writing, setWriting] = useState("");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [status, setStatus] = useState(KEEPING);
@@ -61,6 +62,36 @@ export function Seeds({ onGo, onChanged }) {
       setError(e);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * 写这颗种子。
+   *
+   * ⚠️ **不开弹层，直接建项目跳过去。** 写作统一在 `#/project/:id`——
+   * 别处（首页、内容页、素材工作台）建完内容早就跳那儿了，只有这条曾经卡在弹层里。
+   * 而那一屏上除了你填的那句话什么都没有：看不到来源，也看不到能用的素材。
+   *
+   * ⚠️ **平台必须在点下去之前选。** 主稿的平台建完就改不了（Worker 那侧
+   * `EDITABLE.drafts` 里没有 `platform`，只能再加平台变体），
+   * 默认一个「大概是公众号吧」的代价是你写完才发现、只能重开一篇。
+   *
+   * 标成「写了」和回填 `draft_id` 都在 `startWriting` 里做——**入库成功才记账**：
+   * 反过来的话，建项目失败时那颗种子已经从「攒着」里消失了，而它明明还没写。
+   */
+  async function write(seed, platform) {
+    if (writing) return;
+    setWriting(seed.id);
+    setError(null);
+    try {
+      const projectId = await startWriting({ platform, mode: "blank", body: `${seed.take}
+
+`, seed });
+      onChanged?.();
+      onGo("project", projectId);
+    } catch (e) {
+      setError(e);
+      setWriting("");
     }
   }
 
@@ -148,10 +179,23 @@ export function Seeds({ onGo, onChanged }) {
               <div className="seed__acts">
                 {seed.status === KEEPING ? (
                   <>
-                    <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => setWriting(seed)}>
-                      <IconPencil size={14} stroke={1.8} aria-hidden="true" />写这个
-                    </button>
-                    <button className="btn btn-sm" disabled={busy} onClick={() => patch(seed.id, { status: "不写了" })}>
+                    {/* ⚠️ **发哪儿要在点下去之前选**——主稿的平台建完就改不了 */}
+                    <MenuButton
+                      label="写这个"
+                      icon={IconPencil}
+                      align="start"
+                      className="btn btn-sm btn-primary"
+                      busy={writing === seed.id}
+                      ariaLabel={`写这个：${seed.take}`}
+                      items={PLATFORMS.map((name, i) => ({
+                        key: name,
+                        section: i === 0 ? "发哪儿" : undefined,
+                        icon: valueIcon(name, IconWorld),
+                        title: name,
+                        onPick: () => write(seed, name),
+                      }))}
+                    />
+                    <button className="btn btn-sm" disabled={busy || !!writing} onClick={() => patch(seed.id, { status: "不写了" })}>
                       不写了
                     </button>
                   </>
@@ -173,26 +217,9 @@ export function Seeds({ onGo, onChanged }) {
         </div>
       ) : null}
 
-      {/**
-        * ⚠️ **入库成功才把种子标成「写了」。** 反过来的话（先标再开编辑器）
-        * 你关掉弹层不写了，那颗种子已经从「攒着」里消失了——而它明明还没写。
-        */}
-      <CreationDialog
-        open={!!writing}
-        preset="blank"
-        seed={writing}
-        onClose={() => setWriting(null)}
-        onCreated={async () => {
-          const seed = writing;
-          setWriting(null);
-          if (seed) await patch(seed.id, { status: "写了" });
-          onChanged?.();
-        }}
-      />
-
       <ReactionPicker
         open={picking}
-        reactions={data?.reactions || []}
+        groups={data?.reactionGroups || []}
         source={null}
         busy={busy}
         error={saveError}
