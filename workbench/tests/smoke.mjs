@@ -450,7 +450,10 @@ try {
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
   await page.click('.nav-item:has-text("发现")');
-  await page.waitForSelector(".crumbs", { timeout: 8000 });
+  /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
+     那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
+     「等容器不等内容」在这个文件里已经记过三次，这是第四处。 */
+  await page.waitForFunction(() => /热点/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
   check("发现直接进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
   check("发现二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "热点/洞察/书架");
   await page.click('.subnav-item:has-text("书架")');
@@ -3298,6 +3301,35 @@ try {
     return ws.length > 1 ? Math.max(...ws) - Math.min(...ws) : -1;
   });
   check("「打开来源」那一格空着也占位", slotDrift >= 0 && slotDrift <= 1, slotDrift < 0 ? "这一屏行数不够，量不到" : `宽度相差 ${slotDrift}px`);
+
+  /**
+   * ⚠️ **拆出来的素材要能跳回它那一篇。**
+   * 初筛把一篇文章拆成原子素材（一条只讲一件事），好处是可复用、可逐字核验，
+   * 代价是**每条素材都不带它成立的前提**——而写作恰恰需要前提。原文一直在库里，
+   * 之前界面上没有一条路走回去。
+   *
+   * ⚠️ **判据是「有来源的才画」**：手动入库的素材（`/金句` 那类）本来就没有来源，
+   * 给它一个点了没反应的入口比不给更糟。所以这儿量的是**两者的关系**，
+   * 不是「有几颗按钮」——写死数量的话，库里的素材构成一变这条就红。
+   */
+  const backlink = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".doc-row")];
+    let withSource = 0;
+    let withButton = 0;
+    for (const row of rows) {
+      // 「来源 N」＝这条是从某一篇里拆出来的；「独立素材」「来源 → …」＝没有可回的原文
+      const trace = row.querySelector(".doc-row__trace")?.textContent || "";
+      const has = /^来源\s*\d/.test(trace.trim());
+      if (has) withSource += 1;
+      if (row.querySelector('button[aria-label="看原文"]')) withButton += 1;
+    }
+    return { rows: rows.length, withSource, withButton };
+  });
+  check(
+    "有来源的素材才画「看原文」，没有的不画",
+    backlink.withButton === backlink.withSource,
+    `${backlink.rows} 行 · 有来源 ${backlink.withSource} · 有按钮 ${backlink.withButton}`
+  );
 
   /**
    * ⚠️ **表头那几格必须真的落在它说的那一列上。**

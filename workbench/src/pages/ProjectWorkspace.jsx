@@ -8,6 +8,7 @@ import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
+import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
 import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh, IconTag } from "../components/icons.jsx";
 
@@ -495,6 +496,15 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
             <ProjectRefs
               materials={project.materials || []}
               canInsert={draftEditable}
+              /**
+               * 跳去素材页并把那条来源打开。走的是 `open-target.js` 那张一次性交接条——
+               * 素材页列表加载完会取一次、用掉。**不往 hash 里塞 id**：这个项目的 hash 是
+               * 两段而且状态值本身带斜杠，加一段就要重新处理分隔符规则。
+               */
+              onOpenSource={(inspirationId) => {
+                setOpenTarget("materials", `inbox:${inspirationId}`);
+                onGo("materials", "");
+              }}
               loading={loading}
               onReload={load}
               onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}

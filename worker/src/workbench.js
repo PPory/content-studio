@@ -13,6 +13,7 @@ import {
   materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic, personalEvidence,
   tagsOf, setTags, addComment, listComments as dbListComments,
   all, first, now, newId, batch, stmt,
+  sourceContextOf, contextLine,
 } from "./lib/db.js";
 import { TOPIC_STATUS, DRAFT_STATUS, DRAFT_WORKFLOW, VERIFICATION } from "./lib/values.js";
 import { pipelineCounts } from "./lib/status.js";
@@ -1593,10 +1594,17 @@ async function draftFromMaterials(env, body) {
   }
 
   const evidence = await personalEvidence(env, usable.map((r) => ({ type: r.type, note: r.content })));
+  /**
+   * ⚠️ **带上来源上下文**（`inbox.card_markdown`）。初筛把一篇文章拆成原子素材，
+   * 好处是可复用可核验，代价是**每条素材都不带它成立的前提**——而写作恰恰需要前提。
+   * 和任务3 走的是同一个 `sourceContextOf`，一份实现。
+   */
+  const context = await sourceContextOf(env, usable);
   let remaining = 36_000;
   const brief = usable.map((r, index) => {
     const note = String(r.content || "").trim().slice(0, Math.max(0, Math.min(6000, remaining)));
     remaining -= note.length;
+    const ctx = contextLine(context.get(r.id));
     return [
       `【素材 ${index + 1}】`,
       `标题：${r.title}`,
@@ -1604,6 +1612,8 @@ async function draftFromMaterials(env, body) {
       `核验：${r.verification}`,
       r.source_url ? `来源：${r.source_url}` : "",
       `正文：\n${note || "（无正文）"}`,
+      // ⚠️ 明确标成「背景」——它不是可引用的素材，见提示词里那条
+      ctx ? `背景（仅供理解，不可直接引用）：\n${ctx}` : "",
     ].filter(Boolean).join("\n");
   });
 

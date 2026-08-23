@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 import { relTime, stateIcon, stateTone } from "../../components/ui.jsx";
-import { IconArrowUpRight, IconTrash } from "../../components/icons.jsx";
+import { IconArrowUpRight, IconFileText, IconTrash } from "../../components/icons.jsx";
 import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
 
 /**
@@ -30,7 +30,7 @@ import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
  */
 export const isSpec = (t) => /(?:字|分钟|条|篇)$/.test(String(t || "").trim());
 
-export function DocRow({ item, onOpen, onDelete, removeLabel }) {
+export function DocRow({ item, onOpen, onDelete, removeLabel, onOpenSource }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   // 挡住一次物理双击直接删掉——为什么需要它、320ms 是怎么来的，见 hook 里的注释
@@ -111,6 +111,24 @@ export function DocRow({ item, onOpen, onDelete, removeLabel }) {
           * 删除那颗不用占位：它有没有由**源**决定（`source.remove`），
           * 一份列表里要么每行都有、要么每行都没有，不会把某几行推歪。
           */}
+        {/**
+          * ⚠️ **「看原文」和「打开来源」是两回事，别合成一颗。**
+          * 前者跳回**库里那条灵感**（这条素材是从它里面拆出来的）；
+          * 后者打开**站外的那个网址**。一条素材可以两者都有、也可以只有一个。
+          */}
+        <span className="doc-row__srcslot">
+          {item.sourceOpen && onOpenSource ? (
+            <button
+              type="button"
+              className="icon-btn doc-row__src"
+              onClick={() => onOpenSource(item.sourceOpen)}
+              title="看它是从哪一篇里拆出来的"
+              aria-label="看原文"
+            >
+              <IconFileText aria-hidden="true" size={15} stroke={1.7} />
+            </button>
+          ) : null}
+        </span>
         <span className="doc-row__srcslot">
           {item.raw?.link ? (
             <a className="icon-btn doc-row__src" href={item.raw.link} target="_blank" rel="noreferrer" title="打开来源" aria-label="打开来源">

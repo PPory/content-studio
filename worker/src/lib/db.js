@@ -100,6 +100,75 @@ export async function setTags(env, kind, entityId, names = []) {
   return clean;
 }
 
+const CONTEXT_CAP = 1200; // 单条来源上下文的字数上限
+
+/**
+ * 把来源上下文压成一段能塞进 prompt 的字。
+ *
+ * ⚠️ **有上限。** `card_markdown` 长度不受控，六条主料各带一篇的话很容易吃掉整个预算。
+ * 截断比不给强——前几百字已经足够说清"这篇在讲什么"。
+ *
+ * ⚠️ **它和 `sourceContextOf` 放在一起，而且都在 `lib/` 不在 `tasks/`。**
+ * `tasks/draft.js` 引了 `prompt/*.md`（wrangler 的 Text 模块），node 根本加载不了它——
+ * 放那儿就等于这段逻辑没有测试。这条这个项目栽过（`keepRealPicks` 当初就是这么挪出来的）。
+ */
+export function contextLine(context) {
+  if (!context) return "";
+  const card = String(context.card || "").trim().slice(0, CONTEXT_CAP);
+  const parts = [];
+  if (context.title) parts.push(`出自《${context.title}》`);
+  if (context.verdict) parts.push(`整篇判断：${context.verdict}`);
+  if (card) parts.push(`整篇要点：\n${card}`);
+  return parts.join("\n");
+}
+
+/**
+ * 素材的**来源上下文**：这条素材是从哪一篇里拆出来的、那一篇整体在讲什么。
+ *
+ * ⚠️ **这是「拆」这个动作欠下的债。** 初筛把一篇文章拆成原子素材（一条只讲一件事），
+ * 好处是可复用、可逐字核验；代价是**每条素材都不带它成立的前提**。
+ * 而成稿时喂给模型的一直只有碎片——原文就躺在 `inbox` 里，从来没人回去读。
+ *
+ * ⚠️ **取的是 `card_markdown` 不是 `body`。** 前者是初筛时就写好的「这篇整体在讲什么」，
+ * 几百字；后者是原文全文，一篇五千字、六条素材来自六篇就是三万字，而单篇成稿的
+ * 输出预算才 16k token。**上下文要的是「前提」，不是「全文」**，而 `card_markdown`
+ * 正好是那一层——它一直在库里，只是没被任何地方读过。
+ *
+ * ⚠️ **手动入库的素材没有来源**（`/金句` 那类直接进素材库，`inbox_id` 为空）。
+ * 那种情况返回不到东西是对的，调用方要照实说「这条是直接存的」，
+ * 而不是给一个指向空处的上下文。
+ *
+ * 返回 Map<materialId, { title, verdict, card }>。
+ */
+export async function sourceContextOf(env, materials = []) {
+  const map = new Map();
+  const byInbox = new Map();
+  for (const m of materials) {
+    const inboxId = String(m?.inbox_id || "");
+    if (!inboxId) continue;
+    if (!byInbox.has(inboxId)) byInbox.set(inboxId, []);
+    byInbox.get(inboxId).push(String(m.id));
+  }
+  if (!byInbox.size) return map;
+
+  const ids = [...byInbox.keys()];
+  const holes = ids.map(() => "?").join(",");
+  const rows = await all(
+    env,
+    `SELECT id, title, verdict, card_markdown FROM inbox WHERE id IN (${holes})`,
+    ...ids
+  );
+  for (const row of rows) {
+    const context = {
+      title: row.title || "",
+      verdict: row.verdict || "",
+      card: String(row.card_markdown || "").trim(),
+    };
+    for (const materialId of byInbox.get(row.id) || []) map.set(materialId, context);
+  }
+  return map;
+}
+
 // 一次取回多个实体的标签，避免 N+1。返回 Map<entityId, string[]>
 export async function tagsOf(env, kind, ids = []) {
   const map = new Map(ids.map((id) => [id, []]));

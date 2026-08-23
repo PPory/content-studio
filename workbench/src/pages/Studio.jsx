@@ -200,6 +200,27 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   }, [list, sourceKey, openItem]);
 
 
+  /**
+   * 跳回这条素材是从哪一篇里拆出来的。
+   *
+   * ⚠️ **来源和素材在同一个统一列表里**（灵感是「待处理 / 已收纳」那两档），
+   * 所以这不是跨页跳转，多数时候那一条就在已经加载的这一页里——直接开。
+   *
+   * ⚠️ **不在这一页时不能装作没事发生。** 放下交接条 + 清掉筛选和搜索让列表重载，
+   * 上面那个 effect 会接住它。要是清完还找不到（被挤到第二页），退化成
+   * 「停在这张全量列表上」——这是 `open-target.js` 里写好的降级，比弹一个空阅读区好。
+   */
+  const openSource = useCallback((key) => {
+    if (!key) return;
+    const hit = (list?.items || []).find((it) => it.key === key);
+    if (hit) { openItem(hit); return; }
+    setOpenTarget(sourceKey, key);
+    setActive(null);
+    setDoc(null);
+    setQuery("");
+    onState("");
+  }, [list, openItem, sourceKey, onState]);
+
   const closeItem = useCallback(() => {
     resetAi();
     stopChat();
@@ -674,6 +695,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         </div>
 
 <DocList
+          onOpenSource={source.isMaterialWorkspace ? openSource : null}
           list={query.trim() ? (searchList || list) : list}
           listError={listError}
           source={source}

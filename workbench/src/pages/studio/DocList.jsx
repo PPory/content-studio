@@ -16,7 +16,7 @@ import { SourceSetup } from "./SourceSetup.jsx";
  * 理由是这一步的性质：**搬，不改。** 名字一改，JSX body 就得跟着动，
  * 「和搬之前一字不差」这个可以机械验证的保证就没了。要改名另开一个提交。
  */
-export function DocList({ list, listError, source, shown, layout, canBoard, query, state, loadingMore, openItem, changeStatus, removeItem, loadMore }) {
+export function DocList({ list, listError, source, shown, layout, canBoard, query, state, loadingMore, openItem, changeStatus, removeItem, loadMore, onOpenSource }) {
   return (
     <>
     <ErrorNote error={listError} what="加载列表" />
@@ -70,7 +70,9 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
                   <span className="doc-row__time">更新</span>
                 </span>
               </div>
+              {/* ⚠️ 占位格数要和行里一致（看原文 / 打开来源 / 删除），少一格整个表头就右移 */}
               <div className="doc-row__acts">
+                <span className="doc-row__srcslot" />
                 <span className="doc-row__srcslot" />
                 {source.remove ? <span className="doc-row__delslot" /> : null}
               </div>
@@ -83,6 +85,7 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
                   <DocRow
                     key={item.key}
                     item={item}
+                    onOpenSource={onOpenSource}
                     onOpen={() => openItem(item)}
                     onDelete={source.remove ? () => removeItem(item) : null}
                     removeLabel={source.removeLabel}

@@ -14,13 +14,12 @@ import { assertGroundedGeneratedText, isMaterialEligibleForDraft, primaryPlatfor
 import {
   getRow, updateRow, listByStatus, upsertByTaskKey,
   materialsOfTopic, draftsOfTopic, searchSupplementary, tagsOf, findTopicByTitle, personalEvidence,
+  sourceContextOf, contextLine,
 } from "../lib/db.js";
 import { TOPIC_STATUS, DRAFT_STATUS, PLATFORMS } from "../lib/values.js";
 import { isVaultEnabled, archiveDraft, tryArchive } from "../lib/vault.js";
 
 const DRAFT_MAX_TOKENS = 16000; // 单平台单稿，16k 足够
-const SUPP_CAP = 12;            // 补充检索素材上限
-
 export { PLATFORMS };
 
 const PLATFORM_ALIASES = { x: "X", youtube: "YouTube", yt: "YouTube" };
@@ -89,12 +88,19 @@ async function draftTopic(env, topic, platformsOverride) {
   );
   const coreIds = allCore.map((m) => m.id);
   const coreTagMap = await tagsOf(env, "material", coreMaterials.map((m) => m.id));
+  /**
+   * ⚠️ **上下文只给主料，补充料不给。**
+   * 主料是这一篇真要用的（frontmatter 里也只写它们）；补充料是撒出去的网，
+   * 给它们也带上原文的话，光上下文就能占掉大半预算，而它们大多数根本不会被引用。
+   */
+  const coreContext = await sourceContextOf(env, coreMaterials);
   const coreInput = coreMaterials.map((m) => ({
     title: m.title,
     type: m.type,
     note: m.content,
     tags: coreTagMap.get(m.id) || [],
     verificationStatus: m.verification,
+    来源上下文: contextLine(coreContext.get(m.id)),
   }));
 
   // 补充料：按主料标签检索，SQL 里打分排序，不再整批拉回来本地算

@@ -78,6 +78,7 @@ export function mapMaterialWorkspaceItem(entry = {}) {
   const sourceKey = entry.sourceKey;
   const id = entry.id || record.id;
   const trace = relationTrace(entry);
+  const inspirationIds = Array.isArray(entry.inspirationIds) ? entry.inspirationIds.filter(Boolean) : [];
   const kindLabel = KIND_LABELS[entry.kind] || "素材";
   const kindTone = KIND_TONES[entry.kind] || "backlog";
   const verification = entry.verificationStatus || record.verificationStatus || "";
@@ -91,8 +92,21 @@ export function mapMaterialWorkspaceItem(entry = {}) {
   meta.内容去向 = trace;
   if (entry.link) meta.原始链接 = entry.link;
 
+  /**
+   * 回原文的落点。⚠️ **判据在适配器里，界面层不认识「灵感 / 素材」这些概念。**
+   *
+   * 初筛把一篇文章拆成原子素材（一条只讲一件事），好处是可复用、可逐字核验，
+   * 代价是**每条素材都不带它成立的前提**。原文一直在库里（`inbox`），
+   * 只是界面上没有一条路走回去——这就是那条路。
+   *
+   * ⚠️ **手动入库的素材没有来源**（`/金句` 那类直接写素材库）。这时给空串，
+   * 调用方据此**不画那个入口**，而不是画一个点了没反应的。
+   */
+  const sourceOpen = entry.kind === "material" && inspirationIds[0] ? `inbox:${inspirationIds[0]}` : "";
+
   return {
     key: `${sourceKey}:${id}`,
+    sourceOpen,
     title: entry.title || "（无标题）",
     sub: [kindLabel, entry.type].filter(Boolean).join(" · "),
     preview: entry.excerpt || record.note || record.selection || "",
