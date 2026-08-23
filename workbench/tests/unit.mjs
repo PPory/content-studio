@@ -574,6 +574,29 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
  * 同一批数据里 `top_card` 也是布尔而不是文本——**registry 的字段名读着像文本，
  * 实际类型全靠你去看真实数据**，所以这条钉的是结果不是某一个字段。
  */
+/**
+ * ⚠️ **`NAV_LABELS` 和 `NAV_ICONS` 必须逐键对齐。**
+ *
+ * 真踩过：加「排版」这一级时只加了标签、没加图标，于是
+ * `const Icon = NAV_ICONS[item.key]` 是 `undefined`，渲染 `<Icon />` 直接抛——
+ * **整个界面白屏**。而 `npm run build` 照样绿（打包器不跑代码），
+ * 只有跑一整轮冒烟测试才抓得到，那太贵了。这条一秒钟就跑完。
+ */
+{
+  const { NAV_LABELS } = await import("../src/lib/views.js");
+  const icons = await fs.readFile(new URL("../src/components/icons.jsx", import.meta.url), "utf8");
+  const block = icons.match(/export const NAV_ICONS = \{([\s\S]*?)\}/)?.[1] || "";
+  const iconKeys = [...block.matchAll(/^\s*([a-z]+):/gm)].map((m) => m[1]);
+  const labelKeys = Object.keys(NAV_LABELS);
+  check("每个一级导航都有图标", labelKeys.every((k) => iconKeys.includes(k)),
+    `标签 ${labelKeys.join("/")} · 图标 ${iconKeys.join("/")}`);
+  // 反过来也钉：多出来的图标说明某一项被删了而这儿忘了跟着删
+  check("图标表里没有多余的键", iconKeys.every((k) => labelKeys.includes(k)),
+    `多出 ${iconKeys.filter((k) => !labelKeys.includes(k)).join("/") || "无"}`);
+  // 一级标签一律两个字（冒烟测试也钉，这儿是更早的一道）
+  check("一级导航标签都是两个字", Object.values(NAV_LABELS).every((n) => n.length === 2), Object.values(NAV_LABELS).join("/"));
+}
+
 {
   const { latestCandidates } = await import("../server/lib/insight-candidates.mjs");
   const reg = await latestCandidates();

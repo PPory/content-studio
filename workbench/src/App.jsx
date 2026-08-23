@@ -29,6 +29,7 @@ import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
+// ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
 const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts", "review"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
@@ -40,7 +41,7 @@ const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
   {
-    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || v === "typeset",
+    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
     children: [
       /**
        * ⚠️ **顺序就是流程**：还没有想写的 → 找题；有话说了 → 种子；
@@ -63,20 +64,33 @@ const NAV = [
       { to: "ideas", label: "选种" },
       { to: "seeds", label: "种子" },
       { to: "content", label: "发芽" },
-      { to: "typeset", label: "排版" },
       // 「待复盘」本来就是项目的一个阶段，所以它在这一栏而不是单开一级
       { to: "review", label: "收成" },
     ],
   },
   {
-    key: "materials", to: "materials", match: (v) => MATERIAL_VIEWS.has(v),
+    /**
+     * ⚠️ **「排版」是一级，不在「内容」底下。**
+     * 内容那一栏读下来是**一条链**（选种 → 种子 → 发芽 → 收成），
+     * 而排版是一个**工具页**（嵌进来的 wechat-typeset）——它夹在几个阶段中间很突兀。
+     * 这也是它当初没跟着起植物名的同一个理由：**工具不是阶段**。
+     */
+    key: "typeset", to: "typeset", match: (v) => v === "typeset",
   },
   {
-    key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v),
+    key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v) || MATERIAL_VIEWS.has(v),
     children: [
       { to: "hot", label: "热点" },
       { to: "insights", label: "洞察" },
       { to: "shelf", label: "书架" },
+      /**
+       * ⚠️ **「素材」归到「发现」，不归「内容」。**
+       * 发现回答的是「东西从哪儿来」（热点 / 洞察 / 书架），而素材是
+       * **已经收下来并拆好的那些**——同一类，只是更靠后一步。
+       * 放进内容会把那条链插断：素材不在链上，它是链**旁边**的储备；
+       * 而且写的时候你是从**项目页右栏**用它的，不需要跳过去。
+       */
+      { to: "materials", label: "素材" },
     ],
   },
   {

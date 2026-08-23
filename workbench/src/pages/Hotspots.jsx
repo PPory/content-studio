@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Empty, Loading, Note, PageHeader, Toast, relTime } from "../components/ui.jsx";
+import { ErrorNote, Empty, Loading, Note, FilterHeader, Toast, relTime } from "../components/ui.jsx";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import {
@@ -138,26 +138,32 @@ export function Hotspots({ onIntake }) {
 
   return (
     <>
-      <PageHeader
-        eyebrow="热点和同行"
+      {/**
+        * ⚠️ **三个视角在最上面，说明贴在它正下方**（和「选种」「种子」同一个 `FilterHeader`）。
+        * 这一页打开时你要先选看哪个视角（平台热榜 / AI 情报 / 模型榜），
+        * **那一排才是第一件事**，说明是它的注脚——反过来的话你得先读完一句
+        * 早就知道的话，才看到真正要点的东西。
+        */}
+      <FilterHeader
         title="近期热点"
         desc="刷新、看原文、收进灵感库。这一页不做分析，也不会替你写。"
+        chips={
+          <div className="pill-tabs" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                className="pill-tab"
+                onClick={() => setTab(t.key)}
+              >
+                <t.icon aria-hidden="true" stroke={1.7} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+        }
       />
-
-      <div className="pill-tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={tab === t.key}
-            className="pill-tab"
-            onClick={() => setTab(t.key)}
-          >
-            <t.icon aria-hidden="true" stroke={1.7} />
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {tab === "boards" ? (
         <BoardsPanel stored={stored} onCollect={collect} trace={trace} onTrace={askTrace} />

@@ -20,7 +20,9 @@
 export const NAV_LABELS = {
   today: "今日",
   content: "内容",
-  materials: "素材",
+  // ⚠️ 排版是**工具**不是阶段，所以它在一级、不在内容底下（夹在几个阶段中间很突兀）
+  typeset: "排版",
+  // ⚠️ 素材归到发现：发现是「东西从哪儿来」，素材是已经收下来并拆好的那些
   discover: "发现",
   review: "数据",
 };

@@ -127,7 +127,7 @@ import {
   IconHome as Home,
   IconRadar2 as Radar,
   IconStack2 as Stack,
-  IconArchive as Archive,
+  IconBrandWechat as Typeset,
   IconChartLine as ChartLine,
 } from "@tabler/icons-react";
 
@@ -162,10 +162,17 @@ export function BrandMark() {
   );
 }
 
+/**
+ * ⚠️ **这张表必须和 `NAV` 的 `key` 一一对应。**
+ * 少一项的后果不是「少一枚图标」——`const Icon = NAV_ICONS[item.key]` 会是
+ * `undefined`，渲染 `<Icon />` 直接抛，**整个界面白屏**。
+ * 而 `npm run build` 照样绿（打包器不跑代码），只有冒烟测试抓得到。
+ * 加一级导航项时这儿要跟着加，`tests/unit.mjs` 钉了两边逐键对齐。
+ */
 export const NAV_ICONS = {
   today: Home,
   content: Stack,
-  materials: Archive,
+  typeset: Typeset,
   discover: Radar,
   review: ChartLine,
 };

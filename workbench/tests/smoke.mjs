@@ -869,15 +869,31 @@ try {
      「等容器不等内容」在这个文件里已经记过三次，这是第四处。 */
   await page.waitForFunction(() => /热点/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
   check("发现直接进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
-  check("发现二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "热点/洞察/书架");
+  /**
+   * ⚠️ **跟 `App.jsx` 的 NAV 常量比，不写死那一串。**
+   * 这个文件已经为「钉了一个本来就会变的名字」红过四次了
+   *（一级导航、内容二级两处、这儿）。旁边那条「每项两个字」才是真规矩。
+   */
+  const wantDiscover = [...(navSrc.match(/key: "discover"[\s\S]*?children: \[([\s\S]*?)\]/)?.[1] || "")
+    .matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+  const gotDiscover = await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()));
+  check("发现二级导航可直接进入", wantDiscover.length > 0 && gotDiscover.join("/") === wantDiscover.join("/"),
+    `${gotDiscover.join("/")}（常量 ${wantDiscover.join("/")}）`);
   await page.click('.subnav-item:has-text("书架")');
   await page.waitForSelector(".bookshelf, .empty, .note-title", { timeout: 8000 });
   const shelfHash = await page.evaluate(() => location.hash);
   check("二级导航能直接打开书架", shelfHash.startsWith("#/shelf"), shelfHash);
-  await page.click('.nav-item:has-text("素材")');
+  /**
+   * ⚠️ **素材现在是「发现」的二级，不再是一级。**
+   * 发现回答的是「东西从哪儿来」（热点 / 洞察 / 书架），而素材是
+   * **已经收下来并拆好的那些**——同一类，只是更靠后一步。
+   * 放进「内容」会把那条链插断：素材不在链上，它是链**旁边**的储备。
+   */
+  await page.click('.subnav-item:has-text("素材")');
   await page.waitForSelector(".mflow, .empty, .note-title", { timeout: 25000 });
-  check("素材不再拆成三个二级入口", (await page.$$(".subnav-item")).length === 0);
-  check("素材直接进入统一工作区", /素材/.test(await page.textContent(".crumbs")));
+  check("素材归到「发现」底下", /素材/.test(await page.textContent(".crumbs")), await page.textContent(".crumbs"));
+  // 素材自己仍然是**一整页**（链路那一排就是筛选器），没有再往下分二级
+  check("素材没有再拆成三个入口", !(await page.$(".main > .pill-tabs")));
   await page.click('.nav-item:has-text("今日")');
   await page.waitForSelector(".crumbs", { timeout: 8000 });
 
