@@ -1653,21 +1653,22 @@ try {
   await page.waitForSelector(".drawer", { state: "detached", timeout: 4000 });
   check("Esc 关闭抽屉", true);
 
-  // 6. 内容工作台：跨页面入口归左侧二级导航，页面内部只保留筛选和内容操作。
-  await page.goto(`http://127.0.0.1:${PORT}/#/topics`, { waitUntil: "networkidle" });
-  await page.waitForSelector('.subnav-item[aria-current="page"]', { timeout: 10000 });
   /**
+   * 6. 内容工作台。
+   *
+   * ⚠️ **选题页现在只有深链能到**（`#/topics`），二级导航里没有它了：
+   * `getContentProject` 以 topic 为项目根，所以每个选题就是一个项目，
+   * 「选题」那一页是同一批东西的第二个入口。**页面和路由都留着**，
+   * 所以这一段照测——只是不再从导航点进来。
+   *
    * **选题默认只看「待写」。** 这一库里绝大多数条目是已成稿和已发布的历史，
    * 而打开这一页的意图基本只有一个：看接下来要写什么。
    * 断言里连**筛选条上那颗芯片是亮的**一起验——默认状态必须写进 URL，
    * 偷偷过滤的话用户看不出自己正在被过滤、也点不回「全部」。
    */
   await page.goto("about:blank");
-  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".nav-item", { timeout: 10000 });
-  await page.click('.nav-item:has-text("内容")');
-  await page.waitForSelector('.subnav-item:has-text("选题")', { timeout: 10000 });
-  await page.click('.subnav-item:has-text("选题")');
+  await page.goto(`http://127.0.0.1:${PORT}/#/topics`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".doc-row, .empty, .note-title, .kanban-col", { timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(600);
   check("选题默认落在「待写」", decodeURIComponent(page.url()).endsWith("/topics/待写"), decodeURIComponent(page.url()).split("#")[1] || "");
   const onChip = await page.$$eval('.chips .chip[aria-pressed="true"]', (els) => els.map((e) => e.textContent.trim()));
@@ -1679,8 +1680,14 @@ try {
   // 导航标签一律两个字——写死那一串会在加页时红，这条不会，而它钉的是真正的规矩
   check("二级导航每项都是两个字", subnav.every((n) => n.length === 2), subnav.join("/"));
   check("页面内部不再重复跨页面 Tab", !(await page.$(".main > .pill-tabs")));
+  /**
+   * ⚠️ **深链进来的页面，一级导航仍然要高亮到它所属的那一档。**
+   * 靠的是 `CONTENT_VIEWS` 里还留着 `topics`——从导航里拿掉一个入口时
+   * **别顺手把它从那个集合里删掉**，删了的话深链进来整个侧栏一个亮的都没有，
+   * 看着像走丢了。
+   */
   const activeNav = await page.textContent('.nav-item[data-current="true"]');
-  check("选题页归到内容导航", activeNav.includes("内容"), activeNav.trim());
+  check("深链进选题页，一级导航仍然指着「内容」", activeNav.includes("内容"), activeNav.trim());
   check("浏览是卡片墙不是三栏", !!(await page.$(".panel-block")) && !(await page.$(".reader-overlay")));
 
   /**

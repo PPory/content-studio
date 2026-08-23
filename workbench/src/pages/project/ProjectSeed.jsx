@@ -27,7 +27,7 @@ export function ProjectSeed({ seed, fetching = false, failedWhy = "", onRetry })
 
   return (
     <section className="pseed" aria-label="这一篇的来源">
-      <div className="pmat__head">
+      <div className="pseed__head">
         <h2 className="section-label">从这句话开始</h2>
       </div>
 

@@ -950,12 +950,16 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 }
 .pseed__take svg { margin-top: 4px; color: var(--text-3); }
 .pseed__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+/**
+ * ⚠️ **来源这一行换行，不截断。**
+ * 它不在列表里、不用和别的行对齐，截断只是把话说一半——而这一行本来就短
+ *（「洞察 2026-W33」这种），真长的时候你要的是看全，不是看个开头。
+ * `min-width: 0` 仍然要留：它是 flex 子项，不给的话长内容照样顶破整栏。
+ */
 .pseed__from {
-  /* ⚠️ `max-width` 不是保险：flex-wrap 的行里，一个 nowrap 的长项**独占一行时
-     仍然能溢出**。`min-width: 0` 让它可缩，`max-width: 100%` 定住上界，两个一起才够 */
   display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text-3); font-size: var(--fs-xs); text-decoration: none;
+  color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55; text-decoration: none;
+  overflow-wrap: anywhere;
 }
 a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
 /* 「自己想到的」不是缺了来源，是**另一种来源** */
@@ -1055,7 +1059,33 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 .pfacts__variants span { display: block; padding: 5px 0; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
 .pfacts__variants span button { display: block; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-1); font-size: var(--fs-2xs); text-decoration: underline; text-underline-offset: 3px; }
 
-.pmat__head { display: flex; align-items: center; gap: 8px; }
+/**
+ * ⚠️ **`.section-label` 自带 `margin-bottom: 10px`**——在 `align-items: center`
+ * 的一行里，那 10px 会把标题整个顶上去，而计数和图标停在中线上。
+ * 这一行看着「没对齐」就是它，和 `.recent-posts__head` 那处是同一个修法。
+ */
+.pmat__head .section-label, .pseed__head .section-label { margin-bottom: 0; }
+.pseed__head { display: flex; align-items: center; gap: 8px; }
+
+/**
+ * ⚠️ **素材那一栏的标题吸顶，列表在它下面滚。**
+ * 右栏本来就是独立滚动区（`.project-rail` 定高 + `overflow-y: auto`），
+ * 但整块一起滚的话，滚两屏之后你已经不知道在看什么了——
+ * 而这一栏里每条都长得像，**标题是唯一说得清「这是项目素材」的东西**。
+ *
+ * 顶内边距挪到标题上（`.pmat` 的 `padding-top` 归零），
+ * 否则吸住的位置会差一个内边距，露出一条列表从它底下钻过去的缝。
+ */
+.pmat { padding-top: 0; }
+.pmat__head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  padding: 15px 0 9px; background: var(--surface);
+}
+/* ⚠️ **搜索那颗不画容器框、推到最右**：它是次要动作，一个描边方块会把它
+   抬到和标题同一个重量级上，而标题才是这一行要说的事 */
+.pmat__find-btn { margin-left: auto; border-color: transparent; color: var(--text-3); }
+.pmat__find-btn:hover:not(:disabled) { border-color: var(--border); color: var(--text-1); }
 .pmat__count {
   min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; border-radius: var(--r-pill);
   background: var(--surface-2); color: var(--text-2); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums;

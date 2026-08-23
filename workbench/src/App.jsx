@@ -42,17 +42,24 @@ const NAV = [
     children: [
       /**
        * ⚠️ **顺序就是流程**：还没有想写的 → 找题；有话说了 → 种子；
-       * 定下来写什么 → 选题；开始写 → 项目；发出去 → 排版。
+       * 开始写 → 项目；发出去 → 排版。
        *
-       * ⚠️ **「稿件」那一页从导航里拿掉了**（路由和页面都留着）。
-       * 每篇稿子都能从「项目」到达——`listContentProjects` 连**孤立稿件**
-       * 也会包成一个 `draft:<id>` 项目，所以没有稿子会因此消失。
-       * 留着它的代价是两个入口指着同一批东西，而项目那个还多一层上下文。
-       * 唯一丢掉的是「按平台横着看全部稿子」，需要时走 Ctrl+K 检索。
+       * ⚠️ **「选题」和「稿件」都从导航里拿掉了**（路由和页面都留着，深链仍然有效）。
+       * 两者都是**同一批东西的第二个入口**：`getContentProject` 以 topic 为项目根，
+       * 所以每个选题就是一个项目；`listContentProjects` 连**孤立稿件**也会包成
+       * `draft:<id>` 项目。**没有任何一行会因此看不到。**
+       *
+       * ⚠️ **拿掉「选题」等于封存了自动成稿那条路**：任务3 只领
+       * `topics.status = 撰写中`，而改成那个状态的唯一界面入口就在那一页
+       *（`sources.js` 的 `askPlatformsOn`）。这是**有意的**——
+       * 新模型下你是从种子开始自己写，或者走素材/访谈起稿，那两条都是你在场的；
+       * 而查库时那条路一次都没跑过（选题全是「已成稿」、0 个「撰写中」）。
+       * cron 照跑，只是永远领不到东西。要它回来就得先把那道会花钱的闸门搬进项目页。
+       *
+       * 丢掉的另一样是「按平台横着看全部稿子」，需要时走 Ctrl+K。
        */
       { to: "ideas", label: "找题" },
       { to: "seeds", label: "种子" },
-      { to: "topics", label: "选题" },
       { to: "content", label: "项目" },
       { to: "typeset", label: "排版" },
     ],
@@ -121,7 +128,24 @@ function readHash() {
   }
   // 发现旧入口只做兼容跳转，不再让用户经过一张中转页。
   const view = decodedView === "discover" ? "hot" : decodedView;
-  return { view: VIEWS.includes(view) ? view : "today", state: decodedState };
+  const known = VIEWS.includes(view) ? view : "today";
+  /**
+   * ⚠️ **没带状态时套上那个源的 `defaultState`，而且写回地址栏。**
+   *
+   * 原来只有 `go()` 干这件事，所以从导航点进去落在「待写」、
+   * **而直接敲 `#/topics` 落在「全部」**——同一个页面两种进法两种结果。
+   * 这个差别一直被导航遮着（那时导航是唯一入口）；「选题」从导航拿掉之后
+   * 深链成了唯一进法，它立刻就露出来了。
+   *
+   * 用 `replaceState` 不留历史：这是补全地址，不是一次跳转，
+   * 留一条的话按后退会退回那个不完整的地址，然后又被补一次，退不出去。
+   */
+  const fallback = decodedState ? "" : SOURCES[known]?.defaultState || "";
+  if (fallback) {
+    window.history.replaceState(null, "", `#/${known}/${encodeURIComponent(fallback)}`);
+    return { view: known, state: fallback };
+  }
+  return { view: known, state: decodedState };
 }
 
 export function App() {

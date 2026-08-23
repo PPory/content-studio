@@ -188,7 +188,13 @@ export function Ideas({ onGo, onChanged }) {
                     st ? { label: st.label, tone: st.tone } : null,
                     c.score ? { label: `${c.score} 分` } : null,
                   ].filter(Boolean)}
-                  onSeed={() => openSeed(card, { sourceKind: "none", sourceTitle: `洞察 ${insight.week} · ${c.title}` })}
+                  /**
+                   * ⚠️ **来源里不要再抄一遍那条角度。**
+                   * 上面那句 take 就是它——写进 `sourceTitle` 的话，
+                   * 右栏会把同一句话印两遍，而第二遍还因为太长被截断。
+                   * 来源只说「从哪来」：哪一周的跑批。
+                   */
+                  onSeed={() => openSeed(card, { sourceKind: "none", sourceTitle: `洞察 ${insight.week}` })}
                 />
               );
             })}
