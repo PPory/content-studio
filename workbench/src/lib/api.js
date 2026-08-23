@@ -39,6 +39,11 @@ export const api = {
    * ⚠️ **只有点过「用这条」的才走这儿**——AI 挑出来的候选不自动挂，
    * `topic_materials` 的语义是「这篇真的用了它」，见 worker 那侧的注释。
    */
+  /**
+   * 删掉一个内容项目。⚠️ **真删，而且会连级删掉它底下所有稿子**——
+   * 界面上必须点两下并且把这件事说出来。
+   */
+  removeProject: (id) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/delete`, {}),
   updateProjectMaterials: (id, body) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/materials`, body),
   createProjectVariant: (id, platform) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants`, { platform }),
   removeProjectVariant: (id, draftId) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),

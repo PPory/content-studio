@@ -506,7 +506,14 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 }
 .app__body { display: flex; min-width: 0; min-height: 0; }
 /* 顶栏和下面那两块之间也要一道线，否则白顶栏和白侧栏连成一片、看不出是两层 */
-.topbar { border-bottom: 1px solid var(--border); }
+/**
+ * ⚠️ **顶栏要有显式高度，因为别处要减掉它。**
+ * 项目页右栏定高时算的是「视口里还剩多少」，而它算不出一个内容撑出来的高度——
+ * 不写死的话那个公式只能瞎猜，猜错的样子是「右栏最后一条怎么都划不出来」。
+ * 冒烟测试量渲染值和这个变量对不对得上，改内容撑高了它会红。
+ */
+.app { --topbar-h: 48px; }
+.topbar { height: var(--topbar-h); border-bottom: 1px solid var(--border); }
 
 /**
  * ⚠️ **三列 grid（左 1fr · 中 auto · 右 1fr），不是 flex。**
@@ -805,7 +812,15 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  */
 .project-rail, .project-publish {
   position: sticky; top: 14px;
-  max-height: calc(100vh - var(--project-bar-h) - 28px);
+  /**
+   * ⚠️ **顶栏和操作条都要减掉，还要留出它自己那 14px 的上边距。**
+   *
+   * 原来只减了操作条：于是在**没滚动的时候**（右栏还没吸住、位置最低）
+   * 它的底边掉到视口下面，最后一条怎么都划不出来——**栏内已经滚到底了，
+   * 而那个「底」在窗口外面**。往下滚一点它吸住之后反而正常，
+   * 所以这个毛病只在「刚打开这一页」时出现，最容易被当成偶发。
+   */
+  max-height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - 28px);
   overflow-y: auto; overscroll-behavior: contain;
 }
 /**
@@ -2149,6 +2164,13 @@ svg[data-tone] { color: var(--tone); }
   gap: 12px 20px; flex-wrap: wrap; margin-bottom: 14px;
 }
 .list-bar > :first-child { min-width: 0; }
+/**
+ * ⚠️ **居中只给「找题」和「种子」，不给整套 `.list-bar`。**
+ * 那两页的芯片是**这一页唯一的操作**（挑来源 / 挑状态），一整行只有它，
+ * 靠左会在右边留下一大片空。而内容页和素材页那条右边还并着视图切换和搜索——
+ * 那儿居中会把两组东西挤到中间打架。
+ */
+.list-bar--center { justify-content: center; }
 .list-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /**
@@ -4220,10 +4242,50 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   align-items: center; gap: 14px;
   padding: 0 10px;
 }
+/**
+ * ⚠️ **表头也要留出删除按钮那一格，而且是在 grid 之外。**
+ *
+ * 行被 `.ptable__line` 包了一层（删除是它的兄弟），于是**行的网格只占去掉按钮之后
+ * 的宽度**，而表头的网格占满整行——列宽跟着差一截，实测偏 36px。
+ * 所以表头也用同一个 flex 外壳：网格吃剩余宽度，末尾留同宽的一格。
+ * `.doc-rows__head` 那次是一模一样的错位，冒烟测试量的是**渲染后每一列的左缘**。
+ */
+.ptable__head { display: flex !important; align-items: stretch; gap: 2px; }
+.ptable__head > .ptable__headgrid {
+  flex: 1 1 auto; min-width: 0;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 88px 56px minmax(0, 168px) 104px;
+  /* ⚠️ 这一层**不再加内边距**：外面那层 `.ptable__head` 已经有 `padding: 0 10px`，
+     两层叠起来就比行多出 10px——上一版量到的就是这个数 */
+  align-items: center; gap: 14px;
+}
+.ptable__head > [aria-hidden] { flex: none; width: 34px; }
 .ptable__head {
   height: 34px; font-size: var(--fs-xs); color: var(--text-3);
   border-bottom: 1px solid var(--border-strong);
 }
+/**
+ * ⚠️ **删除是行的兄弟节点，不在行里面**——行本身是个 `<button>`，
+ * button 套 button 是非法结构。所以外面包一层 flex，行吃掉剩余宽度。
+ */
+.ptable__line { display: flex; align-items: stretch; gap: 2px; }
+.ptable__line > .ptable__row { flex: 1 1 auto; min-width: 0; }
+.ptable__del {
+  flex: none; width: 34px; display: grid; place-items: center;
+  border: 0; border-bottom: 1px solid var(--border); background: none;
+  color: var(--text-3); cursor: pointer; opacity: 0;
+  transition: opacity .12s var(--ease), color .12s var(--ease);
+}
+/* 平时不出现：一列垃圾桶竖着排下来，比它保护的那件事更显眼 */
+.ptable__line:hover .ptable__del, .ptable__del:focus-visible, .ptable__del.is-armed { opacity: 1; }
+.ptable__del:hover { color: var(--danger); }
+/* ⚠️ 第二下的按钮上写的是**删的是什么**（「删掉整篇」），不是「确定吗」——
+   要点两下的动作，写的必须是最不可逆的那部分 */
+.ptable__del.is-armed {
+  width: auto; padding: 0 10px; gap: 5px; grid-auto-flow: column;
+  color: var(--danger); font-size: var(--fs-2xs); white-space: nowrap;
+}
+
 .ptable__row {
   min-height: 52px; width: 100%; text-align: left; cursor: pointer;
   border: 0; border-bottom: 1px solid var(--border); border-radius: var(--r-sm);

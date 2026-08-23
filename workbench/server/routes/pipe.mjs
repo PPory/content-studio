@@ -91,6 +91,28 @@ export const pipeRoutes = [
   },
   {
     method: "POST",
+    /**
+     * 删掉一个内容项目。**和 `/api/pipe/delete` 同一条链**：先让 Worker 删库，
+     * 再由本机把归档移进 `.trash/`——顺序不能反（反过来的话文件已经进废纸篓、
+     * 而删库失败，库里那行还在、归档却没了）。
+     *
+     * ⚠️ **这一下会连级删掉这个项目底下所有稿子**（`drafts.topic_id` 是 CASCADE），
+     * 所以归档可能有好几份，逐个清。清归档失败**绝不能让删除看起来失败**——
+     * 库里那行已经没了，这时回错误的话用户会再点一次然后收到「not found」。
+     */
+    method: "POST",
+    path: "/api/pipe/projects/:id/delete",
+    async handler({ env, res, params }) {
+      const r = await callWorker(env, `projects/${encodeURIComponent(params.id)}/delete`, { method: "POST", body: {} });
+      const data = withDeployHint(r.data);
+      if (!data?.ok) return json(res, data, r.status);
+      const archives = [];
+      for (const p of data.vaultPaths || []) archives.push(await trashArchive(env, p));
+      json(res, { ...data, archives }, r.status);
+    },
+  },
+  {
+    method: "POST",
     path: "/api/pipe/projects/:id/materials",
     handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/materials`),
   },

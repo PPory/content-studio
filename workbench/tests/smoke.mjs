@@ -317,6 +317,47 @@ try {
     });
     check("横排的那几张卡等高", rowSpread <= 1, `高度差 ${rowSpread}px`);
     check("全集是一张表不是卡片墙", contentPage.heads.length >= 5, contentPage.heads.join("/"));
+
+    /**
+     * ⚠️ **表头和行的列要对齐。**
+     * 行末尾多了一颗删除按钮，表头就得留同宽的一格——不留的话整条表头
+     * 右移一个按钮宽，列名和列全错位。`.doc-rows__head` 那次一模一样。
+     */
+    const cols = await page.evaluate(() => {
+      // 表头的网格在 .ptable__headgrid 里（外面那层是给删除按钮留位的 flex 壳）
+      const head = document.querySelector(".ptable__headgrid");
+      const row = document.querySelector(".ptable__row");
+      if (!head || !row) return null;
+      const at = (el) => [...el.children].map((c) => Math.round(c.getBoundingClientRect().left));
+      return { head: at(head), row: at(row) };
+    });
+    if (cols) {
+      const off = Math.max(...cols.row.map((x, i) => Math.abs(x - (cols.head[i] ?? x))));
+      check("表头和行的列对齐", off <= 1, `最大偏差 ${off}px`);
+    } else {
+      check("这会儿没有项目行，列对齐量不了", true, "空态");
+    }
+
+    /**
+     * ⚠️ **删除要点两下，而且第二下的按钮上写的是「删的是什么」。**
+     * 这一下**连级删掉这个项目底下所有稿子**，而且真删没有废纸篓——
+     * 写「确定吗」是没用的。**这一段一个字都不能真删**：只点第一下，然后数写请求。
+     */
+    let delWrites = 0;
+    const countDel = (req) => { if (req.method() === "POST" && /\/delete/.test(req.url())) delWrites += 1; };
+    page.on("request", countDel);
+    const delBtn = await page.$(".ptable__del");
+    check("项目行上有删除入口", !!delBtn || !cols, delBtn ? "有" : "这会儿没有行");
+    if (delBtn) {
+      await delBtn.click();
+      await page.waitForTimeout(250);
+      const armed = (await page.textContent(".ptable__del.is-armed").catch(() => "")) || "";
+      check("第一下只进确认态，按钮上写清删的是什么", /删掉/.test(armed), armed.trim() || "(没有确认态)");
+      await page.mouse.click(8, 8);
+      await page.waitForTimeout(250);
+    }
+    page.off("request", countDel);
+    check("确认之前一行都没删", delWrites === 0, `${delWrites} 次删除请求`);
     check("泳道和那个十格筛选网格都撤了", contentPage.lanes === 0, `${contentPage.lanes} 个残留`);
     check("有列表/看板切换", contentPage.seg);
   } else {
@@ -435,6 +476,27 @@ try {
            * **`position: sticky` 跟着失效**。只量其中一个会以为修好了。
            */
           overhang: Math.round(rail.scrollWidth - rail.clientWidth),
+          /**
+           * ⚠️ **右栏的底边必须在视口里。**
+           *
+           * 它是 `position: sticky` + 定高 + 自己滚，而定高那个公式用的是
+           * `100vh` 减去操作条——**从来没减顶栏**。于是它比可视区高出一个顶栏，
+           * 最后一条永远露不出来：栏内滚到底了，可那个「底」在窗口下面。
+           * 量渲染后的 `bottom` 和视口高度的差，不看公式写了什么。
+           */
+          /**
+           * ⚠️ **量的是「栏满高时会不会掉出视口」，不是「此刻的底边在哪」。**
+           * 后者完全看这个项目有几条素材——素材少的时候栏根本到不了定高，
+           * 断言绿着而公式是错的（真踩过：这条第一版就是那么写的）。
+           * 所以拿**解析出来的 `max-height`** 和「从它当前顶边到视口底还剩多少」比。
+           */
+          roomShort: (() => {
+            const maxH = parseFloat(getComputedStyle(rail).maxHeight);
+            if (!Number.isFinite(maxH)) return -1;
+            return Math.round(maxH - (window.innerHeight - rail.getBoundingClientRect().top));
+          })(),
+          topbar: Math.round(document.querySelector(".topbar")?.getBoundingClientRect().height || 0),
+          topbarVar: parseFloat(getComputedStyle(document.querySelector(".app")).getPropertyValue("--topbar-h")) || 0,
           // 子项自己溢出也算——外壳没被撑破，不代表里面那一行没跑出去
           childOverhang: Math.max(0, ...[...rail.children].map((el) => Math.round(el.scrollWidth - el.clientWidth))),
           /**
@@ -503,6 +565,16 @@ try {
          */
         check("右栏没被内容撑破", stuck.overhang <= 1 && !stuck.worst,
           stuck.worst || `外壳溢出 ${stuck.overhang}px`);
+        /**
+         * ⚠️ **定高公式里那个数是猜不得的，所以钉住结果。**
+         * 只要它没把顶栏算进去，这一条就红——而错的时候屏幕上的样子是
+         * 「最后一条怎么都划不出来」，不像一个高度算错了。
+         */
+        check("右栏撑满时也不掉出视口", stuck.roomShort < 0 || stuck.roomShort <= 2,
+          `满高时超出 ${stuck.roomShort}px`);
+        // 顶栏高度写死在 `--topbar-h` 里给那个公式用——内容撑高了它，公式就该跟着改
+        check("顶栏的实际高度和 --topbar-h 对得上", Math.abs(stuck.topbar - stuck.topbarVar) <= 1,
+          `实际 ${stuck.topbar}px · 变量 ${stuck.topbarVar}px`);
       }
       /**
        * ⚠️ **正文那一栏要吃满宽度**（`.main__inner:has(.project-workspace)` 解掉 1320 的上限）。

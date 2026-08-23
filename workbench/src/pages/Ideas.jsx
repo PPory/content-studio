@@ -131,7 +131,7 @@ export function Ideas({ onGo, onChanged }) {
         * ⚠️ **三个来源站在同一排。** 上一版三段并列，洞察那 8 张卡把另外两个
         * 入口挤到了屏外——而那两个恰恰是「我主动想找点什么写」时最该按的。
         */}
-      <div className="list-bar">
+      <div className="list-bar list-bar--center">
         <div className="chips chips-sm" aria-label="候选从哪来">
           {chips.map((c) => (
             <button key={c.key} className="chip" aria-pressed={from === c.key} onClick={() => setFrom(c.key)}>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
-import { Empty, ErrorNote, Loading, PageHeader, relTime , MenuButton} from "../components/ui.jsx";
+import { Empty, ErrorNote, Loading, PageHeader, relTime, Toast, MenuButton } from "../components/ui.jsx";
 import { IconFileText, IconLayoutGrid, IconLayoutKanban, IconPlus, IconRefresh } from "../components/icons.jsx";
 import { ProjectCard } from "../components/ProjectCard.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
@@ -12,6 +12,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [removing, setRemoving] = useState("");
+  const [toast, setToast] = useState(null);
   const [stage, setStage] = useState("");
   const [layout, setLayout] = useState("list");
   const [moving, setMoving] = useState(false);
@@ -74,6 +76,34 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     if (!target) return;
     onGo(target.view, target.id);
   };
+
+  /**
+   * 删掉一个项目。**真删，而且连级删掉它底下所有稿子**（`drafts.topic_id` 是 CASCADE）。
+   *
+   * ⚠️ **回执要说清删掉了几篇**，不能只说「已删除」——你以为删的是一个壳，
+   * 而它可能带走了三篇写过的稿。
+   * ⚠️ **归档没清掉要单独说**：D1 那行已经没了，这时报错的话你会再点一次、
+   * 然后收到「not found」，于是以为没删掉。归档清不掉只是 vault 里多一个孤儿文件。
+   */
+  const remove = useCallback(async (p) => {
+    if (removing) return;
+    setRemoving(p.id);
+    try {
+      const r = await api.removeProject(p.id);
+      const failed = (r.archives || []).filter((a) => a.status === "failed");
+      setToast({
+        text: r.deleted
+          ? `已删除，连同 ${r.deleted} 篇稿子${failed.length ? `；${failed.length} 份归档没清掉，去 Obsidian 里手动删` : ""}`
+          : "已删除",
+      });
+      onChanged?.();
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setRemoving("");
+    }
+  }, [removing, load, onChanged]);
 
   return (
     <>
@@ -169,13 +199,14 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               busy={moving}
             />
           ) : shown.length ? (
-            <ProjectTable projects={shown} onOpen={open} />
+            <ProjectTable projects={shown} onOpen={open} onRemove={remove} removing={removing} />
           ) : (
             <Empty icon={IconFileText}>这一阶段目前没有内容。</Empty>
           )}
         </>
       ) : null}
 
+      <Toast text={toast?.text} onClose={() => setToast(null)} />
     </>
   );
 }

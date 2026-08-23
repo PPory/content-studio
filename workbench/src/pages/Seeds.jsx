@@ -129,7 +129,7 @@ export function Seeds({ onGo, onChanged }) {
 
       <ErrorNote error={error} what="读取种子" onRetry={load} />
 
-      <div className="list-bar">
+      <div className="list-bar list-bar--center">
         <div className="chips chips-sm" aria-label="按状态筛选">
           {["攒着", "写了", "不写了"].map((s) => (
             <button key={s} className="chip" aria-pressed={status === s} onClick={() => setStatus(s)}>

@@ -317,6 +317,9 @@ export async function handleWorkbench(request, env, ctx, url) {
       return await submitProjectReview(env, projectReviewMatch[1], await request.json());
     }
 
+    const projectDeleteMatch = path.match(/^projects\/(.+)\/delete$/);
+    if (projectDeleteMatch && request.method === "POST") return await deleteProject(env, projectDeleteMatch[1]);
+
     const projectMaterialsMatch = path.match(/^projects\/(.+)\/materials$/);
     if (projectMaterialsMatch && request.method === "POST") {
       return await updateProjectMaterials(env, projectMaterialsMatch[1], await request.json());
@@ -842,6 +845,48 @@ async function deleteSeed(env, id) {
  * ⚠️ **必须有 `remove`。** 挂错一条却没有退路，比不给这个功能更糟：
  * 你会为了删掉一条素材去动整个项目。
  */
+/**
+ * 删掉一个内容项目。**真删，没有废纸篓。**
+ *
+ * ⚠️ **删的是选题那一行，而 `drafts.topic_id` 是 `ON DELETE CASCADE`——
+ * 它底下所有稿子跟着一起没**。所以这不是「删一个壳」，是删掉这一篇的全部内容。
+ * 界面上必须点两下、并且把这句话说出来。
+ *
+ * ⚠️ **归档路径要在删之前一次性读出来，而且要读稿子的、不是选题的。**
+ * 选题没有 `vault_path`，有归档的是它底下那些稿；删完再去查就什么都查不到了，
+ * 而 vault 里那几个文件还在——**连「对应哪条」都反查不回来**。
+ * 真出过：删了两篇稿，Obsidian 里 6 个文件对着库里 4 行。
+ * 动文件那一步只有工作台做得到（Worker 够不着你本机的 `.trash/`），
+ * 所以这儿只负责**把路径回给它**。
+ */
+async function deleteProject(env, rawId) {
+  let id;
+  try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
+
+  // 孤立稿件的项目就是那一篇稿本身，直接走删稿那条
+  if (id.startsWith("draft:")) {
+    const draftId = id.slice(6);
+    if (!isId(draftId)) return json({ ok: false, error: "project id 不合法" }, 400);
+    const row = await getRow(env, "drafts", draftId);
+    if (!row) return json({ ok: false, error: "内容项目不存在" }, 404);
+    await dbDeleteRow(env, "drafts", draftId);
+    return json({ ok: true, deleted: 1, vaultPaths: [row.vault_path].filter(Boolean) });
+  }
+
+  if (!isId(id)) return json({ ok: false, error: "project id 不合法" }, 400);
+  const topic = await first(env, "SELECT id FROM topics WHERE id = ?", id);
+  if (!topic) return json({ ok: false, error: "内容项目不存在" }, 404);
+
+  const drafts = await all(env, "SELECT id, vault_path FROM drafts WHERE topic_id = ?", id);
+  await dbDeleteRow(env, "topics", id);
+  return json({
+    ok: true,
+    // 连级删掉了几篇稿：界面要照实说「这一下删掉了 N 篇」，不能只说「已删除」
+    deleted: drafts.length,
+    vaultPaths: drafts.map((d) => d.vault_path).filter(Boolean),
+  });
+}
+
 async function updateProjectMaterials(env, rawId, body) {
   let id;
   try { id = decodeURIComponent(rawId); } catch { return json({ ok: false, error: "project id 不合法" }, 400); }
