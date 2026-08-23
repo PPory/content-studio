@@ -1,23 +1,48 @@
 import { useEffect, useRef, useState } from "react";
-import { creationApi } from "../lib/creation-api.js";
+import { brainstormStream, creationApi } from "../lib/creation-api.js";
 import { STARTING_LINE_COUNT, startingLine } from "../lib/writing-prompts.js";
-import { IconBulb, IconFileImport, IconLoader2, IconPencil, IconRefresh, IconX } from "./icons.jsx";
+import {
+  IconBulb,
+  IconFileImport,
+  IconLoader2,
+  IconMessageCircle,
+  IconPencil,
+  IconRefresh,
+  IconSend,
+  IconSparkles,
+  IconX,
+} from "./icons.jsx";
 import "./writing-assist.css";
 
 /**
- * 写作推动是一张临时卡片，不是聊天窗：一次只给一个结果，下一次必须由用户再点。
- * “想一想”是默认状态；“帮我写”只在明确切换后才会生成正文，而且生成结果不会自动落笔。
+ * AI 协作始终给候选，不直接改正文。
+ * - 想一想：一次只推动一步。
+ * - 聊一聊：逐问挖出用户已有的经历和判断，最后只整理线索，不生成成稿。
+ * - 帮我写：明确选择后才生成候选段落，由用户再决定是否插入。
  */
-export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
+export function WritingAssist({ title, body, platform, profile, getCursor, onInsert }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("think");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [expertId, setExpertId] = useState("");
+  const [chat, setChat] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatStream, setChatStream] = useState("");
+  const [chatSession, setChatSession] = useState("");
+  const [summary, setSummary] = useState("");
   const turn = useRef(0);
   const abort = useRef(null);
+  const chatEnd = useRef(null);
+
+  const experts = (profile?.experts || []).filter((item) => item.enabled);
+  const expert = experts.find((item) => item.id === expertId) || null;
+  const style = profile?.style || null;
+  const audience = profile?.profile?.audience || "";
 
   useEffect(() => () => abort.current?.abort(), []);
+  useEffect(() => { chatEnd.current?.scrollIntoView({ block: "nearest" }); }, [chat, chatStream]);
 
   function localStarter() {
     turn.current += 1;
@@ -43,10 +68,50 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
         content: body,
         cursor: Math.max(0, Math.min(body.length, Number(getCursor?.()) || 0)),
         platform,
+        expert: expert ? `${expert.name}\n${expert.instructions}` : "",
+        style: style ? `${style.name}\n${style.instructions}` : "",
       }, ac.signal);
       setResult({ mode: nextMode, kind: response.kind, text: response.text });
-    } catch (e) {
-      if (e.name !== "AbortError") setError(e);
+    } catch (cause) {
+      // 切换协作方式时会取消上一种请求；旧请求晚到的错误不能串进新面板。
+      if (abort.current === ac && !ac.signal.aborted && cause.name !== "AbortError") setError(cause);
+    } finally {
+      if (abort.current === ac) setBusy(false);
+    }
+  }
+
+  async function sendBrainstorm(text, phase = "questioning") {
+    const message = String(text || "").trim();
+    if (!message || busy) return;
+    abort.current?.abort();
+    const ac = new AbortController();
+    abort.current = ac;
+    setBusy(true);
+    setError(null);
+    setSummary(phase === "summary" ? "" : summary);
+    setChatInput("");
+    setChat((items) => [...items, { role: "user", text: message, quiet: phase === "summary" }]);
+    setChatStream("");
+    try {
+      const full = await brainstormStream({
+        signal: ac.signal,
+        sessionId: chatSession,
+        message,
+        title,
+        platform,
+        content: body,
+        audience,
+        phase,
+        expert,
+        style,
+        onSession: (id) => { if (id) setChatSession(id); },
+        onChunk: setChatStream,
+      });
+      setChat((items) => [...items, { role: "agent", text: full, summary: phase === "summary" }]);
+      if (phase === "summary") setSummary(full);
+      setChatStream("");
+    } catch (cause) {
+      if (abort.current === ac && !ac.signal.aborted && cause.name !== "AbortError") setError(cause);
     } finally {
       if (abort.current === ac) setBusy(false);
     }
@@ -62,6 +127,7 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
 
   function pickMode(next) {
     abort.current?.abort();
+    abort.current = null;
     setBusy(false);
     setMode(next);
     setError(null);
@@ -70,6 +136,17 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
       if (!body.trim()) localStarter();
       else ask("nudge");
     }
+  }
+
+  function changeExpert(next) {
+    setExpertId(next);
+    // 专家是这段对话的角色，半途换人就开一段新的，避免旧会话继续按前一位回答。
+    setChat([]);
+    setChatSession("");
+    setChatStream("");
+    setSummary("");
+    setError(null);
+    setResult(null);
   }
 
   function insert() {
@@ -81,32 +158,100 @@ export function WritingAssist({ title, body, platform, getCursor, onInsert }) {
     setOpen(false);
   }
 
+  function insertSummary() {
+    if (!summary) return;
+    onInsert?.(`## 写作线索\n\n${summary}`, { ai: true, kind: "想法梳理" });
+    setOpen(false);
+  }
+
   return (
     <div className="writing-assist">
-      <button className="writing-assist__trigger" onClick={show} aria-expanded={open} aria-busy={busy} title="围绕当前光标给我一个小推动">
-        {busy ? <IconLoader2 aria-hidden="true" /> : <IconBulb aria-hidden="true" />}推动一下
+      <button className="writing-assist__trigger" onClick={show} aria-expanded={open} aria-busy={busy} title="给一个推动、聊清想法，或生成一段候选">
+        {busy ? <IconLoader2 aria-hidden="true" /> : <IconSparkles aria-hidden="true" />}AI 协作
       </button>
       {open ? (
-        <section className="writing-assist__card" aria-label="写作推动" aria-live="polite">
+        <section className="writing-assist__card" data-mode={mode} aria-label="AI 协作" aria-live="polite">
           <header>
-            <div className="writing-assist__modes" aria-label="推动方式">
-              <button data-on={mode === "think"} onClick={() => pickMode("think")} aria-label="想一想：围绕光标给一个问题或新角度" title="想一想：给一个问题或新角度"><IconBulb aria-hidden="true" /></button>
-              <button data-on={mode === "write"} onClick={() => pickMode("write")} aria-label="帮我写：围绕光标续写正文" title="帮我写：续写正文"><IconPencil aria-hidden="true" /></button>
+            <div className="writing-assist__modes" aria-label="协作方式">
+              <button data-on={mode === "think"} onClick={() => pickMode("think")}><IconBulb aria-hidden="true" />想一想</button>
+              <button data-on={mode === "chat"} onClick={() => pickMode("chat")}><IconMessageCircle aria-hidden="true" />聊一聊</button>
+              <button data-on={mode === "write"} onClick={() => pickMode("write")}><IconPencil aria-hidden="true" />帮我写</button>
             </div>
-            <button className="writing-assist__close" onClick={() => setOpen(false)} aria-label="关闭写作推动"><IconX aria-hidden="true" /></button>
+            <button className="writing-assist__close" onClick={() => setOpen(false)} aria-label="关闭 AI 协作"><IconX aria-hidden="true" /></button>
           </header>
 
-          {busy ? (
+          {(style || experts.length) ? (
+            <div className="writing-assist__context">
+              {style ? <span>风格 · {style.name}</span> : <span>风格 · 原本语气</span>}
+              {experts.length ? (
+                <label>专家
+                  <select value={expertId} onChange={(event) => changeExpert(event.target.value)}>
+                    <option value="">不调用</option>
+                    {experts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+
+          {mode === "chat" ? (
+            <div className="writing-assist__chat">
+              {!chat.length && !chatStream ? (
+                <div className="writing-assist__welcome">
+                  <IconMessageCircle aria-hidden="true" />
+                  <strong>先把脑子里的东西说出来</strong>
+                  <p>我一次只问一个问题，帮你找出判断、经历和例子；最后只整理写作线索，不会替你生成成稿。</p>
+                  <button onClick={() => sendBrainstorm("请从我现在的标题和正文开始，先问我一个最值得回答的问题。")}>开始梳理</button>
+                </div>
+              ) : (
+                <div className="writing-assist__log">
+                  {chat.map((item, index) => item.quiet ? null : (
+                    <div key={`${item.role}-${index}`} data-role={item.role} data-summary={item.summary || undefined}>
+                      <span>{item.role === "user" ? "我" : item.summary ? "写作线索" : expert?.name || "AI"}</span>
+                      <p>{item.text}</p>
+                    </div>
+                  ))}
+                  {chatStream ? <div data-role="agent"><span>{expert?.name || "AI"}</span><p>{chatStream}</p></div> : null}
+                  <i ref={chatEnd} />
+                </div>
+              )}
+
+              {error ? <div className="writing-assist__error"><strong>{error.message}</strong>{error.hint ? <small>{error.hint}</small> : null}</div> : null}
+
+              {chat.length || chatStream ? (
+                <div className="writing-assist__composer">
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        sendBrainstorm(chatInput);
+                      }
+                    }}
+                    placeholder="回答刚才的问题…"
+                    disabled={busy}
+                    rows={2}
+                  />
+                  <button onClick={() => sendBrainstorm(chatInput)} disabled={busy || !chatInput.trim()} aria-label="发送"><IconSend aria-hidden="true" /></button>
+                </div>
+              ) : null}
+
+              {chat.length ? (
+                <footer className="writing-assist__chat-actions">
+                  <button onClick={() => sendBrainstorm("请停止追问，把到目前为止的内容整理成写作线索。", "summary")} disabled={busy}>整理线索</button>
+                  {summary ? <button className="is-primary" onClick={insertSummary}><IconFileImport aria-hidden="true" />插入正文</button> : null}
+                </footer>
+              ) : null}
+            </div>
+          ) : busy ? (
             <div className="writing-assist__wait"><IconLoader2 aria-hidden="true" /><span>{mode === "think" ? "正在围绕当前光标找最值得追问的一步…" : "正在围绕当前光标接着写…"}</span></div>
           ) : error ? (
             <div className="writing-assist__error"><strong>{error.message}</strong>{error.hint ? <small>{error.hint}</small> : null}<button onClick={() => mode === "think" ? ask("nudge") : setError(null)}>重试</button></div>
           ) : mode === "write" && !result ? (
             <div className="writing-assist__choice">
-              <p>结合全文理解主题，围绕当前光标生成候选，确认后才会插进正文。</p>
-              <div>
-                <button onClick={() => ask("paragraph")}>续写一段</button>
-                <button onClick={() => ask("finish")}>完成全文</button>
-              </div>
+              <p>结合全文理解主题，围绕当前光标生成候选；只有你确认后才会插进正文。</p>
+              <div><button onClick={() => ask("paragraph")}>续写一段</button><button onClick={() => ask("finish")}>完成全文</button></div>
             </div>
           ) : result ? (
             <div className="writing-assist__result" data-long={result.mode === "finish" ? "true" : undefined}>

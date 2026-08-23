@@ -4,13 +4,18 @@
 .writing-assist__trigger[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
 .writing-assist__trigger svg { width: 15px; height: 15px; }
 .writing-assist__trigger[aria-busy="true"] svg, .writing-assist__wait svg { animation: writing-assist-spin .72s linear infinite; }
-.writing-assist__card { position: fixed; z-index: 120; top: clamp(72px, 9vh, 110px); left: 50%; right: auto; transform: translateX(-50%); width: min(560px, calc(100vw - 48px)); max-height: min(460px, calc(100vh - 140px)); display: flex; flex-direction: column; overflow: hidden; padding: 12px 12px 12px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: var(--r-lg); background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
+.writing-assist__card { position: fixed; z-index: 120; top: clamp(72px, 9vh, 110px); left: 50%; right: auto; transform: translateX(-50%); width: min(620px, calc(100vw - 48px)); max-height: min(520px, calc(100vh - 140px)); display: flex; flex-direction: column; overflow: hidden; padding: 12px 12px 12px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: var(--r-lg); background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
+.writing-assist__card[data-mode="chat"] { height: min(600px, calc(100vh - 140px)); max-height: min(600px, calc(100vh - 140px)); }
 .writing-assist__card > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writing-assist__modes { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--on-accent) 10%, transparent); }
 .writing-assist__modes button, .writing-assist__close, .writing-assist__result button, .writing-assist__choice button, .writing-assist__error button { border: 0; background: transparent; color: inherit; font: 600 11px/1 var(--font); cursor: pointer; }
-.writing-assist__modes button { width: 30px; height: 28px; display: grid; place-items: center; padding: 0; border-radius: var(--r-sm); color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
+.writing-assist__modes button { width: auto; height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border-radius: var(--r-sm); color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
 .writing-assist__modes button svg { width: 15px; height: 15px; }
 .writing-assist__modes button[data-on="true"] { background: var(--on-accent); color: var(--accent); }
+.writing-assist__context { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; min-height: 30px; padding: 6px 2px 0; color: color-mix(in srgb, var(--on-accent) 58%, transparent); font-size: var(--fs-2xs); }
+.writing-assist__context > span { overflow: hidden; max-width: 210px; text-overflow: ellipsis; white-space: nowrap; }
+.writing-assist__context label { display: inline-flex; align-items: center; gap: 5px; }
+.writing-assist__context select { max-width: 180px; padding: 3px 22px 3px 6px; border: 1px solid color-mix(in srgb, var(--on-accent) 24%, transparent); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); font: inherit; }
 .writing-assist__close { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: color-mix(in srgb, var(--on-accent) 72%, transparent); }
 .writing-assist__close:hover { background: color-mix(in srgb, var(--on-accent) 12%, transparent); color: var(--on-accent); }
 .writing-assist__close svg { width: 15px; }
@@ -36,10 +41,36 @@
 .writing-assist__error small { color: color-mix(in srgb, var(--on-accent) 65%, transparent); font-size: var(--fs-xs); line-height: 1.5; }
 .writing-assist__error button { justify-self: start; margin-top: 6px; }
 
+.writing-assist__chat { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; padding-top: 8px; }
+.writing-assist__welcome { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 42px 32px; text-align: center; }
+.writing-assist__welcome > svg { width: 24px; height: 24px; margin-bottom: 10px; color: color-mix(in srgb, var(--on-accent) 62%, transparent); }
+.writing-assist__welcome strong { font-size: var(--fs-md); }
+.writing-assist__welcome p { max-width: 430px; margin: 8px 0 16px; color: color-mix(in srgb, var(--on-accent) 68%, transparent); font-size: var(--fs-sm); line-height: 1.65; }
+.writing-assist__welcome button, .writing-assist__chat-actions button { min-height: 32px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--on-accent) 28%, transparent); border-radius: var(--r-ctl); background: transparent; color: var(--on-accent); font: 600 var(--fs-xs)/1 var(--font); }
+.writing-assist__welcome button:hover, .writing-assist__chat-actions button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--on-accent) 66%, transparent); }
+.writing-assist__log { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 6px 4px 10px 2px; }
+.writing-assist__log > div { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: 8px; }
+.writing-assist__log > div > span { padding-top: 4px; color: color-mix(in srgb, var(--on-accent) 48%, transparent); font-size: var(--fs-2xs); text-align: right; }
+.writing-assist__log > div > p { margin: 0; padding: 8px 10px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--on-accent) 10%, transparent); color: var(--on-accent); font-size: var(--fs-sm); line-height: 1.65; white-space: pre-wrap; }
+.writing-assist__log > div[data-role="user"] > p { background: color-mix(in srgb, var(--on-accent) 16%, transparent); }
+.writing-assist__log > div[data-summary="true"] > p { border: 1px solid color-mix(in srgb, var(--on-accent) 24%, transparent); }
+.writing-assist__composer { flex: none; position: relative; display: flex; align-items: flex-end; padding: 7px 40px 7px 9px; border: 1px solid color-mix(in srgb, var(--on-accent) 24%, transparent); border-radius: var(--r-ctl); }
+.writing-assist__composer textarea { width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: var(--on-accent); font: var(--fs-sm)/1.5 var(--font); }
+.writing-assist__composer textarea::placeholder { color: color-mix(in srgb, var(--on-accent) 40%, transparent); }
+.writing-assist__composer > button { position: absolute; right: 6px; bottom: 6px; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--r-sm); background: var(--on-accent); color: var(--accent); }
+.writing-assist__composer > button:disabled { opacity: .35; }
+.writing-assist__composer > button svg { width: 14px; height: 14px; }
+.writing-assist__chat-actions { flex: none; display: flex; justify-content: flex-end; gap: 6px; padding-top: 8px; }
+.writing-assist__chat-actions button:disabled { opacity: .45; }
+.writing-assist__chat-actions button.is-primary { display: inline-flex; align-items: center; gap: 5px; border-color: var(--on-accent); background: var(--on-accent); color: var(--accent); }
+.writing-assist__chat-actions button svg { width: 14px; height: 14px; }
+
 @keyframes writing-assist-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 640px) {
   .writing-assist__card { top: 64px; width: calc(100vw - 24px); max-height: calc(100vh - 88px); }
   .writing-assist__result footer { align-items: flex-end; }
   .writing-assist__result footer > span { max-width: 120px; }
+  .writing-assist__modes button { padding: 0 7px; }
+  .writing-assist__welcome { padding-inline: 18px; }
 }

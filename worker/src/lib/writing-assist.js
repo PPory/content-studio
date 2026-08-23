@@ -51,5 +51,7 @@ export function normalizeWritingAssistRequest(body = {}) {
     error.status = 400;
     throw error;
   }
-  return { mode, title, platform, content, ...context };
+  const expert = String(body.expert || "").trim().slice(0, 6_000);
+  const style = String(body.style || "").trim().slice(0, 6_000);
+  return { mode, title, platform, content, expert, style, ...context };
 }

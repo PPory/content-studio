@@ -222,6 +222,10 @@ export const api = {
   saveSettings: (values, clear = []) => postJson("/api/settings", { values, clear }),
   // 会真的打网络、真的 spawn 进程，所以是 POST 不是 GET
   verifySettings: () => postJson("/api/settings/verify", {}),
+  // 长期创作设置。风格/专家清单来自 Boujoy 在 vault 里的同一批 Markdown，
+  // 所以工作台只保存「默认选哪一个」，不复制预设正文。
+  writingProfile: () => req("/api/writing-profile"),
+  saveWritingProfile: (profile) => postJson("/api/writing-profile", { profile }),
 
   // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
   // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，

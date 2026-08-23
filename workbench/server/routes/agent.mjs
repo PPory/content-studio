@@ -35,6 +35,23 @@ export function interviewPromptParts(body = {}, sessionId = "") {
   ].filter(Boolean);
 }
 
+export function brainstormPromptParts(body = {}) {
+  const summary = body.phase === "summary";
+  return [
+    [
+      "【工作台内想法梳理规则】",
+      "你帮助用户把脑子里已有但散乱的想法说清楚，不替用户写完整文章。",
+      summary
+        ? "本轮停止追问，只整理目前对话。用 Markdown 输出四段：核心判断、可用经历或例子、可能展开的要点、仍待回答的问题。没有的信息明确写‘还没有说到’，不要补编。"
+        : "每轮只问一个短而具体的问题，优先追问只有用户本人知道的经历、判断、转折或细节；不要一次列问题清单，不要输出成稿。",
+      "无论用户怎样要求，都不要把这一步变成完整成稿；最终产物只能是可供用户确认的写作线索。",
+    ].join("\n"),
+    `【当前内容】\n暂定标题：${String(body.draftTitle || "未命名").slice(0, 200)}\n目标平台：${String(body.platform || "").slice(0, 20)}\n固定读者：${String(body.audience || "未设置").slice(0, 100)}`,
+    body.expert?.instructions ? `【本轮调用专家：${String(body.expert.name || "未命名").slice(0, 80)}】\n${String(body.expert.instructions).slice(0, 6000)}` : "",
+    body.style?.instructions ? `【默认输出风格：${String(body.style.name || "未命名").slice(0, 80)}】\n${String(body.style.instructions).slice(0, 6000)}` : "",
+  ].filter(Boolean);
+}
+
 /**
  * 系统提示词。**角色设定用户可改（设置面板），安全约束是常量、永远拼在最后。**
  *
@@ -139,6 +156,8 @@ export const agentRoutes = [
       if (!message) return json(res, { ok: false, error: "message 不能为空" }, 400);
 
       const interview = body.workflow === "interview";
+      const brainstorm = body.workflow === "brainstorm";
+      const guidedWriting = interview || brainstorm;
       // 访谈起稿必须走 Claude：这个入口调用的是项目内 interview-to-draft skill，
       // Codex 通道不认识 Claude Code 的 skill。普通对话仍按白名单选择引擎。
       //
@@ -148,7 +167,7 @@ export const agentRoutes = [
       const engine = interview ? ENGINES.claude : ENGINES[String(body.agent || "")] || ENGINES.claude;
 
       let cwd;
-      if (interview) {
+      if (guidedWriting) {
         // cwd 放在 workbench 根目录，Claude Code 才会发现 `.claude/skills/interview-to-draft`。
         // 访谈不读 vault，所以即使用户还没配置 Obsidian 也能正常起稿。
         cwd = WORKBENCH_ROOT;
@@ -177,13 +196,13 @@ export const agentRoutes = [
 
       // 当前在读的东西作为上下文，和问题一起从 stdin 进去
       const parts = [
-            ...(interview ? interviewPromptParts(body, sessionId) : []),
+            ...(interview ? interviewPromptParts(body, sessionId) : brainstorm ? brainstormPromptParts(body) : []),
             body.docTitle ? `【我正在读】${body.docTitle}` : "",
             body.sourceUrl ? `【网页】${String(body.sourceUrl).slice(0, 2048)}` : "",
             body.selection ? `【选中的片段】\n${String(body.selection).slice(0, 4000)}` : "",
             body.pageContext ? `【选区附近正文】\n${String(body.pageContext).slice(0, 6000)}` : "",
             body.docPath ? `【文件】${body.docPath}` : "",
-            `${interview ? "【本轮输入】" : "【我的问题】"}\n${message}`,
+            `${guidedWriting ? "【本轮输入】" : "【我的问题】"}\n${message}`,
           ].filter(Boolean);
       const prompt = engine.prompt(
         parts,

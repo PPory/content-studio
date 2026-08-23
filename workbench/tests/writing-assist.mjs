@@ -1,4 +1,4 @@
-/** 写作推动的真实浏览器闭环：新建文章与稿件库正式编辑器都必须能看到、能插入。 */
+/** AI 协作的真实浏览器闭环：推动、梳理和候选写作都必须由用户明确采用。 */
 import { createServer } from "vite";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -35,6 +35,7 @@ page.on("console", (message) => {
 
 let nudges = 0;
 const requests = [];
+const brainstormRequests = [];
 const revisionRequests = [];
 const revisionDocuments = new Map();
 await page.route("**/api/pipe/writing-assist", async (route) => {
@@ -53,6 +54,19 @@ await page.route("**/api/pipe/writing-assist", async (route) => {
     ? Array.from({ length: 18 }, (_, index) => `第 ${index + 1} 步，把判断落到一个具体选择上。真正的结束不是再总结一次，而是让读者知道明天可以少做什么。`).join("\n\n")
     : "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: body.mode === "finish" ? "完成全文" : "续写一段", text }) });
+});
+await page.route("**/api/agent/chat", async (route) => {
+  const body = route.request().postDataJSON();
+  brainstormRequests.push(body);
+  const text = body.phase === "summary"
+    ? "## 核心判断\n收藏处理的是焦虑，不是内容。\n\n## 可用经历或例子\n一次收藏后再也没打开。\n\n## 可能展开的要点\n用复述代替收藏。\n\n## 仍待回答的问题\n哪次真正改变了习惯？"
+    : "最近一次你点完收藏、却再也没有打开，具体是什么内容？";
+  return route.fulfill({
+    status: 200,
+    contentType: "text/plain; charset=utf-8",
+    headers: { "x-session-id": "12345678-1234-1234-1234-123456789abc" },
+    body: text,
+  });
 });
 await page.route("**/api/pipe/text-revision", async (route) => {
   const body = route.request().postDataJSON();
@@ -120,13 +134,15 @@ try {
   await page.waitForSelector(".writing-assist__result");
   const firstStarter = await page.textContent(".writing-assist__result > p");
   assert((await page.textContent(".writing-assist__result footer")).includes("2,560"), "没有显示真实的起始句库数量");
-  const iconActions = await page.evaluate(() => Array.from(document.querySelectorAll(".writing-assist__modes button, .writing-assist__result footer button"), (button) => ({
+  const modes = await page.$$eval(".writing-assist__modes button", (buttons) => buttons.map((button) => button.textContent.trim()));
+  assert(modes.join("/") === "想一想/聊一聊/帮我写", `协作方式不完整：${modes.join("/")}`);
+  const iconActions = await page.evaluate(() => Array.from(document.querySelectorAll(".writing-assist__result footer button"), (button) => ({
     label: button.getAttribute("aria-label"),
     title: button.getAttribute("title"),
     text: button.textContent.trim(),
     icons: button.querySelectorAll("svg").length,
   })));
-  assert(iconActions.every((item) => item.label && item.title && !item.text && item.icons === 1), "推动方式和结果操作没有全部换成带悬停说明的图标按钮");
+  assert(iconActions.every((item) => item.label && item.title && !item.text && item.icons === 1), "结果操作没有全部使用带悬停说明的图标按钮");
   await page.click('.writing-assist__result button[aria-label="换一句起始句"]');
   const secondStarter = await page.textContent(".writing-assist__result > p");
   assert(firstStarter !== secondStarter, "换一句没有换内容");
@@ -172,7 +188,7 @@ try {
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("读者最可能反对"));
   assert(nudges === 2, `小推动请求次数不对：${nudges}`);
 
-  await page.click('.writing-assist__modes button[aria-label^="帮我写"]');
+  await page.click('.writing-assist__modes button:has-text("帮我写")');
   await page.click('.writing-assist__choice button:has-text("续写一段")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("缺少更多方法"));
   const before = await editorValue(".cm-content");
@@ -207,7 +223,7 @@ try {
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__wait");
   await page.waitForSelector(".writing-assist__result");
-  await page.click('.writing-assist__modes button[aria-label^="帮我写"]');
+  await page.click('.writing-assist__modes button:has-text("帮我写")');
   await page.waitForSelector(".writing-assist__choice");
   await page.click('.writing-assist__choice button:has-text("完成全文")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("真正的结束"));
@@ -224,6 +240,23 @@ try {
   assert(!(await page.textContent(".cm-content")).includes("真正的结束"), "完成全文在确认前就写进了正文");
   await page.click('.writing-assist__result button[aria-label="插入光标处"]');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("真正的结束"));
+
+  // 「聊一聊」只逐问和整理线索：总结出现前后都不能静默改正文，最后由用户明确插入。
+  await page.click(".writing-assist__trigger");
+  await page.click('.writing-assist__modes button:has-text("聊一聊")');
+  await page.waitForSelector(".writing-assist__welcome");
+  await page.waitForTimeout(350);
+  assert(!(await page.$(".writing-assist__error")), "切换到聊一聊时串进了上一种模式的错误");
+  const beforeChat = await editorValue(".cm-content");
+  await page.click('.writing-assist__welcome button:has-text("开始梳理")');
+  await page.waitForFunction(() => document.querySelector(".writing-assist__log")?.textContent.includes("具体是什么内容"));
+  assert((await editorValue(".cm-content")) === beforeChat, "第一问自动改了正文");
+  await page.click('.writing-assist__chat-actions button:has-text("整理线索")');
+  await page.waitForSelector('.writing-assist__chat-actions button:has-text("插入正文")');
+  assert((await editorValue(".cm-content")) === beforeChat, "整理线索在确认前改了正文");
+  assert(brainstormRequests.length === 2 && brainstormRequests[1].phase === "summary", "聊一聊没有先问再整理");
+  await page.click('.writing-assist__chat-actions button:has-text("插入正文")');
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("写作线索"));
 
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
   await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
@@ -254,7 +287,7 @@ try {
   await page.waitForSelector(".ws-edit .writing-assist__result");
   const existingNudge = requests.filter((item) => item.mode === "nudge").at(-1);
   assert(existingNudge?.cursor === 12 && existingNudge.cursor < existingNudge.content.length, "正式编辑器仍然按文末而不是当前光标请求");
-  await page.click('.ws-edit .writing-assist__modes button[aria-label^="帮我写"]');
+  await page.click('.ws-edit .writing-assist__modes button:has-text("帮我写")');
   await page.click('.ws-edit .writing-assist__choice button:has-text("续写一段")');
   await page.waitForFunction(() => document.querySelector(".ws-edit .writing-assist__result > p")?.textContent.includes("缺少更多方法"));
   await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-existing-editor.png"), fullPage: false });

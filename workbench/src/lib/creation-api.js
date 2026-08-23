@@ -103,6 +103,43 @@ export async function interviewStream({ signal, sessionId, message, title, platf
   return full.trim();
 }
 
+export async function brainstormStream({ signal, sessionId, message, title, platform, content, audience, phase, expert, style, onSession, onChunk }) {
+  const response = await fetch("/api/agent/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      workflow: "brainstorm",
+      agent: "claude",
+      sessionId: sessionId || undefined,
+      message,
+      draftTitle: title,
+      platform,
+      audience,
+      phase,
+      pageContext: String(content || "").slice(0, 12_000),
+      expert: expert ? { name: expert.name, instructions: expert.instructions } : null,
+      style: style ? { name: style.name, instructions: style.instructions } : null,
+    }),
+    signal,
+  });
+  const type = response.headers.get("content-type") || "";
+  if (!response.ok || type.includes("application/json")) {
+    const data = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw Object.assign(new Error(data.error || "想法梳理没有响应"), { hint: data.hint, code: data.code });
+  }
+  onSession?.(response.headers.get("x-session-id") || "");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let full = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+    onChunk?.(full);
+  }
+  return full.trim();
+}
+
 export function cleanGeneratedDraft(text) {
   const value = String(text || "").trim();
   const fenced = value.match(/```(?:markdown|md)?\s*\n([\s\S]*?)```/i);

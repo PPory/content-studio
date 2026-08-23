@@ -274,6 +274,15 @@ const shots = [
     // 等正文真的挂上来，不是等外壳——正文还在取的时候截出来的是一张骨架图
     await page.waitForSelector(".project-workspace .cm-content, .project-draft__empty, .project-review", { timeout: 25000 }).catch(() => {});
   }],
+  // AI 协作的「聊一聊」是访谈的新位置：它跟着正文，不再是一条新建入口。
+  ["project-ai", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
+    await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
+    await page.click(".ptable__row", { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".writing-assist__trigger", { timeout: 25000 }).catch(() => {});
+    await page.click(".writing-assist__trigger").catch(() => {});
+    await page.click('.writing-assist__modes button:has-text("聊一聊")').catch(() => {});
+    await page.waitForSelector(".writing-assist__welcome", { timeout: 8000 }).catch(() => {});
+  }],
   ["project-release", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     projectDetailShot = PROJECT_SHOT_RELEASE;
     await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
@@ -302,11 +311,9 @@ const shots = [
   // 设置面板。**只开不存**：写 .env 会让这个脚本自己起的 dev server 重启，
   // 而写提示词改的是 content-pipeline 的真文件
   ["settings", "/", ".todo-card, .note-title", async () => {
-    await page.click(".conn__gear").catch(() => {});
-    // 等的是自检真的出了结论，不是覆盖层这个壳——壳里全是转圈的话，截出来的是一张加载图
-    await page
-      .waitForSelector(".set-field__dot:not(.set-field__dot--wait), .set-check--ok, .set-check--bad, .set-check--warn, .set-check--off", { timeout: 40000 })
-      .catch(() => {});
+    await page.click(".topbar__icon").catch(() => {});
+    // 设置默认先打开「我的创作」；等真实资料和 Boujoy 来源都画出来再截。
+    await page.waitForSelector(".writing-profile-settings .profile-source", { timeout: 15000 }).catch(() => {});
   }],
   // 「可选能力」：这一段自检最多，也是「已配」最容易堆成一排灰盒子的地方。
   // 现在绑了字段的那几条收成标题旁边一枚绿点，段尾只剩没有输入框可挂的那两条
@@ -441,42 +448,6 @@ const shots = [
     await page.waitForSelector(".drawer", { timeout: 6000 }).catch(() => {});
     await page.fill(".drawer textarea", "复利不是利滚利，是「同一件事做久了，别人再进来就追不上」。").catch(() => {});
   }],
-  // 起点选择：三行一屏。这一屏光靠断言全绿——上一版就是三张并排的卡，
-  // 图标钉在左上角、文字沉在底部，中间挖出一块空白，测试一条没红。
-  ["create", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-bar__end .btn-primary").catch(() => {});
-    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
-  }],
-  // 编辑器：**背景该比上一张糊得多**（沉浸），底部要能看见字数和留底状态。
-  // 这里会往编辑器里敲字，触发一次自动保存——写的是**测试浏览器自己的 localStorage**，
-  // 不碰服务端也不碰真数据，符合截图脚本「点了不写」的规矩。
-  ["create-editor", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-bar__end .btn-primary").catch(() => {});
-    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
-    await page.click(".creation-mode").catch(() => {});
-    await page.waitForSelector(".creation-editor .cm-content", { timeout: 8000 }).catch(() => {});
-    await page.click(".creation-editor .cm-content").catch(() => {});
-    await page.keyboard.type("复利不是利滚利。它真正的意思是：同一件事做得够久，别人再进来就追不上了——因为你攒下的不只是结果，还有做这件事的手感。\n\n这一条对写作同样成立。", { delay: 4 }).catch(() => {});
-    await page.waitForTimeout(900);
-  }],
-  // 从素材开始：**平台下拉展开着截**。它贴在右栏最右端，而菜单比按钮宽 50 多像素，
-  // 默认 `left:0` 就会顶出面板边缘——这种事断言看不出来，只有图上看得见。
-  ["create-material", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-bar__end .btn-primary").catch(() => {});
-    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
-    await page.keyboard.press("2");
-    await page.waitForSelector(".creation-material-workspace", { timeout: 8000 }).catch(() => {});
-    await page.click(".creation-material-plan .select__btn").catch(() => {});
-    await page.waitForSelector(".select__pop", { timeout: 5000 }).catch(() => {});
-  }],
-  // 访谈起稿的欢迎区：那枚圆形图标和这段话曾经被聊天气泡的样式串了台
-  //（图标涂成灰的、正文套上灰底），代码在跑、测试全绿，只有肉眼看得见
-  ["create-interview", "/", ".todo-card, .note-title", async () => {
-    await page.click(".page-bar__end .btn-primary").catch(() => {});
-    await page.waitForSelector(".creation-mode", { timeout: 8000 }).catch(() => {});
-    await page.keyboard.press("3");
-    await page.waitForSelector(".creation-interview-welcome", { timeout: 8000 }).catch(() => {});
-  }],
   // 在工作台里读热点原文：抓得到出正文、抓不到出带引导的错误，两种都要能看
   ["hot-read", "/#/hot", ".board, .empty, .note-title", async () => {
     await page.click('.pill-tab:has-text("AI 情报")').catch(() => {});
@@ -513,7 +484,7 @@ for (const [name, hash, waitFor, after] of shots.filter(([name]) => !ONLY.size |
   if (after) await after();
   await page.waitForTimeout(700);
   // 阅读覆盖层和内嵌工具是整屏布局，fullPage 会把 100vh 拉成一张怪图
-  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-optional", "settings-prompts", "settings-models", "settings-local-prompts", "create", "create-editor", "create-material", "create-interview"].includes(name);
+  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-optional", "settings-prompts", "settings-models", "settings-local-prompts", "project-ai"].includes(name);
   await page.screenshot({ path: path.join(ROOT, "tmp", `shot-${name}${SUFFIX}.png`), fullPage: !inReader });
   console.log("→", `tmp/shot-${name}${SUFFIX}.png`);
 }

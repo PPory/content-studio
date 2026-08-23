@@ -621,6 +621,23 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
     "起稿一律走 lib/start-writing.js，别在这儿再开一条");
 }
 
+{
+  const button = await fs.readFile(new URL("../src/components/NewContentButton.jsx", import.meta.url), "utf8");
+  check("新建内容是一颗直达编辑器的按钮", /startWriting/.test(button) && /writingProfile/.test(button));
+  check("新建内容不再展开起稿方式", !/MenuButton|CreationDialog|MODES/.test(button));
+
+  const { normalizeWritingProfile } = await import("../server/lib/writing-profile.mjs");
+  const profile = normalizeWritingProfile({ audience: "  固定   读者  ", platform: "小红书", styleId: "克制-直接" });
+  check("长期创作设置会清洗读者并保留合法平台", profile.audience === "固定 读者" && profile.platform === "小红书", JSON.stringify(profile));
+  check("长期风格只保存安全的 Boujoy 记录 id", profile.styleId === "克制-直接", profile.styleId);
+  check("非法平台回到稳定默认值", normalizeWritingProfile({ platform: "随便一个站" }).platform === "公众号");
+
+  const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
+  const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者" }).join("\n");
+  check("聊一聊的总结只整理四类写作线索", ["核心判断", "可用经历或例子", "可能展开的要点", "仍待回答的问题"].every((part) => prompt.includes(part)));
+  check("聊一聊明确禁止生成完整成稿", /不要.*完整成稿|不替用户写完整文章/.test(prompt));
+}
+
 /**
  * ⚠️ **平台名单和 Worker 那份必须逐字一致。**
  * 对不上不报错：Worker 会把认不出的平台 filter 掉然后静默不写那一个，

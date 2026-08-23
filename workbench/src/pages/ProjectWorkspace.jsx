@@ -35,6 +35,19 @@ function materialText(item) {
   return `> ${item.content || item.title}${source}`;
 }
 
+function projectMaterialQuery(project, form) {
+  const seed = String(project?.seed?.take || "").trim();
+  if (seed) return seed;
+  const body = String(form?.body || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#>*_`~\[\]()!-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (body.length >= 20) return body.slice(0, 520);
+  const title = String(form?.title || project?.title || "").trim();
+  return title && title !== "未命名" ? title : "";
+}
+
 function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, onPublished, cover, coverOpen, onCover }) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -163,6 +176,7 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
 
 export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const [project, setProject] = useState(null);
+  const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [form, setForm] = useState(() => releaseForm());
   const [error, setError] = useState(null);
@@ -218,6 +232,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   }, [acceptProject, projectId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.writingProfile().then(setWritingProfile).catch(() => setWritingProfile(null));
+  }, []);
 
   const drafts = projectReleaseDrafts(project);
   const masterDraft = project?.masterDraft;
@@ -529,20 +546,14 @@ ${(form.body || "").slice(0, 3000)}`);
               <input className="project-draft__title" value={form.title} onChange={(e) => changeForm("title", e.target.value)} aria-label={draft.id === masterDraft?.id ? "主稿标题" : `${draft.platform} 版本标题`} disabled={!draftEditable} />
 
               {/**
-                * ⚠️ **简报贴在标题下面，不在右栏。**
-                * 目标读者和核心观点是**你写的时候要瞟的东西**——你就是照着这两条写的。
-                * 隔一条沟摆在右边，等于每写几句就要横跨整屏看一眼。
-                * 右栏那张「简报卡」原来还有四项：stageReason（顶栏说过第三遍）、
-                * 下一步（和按钮说同一件事）、主平台（写作时用不上）、「更新：刚刚」
-                *（你刚打开这一页）——整卡已经撤掉。
-                *
-                * ⚠️ **缺的那一项要看得出是缺的**，不能一律写「—」：那样这一行看着只是留白。
+                * 每篇重复填写的简报撤掉了。这里只安静地回显长期设置，让人知道这一篇
+                * 正在写给谁、AI 协作会按什么风格说话；它不是一道开始写之前的表单。
                 */}
-              {project.brief?.audience || project.brief?.viewpoint ? (
-                <dl className="project-brief-line">
-                  <div><dt>写给</dt><dd data-empty={project.brief?.audience ? undefined : ""}>{project.brief?.audience || "还没定目标读者"}</dd></div>
-                  <div><dt>要说</dt><dd data-empty={project.brief?.viewpoint ? undefined : ""}>{project.brief?.viewpoint || "还没定核心观点"}</dd></div>
-                </dl>
+              {project.brief?.audience || writingProfile?.profile?.audience || writingProfile?.style ? (
+                <div className="project-writing-context" aria-label="本篇沿用的创作设置">
+                  {project.brief?.audience || writingProfile?.profile?.audience ? <span>写给 {project.brief?.audience || writingProfile.profile.audience}</span> : null}
+                  {writingProfile?.style ? <span>AI 协作风格 · {writingProfile.style.name}</span> : null}
+                </div>
               ) : null}
               <MarkdownEditor
                 key={`${draft.id}:${draftEditable ? "edit" : "locked"}`}
@@ -556,7 +567,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
                 readOnly={!draftEditable}
-                toolbarExtra={writingEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} getCursor={() => cursor.current}
+                toolbarExtra={writingEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} getCursor={() => cursor.current}
                   onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>
@@ -649,11 +660,10 @@ ${(form.body || "").slice(0, 3000)}`);
                 onGo("materials", "");
               }}
               /**
-               * 「找相关素材」拿什么去找。**优先那句话本身**——你要找的是
-               * 「支持这个判断的依据」，不是「和标题字面像的东西」。
-               * 没有种子时退回核心观点，再退回标题。
+               * 素材推荐拿什么去找：有种子先用那句话；否则读正在写的正文，
+               * 正文还没形成时才退回标题。候选不会自动挂进项目。
                */
-              query={project.seed?.take || project.brief?.viewpoint || project.title || ""}
+              query={projectMaterialQuery(project, form)}
               busy={materialBusy}
               onAttach={(id) => changeMaterials({ add: [id] })}
               onDetach={(id) => changeMaterials({ remove: [id] })}

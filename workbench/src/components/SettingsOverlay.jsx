@@ -23,6 +23,7 @@ import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
 import { ModelSettings } from "./SettingsModels.jsx";
 import { LocalPrompts, PipelinePrompts } from "./SettingsPrompts.jsx";
+import { SettingsWritingProfile } from "./SettingsWritingProfile.jsx";
 import {
   IconAlertCircle,
   IconCircleCheck,
@@ -63,7 +64,7 @@ async function waitForServer(timeoutMs = 15000) {
 export function SettingsOverlay({ open, onClose, onSaved }) {
   const [data, setData] = useState(null); // /api/settings
   const [promptData, setPromptData] = useState(null); // /api/prompts
-  const [active, setActive] = useState("vault");
+  const [active, setActive] = useState("writing-profile");
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState({}); // .env 字段的改动
   const [pDraft, setPDraft] = useState({}); // 工作台提示词的改动（点号路径 → 文本）
@@ -278,6 +279,8 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
                       <CheckRow key={id} check={checkById[id]} loading={checking} />
                     ))}
                 </>
+              ) : current.kind === "writing-profile" ? (
+                <SettingsWritingProfile onSaved={onSaved} />
               ) : current.kind === "models" ? (
                 <ModelSettings />
               ) : current.kind === "prompts-local" ? (
@@ -305,6 +308,13 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
           </span>
         ) : null}
 
+        {current?.kind === "writing-profile" ? (
+          <span className="field-hint set-overlay__note">
+            这一段在上面单独保存。它只影响之后新建的内容，不会重写已有项目。
+            {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
+          </span>
+        ) : null}
+
         {current?.kind === "prompts-worker" ? (
           <span className="field-hint set-overlay__note">
             这一段在上面单独保存——它写的是 worker/ 的文件，而且要部署一次才生效。
@@ -320,7 +330,7 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
          * 「没有改动」了（管的是当前那个 .md），底下再来一个一模一样的灰按钮，
          * 两个长得一样、管的却是两回事——看图才发现的。
          */}
-        {(current?.kind === "prompts-worker" || current?.kind === "models") && !dirty ? null : confirm ? (
+        {(current?.kind === "prompts-worker" || current?.kind === "models" || current?.kind === "writing-profile") && !dirty ? null : confirm ? (
           <>
             <button className="btn" onClick={() => setConfirm(false)} disabled={saving}>
               取消

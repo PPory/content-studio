@@ -594,13 +594,13 @@ try {
          * 右栏是独立滚动区，它的内部位置只该由「鼠标在右栏上滚」来改——
          * 被正文带着走的话，你回头看右栏，顶上那块已经不见了。
          */
-        check("滚正文没带动右栏自己的滚动", stuck.innerScroll < 0 || stuck.innerScroll === 0,
-          `右栏内部滚到了 ${stuck.innerScroll}px`);
-        check("吸住之后右栏没滑到操作条底下", stuck.underBar === null || stuck.underBar <= 1,
-          stuck.underBar === null ? "这一页没有操作条" : `离操作条底 ${-stuck.underBar}px`);
+        check("滚正文没带动右栏自己的滚动", stuck.innerScroll == null || stuck.innerScroll === 0,
+          stuck.innerScroll == null ? "这一页不够长，内部滚动量不到" : `右栏内部滚到了 ${stuck.innerScroll}px`);
+        check("吸住之后右栏没滑到操作条底下", stuck.underBar == null || stuck.underBar <= 1,
+          stuck.underBar == null ? "这一页不够长或没有操作条" : `离操作条底 ${-stuck.underBar}px`);
         // 「项目素材」那一行吸在右栏顶上，滚完还得在那儿
-        check("滚完「项目素材」那一行还在右栏顶上", stuck.headTop < 0 || Math.abs(stuck.headTop) <= 2,
-          stuck.headTop < 0 ? "这一档右栏是发布准备，没有那一行" : `离右栏顶 ${stuck.headTop}px`);
+        check("滚完「项目素材」那一行还在右栏顶上", stuck.headTop == null || stuck.headTop < 0 || Math.abs(stuck.headTop) <= 2,
+          stuck.headTop == null ? "这一页不够长，标题位移量不到" : stuck.headTop < 0 ? "这一档右栏是发布准备，没有那一行" : `离右栏顶 ${stuck.headTop}px`);
         /**
          * ⚠️ **右栏不许横向被撑破。** 这条和上面那条是同一个根因的两个症状——
          * 修完只量 sticky 的话，下次某个 `nowrap` 的长标题回来时，
@@ -706,6 +706,29 @@ try {
   });
   check("芯片在上、说明在它正下方", headOrder === null || headOrder >= 0,
     headOrder === null ? "这一页没有说明" : `说明在芯片下方 ${headOrder}px`);
+  const headAxis = await page.evaluate(() => {
+    const mid = (node) => {
+      const box = node?.getBoundingClientRect();
+      return box ? box.left + box.width / 2 : null;
+    };
+    const chips = document.querySelector(".filter-head .chips-sm");
+    const desc = document.querySelector(".filter-head__desc");
+    const main = document.querySelector(".main");
+    return {
+      chips: mid(chips),
+      desc: mid(desc),
+      main: mid(main),
+      oneLine: !desc || desc.getBoundingClientRect().height < 24,
+    };
+  });
+  check(
+    "选种的芯片和说明都沿页面中轴居中",
+    headAxis.chips !== null && headAxis.desc !== null && headAxis.main !== null
+      && Math.abs(headAxis.chips - headAxis.main) <= 1
+      && Math.abs(headAxis.desc - headAxis.main) <= 1,
+    JSON.stringify(headAxis)
+  );
+  check("选种说明在桌面宽度保持一行", headAxis.oneLine, JSON.stringify(headAxis));
   check("三个入口都在首屏", srcChips.lastBottom > 0 && srcChips.lastBottom < srcChips.viewport,
     `最后一颗在 ${srcChips.lastBottom}px / 视口 ${srcChips.viewport}px`);
 
@@ -791,6 +814,32 @@ try {
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/seeds`, { waitUntil: "networkidle" });
   await page.waitForSelector(".seeds, .empty, .note-danger", { timeout: 25000 }).catch(() => {});
+
+  const seedLayout = await page.evaluate(() => {
+    const midX = (node) => {
+      const box = node?.getBoundingClientRect();
+      return box ? box.left + box.width / 2 : null;
+    };
+    const midY = (node) => {
+      const box = node?.getBoundingClientRect();
+      return box ? box.top + box.height / 2 : null;
+    };
+    const chips = document.querySelector(".filter-head .chips-sm");
+    const add = document.querySelector(".filter-head__add");
+    const desc = document.querySelector(".filter-head__desc");
+    const main = document.querySelector(".main");
+    const empty = document.querySelector(".seed-page > .empty");
+    const pageBox = document.querySelector(".seed-page")?.getBoundingClientRect();
+    return {
+      controlDelta: chips && add ? Math.abs(midY(chips) - midY(add)) : null,
+      chipsAxis: chips && main ? Math.abs(midX(chips) - midX(main)) : null,
+      descAxis: desc && main ? Math.abs(midX(desc) - midX(main)) : null,
+      emptyDelta: empty && pageBox ? Math.abs(midY(empty) - (pageBox.top + pageBox.height / 2)) : null,
+    };
+  });
+  check("种子页加号和状态芯片在同一水平线", seedLayout.controlDelta !== null && seedLayout.controlDelta <= 1, JSON.stringify(seedLayout));
+  check("种子页页头沿页面中轴居中", seedLayout.chipsAxis !== null && seedLayout.chipsAxis <= 1 && seedLayout.descAxis !== null && seedLayout.descAxis <= 1, JSON.stringify(seedLayout));
+  if (seedLayout.emptyDelta !== null) check("种子空态在可用页面正中", seedLayout.emptyDelta <= 35, `${seedLayout.emptyDelta}px`);
 
   let seedWrites = 0;
   const countSeedWrites = (req) => {
@@ -1025,9 +1074,21 @@ try {
 
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
       const navs = await page.$$eval(".set-nav__item", (els) => els.map((e) => e.innerText.trim()));
-      check("左栏分五组", groups.join("/") === "连接/能力/模型/提示词/其他", groups.join("/"));
-      check("左栏八项", navs.length === 8, navs.join("/"));
-      // 右边一次只画一段：默认那段只有 vault 一个字段，不是十五个全铺出来
+      check("左栏分六组", groups.join("/") === "创作/连接/能力/模型/提示词/其他", groups.join("/"));
+      check("左栏九项", navs.length === 9, navs.join("/"));
+      await page.waitForSelector(".writing-profile-settings", { timeout: 8000 });
+      const profilePane = await page.evaluate(() => ({
+        fields: document.querySelectorAll(".writing-profile-settings .profile-field").length,
+        text: document.querySelector(".writing-profile-settings")?.textContent || "",
+        source: document.querySelector(".profile-source code")?.textContent || "",
+      }));
+      check("我的创作只收长期会复用的三项", profilePane.fields === 3 && /固定目标读者/.test(profilePane.text) && /常用首发平台/.test(profilePane.text) && /默认写作风格/.test(profilePane.text), JSON.stringify(profilePane));
+      check("专家只在需要时调用，不绑进每篇简报", /不预先绑/.test(profilePane.text) && /AI 协作/.test(profilePane.text), profilePane.text.slice(0, 120));
+      check("风格和专家显示 Boujoy 共享来源", /Boujoy-Harness/.test(profilePane.source), profilePane.source);
+
+      // 下面继续验证原有连接设置；默认页已经变成「我的创作」，需显式切回 vault。
+      await go("vault");
+      await page.waitForSelector("#set-VAULT_ROOT", { timeout: 5000 });
       check("右边一次只画一段", (await page.$$(".set-pane .set-field")).length === 1);
       check("非密钥字段带出当前值", (await page.$eval("#set-VAULT_ROOT", (e) => e.value)).length > 0);
       // 长说明默认收起——这正是上一版「一大坨」的根因
@@ -1387,6 +1448,32 @@ try {
     const createBtn = await page.$('.page-bar__end .btn-primary');
     check("首页有新建入口", !!createBtn);
     if (createBtn) {
+      const expectedProfile = await page.evaluate(() => fetch("/api/writing-profile").then((r) => r.json()).then((r) => r.profile));
+      let created = 0;
+      let createdBody = null;
+      await page.route("**/api/pipe/create", (route) => {
+        created += 1;
+        createdBody = route.request().postDataJSON();
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, draft: { id: "smoke-draft", topicId: "smoke-topic" }, project: { id: "smoke-topic" } }),
+        });
+      });
+      await createBtn.click();
+      await page.waitForFunction(() => location.hash.startsWith("#/project/"), { timeout: 8000 }).catch(() => {});
+      const landed = await page.evaluate(() => location.hash);
+      check("新建内容一次点击直达项目", landed === "#/project/smoke-topic" && created === 1, `${landed} · ${created} 次建项目`);
+      check("新建内容不再弹起稿方式", !(await page.$(".menu-btn__pop, .creation")));
+      check("新建内容自动沿用常用平台和固定读者", createdBody?.platform === expectedProfile.platform && createdBody?.audience === expectedProfile.audience, JSON.stringify(createdBody));
+      await page.unroute("**/api/pipe/create").catch(() => {});
+      await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
+      await page.waitForSelector(".page-bar__end .btn-primary", { timeout: 15000 }).catch(() => {});
+    }
+
+    // 旧弹层路径保留为历史回归资料，但它已经不再是任何用户入口，也不再执行。
+    const legacyCreationDialogAvailable = false;
+    if (legacyCreationDialogAvailable && createBtn) {
       /**
        * ⚠️ **「新建」现在是个下拉，起点在点之前就摊开了。**
        *

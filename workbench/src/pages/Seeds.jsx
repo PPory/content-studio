@@ -8,11 +8,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { FilterHeader, StatePill, ErrorNote, Loading, Empty, MenuButton, relTime, valueIcon } from "../components/ui.jsx";
+import { FilterHeader, StatePill, ErrorNote, Loading, Empty, relTime } from "../components/ui.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
-import { PLATFORMS } from "../lib/platforms.js";
 import { startWriting } from "../lib/start-writing.js";
-import { IconArrowUpRight, IconBulb, IconPencil, IconPlus, IconTrash, IconWorld } from "../components/icons.jsx";
+import { IconArrowUpRight, IconBulb, IconLoader2, IconPencil, IconPlus, IconTrash } from "../components/icons.jsx";
 
 const KEEPING = "攒着";
 
@@ -72,19 +71,18 @@ export function Seeds({ onGo, onChanged }) {
    * 别处（首页、内容页、素材工作台）建完内容早就跳那儿了，只有这条曾经卡在弹层里。
    * 而那一屏上除了你填的那句话什么都没有：看不到来源，也看不到能用的素材。
    *
-   * ⚠️ **平台必须在点下去之前选。** 主稿的平台建完就改不了（Worker 那侧
-   * `EDITABLE.drafts` 里没有 `platform`，只能再加平台变体），
-   * 默认一个「大概是公众号吧」的代价是你写完才发现、只能重开一篇。
+   * 常用平台和固定读者从「我的创作」继承，不在准备开始写的时候再问一遍。
    *
    * 标成「写了」和回填 `draft_id` 都在 `startWriting` 里做——**入库成功才记账**：
    * 反过来的话，建项目失败时那颗种子已经从「攒着」里消失了，而它明明还没写。
    */
-  async function write(seed, platform) {
+  async function write(seed) {
     if (writing) return;
     setWriting(seed.id);
     setError(null);
     try {
-      const projectId = await startWriting({ platform, mode: "blank", body: `${seed.take}
+      const profile = await api.writingProfile().then((value) => value.profile).catch(() => ({ platform: "公众号", audience: "" }));
+      const projectId = await startWriting({ platform: profile.platform || "公众号", audience: profile.audience || "", mode: "blank", body: `${seed.take}
 
 `, seed });
       onChanged?.();
@@ -111,7 +109,7 @@ export function Seeds({ onGo, onChanged }) {
   const shown = (data?.seeds || []).filter((s) => s.status === status);
 
   return (
-    <>
+    <div className="seed-page">
       <FilterHeader
         title="种子"
         desc="看到一个东西，说一句你的看法——那句话就是一篇的起点。"
@@ -150,12 +148,12 @@ export function Seeds({ onGo, onChanged }) {
       {data && !shown.length ? (
         <Empty icon={IconBulb}>
           {status === KEEPING ? (
-            <>
-              还没有种子。<b>两条路</b>：右上角「记一句」记下你此刻想说的；
+            <p>
+              还没有种子。<b>两条路：</b>右上角「记一句」记下你此刻想说的；
               或者去<button className="link-btn" onClick={() => onGo("hot")}>热点</button>那一页，
               对哪条有反应就点一下。
-            </>
-          ) : `没有「${status}」的种子`}
+            </p>
+          ) : <p>没有「{status}」的种子</p>}
         </Empty>
       ) : null}
 
@@ -185,22 +183,15 @@ export function Seeds({ onGo, onChanged }) {
               <div className="seed__acts">
                 {seed.status === KEEPING ? (
                   <>
-                    {/* ⚠️ **发哪儿要在点下去之前选**——主稿的平台建完就改不了 */}
-                    <MenuButton
-                      label="写这个"
-                      icon={IconPencil}
-                      align="start"
+                    <button
+                      type="button"
                       className="btn btn-sm btn-primary"
-                      busy={writing === seed.id}
-                      ariaLabel={`写这个：${seed.take}`}
-                      items={PLATFORMS.map((name, i) => ({
-                        key: name,
-                        section: i === 0 ? "发哪儿" : undefined,
-                        icon: valueIcon(name, IconWorld),
-                        title: name,
-                        onPick: () => write(seed, name),
-                      }))}
-                    />
+                      disabled={!!writing}
+                      onClick={() => write(seed)}
+                      title="按「我的创作」里的常用平台直接开始"
+                    >
+                      {writing === seed.id ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconPencil aria-hidden="true" />}写这个
+                    </button>
                     <button className="btn btn-sm" disabled={busy || !!writing} onClick={() => patch(seed.id, { status: "不写了" })}>
                       不写了
                     </button>
@@ -232,6 +223,6 @@ export function Seeds({ onGo, onChanged }) {
         onClose={() => setPicking(false)}
         onSave={save}
       />
-    </>
+    </div>
   );
 }

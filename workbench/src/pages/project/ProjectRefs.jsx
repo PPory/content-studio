@@ -8,7 +8,7 @@
 // 消失的话，待发布那一档打开这一栏会看到一列点不动的素材、而屏幕上没有任何地方
 // 说得清为什么——禁用 + `title` 至少把原因摆在那儿。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { creationApi } from "../../lib/creation-api.js";
 import { IconFileText, IconLoader2, IconPlus, IconSearch, IconSparkles, IconX } from "../../components/icons.jsx";
 import { valueIcon, fieldIcon } from "../../components/ui.jsx";
@@ -36,6 +36,16 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
       .then((r) => setPick({ items: r.items || [], busy: false, error: null, ran: true, scanned: r.scanned || 0 }))
       .catch((err) => setPick((prev) => ({ ...prev, busy: false, error: err, ran: true })));
   }
+
+  // 打开项目后，等标题/正文有了足够线索就自动挑一次。只给候选，不自动挂到项目上；
+  // `topic_materials` 仍然只有用户点过「用这条」才会写入。
+  useEffect(() => {
+    const q = String(query || "").trim();
+    if (!onAttach || pick.ran || pick.busy || q.length < 4) return undefined;
+    const timer = setTimeout(findRelated, 650);
+    return () => clearTimeout(timer);
+  }, [query, onAttach, pick.ran, pick.busy]);
+
   return (
     <section className="pmat" aria-label="项目素材">
       <div className="pmat__head">
@@ -52,8 +62,8 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
             className="icon-btn pmat__find-btn"
             onClick={findRelated}
             disabled={pick.busy || !String(query || "").trim()}
-            aria-label="找相关素材"
-            title={String(query || "").trim() ? "让 AI 通读整库，按意思挑几条" : "还没有可用来找的线索（先写一句核心观点）"}
+            aria-label="刷新素材推荐"
+            title={String(query || "").trim() ? "按现在的标题和正文重新挑一批" : "先写几句，素材会跟着出现"}
           >
             {pick.busy ? <IconLoader2 size={14} className="spin" aria-hidden="true" /> : <IconSearch size={14} stroke={1.8} aria-hidden="true" />}
           </button>
@@ -65,6 +75,7 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
         * 那时它就是纯占位。所以只在真有素材时画，而且收成半句。
         */}
       {materials.length ? <p className="pmat__note">需要哪条，插到光标处——不会自动改写正文。</p> : null}
+      {!materials.length && !pick.ran && !pick.busy ? <p className="pmat__note">先写几句；相关素材会自动出现在这里，由你决定要不要用。</p> : null}
 
       {materials.length ? (
         <ul className="pmat__list">
@@ -133,8 +144,9 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
         */}
       {/* ⚠️ **没东西可说时整块不画。** 只留一个带上边框的空 div，
           屏幕上就是一条没有内容的分隔线——看着像有什么没加载出来 */}
-      {onAttach && (pick.error || pick.ran || candidates.length) ? (
+      {onAttach && (pick.busy || pick.error || pick.ran || candidates.length) ? (
         <div className="pmat__find">
+          {pick.busy ? <p className="pmat__findnote">正在根据这篇内容通读素材库…</p> : null}
           {pick.error ? <p className="pmat__finderr">{pick.error.message || "没找成"}</p> : null}
 
           {/* 挑不出来是正常结果，照实说，不要留一个转完圈什么都没有的空白 */}
@@ -143,7 +155,7 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
           ) : null}
 
           {candidates.length ? (
-            <ul className="pmat__cands">
+            <><p className="pmat__findnote">为这篇推荐 · 还没有加入项目</p><ul className="pmat__cands">
               {candidates.map((item) => (
                 <li key={item.id}>
                   {/* ⚠️ **AI 挑的要能看出是 AI 挑的**：多一行「为什么是它」。
@@ -160,7 +172,7 @@ export function ProjectRefs({ materials = [], canInsert, onInsert, onOpenSource,
                   </div>
                 </li>
               ))}
-            </ul>
+            </ul></>
           ) : null}
         </div>
       ) : null}

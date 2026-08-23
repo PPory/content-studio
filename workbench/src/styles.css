@@ -708,7 +708,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    一整栏元信息**。参考的四个界面（写作器两个、项目详情两个）在这一点上一致。
    ========================================================================== */
 /* `--project-bar-h` 是那条吸顶操作条的高度，右栏定高时要减掉它 */
-.project-workspace { --project-bar-h: 52px; min-height: 100%; background: var(--sunken); }
+.project-workspace { --project-bar-h: 52px; --project-block-h: 0px; min-height: 100%; background: var(--sunken); }
+.project-workspace:has(> .project-bar__blocked) { --project-block-h: 35px; }
 .project-workspace-load { max-width: 860px; margin: 0 auto; padding: 48px; }
 
 /* 顶上一行：退路 + 阶段 · 保存与主操作。⚠️ **这儿不写标题**，
@@ -785,6 +786,11 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-brief-line dd { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
 /* 缺的那一项要看得出是缺的，不能一律写「—」——那样这一行看着只是留白 */
 .project-brief-line dd[data-empty] { color: var(--text-3); font-style: italic; }
+.project-writing-context {
+  display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap;
+  margin: -6px 0 14px; color: var(--text-3); font-size: var(--fs-xs);
+}
+.project-writing-context span + span::before { content: "·"; margin-right: 14px; color: var(--border-strong); }
 
 .project-draft .md-editor { min-height: 560px; background: var(--surface); }
 .md-editor[data-readonly] .md-editor__bar > :not(.md-editor__preview):not(.md-editor__ai-history) { display: none; }
@@ -830,7 +836,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    * 而那个「底」在窗口外面**。往下滚一点它吸住之后反而正常，
    * 所以这个毛病只在「刚打开这一页」时出现，最容易被当成偶发。
    */
-  max-height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - 28px);
+  max-height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - var(--project-block-h) - 28px);
   overflow-y: auto; overscroll-behavior: contain;
 }
 /**
@@ -1986,6 +1992,30 @@ svg[data-tone] { color: var(--tone); }
 }
 .set-field__input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .set-field__eff code { font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-all; }
+/* 「我的创作」只放跨文章重复使用的选择，不做一张新的项目简报。 */
+.writing-profile-settings { display: flex; flex-direction: column; gap: 20px; }
+.profile-field { display: flex; flex-direction: column; gap: 6px; }
+.profile-field > span, .profile-experts b { color: var(--text-1); font-size: var(--fs-base); font-weight: 600; }
+.profile-field input, .profile-field select {
+  width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit;
+}
+.profile-field input:focus, .profile-field select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.profile-field small, .profile-experts p, .profile-source small { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
+.profile-experts { padding-top: 2px; }
+.profile-experts > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-experts > div:first-child span { color: var(--text-3); font-size: var(--fs-xs); }
+.profile-experts p { margin: 5px 0 9px; }
+.profile-experts__list { display: flex; flex-wrap: wrap; gap: 6px; }
+.profile-experts__list span { padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); color: var(--text-2); font-size: var(--fs-xs); }
+.profile-source { display: grid; gap: 4px; padding: 12px; border-radius: var(--r-ctl); background: var(--sunken); }
+.profile-source > span { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
+.profile-source code { overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.profile-save { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.profile-save > span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-xs); }
+.profile-save > span svg { width: 14px; height: 14px; }
+.new-content-action { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.new-content-action .note-danger--inline { position: absolute; top: calc(100% + 6px); right: 0; z-index: 4; width: max-content; max-width: 320px; }
 /* 提示词是要读的一整段话，行距按正文来。留着 resize 是因为几行和几十行的提示词
    都会出现，而 rows 只能给一个折中值 */
 .set-field__area { width: 100%; resize: vertical; line-height: 1.75; min-height: 90px; }
@@ -2206,9 +2236,11 @@ svg[data-tone] { color: var(--tone); }
 .filter-head__row > :first-child { grid-column: 2; }
 .filter-head__row > :nth-child(2) { grid-column: 3; justify-self: start; }
 .filter-head__desc {
-  margin: 0; max-width: 62ch; text-align: center;
+  justify-self: center; width: max-content; max-width: 100%; margin: 0; text-align: center;
+  white-space: nowrap;
   color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6;
 }
+.filter-head .chips-sm { margin-bottom: 0; }
 /**
  * ⚠️ **主动作在这儿是一颗只有 `+` 的圆钮，紧挨着芯片。**
  * 它原来是右上角一颗写着「记一句」的实心黑长条——那个位置和那个宽度
@@ -2227,6 +2259,17 @@ svg[data-tone] { color: var(--tone); }
   border: 1px solid transparent; background: none; color: var(--text-3);
 }
 .filter-head__add:hover { border-color: var(--border-strong); color: var(--text-1); }
+@media (max-width: 760px) {
+  .filter-head__desc { width: auto; white-space: normal; }
+}
+
+/* 种子空态占满页头以下的剩余空间；底部多留一点，视觉中心才落在工作区正中。 */
+.seed-page { min-height: calc(100vh - var(--topbar-h) - 112px); display: flex; flex-direction: column; }
+.seed-page > .empty {
+  flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; padding: 0 16px 12vh;
+}
+.seed-page > .empty > p { max-width: 54ch; margin: 0; line-height: 1.75; }
 .list-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /**
