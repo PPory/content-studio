@@ -133,7 +133,7 @@ export function Seeds({ onGo, onChanged }) {
            * 字写进 `title` 和 `aria-label`，不占版面。
            */
           <button
-            className="btn btn-primary filter-head__add"
+            className="filter-head__add"
             onClick={() => { setSaveError(""); setPicking(true); }}
             aria-label="记一句"
             title="记一句：干活时想到的那类没有触发物，直接写下来"

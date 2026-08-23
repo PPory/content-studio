@@ -811,7 +811,17 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 所以定高 + 自己滚，而不是跟着正文滚。
  */
 .project-rail, .project-publish {
-  position: sticky; top: 14px;
+  /**
+   * ⚠️ **吸附位要让开那条操作条，不能是 14px。**
+   *
+   * 项目页顶上那条（保存 / 写完了，去发布）**也是吸顶的**。右栏吸在 14px 的话，
+   * 它吸住之后**整个滑到操作条底下**——顶上那一块（从这句话开始 / 项目素材 那一行）
+   * 被盖住，看起来就是「右栏跟着正文滚走了」。
+   *
+   * ⚠️ 这个毛病用「滚动前后位移」量不出来：**位移确实是 0，它就停在那儿**，
+   * 只是停的位置被别的东西盖了。要量的是**吸住之后它的上沿在不在操作条下面**。
+   */
+  position: sticky; top: calc(var(--project-bar-h) + 14px);
   /**
    * ⚠️ **顶栏和操作条都要减掉，还要留出它自己那 14px 的上边距。**
    *
@@ -2182,7 +2192,19 @@ svg[data-tone] { color: var(--tone); }
  * 让你先读完一句你早就知道的话，才看到真正要点的东西。
  */
 .filter-head { display: grid; justify-items: center; gap: 8px; margin-bottom: 16px; }
-.filter-head__row { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px; }
+/**
+ * ⚠️ **芯片要在页面正中，而不是「芯片 + 按钮」这一组在正中。**
+ *
+ * 用 flex 居中的话，那颗 `+` 会把整组往左推——**芯片的中心和说明的中心对不上**，
+ * 一眼就看出来歪了。三列网格（`1fr auto 1fr`）让中间那格**真的**落在页面中线上，
+ * 按钮挂在它右边、不参与居中。
+ */
+.filter-head { justify-items: stretch; }
+.filter-head__row {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+}
+.filter-head__row > :first-child { grid-column: 2; }
+.filter-head__row > :nth-child(2) { grid-column: 3; justify-self: start; }
 .filter-head__desc {
   margin: 0; max-width: 62ch; text-align: center;
   color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6;
@@ -2193,10 +2215,18 @@ svg[data-tone] { color: var(--tone); }
  * 让它看起来像页面级的「新建」，而它其实是这一排的一部分。
  * 实心黑保留（这一页就这一颗），但收成图标：字写在 `title` 和 `aria-label` 里。
  */
+/**
+ * ⚠️ **不画黑色容器。** 实心黑在这套界面里的意思是「点这儿」，
+ * 而这一排里真正要你点的是芯片——那颗 `+` 是「还想加一条」，是次要的。
+ * 一个黑色圆块摆在一排轻底芯片旁边，重量压过了它们。
+ * 尺寸跟芯片对齐，否则并排时上下差一截。
+ */
 .filter-head__add {
-  width: 30px; height: 30px; padding: 0; border-radius: var(--r-pill);
-  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; padding: 0; border-radius: var(--r-pill);
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid transparent; background: none; color: var(--text-3);
 }
+.filter-head__add:hover { border-color: var(--border-strong); color: var(--text-1); }
 .list-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /**

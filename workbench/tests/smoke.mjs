@@ -545,6 +545,35 @@ try {
           main.scrollTop = 1200;
           await settle();
           out.drift = Math.abs(Math.round(stuckAt - rail.getBoundingClientRect().top));
+          /**
+           * ⚠️ **「右栏不动」和「右栏那一行还看得见」是两件事。**
+           * 位移是 0，但如果右栏**自己内部**被滚过了，你看到的仍然是「跟着跑了」——
+           * 顶上那块（从这句话开始 / 项目素材）没了。所以两样都量：
+           * 栏的位置有没有变、栏内部的滚动位置有没有变。
+           */
+          out.innerScroll = Math.round(rail.scrollTop);
+          /**
+           * ⚠️ **吸住之后右栏的上沿必须在那条操作条下面。**
+           * 项目页顶上那条也是吸顶的——右栏吸得太高的话会整个滑到它底下，
+           * **位移仍然是 0**（它确实停住了），只是停的位置被盖住了。
+           * 这正是「位移 0 却看着像跟着滚」的那个假绿。
+           */
+          /**
+           * ⚠️ **「没有操作条」和「重叠量是负的」不能都用 -1。**
+           * 负的重叠量恰恰是**对的**（右栏在操作条下面），而 -1 又表示「量不到」——
+           * 混成一个数之后，断言绿着、消息却在说「这一页没有操作条」。
+           * 这就是这个文件里反复出现的那种假绿，用 `null` 把两件事分开。
+           */
+          out.underBar = (() => {
+            const bar = document.querySelector(".project-bar");
+            if (!bar) return null;
+            return Math.round(bar.getBoundingClientRect().bottom - rail.getBoundingClientRect().top);
+          })();
+          out.headTop = (() => {
+            const head = rail.querySelector(".pmat__head");
+            if (!head) return -1;
+            return Math.round(head.getBoundingClientRect().top - rail.getBoundingClientRect().top);
+          })();
           main.scrollTop = 0;
           await settle();
         }
@@ -560,6 +589,18 @@ try {
         // 正文够长时才量得到真实位移；量不到就照实说，别回一个 0 冒充「钉住了」
         check("吸住之后再滚，右栏不动", stuck.drift < 0 || stuck.drift <= 1,
           stuck.drift < 0 ? "这一页不够长，位移量不到" : `吸住之后又滑了 ${stuck.drift}px`);
+        /**
+         * ⚠️ **滚正文不该带动右栏自己的滚动条。**
+         * 右栏是独立滚动区，它的内部位置只该由「鼠标在右栏上滚」来改——
+         * 被正文带着走的话，你回头看右栏，顶上那块已经不见了。
+         */
+        check("滚正文没带动右栏自己的滚动", stuck.innerScroll < 0 || stuck.innerScroll === 0,
+          `右栏内部滚到了 ${stuck.innerScroll}px`);
+        check("吸住之后右栏没滑到操作条底下", stuck.underBar === null || stuck.underBar <= 1,
+          stuck.underBar === null ? "这一页没有操作条" : `离操作条底 ${-stuck.underBar}px`);
+        // 「项目素材」那一行吸在右栏顶上，滚完还得在那儿
+        check("滚完「项目素材」那一行还在右栏顶上", stuck.headTop < 0 || Math.abs(stuck.headTop) <= 2,
+          stuck.headTop < 0 ? "这一档右栏是发布准备，没有那一行" : `离右栏顶 ${stuck.headTop}px`);
         /**
          * ⚠️ **右栏不许横向被撑破。** 这条和上面那条是同一个根因的两个症状——
          * 修完只量 sticky 的话，下次某个 `nowrap` 的长标题回来时，
