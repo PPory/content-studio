@@ -808,6 +808,20 @@ check("UTF-8 不被误判成 GBK", decodeText(Buffer.from("粉丝", "utf8")) ===
   check("xlsx 读到共享字符串", rows[1]["标题"] === "乙", rows[1]["标题"]);
   // 空单元格在 XML 里是不写的。按出现顺序推列号的话，这一行的 1268 会左移进「标题」列
   check("xlsx 空单元格不让后面的列左移", rows[0]["观看数"] === "1268" && rows[0]["标题"] === "", `标题=${JSON.stringify(rows[0]["标题"])} 观看=${rows[0]["观看数"]}`);
+
+  /* 合并横幅：小红书那份第一行是 `A1:M1` 的「最多导出前1000条笔记」，
+   * 而**合并单元格在 XML 里是每一格各写一份值**——按「非空格数」算它和真表头一样多、
+   * 靠前的赢。塌下来的样子不是「表头难看」：所有列映射到同一个键，
+   * 每行对象只剩一个字段，**整份表安静地变成一列**。判据必须是「有几个不同的名字」。 */
+  const banner = `<worksheet><sheetData>
+    <row r="1">${["A", "B", "C"].map((c) => `<c r="${c}1" t="inlineStr"><is><t>最多导出前1000条</t></is></c>`).join("")}</row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>发布时间</t></is></c><c r="B2" t="inlineStr"><is><t>标题</t></is></c><c r="C2" t="inlineStr"><is><t>观看量</t></is></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>2026年08月20日17时19分20秒</t></is></c><c r="B3" t="inlineStr"><is><t>甲</t></is></c><c r="C3"><v>391.0</v></c></row>
+  </sheetData></worksheet>`;
+  const bz = zipSync({ "xl/worksheets/sheet1.xml": strToU8(banner) });
+  const merged = readSheet(Buffer.from(bz), "小红书.xlsx");
+  check("合并横幅抢不走表头", merged.headers.join("/") === "发布时间/标题/观看量", merged.headers.join("/"));
+  check("横幅塌不掉整份表", merged.rows[0]?.["观看量"] === "391.0" && merged.rows[0]?.["标题"] === "甲", JSON.stringify(merged.rows[0]));
 }
 
 // 列名映射：一列只能喂给一个字段，且不能被别的规则抢走
@@ -821,6 +835,16 @@ check("UTF-8 不被误判成 GBK", decodeText(Buffer.from("粉丝", "utf8")) ===
   // 「阅读原文」是「点了文末那个链接」，不是阅读量。喂进 views 会让公众号的数字凭空翻倍
   check("不把「阅读原文次数」当阅读量", mapping.views === "阅读次数", mapping.views);
   check("收藏没被别的规则抢走", mapping.collects === "收藏次数", mapping.collects);
+}
+{
+  /* 小红书同时给「曝光」和「观看量」：前者是在信息流里露过面，后者才是真点进来看了
+   * （实测 3434 vs 391）。匹配要是按表头顺序扫，曝光只因为排得靠前就抢走 views，
+   * **阅读量凭空大九倍而且不报错**——和「阅读原文次数」同一类。 */
+  const { mapping } = mapColumns(["首次发布时间", "笔记标题", "曝光", "观看量", "点赞", "评论", "收藏", "分享"]);
+  check("曝光抢不走观看量", mapping.views === "观看量", mapping.views);
+  // 但只有曝光时它仍该兜底，否则那个平台一个阅读数都没有
+  const only = mapColumns(["发布时间", "标题", "曝光"]).mapping;
+  check("只有曝光时仍拿它兜底", only.views === "曝光", String(only.views));
 }
 
 check("斜杠日期归一", normalizeDate("2026/04/30 10:04") === "2026-04-30", normalizeDate("2026/04/30 10:04"));

@@ -37,7 +37,11 @@ const FIELD_PATTERNS = [
   ["shares", [/分享/, /转发/]],
   ["comments", [/评论/]],
   ["likes", [/点赞/, /^赞$/, /喜欢/]],
-  ["views", [/观看/, /播放/, /阅读(?!原文)/, /曝光/, /浏览/, /展现/]],
+  // ⚠️ **顺序就是优先级，`曝光` 必须排在最后。** 小红书同时给「曝光」和「观看量」——
+  // 前者是「在别人信息流里露过面」，后者才是真的点进来看了（实测 3434 vs 391，
+  // 封面点击率 0.108 正好是两者的商）。拿曝光当阅读量，数字凭空大九倍**而且不报错**。
+  // 和「阅读原文次数不能喂给 views」是同一类。留着它是给「只有这一个数」的平台兜底。
+  ["views", [/观看/, /播放/, /阅读(?!原文)/, /浏览/, /展现/, /曝光/]],
 ];
 
 /**
@@ -48,7 +52,15 @@ export function mapColumns(headers) {
   const mapping = {};
   const used = new Set();
   for (const [field, patterns] of FIELD_PATTERNS) {
-    const hit = headers.find((h) => !used.has(h) && patterns.some((re) => re.test(h)));
+    // ⚠️ **外层是模式、内层才是表头**，不能反过来。反着写的话扫的是表头顺序，
+    // 同一个字段的几个模式就没有先后可言了——`曝光` 只因为在导出里排得靠前
+    // 就抢走了 `观看量` 的位置。字段之间的优先级靠 FIELD_PATTERNS 的顺序，
+    // 字段内部的靠这一层，两层都得是模式说了算。
+    let hit;
+    for (const re of patterns) {
+      hit = headers.find((h) => !used.has(h) && re.test(h));
+      if (hit) break;
+    }
     if (hit) {
       mapping[field] = hit;
       used.add(hit);

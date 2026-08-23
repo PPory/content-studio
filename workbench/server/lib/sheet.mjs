@@ -134,12 +134,16 @@ export function readSheet(bytes, filename = "") {
   else throw Object.assign(new Error(`不认识 ${ext} 这种文件`), { hint: "支持 .xlsx 和 .csv，平台后台一般两种都能导" });
   if (!grid.length) return { headers: [], rows: [] };
 
-  // 表头行：前 6 行里非空单元格最多的那行。说明性的前言一般只有一两格。
+  // 表头行：前 6 行里**互不相同**的非空单元格最多的那行。
+  //
+  // ⚠️ **判据是「有几个不同的名字」，不是「有几个非空格」。** 平台导出常在第一行放一条
+  // 横跨整表的合并横幅（小红书那份是 `A1:M1` 的「最多导出排序后前1000条笔记」），
+  // 而**合并单元格在 XML 里是每一格各写一份值**——按非空格数算它 13 分，和真表头打平，
+  // 靠前的那行赢。后果不是「表头难看」：13 列全映射到同一个键，下面每行对象**只剩一个字段、
+  // 前面的列被后面的覆盖**，整份表安静地塌成一列。表头的定义本来就是每列一个不同的名字。
+  const score = (r) => new Set(r.map((v) => String(v ?? "").trim()).filter(Boolean)).size;
   let hi = 0;
-  for (let i = 0; i < Math.min(6, grid.length); i++) {
-    const n = grid[i].filter((v) => String(v).trim()).length;
-    if (n > grid[hi].filter((v) => String(v).trim()).length) hi = i;
-  }
+  for (let i = 0; i < Math.min(6, grid.length); i++) if (score(grid[i]) > score(grid[hi])) hi = i;
   const headers = grid[hi].map((v) => String(v ?? "").trim());
   const rows = grid.slice(hi + 1).map((cells) => {
     const o = {};
