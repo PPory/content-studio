@@ -278,6 +278,50 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- ---------------------------------------------------------------------------
+-- seeds：这条链的新起点
+-- ---------------------------------------------------------------------------
+--
+-- **种子 = 你看到的东西 + 你对它的一句话。** 不是素材（那是别人的话），
+-- 不是选题（那要你已经想清楚才有）。整份设计见 ../docs/工作流.md。
+--
+-- 它解决的是「看到一个观点想写，但不知道自己能加什么」——而「能加什么」的答案
+-- 几乎总是你自己的经历和判断，只存在你脑子里，除非有人问你。
+CREATE TABLE IF NOT EXISTS seeds (
+  id           TEXT PRIMARY KEY,
+
+  -- ⚠️ **`reaction` 故意不加 CHECK 约束**，白名单只在 `lib/values.js` 的 SEED_REACTIONS。
+  -- 那七条是**文案，不是状态**：它不影响任何流转，只是帮你说出那句话的提示语，
+  -- 而措辞和条数几乎肯定要边用边调。钉进 CHECK 意味着改一个字就要重建表。
+  -- 写入路径只有我们自己的端点、它照白名单验，防护等价。
+  -- **允许为空**：有话说但不属于那七种时，硬塞一个分类比留空更糟。
+  reaction     TEXT NOT NULL DEFAULT '',
+
+  -- 你那句话。**必填**——没有它就不成其为种子，只是又一条收藏。
+  take         TEXT NOT NULL,
+
+  -- 触发物。⚠️ **标题和链接冗余存一份，不能只存 id**：热点**不在库里**
+  -- （它是快照，会过期、会被覆盖），只存 id 的话几天后这颗种子就说不清自己从哪来。
+  -- source_id 只在触发物真是库里的行时才有。
+  source_kind  TEXT NOT NULL DEFAULT 'none'
+               CHECK (source_kind IN ('none','hot','inbox','material')),
+  source_id    TEXT NOT NULL DEFAULT '',
+  source_title TEXT NOT NULL DEFAULT '',
+  source_url   TEXT NOT NULL DEFAULT '',
+
+  -- status 是**真状态**（影响流转），所以它加 CHECK，reaction 不加。
+  status       TEXT NOT NULL DEFAULT '攒着'
+               CHECK (status IN ('攒着','写了','不写了')),
+  draft_id     TEXT REFERENCES drafts(id) ON DELETE SET NULL,
+
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seeds_status ON seeds(status, updated_at);
+
+-- ⚠️ **没有 task_key，是有意的。** 对同一条热点反应两次是**合法的**——
+-- 那是两个不同角度，不该被去重挡住。防误双击是前端的事。
+
+-- ---------------------------------------------------------------------------
 -- 关于全文检索：**故意没建 FTS5**
 -- ---------------------------------------------------------------------------
 --

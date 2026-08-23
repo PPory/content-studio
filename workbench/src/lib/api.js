@@ -50,6 +50,12 @@ export const api = {
     req(`/api/pipe/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
   page: (id, view = "") => req(`/api/pipe/page/${id}${view ? `?view=${encodeURIComponent(view)}` : ""}`),
   intake: (body) => postJson("/api/pipe/intake", body),
+  // 种子。⚠️ `seeds()` 的响应里带 `reactions`——**反应清单的真源在 Worker**，
+  // 前端不写死那七条（`sources.js` 那几处 `states` 抄了一份，对不上就是 400）。
+  seeds: (status = "") => req(`/api/pipe/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  createSeed: (body) => postJson("/api/pipe/seeds", body),
+  updateSeed: (id, patch) => postJson(`/api/pipe/seeds/${encodeURIComponent(id)}`, patch),
+  removeSeed: (id) => postJson(`/api/pipe/seeds/${encodeURIComponent(id)}/delete`, {}),
   retryCollectionSnapshot: (id) => postJson(`/api/pipe/collections/${encodeURIComponent(id)}/snapshot`, {}),
   previewCollectionOrganize: (ids) => postJson("/api/pipe/collections/organize/preview", { ids }),
   applyCollectionOrganize: (items) => postJson("/api/pipe/collections/organize/apply", { items }),

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, Note, PageHeader, Toast, relTime } from "../components/ui.jsx";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
+import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import {
   IconArrowUpRight,
   IconBook,
@@ -29,6 +30,7 @@ import {
   IconNotebook,
   IconRadar2,
   IconRefresh,
+  IconSeedling,
   IconShieldCheck,
   IconSparkles,
 } from "../components/icons.jsx";
@@ -68,6 +70,31 @@ const cnNum = (n) => (Number.isInteger(n) && n >= 0 && n <= 10 ? CN_NUM[n] : Str
 
 export function Hotspots({ onIntake }) {
   const [tab, setTab] = useState("boards");
+  /**
+   * 种子：这条链的新起点（`docs/工作流.md`）。
+   * ⚠️ **反应清单从 Worker 来**（`api.seeds()` 的响应里带 `reactions`），前端不写死。
+   * ⚠️ **`seeded` 是已经反应过的那些 url**——不标出来的话你每天扫这一批会重复反应同一条。
+   */
+  const [seedInfo, setSeedInfo] = useState({ reactions: [], seeded: new Set() });
+  const [seeding, setSeeding] = useState(null);   // 正在对哪一条说话
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [seedError, setSeedError] = useState("");
+
+  const loadSeeds = useCallback(async () => {
+    try {
+      const data = await api.seeds();
+      setSeedInfo({
+        reactions: data.reactions || [],
+        seeded: new Set((data.seeds || []).map((s) => s.source?.url).filter(Boolean)),
+      });
+    } catch {
+      // 种子读不到不该让整页热点跟着挂——这一页的主业是看热点
+      setSeedInfo({ reactions: [], seeded: new Set() });
+    }
+  }, []);
+  useEffect(() => { loadSeeds(); }, [loadSeeds]);
+
+  const seeded = seedInfo.seeded;
   // 收录状态提到这里：切 tab 不该把「已收录」的勾丢掉
   const [stored, setStored] = useState({});
   const [toast, setToast] = useState(null);
@@ -137,8 +164,38 @@ export function Hotspots({ onIntake }) {
       ) : tab === "models" ? (
         <ModelsPanel />
       ) : (
-        <AiPanel stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} />
+        <AiPanel stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} seeds={seeded} onSeed={setSeeding} />
       )}
+
+      <ReactionPicker
+        open={!!seeding}
+        reactions={seedInfo.reactions}
+        source={seeding ? { title: seeding.title, url: seeding.link } : null}
+        busy={seedBusy}
+        error={seedError}
+        onClose={() => { setSeeding(null); setSeedError(""); }}
+        onSave={async ({ reaction, take }) => {
+          setSeedBusy(true);
+          setSeedError("");
+          try {
+            // ⚠️ **标题和链接一起存**：热点不在库里（快照会过期），
+            // 只存 id 的话几天后这颗种子说不清自己从哪来
+            await api.createSeed({
+              take, reaction,
+              sourceKind: "hot",
+              sourceTitle: seeding.title,
+              sourceUrl: seeding.link || "",
+            });
+            setSeeding(null);
+            await loadSeeds();
+            setToast("记下了，去「内容 · 种子」挑一个写");
+          } catch (e) {
+            setSeedError(e.message || "记不下来");
+          } finally {
+            setSeedBusy(false);
+          }
+        }}
+      />
 
       <Toast text={toast} onClose={() => setToast(null)} />
     </>
@@ -403,7 +460,7 @@ function BoardsPanel({ stored, onCollect, trace, onTrace }) {
 
 // ---- AI 情报 ---------------------------------------------------------------
 
-function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace }) {
+function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, onSeed }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -520,6 +577,26 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace }) {
                           AI HOT 详情
                         </a>
                       ) : null}
+                      {/**
+                        * ⚠️ **「我有反应」和「收录」不是一回事，别合并。**
+                        * 收录 = 这东西以后可能有用（进灵感库，等 AI 拆素材）；
+                        * 有反应 = **我此刻有话说**，那句话本身就是一篇的起点。
+                        * 前者是资料，后者是种子——判据是「你有没有话说」，
+                        * 而这两条出口在 `docs/工作流.md` 里是并列的。
+                        *
+                        * ⚠️ **反应过的要看得出来**：不然你每天扫这一批时会重复反应同一条。
+                        * 判据按 `link` 比对（热点不在库里，url 是它唯一稳定的身份）。
+                        */}
+                      {seeds.has(it.link) ? (
+                        <span className="ai-item__seeded" title="你已经对它说过一句了">
+                          <IconSeedling aria-hidden="true" size={14} stroke={1.8} />说过了
+                        </span>
+                      ) : (
+                        <button className="btn btn-sm" onClick={() => onSeed(it)}>
+                          <IconSeedling aria-hidden="true" size={14} stroke={1.8} />
+                          我有反应
+                        </button>
+                      )}
                       {stored[key] && !["sending", "done"].includes(stored[key]) ? (
                         <span className="board__err">收录失败：{stored[key]}</span>
                       ) : null}

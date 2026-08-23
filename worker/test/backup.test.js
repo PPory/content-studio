@@ -76,7 +76,19 @@ test("BACKUP_TABLES 里父表都排在子表前面", () => {
     inbox_tags: ["inbox", "tags"],
     topic_materials: ["topics", "materials"],
     topic_inbox: ["topics", "inbox"],
+    seeds: ["drafts"],
   };
+  // ⚠️ **这张依赖表是手写的，所以它只覆盖写进来的那几张。**
+  // 加表时如果忘了往 `deps` 里加一行，上面那个循环会安静地跳过它——
+  // 而"被跳过的断言和不存在的断言是同一回事"。所以再钉一条：清单里每一张表
+  // 要么在 deps 里（有父表，位置被检查过），要么明确是无依赖的根表。
+  const rootTables = new Set(["inbox", "topics", "tags", "comments", "task_log", "settings"]);
+  for (const table of BACKUP_TABLES) {
+    assert.ok(
+      table in deps || rootTables.has(table),
+      `${table} 既没写进 deps 也没登记成根表——它的恢复顺序没有被任何断言检查过`
+    );
+  }
   for (const [table, parents] of Object.entries(deps)) {
     const at = BACKUP_TABLES.indexOf(table);
     assert.notEqual(at, -1, `${table} 不在备份清单里`);

@@ -45,7 +45,12 @@ const firstScreen = (preset) =>
   : "choose";
 const newRevisionScope = () => `creation:${crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 
-export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreated }) {
+/**
+ * `seed` = 从种子页「写这个」带过来的那句话。
+ * ⚠️ **它只当正文的起点，不当标题**——那句话是你的判断（「不同意，因为…」），
+ * 而标题是要打磨的东西。塞进标题框的话你得先删掉它才能起标题，比空着还烦。
+ */
+export function CreationDialog({ open, preset, seed, onClose, onCreated, onTopicCreated }) {
   const [screen, setScreen] = useState(firstScreen(preset));
   const [draftMode, setDraftMode] = useState("blank");
   const [title, setTitle] = useState("");
@@ -104,7 +109,10 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
     setScreen(firstScreen(preset));
     setDraftMode("blank");
     setTitle(""); setPlatform("公众号"); setViewpoint(""); setAudience("");
-    setQuery(""); setMaterials([]); setSelected([]); setDraftTitle(""); setDraftBody("");
+    setQuery(""); setMaterials([]); setSelected([]); setDraftTitle("");
+    // 带着种子进来时，那句话就是第一段——**种子定下来就等于选题定了**，
+    // 不该再对着一张白纸从头想
+    setDraftBody(seed?.take ? `${seed.take}\n\n` : "");
     setInterviewEvidence(""); setBusy(false); setError(null); setMessages([]); setMessage(""); setPhase("interviewing");
     setMaterialWritingMode("manual"); setInsertRequest(null);
     setRevisionScope(newRevisionScope());
@@ -112,7 +120,7 @@ export function CreationDialog({ open, preset, onClose, onCreated, onTopicCreate
     setDraftNotice(null);
     setCitations([]); setCiteState([]); setCiteBusy(false); setReveal(null); setActive("");
     setRecover(loadCreationDraft());
-  }, [open, preset]);
+  }, [open, preset, seed?.id]);
 
   /**
    * 自动保存。**只在编辑器这一屏、且真有字的时候写**。

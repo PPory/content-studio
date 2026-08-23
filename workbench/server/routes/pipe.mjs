@@ -115,6 +115,34 @@ export const pipeRoutes = [
     handler: ({ env, req, res, params }) => forwardPost(env, req, res, `projects/${encodeURIComponent(params.id)}/review`),
   },
   {
+    /**
+     * 种子：这条链的新起点。**响应里带着 `reactions` 清单**——那七条反应的文案
+     * 真源在 Worker 的 `lib/values.js`，工作台一个字都不抄（抄了改完那边还是老的，
+     * 而且不报错）。零条种子时也要能拿到清单，界面才画得出选择器。
+     */
+    method: "GET",
+    path: "/api/pipe/seeds",
+    handler({ env, res, url }) {
+      const status = url.searchParams.get("status");
+      return forwardGet(env, res, "seeds", status ? `status=${encodeURIComponent(status)}` : "");
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/seeds",
+    handler: ({ env, req, res }) => forwardPost(env, req, res, "seeds"),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/seeds/:id",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `seeds/${encodeURIComponent(params.id)}`),
+  },
+  {
+    method: "POST",
+    path: "/api/pipe/seeds/:id/delete",
+    handler: ({ env, req, res, params }) => forwardPost(env, req, res, `seeds/${encodeURIComponent(params.id)}/delete`),
+  },
+  {
     method: "GET",
     path: "/api/pipe/list/:view",
     handler({ env, res, params, url }) {

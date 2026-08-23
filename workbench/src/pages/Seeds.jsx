@@ -1,0 +1,204 @@
+// 种子池：今天写哪个。
+//
+// **种子 = 你看到的东西 + 你对它的一句话。** 设计见 `docs/工作流.md`。
+//
+// ⚠️ **这一页回答的是「今天写哪个」，不是「我攒了多少」。**
+// 所以主角是**你那句话**（一整行、字号最大），触发物退到第二行——
+// 你要挑的是"哪句话我还想接着说"，不是"哪条链接看着重要"。
+
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../lib/api.js";
+import { PageHeader, StatePill, ErrorNote, Loading, Empty, relTime } from "../components/ui.jsx";
+import { ReactionPicker } from "../components/ReactionPicker.jsx";
+import { CreationDialog } from "../components/CreationDialog.jsx";
+import { IconArrowUpRight, IconBulb, IconPencil, IconPlus, IconTrash } from "../components/icons.jsx";
+
+const KEEPING = "攒着";
+
+export function Seeds({ onGo, onChanged }) {
+  // 「写这个」在这一页自己开编辑器：App 层没有 creation 状态，
+  // 而这条动线（种子 → 写）只属于这一页
+  const [writing, setWriting] = useState(null);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState(KEEPING);
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setData(await api.seeds());
+    } catch (e) {
+      setError(e);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save({ reaction, take }) {
+    setBusy(true);
+    setSaveError("");
+    try {
+      // 干活时想到的那类没有触发物——`sourceKind` 就是 `none`，这是合法的一等公民
+      await api.createSeed({ take, reaction, sourceKind: "none" });
+      setPicking(false);
+      await load();
+    } catch (e) {
+      setSaveError(e.message || "记不下来");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patch(id, body) {
+    setBusy(true);
+    try {
+      await api.updateSeed(id, body);
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id) {
+    setBusy(true);
+    try {
+      await api.removeSeed(id);
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const counts = data?.counts || {};
+  const shown = (data?.seeds || []).filter((s) => s.status === status);
+
+  return (
+    <>
+      <PageHeader
+        title="种子"
+        desc="看到一个东西，说一句你的看法——那句话就是一篇的起点。"
+        count={counts[KEEPING] ? `${counts[KEEPING]} 个能写` : ""}
+        aside={
+          /**
+           * ⚠️ **「记一句」是这一页的主操作。** 干活时想到的那类没有触发物，
+           * 而**那往往是你最有话说的**——入口不能藏在某个二级菜单里。
+           */
+          <button className="btn btn-primary" onClick={() => { setSaveError(""); setPicking(true); }}>
+            <IconPlus aria-hidden="true" stroke={2} />记一句
+          </button>
+        }
+      />
+
+      <ErrorNote error={error} what="读取种子" onRetry={load} />
+
+      <div className="list-bar">
+        <div className="chips chips-sm" aria-label="按状态筛选">
+          {["攒着", "写了", "不写了"].map((s) => (
+            <button key={s} className="chip" aria-pressed={status === s} onClick={() => setStatus(s)}>
+              {s} {counts[s] ?? 0}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!data && !error ? <Loading rows={3} /> : null}
+
+      {data && !shown.length ? (
+        <Empty icon={IconBulb}>
+          {status === KEEPING ? (
+            <>
+              还没有种子。<b>两条路</b>：右上角「记一句」记下你此刻想说的；
+              或者去<button className="link-btn" onClick={() => onGo("hot")}>热点</button>那一页，
+              对哪条有反应就点一下。
+            </>
+          ) : `没有「${status}」的种子`}
+        </Empty>
+      ) : null}
+
+      {shown.length ? (
+        <div className="seeds">
+          {shown.map((seed) => (
+            <article className="seed" key={seed.id}>
+              {/* 你那句话是主角：挑的时候看的是"哪句我还想接着说" */}
+              <p className="seed__take">{seed.take}</p>
+
+              <div className="seed__meta">
+                {/* ⚠️ 反应可以为空——那时不画这颗 pill，而不是画一个「未分类」 */}
+                {seed.reaction ? <StatePill state={seed.reaction} /> : null}
+                {seed.source?.title ? (
+                  seed.source.url ? (
+                    <a className="seed__from" href={seed.source.url} target="_blank" rel="noreferrer" title={seed.source.title}>
+                      {seed.source.title}
+                      <IconArrowUpRight size={12} stroke={1.8} aria-hidden="true" />
+                    </a>
+                  ) : <span className="seed__from">{seed.source.title}</span>
+                ) : (
+                  <span className="seed__from seed__from--own">自己想到的</span>
+                )}
+                <time className="seed__time">{seed.updatedAt ? relTime(seed.updatedAt) : ""}</time>
+              </div>
+
+              <div className="seed__acts">
+                {seed.status === KEEPING ? (
+                  <>
+                    <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => setWriting(seed)}>
+                      <IconPencil size={14} stroke={1.8} aria-hidden="true" />写这个
+                    </button>
+                    <button className="btn btn-sm" disabled={busy} onClick={() => patch(seed.id, { status: "不写了" })}>
+                      不写了
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn-sm" disabled={busy} onClick={() => patch(seed.id, { status: KEEPING })}>
+                    放回「攒着」
+                  </button>
+                )}
+                {/* ⚠️ 删除是**真删**，没有废纸篓（Worker 那侧同一条）。
+                    所以这颗只在「不写了」那一档出现——攒着的那些只该被标记，不该被误删 */}
+                {seed.status === "不写了" ? (
+                  <button className="icon-btn seed__del" disabled={busy} title="永久删除，删了就没了" onClick={() => remove(seed.id)}>
+                    <IconTrash size={14} stroke={1.7} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {/**
+        * ⚠️ **入库成功才把种子标成「写了」。** 反过来的话（先标再开编辑器）
+        * 你关掉弹层不写了，那颗种子已经从「攒着」里消失了——而它明明还没写。
+        */}
+      <CreationDialog
+        open={!!writing}
+        preset="blank"
+        seed={writing}
+        onClose={() => setWriting(null)}
+        onCreated={async () => {
+          const seed = writing;
+          setWriting(null);
+          if (seed) await patch(seed.id, { status: "写了" });
+          onChanged?.();
+        }}
+      />
+
+      <ReactionPicker
+        open={picking}
+        reactions={data?.reactions || []}
+        source={null}
+        busy={busy}
+        error={saveError}
+        onClose={() => setPicking(false)}
+        onSave={save}
+      />
+    </>
+  );
+}

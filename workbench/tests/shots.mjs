@@ -282,6 +282,15 @@ const shots = [
     await page.waitForSelector(".project-publish, .project-rail", { timeout: 25000 }).catch(() => {});
     projectDetailShot = PROJECT_SHOT_DETAIL;
   }],
+  ["seeds", "/#/seeds", ".seeds, .empty, .note-danger"],
+  // 反应选择器：这一屏是「看到一个观点 → 说一句」的全部动作，光看列表看不出它长什么样
+  ["seed-pick", "/#/seeds", ".seeds, .empty, .note-danger", async () => {
+    await page.click(".page-bar__end .btn-primary", { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".rpick", { timeout: 8000 }).catch(() => {});
+    await page.click(".rpick__opt >> nth=1").catch(() => {});
+    // ⚠️ **只填不存**：建种子会往线上库写行（和设置面板那条同一个规矩）
+    await page.fill(".rpick__take", "卡住的不是没归因到本质，是归到本质之后不知道下一步").catch(() => {});
+  }],
   ["discover", "/#/discover", ".discover-grid"],
   ["overview", "/#/overview", ".todo-card, .note-title"],
   ["hot-boards", "/#/hot", ".board, .empty, .note-title"],

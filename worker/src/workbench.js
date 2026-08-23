@@ -12,10 +12,10 @@ import {
   LIST_ORDER, cursorClause, encodeCursor,
   materialsOfTopic, inboxOfTopic, draftsOfTopic as dbDraftsOfTopic, personalEvidence,
   tagsOf, setTags, addComment, listComments as dbListComments,
-  all, first, now, newId, batch, stmt,
+  all, first, run, now, newId, batch, stmt,
   sourceContextOf, contextLine,
 } from "./lib/db.js";
-import { TOPIC_STATUS, DRAFT_STATUS, DRAFT_WORKFLOW, VERIFICATION } from "./lib/values.js";
+import { TOPIC_STATUS, DRAFT_STATUS, DRAFT_WORKFLOW, SEED_STATUS, VERIFICATION } from "./lib/values.js";
 import { pipelineCounts } from "./lib/status.js";
 import { storeTypedMaterial, storeAutoMaterial, storeInboxEntry, resolveStoreCmd, archiveMaterialToVault } from "./lib/store.js";
 import { autoTag } from "./lib/tagging.js";
@@ -48,6 +48,7 @@ import { collectionTitle } from "./lib/collection-title.js";
 import { collectionMarkdown } from "./lib/collection-text.js";
 import { hashCollectionText } from "./lib/collection-key.js";
 import { draftReadyToFinish, getContentProject, listContentProjects, nextDraftWorkflow, PROJECT_ACTIONS, PROJECT_STAGES } from "./lib/content-project.js";
+import { mapSeed, normalizeSeedInput, normalizeSeedPatch, seedCounts, seedReactions } from "./lib/seeds.js";
 import {
   MATERIAL_LIBRARY_CTE,
   MATERIAL_LIBRARY_STAGES,
@@ -284,6 +285,16 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "materials" && request.method === "GET") return await listMaterialLibrary(env, url);
 
     if (path === "projects" && request.method === "GET") return await listProjects(env, url);
+
+    // 种子：这条链的新起点。设计见 ../docs/工作流.md
+    if (path === "seeds" && request.method === "GET") return await listSeeds(env, url);
+    if (path === "seeds" && request.method === "POST") return await createSeed(env, await request.json());
+
+    const seedDeleteMatch = path.match(/^seeds\/([0-9A-Za-z-]{20,40})\/delete$/);
+    if (seedDeleteMatch && request.method === "POST") return await deleteSeed(env, seedDeleteMatch[1]);
+
+    const seedMatch = path.match(/^seeds\/([0-9A-Za-z-]{20,40})$/);
+    if (seedMatch && request.method === "POST") return await patchSeed(env, seedMatch[1], await request.json());
 
     const projectVariantMatch = path.match(/^projects\/(.+)\/variants$/);
     if (projectVariantMatch && request.method === "POST") {
@@ -712,6 +723,93 @@ async function projectDetail(env, rawId) {
   if (!valid) return json({ ok: false, error: "project id 不合法" }, 400);
   const project = await getContentProject(env, id);
   return project ? json({ ok: true, project }) : json({ ok: false, error: "not found" }, 404);
+}
+
+/* ==========================================================================
+   种子（`lib/seeds.js` 是纯逻辑那一半）
+
+   **种子 = 你看到的东西 + 你对它的一句话。** 它解决的是「看到一个观点想写，
+   但不知道自己能加什么」——而「能加什么」的答案几乎总是你自己的经历和判断。
+   整份设计见 `../docs/工作流.md`。
+   ========================================================================== */
+
+/**
+ * ⚠️ **`reactions` 清单跟着响应一起回，工作台绝不抄第二份。**
+ * `sources.js` 那几处 `states` 抄了一份，CLAUDE.md 里记着「对不上就是 400」。
+ * **零条种子时也要返回清单**——否则界面画不出选择器，而那正是第一次用的时候。
+ */
+async function listSeeds(env, url) {
+  const status = String(url.searchParams.get("status") || "").trim();
+  // ⚠️ 排序按 updated_at 不按 id：库里 id 有 UUID 和 ULID 两种格式，
+  // 按 ASCII 比会把新建的整体压到迁移行后面（lib/db.js 的 LIST_ORDER 那条踩过）。
+  const rows = await all(env, "SELECT * FROM seeds ORDER BY updated_at DESC, id DESC");
+  const shown = status ? rows.filter((r) => r.status === status) : rows;
+  return json({
+    ok: true,
+    seeds: shown.map(mapSeed),
+    // 计数**按全部行算，不按筛选后的算**——不然点进「写了」那一档，
+    // 「攒着 12」会变成 0，看着像东西全没了。
+    counts: seedCounts(rows),
+    reactions: seedReactions(),
+  });
+}
+
+async function createSeed(env, body) {
+  let input;
+  try {
+    input = normalizeSeedInput(body);
+  } catch (error) {
+    return json({ ok: false, error: error.message, hint: error.hint }, error.status || 400);
+  }
+
+  // ⚠️ **没有 task_key 幂等，是有意的**：对同一条热点反应两次是合法的
+  //（那是两个不同角度），不该被去重挡住。防误双击是前端的事。
+  const id = newId();
+  const ts = now();
+  await run(
+    env,
+    `INSERT INTO seeds (id, reaction, take, source_kind, source_id, source_title, source_url, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, input.reaction, input.take, input.sourceKind, input.sourceId,
+    input.sourceTitle, input.sourceUrl, SEED_STATUS.KEEPING, ts, ts
+  );
+  const row = await first(env, "SELECT * FROM seeds WHERE id = ?", id);
+  return json({ ok: true, seed: mapSeed(row) });
+}
+
+async function patchSeed(env, id, body) {
+  let patch;
+  try {
+    patch = normalizeSeedPatch(body);
+  } catch (error) {
+    return json({ ok: false, error: error.message, hint: error.hint }, error.status || 400);
+  }
+  const existing = await first(env, "SELECT id FROM seeds WHERE id = ?", id);
+  if (!existing) return json({ ok: false, error: "这颗种子不在库里了" }, 404);
+
+  const sets = [];
+  const params = [];
+  if (patch.take !== undefined) { sets.push("take = ?"); params.push(patch.take); }
+  if (patch.status !== undefined) { sets.push("status = ?"); params.push(patch.status); }
+  if (patch.draftId !== undefined) { sets.push("draft_id = ?"); params.push(patch.draftId || null); }
+  sets.push("updated_at = ?");
+  params.push(now(), id);
+
+  await run(env, `UPDATE seeds SET ${sets.join(", ")} WHERE id = ?`, ...params);
+  const row = await first(env, "SELECT * FROM seeds WHERE id = ?", id);
+  return json({ ok: true, seed: mapSeed(row) });
+}
+
+/**
+ * ⚠️ **真删除，没有废纸篓。** 和 `/wb/delete` 同一条：这个库没有 archived 那一层，
+ * 界面文案必须照实说清不可恢复。种子很轻（就一句话），所以不为它单独建回收站——
+ * 真舍不得就标「不写了」，那一档留着。
+ */
+async function deleteSeed(env, id) {
+  const row = await first(env, "SELECT id FROM seeds WHERE id = ?", id);
+  if (!row) return json({ ok: false, error: "这颗种子不在库里了" }, 404);
+  await run(env, "DELETE FROM seeds WHERE id = ?", id);
+  return json({ ok: true, id });
 }
 
 // 项目阶段只允许通过命令推进。前端不直接写状态值，非法跨级会在这里被拒绝。

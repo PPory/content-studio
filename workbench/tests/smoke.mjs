@@ -447,8 +447,101 @@ try {
     await page.waitForSelector(".ptable__row, .kanban-col, .empty, .project-setup", { timeout: 25000 }).catch(() => {});
   }
 
+  /**
+   * 种子：这条链的新起点（`docs/工作流.md`）。
+   * **种子 = 你看到的东西 + 你对它的一句话**，它解决的是「看到一个观点想写，
+   * 但不知道自己能加什么」——而「能加什么」的答案几乎总是你自己的经历和判断。
+   *
+   * ⚠️ **这一段一个字都不能真存。** 建种子会往线上库里写行。所以走法是
+   * 「打开选择器 → 填字 → 不提交」，并且**数写请求次数**（`writes === 0`）——
+   * 只断言「弹层出来了」抓不住问题，弹层和写入可以同时发生（`askPlatformsOn` 的教训）。
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/#/seeds`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".seeds, .empty, .note-danger", { timeout: 25000 }).catch(() => {});
+
+  let seedWrites = 0;
+  const countSeedWrites = (req) => {
+    if (req.method() === "POST" && /\/api\/pipe\/seeds/.test(req.url())) seedWrites += 1;
+  };
+  page.on("request", countSeedWrites);
+
+  await page.click(".page-bar__end .btn-primary");
+  await page.waitForSelector(".rpick", { timeout: 8000 });
+
+  const picker = await page.evaluate(() => {
+    const opts = [...document.querySelectorAll(".rpick__opt")];
+    const save = document.querySelector(".rpick .btn-primary");
+    return {
+      count: opts.length,
+      // ⚠️ 七行一样的提示语等于没有提示——量的是**文案逐条不同**
+      unique: new Set(opts.map((o) => o.textContent.replace(/^\s*\d\s*/, "").trim())).size,
+      // take 空着时保存点不动，**而且屏幕上要写出原因**（灰按钮自己说不了话）
+      disabled: !!save?.disabled,
+      hint: document.querySelector(".rpick__hint")?.textContent.trim() || "",
+    };
+  });
+  /**
+   * ⚠️ **七条的文案真源在 Worker 的 `values.js`，前端一个字都不写死。**
+   * 所以这儿只钉「有七条且逐条不同」，不钉具体措辞——钉了措辞的话，
+   * Worker 那边调一个字这条就红，而代码完全正确。
+   */
+  check("反应清单有七条且逐条不同", picker.count === 7 && picker.unique === 7, `${picker.count} 条 / ${picker.unique} 种`);
+  check("没写看法时保存点不动，而且说了为什么", picker.disabled && /看法/.test(picker.hint), `${picker.disabled ? "灰的" : "能点"} · ${picker.hint.slice(0, 30)}`);
+
+  // 填上字，按钮该活过来——但**仍然不提交**
+  await page.click(".rpick__opt >> nth=1");
+  await page.fill(".rpick__take", "冒烟测试：这句话不会被提交");
+  const ready = await page.evaluate(() => !document.querySelector(".rpick .btn-primary")?.disabled);
+  check("写了看法之后就能存了", ready);
+
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".rpick", { state: "detached", timeout: 5000 }).catch(() => {});
+  page.off("request", countSeedWrites);
+  check("整段没往库里写一行", seedWrites === 0, `${seedWrites} 次写请求`);
+
+  /**
+   * ⚠️ **热点页那颗「我有反应」和「收录」不是一回事。**
+   * 收录 = 这东西以后可能有用（进灵感库）；有反应 = **我此刻有话说**。
+   * 判据是「你有没有话说」，两条出口在工作流文档里是并列的——合并成一颗就没了那个区别。
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/#/hot`, { waitUntil: "networkidle" });
+  await page.click('.pill-tab:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector(".ai-item, .empty", { timeout: 40000 }).catch(() => {});
+  const hotSeed = await page.evaluate(() => {
+    const items = [...document.querySelectorAll(".ai-item")];
+    if (!items.length) return null;
+    return {
+      items: items.length,
+      // 每条要么给「我有反应」、要么显示「说过了」——两者恰好一个
+      entries: items.filter((it) => /我有反应/.test(it.textContent) || /说过了/.test(it.textContent)).length,
+      collect: items.filter((it) => it.querySelector(".collect, [class*=collect]")).length,
+    };
+  });
+  if (hotSeed) {
+    check("AI 情报每条都能记一句反应", hotSeed.entries === hotSeed.items, `${hotSeed.entries}/${hotSeed.items}`);
+  } else {
+    check("AI 情报这会儿没抓到内容，反应入口这一段量不到", true, "空态");
+  }
+
+  /* ⚠️ **走之前把路由放回「内容」。** 这一段为了验热点页那颗入口跳去了 `#/hot`，
+     而紧接着的几条量的是**内容的二级导航**——不归位的话它们量到的是「发现」那一组，
+     红的是断言不是界面。跨页面的测试段落必须自己收拾干净。 */
+  await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll(".subnav-item")].some((e) => e.textContent.includes("项目")),
+    null,
+    { timeout: 8000 },
+  ).catch(() => {});
+
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
-  check("内容二级导航可直接进入", (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()).join("/"))) === "项目/选题/稿件/排版");
+  /**
+   * ⚠️ **顺序有意义：种子排第一。** 它是这条链的最前面（看到东西 → 说一句 → 才有得写），
+   * 而这一排是按流程从左往右排的，不是按重要性。
+   * ⚠️ 而且**每一项都必须两个字**（`NAV_LABELS` 那条规矩），下面那条量的就是这个。
+   */
+  const contentSubnav = (await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()))).join("/");
+  // ⚠️ 带上量到的值：这条原来一个诊断信息都没有，红了只能靠猜
+  check("内容二级导航可直接进入", contentSubnav === "种子/项目/选题/稿件/排版", contentSubnav);
   await page.click('.nav-item:has-text("发现")');
   /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
      那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
@@ -1445,7 +1538,9 @@ try {
   check("筛选条上「待写」是亮的", onChip.some((t) => t.includes("待写")), onChip.join("/") || "(没有选中项)");
 
   const subnav = await page.$$eval(".subnav-item", (els) => els.map((e) => e.textContent.trim()));
-  check("内容二级导航名称统一", subnav.join("/") === "项目/选题/稿件/排版", subnav.join("/"));
+  check("内容二级导航名称统一", subnav.join("/") === "种子/项目/选题/稿件/排版", subnav.join("/"));
+  // 导航标签一律两个字——写死那一串会在加页时红，这条不会，而它钉的是真正的规矩
+  check("二级导航每项都是两个字", subnav.every((n) => n.length === 2), subnav.join("/"));
   check("页面内部不再重复跨页面 Tab", !(await page.$(".main > .pill-tabs")));
   const activeNav = await page.textContent('.nav-item[data-current="true"]');
   check("选题页归到内容导航", activeNav.includes("内容"), activeNav.trim());

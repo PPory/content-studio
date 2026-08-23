@@ -82,6 +82,32 @@ export const DRAFT_WORKFLOW = {
   ABANDONED: "已弃用",
 };
 
+/**
+ * 种子的七种反应。**这是这条链的起点**：看到一个观点，选一条、补上后半句，
+ * 一篇短文的骨架当场就有了（「我不同意，因为___」本身就是全部结构）。
+ *
+ * ⚠️ **它是文案，不是状态**——所以 `seeds.reaction` 没有 CHECK 约束，白名单只有这一份。
+ * 改措辞、加减条数都只动这儿，不用迁移。
+ *
+ * ⚠️ **顺序有意义**：前两条（同意有例子 / 不同意）是最常用也最好下笔的，排最前。
+ * 界面上按这个顺序画，别按字母或长度重排。
+ */
+export const SEED_REACTIONS = Object.freeze([
+  "同意，而且我有个例子",
+  "不同意，因为…",
+  "这让我想起另一件事",
+  "这解释了我一直没想明白的",
+  "这个说法有个前提没说出来",
+  "我以前也这么以为，后来发现…",
+  "说得对，但只在某种情况下成立",
+]);
+
+/** 种子的状态。**这个是真状态**（影响流转），schema 里有 CHECK 兜着。 */
+export const SEED_STATUS = Object.freeze({ KEEPING: "攒着", WRITTEN: "写了", DROPPED: "不写了" });
+
+/** 触发物的种类。`none` = 干活时想到的，没有触发物——**那往往是你最有话说的**。 */
+export const SEED_SOURCE_KINDS = Object.freeze(["none", "hot", "inbox", "material"]);
+
 export const PLATFORMS = new Set(["公众号", "X", "小红书", "视频号", "YouTube"]);
 export const PRIORITIES = new Set(["高", "中", "低"]);
 

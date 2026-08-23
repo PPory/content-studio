@@ -11,6 +11,7 @@ export {
   IconRadar2,
   IconSocial,
   IconBulb,
+  IconSeedling,   // 种子：反应 → 一篇的起点
   IconStack2,
   IconBooks,
   IconClipboardList,

@@ -2804,6 +2804,102 @@ kbd {
 /* ---------- 素材工作区：从来源到成稿的一条链 ---------- */
 
 /* --------------------------------------------------------------------------
+   种子（`pages/Seeds.jsx` + `components/ReactionPicker.jsx`）
+   **种子 = 你看到的东西 + 你对它的一句话。** 设计见 `../docs/工作流.md`。
+   -------------------------------------------------------------------------- */
+
+/**
+ * ⚠️ **你那句话是主角，触发物退到第二行。**
+ * 这一页回答的是「今天写哪个」，而你挑的是"哪句话我还想接着说"，
+ * 不是"哪条链接看着重要"。所以 take 用正文字号、整行铺开，
+ * 来源和时间退到 `--text-3` 的小字。
+ */
+.seeds { display: grid; gap: 10px; }
+.seed {
+  padding: 14px 16px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  transition: border-color .14s var(--ease);
+}
+.seed:hover { border-color: var(--border-strong); }
+.seed__take {
+  margin: 0; color: var(--text-1); font-size: var(--fs-md); line-height: 1.6;
+  /* 不截断：一句话本来就短，而截掉的那半句正是你要判断的依据 */
+}
+.seed__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.seed__from {
+  display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 46ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-3); font-size: var(--fs-xs); text-decoration: none;
+}
+a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
+/* 「自己想到的」不是缺了来源，是**另一种来源**——那类往往是你最有话说的，所以照实说 */
+.seed__from--own { font-style: italic; }
+.seed__time { margin-left: auto; color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.seed__acts { display: flex; align-items: center; gap: 6px; margin-top: 11px; }
+.seed__del { width: 26px; height: 26px; margin-left: auto; border-color: transparent; color: var(--text-3); }
+.seed__del:hover { border-color: var(--danger); color: var(--danger); }
+
+/**
+ * 反应选择器。七条是**快车道**：一旦选中一条、补上后半句，
+ * 一篇短文的骨架当场就有了（「我不同意，因为___」本身就是全部结构）。
+ */
+.rpick {
+  width: min(620px, 92vw); display: grid; gap: 14px; padding: 18px 20px 16px;
+  background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+}
+.rpick__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rpick__source { min-width: 0; display: grid; gap: 3px; }
+/* 触发物摆最上面：你要对着它说话，它不能在你打字时消失 */
+.rpick__source b { font-size: var(--fs-md); line-height: 1.45; }
+.rpick__source a, .rpick__source span { color: var(--text-3); font-size: var(--fs-xs); }
+.rpick__source a:hover { color: var(--text-1); }
+
+.rpick__list { display: grid; gap: 6px; }
+.rpick__opt {
+  display: flex; align-items: center; gap: 9px; padding: 8px 11px;
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-2); font-size: var(--fs-sm);
+  text-align: left; cursor: pointer;
+  transition: background .12s var(--ease), border-color .12s var(--ease), color .12s var(--ease);
+}
+.rpick__opt:hover { border-color: var(--border-strong); color: var(--text-1); }
+/* 选中态走全局那一份（轻底 + 字变实），不画实心黑——那是主操作的 */
+.rpick__opt[aria-pressed="true"] {
+  background: var(--sel-bg); border-color: var(--border-strong); color: var(--sel-fg); font-weight: 600;
+}
+.rpick__opt kbd {
+  flex: none; width: 18px; height: 18px; display: grid; place-items: center;
+  border-radius: var(--r-sm); background: var(--surface-2);
+  color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs);
+}
+
+.rpick__take {
+  width: 100%; min-height: 88px; padding: 10px 12px; resize: vertical;
+  border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
+  background: var(--canvas); color: var(--text-1);
+  font: inherit; font-size: var(--fs-base); line-height: 1.7;
+}
+.rpick__take:focus { outline: 0; border-color: var(--text-1); }
+.rpick__err { margin: 0; color: var(--danger); font-size: var(--fs-xs); }
+.rpick__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* ⚠️ 灰按钮自己说不了话，所以这一行必须在场：它说清为什么现在点不动 */
+.rpick__hint { min-width: 0; color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.5; }
+
+/* 热点页那颗「说过了」：反应过的要看得出来，否则每天扫那一批会重复反应同一条 */
+/* 正文里的一颗行内按钮（空态里那句「去热点那一页」）。用 button 不用 a：
+   它触发的是路由跳转，不是一个可以另开标签页的地址 */
+.link-btn {
+  padding: 0; border: 0; background: none; color: var(--text-1);
+  font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.link-btn:hover { color: var(--accent-strong, var(--text-1)); }
+
+.ai-item__seeded {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--st-done-ink); font-size: var(--fs-xs);
+}
+
+/* --------------------------------------------------------------------------
    素材链路（`pages/studio/MaterialFlow.jsx`）
    ⚠️ **这一排就是素材页的状态筛选器**，`FilterBar` 那排状态芯片在这一页不再画——
    两者同时在屏幕上时，同一组数字一屏两份，而点哪一份效果完全一样。

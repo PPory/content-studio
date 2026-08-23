@@ -26,11 +26,14 @@ import { isVaultEnabled, archiveBackup } from "../lib/vault.js";
  * 不是往末尾追加**——追加到末尾的后果是恢复时报 FOREIGN KEY constraint failed，
  * 而那是你最不想遇到报错的时刻。
  *
- * 十二张表 = 十二条查询，离 D1 每次调用 50 条的上限很远。
+ * 十三张表 = 十三条查询，离 D1 每次调用 50 条的上限很远。
  */
 export const BACKUP_TABLES = [
   "inbox", "topics", "drafts", "materials",
   "tags", "material_tags", "inbox_tags", "topic_materials", "topic_inbox",
+  // ⚠️ `seeds` 有 `draft_id REFERENCES drafts(id)`，所以它必须排在 `drafts` 后面。
+  // 往末尾追加正好满足这一条，但**别把这当成"追加就行"**——下一张表未必。
+  "seeds",
   "comments", "task_log", "settings",
 ];
 
