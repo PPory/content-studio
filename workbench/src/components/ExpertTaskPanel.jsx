@@ -20,7 +20,7 @@ function Sources({ items = [] }) {
   ))}</div>;
 }
 
-function Report({ report }) {
+export function ExpertReport({ report }) {
   if (!report) return null;
   if (report.kind === "quality-review") return <div className="expert-report">
     <p className="expert-report__summary">{report.summary}</p>
@@ -77,7 +77,7 @@ export function ExpertTaskPanel({ run: initialRun, onRunChange, onClose, onRetry
       {working ? <div className="expert-progress" aria-live="polite"><div className="expert-progress__track"><span style={{ width: `${run.percent || 2}%` }} /></div><p><span className="expert-activity" aria-hidden="true"><i /></span><span>{run.stageLabel || "正在执行"}</span></p><small>关闭这个面板不会中止任务，回来仍能看到结果。</small></div> : null}
       {run.status === "failed" ? <div className="expert-error" role="alert"><small>本次检查未完成</small><strong>{run.error}</strong>{run.hint ? <p>{run.hint}</p> : null}<button className="expert-retry" onClick={onRetry}><IconRefresh aria-hidden="true" />重试本次检查</button></div> : null}
       {run.status === "cancelled" ? <div className="expert-error"><strong>这次任务已中止</strong></div> : null}
-      <Report report={run.report} />
+      <ExpertReport report={run.report} />
       <footer>
         <span>报告不会自动改正文；来源与修改建议由你决定是否采用。</span>
         <div>{working ? <button onClick={async () => { const next = (await api.cancelExpertRun(run.id)).run; setRun(next); onRunChange?.(next); }}>中止任务</button> : run.status === "done" ? <button onClick={onRetry}><IconRefresh aria-hidden="true" />重新检查</button> : <button onClick={onClose}>关闭</button>}</div>

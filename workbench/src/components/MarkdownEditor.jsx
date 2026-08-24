@@ -233,6 +233,7 @@ export function MarkdownEditor({
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
   onCursorChange,                 // 当前光标是写作推动的锚点；不改变正文，只上报位置
   onSelectionChange,              // 有选区时，专家只分析这一段；无选区时回到全文
+  revisionRequest, onRevisionHandled, // 右栏 AI 助手发来的选区修订；仍走同一套候选/采纳机制
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
   readOnly = false,
 }) {
@@ -565,6 +566,44 @@ export function MarkdownEditor({
     v.dispatch({ effects: startTextRevision.of({ id, from: revision.from, to: revision.to }) });
     generateRevision(revision, instruction);
   }
+
+  useEffect(() => {
+    if (!revisionRequest?.id || !revisionRequest.selection?.text || !revisionScope) return;
+    const selected = revisionRequest.selection;
+    const v = view.current;
+    if (!v || selected.from < 0 || selected.to > v.state.doc.length || selected.from >= selected.to) {
+      onRevisionHandled?.(revisionRequest.id);
+      return;
+    }
+    const original = v.state.sliceDoc(selected.from, selected.to);
+    if (original !== selected.text) {
+      onRevisionHandled?.(revisionRequest.id);
+      return;
+    }
+    const id = `revision-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
+    const revision = {
+      id,
+      mode: revisionRequest.mode || "rewrite",
+      label: revisionRequest.label || revisionLabel(revisionRequest.mode || "rewrite"),
+      instruction: revisionRequest.instruction || "",
+      original,
+      candidate: "",
+      generations: [],
+      from: selected.from,
+      to: selected.to,
+      createdAt: new Date().toISOString(),
+      status: "pending",
+      busy: true,
+      error: null,
+    };
+    setSelectionMenu(null);
+    setCurrentRevision(revision);
+    v.dispatch({ effects: startTextRevision.of({ id, from: revision.from, to: revision.to }) });
+    generateRevision(revision, revision.instruction);
+    onRevisionHandled?.(revisionRequest.id);
+    // 由一次性的 request id 触发；生成函数通过 ref 读取当前编辑器状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionRequest?.id]);
 
   function editRevisionCandidate(candidate) {
     const current = activeRevisionRef.current;

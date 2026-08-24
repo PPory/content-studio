@@ -231,6 +231,10 @@ export const api = {
   expertRun: (id) => req(`/api/expert-runs/${encodeURIComponent(id)}`),
   expertRuns: (scope = "") => req(`/api/expert-runs${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
   cancelExpertRun: (id) => postJson(`/api/expert-runs/${encodeURIComponent(id)}/cancel`, {}),
+  assistantConversation: (scope) => req(`/api/assistant/conversation?scope=${encodeURIComponent(scope)}`),
+  assistantChat: (body) => postJson("/api/assistant/chat", body),
+  cancelAssistant: (scopeId) => postJson("/api/assistant/cancel", { scopeId }),
+  newAssistantConversation: (scopeId) => postJson("/api/assistant/new", { scopeId }),
 
   // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
   // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，

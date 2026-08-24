@@ -4,7 +4,7 @@ import { projectPhase } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
-import { WritingAssist } from "../components/WritingAssist.jsx";
+import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
@@ -206,6 +206,8 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const cover = useDocChat({ docTitle: project?.title || "" });
   const [coverOpen, setCoverOpen] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
+  const [revisionRequest, setRevisionRequest] = useState(null);
+  const [activeSelection, setActiveSelection] = useState(null);
   const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
   const [pendingLeave, setPendingLeave] = useState(null);
   const [leaving, setLeaving] = useState(false);
@@ -641,13 +643,13 @@ ${(form.body || "").slice(0, 3000)}`);
                 insertRequest={insertRequest}
                 onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
                 onCursorChange={(position) => { cursor.current = position; }}
-                onSelectionChange={(value) => { selection.current = value; }}
+                onSelectionChange={(value) => { selection.current = value; setActiveSelection(value); }}
+                revisionRequest={revisionRequest}
+                onRevisionHandled={(id) => setRevisionRequest((current) => current?.id === id ? null : current)}
                 revisionScope={`pipeline:drafts:${draft.id}`}
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
                 readOnly={!draftEditable}
-                toolbarExtra={draftEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} scopeId={draft.id} getCursor={() => cursor.current} getSelection={() => selection.current}
-                  onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>
           ) : project.variants?.length ? (
@@ -699,7 +701,21 @@ ${(form.body || "").slice(0, 3000)}`);
            * 每次要读自己写的字，眼睛得先越过一整栏元信息。四张参考图在这一点上一致：
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
-          <aside className="project-rail">
+          <ProjectAssistantRail
+            scopeId={draft?.id || projectId}
+            document={{
+              title: form.title,
+              body: form.body,
+              platform: draft?.platform || project.platform,
+              audience: project.brief?.audience || writingProfile?.profile?.audience || "",
+              selection: activeSelection,
+            }}
+            materials={project.materials || []}
+            profile={writingProfile}
+            selection={activeSelection}
+            onInsert={(text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选" })}
+            onRevision={(request) => setRevisionRequest({ ...request, id: `assistant-revision-${Date.now()}` })}
+          >
             {/**
               * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，
               * 剩下两项（目标读者/核心观点）已经搬到正文标题下面——你写的时候要瞟的是它们。
@@ -748,7 +764,7 @@ ${(form.body || "").slice(0, 3000)}`);
               onDetach={(id) => changeMaterials({ remove: [id] })}
               onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}
             />
-          </aside>
+          </ProjectAssistantRail>
         )}
         </>}
       </div>

@@ -39,6 +39,8 @@ const brainstormRequests = [];
 const revisionRequests = [];
 const styleSaves = [];
 const expertStarts = [];
+const assistantRequests = [];
+let assistantMessages = [];
 const expertRunStore = new Map();
 const revisionDocuments = new Map();
 const profileFixture = {
@@ -116,7 +118,14 @@ await page.route("**/api/expert-runs**", (route) => {
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run }) });
   }
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, runs: [] }) });
+  for (const run of expertRunStore.values()) {
+    if (run.status !== "running") continue;
+    run.polls += 1;
+    if (run.polls >= 2) Object.assign(run, run.failAfterPoll
+      ? { status: "failed", stageLabel: "检查未完成", error: "专家模型连接失败", hint: "已读取配置，请确认本机代理正在运行。" }
+      : { status: "done", stageLabel: "检查完成", percent: 100, report: run.pendingReport });
+  }
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, runs: [...expertRunStore.values()].reverse() }) });
 });
 await page.route("**/api/pipe/writing-assist", async (route) => {
   const body = route.request().postDataJSON();
@@ -183,6 +192,29 @@ await page.route("**/api/revisions**", async (route) => {
   revisionDocuments.set(body.scope, items);
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items }) });
 });
+await page.route("**/api/assistant/**", async (route) => {
+  const request = route.request();
+  const url = new URL(request.url());
+  if (request.method() === "GET") {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
+  }
+  if (url.pathname.endsWith("/new")) {
+    assistantMessages = [];
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: [] } }) });
+  }
+  if (url.pathname.endsWith("/cancel")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, cancelled: true }) });
+  }
+  const body = request.postDataJSON();
+  assistantRequests.push(body);
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  assistantMessages = [
+    ...assistantMessages,
+    { id: `user-${assistantMessages.length}`, role: "user", text: body.message, createdAt: new Date().toISOString() },
+    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "DeepSeek Harness" },
+  ];
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
+});
 
 function assert(value, message) {
   if (!value) throw new Error(message);
@@ -224,6 +256,74 @@ try {
   await page.click(".project-draft .cm-content");
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Backspace");
+  const paragraph = "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
+
+  if (await page.$(".project-assistant")) {
+    const railTabs = await page.$$eval(".project-assistant__tabs button", (items) => items.map((item) => item.textContent.trim().replace(/\d+$/, "")));
+    assert(railTabs.join("/") === "AI 助手/项目素材/检查报告", `右栏入口不完整：${railTabs.join("/")}`);
+    assert(!(await page.$(".project-draft .writing-assist__trigger")) && !(await page.$('.project-draft .writing-tool-btn:has-text("检查")')), "项目编辑器仍保留重复的 AI 协作或检查入口");
+
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.type("收藏处理的是焦虑，而不是内容。");
+    await page.selectOption(".assistant-composer__style select", "story-led");
+    assert(styleSaves.length === 0, "编辑器调用风格时不该修改或保存提示词");
+
+    await page.click('.assistant-composer footer button:has-text("专家")');
+    const experts = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
+    assert(experts.join("/") === "写作教练/素材顾问/审稿顾问/事实核查", `专家菜单不完整：${experts.join("/")}`);
+    await page.click('.assistant-command-menu header button');
+    await page.click('.assistant-composer footer button:has-text("Skill")');
+    const skills = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
+    assert(skills.join("/") === "续写一段/完成全文/润色选区/改写选区/纠错选区/沉淀知识卡片", `Skill 菜单不完整：${skills.join("/")}`);
+    await page.click('.assistant-command-menu header button');
+
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForFunction(() => document.querySelector(".assistant-context-chip[data-live=true]")?.textContent.includes("选中 6 字"));
+    await page.click('.assistant-composer footer button:has-text("Skill")');
+    await page.click('.assistant-command-menu [role=menuitem]:has-text("润色选区")');
+    await page.waitForSelector(".text-revision-review textarea");
+    assert(revisionRequests.at(-1)?.selected === "收藏处理的是", "右栏 Skill 没有把当前选区交给修订流程");
+    assert((await editorValue(".project-draft .cm-content")).startsWith("收藏处理的是"), "修订候选在采纳前改动了正文");
+    await page.click('.text-revision-review__decide button:has-text("弃用")');
+    await page.waitForSelector(".text-revision-review", { state: "detached" });
+
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.fill('.assistant-composer textarea[placeholder*="问当前内容"]', "给我一个具体的修改建议");
+    await page.click('.assistant-composer button[aria-label="发送"]');
+    await page.waitForSelector(".assistant-working");
+    const orbit = await page.$eval(".assistant-orbit", (item) => getComputedStyle(item).animationName);
+    assert(orbit !== "none", "Harness 工作状态没有动态指示");
+    await page.waitForFunction(() => document.querySelector(".assistant-message--assistant")?.textContent.includes("真实场景"));
+    assert(assistantRequests.at(-1)?.style?.id === "story-led", "AI 助手没有使用编辑器里选择的本次写作风格");
+    assert(assistantRequests.at(-1)?.document?.body.includes("收藏处理的是焦虑"), "AI 助手没有收到当前全文");
+    const beforeCandidate = await editorValue(".project-draft .cm-content");
+    assert(!beforeCandidate.includes("读者最难承认"), "AI 回复在确认前写进了正文");
+    await page.click('.assistant-message--assistant button:has-text("作为候选插入")');
+    await page.waitForSelector(".cm-ai-draft");
+    assert((await editorValue(".project-draft .cm-content")).includes("读者最难承认"), "明确插入候选后正文没有出现内容");
+    await page.click('.ai-draft-review button[aria-label="确认采用这段，移除底纹"]');
+    await page.waitForSelector(".ai-draft-review", { state: "detached" });
+
+    await page.click('.project-assistant__tabs button:has-text("检查报告")');
+    const reportTabs = await page.$$eval(".assistant-reports > nav button", (items) => items.map((item) => item.textContent.trim()));
+    assert(reportTabs.join("/") === "素材查验/审稿建议/事实核查", `检查报告分类不完整：${reportTabs.join("/")}`);
+    await page.click('.assistant-report-empty button:has-text("开始素材查验")');
+    await page.waitForSelector(".assistant-report-running .assistant-orbit");
+    await page.waitForSelector('.assistant-report-error button:has-text("重新检查")');
+    await page.click('.assistant-report-error button:has-text("重新检查")');
+    await page.waitForFunction(() => document.querySelector(".assistant-report-result")?.textContent.includes("本地知识卡"));
+    assert((await page.textContent(".assistant-report-result")).includes("权威网页来源"), "持久报告没有展示本地与公开来源");
+
+    await page.click('.project-assistant__tabs button:has-text("项目素材")');
+    assert(await page.$(".project-assistant__materials"), "项目素材没有留在统一右栏");
+    console.log("✓ 项目编辑器统一为 AI 助手、项目素材、检查报告三入口");
+    console.log("✓ @ 专家、/ Skill、选区与本次风格均进入真实调用上下文");
+    console.log("✓ 对话建议和选区修订都先给候选，明确采纳后才改正文");
+    console.log("✓ 专家工作状态动态展示，失败可重试，报告关闭后仍有固定入口");
+  } else {
 
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__result");
@@ -347,7 +447,6 @@ try {
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("缺少更多方法"));
   await page.waitForSelector(".writing-assist__card", { state: "detached" });
   const after = await editorValue(".cm-content");
-  const paragraph = "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
   assert(after === before.slice(0, 3) + paragraph + before.slice(3), "续写没有精确插入当前光标，或额外添加了换行");
   assert((await page.$$(".cm-ai-draft")).length > 0, "AI 续写插入后没有轻量底纹");
   const aiWash = await page.$eval(".cm-ai-draft", (node) => getComputedStyle(node).backgroundColor);
@@ -407,8 +506,10 @@ try {
   assert(brainstormRequests.length === 2 && brainstormRequests[1].phase === "summary", "聊一聊没有先问再整理");
   await page.click('.writing-assist__chat-actions button:has-text("插入正文")');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("写作线索"));
+  }
 
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
+  const legacyRevisionStart = revisionRequests.length;
   await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
   /**
    * ⚠️ **浏览层早就从卡片墙换成列表行了**（`.wall-card__open` → `.doc-row__open`），
@@ -456,7 +557,7 @@ try {
   await page.fill('.text-revision-menu__command input[aria-label="润色要求"]', "更克制");
   await page.click('.text-revision-menu__command button[aria-label="开始润色"]');
   await page.waitForSelector(".text-revision-review textarea");
-  assert(revisionRequests[0]?.instruction === "更克制", "自定义润色要求没有发给 AI");
+  assert(revisionRequests[legacyRevisionStart]?.instruction === "更克制", "自定义润色要求没有发给 AI");
   const compareDocument = await editorValue(".ws-edit .cm-content");
   const visuallySplitDocument = `${existingAfter.slice(0, 12)}\n${existingAfter.slice(12)}`;
   assert(compareDocument === visuallySplitDocument, "对比阶段除候选卡片占位外改变了正文内容");
@@ -469,7 +570,7 @@ try {
   await page.fill('.text-revision-review__command input[aria-label="调整修订要求"]', "更克制、更直接");
   await page.click('.text-revision-review__command button[aria-label="重新生成"]');
   await page.waitForFunction(() => document.querySelector(".text-revision-review textarea")?.value.includes("第二版候选"));
-  assert(revisionRequests[1]?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
+  assert(revisionRequests[legacyRevisionStart + 1]?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
   await page.fill('.text-revision-review textarea[aria-label="AI 修订候选，可直接编辑"]', "这是用户调整后的最终候选。 ");
   await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-review.png"), fullPage: false });
   await page.click('.text-revision-review__decide button:has-text("采纳")');

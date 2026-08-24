@@ -89,8 +89,8 @@ export const NAV = [
       {
         key: "expert-runtime",
         kind: "env",
-        label: "专家执行",
-        desc: "素材查缺、品控九问和事实核查由工作台内置的 Harness 执行。模型连接只在本机保存，普通写作仍走原来的流水线。",
+        label: "AI 助手",
+        desc: "对话、素材查缺、品控九问和事实核查统一由工作台内置的 Harness 执行。模型连接只在本机保存，正文改动仍需你明确采纳。",
       },
       {
         key: "paths",
