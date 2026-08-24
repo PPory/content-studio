@@ -34,11 +34,16 @@ function searchQueries(input) {
   const quoted = [...text.matchAll(/[“\"《]([^”\"》]{2,30})[”\"》]/g)].map((match) => match[1]);
   const latin = text.match(/[A-Za-z][A-Za-z0-9._-]{2,36}/g) || [];
   const chinese = text.match(/[\u4e00-\u9fff]{2,12}/g) || [];
-  return [...new Set([clean(input.document?.title, 36), ...quoted, ...latin, ...chinese])].filter(Boolean).slice(0, 8);
+  return [...new Set([...quoted, ...latin, ...chinese, clean(input.document?.title, 36)])].filter(Boolean).slice(0, 2);
+}
+
+export function assistantRetrievalRequested(input = {}) {
+  return /(搜索|搜一下|查一下|查找|检索|知识库|我的笔记|书里|找案例|找数据|找来源|出处|联网|事实核查|核实|查证)/i.test(`${input.message || ""} ${input.document?.selection?.text || ""}`);
 }
 
 async function localContext(env, input) {
-  const queries = searchQueries(input);
+  const asksForSources = assistantRetrievalRequested(input);
+  const queries = asksForSources ? searchQueries(input) : [];
   const sources = [];
   const seen = new Set();
   for (const query of queries) {
@@ -63,7 +68,7 @@ async function localContext(env, input) {
       source: "当前内容项目",
     });
   }
-  return { queries, localSources: sources.slice(0, 40) };
+  return { queries, localSources: sources.slice(0, 40), retrievalMode: asksForSources ? "按需检索" : "未检索" };
 }
 
 function promptFor(input, context) {
@@ -84,7 +89,7 @@ function promptFor(input, context) {
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
     style,
-    `【本轮可检索上下文】已准备 ${context.localSources.length} 条本地候选来源；关键词：${context.queries.join("、") || "无"}`,
+    `【本轮检索】${context.retrievalMode}；已准备 ${context.localSources.length} 条候选来源；关键词：${context.queries.join("、") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
   ].join("\n\n");
 }
@@ -94,6 +99,7 @@ export async function assistantConversation(scopeId) {
 }
 
 export async function runAssistantTurn(env, input = {}) {
+  const startedAt = Date.now();
   const scopeId = clean(input.scopeId, 240);
   const message = clean(input.message, 8_000);
   if (!scopeId) throw Object.assign(new Error("缺少当前内容范围"), { status: 400 });
@@ -109,7 +115,9 @@ export async function runAssistantTurn(env, input = {}) {
     const conversation = await readConversation(scopeId);
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
     await writeConversation(scopeId, [...conversation.messages, userMessage]);
+    const contextStartedAt = Date.now();
     context = await localContext(env, input);
+    context.prepareMs = Date.now() - contextStartedAt;
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
   } catch (error) {
     active.delete(scopeId);
@@ -127,12 +135,13 @@ export async function runAssistantTurn(env, input = {}) {
         persona: "你是 Xenho OS 的 AI 助手。你在内容创作工作台内协助主创，可分析当前稿件、检索知识库和公开网页、调用工具并给候选方案。你不得静默改正文，不得伪造事实、来源或用户经历。",
         sessionRoot: path.join(dir, "sessions"),
         sessionId: `assistant-${scopeKey(scopeId)}`,
+        maxTokens: 4096,
         onHarness(instance) { harness = instance; active.set(scopeId, instance); },
       });
       const text = clean(result.result.finalResponse, 40_000);
       if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
       const latest = await readConversation(scopeId);
-      const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness" };
+      const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode };
       const saved = await writeConversation(scopeId, [...latest.messages, assistantMessage]);
       return { conversation: saved, message: assistantMessage };
     } finally {

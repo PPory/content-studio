@@ -19,6 +19,7 @@
  */
 export const NAV_LABELS = {
   today: "今日",
+  assistant: "AI助手",
   content: "内容",
   // ⚠️ 排版是**工具**不是阶段，所以它在一级、不在内容底下（夹在几个阶段中间很突兀）
   typeset: "排版",

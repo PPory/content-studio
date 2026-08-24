@@ -4208,6 +4208,8 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * ⚠️ 内边距也一起去掉——这一页自己给了内边距，外面再来一层就是双份。
  */
 .main__inner:has(.project-workspace) { max-width: none; padding: 0; }
+.main__inner:has(.assistant-page) { max-width: none; height: 100%; padding: 0; --main-pad: 0px; --main-pad-top: 0px; }
+.main:has(.assistant-page) { overflow: hidden; }
 /* 内嵌工具那一页把内边距全去掉：工具自己有留白，外面再留一圈只是白丢面积。
    ⚠️ 高度从 `100vh` 改成 `100%`——面板本身已经被 `.app` 定高了，
    再按视口算会比面板高出 16px 的沟 + 两条边框，底下凭空多出一条滚动。 */

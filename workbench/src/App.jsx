@@ -9,6 +9,7 @@ import { normalizeMaterialRoute } from "./lib/open-target.js";
 import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
+import { Assistant } from "./pages/Assistant.jsx";
 import { Content } from "./pages/Content.jsx";
 import { Ideas } from "./pages/Ideas.jsx";
 import { Seeds } from "./pages/Seeds.jsx";
@@ -40,6 +41,7 @@ const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
+  { key: "assistant", to: "assistant", match: (v) => v === "assistant" },
   {
     key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
     children: [
@@ -104,7 +106,7 @@ const NAV = [
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "ideas", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -534,6 +536,8 @@ export function App() {
               onChanged={refreshStatus}
               onSettings={() => setSettings(true)}
             />
+          ) : route.view === "assistant" ? (
+            <Assistant />
           ) : route.view === "ideas" ? (
             <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
           ) : route.view === "seeds" ? (

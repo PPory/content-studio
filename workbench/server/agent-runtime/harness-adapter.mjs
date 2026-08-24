@@ -77,7 +77,7 @@ function launchConfig(env, runDir, kind, bin, options = {}) {
   };
 }
 
-export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId }) {
+export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens }) {
   const info = await harnessRuntimeInfo(env);
   if (!info.available) throw Object.assign(new Error(`Harness ${info.version} 兼容检查未通过`), { hint: info.reason });
   if (!info.configured) {
@@ -98,7 +98,7 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
     cwd: process.cwd(),
     provider: "xenho",
     model: String(env.HARNESS_LLM_MODEL).trim(),
-    maxTokens: Math.max(1024, Math.min(32768, Number(env.HARNESS_LLM_MAX_TOKENS) || 8192)),
+    maxTokens: Math.max(1024, Math.min(32768, Number(maxTokens) || Number(env.HARNESS_LLM_MAX_TOKENS) || 8192)),
   });
   onHarness?.(harness);
   const result = await harness.run(prompt, {

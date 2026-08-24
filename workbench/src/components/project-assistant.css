@@ -8,6 +8,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
+  height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - var(--project-block-h) - 28px);
 }
 
 .project-assistant__tabs {
@@ -46,7 +47,7 @@
 .project-assistant__materials .pmat { border: 0; border-radius: 0; padding: 6px 4px 16px; box-shadow: none; }
 .project-assistant__materials .pseed + .pmat { border-top: 1px solid var(--assistant-line); padding-top: 16px; }
 
-.assistant-pane { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.assistant-pane { min-height: 0; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .assistant-pane__context {
   display: flex;
   align-items: center;
@@ -106,7 +107,7 @@
 .assistant-error p { margin: 0; }
 .assistant-error button { justify-self: start; border: 0; border-radius: 7px; padding: 6px 9px; background: #8d3f1d; color: #fff; cursor: pointer; }
 
-.assistant-composer { position: relative; margin: 0 9px 9px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 28px rgba(19, 21, 25, .08); }
+.assistant-composer { position: relative; z-index: 3; align-self: end; margin: 0 9px 9px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 -6px 24px rgba(19, 21, 25, .07); }
 .assistant-composer:focus-within { border-color: var(--text-2); box-shadow: 0 9px 30px rgba(19, 21, 25, .12); }
 .assistant-composer__style { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px 5px; color: var(--text-3); font-size: 10px; }
 .assistant-composer__style select { min-width: 0; max-width: 170px; border: 0; background: transparent; color: var(--text-2); font: inherit; text-align: right; outline: 0; }
@@ -166,6 +167,32 @@
 .assistant-report-result .expert-report article { font-size: 11px; }
 .assistant-report-result .expert-sources { grid-template-columns: 1fr; }
 
+/* 独立 AI 页：上方只有用途说明，中间消息独立滚动，输入区始终贴着页面底部。 */
+.assistant-page {
+  height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  background: var(--surface);
+}
+.assistant-page__head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 28px;
+  padding: 24px clamp(28px, 5vw, 72px) 18px; border-bottom: 1px solid var(--border);
+}
+.assistant-page__head > div { display: grid; gap: 5px; }
+.assistant-page__head span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 11px; }
+.assistant-page__head span svg { width: 14px; height: 14px; }
+.assistant-page__head h1 { margin: 0; font-size: clamp(24px, 2.4vw, 34px); letter-spacing: -.04em; }
+.assistant-page__head p { max-width: 520px; margin: 0 0 3px; color: var(--text-3); font-size: 12px; line-height: 1.65; text-align: right; }
+.assistant-page__conversation { min-height: 0; width: min(980px, calc(100% - 40px)); margin: 0 auto; }
+.assistant-pane--standalone .assistant-pane__context { padding: 12px 2px 10px; border-bottom: 0; }
+.assistant-pane--standalone .assistant-thread { padding: 24px clamp(4px, 4vw, 54px) 28px; }
+.assistant-pane--standalone .assistant-empty { min-height: 100%; align-content: center; padding-block: 34px 90px; }
+.assistant-pane--standalone .assistant-empty h3 { font-size: clamp(24px, 3vw, 38px); letter-spacing: -.04em; }
+.assistant-pane--standalone .assistant-empty p { max-width: 480px; font-size: 13px; }
+.assistant-pane--standalone .assistant-empty > div { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 560px; }
+.assistant-pane--standalone .assistant-message { max-width: 760px; margin-inline: auto; }
+.assistant-pane--standalone .assistant-message--user { margin-left: max(90px, calc((100% - 760px) / 2 + 90px)); margin-right: max(0px, calc((100% - 760px) / 2)); }
+.assistant-pane--standalone .assistant-composer { width: min(860px, calc(100% - 20px)); margin: 0 auto 18px; border-radius: 14px; }
+.assistant-pane--standalone .assistant-composer textarea { min-height: 76px; font-size: 13px; }
+
 @media (max-width: 1180px) {
   .project-workspace__grid { grid-template-columns: minmax(500px, 1fr) 320px; gap: 12px; padding-inline: 12px; }
   .project-assistant__tabs button { gap: 3px; }
@@ -175,6 +202,14 @@
 @media (max-width: 920px) {
   .project-workspace__grid { grid-template-columns: 1fr; }
   .project-assistant { position: relative; top: 0; max-height: min(680px, calc(100vh - 120px)); }
+  .assistant-page__head { align-items: flex-start; padding-inline: 20px; }
+  .assistant-page__head p { text-align: left; }
+}
+
+@media (max-width: 680px) {
+  .assistant-page__head { display: grid; gap: 8px; }
+  .assistant-page__conversation { width: calc(100% - 20px); }
+  .assistant-pane--standalone .assistant-empty > div { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -48,6 +48,13 @@ const SKILLS = [
   { id: "card", label: "沉淀知识卡片", hint: "预览确认后进入知识库", card: true },
 ];
 
+const STANDALONE_SKILLS = [
+  { id: "knowledge", label: "搜索知识库", hint: "从书、笔记、知识卡和素材中查找", prompt: "/搜索知识库 请根据我的问题检索本地知识库，并标出实际找到的来源。" },
+  { id: "web", label: "联网查证", hint: "搜索公开网页并保留来源", prompt: "/联网查证 请联网核查我接下来提出的事实，只使用能找到来源的内容。" },
+  { id: "connect", label: "寻找关联", hint: "发现近期内容之间的联系", prompt: "/寻找关联 请搜索我的知识库，找出最近内容之间值得继续追问的关联。" },
+  { id: "card", label: "沉淀知识卡片", hint: "预览确认后进入知识库", card: true },
+];
+
 const revisionLabel = { polish: "润色", rewrite: "改写", proofread: "纠错" };
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
 
@@ -57,36 +64,42 @@ function Working({ label = "Harness 正在处理" }) {
     const timer = setInterval(() => setSeconds((value) => value + 1), 1_000);
     return () => clearInterval(timer);
   }, []);
-  return <div className="assistant-working" role="status"><span className="assistant-orbit"><i /></span><div><b>{label}</b><small>{seconds}s · 可以继续编辑正文</small></div></div>;
+  const stage = seconds < 3 ? "正在读取上下文" : seconds < 12 ? "正在组织回答" : seconds < 30 ? "正在生成内容" : "这次思考较久，可停止后重试";
+  return <div className="assistant-working" role="status"><span className="assistant-orbit"><i /></span><div><b>{label}</b><small>{stage} · {seconds}s</small></div></div>;
 }
 
-function EmptyAssistant({ onPrompt }) {
+function EmptyAssistant({ onPrompt, standalone = false }) {
   return <div className="assistant-empty">
     <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
-    <h3>围绕这篇内容，一起往下做</h3>
-    <p>它能读当前全文和选区，也能通过专家查知识库、搜公开来源。任何改写都会先给候选。</p>
+    <h3>{standalone ? "从一个问题开始" : "围绕这篇内容，一起往下做"}</h3>
+    <p>{standalone ? "可以直接聊，也可以搜索本地知识库、公开网页，或调用专家一起处理。" : "它能读当前全文和选区，也能通过专家查知识库、搜公开来源。任何改写都会先给候选。"}</p>
     <div>
-      <button onClick={() => onPrompt("帮我看看这篇文章现在最需要解决的一个问题")}>先看一个关键问题</button>
-      <button onClick={() => onPrompt("结合当前内容，告诉我下一段最值得写什么")}>给下一步方向</button>
+      {standalone ? <>
+        <button onClick={() => onPrompt("搜索我的知识库，看看最近记录的内容之间有什么关联")}>找找最近内容的关联</button>
+        <button onClick={() => onPrompt("根据我的知识库，给我三个今天值得继续思考的问题")}>从知识库找三个问题</button>
+      </> : <>
+        <button onClick={() => onPrompt("帮我看看这篇文章现在最需要解决的一个问题")}>先看一个关键问题</button>
+        <button onClick={() => onPrompt("结合当前内容，告诉我下一段最值得写什么")}>给下一步方向</button>
+      </>}
     </div>
   </div>;
 }
 
-function Message({ item, canRevise, onRevise, onInsert, onCard }) {
+function Message({ item, canRevise, canInsert, onRevise, onInsert, onCard }) {
   const assistant = item.role === "assistant";
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
-    <small>{assistant ? "Xenho AI" : "你"}</small>
+    <small>{assistant ? <>Xenho AI{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</> : "你"}</small>
     {assistant ? <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} /> : <p>{item.text}</p>}
     {assistant ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
-      <button onClick={() => onInsert(item.text)} title="插入后会带底纹，仍需确认采用"><IconPlus aria-hidden="true" />作为候选插入</button>
+      {canInsert ? <button onClick={() => onInsert(item.text)} title="插入后会带底纹，仍需确认采用"><IconPlus aria-hidden="true" />作为候选插入</button> : null}
       {canRevise ? <button onClick={() => onRevise(item.text)} title="按这条建议生成选区改写候选"><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
       <button onClick={onCard} title="先生成知识卡片预览"><IconArchive aria-hidden="true" />沉淀</button>
     </footer> : null}
   </article>;
 }
 
-function AssistantPane({ scopeId, document, materials, profile, selection, onInsert, onRevision, onExpert, reportBusy }) {
+export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, onExpert, reportBusy = false, standalone = false }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -141,8 +154,8 @@ function AssistantPane({ scopeId, document, materials, profile, selection, onIns
 
   function chooseExpert(item) {
     setMenu("");
-    if (item.mention) { setInput(item.mention); inputRef.current?.focus(); return; }
-    onExpert(item.id);
+    if (standalone || item.mention) { setInput(item.mention || `@${item.label} `); inputRef.current?.focus(); return; }
+    onExpert?.(item.id);
   }
 
   function chooseSkill(item) {
@@ -150,25 +163,28 @@ function AssistantPane({ scopeId, document, materials, profile, selection, onIns
     if (item.card) { setCardOpen(true); return; }
     if (item.revision) {
       if (!selection?.text) { setError(new Error(`先在正文里选中一段，再使用“${item.label}”`)); return; }
-      onRevision({ mode: item.revision, label: revisionLabel[item.revision], instruction: "", selection });
+      onRevision?.({ mode: item.revision, label: revisionLabel[item.revision], instruction: "", selection });
       return;
     }
     setInput(item.prompt || ""); inputRef.current?.focus();
   }
 
-  return <div className="assistant-pane">
+  const availableSkills = standalone ? STANDALONE_SKILLS : SKILLS;
+
+  return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}`}>
     <header className="assistant-pane__context">
       <div>
-        <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>
+        <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{standalone ? "独立对话" : selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>
+        {standalone ? <span className="assistant-context-chip">知识库 · 公开网页</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
-      <button onClick={newConversation} title="清空这篇内容的对话，另开一轮" aria-label="新对话"><IconHistory aria-hidden="true" /></button>
+      <button onClick={newConversation} title="清空当前对话，另开一轮" aria-label="新对话"><IconHistory aria-hidden="true" /></button>
     </header>
 
     <div className="assistant-thread">
-      {!messages.length && !busy ? <EmptyAssistant onPrompt={send} /> : null}
-      {messages.map((item) => <Message key={item.id} item={item} canRevise={!!selection?.text} onRevise={(advice) => onRevision({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
-      {busy ? <Working label="Harness 正在理解并调用工具" /> : null}
+      {!messages.length && !busy ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
+      {messages.map((item) => <Message key={item.id} item={item} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
+      {busy ? <Working label="AI 助手正在处理" /> : null}
       {error ? <div className="assistant-error" role="alert"><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <p>{error.hint}</p> : null}<button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试这条</button></div> : null}
       <div ref={endRef} />
     </div>
@@ -181,17 +197,17 @@ function AssistantPane({ scopeId, document, materials, profile, selection, onIns
           {styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </div>
-      <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="问当前内容，或输入 @ 调专家、/ 使用 Skill…" rows="3" disabled={busy} />
+      <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={standalone ? "问任何问题，或输入 @ 调专家、/ 使用 Skill…" : "问当前内容，或输入 @ 调专家、/ 使用 Skill…"} rows="3" disabled={busy} />
       {menu ? <div className="assistant-command-menu" role="menu">
         <header>{menu === "experts" ? "调用专家" : "使用 Skill"}<button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
-        {(menu === "experts" ? EXPERTS : SKILLS).map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => menu === "experts" ? chooseExpert(item) : chooseSkill(item)} disabled={reportBusy && !item.mention}><b>{item.label}</b><small>{item.hint}</small></button>)}
+        {(menu === "experts" ? EXPERTS : availableSkills).map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => menu === "experts" ? chooseExpert(item) : chooseSkill(item)} disabled={!standalone && reportBusy && !item.mention}><b>{item.label}</b><small>{item.hint}</small></button>)}
       </div> : null}
       <footer>
         <div><button type="button" onClick={() => setMenu(menu === "experts" ? "" : "experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button><button type="button" onClick={() => setMenu(menu === "skills" ? "" : "skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button></div>
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim()} aria-label="发送"><IconSend aria-hidden="true" /></button>}
       </footer>
     </form>
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title, type: "内容项目对话", engine: "DeepSeek Harness" }} />
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "DeepSeek Harness" }} />
   </div>;
 }
 

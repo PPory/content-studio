@@ -593,8 +593,15 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   // 反过来也钉：多出来的图标说明某一项被删了而这儿忘了跟着删
   check("图标表里没有多余的键", iconKeys.every((k) => labelKeys.includes(k)),
     `多出 ${iconKeys.filter((k) => !labelKeys.includes(k)).join("/") || "无"}`);
-  // 一级标签一律两个字（冒烟测试也钉，这儿是更早的一道）
-  check("一级导航标签都是两个字", Object.values(NAV_LABELS).every((n) => n.length === 2), Object.values(NAV_LABELS).join("/"));
+  // 任务标签保持两个汉字；产品名「AI助手」按用户可识别名称保留。
+  check("一级导航标签保持短名称", Object.entries(NAV_LABELS).every(([key, name]) => key === "assistant" ? name === "AI助手" : name.length === 2), Object.values(NAV_LABELS).join("/"));
+}
+
+{
+  const { assistantRetrievalRequested } = await import("../server/agent-runtime/assistant-runner.mjs");
+  check("普通写作对话不预搜资料源", !assistantRetrievalRequested({ message: "帮我看看这段话的逻辑" }));
+  check("明确知识库请求会启用检索", assistantRetrievalRequested({ message: "去我的知识库里找两个案例" }));
+  check("明确事实核查会启用检索", assistantRetrievalRequested({ message: "请联网核实这组数据" }));
 }
 
 {

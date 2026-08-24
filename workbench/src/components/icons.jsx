@@ -129,6 +129,7 @@ import {
   IconStack2 as Stack,
   IconBrandWechat as Typeset,
   IconChartLine as ChartLine,
+  IconSparkles as Assistant,
 } from "@tabler/icons-react";
 
 /**
@@ -171,6 +172,7 @@ export function BrandMark() {
  */
 export const NAV_ICONS = {
   today: Home,
+  assistant: Assistant,
   content: Stack,
   typeset: Typeset,
   discover: Radar,

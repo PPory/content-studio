@@ -211,7 +211,7 @@ await page.route("**/api/assistant/**", async (route) => {
   assistantMessages = [
     ...assistantMessages,
     { id: `user-${assistantMessages.length}`, role: "user", text: body.message, createdAt: new Date().toISOString() },
-    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "DeepSeek Harness" },
+    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "DeepSeek Harness", durationMs: 180 },
   ];
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
 });
@@ -608,6 +608,21 @@ try {
   assert((await page.textContent(".ai-draft-history")).includes("已弃用"), "弃用决定没有进入持久修订历史");
   await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
   await page.click('.ws-edit__foot button:has-text("取消")');
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });
+  await page.click('.sidebar .nav-item:has-text("AI助手")');
+  await page.waitForSelector(".assistant-page .assistant-pane--standalone");
+  assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
+  const composerBefore = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
+  assert(composerBefore && composerBefore.y + composerBefore.height >= 860 && composerBefore.y + composerBefore.height <= 900, `独立对话输入框没有贴底：${JSON.stringify(composerBefore)}`);
+  await page.fill('.assistant-pane--standalone textarea[placeholder*="问任何问题"]', "帮我找一个值得继续思考的问题");
+  await page.click('.assistant-pane--standalone button[aria-label="发送"]');
+  await page.waitForSelector(".assistant-pane--standalone .assistant-working");
+  const composerDuring = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
+  assert(Math.abs(composerDuring.y - composerBefore.y) < 2, "AI 运行时输入框发生了位移");
+  await page.waitForFunction(() => document.querySelector(".assistant-pane--standalone .assistant-message--assistant")?.textContent.includes("0.2s"));
+  assert(!(await page.$('.assistant-pane--standalone button:has-text("作为候选插入")')), "独立对话不应出现稿件插入操作");
+  console.log("✓ 左侧 AI 助手打开独立对话页，输入框始终贴底");
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
   console.log("✓ 连续两次 AI 小推动都返回新结果");
