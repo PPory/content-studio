@@ -1996,11 +1996,12 @@ svg[data-tone] { color: var(--tone); }
 .writing-profile-settings { display: flex; flex-direction: column; gap: 20px; }
 .profile-field { display: flex; flex-direction: column; gap: 6px; }
 .profile-field > span, .profile-experts b { color: var(--text-1); font-size: var(--fs-base); font-weight: 600; }
-.profile-field input, .profile-field select {
+.profile-field input, .profile-field select, .profile-field textarea {
   width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--border-strong);
   border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit;
 }
-.profile-field input:focus, .profile-field select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.profile-field textarea { resize: vertical; line-height: 1.6; }
+.profile-field input:focus, .profile-field select:focus, .profile-field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .profile-field small, .profile-experts p, .profile-source small { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
 .profile-experts { padding-top: 2px; }
 .profile-experts > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -2020,6 +2021,27 @@ svg[data-tone] { color: var(--tone); }
 .profile-save { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
 .profile-save > span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-xs); }
 .profile-save > span svg { width: 14px; height: 14px; }
+.profile-style-editor, .profile-calibration { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
+.profile-style-editor > header, .profile-calibration > header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.profile-style-editor > header div, .profile-calibration > header div { display: grid; gap: 3px; }
+.profile-style-editor > header small, .profile-calibration > header small, .profile-calibration > p { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
+.profile-style-editor > header b, .profile-calibration > header b { font-size: var(--fs-base); }
+.profile-calibration > header > button, .profile-inline-actions > button:not(.btn) { border: 1px solid var(--border-strong); border-radius: var(--r-ctl); background: var(--surface); padding: 7px 10px; cursor: pointer; }
+.profile-inline-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-inline-actions > span { color: var(--text-3); font-size: var(--fs-xs); }
+.profile-samples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; max-height: 240px; overflow: auto; }
+.profile-samples label { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); cursor: pointer; }
+.profile-samples label[data-on="true"] { border-color: var(--text-1); box-shadow: inset 0 0 0 1px var(--text-1); }
+.profile-samples input { grid-row: 1 / 3; align-self: center; }
+.profile-samples span { overflow: hidden; font-size: var(--fs-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.profile-samples small { color: var(--text-3); font-size: var(--fs-2xs); }
+.profile-calibration__result { display: grid; gap: 9px; padding: 12px; border-radius: var(--r-ctl); background: var(--surface); }
+.profile-calibration__result p { margin: 0; line-height: 1.6; }
+.profile-calibration__result dl { display: grid; gap: 7px; margin: 0; }
+.profile-calibration__result dl div { display: grid; grid-template-columns: 74px 1fr; gap: 10px; }
+.profile-calibration__result dt { color: var(--text-3); font-size: var(--fs-xs); }
+.profile-calibration__result dd { margin: 0; font-size: var(--fs-sm); }
+@media (max-width: 700px) { .profile-samples { grid-template-columns: 1fr; } }
 
 /* 新建空稿退出提示：只确认一个决定，不长成一张新的流程表单。 */
 .project-leave-scrim { z-index: 120; }

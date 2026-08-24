@@ -1,4 +1,5 @@
 node_modules/
+.xenho/
 tmp/
 *.log
 .DS_Store

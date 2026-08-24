@@ -634,14 +634,16 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
 
   const records = await loadWritingRecords();
   check("工作台自带六位写作专家", records.experts.length === 6, records.experts.map((item) => item.name).join("/"));
-  check("工作台自带五种可选风格", records.styles.length === 5, records.styles.map((item) => item.name).join("/"));
+  check("工作台自带个人风格和五种基础风格", records.styles.length === 6 && records.styles.some((item) => item.id === "my-style"), records.styles.map((item) => item.name).join("/"));
   check("专家团不包含排版和笔记整理", records.experts.every((item) => !/排版|整理/.test(item.name)));
-  check("素材与事实专家不冒充已联网查证", records.experts.filter((item) => /素材|事实/.test(item.name)).every((item) => /待核|不能|不把|无法/.test(item.instructions)));
+  check("素材与事实专家必须使用真实检索并保留证据边界", records.experts.filter((item) => /素材|事实/.test(item.name)).every((item) => /knowledge_search/.test(item.instructions) && /web_search/.test(item.instructions)));
   check("六项专家能力都标明真实出现位置", records.experts.every((item) => item.scene) && records.experts.find((item) => item.id === "topic-editor")?.scene === "找题 / 选题");
   check("风格提示词覆盖只接受内置风格且保留换行", JSON.stringify(normalizeWritingStyleOverrides({ "clear-direct": "第一行\n第二行", unknown: "不该留下" })) === JSON.stringify({ "clear-direct": "第一行\n第二行" }));
   const assist = await fs.readFile(new URL("../src/components/WritingAssist.jsx", import.meta.url), "utf8");
   check("编辑器不再显示统一专家下拉框", !/本轮专家|changeExpert/.test(assist));
-  check("风格提示词在编辑器中可查看和保存", /实际发送给 AI 的风格提示词/.test(assist) && /saveWritingStyle/.test(assist));
+  check("编辑器只在帮我写中选择风格，不再修改提示词", /这次用什么语气写/.test(assist) && !/saveWritingStyle/.test(assist));
+  const writingSettings = await fs.readFile(new URL("../src/components/SettingsWritingProfile.jsx", import.meta.url), "utf8");
+  check("风格提示词统一在设置里修改保存", /实际发送给 AI 的提示词/.test(writingSettings) && /saveWritingStyle/.test(writingSettings));
   check("素材审稿核查是三个独立任务", ["material-audit", "quality-review", "fact-check"].every((mode) => assist.includes(mode)));
 
   const { brainstormPromptParts } = await import("../server/routes/agent.mjs");

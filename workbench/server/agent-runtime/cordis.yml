@@ -1,0 +1,41 @@
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+  config:
+    maxTokensAsSuccess: false
+
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      xenho:
+        displayName: Xenho expert model
+        apiKeyEnv: XENHO_LLM_API_KEY
+        api: !!js process.env.XENHO_LLM_PROTOCOL ?? 'openai-completions'
+        baseURL: !!js process.env.XENHO_LLM_BASE_URL
+        models:
+          - id: !!js process.env.XENHO_LLM_MODEL
+            name: !!js process.env.XENHO_LLM_MODEL
+            contextWindow: !!js Number(process.env.XENHO_LLM_CONTEXT_WINDOW ?? 131072)
+            maxTokens: !!js Number(process.env.XENHO_LLM_MAX_TOKENS ?? 8192)
+
+- id: agent-spine
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    persona: !!js process.env.XENHO_EXPERT_PERSONA
+    workspaceContext: false
+    skills:
+      enabled: false
+    toolBash: false
+    toolJobs: false
+    goals: false
+
+- id: xenho-tools
+  name: './xenho-tools.mjs'
+
+- id: sessions
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js process.env.XENHO_SESSION_ROOT
+    compression: none

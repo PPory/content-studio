@@ -27,6 +27,7 @@ export function SelectionRevisionMenu({ selection, onRun, onClose }) {
   const [customMode, setCustomMode] = useState("");
   const [instruction, setInstruction] = useState("");
   const inputRef = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (customMode) inputRef.current?.focus();
@@ -35,11 +36,17 @@ export function SelectionRevisionMenu({ selection, onRun, onClose }) {
     const close = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      event.stopImmediatePropagation();
       onClose();
     };
+    const closeOutside = (event) => {
+      if (!menuRef.current?.contains(event.target)) onClose();
+    };
     window.addEventListener("keydown", close, true);
-    return () => window.removeEventListener("keydown", close, true);
+    document.addEventListener("pointerdown", closeOutside, true);
+    return () => {
+      window.removeEventListener("keydown", close, true);
+      document.removeEventListener("pointerdown", closeOutside, true);
+    };
   }, [onClose]);
 
   const choose = (action) => {
@@ -55,6 +62,7 @@ export function SelectionRevisionMenu({ selection, onRun, onClose }) {
 
   return (
     <div
+      ref={menuRef}
       className="text-revision-menu"
       data-placement={selection.placement}
       style={{ left: selection.left, top: selection.top }}

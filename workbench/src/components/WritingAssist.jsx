@@ -12,9 +12,9 @@ import {
   IconSend,
   IconShieldCheck,
   IconSparkles,
-  IconTypography,
   IconX,
 } from "./icons.jsx";
+import { ExpertTaskPanel } from "./ExpertTaskPanel.jsx";
 import "./writing-assist.css";
 
 /**
@@ -57,21 +57,19 @@ const storedStyle = (scopeId) => {
   try { return localStorage.getItem(styleStorageKey(scopeId)) || ""; } catch { return ""; }
 };
 
-export function WritingAssist({ title, body, platform, profile, materials = [], scopeId = "", getCursor, onInsert }) {
+export function WritingAssist({ title, body, platform, profile, materials = [], scopeId = "", getCursor, getSelection, onInsert }) {
   const [open, setOpen] = useState(false);
-  const [styleOpen, setStyleOpen] = useState(false);
   const [checkMenu, setCheckMenu] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
   const [activeCheck, setActiveCheck] = useState("");
+  const [expertRun, setExpertRun] = useState(null);
+  const [checkBusy, setCheckBusy] = useState(false);
   const [mode, setMode] = useState("think");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [styles, setStyles] = useState([]);
   const [styleId, setStyleId] = useState("");
-  const [stylePrompt, setStylePrompt] = useState("");
-  const [styleBusy, setStyleBusy] = useState(false);
-  const [styleSaved, setStyleSaved] = useState(false);
   const [chat, setChat] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatStream, setChatStream] = useState("");
@@ -81,6 +79,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
   const abort = useRef(null);
   const chatEnd = useRef(null);
   const styleInitialized = useRef(false);
+  const rootRef = useRef(null);
 
   const experts = (profile?.experts || []).filter((item) => item.enabled);
   const writer = experts.find((item) => item.id === "writing-coach") || null;
@@ -99,9 +98,23 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
     const nextId = nextStyles.some((item) => item.id === savedId) ? savedId : fallback;
     const nextStyle = nextStyles.find((item) => item.id === nextId);
     setStyleId(nextStyle?.id || "");
-    setStylePrompt(nextStyle?.instructions || "");
     styleInitialized.current = true;
   }, [profile, scopeId]);
+
+  useEffect(() => {
+    const dismiss = (event) => {
+      if (event.type === "keydown" && event.key !== "Escape") return;
+      if (event.type === "pointerdown" && rootRef.current?.contains(event.target)) return;
+      setOpen(false);
+      setCheckMenu(false);
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("keydown", dismiss, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("keydown", dismiss, true);
+    };
+  }, []);
 
   function localStarter() {
     setResult((current) => {
@@ -117,7 +130,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
     setError(null);
   }
 
-  async function ask(nextMode = "nudge", check = null) {
+  async function ask(nextMode = "nudge") {
     abort.current?.abort();
     const ac = new AbortController();
     abort.current = ac;
@@ -132,8 +145,8 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
         cursor: Math.max(0, Math.min(body.length, Number(getCursor?.()) || 0)),
         platform,
         materials: materialContext,
-        expert: (check || writer) ? `${(check || writer).name}\n${(check || writer).instructions}` : "",
-        style: check ? "" : style ? `${style.name}\n${style.instructions}` : "",
+        expert: writer ? `${writer.name}\n${writer.instructions}` : "",
+        style: ["paragraph", "finish"].includes(nextMode) && style ? `${style.name}\n${style.instructions}` : "",
       }, ac.signal);
       setResult({ mode: nextMode, kind: response.kind, text: response.text });
     } catch (cause) {
@@ -168,7 +181,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
         materials: materialContext,
         phase,
         expert: writer,
-        style,
+        style: null,
         onSession: (id) => { if (id) setChatSession(id); },
         onChunk: setChatStream,
       });
@@ -184,9 +197,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
 
   function show() {
     if (open) return setOpen(false);
-    setStyleOpen(false);
     setCheckMenu(false);
-    setCheckOpen(false);
     setOpen(true);
     setMode("think");
     if (!body.trim()) localStarter();
@@ -196,8 +207,6 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
   function chooseStyle(nextId) {
     const next = styles.find((item) => item.id === nextId) || null;
     setStyleId(next?.id || "");
-    setStylePrompt(next?.instructions || "");
-    setStyleSaved(false);
     try {
       const key = styleStorageKey(scopeId);
       if (key) {
@@ -209,40 +218,28 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
     }
   }
 
-  async function saveStylePrompt() {
-    if (!style || !stylePrompt.trim() || styleBusy) return;
-    setStyleBusy(true);
-    setError(null);
-    setStyleSaved(false);
-    try {
-      const next = await api.saveWritingStyle({ id: style.id, instructions: stylePrompt });
-      setStyles((next.styles || []).filter((item) => item.enabled));
-      const saved = (next.styles || []).find((item) => item.id === style.id);
-      setStylePrompt(saved?.instructions || stylePrompt.trim());
-      setStyleSaved(true);
-    } catch (cause) {
-      setError(cause);
-    } finally {
-      setStyleBusy(false);
-    }
-  }
-
-  function restoreStylePrompt() {
-    if (!style) return;
-    setStylePrompt(style.defaultInstructions || style.instructions);
-    setStyleSaved(false);
-  }
-
-  function runCheck(checkId) {
+  async function runCheck(checkId) {
     const spec = CHECKS.find((item) => item.id === checkId);
     const expert = experts.find((item) => item.id === spec?.expertId);
-    if (!spec || !expert || !body.trim()) return;
+    if (!spec || !expert || !body.trim() || checkBusy) return;
     setOpen(false);
-    setStyleOpen(false);
     setCheckMenu(false);
     setCheckOpen(true);
     setActiveCheck(checkId);
-    ask(checkId, expert);
+    setCheckBusy(true);
+    setExpertRun({ kind: { "material-audit": "material-research", "quality-review": "quality-review", "fact-check": "fact-check" }[checkId], status: "queued", stageLabel: "准备专家任务", percent: 2 });
+    try {
+      const response = await api.startExpertRun({
+        kind: { "material-audit": "material-research", "quality-review": "quality-review", "fact-check": "fact-check" }[checkId],
+        scopeId,
+        document: { title, body, platform, audience, selection: getSelection?.() || null },
+      });
+      setExpertRun(response.run);
+    } catch (cause) {
+      setExpertRun((run) => ({ ...run, status: "failed", error: cause.message, hint: cause.hint }));
+    } finally {
+      setCheckBusy(false);
+    }
   }
 
   function pickMode(next) {
@@ -273,53 +270,8 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
     setOpen(false);
   }
 
-  const checkSpec = CHECKS.find((item) => item.id === activeCheck);
-  const styleDirty = !!style && stylePrompt.trim() !== style.instructions;
-
   return (
-    <div className="writing-assist">
-      <div className="writing-style">
-        <button
-          className="writing-tool-btn"
-          onClick={() => { setStyleOpen((value) => !value); setOpen(false); setCheckMenu(false); setCheckOpen(false); setError(null); }}
-          aria-expanded={styleOpen}
-          title="选择本篇风格，查看或修改实际提示词"
-        >
-          <IconTypography aria-hidden="true" />风格 · {style?.name || "原本语气"}
-        </button>
-        {styleOpen ? (
-          <section className="writing-style__card" aria-label="本篇写作风格">
-            <header>
-              <div><small>本篇写作风格</small><strong>选一种语气，也可以直接改它的提示词</strong></div>
-              <button onClick={() => setStyleOpen(false)} aria-label="关闭风格设置"><IconX aria-hidden="true" /></button>
-            </header>
-            <div className="writing-style__choices">
-              <button data-on={!styleId} onClick={() => chooseStyle("")}><b>原本语气</b><span>不额外添加风格要求</span></button>
-              {styles.map((item) => (
-                <button key={item.id} data-on={styleId === item.id} onClick={() => chooseStyle(item.id)}>
-                  <b>{item.name}{item.customized ? <em>已修改</em> : null}</b><span>{item.description}</span>
-                </button>
-              ))}
-            </div>
-            {style ? (
-              <div className="writing-style__prompt">
-                <label htmlFor={`style-prompt-${style.id}`}>实际发送给 AI 的风格提示词</label>
-                <textarea id={`style-prompt-${style.id}`} rows={7} value={stylePrompt} maxLength={6000} onChange={(event) => { setStylePrompt(event.target.value); setStyleSaved(false); }} />
-                <small>修改后会保存为工作台里的这套风格；正文不会自动变化，下一次 AI 协作才使用。</small>
-                {error ? <span className="writing-style__error">{error.message}</span> : null}
-                <footer>
-                  <button onClick={restoreStylePrompt} disabled={stylePrompt === (style.defaultInstructions || style.instructions)}>恢复内置提示词</button>
-                  <button className="is-primary" onClick={saveStylePrompt} disabled={!styleDirty || !stylePrompt.trim() || styleBusy}>
-                    {styleBusy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{styleSaved ? "已保存" : "保存提示词"}
-                  </button>
-                </footer>
-              </div>
-            ) : <p className="writing-style__plain">AI 只沿用正文已有的语气和节奏，不额外套用风格提示词。</p>}
-            <p className="writing-style__scope">本篇选择会留在这台工作台；新文章的默认风格仍在“设置 → 我的创作”里决定。</p>
-          </section>
-        ) : null}
-      </div>
-
+    <div className="writing-assist" ref={rootRef}>
       <button className="writing-assist__trigger" onClick={show} aria-expanded={open} aria-busy={busy && open} title="由写作教练推动一步、聊清想法，或生成候选">
         {busy && open ? <IconLoader2 aria-hidden="true" /> : <IconSparkles aria-hidden="true" />}AI 协作
       </button>
@@ -327,7 +279,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
       <div className="writing-checks">
         <button
           className="writing-tool-btn"
-          onClick={() => { setCheckMenu((value) => !value); setOpen(false); setStyleOpen(false); setCheckOpen(false); setError(null); }}
+          onClick={() => { setCheckMenu((value) => !value); setOpen(false); setError(null); }}
           aria-expanded={checkMenu || checkOpen}
           title="对正文做素材、质量或事实检查"
         ><IconShieldCheck aria-hidden="true" />检查</button>
@@ -355,9 +307,18 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
           </header>
 
           <div className="writing-assist__context">
-            <span>写作教练</span><span>风格 · {style?.name || "原本语气"}</span>
+            <span>写作教练</span>{mode === "write" ? <span>风格顾问 · {style?.name || "原本语气"}</span> : null}
             <small>这里负责推动和生成候选；素材查缺、审稿和核查在编辑器的“检查”里。</small>
           </div>
+
+          {mode === "write" ? <label className="writing-assist__style-select">
+            <span>这次用什么语气写</span>
+            <select value={styleId} onChange={(event) => chooseStyle(event.target.value)}>
+              <option value="">原本语气</option>
+              {styles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}
+            </select>
+            <small>{style?.description || "只沿用当前正文已有的语气和节奏。提示词在设置里修改。"}</small>
+          </label> : null}
 
           {mode === "chat" ? (
             <div className="writing-assist__chat">
@@ -434,21 +395,7 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
         </section>
       ) : null}
 
-      {checkOpen ? (
-        <section className="writing-check__card" aria-label={checkSpec?.label || "正文检查"} aria-live="polite">
-          <header>
-            <div><small>{checkSpec?.label}</small><strong>{checkSpec?.description}</strong></div>
-            <button onClick={() => setCheckOpen(false)} aria-label="关闭检查结果"><IconX aria-hidden="true" /></button>
-          </header>
-          {busy ? <div className="writing-check__wait"><IconLoader2 className="spin" aria-hidden="true" />正在对照全文和项目素材检查…</div> : null}
-          {error ? <div className="writing-check__error"><strong>{error.message}</strong>{error.hint ? <small>{error.hint}</small> : null}</div> : null}
-          {result ? <div className="writing-check__report"><small>{result.kind}</small><p>{result.text}</p></div> : null}
-          <footer>
-            <span>只给检查报告，不会改动正文。</span>
-            <button onClick={() => runCheck(activeCheck)} disabled={busy}><IconRefresh aria-hidden="true" />重新检查</button>
-          </footer>
-        </section>
-      ) : null}
+      {checkOpen ? <ExpertTaskPanel run={expertRun} onRunChange={setExpertRun} onClose={() => setCheckOpen(false)} onRetry={() => runCheck(activeCheck)} /> : null}
     </div>
   );
 }

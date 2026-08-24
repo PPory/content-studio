@@ -87,6 +87,12 @@ export const NAV = [
         checks: ["deepl", "firecrawl", "sixty", "agent"],
       },
       {
+        key: "expert-runtime",
+        kind: "env",
+        label: "专家执行",
+        desc: "素材查缺、品控九问和事实核查由工作台内置的 Harness 执行。模型连接只在本机保存，普通写作仍走原来的流水线。",
+      },
+      {
         key: "paths",
         kind: "env",
         label: "本机路径",
@@ -242,6 +248,44 @@ export const SETTINGS = [
     label: "排版工具外链",
     hint: "另外部署了一份排版工具时填它的地址。",
     why: "工作台里那个内嵌的排版页不受影响，这只是总览页底下多一个跳出去的按钮。",
+  },
+
+  {
+    key: "HARNESS_LLM_BASE_URL",
+    group: "expert-runtime",
+    label: "专家模型地址",
+    placeholder: "https://api.deepseek.com/v1",
+    hint: "填写 OpenAI 兼容接口的根地址。Harness 只通过这一个适配层连接模型。",
+    why: "地址、协议和模型都收口在工作台自己的适配层；以后升级 Harness 时不用改专家、页面或知识库。",
+  },
+  {
+    key: "HARNESS_LLM_MODEL",
+    group: "expert-runtime",
+    label: "专家模型",
+    placeholder: "deepseek-chat",
+    hint: "用于深度研究、品控和事实核查的模型 id。",
+  },
+  {
+    key: "HARNESS_LLM_API_KEY",
+    group: "expert-runtime",
+    label: "专家模型密钥",
+    secret: true,
+    hint: "只写入本机 workbench/.env，不会返回浏览器，也不会写进专家任务记录。",
+  },
+  {
+    key: "HARNESS_LLM_PROTOCOL",
+    group: "expert-runtime",
+    label: "接口协议",
+    placeholder: "openai-completions",
+    hint: "一般填 openai-completions；使用 Responses 接口时填 openai-responses。",
+    effective: () => "openai-completions",
+  },
+  {
+    key: "BRAVE_SEARCH_API_KEY",
+    group: "expert-runtime",
+    label: "联网检索密钥",
+    secret: true,
+    hint: "素材顾问和事实核查用它搜索公开网页；不填时仍会检索本机知识库，并明确标出未联网。",
   },
 
   {

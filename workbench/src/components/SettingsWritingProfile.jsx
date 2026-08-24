@@ -9,6 +9,13 @@ export function SettingsWritingProfile({ onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [activeStyleId, setActiveStyleId] = useState("");
+  const [stylePrompt, setStylePrompt] = useState("");
+  const [styleBusy, setStyleBusy] = useState(false);
+  const [styleSaved, setStyleSaved] = useState(false);
+  const [samples, setSamples] = useState([]);
+  const [selectedSamples, setSelectedSamples] = useState([]);
+  const [calibration, setCalibration] = useState(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -16,6 +23,9 @@ export function SettingsWritingProfile({ onSaved }) {
       .then((next) => {
         setData(next);
         setForm(next.profile);
+        const selected = (next.styles || []).find((item) => item.id === (next.profile?.styleId || "")) || (next.styles || [])[0];
+        setActiveStyleId(selected?.id || "");
+        setStylePrompt(selected?.instructions || "");
       })
       .catch(setError);
   }, []);
@@ -26,6 +36,7 @@ export function SettingsWritingProfile({ onSaved }) {
     .some((key) => String(form[key] || "") !== String(data.profile?.[key] || "")), [data, form]);
   const enabledStyles = (data?.styles || []).filter((item) => item.enabled);
   const enabledExperts = (data?.experts || []).filter((item) => item.enabled);
+  const activeStyle = enabledStyles.find((item) => item.id === activeStyleId);
 
   async function save() {
     if (!dirty || busy) return;
@@ -45,6 +56,77 @@ export function SettingsWritingProfile({ onSaved }) {
     }
   }
 
+  function chooseStyle(id) {
+    const next = enabledStyles.find((item) => item.id === id);
+    setActiveStyleId(id);
+    setStylePrompt(next?.instructions || "");
+    setStyleSaved(false);
+  }
+
+  async function saveStylePrompt(instructions = stylePrompt) {
+    if (!activeStyleId || !String(instructions).trim() || styleBusy) return;
+    setStyleBusy(true);
+    setError(null);
+    try {
+      const next = await api.saveWritingStyle({ id: activeStyleId, instructions });
+      setData(next);
+      const style = (next.styles || []).find((item) => item.id === activeStyleId);
+      setStylePrompt(style?.instructions || String(instructions).trim());
+      setStyleSaved(true);
+      onSaved?.();
+    } catch (cause) { setError(cause); }
+    finally { setStyleBusy(false); }
+  }
+
+  async function loadSamples() {
+    setError(null);
+    try {
+      const response = await api.list("drafts", { pageSize: 60 });
+      setSamples((response.items || []).filter((item) => item.id && item.title));
+    } catch (cause) { setError(cause); }
+  }
+
+  async function calibrate() {
+    if (selectedSamples.length < 3 || selectedSamples.length > 5 || styleBusy) return;
+    setStyleBusy(true);
+    setCalibration({ status: "loading", stageLabel: "读取旧文样本" });
+    setError(null);
+    try {
+      const pages = await Promise.all(selectedSamples.map((id) => api.page(id, "drafts")));
+      const bodies = pages.map((page, index) => {
+        const item = page.page || page.item || page;
+        const text = item.content || item.markdown || item.body || item.note || "";
+        const title = item.title || samples.find((sample) => sample.id === selectedSamples[index])?.title || `样本 ${index + 1}`;
+        return `# ${title}\n\n${text}`;
+      }).filter((text) => text.trim().length > 20);
+      if (bodies.length < 3) throw new Error("至少需要 3 篇有正文的旧文");
+      let run = (await api.startExpertRun({ kind: "style-calibration", scopeId: "writing-style-calibration", document: { title: "我的写作风格样本", body: bodies.join("\n\n---\n\n"), audience: form.audience, platform: form.platform } })).run;
+      setCalibration(run);
+      while (["queued", "running"].includes(run.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        run = (await api.expertRun(run.id)).run;
+        setCalibration(run);
+      }
+    } catch (cause) {
+      setCalibration({ status: "failed", error: cause.message, hint: cause.hint });
+    } finally { setStyleBusy(false); }
+  }
+
+  async function adoptCalibration() {
+    const instructions = calibration?.report?.instructions;
+    if (!instructions || styleBusy) return;
+    setStyleBusy(true);
+    setError(null);
+    try {
+      const next = await api.saveWritingStyle({ id: "my-style", instructions });
+      setData(next);
+      setActiveStyleId("my-style");
+      setStylePrompt(instructions);
+      setStyleSaved(true);
+    } catch (cause) { setError(cause); }
+    finally { setStyleBusy(false); }
+  }
+
   if (!data && !error) return <p className="field-hint">读取中…</p>;
 
   return (
@@ -61,6 +143,37 @@ export function SettingsWritingProfile({ onSaved }) {
         />
         <small>以后新建内容会自动带上；老项目和已经写下的正文不会被改动。</small>
       </label>
+
+      <section className="profile-style-editor" aria-label="风格提示词设置">
+        <header><div><b>风格提示词</b><small>编辑器只负责调用；提示词统一在这里修改和保存。</small></div></header>
+        <label className="profile-field">
+          <span>选择要维护的风格</span>
+          <select value={activeStyleId} onChange={(event) => chooseStyle(event.target.value)}>
+            {enabledStyles.map((style) => <option key={style.id} value={style.id}>{style.name}{style.customized ? " · 已修改" : ""}</option>)}
+          </select>
+        </label>
+        {activeStyle ? <label className="profile-field">
+          <span>实际发送给 AI 的提示词</span>
+          <textarea rows={8} maxLength={6000} value={stylePrompt} onChange={(event) => { setStylePrompt(event.target.value); setStyleSaved(false); }} />
+          <small>{activeStyle.description}</small>
+          <div className="profile-inline-actions">
+            <button onClick={() => setStylePrompt(activeStyle.defaultInstructions || activeStyle.instructions)} disabled={stylePrompt === (activeStyle.defaultInstructions || activeStyle.instructions)}>恢复内置版本</button>
+            <button className="btn btn-primary" onClick={() => saveStylePrompt()} disabled={!stylePrompt.trim() || stylePrompt === activeStyle.instructions || styleBusy}>{styleBusy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{styleSaved ? "已保存" : "保存提示词"}</button>
+          </div>
+        </label> : null}
+      </section>
+
+      <section className="profile-calibration" aria-label="从旧文校准风格">
+        <header><div><b>从 3—5 篇旧文生成 / 校准风格</b><small>风格顾问会从六个维度提炼画像，先预览，确认后才保存。</small></div><button onClick={loadSamples}>{samples.length ? "刷新旧文" : "选择旧文"}</button></header>
+        {samples.length ? <div className="profile-samples">{samples.map((sample) => {
+          const checked = selectedSamples.includes(sample.id);
+          return <label key={sample.id} data-on={checked}><input type="checkbox" checked={checked} disabled={!checked && selectedSamples.length >= 5} onChange={() => setSelectedSamples((old) => checked ? old.filter((id) => id !== sample.id) : [...old, sample.id])} /><span>{sample.title}</span><small>{sample.status || sample.platform || "旧稿"}</small></label>;
+        })}</div> : <p>从稿件库选择你真正满意、能代表自己的旧文；不要混入只为临时交付而写的稿子。</p>}
+        {samples.length ? <div className="profile-inline-actions"><span>已选 {selectedSamples.length} 篇{selectedSamples.length < 3 ? "，还需至少 3 篇" : selectedSamples.length > 5 ? "，最多 5 篇" : "，可以开始"}</span><button className="btn btn-primary" onClick={calibrate} disabled={selectedSamples.length < 3 || selectedSamples.length > 5 || styleBusy}>生成 / 校准</button></div> : null}
+        {calibration ? <div className="profile-calibration__result" data-status={calibration.status}>
+          {calibration.status === "done" ? <><b>{calibration.report?.name || "我的风格"}</b><p>{calibration.report?.summary}</p><dl>{Object.entries(calibration.report?.dimensions || {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl><button className="btn btn-primary" onClick={adoptCalibration} disabled={styleBusy}>确认并保存为“我的风格”</button></> : calibration.status === "failed" ? <><b>{calibration.error}</b><small>{calibration.hint}</small></> : <p><IconLoader2 className="spin" aria-hidden="true" />{calibration.stageLabel || "风格顾问正在分析样本"}</p>}
+        </div> : null}
+      </section>
 
       <label className="profile-field">
         <span>常用首发平台</span>

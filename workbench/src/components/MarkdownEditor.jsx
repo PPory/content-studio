@@ -232,6 +232,7 @@ export function MarkdownEditor({
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
   onCursorChange,                 // 当前光标是写作推动的锚点；不改变正文，只上报位置
+  onSelectionChange,              // 有选区时，专家只分析这一段；无选区时回到全文
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
   readOnly = false,
 }) {
@@ -245,6 +246,8 @@ export function MarkdownEditor({
   onCitationsRef.current = onCitations;
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
   const [preview, setPreview] = useState(false);
   const [aiDrafts, setAiDrafts] = useState([]);
   const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
@@ -304,7 +307,12 @@ export function MarkdownEditor({
           }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
-            if (u.selectionSet || u.docChanged) onCursorChangeRef.current?.(u.state.selection.main.head);
+            if (u.selectionSet || u.docChanged) {
+              onCursorChangeRef.current?.(u.state.selection.main.head);
+              const { from, to } = u.state.selection.main;
+              const text = from === to ? "" : u.state.sliceDoc(from, to);
+              onSelectionChangeRef.current?.(text.trim() ? { from, to, text } : null);
+            }
             // 标注的**当下**状态（位置挪过、stale 重算过）回给右侧面板。
             // 面板要靠它说「已用 2 处」和「有 1 处改过了」——那两句话必须跟着编辑走，
             // 而位置只有编辑器这一份是准的。字段没变时是同一个对象，比较引用就够。
@@ -336,6 +344,7 @@ export function MarkdownEditor({
     });
     view.current = v;
     onCursorChangeRef.current?.(v.state.selection.main.head);
+    onSelectionChangeRef.current?.(null);
     const refreshSelection = () => {
       const active = v.state.field(textRevisionField).active;
       setSelectionMenu(revisionScopeRef.current && !previewRef.current && !active ? revisionSelectionOf(v) : null);

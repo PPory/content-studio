@@ -210,6 +210,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [pendingLeave, setPendingLeave] = useState(null);
   const [leaving, setLeaving] = useState(false);
   const cursor = useRef(null);
+  const selection = useRef(null);
   const selectedDraftRef = useRef("");
 
   const acceptProject = useCallback((next, preferredId = "") => {
@@ -640,11 +641,12 @@ ${(form.body || "").slice(0, 3000)}`);
                 insertRequest={insertRequest}
                 onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
                 onCursorChange={(position) => { cursor.current = position; }}
+                onSelectionChange={(value) => { selection.current = value; }}
                 revisionScope={`pipeline:drafts:${draft.id}`}
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
                 readOnly={!draftEditable}
-                toolbarExtra={draftEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} scopeId={draft.id} getCursor={() => cursor.current}
+                toolbarExtra={draftEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} scopeId={draft.id} getCursor={() => cursor.current} getSelection={() => selection.current}
                   onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>

@@ -378,6 +378,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [confirmDel, setConfirmDel] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
   const writingCursor = useRef(0);
+  const writingSelection = useRef(null);
   const armedDel = useConfirmGuard(confirmDel);
 
   useEffect(() => {
@@ -473,6 +474,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           revealText={reveal}
           insertRequest={insertRequest}
           onCursorChange={(position) => { writingCursor.current = position; }}
+          onSelectionChange={(value) => { writingSelection.current = value; }}
           onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
           revisionScope={source.key === "drafts" ? `pipeline:drafts:${item.key}` : ""}
           revisionTitle={title}
@@ -485,6 +487,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
               profile={writingProfile}
               scopeId={`${source.key}:${item.key}`}
               getCursor={() => writingCursor.current}
+              getSelection={() => writingSelection.current}
               onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
             />
           )}

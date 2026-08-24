@@ -38,6 +38,8 @@ const requests = [];
 const brainstormRequests = [];
 const revisionRequests = [];
 const styleSaves = [];
+const expertStarts = [];
+const expertRunStore = new Map();
 const revisionDocuments = new Map();
 const profileFixture = {
   ok: true,
@@ -48,6 +50,7 @@ const profileFixture = {
     { id: "story-led", name: "故事推进", description: "用场景推进观点", enabled: true, instructions: "从真实场景进入。", defaultInstructions: "从真实场景进入。" },
     { id: "practical-guide", name: "实用拆解", description: "给出可执行动作", enabled: true, instructions: "把问题拆成少量步骤。", defaultInstructions: "把问题拆成少量步骤。" },
     { id: "sharp-opinion", name: "鲜明观点", description: "立场明确但有边界", enabled: true, instructions: "尽早亮出判断。", defaultInstructions: "尽早亮出判断。" },
+    { id: "my-style", name: "我的风格", description: "由旧文校准出的个人表达画像", enabled: true, instructions: "保留个人判断和自然停顿。", defaultInstructions: "保留个人判断和自然停顿。" },
   ],
   experts: [
     { id: "topic-editor", name: "选题顾问", enabled: true, instructions: "只在找题和选题工作。" },
@@ -66,6 +69,46 @@ await page.route("**/api/writing-style", (route) => {
   const styles = profileFixture.styles.map((item) => item.id === body.id ? { ...item, instructions: body.instructions, customized: body.instructions !== item.defaultInstructions } : item);
   profileFixture.styles = styles;
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...profileFixture, styles }) });
+});
+await page.route("**/api/expert-runs**", (route) => {
+  const request = route.request();
+  const url = new URL(request.url());
+  const parts = url.pathname.split("/").filter(Boolean);
+  const id = parts[2];
+  if (request.method() === "POST" && parts[3] === "cancel") {
+    const run = { ...expertRunStore.get(id), status: "cancelled", stageLabel: "已中止" };
+    expertRunStore.set(id, run);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run }) });
+  }
+  if (request.method() === "POST" && parts.length === 2) {
+    const input = request.postDataJSON();
+    expertStarts.push(input);
+    const kind = input.kind;
+    const report = kind === "material-research" ? {
+      kind,
+      summary: "有一个关键观点仍缺公开数据，但本地知识卡已经提供了可用案例。",
+      claims: [{ quote: "收藏处理的是焦虑", need: "数据与真实案例", gap: "仍缺一份近年的公开调查", localSources: [{ title: "本地知识卡", path: "知识库/收藏心理.md", excerpt: "收藏行为常被用来缓解错过信息的焦虑。" }], webSources: [{ title: "权威网页来源", url: "https://example.com/research", excerpt: "公开调查样本说明。" }] }],
+      nextSteps: ["确认调查年份与样本范围"],
+    } : kind === "quality-review" ? {
+      kind,
+      summary: "核心判断明确，但读者真实困境还需再具体一步。",
+      strengths: [{ quote: "收藏处理的是焦虑", reason: "一句话抓住了核心矛盾。" }],
+      questions: Array.from({ length: 9 }, (_, index) => ({ id: `q${index + 1}`, status: index < 7 ? "pass" : "revise", finding: `品控问题 ${index + 1}`, direction: index < 7 ? "保留" : "补一处具体情境" })),
+      mustFix: ["补充一个读者当下会遇到的具体场景"],
+    } : {
+      kind,
+      summary: "共提取一项可核查表述，目前证据不足。",
+      claims: [{ quote: "增长 30%", location: "第二段", status: "待核", risk: "缺少统计口径", suggestion: "补充来源和年份", localSources: [], webSources: [{ title: "公开数据页", url: "https://example.com/data", excerpt: "需核对统计口径。" }] }],
+      nextSteps: ["确认原始数据表"],
+    };
+    const run = { id: `expert-test-${expertStarts.length}`, kind, status: "done", stageLabel: "检查完成", percent: 100, localSourceCount: 1, report };
+    expertRunStore.set(run.id, run);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run }) });
+  }
+  if (request.method() === "GET" && id) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run: expertRunStore.get(id) }) });
+  }
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, runs: [] }) });
 });
 await page.route("**/api/pipe/writing-assist", async (route) => {
   const body = route.request().postDataJSON();
@@ -193,18 +236,19 @@ try {
   await page.click('.writing-assist__result button[aria-label="用这句开头"]');
   await page.waitForFunction((text) => document.querySelector(".cm-content")?.textContent.includes(text), secondStarter);
 
-  // 风格是本篇编辑动作：能选择、能看到真实提示词，也能保存修改。
-  await page.click('.writing-tool-btn:has-text("风格")');
-  await page.waitForSelector(".writing-style__card");
-  const styleChoices = await page.$$eval(".writing-style__choices > button", (items) => items.map((item) => item.textContent.trim()));
-  assert(styleChoices.length === 6 && styleChoices.some((item) => item.includes("故事推进")), `风格选项不完整：${styleChoices.join("/")}`);
-  await page.click('.writing-style__choices > button:has-text("故事推进")');
-  assert((await page.inputValue(".writing-style__prompt textarea")) === "从真实场景进入。", "没有显示实际风格提示词");
-  await page.fill(".writing-style__prompt textarea", "从真实场景进入，但不要制造对白。");
-  await page.click('.writing-style__prompt button:has-text("保存提示词")');
-  await page.waitForSelector('.writing-style__prompt button:has-text("已保存")');
-  assert(styleSaves.at(-1)?.id === "story-led" && /不要制造对白/.test(styleSaves.at(-1)?.instructions), "修改后的风格提示词没有保存");
-  await page.click('.writing-style__card > header > button[aria-label="关闭风格设置"]');
+  // 编辑器没有独立风格设置；只有“帮我写”需要选择本次调用的语气。
+  assert(!(await page.$('.writing-tool-btn:has-text("风格")')), "编辑器仍保留了独立风格设置入口");
+  await page.click(".writing-assist__trigger");
+  await page.click('.writing-assist__modes button:has-text("帮我写")');
+  await page.waitForSelector(".writing-assist__style-select select");
+  const styleChoices = await page.$$eval(".writing-assist__style-select select option", (items) => items.map((item) => item.textContent.trim()));
+  assert(styleChoices.length === 7 && styleChoices.some((item) => item.includes("故事推进")) && styleChoices.some((item) => item.includes("我的风格")), `风格选项不完整：${styleChoices.join("/")}`);
+  await page.selectOption(".writing-assist__style-select select", "story-led");
+  assert((await page.textContent(".writing-assist__style-select small")).includes("用场景推进观点"), "帮我写没有显示所选风格说明");
+  assert(styleSaves.length === 0, "编辑器选择风格时不该改写或保存提示词");
+  await page.click('.writing-assist__close');
+  nudges = 0;
+  for (let index = requests.length - 1; index >= 0; index -= 1) if (requests[index].mode === "nudge") requests.splice(index, 1);
 
   // 新稿编辑器同样支持选区工具条；Esc 只收起工具条，不改正文。
   await page.click(".project-draft .cm-content");
@@ -245,26 +289,43 @@ try {
   await page.click('.writing-assist__modes button:has-text("想一想")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("读者最可能反对"));
   assert(nudges === 2, `小推动请求次数不对：${nudges}`);
-  assert(requests.at(-1)?.expert?.includes("写作教练") && requests.at(-1)?.style?.includes("不要制造对白"), "写作教练或本篇风格没有进入 AI 请求");
+  assert(requests.at(-1)?.expert?.includes("写作教练") && !requests.at(-1)?.style, "小推动不该套用写作风格");
 
   // 素材、审稿、核查是独立检查任务，结果只显示报告，不提供插入正文。
   await page.click('.writing-assist__close');
   await page.click('.writing-tool-btn:has-text("检查")');
   const checks = await page.$$eval(".writing-checks__menu > button", (items) => items.map((item) => item.textContent.trim()));
   assert(checks.length === 3 && checks.every((item) => /素材查缺|审一遍|事实核查/.test(item)), `检查任务不完整：${checks.join("/")}`);
+  await page.click(".project-draft .cm-content");
+  await page.waitForSelector(".writing-checks__menu", { state: "detached" });
+  await page.click('.writing-tool-btn:has-text("检查")');
+  await page.click(".project-draft .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.click('.writing-tool-btn:has-text("检查")');
   await page.click('.writing-checks__menu > button:has-text("素材查缺")');
-  await page.waitForFunction(() => document.querySelector(".writing-check__report")?.textContent.includes("下一步去哪找"));
-  const materialAudit = requests.findLast((item) => item.mode === "material-audit");
-  assert(materialAudit?.expert?.includes("素材顾问") && typeof materialAudit?.materials === "string", "素材顾问没有对照项目素材实际运行");
-  assert(!(await page.$(".writing-check__card button[aria-label='插入光标处']")), "检查报告不该提供插入正文动作");
-  await page.click('.writing-check__card > header > button');
+  await page.waitForFunction(() => document.querySelector(".expert-report")?.textContent.includes("本地知识卡"));
+  const materialAudit = expertStarts.at(-1);
+  assert(materialAudit?.kind === "material-research" && materialAudit?.document?.selection?.text?.length === 6, "素材顾问没有围绕当前选区启动真实研究任务");
+  assert((await page.textContent(".expert-report")).includes("权威网页来源"), "素材报告没有展示联网来源");
+  assert(!(await page.$(".expert-task button[aria-label='插入光标处']")), "检查报告不该提供插入正文动作");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".expert-dialog", { state: "detached" });
 
+  await page.click(".project-draft .cm-content");
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
   await page.click(".writing-assist__trigger");
   await page.waitForSelector(".writing-assist__result");
   await page.click('.writing-assist__modes button:has-text("帮我写")');
+  await page.selectOption(".writing-assist__style-select select", "story-led");
   await page.click('.writing-assist__choice button:has-text("续写一段")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("缺少更多方法"));
   const before = await editorValue(".cm-content");
+  const paragraphRequest = requests.findLast((item) => item.mode === "paragraph");
+  assert(paragraphRequest?.style?.includes("从真实场景进入。"), "帮我写没有按所选风格生成候选");
   assert(!before.includes("缺少更多方法"), "候选在确认前就写进了正文");
   await page.click('.writing-assist__result button[aria-label="插入光标处"]');
   await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("缺少更多方法"));
@@ -433,9 +494,9 @@ try {
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
   console.log("✓ 连续两次 AI 小推动都返回新结果");
-  console.log("✓ 风格可在编辑器里选择、查看提示词并保存修改");
+  console.log("✓ 风格提示词不在编辑器修改，只在帮我写时选择并实际进入生成请求");
   console.log("✓ AI 协作固定由写作教练负责，不再出现统一专家下拉框");
-  console.log("✓ 素材查缺、审稿、事实核查成为独立检查任务且不改正文");
+  console.log("✓ 素材查缺启动可持续的专家任务，报告展示本地与网页来源且不改正文");
   console.log("✓ 浮层位于页面顶部中央，等待图标实际播放转动动画");
   console.log("✓ AI 续写先预览，并在当前光标精确插入、不额外换行");
   console.log("✓ 长结果限制高度并在浮层内部滚动");
