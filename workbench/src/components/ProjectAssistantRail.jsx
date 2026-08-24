@@ -9,7 +9,6 @@ import {
   IconCopy,
   IconDatabase,
   IconFileText,
-  IconHistory,
   IconPlus,
   IconRefresh,
   IconSearch,
@@ -69,18 +68,23 @@ function Working({ label = "Harness 正在处理" }) {
 }
 
 function EmptyAssistant({ onPrompt, standalone = false }) {
+  const actions = standalone ? [
+    { icon: IconDatabase, title: "从知识库找关联", detail: "串起书、笔记和近期内容", prompt: "搜索我的知识库，看看最近记录的内容之间有什么关联" },
+    { icon: IconSearch, title: "联网核查一个事实", detail: "搜公开来源，把证据边界说清", prompt: "我想核查一个事实，请先问我要查什么" },
+    { icon: IconSparkles, title: "让专家一起分析", detail: "从写作、素材或品控角度进入", prompt: "我有一个问题想让专家一起分析，请先问我问题是什么" },
+  ] : [
+    { icon: IconShieldCheck, title: "先看一个关键问题", detail: "找出当前稿件最值得先解决的一处", prompt: "帮我看看这篇文章现在最需要解决的一个问题" },
+    { icon: IconFileText, title: "给下一步方向", detail: "结合全文，判断下一段最值得写什么", prompt: "结合当前内容，告诉我下一段最值得写什么" },
+  ];
   return <div className="assistant-empty">
     <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
-    <h3>{standalone ? "从一个问题开始" : "围绕这篇内容，一起往下做"}</h3>
-    <p>{standalone ? "可以直接聊，也可以搜索本地知识库、公开网页，或调用专家一起处理。" : "它能读当前全文和选区，也能通过专家查知识库、搜公开来源。任何改写都会先给候选。"}</p>
-    <div>
-      {standalone ? <>
-        <button onClick={() => onPrompt("搜索我的知识库，看看最近记录的内容之间有什么关联")}>找找最近内容的关联</button>
-        <button onClick={() => onPrompt("根据我的知识库，给我三个今天值得继续思考的问题")}>从知识库找三个问题</button>
-      </> : <>
-        <button onClick={() => onPrompt("帮我看看这篇文章现在最需要解决的一个问题")}>先看一个关键问题</button>
-        <button onClick={() => onPrompt("结合当前内容，告诉我下一段最值得写什么")}>给下一步方向</button>
-      </>}
+    <h3>{standalone ? "今天想一起想清什么？" : "这篇内容，下一步做什么？"}</h3>
+    <p>{standalone ? "直接开始对话，或选一个更明确的入口。" : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。"}</p>
+    <div className="assistant-empty__actions">
+      {actions.map((action) => <button key={action.title} onClick={() => onPrompt(action.prompt)}>
+        <action.icon aria-hidden="true" />
+        <span><b>{action.title}</b><small>{action.detail}</small></span>
+      </button>)}
     </div>
   </div>;
 }
@@ -88,7 +92,7 @@ function EmptyAssistant({ onPrompt, standalone = false }) {
 function Message({ item, canRevise, canInsert, onRevise, onInsert, onCard }) {
   const assistant = item.role === "assistant";
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
-    <small>{assistant ? <>Xenho AI{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</> : "你"}</small>
+    <small>{assistant ? <><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</> : "你"}</small>
     {assistant ? <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} /> : <p>{item.text}</p>}
     {assistant ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
@@ -178,7 +182,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
         {standalone ? <span className="assistant-context-chip">知识库 · 公开网页</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
-      <button onClick={newConversation} title="清空当前对话，另开一轮" aria-label="新对话"><IconHistory aria-hidden="true" /></button>
+      <button onClick={newConversation} title="清空当前对话，另开一轮" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
     </header>
 
     <div className="assistant-thread">
@@ -204,6 +208,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       </div> : null}
       <footer>
         <div><button type="button" onClick={() => setMenu(menu === "experts" ? "" : "experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button><button type="button" onClick={() => setMenu(menu === "skills" ? "" : "skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button></div>
+        <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim()} aria-label="发送"><IconSend aria-hidden="true" /></button>}
       </footer>
     </form>

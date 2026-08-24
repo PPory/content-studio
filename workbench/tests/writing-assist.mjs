@@ -614,7 +614,9 @@ try {
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
   const composerBefore = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
-  assert(composerBefore && composerBefore.y + composerBefore.height >= 860 && composerBefore.y + composerBefore.height <= 900, `独立对话输入框没有贴底：${JSON.stringify(composerBefore)}`);
+  const canvasBox = await page.locator(".assistant-page__canvas").boundingBox();
+  const composerGap = canvasBox && composerBefore ? canvasBox.y + canvasBox.height - composerBefore.y - composerBefore.height : -1;
+  assert(composerBefore && composerGap >= 10 && composerGap <= 28, `独立对话输入框没有贴着对话画布底部：gap=${composerGap}`);
   await page.fill('.assistant-pane--standalone textarea[placeholder*="问任何问题"]', "帮我找一个值得继续思考的问题");
   await page.click('.assistant-pane--standalone button[aria-label="发送"]');
   await page.waitForSelector(".assistant-pane--standalone .assistant-working");
