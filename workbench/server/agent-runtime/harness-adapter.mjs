@@ -18,6 +18,9 @@ const PACKAGES = [
   "@deepseek-ai/dsh-llm-pi-ai",
   "@deepseek-ai/dsh-tools",
   "@deepseek-ai/dsh-session-persistence-jsonl",
+  "@deepseek-ai/dsh-web",
+  "@deepseek-ai/dsh-tool-web",
+  "@deepseek-ai/dsh-web-fetch-http",
 ];
 
 async function installedVersions() {
@@ -55,7 +58,7 @@ export function harnessChildEnv(env, runDir, kind, options = {}) {
     ...out,
     XENHO_LLM_API_KEY: String(env.HARNESS_LLM_API_KEY || "").trim(),
     XENHO_LLM_BASE_URL: String(env.HARNESS_LLM_BASE_URL || "").trim(),
-    XENHO_LLM_MODEL: String(env.HARNESS_LLM_MODEL || "").trim(),
+    XENHO_LLM_MODEL: String(options.model || env.HARNESS_LLM_MODEL || "").trim(),
     XENHO_LLM_PROTOCOL: String(env.HARNESS_LLM_PROTOCOL || "openai-completions").trim(),
     XENHO_LLM_CONTEXT_WINDOW: String(env.HARNESS_LLM_CONTEXT_WINDOW || "131072").trim(),
     XENHO_LLM_MAX_TOKENS: String(env.HARNESS_LLM_MAX_TOKENS || "8192").trim(),
@@ -77,7 +80,7 @@ function launchConfig(env, runDir, kind, bin, options = {}) {
   };
 }
 
-export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens }) {
+export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens, model }) {
   const info = await harnessRuntimeInfo(env);
   if (!info.available) throw Object.assign(new Error(`Harness ${info.version} 兼容检查未通过`), { hint: info.reason });
   if (!info.configured) {
@@ -86,7 +89,8 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
     });
   }
   const bin = fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-sdk-jsonrpc-demo/bin"));
-  const launch = launchConfig(env, runDir, kind, bin, { persona, sessionRoot });
+  const selectedModel = String(model || env.HARNESS_LLM_MODEL || "").trim();
+  const launch = launchConfig(env, runDir, kind, bin, { persona, sessionRoot, model: selectedModel });
   const harness = new DeepSeekHarness({
     launch: {
       command: process.execPath,
@@ -97,7 +101,7 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
     },
     cwd: process.cwd(),
     provider: "xenho",
-    model: String(env.HARNESS_LLM_MODEL).trim(),
+    model: selectedModel,
     maxTokens: Math.max(1024, Math.min(32768, Number(maxTokens) || Number(env.HARNESS_LLM_MAX_TOKENS) || 8192)),
   });
   onHarness?.(harness);

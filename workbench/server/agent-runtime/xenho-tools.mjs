@@ -22,32 +22,6 @@ function compactSource(item) {
   };
 }
 
-async function braveSearch(query, signal) {
-  const key = String(process.env.BRAVE_SEARCH_API_KEY || "").trim();
-  if (!key) return { available: false, reason: "工作台尚未配置 Brave Search 密钥", sources: [] };
-  const url = new URL("https://api.search.brave.com/res/v1/web/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("count", "8");
-  url.searchParams.set("search_lang", "zh-hans");
-  const response = await fetch(url, {
-    headers: { Accept: "application/json", "X-Subscription-Token": key },
-    signal,
-  });
-  if (!response.ok) throw new Error(`Brave Search 返回 HTTP ${response.status}`);
-  const data = await response.json();
-  return {
-    available: true,
-    sources: (data.web?.results || []).slice(0, 8).map((item, index) => ({
-      id: `web:${index + 1}`,
-      type: "网页",
-      title: String(item.title || item.url || "网页来源"),
-      url: String(item.url || ""),
-      excerpt: String(item.description || "").slice(0, 800),
-      publishedAt: String(item.age || item.page_age || ""),
-    })),
-  };
-}
-
 export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: "knowledge_search",
@@ -67,13 +41,17 @@ export function apply(ctx) {
   }));
 
   ctx.tools.register(defineTool({
-    name: "web_search",
-    description: "Search the public web through the workbench's configured Brave Search provider. Use it for dates, numbers, people, events and authoritative evidence.",
-    parameters: { query: { type: "string", required: true, description: "A precise search query. Prefer one claim per query." } },
+    name: "attachment_read",
+    description: "Read the extracted text of a file the user attached to this conversation. List available attachment ids from the task context, then call this tool only for the files needed.",
+    parameters: { id: { type: "string", required: true, description: "The attachment id shown in the task context." } },
     output: textOutput,
     isConcurrencySafe: () => true,
-    async execute({ query }, exec) {
-      return JSON.stringify({ query, ...(await braveSearch(String(query).slice(0, 300), exec.signal)) }, null, 2);
+    async execute({ id }) {
+      const context = await readJson(process.env.XENHO_CONTEXT_FILE);
+      const item = (context.attachments || []).find((entry) => entry.id === String(id));
+      if (!item) throw new Error("当前对话中没有这个附件");
+      const text = await fs.readFile(item.textPath, "utf8");
+      return JSON.stringify({ id: item.id, name: item.name, text: text.slice(0, 120_000), truncated: text.length > 120_000 }, null, 2);
     },
   }));
 

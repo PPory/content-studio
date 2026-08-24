@@ -231,10 +231,17 @@ export const api = {
   expertRun: (id) => req(`/api/expert-runs/${encodeURIComponent(id)}`),
   expertRuns: (scope = "") => req(`/api/expert-runs${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
   cancelExpertRun: (id) => postJson(`/api/expert-runs/${encodeURIComponent(id)}/cancel`, {}),
-  assistantConversation: (scope) => req(`/api/assistant/conversation?scope=${encodeURIComponent(scope)}`),
+  assistantConversation: (scope, conversationId = "") => req(`/api/assistant/conversation?scope=${encodeURIComponent(scope)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ""}`),
+  assistantConversations: (scope) => req(`/api/assistant/conversations?scope=${encodeURIComponent(scope)}`),
+  assistantModels: () => req("/api/assistant/models"),
   assistantChat: (body) => postJson("/api/assistant/chat", body),
-  cancelAssistant: (scopeId) => postJson("/api/assistant/cancel", { scopeId }),
-  newAssistantConversation: (scopeId) => postJson("/api/assistant/new", { scopeId }),
+  cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
+  newAssistantConversation: (scopeId, model = "") => postJson("/api/assistant/new", { scopeId, model }),
+  uploadAssistantAttachment: (scope, conversationId, file) => req(`/api/assistant/attachment?scope=${encodeURIComponent(scope)}&conversationId=${encodeURIComponent(conversationId)}&filename=${encodeURIComponent(file.name)}`, {
+    method: "POST",
+    headers: { "content-type": "application/octet-stream" },
+    body: file,
+  }),
 
   // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
   // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，

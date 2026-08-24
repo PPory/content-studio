@@ -9,12 +9,14 @@ import {
   IconCopy,
   IconDatabase,
   IconFileText,
+  IconHistory,
   IconPlus,
   IconRefresh,
   IconSearch,
   IconSend,
   IconShieldCheck,
   IconSparkles,
+  IconUpload,
   IconX,
 } from "./icons.jsx";
 import "./project-assistant.css";
@@ -92,7 +94,9 @@ function EmptyAssistant({ onPrompt, standalone = false }) {
 function Message({ item, canRevise, canInsert, onRevise, onInsert, onCard }) {
   const assistant = item.role === "assistant";
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
-    <small>{assistant ? <><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</> : "你"}</small>
+    {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
+        再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
+    {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</small> : null}
     {assistant ? <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} /> : <p>{item.text}</p>}
     {assistant ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
@@ -107,23 +111,59 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [menu, setMenu] = useState("");
   const [cardOpen, setCardOpen] = useState(false);
+  const [conversationId, setConversationId] = useState("");
+  const [conversationTitle, setConversationTitle] = useState("新对话");
+  const [conversationItems, setConversationItems] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(standalone);
+  const [models, setModels] = useState([]);
+  const [model, setModel] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const modelListId = `assistant-models-${scopeId.replace(/[^a-z0-9_-]/gi, "-")}`;
   const [styleId, setStyleId] = useState(() => {
     try { return localStorage.getItem(`workbench:draft-style:v1:${scopeId}`) || profile?.profile?.styleId || ""; } catch { return profile?.profile?.styleId || ""; }
   });
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
   const styles = (profile?.styles || []).filter((item) => item.enabled);
   const style = styles.find((item) => item.id === styleId) || null;
 
+  const refreshHistory = async () => {
+    if (!standalone) return;
+    const result = await api.assistantConversations(scopeId);
+    setConversationItems(result.conversations?.items || []);
+  };
+
+  const applyConversation = (conversation) => {
+    setConversationId(conversation?.id || "");
+    setConversationTitle(conversation?.title || "新对话");
+    setMessages(conversation?.messages || []);
+    setAttachments(conversation?.attachments || []);
+    if (conversation?.model) setModel(conversation.model);
+  };
+
   useEffect(() => {
     let cancelled = false;
-    setMessages([]); setError(null);
-    api.assistantConversation(scopeId).then((result) => { if (!cancelled) setMessages(result.conversation?.messages || []); }).catch((next) => { if (!cancelled) setError(next); });
+    setMessages([]); setError(null); setLoading(true);
+    Promise.all([
+      api.assistantConversation(scopeId),
+      standalone ? api.assistantConversations(scopeId) : Promise.resolve({ conversations: { items: [] } }),
+      standalone ? api.assistantModels() : Promise.resolve({ models: { items: [], configured: "" } }),
+    ]).then(([conversationResult, historyResult, modelResult]) => {
+      if (cancelled) return;
+      applyConversation(conversationResult.conversation);
+      setConversationItems(historyResult.conversations?.items || []);
+      const nextModels = modelResult.models?.items || [];
+      setModels(nextModels);
+      setModel(conversationResult.conversation?.model || modelResult.models?.configured || nextModels[0]?.id || "");
+    }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [scopeId]);
+  }, [scopeId, standalone]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
   useEffect(() => {
     if (!styleId && styles.length) setStyleId(profile?.profile?.styleId || styles[0].id);
@@ -136,8 +176,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setMessages((current) => [...current, optimistic]);
     setInput(""); setMenu(""); setBusy(true); setError(null);
     try {
-      const result = await api.assistantChat({ scopeId, message, document, materials, style });
-      setMessages(result.conversation?.messages || []);
+      const result = await api.assistantChat({ scopeId, conversationId, message, document, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" });
+      applyConversation(result.conversation);
+      await refreshHistory();
     } catch (next) {
       setError(next);
     } finally {
@@ -147,13 +188,38 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   const newConversation = async () => {
     if (busy) return;
-    const result = await api.newAssistantConversation(scopeId);
-    setMessages(result.conversation?.messages || []); setError(null); setInput("");
+    const result = await api.newAssistantConversation(scopeId, model);
+    applyConversation(result.conversation);
+    setError(null); setInput("");
+    await refreshHistory();
+    inputRef.current?.focus();
+  };
+
+  const openConversation = async (id) => {
+    if (busy || id === conversationId) return;
+    setLoading(true); setError(null);
+    try { applyConversation((await api.assistantConversation(scopeId, id)).conversation); }
+    catch (next) { setError(next); }
+    finally { setLoading(false); }
   };
 
   const stop = async () => {
-    await api.cancelAssistant(scopeId).catch(() => {});
+    await api.cancelAssistant(scopeId, conversationId).catch(() => {});
     setBusy(false);
+  };
+
+  const uploadFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploading || busy) return;
+    setUploading(true); setError(null);
+    try {
+      const result = await api.uploadAssistantAttachment(scopeId, conversationId, file);
+      setAttachments((current) => [...current, result.attachment]);
+      setInput((current) => current || `请阅读附件《${file.name}》并告诉我你发现了什么`);
+      inputRef.current?.focus();
+    } catch (next) { setError(next); }
+    finally { setUploading(false); }
   };
 
   function chooseExpert(item) {
@@ -175,44 +241,53 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   const availableSkills = standalone ? STANDALONE_SKILLS : SKILLS;
 
-  return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}`}>
+  const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
       <div>
-        <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{standalone ? "独立对话" : selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>
-        {standalone ? <span className="assistant-context-chip">知识库 · 公开网页</span> : null}
+        {standalone ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="对话历史"><IconHistory aria-hidden="true" /></button> : null}
+        {standalone ? <strong>{conversationTitle}</strong> : <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>}
+        {standalone ? <span className="assistant-context-note">知识库 · 联网 · 文件 · Skill</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
-      <button onClick={newConversation} title="清空当前对话，另开一轮" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
+      <button onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
     </header>
 
     <div className="assistant-thread">
-      {!messages.length && !busy ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
+      {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
+      {loading ? <Working label="正在打开对话" /> : null}
       {messages.map((item) => <Message key={item.id} item={item} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
-      {busy ? <Working label="AI 助手正在处理" /> : null}
+      {busy ? <Working label="Harness 正在调用模型和工具" /> : null}
       {error ? <div className="assistant-error" role="alert"><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <p>{error.hint}</p> : null}<button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试这条</button></div> : null}
       <div ref={endRef} />
     </div>
 
     <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); send(); }}>
-      <div className="assistant-composer__style">
-        <span>写作风格</span>
-        <select value={styleId} onChange={(event) => { setStyleId(event.target.value); try { localStorage.setItem(`workbench:draft-style:v1:${scopeId}`, event.target.value); } catch {} }}>
-          <option value="">不调用风格</option>
-          {styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-      </div>
-      <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={standalone ? "问任何问题，或输入 @ 调专家、/ 使用 Skill…" : "问当前内容，或输入 @ 调专家、/ 使用 Skill…"} rows="3" disabled={busy} />
+      {standalone && attachments.length ? <div className="assistant-attachments">{attachments.slice(-4).map((item) => <span key={item.id}><IconFileText aria-hidden="true" />{item.name}</span>)}</div> : null}
+      <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={standalone ? "问任何问题，输入 @ 调专家，或 / 使用 Skill…" : "问当前内容，或输入 @ 调专家、/ 使用 Skill…"} rows="3" disabled={busy} />
       {menu ? <div className="assistant-command-menu" role="menu">
         <header>{menu === "experts" ? "调用专家" : "使用 Skill"}<button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
         {(menu === "experts" ? EXPERTS : availableSkills).map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => menu === "experts" ? chooseExpert(item) : chooseSkill(item)} disabled={!standalone && reportBusy && !item.mention}><b>{item.label}</b><small>{item.hint}</small></button>)}
       </div> : null}
       <footer>
-        <div><button type="button" onClick={() => setMenu(menu === "experts" ? "" : "experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button><button type="button" onClick={() => setMenu(menu === "skills" ? "" : "skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button></div>
+        <div>
+          {standalone ? <><input ref={fileRef} type="file" hidden accept=".pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" title="上传文件（PDF、文本、Markdown、CSV、JSON 等）" onClick={() => fileRef.current?.click()} disabled={uploading}><IconUpload aria-hidden="true" /><span>{uploading ? "读取中" : "文件"}</span></button></> : null}
+          <button type="button" title="调用专家（在输入框里打 @ 也一样）" onClick={() => setMenu(menu === "experts" ? "" : "experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button>
+          <button type="button" title="使用 Harness Skill（在输入框里打 / 也一样）" onClick={() => setMenu(menu === "skills" ? "" : "skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button>
+          {standalone ? <label className="assistant-composer__model" title="选择接口返回的模型，也可以直接输入模型 ID"><span>模型</span><input list={modelListId} value={model} onChange={(event) => setModel(event.target.value)} placeholder="输入模型 ID" /><datalist id={modelListId}>{models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</datalist></label> : <label className="assistant-composer__style" title="这次发送要带上的写作风格"><span>风格</span><select value={styleId} onChange={(event) => { setStyleId(event.target.value); try { localStorage.setItem(`workbench:draft-style:v1:${scopeId}`, event.target.value); } catch {} }}><option value="">不调用</option>{styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+        </div>
         <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
-        {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim()} aria-label="发送"><IconSend aria-hidden="true" /></button>}
+        {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
       </footer>
     </form>
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "DeepSeek Harness" }} />
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "DeepSeek Harness" }} />
+  </div>;
+
+  return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}`}>
+    {standalone && historyOpen ? <aside className="assistant-history" aria-label="对话历史">
+      <header><strong>对话</strong><button onClick={newConversation} title="新建对话"><IconPlus aria-hidden="true" /></button></header>
+      <nav>{conversationItems.map((item) => <button key={item.id} aria-current={item.id === conversationId ? "page" : undefined} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.preview || "还没有消息"}</small><time>{new Date(item.updatedAt || item.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>)}</nav>
+    </aside> : null}
+    {dialog}
   </div>;
 }
 

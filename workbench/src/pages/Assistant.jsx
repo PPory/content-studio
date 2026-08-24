@@ -1,32 +1,26 @@
-import { useEffect, useState } from "react";
+// 独立的 AI 助手页（`#/assistant`）：一个不绑定某篇文章的思考空间。
+//
+// ⚠️ **这一页没有外壳，它自己就是那一页。**
+// 上一版在 `.main` 里面又套了一张 `.assistant-page__canvas`（白圆角卡片 + 投影，
+// 外面还铺了一层渐变底），而 `.main` 本来就是浮在应用底色上的那块面板——
+// **白框套白框**，和设计系统里「`.panel-block` 不是框」「一屏一层容器」是同一条。
+//
+// ⚠️ **也没有页头。** 页名在顶栏面包屑里已经写过一次（「AI助手」），
+// 正文区再来一个 `<h1>AI 助手</h1>` 是同一个词一屏说两遍；
+// 那个 `XENHO AI` 眉标更是设计系统点名否决过的那一种（标题的英文转写、全大写、宽字距）。
+// 那句「一个不绑定某篇文章的思考空间…」跟着撤了——空态里那两行说的是同一件事，
+// 而空态那两行才真的在回答「现在该干嘛」。
+
 import { AssistantPane } from "../components/ProjectAssistantRail.jsx";
-import { IconSparkles } from "../components/icons.jsx";
-import { api } from "../lib/api.js";
 
 export function Assistant() {
-  const [profile, setProfile] = useState(null);
-
-  useEffect(() => {
-    api.writingProfile().then(setProfile).catch(() => setProfile(null));
-  }, []);
-
-  return <section className="assistant-page">
-    <div className="assistant-page__canvas">
-      <header className="assistant-page__head">
-        <div className="assistant-page__brand">
-          <span className="assistant-page__mark"><IconSparkles aria-hidden="true" /></span>
-          <div><span>Xenho AI</span><h1>AI 助手</h1></div>
-        </div>
-        <p>一个不绑定某篇文章的思考空间。直接问，或调用知识库、公开网页和专家。</p>
-      </header>
-      <div className="assistant-page__conversation">
-        <AssistantPane
-          scopeId="global:assistant"
-          document={{ title: "AI 助手独立对话", body: "", platform: "", audience: profile?.profile?.audience || "" }}
-          profile={profile}
-          standalone
-        />
-      </div>
-    </div>
-  </section>;
+  return (
+    <section className="assistant-page">
+      <AssistantPane
+        scopeId="global:assistant"
+        document={{}}
+        standalone
+      />
+    </section>
+  );
 }

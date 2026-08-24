@@ -26,13 +26,32 @@
     persona: !!js process.env.XENHO_EXPERT_PERSONA
     workspaceContext: false
     skills:
-      enabled: false
+      enabled: true
     toolBash: false
     toolJobs: false
     goals: false
 
 - id: xenho-tools
   name: './xenho-tools.mjs'
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: brave
+    fetchProvider: http
+
+- id: brave-search
+  name: './brave-web-provider.mjs'
+
+- id: web-fetch
+  name: '@deepseek-ai/dsh-web-fetch-http'
+
+- id: web-tools
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    searchMaxResults: 8
+    searchMaxQueries: 4
+    fetchMaxOutputChars: 120000
 
 - id: sessions
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
