@@ -4185,7 +4185,7 @@ try {
      * 的更坏版本：**它连红都没红**。等的改成每一页都有的顶栏面包屑 `.crumbs`：
      * 页内 tab 以后还会动，页面标题不会。
      */
-    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".crumbs", { timeout: 8000 });
 
     /* 9a0. 自动发现：从下载目录（和项目的 data/inbox/）里翻出还没导进来的导出文件。
@@ -4203,7 +4203,7 @@ try {
     /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
        搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
-    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".inbox__row", { timeout: 8000 });
     const card = await page.textContent(".inbox__row");
     check("自动发现下载好的导出文件", card.includes("小红书-内容分析-smoke.csv"), card.replace(/\s+/g, " ").slice(0, 70));
@@ -4240,7 +4240,7 @@ try {
     /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
        搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
-    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
     await page.setInputFiles(".dropzone input[type=file]", {
       name: "小红书-内容分析.csv",
@@ -4263,8 +4263,11 @@ try {
     await page.waitForTimeout(900);
 
     // 9b. 总览：发布量、渠道分布、空值不被记成 0
-    /* 同上：「月度总览」这一档现在是侧栏的「内容表现」，路由 `#/review-performance`。 */
-    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance`, { waitUntil: "networkidle" });
+    /* ⚠️ **必须显式写出要哪个 tab。** 数据页收成了一页三 tab（内容明细 / 月度总览 /
+       数据同步），而**默认落在「内容明细」**——只写 `#/review-performance` 的话
+       下面这几条量的 `.channels` 压根不在 DOM 里，而 `for (block of blocks)` 遇到
+       空数组是**一次都不进**：`missing` 是空的、断言照样绿。 */
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("总览")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".bars__plot, .empty", { timeout: 8000 });
     const stats = await page.$$eval(".stat-strip strong", (els) => els.map((e) => e.textContent.trim()));
     // 跟 csv 里当月的行数对，不写死数字——前面几步导进去多少条会变，写死的话
@@ -4311,7 +4314,7 @@ try {
     /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
        搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
-    await page.goto(`http://127.0.0.1:${PORT}/#/review-sources`, { waitUntil: "networkidle" });
+    await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
     await page.setInputFiles(".dropzone input[type=file]", {
       name: "小红书-内容分析.csv",
@@ -4331,7 +4334,21 @@ try {
       await page.waitForTimeout(600);
     }
     await page.waitForSelector(".chart svg", { timeout: 8000 });
-    check("趋势图画出折线", (await page.$$eval(".chart svg path", (els) => els.length)) > 0);
+    /* ⚠️ **写成二选一：够两个点就画线，不够就只有点。**
+     * 这条原来直接钉「一定有 path」，而它靠的是 `data/metrics.csv` 里本来躺着的
+     * 8 行搭建期假数据——**一条它自己没有创建的外部状态**。真实数据换进来、
+     * 那几行清掉之后它立刻红了，红的还不是它要测的那件事。
+     * `TrendChart` 里 `pts.length > 1` 才画 path，所以少于两个点时**没有线是对的**，
+     * 这时要钉的是「点还在、图没塌」。 */
+    const svgShape = await page.$eval(".chart svg", (el) => ({
+      paths: el.querySelectorAll("path").length,
+      dots: el.querySelectorAll("circle").length,
+    }));
+    check(
+      "趋势图有线或至少有点",
+      svgShape.paths > 0 || svgShape.dots > 0,
+      `${svgShape.paths} 条线 / ${svgShape.dots} 个点`
+    );
     const legend = await page.$$eval(".chart .legend-item", (els) => els.map((e) => e.textContent.trim()));
     check("图例常驻", legend.includes("X"), legend.join("/"));
     await page.click('button:has-text("看表格")');

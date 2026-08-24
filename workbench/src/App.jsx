@@ -17,7 +17,7 @@ import { Studio } from "./pages/Studio.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
-import { Metrics } from "./pages/Metrics.jsx";
+import { Metrics, DATA_TABS } from "./pages/Metrics.jsx";
 import { Review } from "./pages/Review.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
@@ -93,13 +93,13 @@ const NAV = [
       { to: "materials", label: "素材" },
     ],
   },
-  {
-    key: "review", to: "review-performance", match: (v) => REVIEW_VIEWS.has(v),
-    children: [
-      { to: "review-performance", label: "表现" },
-      { to: "review-sources", label: "来源" },
-    ],
-  },
+  /**
+   * ⚠️ **「数据」没有二级项。** 「表现 / 来源」原来是两条侧栏项，而它们是**同一批数字的
+   * 两个视角**——拆开的代价是每次先想「这个数字在哪一页」。现在是一页三个 tab
+   * （内容明细 / 月度总览 / 数据同步），tab 走 hash 的状态段。
+   * 两条旧路由留着重定向（见 `readHash`），深链不会断。
+   */
+  { key: "review", to: "review-performance", match: (v) => REVIEW_VIEWS.has(v) },
 ];
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
@@ -133,9 +133,13 @@ function readHash() {
   const [rawView = "", ...rest] = raw.split("/");
   const decodedView = decodeURIComponent(rawView) || "today";
   const decodedState = decodeURIComponent(rest.join("/"));
-  if (decodedView === "metrics") {
-    window.history.replaceState(null, "", "#/review-performance");
-    return { view: "review-performance", state: "" };
+  // 数据页的三个 tab 走状态段（`#/review-performance/明细`）。
+  // ⚠️ **旧的三条入口全部收敛到这一页**，各自落在它原来对应的那个 tab 上：
+  // `review-sources` 说的就是「数据同步」，直接丢去默认 tab 等于把人送错地方。
+  if (decodedView === "metrics" || decodedView === "review-sources") {
+    const tab = decodedView === "review-sources" ? "同步" : "明细";
+    window.history.replaceState(null, "", `#/review-performance/${encodeURIComponent(tab)}`);
+    return { view: "review-performance", state: tab };
   }
   const legacyMaterial = normalizeMaterialRoute(decodedView, decodedState);
   if (legacyMaterial) {
@@ -520,9 +524,11 @@ export function App() {
           ) : route.view === "review" ? (
             <Review onGo={go} />
           ) : route.view === "review-performance" ? (
-            <Metrics mode="overview" onSettings={() => setSettings(true)} />
-          ) : route.view === "review-sources" ? (
-            <Metrics mode="sources" onSettings={() => setSettings(true)} />
+            <Metrics
+              tab={DATA_TABS.some((t) => t.key === route.state) ? route.state : "明细"}
+              onTab={(t) => go("review-performance", t)}
+              onSettings={() => setSettings(true)}
+            />
           ) : route.view === "overview" ? (
             <Overview
               config={config}

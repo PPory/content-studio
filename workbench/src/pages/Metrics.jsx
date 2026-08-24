@@ -4,17 +4,21 @@
 // 渠道分布、以后的内容明细和复盘四象限，全是从那一份聚合出来的——没有它，上面几块都是空的。
 // 账号级周录（metrics.csv）没有消失，它管**粉丝数**：那是账号级的，posts 里没有也不会有。
 //
-// 两个 tab（总览 / 来源），不是四个。内容明细和月度复盘是二三期——
-// **不摆两个禁用的页签**：点不动又不说为什么，用户的结论是「这功能坏了」。
+// 三个 tab（内容明细 / 月度总览 / 数据同步），在**同一页**里切。
 //
-// 侧栏不加项：数据只有一件事，就是「发出去之后怎么样」，拆成两个侧栏项等于让人
-// 每次先想「这个数字在哪一页」。
+// ⚠️ **默认落在「内容明细」，不是总览。** 总览回答「这个月整体怎么样」——那个问题
+// 要攒够几个月才有答案；而「每篇长什么样」从第一篇起就有信息量。一打开就看到
+// 四张写着 2、1 的卡和一根孤零零的柱子，人的结论是「这功能没数据」。
+//
+// ⚠️ **侧栏不给它二级项。** 数据只有一件事，就是「发出去之后怎么样」；拆成
+// 「表现 / 来源」两个侧栏项等于让人每次先想「这个数字在哪一页」，而它们本来就是
+// 同一批数字的两个视角。旧的两条路由留着，重定向到对应 tab。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { TrendChart, platformColor } from "../components/TrendChart.jsx";
 import { WeeklyBars } from "../components/WeeklyBars.jsx";
-import { ErrorNote, Note, Loading, PageHeader, Select, Empty, relTime } from "../components/ui.jsx";
+import { ErrorNote, Note, Loading, Select, Empty, relTime, FilterHeader, SearchBox } from "../components/ui.jsx";
 import {
   IconChartBar,
   IconChevronLeft,
@@ -25,7 +29,17 @@ import {
   IconRefresh,
   IconSettings,
 } from "../components/icons.jsx";
-import { fmtMonth, fmtNum, inMonth, metricLabel, monthsOf, overview, platformSummary, platformsIn, recent, weeklyPublish } from "../lib/posts.js";
+import {
+  detailRows, docMatch, extraColumns, fmtExtra, fmtMonth, fmtNum, inMonth, metricLabel, monthsOf,
+  overview, parseExtra, platformSummary, platformsIn, recent, trendWorthDrawing, weeklyPublish, METRIC_KEYS,
+} from "../lib/posts.js";
+
+/** 三个 tab 的真源。⚠️ 顺序就是屏幕上的顺序，`key` 进 URL——改字面量等于改深链。 */
+export const DATA_TABS = [
+  { key: "明细", label: "内容明细" },
+  { key: "总览", label: "月度总览" },
+  { key: "同步", label: "数据同步" },
+];
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -42,7 +56,7 @@ function useDark() {
   return dark;
 }
 
-export function Metrics({ onSettings, mode = "overview" }) {
+export function Metrics({ onSettings, tab = "明细", onTab }) {
   const [posts, setPosts] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState(null);
@@ -69,14 +83,26 @@ export function Metrics({ onSettings, mode = "overview" }) {
     if (next) setMonth(next);
   };
 
+  // ⚠️ **月份选择器只在跟月份有关的那两个 tab 上画。** 「数据同步」管的是文件和录入，
+  // 和当前看的是哪个月毫无关系——挂在那儿会让人以为导入的东西只进当前这一个月。
+  const monthly = tab !== "同步";
+
   return (
     <>
-      <PageHeader
-        eyebrow="发布之后"
-        title="复盘"
+      <FilterHeader
+        title="数据"
         desc="先把平台数字和稿子对上，再判断什么有效、下一篇具体改变什么。"
-        aside={
-          rows.length ? (
+        chips={
+          <div className="chips chips-sm" aria-label="切换视图">
+            {DATA_TABS.map((t) => (
+              <button key={t.key} className="chip" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        }
+        action={
+          rows.length && monthly ? (
             <div className="month-nav">
               <button className="icon-btn" onClick={() => shift(1)} disabled={months.indexOf(month) >= months.length - 1} aria-label="上一个月">
                 <IconChevronLeft aria-hidden="true" stroke={1.8} />
@@ -95,10 +121,14 @@ export function Metrics({ onSettings, mode = "overview" }) {
 
       {posts && (
         <>
-          {mode === "overview" && rows.length === 0 ? (
+          {/* ⚠️ 一条内容都没有时，除「数据同步」外哪个 tab 都只能是空的——
+              这时不画空态，直接给第一次上手那一屏（它自己会讲话）。 */}
+          {rows.length === 0 && monthly ? (
             <FirstRun onDone={load} onSettings={onSettings} />
-          ) : mode === "overview" ? (
+          ) : tab === "总览" ? (
             <OverviewTab rows={rows} month={month} />
+          ) : tab === "明细" ? (
+            <DetailTab rows={rows} month={month} />
           ) : (
             <SourcesTab posts={posts} metrics={metrics} onPosts={setPosts} onMetrics={setMetrics} onReload={load} onSettings={onSettings} />
           )}
@@ -192,7 +222,16 @@ function OverviewTab({ rows, month }) {
               <h2>每周发布量</h2>
             </div>
           </div>
-          <WeeklyBars weeks={weeks} platforms={platforms} dark={dark} />
+          {/* ⚠️ **一根柱子不是趋势。** 只有一周有内容时画出来是一根孤柱加几周空白，
+              它没回答任何问题却占着这一屏最大的一块。「样本不够就说不够」在这儿的落地是
+              不画、并说清**攒到什么程度它才会出现**——不然看着就像图表坏了。 */}
+          {trendWorthDrawing(weeks) ? (
+            <WeeklyBars weeks={weeks} platforms={platforms} dark={dark} />
+          ) : (
+            <p className="panel-none">
+              这个月只有 1 周发过内容，画不出趋势。至少两周各有内容时，这里会出现每周发布量。
+            </p>
+          )}
         </section>
 
         <section className="panel-block">
@@ -294,6 +333,124 @@ function RecentTable({ rows, dark }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/* ---------- 内容明细：一条内容一行 -----------------------------------------
+ *
+ * 总览回答「这个月整体怎么样」，这一屏回答「**具体是哪几篇、各自什么样**」。
+ * 内容少的时候后者才有信息量——四篇的时候「平均阅读 163」不如直接看那四行。
+ *
+ * ⚠️ **平台特有指标在这儿才第一次露面**（小红书的曝光/封面点击率、公众号的完读率/在看）。
+ * 它们导入时就落进了 `extra`，但在总览上没有落点——总览是跨平台合计，
+ * 而这几个数**根本不跨平台可比**，加进去只会让人拿曝光和阅读数相加。
+ */
+function DetailTab({ rows, month }) {
+  const dark = useDark();
+  const [platform, setPlatform] = useState("");
+  const [q, setQ] = useState("");
+
+  const mine = useMemo(() => inMonth(rows, month), [rows, month]);
+  const platforms = useMemo(() => platformsIn(mine), [mine]);
+  const shown = useMemo(() => detailRows(mine, { platform, q }), [mine, platform, q]);
+  // ⚠️ **列按「这一批里有没有非零值」算一次**，不按行算：按行判的话同一列时有时无，
+  // 一列扫下去是锯齿，而且分不出「这条是 0」和「这个平台没这个指标」。
+  const extras = useMemo(() => extraColumns(shown), [shown]);
+  const match = useMemo(() => docMatch(mine), [mine]);
+
+  if (!mine.length) {
+    return <Empty icon={IconChartBar}>{fmtMonth(month)}这个月没有内容记录。换个月份，或者去「数据同步」补一份导出文件。</Empty>;
+  }
+
+  return (
+    <>
+      <div className="detail-bar">
+        <div className="chips chips-sm" aria-label="按渠道筛选">
+          <button className="chip" aria-pressed={!platform} onClick={() => setPlatform("")}>
+            全部 {mine.length}
+          </button>
+          {platforms.map((p) => (
+            <button key={p} className="chip" aria-pressed={platform === p} onClick={() => setPlatform(p)}>
+              <span className="dot" style={{ background: platformColor(p, dark) }} />
+              {p} {mine.filter((r) => r.platform === p).length}
+            </button>
+          ))}
+        </div>
+        <SearchBox value={q} onChange={setQ} placeholder="搜标题" ariaLabel="在本月内容里搜标题" />
+      </div>
+
+      {/* ⚠️ 对不上稿子**不是错误，是常态**——从平台后台导进来的内容，工作台压根不知道
+          它是谁写的。但它决定了复盘能说到什么程度，所以照实说一句、并说清下一步。 */}
+      {match.total && match.matched < match.total ? (
+        <Note tone="info">
+          {match.total} 篇里有 {match.total - match.matched} 篇还没和工作台里的稿子对上——
+          对上之后，复盘时才能把数字和「当初想说什么」放在一起看。
+        </Note>
+      ) : null}
+
+      {shown.length ? (
+        <div className="table-wrap">
+          <table className="data-table detail-table">
+            <thead>
+              <tr>
+                <th>渠道</th>
+                <th>内容</th>
+                <th>发布</th>
+                {METRIC_KEYS.map((k) => (
+                  <th key={k} className="num">{metricLabel(platform || shown[0].platform, k)}</th>
+                ))}
+                {extras.map((k) => (
+                  <th key={k} className="num detail-table__extra">{k}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r, i) => {
+                const ex = parseExtra(r);
+                return (
+                  <tr key={`${r.platform}-${r.date}-${r.title}-${i}`}>
+                    <td>
+                      <span className="dot" style={{ background: platformColor(r.platform, dark) }} />
+                      {r.platform}
+                    </td>
+                    <td className="cell-title">
+                      {/* ⚠️ 没标题的照实说「（无标题）」并标出体裁，别留一格空白：
+                          空白看着像渲染坏了，而它其实是一条真发出去的内容。 */}
+                      <span title={r.title || undefined}>{r.title || `（无标题${ex.体裁 ? `·${ex.体裁}` : ""}）`}</span>
+                      {r.doc ? <span className="tag tag--state detail-table__doc">文字稿已匹配</span> : null}
+                      {r.url ? (
+                        <a className="doc-meta__link" href={r.url} target="_blank" rel="noreferrer noopener">
+                          原文
+                          <IconExternalLink aria-hidden="true" size={12} stroke={1.8} />
+                        </a>
+                      ) : null}
+                    </td>
+                    <td className="muted">{r.date.slice(5)}</td>
+                    {METRIC_KEYS.map((k) => (
+                      // ⚠️ **`null` 是「这个平台没这个指标」，画「—」不画 0。**
+                      // 摆一个 0 会被读成「收藏了 0 次」，那是句假话。
+                      <td key={k} className="num">
+                        {r[k] == null ? <span className="muted">—</span> : <strong>{fmtNum(r[k])}</strong>}
+                      </td>
+                    ))}
+                    {extras.map((k) => {
+                      const f = fmtExtra(k, ex[k]);
+                      return (
+                        <td key={k} className="num detail-table__extra">
+                          {f ? f.text : <span className="muted">—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty icon={IconChartBar}>这个月没有符合条件的内容。换个渠道，或者清掉搜索词。</Empty>
+      )}
+    </>
   );
 }
 

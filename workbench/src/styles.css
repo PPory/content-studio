@@ -4064,6 +4064,30 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .channel__metrics strong { font-family: var(--font-display); font-size: var(--fs-md); color: var(--text-1); font-variant-numeric: tabular-nums; }
 .channel__none { font-size: var(--fs-xs); color: var(--text-3); margin: 0; }
 
+/* 图表没画出来时那句话。⚠️ **和空态不是一回事**：这一块本来就该有东西，
+   只是样本不够——所以它长得像一句注解，不是一整块居中的空态引导。 */
+.panel-none {
+  margin: 0; padding: 22px 2px; text-align: center;
+  font-size: var(--fs-xs); color: var(--text-3);
+}
+
+/* ---------- 内容明细 ---------- */
+
+/* 左边渠道芯片、右边搜索。⚠️ **不居中**：这一行右边并着搜索框，
+   居中会让两组东西挤到中间打架——和「找题 / 种子」那两页只有一排芯片的情况不同。 */
+.detail-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.detail-bar .search-box { width: 220px; }
+
+/* ⚠️ **平台特有指标那几列压一档字号并调淡**：它们逐平台不同、不可横向相加，
+   和左边五个跨平台可比的数**不是一个性质**。同样重量并排摆着，人会顺手把
+   曝光和阅读数加到一起。 */
+.detail-table__extra { color: var(--text-3); font-size: var(--fs-2xs); }
+.detail-table td.detail-table__extra { font-variant-numeric: tabular-nums; }
+.detail-table__doc { margin-left: 6px; }
+
 /* ---------- 导入 ---------- */
 .dropzone {
   display: grid; place-items: center; gap: 8px;
