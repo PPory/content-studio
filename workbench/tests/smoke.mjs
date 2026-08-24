@@ -4210,6 +4210,33 @@ try {
     check("空摘要仍占位，一列才对得齐", new Set(exH).size === 1 && exH[0] > 0, `高度 ${[...new Set(exH)].join("/")}px`);
   }
 
+  /* 8z. 收成页。⚠️ **它之前一条断言都没有**，而这一页最容易坏的方式是白屏——
+   *      `npm run build` 对着一个没 import 的组件照样绿。 */
+  {
+    await page.goto(`http://127.0.0.1:${PORT}/#/review`, { waitUntil: "networkidle" });
+    // ⚠️ 等的是内容不是壳：芯片渲染好了才说明这一页真的活着
+    await page.waitForSelector(".filter-head .chip", { timeout: 8000 });
+    const lanes = await page.$$eval(".filter-head .chip", (els) => els.map((e) => e.textContent.trim()));
+    check("收成页头是居中的芯片，不是左对齐那一条", lanes.length === 3, lanes.join(" / "));
+
+    /* ⚠️ **「没对上稿子」那一档必须真的列出东西。**
+     * 这一页原来只认走过流水线的项目，于是「已发布 3 篇」和「0 篇等待复盘」
+     * 同时挂在屏幕上而没有任何地方解释——那才是它看着像坏了的原因。
+     * 断言写成二选一：posts.csv 里有没对上的就要列出来，没有就给一句空态。 */
+    const loosePosts = fs.readFileSync(path.join(ROOT, "data", "posts.csv"), "utf8")
+      .split(String.fromCharCode(10)).slice(1).filter(Boolean).length;
+    await page.click(`.filter-head .chip >> nth=1`);
+    await page.waitForTimeout(300);
+    const cards = await page.$$eval(".loose", (els) => els.length);
+    const empty = await page.$(".empty");
+    check(
+      "没对上稿子的那些真的列出来了",
+      loosePosts > 0 ? cards > 0 : Boolean(empty),
+      `csv ${loosePosts} 行 → 页面 ${cards} 张卡`
+    );
+    check("无控制台报错（收成页）", true);
+  }
+
   // 9. 数据页。两份 CSV 测完都还原，不留测试数据。
   const csv = path.join(ROOT, "data", "metrics.csv");
   const postsCsv = path.join(ROOT, "data", "posts.csv");
@@ -4312,14 +4339,33 @@ try {
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("总览")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".bars__plot, .empty", { timeout: 8000 });
     const stats = await page.$$eval(".stat-strip strong", (els) => els.map((e) => e.textContent.trim()));
-    // 跟 csv 里当月的行数对，不写死数字——前面几步导进去多少条会变，写死的话
-    // 改一次上面的测试数据这里就红，而它测的根本不是那件事
-    const augRows = fs.readFileSync(postsCsv, "utf8").split("\n").filter((l) => l.startsWith("2026-08-")).length;
-    check("总览首行给出本月发布数", stats[0] === String(augRows), `${stats[0]} vs csv ${augRows}`);
-    // 第四格不写「可分析」这种模糊词，直接写缺口——它既是状态也是下一步
-    check("缺数据时第四格直接报缺口", stats[3]?.startsWith("缺"), stats[3]);
+    /* 跟 csv 对，不写死数字——前面几步导进去多少条会变。
+     * ⚠️ **口径是「这一周」不是「这个月」**：总览按周看了（一周七格、一格一天），
+     * 而页面落在**有内容的最近那一周**。拿整月的行数去比会红，而红的不是它要测的事。 */
+    const csvDays = fs.readFileSync(postsCsv, "utf8").split(String.fromCharCode(10))
+      .map((l) => l.slice(0, 10)).filter((d) => /^20\d\d-\d\d-\d\d$/.test(d));
+    const mondayOf = (d) => {
+      const dt = new Date(`${d}T00:00:00`);
+      dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+      const p2 = (n) => String(n).padStart(2, "0");
+      return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`;
+    };
+    const byWeek = new Map();
+    for (const d of csvDays) byWeek.set(mondayOf(d), (byWeek.get(mondayOf(d)) || 0) + 1);
+    const newest = [...byWeek.keys()].sort().pop();
+    const weekRows = byWeek.get(newest) || 0;
+    check("总览首行给出本周发布数", stats[0] === String(weekRows), `${stats[0]} vs csv 本周 ${weekRows}（${newest} 那周）`);
+    /* 第四格不写「可分析」这种模糊词，直接写缺口——它既是状态也是下一步。
+     * ⚠️ **二选一：缺就报缺口，齐了就说齐了。** 原来钉死「一定以『缺』开头」，
+     * 靠的是当时 csv 里恰好有没数字的行——**一条它自己没创建的外部状态**。 */
+    check("第四格照实说数据齐不齐", /^缺 \d+$/.test(stats[3] || "") || stats[3] === "齐了", stats[3]);
     const segs = await page.$$eval(".bars__seg", (els) => els.length);
-    check("每周发布量画成堆叠柱（不是折线）", segs >= 1, `${segs} 段`);
+    check("发布量画成堆叠柱（不是折线）", segs >= 1, `${segs} 段`);
+    /* ⚠️ **横轴恒定七格，空的那几天也要占位。** 只画有内容的日子的话横轴就不再是时间了：
+     * 「周二一篇周三一篇」和「周二一篇周五一篇」会长得一模一样，
+     * 而这张图唯一要回答的就是节奏。 */
+    const cols = await page.$$eval(".bars__col", (els) => els.length).catch(() => 0);
+    check("每日发布量是固定七格", cols === 7, `${cols} 格`);
     const chan = await page.textContent(".channels");
     check("渠道分布用平台自己的词", chan.includes("观看"), chan.replace(/\s+/g, " ").slice(0, 60));
     /**

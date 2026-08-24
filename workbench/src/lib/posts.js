@@ -189,14 +189,6 @@ export function detailRows(rows, { platform = "", q = "" } = {}) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
-/**
- * 趋势图值不值得画。
- *
- * ⚠️ **一根柱子不是趋势。** 这个月只有一周有内容时，图上就是一根孤零零的柱子加几周空白——
- * 它没有回答任何问题，却占着这一屏最大的一块。「样本不够就说不够」那条在这儿的落地是：
- * **不画，并且说清要攒到什么程度才会出现**。
- */
-export const trendWorthDrawing = (weeks) => weeks.filter((w) => w.total > 0).length >= 2;
 
 /**
  * 这一批内容里，有多少条**对得上工作台里的稿子**（posts.csv 的 `doc` 列）。
@@ -208,3 +200,90 @@ export const docMatch = (rows) => ({
   matched: rows.filter((r) => String(r.doc || "").trim()).length,
   total: rows.length,
 });
+
+/* ---------- 周 / 日 ---------------------------------------------------------
+ *
+ * ⚠️ **总览按周、图按日，是被真实数据量逼出来的。**
+ * 按月看时这个账号只有三条、全挤在一周里：四张写着 2、1 的卡加一根孤柱，
+ * 什么都答不了。按周看，横轴是**固定七格**——哪天发了、哪天空着一眼就有答案，
+ * 而且一格就是一天，不需要「攒够几周」才成立。
+ *
+ * ⚠️ **周一起算，而且全程用本地日期。** `toISOString()` 在东八区会把晚上八点之后
+ * 算成第二天，于是周日晚上发的那条落进下一周——现象是「我明明发了，这周却是 0」，
+ * 而没有任何地方会报错。和计划那条是同一个坑。
+ */
+
+/** `Date` → 本地的 `YYYY-MM-DD`（不经 UTC）。 */
+export function localDay(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 某一天所在那周的周一。传 `YYYY-MM-DD`，回 `YYYY-MM-DD`。 */
+export function weekStartOf(date) {
+  const [y, m, d] = String(date).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); // 0=周一
+  return localDay(dt);
+}
+
+/** 周一往后数 n 天。 */
+export const dayAfter = (date, n) => {
+  const [y, m, d] = String(date).split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return localDay(dt);
+};
+
+/** 有内容的周（周一那天），新的在前。**只给真有内容的周**，空周翻过去只有一片 0。 */
+export const weeksOfPosts = (rows) =>
+  [...new Set(rows.map((r) => weekStartOf(r.date)).filter(Boolean))].sort().reverse();
+
+/** `2026-08-18` → `8/18 - 8/24`。 */
+export function fmtWeek(weekStart) {
+  if (!weekStart) return "";
+  const end = dayAfter(weekStart, 6);
+  const short = (s) => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}`;
+  return `${short(weekStart)} - ${short(end)}`;
+}
+
+export const inWeek = (rows, weekStart) => {
+  const end = dayAfter(weekStart, 6);
+  return rows.filter((r) => r.date >= weekStart && r.date <= end);
+};
+
+const DOW = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+/**
+ * 这一周每天 × 每平台的发布篇数。**七格恒定**，没发的那天也占一格。
+ *
+ * ⚠️ **空的那几天不能省。** 只画有内容的日子的话，横轴就不再是时间了——
+ * 「周二发一篇、周三发一篇」和「周二发一篇、周五发一篇」会长得一模一样，
+ * 而这张图唯一要回答的就是节奏。
+ */
+export function dailyPublish(rows, weekStart) {
+  const platforms = platformsIn(rows);
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = dayAfter(weekStart, i);
+    const hit = rows.filter((r) => r.date === day);
+    const byPlatform = {};
+    for (const p of platforms) byPlatform[p] = hit.filter((r) => r.platform === p).length;
+    return { key: day, label: DOW[i], day, byPlatform, total: hit.length };
+  });
+}
+
+/** 一周的首行四格。和 `overview` 同形状，只是口径换成这一周。 */
+export function weekOverview(rows, weekStart) {
+  const mine = inWeek(rows, weekStart);
+  const platforms = platformsIn(mine);
+  const missing = mine.filter((r) => r.views == null);
+  return {
+    count: mine.length,
+    platforms,
+    synced: mine.map((r) => r.synced).filter(Boolean).sort().pop() || "",
+    missing: missing.length,
+    byPlatformMissing: platforms
+      .map((p) => ({ platform: p, n: missing.filter((r) => r.platform === p).length }))
+      .filter((x) => x.n),
+  };
+}

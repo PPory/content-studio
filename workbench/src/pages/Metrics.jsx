@@ -30,14 +30,15 @@ import {
   IconSettings,
 } from "../components/icons.jsx";
 import {
-  detailRows, docMatch, extraColumns, fmtExtra, fmtMonth, fmtNum, inMonth, metricLabel, monthsOf,
-  overview, parseExtra, platformSummary, platformsIn, recent, trendWorthDrawing, weeklyPublish, METRIC_KEYS,
+  dailyPublish, detailRows, docMatch, extraColumns, fmtExtra, fmtMonth, fmtNum, fmtWeek, inMonth, inWeek,
+  localDay, metricLabel, monthsOf, parseExtra, platformSummary, platformsIn, recent, weekOverview,
+  weekStartOf, weeksOfPosts, METRIC_KEYS,
 } from "../lib/posts.js";
 
 /** 三个 tab 的真源。⚠️ 顺序就是屏幕上的顺序，`key` 进 URL——改字面量等于改深链。 */
 export const DATA_TABS = [
   { key: "明细", label: "内容明细" },
-  { key: "总览", label: "月度总览" },
+  { key: "总览", label: "本周总览" },
   { key: "同步", label: "数据同步" },
 ];
 
@@ -70,17 +71,30 @@ export function Metrics({ onSettings, tab = "明细", onTab }) {
 
   const rows = posts?.rows || [];
   const months = useMemo(() => monthsOf(rows), [rows]);
+  const weeks = useMemo(() => weeksOfPosts(rows), [rows]);
+  const [week, setWeek] = useState(() => weekStartOf(localDay(new Date())));
 
   // 打开时落在**有数据的最近一个月**，不是死认当月。月初打开时当月常常只有一两条，
   // 而这一页的问题是「上个月怎么样」——每次都要手动往回翻一格是没必要的负担。
   useEffect(() => {
     if (months.length && !months.includes(month)) setMonth(months[0]);
   }, [months, month]);
+  useEffect(() => {
+    if (weeks.length && !weeks.includes(week)) setWeek(weeks[0]);
+  }, [weeks, week]);
 
+  /**
+   * ⚠️ **两个 tab 的时间口径不一样，导航器跟着 tab 换。**
+   * 总览问「最近这一周什么节奏」——按周，横轴七天固定，一格一天；
+   * 明细问「这个月发了哪些」——按月，不然翻遍全部内容要一周一周点过去。
+   * 各自只画自己那一个导航器，屏幕上不会同时出现两种时间单位。
+   */
+  const nav = tab === "总览"
+    ? { list: weeks, cur: week, set: setWeek, label: fmtWeek(week), unit: "周" }
+    : { list: months, cur: month, set: setMonth, label: fmtMonth(month), unit: "月" };
   const shift = (d) => {
-    const i = months.indexOf(month);
-    const next = months[i + d];
-    if (next) setMonth(next);
+    const next = nav.list[nav.list.indexOf(nav.cur) + d];
+    if (next) nav.set(next);
   };
 
   // ⚠️ **月份选择器只在跟月份有关的那两个 tab 上画。** 「数据同步」管的是文件和录入，
@@ -104,11 +118,11 @@ export function Metrics({ onSettings, tab = "明细", onTab }) {
         action={
           rows.length && monthly ? (
             <div className="month-nav">
-              <button className="icon-btn" onClick={() => shift(1)} disabled={months.indexOf(month) >= months.length - 1} aria-label="上一个月">
+              <button className="icon-btn" onClick={() => shift(1)} disabled={nav.list.indexOf(nav.cur) >= nav.list.length - 1} aria-label={`上一${nav.unit}`}>
                 <IconChevronLeft aria-hidden="true" stroke={1.8} />
               </button>
-              <strong>{fmtMonth(month)}</strong>
-              <button className="icon-btn" onClick={() => shift(-1)} disabled={months.indexOf(month) <= 0} aria-label="下一个月">
+              <strong>{nav.label}</strong>
+              <button className="icon-btn" onClick={() => shift(-1)} disabled={nav.list.indexOf(nav.cur) <= 0} aria-label={`下一${nav.unit}`}>
                 <IconChevronRight aria-hidden="true" stroke={1.8} />
               </button>
             </div>
@@ -126,7 +140,7 @@ export function Metrics({ onSettings, tab = "明细", onTab }) {
           {rows.length === 0 && monthly ? (
             <FirstRun onDone={load} onSettings={onSettings} />
           ) : tab === "总览" ? (
-            <OverviewTab rows={rows} month={month} />
+            <OverviewTab rows={rows} week={week} />
           ) : tab === "明细" ? (
             <DetailTab rows={rows} month={month} />
           ) : (
@@ -182,16 +196,16 @@ function FirstRun({ onDone, onSettings }) {
 
 /* ---------- 月度总览 ------------------------------------------------------ */
 
-function OverviewTab({ rows, month }) {
+function OverviewTab({ rows, week }) {
   const dark = useDark();
-  const mine = useMemo(() => inMonth(rows, month), [rows, month]);
-  const stat = useMemo(() => overview(rows, month), [rows, month]);
-  const weeks = useMemo(() => weeklyPublish(mine, month), [mine, month]);
+  const mine = useMemo(() => inWeek(rows, week), [rows, week]);
+  const stat = useMemo(() => weekOverview(rows, week), [rows, week]);
+  const days = useMemo(() => dailyPublish(mine, week), [mine, week]);
   const summary = useMemo(() => platformSummary(mine), [mine]);
   const platforms = platformsIn(mine);
 
   if (!mine.length) {
-    return <Empty icon={IconChartBar}>{fmtMonth(month)}这个月没有内容记录。换个月份，或者去「数据来源」补一份导出文件。</Empty>;
+    return <Empty icon={IconChartBar}>{fmtWeek(week)} 这一周没有内容记录。换一周，或者去「数据同步」补一份导出文件。</Empty>;
   }
 
   return (
@@ -199,7 +213,7 @@ function OverviewTab({ rows, month }) {
       <div className="stat-strip">
         <div>
           <strong>{stat.count}</strong>
-          <span>本月发布 · {stat.platforms.length} 个渠道合计</span>
+          <span>本周发布 · {stat.platforms.length} 个渠道合计</span>
         </div>
         <div>
           <strong>{stat.platforms.length}</strong>
@@ -220,20 +234,15 @@ function OverviewTab({ rows, month }) {
         <section className="panel-block">
           <div className="panel-head">
             <div className="panel-head__main">
-              <span className="eyebrow">按自然周统计</span>
-              <h2>每周发布量</h2>
+              <span className="eyebrow">周一到周日</span>
+              <h2>每日发布量</h2>
             </div>
           </div>
-          {/* ⚠️ **一根柱子不是趋势。** 只有一周有内容时画出来是一根孤柱加几周空白，
-              它没回答任何问题却占着这一屏最大的一块。「样本不够就说不够」在这儿的落地是
-              不画、并说清**攒到什么程度它才会出现**——不然看着就像图表坏了。 */}
-          {trendWorthDrawing(weeks) ? (
-            <WeeklyBars weeks={weeks} platforms={platforms} dark={dark} />
-          ) : (
-            <p className="panel-none">
-              这个月只有 1 周发过内容，画不出趋势。至少两周各有内容时，这里会出现每周发布量。
-            </p>
-          )}
+          {/* ⚠️ **横轴是固定的七天，空的那几天也占一格。**
+              按月画每周发布量时，一周有内容的月份就是一根孤柱加几周空白——那既不是趋势
+              也不像图。换成一周七格之后，一格就是一天：哪天发了、哪天空着当场有答案，
+              而且**不需要「攒够几周」这张图才成立**，第一篇内容进来它就说得出话。 */}
+          <WeeklyBars weeks={days} platforms={platforms} dark={dark} />
         </section>
 
         <section className="panel-block">
