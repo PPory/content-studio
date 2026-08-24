@@ -8,6 +8,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "topic-editor",
     name: "选题顾问",
+    scene: "找题 / 选题",
     description: "把模糊念头收束成一篇只说一件事的选题",
     enabled: true,
     instructions: [
@@ -21,6 +22,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "writing-coach",
     name: "写作教练",
+    scene: "编辑器 · AI 协作",
     description: "理顺结构，提供可选择、可插入的写作候选",
     enabled: true,
     instructions: [
@@ -34,6 +36,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "material-researcher",
     name: "素材顾问",
+    scene: "编辑器 · 检查 → 素材查缺",
     description: "检查论据是否够用，指出素材缺口和下一步查找方向",
     enabled: true,
     instructions: [
@@ -47,6 +50,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "quality-reviewer",
     name: "审稿顾问",
+    scene: "编辑器 · 检查 → 审一遍",
     description: "从读者、结构、逻辑和证据四处把好质量关",
     enabled: true,
     instructions: [
@@ -60,6 +64,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "style-coach",
     name: "风格顾问",
+    scene: "编辑器 · 风格",
     description: "识别并调准你的语气、节奏和表达习惯",
     enabled: true,
     instructions: [
@@ -73,6 +78,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "fact-checker",
     name: "事实核查",
+    scene: "发布前 · 检查 → 事实核查",
     description: "逐条找出数字、时间、引语和绝对化表述中的风险",
     enabled: true,
     instructions: [

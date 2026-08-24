@@ -933,7 +933,7 @@ try {
      红的是断言不是界面。跨页面的测试段落必须自己收拾干净。 */
   await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });
   await page.waitForFunction(
-    () => [...document.querySelectorAll(".subnav-item")].some((e) => e.textContent.includes("项目")),
+    () => [...document.querySelectorAll(".subnav-item")].some((e) => e.textContent.includes("创作")),
     null,
     { timeout: 8000 },
   ).catch(() => {});
@@ -941,7 +941,7 @@ try {
   check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
   /**
    * ⚠️ **顺序有意义**：这一排是按流程从左往右排的，不是按重要性——
-   * 还没有想写的 → 找题；已经有话说的 → 种子；开始写了 → 项目。
+   * 还没有想写的 → 找题；已经有一句判断 → 选题；开始写了 → 创作；发布后 → 复盘。
    *
    * ⚠️ **和 `App.jsx` 的 NAV 常量比，不写死那一串。**
    * 写死的话加一页这条就红，而代码完全正确（这个文件里已经栽过，
@@ -954,6 +954,7 @@ try {
   // ⚠️ 带上量到的值：这条原来一个诊断信息都没有，红了只能靠猜
   check("内容二级导航可直接进入", wantSubnav.length > 0 && contentSubnav === wantSubnav.join("/"),
     `${contentSubnav}（常量 ${wantSubnav.join("/")}）`);
+  check("内容流程使用真实任务名", contentSubnav === "找题/选题/创作/复盘", contentSubnav);
   await page.click('.nav-item:has-text("发现")');
   /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
      那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
@@ -1084,7 +1085,7 @@ try {
         source: document.querySelector(".profile-source code")?.textContent || "",
       }));
       check("我的创作只收长期会复用的三项", profilePane.fields === 3 && /固定目标读者/.test(profilePane.text) && /常用首发平台/.test(profilePane.text) && /默认写作风格/.test(profilePane.text), JSON.stringify(profilePane));
-      check("专家只在需要时调用，不绑进每篇简报", /不预先绑/.test(profilePane.text) && /AI 协作/.test(profilePane.text), profilePane.text.slice(0, 120));
+      check("专家按真实任务出现而不是统一下拉", /不是一个统一下拉框/.test(profilePane.text) && /找题时定方向/.test(profilePane.text), profilePane.text.slice(0, 160));
       check("工作台自带六位专家和五种风格", /6 位专家/.test(profilePane.source) && /5 种风格/.test(profilePane.source), profilePane.source);
       check("专家团不包含排版和整理", !/排版顾问|整理顾问/.test(profilePane.text), profilePane.text.slice(0, 240));
 
@@ -4337,7 +4338,7 @@ try {
        下面这几条量的 `.channels` 压根不在 DOM 里，而 `for (block of blocks)` 遇到
        空数组是**一次都不进**：`missing` 是空的、断言照样绿。 */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("总览")}`, { waitUntil: "networkidle" });
-    await page.waitForSelector(".bars__plot, .empty", { timeout: 8000 });
+    await page.waitForSelector(".lines__plot, .empty", { timeout: 8000 });
     const stats = await page.$$eval(".stat-strip strong", (els) => els.map((e) => e.textContent.trim()));
     /* 跟 csv 对，不写死数字——前面几步导进去多少条会变。
      * ⚠️ **口径是「这一周」不是「这个月」**：总览按周看了（一周七格、一格一天），
@@ -4359,13 +4360,42 @@ try {
      * ⚠️ **二选一：缺就报缺口，齐了就说齐了。** 原来钉死「一定以『缺』开头」，
      * 靠的是当时 csv 里恰好有没数字的行——**一条它自己没创建的外部状态**。 */
     check("第四格照实说数据齐不齐", /^缺 \d+$/.test(stats[3] || "") || stats[3] === "齐了", stats[3]);
-    const segs = await page.$$eval(".bars__seg", (els) => els.length);
-    check("发布量画成堆叠柱（不是折线）", segs >= 1, `${segs} 段`);
-    /* ⚠️ **横轴恒定七格，空的那几天也要占位。** 只画有内容的日子的话横轴就不再是时间了：
-     * 「周二一篇周三一篇」和「周二一篇周五一篇」会长得一模一样，
-     * 而这张图唯一要回答的就是节奏。 */
-    const cols = await page.$$eval(".bars__col", (els) => els.length).catch(() => 0);
-    check("每日发布量是固定七格", cols === 7, `${cols} 格`);
+    /* ⚠️ **点必须画满七天，包括发了 0 篇的那几天。**
+     * 篇数是整数，只有线的话两天之间那截斜线等于宣称「周二半夜发了 1.5 篇」——
+     * 点是真值，线只表示节奏。而 0 那天的点**不能省**：省掉的话线在那儿断开，
+     * 看着像数据缺失，可真相是「那天没发」，两件事在图上必须分得开。 */
+    const plat = await page.$$eval(".lines .legend-item", (els) => els.length);
+    const dots = await page.$$eval(".lines__dot", (els) => els.length);
+    check("每天都落一个点（含 0 篇那天）", plat > 0 && dots === plat * 7, `${plat} 个平台 × 7 天 应有 ${plat * 7} 个点，实际 ${dots}`);
+    const paths = await page.$$eval(".lines__path", (els) => els.length);
+    check("每个平台一条折线", paths === plat, `${paths} 条线 / ${plat} 个平台`);
+    const cols = await page.$$eval(".lines__col", (els) => els.length).catch(() => 0);
+    check("横轴是固定七格", cols === 7, `${cols} 格`);
+    /* ⚠️ **量点的真实坐标，不是数点的个数。**
+     * 上一版这儿只数了「有没有 7×平台 个点」——而当时点的 `bottom: X%` 基准是整个
+     * 画布（含底部那条星期标），线却画在已经减掉它的 svg 里：**两套基准**，
+     * 最大值那个点整个飘到图外，而「个数对」这条断言照样绿。
+     * 现在量的是：每个点都落在画布里，且值最大的那个点确实在最上面。 */
+    const geo = await page.evaluate(() => {
+      const plot = document.querySelector(".lines__plot")?.getBoundingClientRect();
+      if (!plot) return null;
+      const dots = [...document.querySelectorAll(".lines__dot")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { mid: r.top + r.height / 2, zero: el.hasAttribute("data-zero") };
+      });
+      return { top: plot.top, bottom: plot.bottom, dots };
+    });
+    const outside = (geo?.dots || []).filter((d) => d.mid < geo.top - 1 || d.mid > geo.bottom + 1).length;
+    check("每个点都在画布里", geo && geo.dots.length > 0 && outside === 0, geo ? `${outside}/${geo.dots.length} 个跑到画布外` : "量不到画布");
+    /* 非 0 的点必须比 0 的点高。量不到（这一周每天都是 0 或都非 0）要红——
+     * 「跳过」和「不存在」是同一回事，而它跳过的时候正是最该报警的时候。 */
+    const zeros = (geo?.dots || []).filter((d) => d.zero).map((d) => d.mid);
+    const live = (geo?.dots || []).filter((d) => !d.zero).map((d) => d.mid);
+    check(
+      "发了的那天点更高",
+      zeros.length > 0 && live.length > 0 && Math.max(...live) < Math.min(...zeros),
+      `非0最低 ${live.length ? Math.round(Math.max(...live)) : "无"} vs 0 那排 ${zeros.length ? Math.round(Math.min(...zeros)) : "无"}`
+    );
     const chan = await page.textContent(".channels");
     check("渠道分布用平台自己的词", chan.includes("观看"), chan.replace(/\s+/g, " ").slice(0, 60));
     /**

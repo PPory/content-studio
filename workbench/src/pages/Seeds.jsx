@@ -111,8 +111,8 @@ export function Seeds({ onGo, onChanged }) {
   return (
     <div className="seed-page">
       <FilterHeader
-        title="种子"
-        desc="看到一个东西，说一句你的看法——那句话就是一篇的起点。"
+        title="选题"
+        desc="这里放的是你已经有一句判断的候选。决定今天写哪一条，再进入创作。"
         chips={
           <div className="chips chips-sm" aria-label="按状态筛选">
             {["攒着", "写了", "不写了"].map((s) => (

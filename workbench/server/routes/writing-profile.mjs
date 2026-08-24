@@ -6,6 +6,7 @@ import {
   loadWritingProfile,
   loadWritingRecords,
   saveWritingProfile,
+  saveWritingStyle,
 } from "../lib/writing-profile.mjs";
 import { PLATFORMS } from "../../src/lib/platforms.js";
 
@@ -39,6 +40,20 @@ export const writingProfileRoutes = [
       }
       try {
         await saveWritingProfile(body?.profile || body);
+        json(res, { ok: true, ...(await payload(env)) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/writing-style",
+    async handler({ env, req, res }) {
+      let body;
+      try {
+        body = await readJsonBody(req);
+        await saveWritingStyle(body || {});
         json(res, { ok: true, ...(await payload(env)) });
       } catch (error) {
         fail(res, error.message, { status: error.status || 500, hint: error.hint });

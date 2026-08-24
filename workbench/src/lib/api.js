@@ -225,6 +225,7 @@ export const api = {
   // 长期创作设置。专家/风格是工作台自己的内置能力；这里只保存长期默认风格。
   writingProfile: () => req("/api/writing-profile"),
   saveWritingProfile: (profile) => postJson("/api/writing-profile", { profile }),
+  saveWritingStyle: (style) => postJson("/api/writing-style", style),
 
   // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
   // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，

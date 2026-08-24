@@ -644,7 +644,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
                 readOnly={!draftEditable}
-                toolbarExtra={writingEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} getCursor={() => cursor.current}
+                toolbarExtra={draftEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} scopeId={draft.id} getCursor={() => cursor.current}
                   onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>

@@ -128,8 +128,8 @@ export function Ideas({ onGo, onChanged }) {
         * 而那两个恰恰是「我主动想找点什么写」时最该按的。
         */}
       <FilterHeader
-        title="选种"
-        desc="还没有想写的东西时从这儿开始。挑一条、说一句你的看法，它就长成一颗种子。"
+        title="找题"
+        desc="还没确定写什么时从这儿开始。选题顾问会从洞察、素材和争点里整理候选；你挑一条并留下自己的判断。"
         chips={
           <div className="chips chips-sm" aria-label="候选从哪来">
             {chips.map((c) => (

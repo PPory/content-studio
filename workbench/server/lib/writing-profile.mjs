@@ -11,6 +11,7 @@ import { WRITING_EXPERTS, WRITING_STYLES } from "./writing-presets.mjs";
 import { PLATFORMS } from "../../src/lib/platforms.js";
 
 const FILE = path.resolve(process.cwd(), "config", "writing-profile.json");
+const STYLE_FILE = path.resolve(process.cwd(), "config", "writing-styles.json");
 
 export const DEFAULT_WRITING_PROFILE = Object.freeze({
   schemaVersion: 1,
@@ -20,6 +21,13 @@ export const DEFAULT_WRITING_PROFILE = Object.freeze({
 });
 
 const cleanLine = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+const cleanPrompt = (value, max = 6_000) => String(value ?? "")
+  .replace(/\r\n?/g, "\n")
+  .split("\n")
+  .map((line) => line.replace(/[\t ]+$/g, ""))
+  .join("\n")
+  .trim()
+  .slice(0, max);
 
 export function normalizeWritingProfile(value = {}) {
   const platform = cleanLine(value.platform, 24);
@@ -51,9 +59,55 @@ export async function saveWritingProfile(value) {
   return clean;
 }
 
+export function normalizeWritingStyleOverrides(value = {}) {
+  const allowed = new Set(WRITING_STYLES.map((item) => item.id));
+  return Object.fromEntries(Object.entries(value || {})
+    .filter(([id]) => allowed.has(id))
+    .map(([id, instructions]) => [id, cleanPrompt(instructions)])
+    .filter(([, instructions]) => instructions));
+}
+
+export async function loadWritingStyleOverrides() {
+  try {
+    return normalizeWritingStyleOverrides(JSON.parse(await fs.readFile(STYLE_FILE, "utf8")));
+  } catch (error) {
+    if (error.code !== "ENOENT") console.warn("[writing-profile] 风格提示词读取失败，用内置版本:", error.message);
+    return {};
+  }
+}
+
+export async function saveWritingStyle({ id, instructions }) {
+  const preset = WRITING_STYLES.find((item) => item.id === cleanLine(id, 120));
+  if (!preset) {
+    const error = new Error("找不到这套写作风格");
+    error.status = 404;
+    throw error;
+  }
+  const prompt = cleanPrompt(instructions);
+  if (!prompt) {
+    const error = new Error("风格提示词不能为空");
+    error.status = 400;
+    throw error;
+  }
+  const overrides = await loadWritingStyleOverrides();
+  if (prompt === preset.instructions) delete overrides[preset.id];
+  else overrides[preset.id] = prompt;
+  await fs.mkdir(path.dirname(STYLE_FILE), { recursive: true });
+  await snapshotFile(process.cwd(), "writing-styles", STYLE_FILE);
+  await atomicWrite(STYLE_FILE, JSON.stringify(overrides, null, 2));
+  await pruneSnapshots(process.cwd(), "writing-styles", { keepDays: snapshotKeepDays() }).catch(() => 0);
+  return { ...preset, instructions: prompt, customized: prompt !== preset.instructions };
+}
+
 export async function loadWritingRecords() {
+  const overrides = await loadWritingStyleOverrides();
   return {
-    styles: WRITING_STYLES.map((item) => ({ ...item })),
+    styles: WRITING_STYLES.map((item) => ({
+      ...item,
+      defaultInstructions: item.instructions,
+      instructions: overrides[item.id] || item.instructions,
+      customized: !!overrides[item.id],
+    })),
     experts: WRITING_EXPERTS.map((item) => ({ ...item })),
     source: "workbench/server/lib/writing-presets.mjs",
     hint: "这是 Xenho OS 自带的写作团队，不依赖外部项目或知识库目录。",

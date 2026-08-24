@@ -626,7 +626,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("新建内容是一颗直达编辑器的按钮", /startWriting/.test(button) && /writingProfile/.test(button));
   check("新建内容不再展开起稿方式", !/MenuButton|CreationDialog|MODES/.test(button));
 
-  const { loadWritingRecords, normalizeWritingProfile } = await import("../server/lib/writing-profile.mjs");
+  const { loadWritingRecords, normalizeWritingProfile, normalizeWritingStyleOverrides } = await import("../server/lib/writing-profile.mjs");
   const profile = normalizeWritingProfile({ audience: "  固定   读者  ", platform: "小红书", styleId: "克制-直接" });
   check("长期创作设置会清洗读者并保留合法平台", profile.audience === "固定 读者" && profile.platform === "小红书", JSON.stringify(profile));
   check("长期风格只保存安全的工作台预设 id", profile.styleId === "克制-直接", profile.styleId);
@@ -637,6 +637,12 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("工作台自带五种可选风格", records.styles.length === 5, records.styles.map((item) => item.name).join("/"));
   check("专家团不包含排版和笔记整理", records.experts.every((item) => !/排版|整理/.test(item.name)));
   check("素材与事实专家不冒充已联网查证", records.experts.filter((item) => /素材|事实/.test(item.name)).every((item) => /待核|不能|不把|无法/.test(item.instructions)));
+  check("六项专家能力都标明真实出现位置", records.experts.every((item) => item.scene) && records.experts.find((item) => item.id === "topic-editor")?.scene === "找题 / 选题");
+  check("风格提示词覆盖只接受内置风格且保留换行", JSON.stringify(normalizeWritingStyleOverrides({ "clear-direct": "第一行\n第二行", unknown: "不该留下" })) === JSON.stringify({ "clear-direct": "第一行\n第二行" }));
+  const assist = await fs.readFile(new URL("../src/components/WritingAssist.jsx", import.meta.url), "utf8");
+  check("编辑器不再显示统一专家下拉框", !/本轮专家|changeExpert/.test(assist));
+  check("风格提示词在编辑器中可查看和保存", /实际发送给 AI 的风格提示词/.test(assist) && /saveWritingStyle/.test(assist));
+  check("素材审稿核查是三个独立任务", ["material-audit", "quality-review", "fact-check"].every((mode) => assist.includes(mode)));
 
   const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
   const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者", materials: "素材 A：真实案例" }).join("\n");

@@ -1633,7 +1633,19 @@ async function explain(env, body) {
 // 三种结果都先回到候选卡片，由用户决定是否插入，Worker 不直接改稿件。
 
 const NUDGE_KINDS = new Set(["问题", "新角度", "下一步"]);
-const WRITING_TOKENS = { nudge: 500, paragraph: 1800, finish: 9000 };
+const WRITING_TOKENS = {
+  nudge: 500,
+  paragraph: 1800,
+  finish: 9000,
+  "material-audit": 2600,
+  "quality-review": 3200,
+  "fact-check": 3200,
+};
+const REVIEW_KINDS = {
+  "material-audit": "素材查缺",
+  "quality-review": "审稿报告",
+  "fact-check": "事实核查",
+};
 
 async function writingAssist(env, raw) {
   let input;
@@ -1686,11 +1698,17 @@ async function writingAssist(env, raw) {
           });
           const text = unfence(content);
           if (!text) throw new Error("AI 没有生成可用正文");
-          // 当前编辑器正文是用户这次亲手提供的额外证据：允许延续已写的真实经历，
-          // 但新编的细节和原文对不上，仍会被同一道确定性闸门拒绝。
-          const evidence = await personalEvidence(env, input.content ? [{ type: "个人经历", note: input.content }] : []);
-          assertGroundedGeneratedText(text, evidence);
-          send({ ok: true, mode: input.mode, kind: input.mode === "finish" ? "完成全文" : "续写一段", text });
+          if (REVIEW_KINDS[input.mode]) {
+            // 检查报告只指出问题，不写回正文；事实核查中的“待核”也不能被真实性闸门
+            // 当成新生成的叙事拦掉。
+            send({ ok: true, mode: input.mode, kind: REVIEW_KINDS[input.mode], text });
+          } else {
+            // 当前编辑器正文是用户这次亲手提供的额外证据：允许延续已写的真实经历，
+            // 但新编的细节和原文对不上，仍会被同一道确定性闸门拒绝。
+            const evidence = await personalEvidence(env, input.content ? [{ type: "个人经历", note: input.content }] : []);
+            assertGroundedGeneratedText(text, evidence);
+            send({ ok: true, mode: input.mode, kind: input.mode === "finish" ? "完成全文" : "续写一段", text });
+          }
         }
       } catch (e) {
         const ungrounded = e?.code === "UNGROUNDED_PERSONAL_EXPERIENCE";

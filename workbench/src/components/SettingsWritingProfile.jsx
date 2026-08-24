@@ -85,14 +85,14 @@ export function SettingsWritingProfile({ onSaved }) {
         <small>AI 协作会默认遵守这个风格；当前文章仍可保持原本语气，正文也只在你确认后插入。</small>
       </label>
 
-      <section className="profile-experts" aria-label="可调用专家">
-        <div><b>可调用专家</b><span>{enabledExperts.length} 位</span></div>
-        <p>专家不预先绑在每篇文章上。打开编辑器里的“AI 协作”时，再按当下问题选一位；选题、写作、素材、审稿、风格和核查都围绕当前文章工作。</p>
+      <section className="profile-experts" aria-label="专家能力出现位置">
+        <div><b>专家能力如何出现</b><span>{enabledExperts.length} 项</span></div>
+        <p>它们不是一个统一下拉框，而是在对应任务里直接工作：找题时定方向，写作时推动，成稿后再查素材、审稿和核查。</p>
         {enabledExperts.length ? (
           <div className="profile-experts__list">
             {enabledExperts.map((expert) => (
               <article key={expert.id}>
-                <strong>{expert.name}</strong>
+                <strong>{expert.name}<small>{expert.scene}</small></strong>
                 <span>{expert.description}</span>
               </article>
             ))}

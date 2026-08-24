@@ -1,4 +1,4 @@
-const MODES = new Set(["nudge", "paragraph", "finish"]);
+const MODES = new Set(["nudge", "paragraph", "finish", "material-audit", "quality-review", "fact-check"]);
 
 /**
  * 写作推动的输入边界。浏览器传来的正文只作为这一次生成的上下文，不落库。

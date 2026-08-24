@@ -1,4 +1,61 @@
-.writing-assist { position: relative; flex: none; }
+.writing-assist { position: relative; flex: none; display: flex; align-items: center; gap: 6px; }
+.writing-tool-btn { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); font: 600 11.5px/1 var(--font); cursor: pointer; }
+.writing-tool-btn:hover, .writing-tool-btn[aria-expanded="true"] { border-color: var(--text-1); color: var(--text-1); }
+.writing-tool-btn svg { width: 15px; height: 15px; }
+.writing-style, .writing-checks { position: relative; }
+
+.writing-style__card, .writing-check__card { position: fixed; z-index: 121; top: clamp(72px, 9vh, 110px); left: 50%; transform: translateX(-50%); width: min(720px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 132px)); overflow-y: auto; border: 1px solid var(--border); border-radius: calc(var(--r-lg) + 2px); background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-lg); }
+.writing-style__card { padding: 20px; }
+.writing-style__card > header, .writing-check__card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.writing-style__card > header > div, .writing-check__card > header > div { display: grid; gap: 5px; }
+.writing-style__card > header small, .writing-check__card > header small { color: var(--text-3); font: 700 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+.writing-style__card > header strong, .writing-check__card > header strong { font-size: var(--fs-lg); line-height: 1.35; }
+.writing-style__card > header > button, .writing-check__card > header > button { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer; }
+.writing-style__card > header > button:hover, .writing-check__card > header > button:hover { background: var(--surface-2); color: var(--text-1); }
+.writing-style__card > header svg, .writing-check__card > header svg { width: 16px; }
+.writing-style__choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
+.writing-style__choices > button { min-height: 78px; display: grid; align-content: center; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-1); text-align: left; cursor: pointer; }
+.writing-style__choices > button:hover { border-color: var(--text-2); }
+.writing-style__choices > button[data-on="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.writing-style__choices b { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); }
+.writing-style__choices em { padding: 3px 5px; border-radius: 999px; background: color-mix(in srgb, currentColor 13%, transparent); font: 600 9px/1 var(--font); }
+.writing-style__choices span { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
+.writing-style__choices > button[data-on="true"] span { color: color-mix(in srgb, var(--on-accent) 66%, transparent); }
+.writing-style__prompt { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.writing-style__prompt label { font-size: var(--fs-xs); font-weight: 700; }
+.writing-style__prompt textarea { width: 100%; min-height: 138px; resize: vertical; padding: 12px 13px; border: 1px solid var(--border-strong); border-radius: var(--r-md); outline: 0; background: var(--surface-2); color: var(--text-1); font: var(--fs-sm)/1.65 var(--font); }
+.writing-style__prompt textarea:focus { border-color: var(--text-1); background: var(--surface); }
+.writing-style__prompt > small, .writing-style__scope, .writing-style__plain { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.55; }
+.writing-style__prompt footer { display: flex; justify-content: flex-end; gap: 7px; margin-top: 3px; }
+.writing-style__prompt footer button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); font: 600 var(--fs-xs)/1 var(--font); cursor: pointer; }
+.writing-style__prompt footer button.is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.writing-style__prompt footer button:disabled { opacity: .42; cursor: default; }
+.writing-style__prompt footer svg { width: 14px; }
+.writing-style__error { color: var(--danger); font-size: var(--fs-xs); }
+.writing-style__scope { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); }
+.writing-style__plain { margin: 16px 0 0; padding: 14px; border-radius: var(--r-md); background: var(--surface-2); }
+
+.writing-checks__menu { position: absolute; z-index: 122; top: 39px; right: 0; width: 310px; display: grid; gap: 3px; padding: 6px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-md); }
+.writing-checks__menu > button { display: grid; gap: 4px; padding: 10px 11px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+.writing-checks__menu > button:hover:not(:disabled) { background: var(--surface-2); }
+.writing-checks__menu > button:disabled { opacity: .42; cursor: default; }
+.writing-checks__menu b { font-size: var(--fs-xs); }
+.writing-checks__menu span, .writing-checks__menu > small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.5; }
+.writing-checks__menu > small { padding: 6px 10px; }
+.writing-check__card { display: flex; flex-direction: column; min-height: 260px; padding: 20px 20px 14px; }
+.writing-check__card > header { flex: none; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.writing-check__wait { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-3); font-size: var(--fs-sm); }
+.writing-check__wait svg { width: 17px; }
+.writing-check__error { display: grid; gap: 5px; padding: 18px 0; color: var(--danger); }
+.writing-check__error small { color: var(--text-3); }
+.writing-check__report { min-height: 0; flex: 1; padding: 17px 2px 12px; }
+.writing-check__report > small { color: var(--text-3); font: 700 10px/1 var(--font-mono); letter-spacing: .12em; }
+.writing-check__report > p { max-height: min(430px, calc(100vh - 300px)); margin: 10px 0 0; overflow-y: auto; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.78; white-space: pre-wrap; }
+.writing-check__card > footer { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.writing-check__card > footer span { color: var(--text-3); font-size: var(--fs-2xs); }
+.writing-check__card > footer button { min-height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); font: 600 var(--fs-xs)/1 var(--font); cursor: pointer; }
+.writing-check__card > footer button:disabled { opacity: .42; }
+.writing-check__card > footer svg { width: 14px; }
 .writing-assist__trigger { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); font: 600 11.5px/1 var(--font); cursor: pointer; }
 .writing-assist__trigger:hover, .writing-assist__trigger[aria-expanded="true"] { border-color: var(--text-1); color: var(--text-1); }
 .writing-assist__trigger[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
@@ -69,6 +126,12 @@
 @keyframes writing-assist-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 640px) {
+  .writing-assist { gap: 4px; }
+  .writing-tool-btn { max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .writing-style__card, .writing-check__card { top: 64px; width: calc(100vw - 24px); max-height: calc(100vh - 88px); }
+  .writing-style__card { padding: 15px; }
+  .writing-style__choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .writing-checks__menu { position: fixed; top: 112px; right: 12px; left: 12px; width: auto; }
   .writing-assist__card { top: 64px; width: calc(100vw - 24px); max-height: calc(100vh - 88px); }
   .writing-assist__result footer { align-items: flex-end; }
   .writing-assist__result footer > span { max-width: 120px; }

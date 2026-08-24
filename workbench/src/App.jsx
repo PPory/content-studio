@@ -44,8 +44,8 @@ const NAV = [
     key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
     children: [
       /**
-       * ⚠️ **顺序就是流程**：还没有想写的 → 找题；有话说了 → 种子；
-       * 开始写 → 项目；发出去 → 排版。
+       * ⚠️ **顺序就是流程**：还没有想写的 → 找题；挑定这一篇 → 选题；
+       * 开始写 → 创作；发布后 → 复盘。
        *
        * ⚠️ **「选题」和「稿件」都从导航里拿掉了**（路由和页面都留着，深链仍然有效）。
        * 两者都是**同一批东西的第二个入口**：`getContentProject` 以 topic 为项目根，
@@ -61,11 +61,11 @@ const NAV = [
        *
        * 丢掉的另一样是「按平台横着看全部稿子」，需要时走 Ctrl+K。
        */
-      { to: "ideas", label: "选种" },
-      { to: "seeds", label: "种子" },
-      { to: "content", label: "发芽" },
+      { to: "ideas", label: "找题" },
+      { to: "seeds", label: "选题" },
+      { to: "content", label: "创作" },
       // 「待复盘」本来就是项目的一个阶段，所以它在这一栏而不是单开一级
-      { to: "review", label: "收成" },
+      { to: "review", label: "复盘" },
     ],
   },
   {

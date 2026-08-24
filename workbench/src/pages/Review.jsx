@@ -76,7 +76,7 @@ export function Review({ onGo }) {
   return (
     <>
       <FilterHeader
-        title="收成"
+        title="复盘"
         desc="一篇一篇地留下判断和下一步，数字只是依据，不是结论。"
         chips={
           <div className="chips chips-sm" aria-label="按状态筛选">

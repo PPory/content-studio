@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeWritingAssistRequest, writingContext, writingCursorContext } from "../src/lib/writing-assist.js";
 
-test("写作推动只接受三个确定模式", () => {
+test("写作推动和三类检查只接受确定模式", () => {
   assert.equal(normalizeWritingAssistRequest({ mode: "paragraph", content: "已有正文" }).mode, "paragraph");
   assert.equal(normalizeWritingAssistRequest({ mode: "finish", content: "已有正文" }).mode, "finish");
+  assert.equal(normalizeWritingAssistRequest({ mode: "material-audit", content: "已有正文" }).mode, "material-audit");
+  assert.equal(normalizeWritingAssistRequest({ mode: "quality-review", content: "已有正文" }).mode, "quality-review");
+  assert.equal(normalizeWritingAssistRequest({ mode: "fact-check", content: "已有正文" }).mode, "fact-check");
   assert.equal(normalizeWritingAssistRequest({ mode: "随便拼的", content: "已有正文" }).mode, "nudge");
 });
 

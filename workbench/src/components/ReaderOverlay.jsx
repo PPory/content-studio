@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
 import { useConfirmGuard } from "../lib/use-confirm-guard.js";
+import { api } from "../lib/api.js";
 import { Reader } from "./Reader.jsx";
 import { SideRail } from "./SideRail.jsx";
 import { ReadingPrefs, loadPrefs, prefsToStyle } from "./ReadingPrefs.jsx";
@@ -368,6 +369,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [flagOpen, setFlagOpen] = useState(false);
   const [reveal, setReveal] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [writingProfile, setWritingProfile] = useState(null);
   const [draft, setDraft] = useState("");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -381,6 +383,10 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   useEffect(() => {
     setFlagOpen(false);   // 上一篇展开过告警，换一篇不该跟着展开
   }, [item.key]);
+  useEffect(() => {
+    if (!editing || writingProfile) return;
+    api.writingProfile().then(setWritingProfile).catch(() => setWritingProfile(null));
+  }, [editing, writingProfile]);
 
   /**
    * `revealAt` 是可选的「进去之后跳到哪一段」。
@@ -476,6 +482,8 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
               title={title}
               body={draft}
               platform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
+              profile={writingProfile}
+              scopeId={`${source.key}:${item.key}`}
               getCursor={() => writingCursor.current}
               onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
             />

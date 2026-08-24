@@ -2011,7 +2011,8 @@ svg[data-tone] { color: var(--tone); }
   display: grid; gap: 3px; min-width: 0; padding: 9px 10px;
   border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface);
 }
-.profile-experts__list strong { color: var(--text-1); font-size: var(--fs-xs); font-weight: 650; }
+.profile-experts__list strong { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-1); font-size: var(--fs-xs); font-weight: 650; }
+.profile-experts__list strong small { color: var(--text-3); font-size: 9px; font-weight: 550; text-align: right; }
 .profile-experts__list article span { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
 .profile-source { display: grid; gap: 4px; padding: 12px; border-radius: var(--r-ctl); background: var(--sunken); }
 .profile-source > span { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
@@ -4064,6 +4065,33 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .bars__label { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3); white-space: nowrap; }
 .bars__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .bars__foot .legend { margin-top: 0; }
+
+/* ---------- 每日发布量：折线 + 每日一点 ---------- */
+.lines { --lines-h: 168px; }
+.lines__plot { position: relative; height: var(--lines-h); }
+/* ⚠️ **线和点必须共用同一个盒子。**
+   点是按 `bottom: X%` 定位的，而百分比的基准是**它的定位祖先**——
+   直接挂在 `.lines__plot` 上的话基准里含着底部那条 22px 星期标，
+   而线画在 svg 里、svg 高度已经减掉了那 22px：**两套基准不一样**，
+   于是 0 那天的点大致对得上、而最大值那个点会整个飘到图外。
+   把两者装进同一个 `.lines__area`，基准就只有一个。 */
+.lines__area { position: absolute; inset: 0 0 22px 0; }
+.lines__svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.lines__path { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+/* 再各减去自身半径，点心才落在线上（只挪半径，不再补别的偏移） */
+.lines__dot {
+  position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  margin-left: -3.5px; margin-bottom: -3.5px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+/* 0 那天的点淡下去但**不能不画**：不画的话线在那儿断开，看着像数据缺失，
+   而真相是「那天没发」——两件事在这张图上必须分得开 */
+.lines__dot[data-zero] { opacity: 0.35; }
+.lines__axis { position: absolute; left: 0; right: 0; bottom: 0; display: flex; }
+.lines__col {
+  flex: 1 1 0; text-align: center; min-width: 0;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3); white-space: nowrap;
+}
 
 /* ---------- 渠道分布 ---------- */
 .channels { display: grid; gap: 12px; }
