@@ -7,6 +7,8 @@
 // 只在服务端跑，一个字节都不进前端包。
 
 import { unzipSync, strFromU8 } from "fflate";
+import { readXls } from "./xls.mjs";
+import { looksLikeSingleReport, parseSingleReport } from "./single-report.mjs";
 
 /**
  * 中文平台的导出常常是 GBK，不是 UTF-8。
@@ -130,9 +132,23 @@ export function readSheet(bytes, filename = "") {
   let grid;
   if (ext === ".xlsx" || ext === ".xlsm") grid = readXlsx(bytes);
   else if (ext === ".csv" || ext === ".txt" || ext === "") grid = parseCsv(decodeText(bytes));
-  else if (ext === ".xls") throw Object.assign(new Error("老版 .xls 读不了"), { hint: "在 Excel 里另存为 .xlsx 或 .csv 再拖进来" });
+  // ⚠️ **`.xls` 不能再一律拒掉了：公众号后台只有这一种导出**（而且只能单篇导），
+  // 拒了就等于这个平台的数据一条都进不来。读法见 `xls.mjs`，那儿写了为什么
+  // 宁可对没把握的记录抛错，也不「尽力猜一个」。
+  else if (ext === ".xls") grid = readXls(bytes);
   else throw Object.assign(new Error(`不认识 ${ext} 这种文件`), { hint: "支持 .xlsx 和 .csv，平台后台一般两种都能导" });
   if (!grid.length) return { headers: [], rows: [] };
+
+  /**
+   * ⚠️ **先问一句「这是不是一份单篇报告」。**
+   * 公众号给的是「一份文件讲一篇内容、指标竖着排」，而下面那套「第一行表头、
+   * 下面一行一条」套上去会把「数据指标 / 数值」当表头、把十几个指标当成十几条内容。
+   * **两种形状都读得通、都不报错**，所以判据必须在这儿分岔，不能等到出问题再说。
+   */
+  if (looksLikeSingleReport(grid)) {
+    const one = parseSingleReport(grid);
+    if (one.rows.length) return one;
+  }
 
   // 表头行：前 6 行里**互不相同**的非空单元格最多的那行。
   //

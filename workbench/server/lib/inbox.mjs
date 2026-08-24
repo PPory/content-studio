@@ -12,7 +12,9 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { guessPlatform, mergePosts, parseExport, readPosts } from "./posts.mjs";
 
-const EXTS = new Set([".csv", ".xlsx", ".xlsm"]);
+// ⚠️ **`.xls` 必须在里面：公众号后台只有这一种导出。** 少一个后缀的表现不是报错，
+// 是自动发现那一栏**看不见那个文件**——用户以为工作台没扫到，其实是被过滤掉了。
+const EXTS = new Set([".csv", ".xlsx", ".xlsm", ".xls"]);
 const MAX_AGE_DAYS = 30;
 const MAX_FILES = 12;
 const MAX_SIZE = 20_000_000;

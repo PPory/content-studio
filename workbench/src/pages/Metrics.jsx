@@ -146,7 +146,9 @@ export function Metrics({ onSettings, tab = "明细", onTab }) {
  */
 const GUIDES = [
   { platform: "小红书", where: "创作服务平台 → 数据中心 → 内容分析 → 导出" },
-  { platform: "公众号", where: "公众号后台 → 内容与互动 → 图文分析 → 导出 Excel" },
+  // ⚠️ **公众号只有单篇导出，没有列表导出**（后台里确认过）。所以这儿写「一篇导一次」，
+  // 而不是笼统的「导出 Excel」——指着一个不存在的入口，比不给指引更糟。
+  { platform: "公众号", where: "后台 → 单篇文章 → 数据 → 导出（一篇一份 .xls）" },
   { platform: "抖音", where: "创作者中心 → 数据中心 → 内容数据 → 下载数据" },
   { platform: "视频号", where: "视频号助手 → 数据中心 → 内容数据（导不了就手动录）" },
 ];
@@ -624,7 +626,7 @@ function Inbox({ onDone, onError, onSettings }) {
       {/* 「改 .env 的 DOWNLOADS_DIR」原来是句死胡同：读完之后下一步是去开编辑器，
           而那一步机器完全可以替你走。拿不到 onSettings 时退回原来那句话 */}
       <p className="panel-note">
-        只看这两个地方，只认 .xlsx / .csv：{data.dirs.join("　|　")}。
+        只看这两个地方，只认 .xlsx / .xls / .csv：{data.dirs.join("　|　")}。
         {onSettings ? (
           <button className="sysrow__btn" onClick={onSettings} style={{ marginLeft: 8 }}>
             <IconSettings size={14} stroke={1.7} aria-hidden="true" />
@@ -717,7 +719,7 @@ function Importer({ onDone }) {
       >
         <IconCloudUpload aria-hidden="true" stroke={1.5} />
         <p>
-          把 <strong>.xlsx</strong> 或 <strong>.csv</strong> 拖到这儿
+          把 <strong>.xlsx</strong>、<strong>.xls</strong> 或 <strong>.csv</strong> 拖到这儿
         </p>
         <button className="btn btn-sm" onClick={() => input.current?.click()} disabled={busy}>
           选个文件
@@ -725,7 +727,7 @@ function Importer({ onDone }) {
         <input
           ref={input}
           type="file"
-          accept=".xlsx,.xlsm,.csv"
+          accept=".xlsx,.xlsm,.xls,.csv"
           hidden
           onChange={(e) => e.target.files?.[0] && take(e.target.files[0], platform)}
         />

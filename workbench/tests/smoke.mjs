@@ -1831,6 +1831,11 @@ try {
   // 而且走完必须自己删掉。留下的只有一份当天的空计划文件——那本来也是你今天会建的东西。
   // vault 没配时整块不画，此时跳过（写死「一定有清单」的话，换台机器测试就红了）。
   if (await page.$(".day-plan")) {
+    /* ⚠️ **等的是内容，不是容器。** `.day-plan` 在清单还在取的时候就渲染好了，
+     * 而这几条量的是它里面的日期档——间歇性地量到 0 个，失败信息还是一片空白
+     * （`days.join("/")` 是空串）。这正是这个项目记过的「等 `.reader-overlay`
+     * 等到的是壳」的同一种。 */
+    await page.waitForSelector(".day-plan .plan-day", { timeout: 8000 }).catch(() => {});
     const days = await page.$$eval(".plan-day", (els) => els.map((e) => e.textContent.trim()));
     // 「明天」这一档不能少：用户的动线是「今晚列明天的」，只给今天等于砍掉主要写入时机
     check("清单能切到明天", days.join("/") === "今天/明天", days.join("/"));
