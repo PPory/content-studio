@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { TrendChart, platformColor } from "../components/TrendChart.jsx";
-import { WeeklyBars } from "../components/WeeklyBars.jsx";
+import { DailyLines } from "../components/DailyLines.jsx";
 import { ErrorNote, Note, Loading, Select, Empty, relTime, FilterHeader, SearchBox } from "../components/ui.jsx";
 import {
   IconChartBar,
@@ -241,8 +241,10 @@ function OverviewTab({ rows, week }) {
           {/* ⚠️ **横轴是固定的七天，空的那几天也占一格。**
               按月画每周发布量时，一周有内容的月份就是一根孤柱加几周空白——那既不是趋势
               也不像图。换成一周七格之后，一格就是一天：哪天发了、哪天空着当场有答案，
-              而且**不需要「攒够几周」这张图才成立**，第一篇内容进来它就说得出话。 */}
-          <WeeklyBars weeks={days} platforms={platforms} dark={dark} />
+              而且**不需要「攒够几周」这张图才成立**，第一篇内容进来它就说得出话。
+              ⚠️ 画成折线，但**每天都落一个点**：篇数是整数，只有线的话两天之间那截斜线
+              等于说「周二半夜发了 1.5 篇」。点是真值，线只表示节奏。 */}
+          <DailyLines days={days} platforms={platforms} dark={dark} />
         </section>
 
         <section className="panel-block">
