@@ -2,12 +2,14 @@ import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import {
   assistantConversation,
   assistantConversations,
+  assistantExperts,
   assistantModels,
   assistantSkills,
   cancelAssistantTurn,
   createAssistantConversation,
   runAssistantTurn,
   saveAssistantAttachment,
+  updateAssistantConversationModel,
 } from "../agent-runtime/assistant-runner.mjs";
 
 export const assistantRoutes = [
@@ -37,6 +39,13 @@ export const assistantRoutes = [
     path: "/api/assistant/skills",
     async handler({ res }) {
       json(res, { ok: true, skills: await assistantSkills() });
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/assistant/experts",
+    async handler({ res }) {
+      json(res, { ok: true, experts: assistantExperts() });
     },
   },
   {
@@ -87,6 +96,22 @@ export const assistantRoutes = [
     async handler({ req, res }) {
       const body = await readJsonBody(req);
       json(res, { ok: true, conversation: await createAssistantConversation(body.scopeId, { model: body.model }) });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/model",
+    async handler({ env, req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        const catalog = await assistantModels(env);
+        if (!catalog.items.some((item) => item.id === body.model)) {
+          return fail(res, "这个模型不在当前接口返回的可用列表中", { status: 400, hint: "重新展开模型菜单并选择其中一项。" });
+        }
+        json(res, { ok: true, conversation: await updateAssistantConversationModel(body.scopeId, body.conversationId, body.model) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
     },
   },
   {

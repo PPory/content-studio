@@ -24,6 +24,52 @@ function compactSource(item) {
 
 export function apply(ctx) {
   ctx.tools.register(defineTool({
+    name: "project_read",
+    description: "Read the current Xenho content project snapshot, including title, body, audience, platform and current selection. Read-only.",
+    parameters: {},
+    output: textOutput,
+    isConcurrencySafe: () => true,
+    async execute() {
+      const context = await readJson(process.env.XENHO_CONTEXT_FILE);
+      return JSON.stringify(context.project || context.document || {}, null, 2);
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: "material_evidence",
+    description: "Read the current project's explicitly linked materials and their source or verification fields. Read-only; a search hit is not the same as adopted evidence.",
+    parameters: {},
+    output: textOutput,
+    isConcurrencySafe: () => true,
+    async execute() {
+      const context = await readJson(process.env.XENHO_CONTEXT_FILE);
+      const materials = (context.projectMaterials || []).slice(0, 40).map((item) => ({
+        id: String(item.id || ""),
+        title: String(item.title || "未命名素材"),
+        content: String(item.content || item.note || item.summary || "").slice(0, 2_000),
+        source: String(item.source || item.sourceUrl || item.url || ""),
+        verification: String(item.verification || item.verificationStatus || ""),
+      }));
+      return JSON.stringify({ total: materials.length, materials }, null, 2);
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: "publication_metrics",
+    description: "Read the current project's recorded publication and review metrics. Read-only; never infer missing values.",
+    parameters: {},
+    output: textOutput,
+    isConcurrencySafe: () => true,
+    async execute() {
+      const context = await readJson(process.env.XENHO_CONTEXT_FILE);
+      return JSON.stringify({
+        publication: context.project?.publication || null,
+        review: context.project?.review || null,
+      }, null, 2);
+    },
+  }));
+
+  ctx.tools.register(defineTool({
     name: "knowledge_search",
     description: "Search the Xenho workbench's task-scoped, read-only snapshot of books, notes, knowledge cards, materials and drafts.",
     parameters: { query: { type: "string", required: true, description: "A short keyword or phrase." } },

@@ -1,9 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { searchAll } from "../lib/search.mjs";
+import { claimDurableTask, finishDurableTask, heartbeatDurableTask } from "../lib/agent-task-store.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { qualityNinePrompt, XENHO_QUALITY_NINE } from "../lib/quality-nine.mjs";
+import { documentVersion } from "../../src/lib/document-version.js";
 import { createHarnessRun, harnessRuntimeInfo } from "./harness-adapter.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "expert-runs");
@@ -13,6 +16,7 @@ const KINDS = new Set(["material-research", "quality-review", "fact-check", "sty
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
 const now = () => new Date().toISOString();
 const runFile = (id) => path.join(ROOT, id, "run.json");
+const INSTANCE_ID = `${os.hostname()}-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 
 async function persist(run) {
   run.updatedAt = now();
@@ -23,7 +27,12 @@ async function persist(run) {
 }
 
 function publicRun(run) {
-  const { rawTrace: _rawTrace, ...safe } = run;
+  const {
+    rawTrace: _rawTrace,
+    leaseOwner: _leaseOwner,
+    idempotencyKey: _idempotencyKey,
+    ...safe
+  } = run;
   return safe;
 }
 
@@ -84,6 +93,11 @@ async function execute(env, run, document) {
   const dir = path.dirname(runFile(run.id));
   let harness;
   let terminalFailure;
+  const heartbeat = setInterval(() => {
+    if (!run.durable || run.status !== "running") return;
+    void heartbeatDurableTask(env, run.id, { leaseOwner: run.leaseOwner, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent }).catch(() => {});
+  }, 20_000);
+  heartbeat.unref?.();
   try {
     Object.assign(run, { status: "running", stage: "local-search", stageLabel: "检索知识库与项目素材", percent: 12 });
     await persist(run);
@@ -93,7 +107,7 @@ async function execute(env, run, document) {
     Object.assign(run, { localSourceCount: evidence.sources.length, stage: "expert-run", stageLabel: run.kind === "quality-review" ? "逐项回答品控九问" : "专家正在研究并交叉核对", percent: 34 });
     await persist(run);
     const trace = [];
-    const started = await createHarnessRun({ env, runDir: dir, kind: run.kind, prompt: promptFor(run.kind, document, context), onHarness(instance) {
+    const started = await createHarnessRun({ env, runDir: dir, kind: run.kind, sessionId: run.harnessSessionId, prompt: promptFor(run.kind, document, context), onHarness(instance) {
       harness = instance;
       activeHarness.set(run.id, instance);
     }, onNotification(notification) {
@@ -134,12 +148,15 @@ async function execute(env, run, document) {
     const report = validateReport(run.kind, JSON.parse(reportJson));
     Object.assign(run, { status: "done", stage: "done", stageLabel: "检查完成", percent: 100, report, finishedAt: now() });
     await persist(run);
+    if (run.durable) await finishDurableTask(env, run.id, { leaseOwner: run.leaseOwner, status: "done", stageLabel: run.stageLabel, result: report });
   } catch (error) {
     if (run.status !== "cancelled") {
       Object.assign(run, { status: "failed", stage: "failed", stageLabel: "检查未完成", error: error.message, hint: error.hint || "可以重试；普通写作和正文保存不受影响。", finishedAt: now() });
       await persist(run);
+      if (run.durable) await finishDurableTask(env, run.id, { leaseOwner: run.leaseOwner, status: "failed", stageLabel: run.stageLabel, percent: run.percent, error: run.error }).catch(() => {});
     }
   } finally {
+    clearInterval(heartbeat);
     activeHarness.delete(run.id);
     await harness?.close().catch(() => {});
   }
@@ -149,17 +166,47 @@ export async function startExpertRun(env, input = {}) {
   const kind = clean(input.kind, 40);
   if (!KINDS.has(kind)) throw Object.assign(new Error("未知专家任务"), { status: 400 });
   const document = {
-    title: clean(input.document?.title, 300), body: clean(input.document?.body), platform: clean(input.document?.platform, 40), audience: clean(input.document?.audience, 200),
+    id: clean(input.document?.id, 180), title: clean(input.document?.title, 300), body: clean(input.document?.body), platform: clean(input.document?.platform, 40), audience: clean(input.document?.audience, 200),
     selection: input.document?.selection?.text ? { from: Math.max(0, Number(input.document.selection.from) || 0), to: Math.max(0, Number(input.document.selection.to) || 0), text: clean(input.document.selection.text, 30_000) } : null,
   };
   if (kind !== "style-calibration" && !document.body && !document.selection?.text) throw Object.assign(new Error("先写一点正文，专家才有检查对象"), { status: 400 });
-  const id = `expert-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
-  const run = await persist({ id, kind, scopeId: clean(input.scopeId, 160), status: "queued", stage: "queued", stageLabel: "准备专家任务", percent: 2, createdAt: now() });
+  const scopeId = clean(input.scopeId, 160);
+  const version = clean(input.documentVersion, 180) || documentVersion(document);
+  const target = document.selection?.text ? `${document.selection.from}:${document.selection.to}` : "full";
+  const baseKey = crypto.createHash("sha256").update(`${kind}\n${scopeId}\n${version}\n${target}`).digest("hex");
+  const idempotencyKey = input.force ? `${baseKey}:${Date.now().toString(36)}` : baseKey;
+  const proposedId = `expert-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+  const proposedSession = `expert-session-${proposedId}`;
+  const claimed = await claimDurableTask(env, {
+    id: proposedId, idempotencyKey, kind, scopeId, documentId: document.id, documentVersion: version,
+    leaseOwner: INSTANCE_ID, harnessSessionId: proposedSession, payload: { selection: document.selection ? { from: document.selection.from, to: document.selection.to } : null },
+  });
+  if (claimed.available && !claimed.claimed) {
+    const task = claimed.task;
+    const existing = live.get(task.id) || await fs.readFile(runFile(task.id), "utf8").then(JSON.parse).catch(() => null);
+    if (existing) return publicRun(existing);
+    return publicRun({
+      id: task.id, kind: task.kind, scopeId: task.scopeId, status: task.status, stage: task.stage,
+      stageLabel: task.stageLabel || (task.status === "done" ? "检查完成" : "同一任务已在执行"), percent: task.percent,
+      report: task.result || undefined, error: task.error || undefined, documentVersion: task.documentVersion,
+      harnessSessionId: task.harnessSessionId, durable: true,
+      createdAt: task.createdAt ? new Date(task.createdAt * 1000).toISOString() : now(),
+      finishedAt: task.finishedAt ? new Date(task.finishedAt * 1000).toISOString() : undefined,
+    });
+  }
+  const task = claimed.task;
+  const id = task?.id || proposedId;
+  const run = await persist({
+    id, kind, scopeId, documentVersion: version, idempotencyKey,
+    harnessSessionId: task?.harnessSessionId || proposedSession, leaseOwner: INSTANCE_ID,
+    durable: !!claimed.available, attempt: task?.attempt || 1,
+    status: "queued", stage: "queued", stageLabel: "准备专家任务", percent: 2, createdAt: now(),
+  });
   void execute(env, run, document);
   return publicRun(run);
 }
 
-export async function getExpertRun(id) {
+export async function getExpertRun(id, env) {
   if (live.has(id)) return publicRun(live.get(id));
   try {
     const run = JSON.parse(await fs.readFile(runFile(id), "utf8"));
@@ -173,23 +220,25 @@ export async function getExpertRun(id) {
         finishedAt: now(),
       });
       await persist(run);
+      if (run.durable) await finishDurableTask(env, run.id, { leaseOwner: run.leaseOwner, status: "failed", stageLabel: run.stageLabel, percent: run.percent, error: run.error }).catch(() => {});
     }
     return publicRun(run);
   } catch { return null; }
 }
 
-export async function listExpertRuns(scopeId = "") {
+export async function listExpertRuns(scopeId = "", env) {
   await fs.mkdir(ROOT, { recursive: true });
   const ids = await fs.readdir(ROOT).catch(() => []);
-  return (await Promise.all(ids.slice(-80).map(getExpertRun))).filter(Boolean).filter((run) => !scopeId || run.scopeId === scopeId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return (await Promise.all(ids.slice(-80).map((id) => getExpertRun(id, env)))).filter(Boolean).filter((run) => !scopeId || run.scopeId === scopeId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
-export async function cancelExpertRun(id) {
-  const run = live.get(id) || await getExpertRun(id);
+export async function cancelExpertRun(id, env) {
+  const run = live.get(id) || await getExpertRun(id, env);
   if (!run) return null;
   if (["done", "failed", "cancelled"].includes(run.status)) return run;
   Object.assign(run, { status: "cancelled", stage: "cancelled", stageLabel: "已中止", finishedAt: now() });
   await persist(run);
+  if (run.durable) await finishDurableTask(env, run.id, { leaseOwner: run.leaseOwner, status: "cancelled", stageLabel: run.stageLabel, percent: run.percent }).catch(() => {});
   await activeHarness.get(id)?.close().catch(() => {});
   return publicRun(run);
 }

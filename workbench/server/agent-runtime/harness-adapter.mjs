@@ -188,7 +188,7 @@ export async function probeHarnessRuntime() {
   }, runDir, "fact-check", bin);
   await fs.writeFile(path.join(runDir, "context.json"), JSON.stringify({ localSources: [] }), "utf8");
   const harness = new DeepSeekHarness({
-    launch: { command: process.execPath, args: probeConfig.args, cwd: process.cwd(), env: probeConfig.env, requestTimeoutMs: 30_000 },
+    launch: { command: process.execPath, args: probeConfig.args, cwd: process.cwd(), env: probeConfig.env, requestTimeoutMs: 60_000 },
     cwd: process.cwd(), provider: "xenho", model: "xenho-probe", maxTokens: 1024,
   });
   try {

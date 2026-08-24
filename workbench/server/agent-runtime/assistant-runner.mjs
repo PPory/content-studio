@@ -4,6 +4,8 @@ import path from "node:path";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
 import { searchAll } from "../lib/search.mjs";
+import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
+import { documentVersion } from "../../src/lib/document-version.js";
 import { closeResidentHarness, createHarnessRun } from "./harness-adapter.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
@@ -75,6 +77,7 @@ async function readConversationRecord(scopeId, conversationId) {
       scopeId: clean(scopeId, 240),
       title: clean(data.title, 120) || "新对话",
       model: clean(data.model, 240),
+      harnessSessionId: clean(data.harnessSessionId, 160) || `assistant-${id}`,
       createdAt: data.createdAt || now(),
       updatedAt: data.updatedAt || data.createdAt || now(),
       messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
@@ -95,6 +98,7 @@ async function writeConversationRecord(scopeId, record) {
     scopeId: clean(scopeId, 240),
     title: clean(record.title, 120) || "新对话",
     model: clean(record.model, 240),
+    harnessSessionId: clean(record.harnessSessionId, 160) || `assistant-${record.id}`,
     createdAt: record.createdAt || now(),
     updatedAt: now(),
     messages: (record.messages || []).slice(-120),
@@ -116,6 +120,7 @@ export async function createAssistantConversation(scopeId, options = {}) {
     id,
     title: "新对话",
     model: clean(options.model, 240),
+    harnessSessionId: `assistant-${id}`,
     createdAt: now(),
     messages: [],
     attachments: [],
@@ -211,6 +216,34 @@ export async function assistantSkills() {
   return { items: items.sort((a, b) => a.name.localeCompare(b.name, "zh-CN")) };
 }
 
+export function assistantExperts() {
+  return {
+    items: WRITING_EXPERTS.filter((item) => item.enabled).map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      scene: item.scene,
+      source: "xenho-preset",
+    })),
+  };
+}
+
+function expertForMessage(message) {
+  const mention = String(message || "").match(/(?:^|\s)@([^\s@/]+)/u)?.[1] || "";
+  return WRITING_EXPERTS.find((item) => item.enabled && (item.id === mention || item.name === mention)) || null;
+}
+
+export async function updateAssistantConversationModel(scopeId, conversationId, model) {
+  const next = clean(model, 240);
+  if (!next) throw Object.assign(new Error("请选择一个可用模型"), { status: 400 });
+  const record = await ensureConversation(scopeId, conversationId);
+  const key = activeKey(scopeId, record.id);
+  if (active.has(key)) throw Object.assign(new Error("当前回复完成后才能切换模型"), { status: 409 });
+  if (record.model && record.model !== next) await closeResidentHarness(`assistant:${key}:${record.model}`).catch(() => {});
+  record.model = next;
+  return writeConversationRecord(scopeId, record);
+}
+
 function searchQueries(input) {
   const text = `${input.document?.title || ""}\n${input.message || ""}\n${input.document?.selection?.text || ""}`;
   const quoted = [...text.matchAll(/[“\"《]([^”\"》]{2,30})[”\"》]/g)].map((match) => match[1]);
@@ -248,7 +281,22 @@ async function localContext(env, input, record) {
     localSources: sources.slice(0, 40),
     retrievalMode: asksForSources ? "按需检索" : "未检索",
     attachments: (record.attachments || []).map(({ id, name, type, bytes, characters, textPath }) => ({ id, name, type, bytes, characters, textPath })),
+    project: {
+      title: clean(input.document?.title, 300),
+      body: clean(input.document?.body, 60_000),
+      platform: clean(input.document?.platform, 80),
+      audience: clean(input.document?.audience, 300),
+      selection: input.document?.selection || null,
+      publication: input.document?.publication || null,
+      review: input.document?.review || null,
+    },
+    projectMaterials: (input.materials || []).slice(0, 40),
   };
+}
+
+function expertInstruction(input) {
+  const expert = expertForMessage(input.message);
+  return expert ? `【本轮调用专家：${expert.name}】\n${expert.instructions}` : "";
 }
 
 function contentPrompt(input, context) {
@@ -264,6 +312,7 @@ function contentPrompt(input, context) {
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
     style,
+    expertInstruction(input),
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
   ].join("\n\n");
@@ -274,6 +323,7 @@ function generalPrompt(input, context) {
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
     "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
+    expertInstruction(input),
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
   ].join("\n\n");
@@ -281,6 +331,9 @@ function generalPrompt(input, context) {
 
 const TOOL_LABELS = {
   knowledge_search: "正在检索本地知识库",
+  project_read: "正在读取当前内容项目",
+  material_evidence: "正在核对项目素材与证据",
+  publication_metrics: "正在读取发布与复盘数据",
   attachment_read: "正在读取附件",
   web_search: "正在搜索公开网页",
   web_fetch: "正在阅读网页来源",
@@ -356,7 +409,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
         ? "你是 Xenho OS 的通用 AI 助手。直接回应用户真实意图，可调用知识库、公开网页、附件和 Harness Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。"
         : "你是 Xenho OS 的内容项目助手。协助主创分析、检索和生成候选；不得静默改正文，不得伪造事实、来源或用户经历。",
       sessionRoot: path.join(dir, "sessions"),
-      sessionId: `assistant-${record.id}`,
+      sessionId: record.harnessSessionId || `assistant-${record.id}`,
       maxTokens: 4096,
       model: record.model,
       residentKey: `assistant:${key}:${record.model}`,
@@ -366,7 +419,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const text = clean(result.result.finalResponse, 40_000);
     if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
     const latest = await readConversationRecord(scopeId, record.id) || record;
-    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode };
+    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document) };
     latest.messages = [...latest.messages, assistantMessage];
     latest.model = record.model;
     latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs };

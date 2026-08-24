@@ -18,13 +18,13 @@ export const expertRunRoutes = [
   {
     method: "GET",
     path: "/api/expert-runs",
-    async handler({ res, url }) { json(res, { ok: true, runs: await listExpertRuns(url.searchParams.get("scope") || "") }); },
+    async handler({ env, res, url }) { json(res, { ok: true, runs: await listExpertRuns(url.searchParams.get("scope") || "", env) }); },
   },
   {
     method: "GET",
     path: "/api/expert-runs/:id",
-    async handler({ res, params }) {
-      const run = await getExpertRun(params.id);
+    async handler({ env, res, params }) {
+      const run = await getExpertRun(params.id, env);
       if (!run) return fail(res, "找不到这次专家任务", { status: 404 });
       json(res, { ok: true, run });
     },
@@ -32,8 +32,8 @@ export const expertRunRoutes = [
   {
     method: "POST",
     path: "/api/expert-runs/:id/cancel",
-    async handler({ res, params }) {
-      const run = await cancelExpertRun(params.id);
+    async handler({ env, res, params }) {
+      const run = await cancelExpertRun(params.id, env);
       if (!run) return fail(res, "找不到这次专家任务", { status: 404 });
       json(res, { ok: true, run });
     },

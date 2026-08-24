@@ -56,6 +56,7 @@ import {
   materialLibraryWhere,
   parseMaterialLibraryQuery,
 } from "./lib/material-library.js";
+import { claimAgentTask, finishAgentTask, getAgentTask, heartbeatAgentTask } from "./lib/agent-tasks.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -389,6 +390,24 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (path === "models" && request.method === "POST") {
       const body = await request.json();
       return json({ ok: true, values: await writeModelMap(env, body?.values || {}) });
+    }
+
+    // Harness 长任务只在这里保存执行状态。任务正文仍由工作台按需提供，任何正文写入仍需用户确认。
+    if (path === "agent-tasks/claim" && request.method === "POST") {
+      return json({ ok: true, ...(await claimAgentTask(env, await request.json())) });
+    }
+    const agentHeartbeatMatch = path.match(/^agent-tasks\/([^/]+)\/heartbeat$/);
+    if (agentHeartbeatMatch && request.method === "POST") {
+      return json({ ok: true, task: await heartbeatAgentTask(env, agentHeartbeatMatch[1], await request.json()) });
+    }
+    const agentFinishMatch = path.match(/^agent-tasks\/([^/]+)\/finish$/);
+    if (agentFinishMatch && request.method === "POST") {
+      return json({ ok: true, task: await finishAgentTask(env, agentFinishMatch[1], await request.json()) });
+    }
+    const agentTaskMatch = path.match(/^agent-tasks\/([^/]+)$/);
+    if (agentTaskMatch && request.method === "GET") {
+      const task = await getAgentTask(env, agentTaskMatch[1]);
+      return task ? json({ ok: true, task }) : json({ ok: false, error: "任务不存在" }, 404);
     }
 
     if (path === "update" && request.method === "POST") return await updateFields(env, await request.json());

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
+import { documentVersion } from "../lib/document-version.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { KnowledgeCardDialog } from "./KnowledgeCardDialog.jsx";
 import { ExpertReport } from "./ExpertTaskPanel.jsx";
 import {
   IconArchive,
   IconCheck,
+  IconChevronDown,
   IconCopy,
   IconDatabase,
   IconFileText,
@@ -34,11 +36,15 @@ const REPORTS = [
 ];
 
 const EXPERTS = [
-  { id: "writing", label: "写作教练", hint: "梳理、续写和改稿", mention: "@写作教练 " },
-  { id: "material-research", label: "素材顾问", hint: "查知识库与公开来源" },
-  { id: "quality-review", label: "审稿顾问", hint: "逐项回答 Xenho 品控九问" },
-  { id: "fact-check", label: "事实核查", hint: "核对数字、日期、人物与引语" },
+  { id: "topic-editor", label: "选题顾问", hint: "收束方向与核心问题" },
+  { id: "writing-coach", label: "写作教练", hint: "梳理、续写和改稿" },
+  { id: "material-researcher", label: "素材顾问", hint: "查知识库与公开来源" },
+  { id: "quality-reviewer", label: "审稿顾问", hint: "逐项回答 Xenho 品控九问" },
+  { id: "style-coach", label: "风格顾问", hint: "调准语气、节奏和表达习惯" },
+  { id: "fact-checker", label: "事实核查", hint: "核对数字、日期、人物与引语" },
 ];
+
+const PROJECT_EXPERTS = new Set(["writing-coach", "material-researcher", "quality-reviewer", "fact-checker"]);
 
 const SKILLS = [
   { id: "continue", label: "续写一段", hint: "结合上下文给候选段落", prompt: "/续写一段 请接着当前光标继续写，先给候选，不要声称已写入正文。" },
@@ -58,6 +64,18 @@ const STANDALONE_SKILLS = [
 
 const revisionLabel = { polish: "润色", rewrite: "改写", proofread: "纠错" };
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
+
+function commandAt(value, cursor) {
+  const before = String(value || "").slice(0, cursor);
+  const match = before.match(/(^|\s)([@/])([^\s@/]*)$/u);
+  if (!match) return null;
+  return {
+    type: match[2] === "@" ? "experts" : "skills",
+    query: match[3] || "",
+    from: before.length - match[2].length - (match[3] || "").length,
+    to: cursor,
+  };
+}
 
 function Working({ label = "Harness 正在处理", detail = "" }) {
   const [seconds, setSeconds] = useState(0);
@@ -91,23 +109,25 @@ function EmptyAssistant({ onPrompt, standalone = false }) {
   </div>;
 }
 
-function Message({ item, canRevise, canInsert, onRevise, onInsert, onCard }) {
+function Message({ item, canRevise, canInsert, currentVersion, onRevise, onInsert, onCard }) {
   const assistant = item.role === "assistant";
+  const stale = assistant && item.documentVersion && currentVersion && item.documentVersion !== currentVersion;
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
     {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</small> : null}
     {assistant ? <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} /> : <p>{item.text}</p>}
+    {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {assistant ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
-      {canInsert ? <button onClick={() => onInsert(item.text)} title="插入后会带底纹，仍需确认采用"><IconPlus aria-hidden="true" />作为候选插入</button> : null}
-      {canRevise ? <button onClick={() => onRevise(item.text)} title="按这条建议生成选区改写候选"><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
+      {canInsert ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插入后会带底纹，仍需确认采用"}><IconPlus aria-hidden="true" />作为候选插入</button> : null}
+      {canRevise ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议生成选区改写候选"}><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
       <button onClick={onCard} title="先生成知识卡片预览"><IconArchive aria-hidden="true" />沉淀</button>
     </footer> : null}
   </article>;
 }
 
-export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, onExpert, reportBusy = false, standalone = false }) {
+export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, standalone = false }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,6 +135,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [menu, setMenu] = useState("");
+  const [menuQuery, setMenuQuery] = useState("");
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [commandRange, setCommandRange] = useState(null);
   const [cardOpen, setCardOpen] = useState(false);
   const [conversationId, setConversationId] = useState("");
   const [conversationTitle, setConversationTitle] = useState("新对话");
@@ -122,10 +145,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [historyOpen, setHistoryOpen] = useState(standalone);
   const [models, setModels] = useState([]);
   const [harnessSkills, setHarnessSkills] = useState([]);
+  const [expertPresets, setExpertPresets] = useState([]);
   const [model, setModel] = useState("");
+  const [modelPending, setModelPending] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const modelListId = `assistant-models-${scopeId.replace(/[^a-z0-9_-]/gi, "-")}`;
   const [styleId, setStyleId] = useState(() => {
     try { return localStorage.getItem(`workbench:draft-style:v1:${scopeId}`) || profile?.profile?.styleId || ""; } catch { return profile?.profile?.styleId || ""; }
   });
@@ -134,6 +158,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const fileRef = useRef(null);
   const styles = (profile?.styles || []).filter((item) => item.enabled);
   const style = styles.find((item) => item.id === styleId) || null;
+  const currentVersion = documentVersion(document);
 
   const refreshHistory = async () => {
     if (!standalone) return;
@@ -158,15 +183,17 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     Promise.all([
       api.assistantConversation(scopeId),
       standalone ? api.assistantConversations(scopeId) : Promise.resolve({ conversations: { items: [] } }),
-      standalone ? api.assistantModels() : Promise.resolve({ models: { items: [], configured: "" } }),
+      api.assistantModels(),
       api.assistantSkills(),
-    ]).then(([conversationResult, historyResult, modelResult, skillResult]) => {
+      api.assistantExperts(),
+    ]).then(([conversationResult, historyResult, modelResult, skillResult, expertResult]) => {
       if (cancelled) return;
       applyConversation(conversationResult.conversation);
       setConversationItems(historyResult.conversations?.items || []);
       const nextModels = modelResult.models?.items || [];
       setModels(nextModels);
       setHarnessSkills((skillResult.skills?.items || []).map((item) => ({ id: `harness:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` })));
+      setExpertPresets((expertResult.experts?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description })));
       setModel(conversationResult.conversation?.model || modelResult.models?.configured || nextModels[0]?.id || "");
     }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -185,7 +212,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setInput(""); setMenu(""); setBusy(true); setActivity("正在读取上下文"); setError(null);
     try {
       const result = await api.assistantChatStream(
-        { scopeId, conversationId, message, document, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" },
+        { scopeId, conversationId, message, document, documentVersion: currentVersion, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" },
         (event) => {
           if (event.type === "status") setActivity(event.stage || "Harness 正在继续处理");
           if (event.type === "text" && event.text) {
@@ -240,23 +267,78 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   };
 
   function chooseExpert(item) {
-    setMenu("");
-    if (standalone || item.mention) { setInput(item.mention || `@${item.label} `); inputRef.current?.focus(); return; }
-    onExpert?.(item.id);
+    insertCommand(`@${item.label} `);
   }
 
   function chooseSkill(item) {
-    setMenu("");
+    setMenu(""); setMenuQuery(""); setCommandRange(null);
     if (item.card) { setCardOpen(true); return; }
     if (item.revision) {
       if (!selection?.text) { setError(new Error(`先在正文里选中一段，再使用“${item.label}”`)); return; }
       onRevision?.({ mode: item.revision, label: revisionLabel[item.revision], instruction: "", selection });
       return;
     }
-    setInput(item.prompt || ""); inputRef.current?.focus();
+    insertCommand(item.prompt || `/${item.label} `);
   }
 
+  const experts = (expertPresets.length ? expertPresets : EXPERTS).filter((item) => standalone || PROJECT_EXPERTS.has(item.id));
   const availableSkills = [...harnessSkills, ...(standalone ? STANDALONE_SKILLS : SKILLS)];
+  const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : models.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.ownedBy || "可用模型" }));
+  const filteredMenuItems = menuItems.filter((item) => !menuQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(menuQuery.toLowerCase())).slice(0, 80);
+
+  function openMenu(type) {
+    setMenu(type); setMenuQuery(""); setMenuIndex(0); setCommandRange(null);
+  }
+
+  function insertCommand(text) {
+    const range = commandRange;
+    const next = range ? `${input.slice(0, range.from)}${text}${input.slice(range.to)}` : `${input}${input && !/\s$/.test(input) ? " " : ""}${text}`;
+    setInput(next); setMenu(""); setMenuQuery(""); setCommandRange(null);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
+  }
+
+  async function chooseModel(item) {
+    const previous = model;
+    setMenu(""); setMenuQuery(""); setCommandRange(null); setModel(item.id); setModelPending(true); setError(null);
+    try {
+      const result = await api.setAssistantModel({ scopeId, conversationId, model: item.id });
+      applyConversation(result.conversation);
+    } catch (next) {
+      setModel(previous); setError(next);
+    } finally { setModelPending(false); }
+  }
+
+  function chooseMenuItem(item) {
+    if (!item) return;
+    if (menu === "experts") chooseExpert(item);
+    else if (menu === "skills") chooseSkill(item);
+    else chooseModel(item);
+  }
+
+  function changeInput(event) {
+    const value = event.target.value;
+    const command = commandAt(value, event.target.selectionStart ?? value.length);
+    setInput(value);
+    if (command) {
+      setMenu(command.type); setMenuQuery(command.query); setMenuIndex(0); setCommandRange({ from: command.from, to: command.to });
+    } else if (menu === "experts" || menu === "skills") {
+      setMenu(""); setMenuQuery(""); setCommandRange(null);
+    }
+  }
+
+  function inputKeyDown(event) {
+    if (menu && filteredMenuItems.length) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setMenuIndex((value) => (value + step + filteredMenuItems.length) % filteredMenuItems.length);
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); chooseMenuItem(filteredMenuItems[menuIndex] || filteredMenuItems[0]); return; }
+      if (event.key === "Escape") { event.preventDefault(); setMenu(""); setCommandRange(null); return; }
+    }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
+  }
 
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
@@ -272,7 +354,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     <div className="assistant-thread">
       {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
-      {messages.map((item) => <Message key={item.id} item={item} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
+      {messages.map((item) => <Message key={item.id} item={item} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
       {busy ? <Working label="Harness 正在调用模型和工具" detail={activity} /> : null}
       {error ? <div className="assistant-error" role="alert"><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <p>{error.hint}</p> : null}<button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试这条</button></div> : null}
       <div ref={endRef} />
@@ -280,17 +362,18 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
     <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); send(); }}>
       {standalone && attachments.length ? <div className="assistant-attachments">{attachments.slice(-4).map((item) => <span key={item.id}><IconFileText aria-hidden="true" />{item.name}</span>)}</div> : null}
-      <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder={standalone ? "问任何问题，输入 @ 调专家，或 / 使用 Skill…" : "问当前内容，或输入 @ 调专家、/ 使用 Skill…"} rows="3" disabled={busy} />
+      <textarea ref={inputRef} value={input} onChange={changeInput} onKeyDown={inputKeyDown} placeholder={standalone ? "问任何问题；输入 @ 调专家，输入 / 使用 Skill" : "问当前内容；输入 @ 调专家，输入 / 使用 Skill"} rows="3" disabled={busy} />
       {menu ? <div className="assistant-command-menu" role="menu">
-        <header>{menu === "experts" ? "调用专家" : "使用 Skill"}<button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
-        {(menu === "experts" ? EXPERTS : availableSkills).map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => menu === "experts" ? chooseExpert(item) : chooseSkill(item)} disabled={!standalone && reportBusy && !item.mention}><b>{item.label}</b><small>{item.hint}</small></button>)}
+        <header>{menu === "models" ? <label className="assistant-command-menu__search"><span>切换模型</span><input autoFocus value={menuQuery} onChange={(event) => { setMenuQuery(event.target.value); setMenuIndex(0); }} onKeyDown={inputKeyDown} placeholder="筛选可用模型" aria-label="筛选可用模型" /></label> : <span>{menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span>}<button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
+        {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={menu === "models" && modelPending}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : menu === "skills" ? "/" : item.id === model ? "✓" : ""}</span><span><b>{item.label}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">没有匹配项</p>}
       </div> : null}
       <footer>
         <div>
           {standalone ? <><input ref={fileRef} type="file" hidden accept=".pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" title="上传文件（PDF、文本、Markdown、CSV、JSON 等）" onClick={() => fileRef.current?.click()} disabled={uploading}><IconUpload aria-hidden="true" /><span>{uploading ? "读取中" : "文件"}</span></button></> : null}
-          <button type="button" title="调用专家（在输入框里打 @ 也一样）" onClick={() => setMenu(menu === "experts" ? "" : "experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button>
-          <button type="button" title="使用 Harness Skill（在输入框里打 / 也一样）" onClick={() => setMenu(menu === "skills" ? "" : "skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button>
-          {standalone ? <label className="assistant-composer__model" title="选择接口返回的模型，也可以直接输入模型 ID"><span>模型</span><input list={modelListId} value={model} onChange={(event) => setModel(event.target.value)} placeholder="输入模型 ID" /><datalist id={modelListId}>{models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</datalist></label> : <label className="assistant-composer__style" title="这次发送要带上的写作风格"><span>风格</span><select value={styleId} onChange={(event) => { setStyleId(event.target.value); try { localStorage.setItem(`workbench:draft-style:v1:${scopeId}`, event.target.value); } catch {} }}><option value="">不调用</option>{styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+          <button type="button" title="调用专家；也可以直接输入 @" onClick={() => menu === "experts" ? setMenu("") : openMenu("experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button>
+          <button type="button" title="使用 Harness Skill；也可以直接输入 /" onClick={() => menu === "skills" ? setMenu("") : openMenu("skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button>
+          {!standalone ? <label className="assistant-composer__style" title="这次发送要带上的写作风格"><span>风格</span><select value={styleId} onChange={(event) => { setStyleId(event.target.value); try { localStorage.setItem(`workbench:draft-style:v1:${scopeId}`, event.target.value); } catch {} }}><option value="">不调用</option>{styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
+          <button type="button" className="assistant-composer__model" title="从当前接口返回的可用模型中选择" onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={!models.length || busy || modelPending}><span className="assistant-composer__model-label">模型</span><b>{models.find((item) => item.id === model)?.name || model || "未配置"}</b><IconChevronDown aria-hidden="true" /></button>
         </div>
         <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
@@ -338,16 +421,15 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
     return () => clearInterval(timer);
   }, [runs, scopeId]);
 
-  const startRun = async (kind) => {
+  const startRun = async (kind, force = false) => {
     setTab("reports"); setReportKind(kind); setReportError(null);
     try {
-      const result = await api.startExpertRun({ kind, scopeId, document });
+      const result = await api.startExpertRun({ kind, scopeId, document, documentVersion: documentVersion(document), force });
       setRuns((current) => [result.run, ...current.filter((item) => item.id !== result.run.id)]);
     } catch (error) { setReportError(error); }
   };
-  const retry = (run) => startRun(run.kind);
+  const retry = (run) => startRun(run.kind, true);
   const cancel = async (id) => { await api.cancelExpertRun(id); loadRuns(); };
-  const reportBusy = runs.some((item) => ["queued", "running"].includes(item.status));
   const counts = useMemo(() => ({ materials: materials.length, reports: new Set(runs.filter((item) => item.status === "done").map((item) => item.kind)).size }), [materials.length, runs]);
 
   return <aside className="project-rail project-assistant" aria-label="项目 AI 与资料">
@@ -355,7 +437,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       {TABS.map((item) => <button key={item.id} aria-pressed={tab === item.id} onClick={() => setTab(item.id)}><item.icon aria-hidden="true" /><span>{item.label}</span>{item.id !== "assistant" && counts[item.id] ? <em>{counts[item.id]}</em> : null}</button>)}
     </nav>
     <div className="project-assistant__body">
-      {tab === "assistant" ? <AssistantPane scopeId={scopeId} document={document} materials={materials} profile={profile} selection={selection} onInsert={onInsert} onRevision={onRevision} onExpert={startRun} reportBusy={reportBusy} /> : null}
+      {tab === "assistant" ? <AssistantPane scopeId={scopeId} document={document} materials={materials} profile={profile} selection={selection} onInsert={onInsert} onRevision={onRevision} /> : null}
       {tab === "materials" ? <div className="project-assistant__materials">{children}</div> : null}
       {tab === "reports" ? <ReportsPane runs={runs} activeKind={reportKind} onKind={setReportKind} onRun={startRun} onRetry={retry} onCancel={cancel} /> : null}
       {reportError ? <div className="assistant-error assistant-report-global"><b>{reportError.message}</b>{reportError.hint ? <p>{reportError.hint}</p> : null}</div> : null}

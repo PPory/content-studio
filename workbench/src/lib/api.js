@@ -235,6 +235,8 @@ export const api = {
   assistantConversations: (scope) => req(`/api/assistant/conversations?scope=${encodeURIComponent(scope)}`),
   assistantModels: () => req("/api/assistant/models"),
   assistantSkills: () => req("/api/assistant/skills"),
+  assistantExperts: () => req("/api/assistant/experts"),
+  setAssistantModel: (body) => postJson("/api/assistant/model", body),
   assistantChat: (body) => postJson("/api/assistant/chat", body),
   async assistantChatStream(body, onEvent) {
     let response;
