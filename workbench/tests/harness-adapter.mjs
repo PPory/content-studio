@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { HARNESS_VERSION, harnessRuntimeInfo, probeHarnessRuntime } from "../server/agent-runtime/harness-adapter.mjs";
+import { HARNESS_VERSION, harnessChildEnv, harnessRuntimeInfo, probeHarnessRuntime } from "../server/agent-runtime/harness-adapter.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
 
 const info = await harnessRuntimeInfo({});
@@ -9,6 +9,10 @@ assert.equal(new Set(Object.values(info.versions)).size, 1, "Harness 直接依�
 assert.equal(info.configured, false, "空配置不该被误判为可执行");
 assert.equal(XENHO_QUALITY_NINE.length, 9, "Xenho 品控问题必须保持九项唯一真源");
 assert.deepEqual(new Set(XENHO_QUALITY_NINE.map((item) => item.id)).size, 9, "品控九问 id 重复");
+
+const child = harnessChildEnv({ HTTPS_PROXY: "http://127.0.0.1:10808", NO_PROXY: "localhost" }, ".xenho/test", "fact-check");
+assert.equal(child.HTTPS_PROXY, "http://127.0.0.1:10808", "Harness 子进程丢失工作台代理");
+assert.equal(child.NO_PROXY, "localhost", "Harness 子进程丢失代理例外规则");
 
 const probe = await probeHarnessRuntime();
 assert.deepEqual(probe, { ok: true, version: HARNESS_VERSION });

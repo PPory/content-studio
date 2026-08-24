@@ -83,6 +83,7 @@ function validateReport(kind, report) {
 async function execute(env, run, document) {
   const dir = path.dirname(runFile(run.id));
   let harness;
+  let terminalFailure;
   try {
     Object.assign(run, { status: "running", stage: "local-search", stageLabel: "检索知识库与项目素材", percent: 12 });
     await persist(run);
@@ -99,15 +100,38 @@ async function execute(env, run, document) {
       trace.push(notification);
       if (trace.length > 240) trace.shift();
       if (notification.method === "session.event") {
-        const type = notification.params?.event?.type || "";
+        const event = notification.params?.event;
+        const type = event?.type || "";
         if (type === "tool/call") Object.assign(run, { stage: "tool-use", stageLabel: "查找并核对来源", percent: Math.max(run.percent, 56) });
         if (type === "tool/result") run.percent = Math.min(86, run.percent + 8);
+        if (type === "llm/retry") {
+          const retry = Number(event.data?.retry) || 1;
+          const maxRetries = Number(event.data?.maxRetries) || 5;
+          Object.assign(run, { stage: "model-retry", stageLabel: `模型连接中断，正在重试 ${retry}/${maxRetries}`, percent: Math.max(run.percent, 38) });
+        }
+        if (type === "turn/end" && event.data?.reason?.kind === "error") terminalFailure = event.data.reason.error;
       }
     } });
     harness = started.harness;
+    if (terminalFailure) {
+      const code = clean(terminalFailure.code, 80);
+      const transport = code === "TRANSPORT" || /connection|network|fetch/i.test(terminalFailure.message || "");
+      throw Object.assign(new Error(transport ? "专家模型连接失败" : `专家执行失败${code ? `（${code}）` : ""}`), {
+        hint: transport
+          ? "已读取你配置的 URL、模型和密钥，但请求未能连通模型服务。请确认模型地址可访问、本机网络或代理正在运行，然后重试。"
+          : clean(terminalFailure.message, 500) || "可以重试；普通写作和正文保存不受影响。",
+      });
+    }
     Object.assign(run, { rawTrace: trace, stage: "validate", stageLabel: "整理结构化报告", percent: 92 });
     await persist(run);
-    const report = validateReport(run.kind, JSON.parse(await fs.readFile(path.join(dir, "report.json"), "utf8")));
+    let reportJson;
+    try {
+      reportJson = await fs.readFile(path.join(dir, "report.json"), "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      throw Object.assign(new Error("专家没有交付报告"), { hint: "模型已结束回答，但没有按约定提交检查报告。请重试一次。" });
+    }
+    const report = validateReport(run.kind, JSON.parse(reportJson));
     Object.assign(run, { status: "done", stage: "done", stageLabel: "检查完成", percent: 100, report, finishedAt: now() });
     await persist(run);
   } catch (error) {

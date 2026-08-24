@@ -185,11 +185,23 @@
 
 .expert-progress,
 .expert-error { padding: 24px; }
-.expert-progress > div { height: 4px; overflow: hidden; border-radius: 99px; background: #eceef2; }
-.expert-progress > div span { display: block; height: 100%; border-radius: inherit; background: #17181b; transition: width 220ms ease; }
+.expert-progress__track { height: 4px; overflow: hidden; border-radius: 99px; background: #eceef2; }
+.expert-progress__track > span { display: block; height: 100%; border-radius: inherit; background: #17181b; transition: width 220ms ease; }
 .expert-progress p { display: flex; align-items: center; gap: 8px; margin: 18px 0 6px; font-weight: 650; }
 .expert-progress small { color: #747780; }
-.expert-error { margin: 20px; border-radius: 12px; background: #fff4ed; color: #8b3b16; }
+.expert-activity { position: relative; width: 26px; height: 26px; flex: 0 0 26px; border: 2px solid #d9dce2; border-top-color: #17181b; border-radius: 50%; animation: expert-orbit .78s linear infinite; }
+.expert-activity i { position: absolute; top: -3px; left: 50%; width: 6px; height: 6px; border-radius: 50%; background: #17181b; transform: translateX(-50%); box-shadow: 0 0 0 3px #fff; }
+.expert-error { display: grid; gap: 9px; margin: 20px; border: 1px solid #f1d7ca; border-radius: 12px; padding: 20px 22px; background: #fff4ed; color: #8b3b16; }
+.expert-error > small { color: #a8694d; font-weight: 650; }
+.expert-error > p { margin: 0; line-height: 1.65; }
+.expert-retry { justify-self: start; display: inline-flex; align-items: center; gap: 7px; margin-top: 4px; border: 1px solid #8b3b16; border-radius: 9px; padding: 9px 13px; background: #8b3b16; color: #fff; font-weight: 650; cursor: pointer; }
+.expert-retry svg, .expert-task > footer button svg { width: 15px; height: 15px; vertical-align: -3px; }
+
+@keyframes expert-orbit { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .expert-activity { animation-duration: 1.8s; }
+}
 
 .expert-report { overflow: auto; padding: 4px 24px 28px; }
 .expert-report__summary { margin: 18px 0 24px; font-size: 16px; line-height: 1.75; }

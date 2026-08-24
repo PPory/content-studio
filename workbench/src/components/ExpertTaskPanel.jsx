@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { IconLoader2, IconRefresh, IconX } from "./icons.jsx";
+import { IconRefresh, IconX } from "./icons.jsx";
 
 const LABELS = {
   "material-research": "素材查缺",
@@ -74,13 +74,13 @@ export function ExpertTaskPanel({ run: initialRun, onRunChange, onClose, onRetry
         <div><small>专家任务 · {run.localSourceCount != null ? `本地找到 ${run.localSourceCount} 条候选来源` : "只读研究"}</small><strong>{LABELS[run.kind] || "专家检查"}</strong></div>
         <button onClick={onClose} aria-label="关闭专家任务"><IconX aria-hidden="true" /></button>
       </header>
-      {working ? <div className="expert-progress"><div><span style={{ width: `${run.percent || 2}%` }} /></div><p><IconLoader2 className="spin" aria-hidden="true" />{run.stageLabel || "正在执行"}</p><small>关闭这个面板不会中止任务，回来仍能看到结果。</small></div> : null}
-      {run.status === "failed" ? <div className="expert-error"><strong>{run.error}</strong>{run.hint ? <p>{run.hint}</p> : null}</div> : null}
+      {working ? <div className="expert-progress" aria-live="polite"><div className="expert-progress__track"><span style={{ width: `${run.percent || 2}%` }} /></div><p><span className="expert-activity" aria-hidden="true"><i /></span><span>{run.stageLabel || "正在执行"}</span></p><small>关闭这个面板不会中止任务，回来仍能看到结果。</small></div> : null}
+      {run.status === "failed" ? <div className="expert-error" role="alert"><small>本次检查未完成</small><strong>{run.error}</strong>{run.hint ? <p>{run.hint}</p> : null}<button className="expert-retry" onClick={onRetry}><IconRefresh aria-hidden="true" />重试本次检查</button></div> : null}
       {run.status === "cancelled" ? <div className="expert-error"><strong>这次任务已中止</strong></div> : null}
       <Report report={run.report} />
       <footer>
         <span>报告不会自动改正文；来源与修改建议由你决定是否采用。</span>
-        <div>{working ? <button onClick={async () => { const next = (await api.cancelExpertRun(run.id)).run; setRun(next); onRunChange?.(next); }}>中止任务</button> : <button onClick={onRetry}><IconRefresh aria-hidden="true" />重新检查</button>}</div>
+        <div>{working ? <button onClick={async () => { const next = (await api.cancelExpertRun(run.id)).run; setRun(next); onRunChange?.(next); }}>中止任务</button> : run.status === "done" ? <button onClick={onRetry}><IconRefresh aria-hidden="true" />重新检查</button> : <button onClick={onClose}>关闭</button>}</div>
       </footer>
     </section>
   </div>;

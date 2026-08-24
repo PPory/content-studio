@@ -101,12 +101,20 @@ await page.route("**/api/expert-runs**", (route) => {
       claims: [{ quote: "增长 30%", location: "第二段", status: "待核", risk: "缺少统计口径", suggestion: "补充来源和年份", localSources: [], webSources: [{ title: "公开数据页", url: "https://example.com/data", excerpt: "需核对统计口径。" }] }],
       nextSteps: ["确认原始数据表"],
     };
-    const run = { id: `expert-test-${expertStarts.length}`, kind, status: "done", stageLabel: "检查完成", percent: 100, localSourceCount: 1, report };
+    const materialAttempt = expertStarts.filter((item) => item.kind === "material-research").length;
+    const run = { id: `expert-test-${expertStarts.length}`, kind, status: "running", stageLabel: "专家正在研究并交叉核对", percent: 34, localSourceCount: 1, pendingReport: report, polls: 0, failAfterPoll: kind === "material-research" && materialAttempt === 1 };
     expertRunStore.set(run.id, run);
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run }) });
   }
   if (request.method() === "GET" && id) {
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run: expertRunStore.get(id) }) });
+    const run = expertRunStore.get(id);
+    if (run?.status === "running") {
+      run.polls += 1;
+      if (run.polls >= 2) Object.assign(run, run.failAfterPoll
+        ? { status: "failed", stageLabel: "检查未完成", error: "专家模型连接失败", hint: "已读取配置，请确认本机代理正在运行。" }
+        : { status: "done", stageLabel: "检查完成", percent: 100, report: run.pendingReport });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, run }) });
   }
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, runs: [] }) });
 });
@@ -304,9 +312,17 @@ try {
   for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
   await page.click('.writing-tool-btn:has-text("检查")');
   await page.click('.writing-checks__menu > button:has-text("素材查缺")');
+  await page.waitForSelector(".expert-activity");
+  const expertAnimation = await page.$eval(".expert-activity", (item) => getComputedStyle(item).animationName);
+  assert(expertAnimation === "expert-orbit", "专家工作指示器没有播放动画");
+  await page.waitForSelector('.expert-retry:has-text("重试本次检查")');
+  assert((await page.textContent(".expert-error")).includes("专家模型连接失败"), "专家错误没有显示真实连接原因");
+  await page.click('.expert-retry:has-text("重试本次检查")');
+  await page.waitForSelector(".expert-activity");
   await page.waitForFunction(() => document.querySelector(".expert-report")?.textContent.includes("本地知识卡"));
   const materialAudit = expertStarts.at(-1);
   assert(materialAudit?.kind === "material-research" && materialAudit?.document?.selection?.text?.length === 6, "素材顾问没有围绕当前选区启动真实研究任务");
+  assert(expertStarts.filter((item) => item.kind === "material-research").length === 2, "重试没有重新启动同一项专家检查");
   assert((await page.textContent(".expert-report")).includes("权威网页来源"), "素材报告没有展示联网来源");
   assert(!(await page.$(".expert-task button[aria-label='插入光标处']")), "检查报告不该提供插入正文动作");
   await page.keyboard.press("Escape");

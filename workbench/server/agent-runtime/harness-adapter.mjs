@@ -2,11 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DeepSeekHarness } from "@deepseek-ai/dsh-sdk-client";
 
 export const HARNESS_VERSION = "0.1.1-rc.2";
 const CONFIG_FILE = fileURLToPath(new URL("./cordis.yml", import.meta.url));
+const PROXY_BOOTSTRAP = fileURLToPath(new URL("./proxy-bootstrap.mjs", import.meta.url));
+const PROXY_BOOTSTRAP_URL = pathToFileURL(PROXY_BOOTSTRAP).href;
 const require = createRequire(import.meta.url);
 const PACKAGES = [
   "@deepseek-ai/dsh-sdk-client",
@@ -43,9 +45,12 @@ export async function harnessRuntimeInfo(env = {}) {
   }
 }
 
-function childEnv(env, runDir, kind) {
-  const keep = ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "PATHEXT", "COMSPEC", "NODE_PATH"];
-  const out = Object.fromEntries(keep.map((key) => [key, process.env[key]]).filter(([, value]) => value));
+export function harnessChildEnv(env, runDir, kind) {
+  const keep = [
+    "SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "PATHEXT", "COMSPEC", "NODE_PATH",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+  ];
+  const out = Object.fromEntries(keep.map((key) => [key, env[key] || process.env[key]]).filter(([, value]) => value));
   return {
     ...out,
     XENHO_LLM_API_KEY: String(env.HARNESS_LLM_API_KEY || "").trim(),
@@ -63,6 +68,15 @@ function childEnv(env, runDir, kind) {
   };
 }
 
+function launchConfig(env, runDir, kind, bin) {
+  const childEnv = harnessChildEnv(env, runDir, kind);
+  const usesProxy = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].some((key) => childEnv[key]);
+  return {
+    args: usesProxy ? ["--import", PROXY_BOOTSTRAP_URL, bin, CONFIG_FILE] : [bin, CONFIG_FILE],
+    env: childEnv,
+  };
+}
+
 export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness }) {
   const info = await harnessRuntimeInfo(env);
   if (!info.available) throw Object.assign(new Error(`Harness ${info.version} 兼容检查未通过`), { hint: info.reason });
@@ -72,12 +86,13 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
     });
   }
   const bin = fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-sdk-jsonrpc-demo/bin"));
+  const launch = launchConfig(env, runDir, kind, bin);
   const harness = new DeepSeekHarness({
     launch: {
       command: process.execPath,
-      args: [bin, CONFIG_FILE],
+      args: launch.args,
       cwd: process.cwd(),
-      env: childEnv(env, runDir, kind),
+      env: launch.env,
       requestTimeoutMs: 300_000,
     },
     cwd: process.cwd(),
@@ -96,15 +111,15 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
 export async function probeHarnessRuntime() {
   const runDir = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-harness-probe-"));
   const bin = fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-sdk-jsonrpc-demo/bin"));
-  const probeEnv = childEnv({
+  const probeConfig = launchConfig({
     HARNESS_LLM_API_KEY: "probe-only-not-sent",
     HARNESS_LLM_BASE_URL: "https://example.invalid/v1",
     HARNESS_LLM_MODEL: "xenho-probe",
     HARNESS_LLM_PROTOCOL: "openai-completions",
-  }, runDir, "fact-check");
+  }, runDir, "fact-check", bin);
   await fs.writeFile(path.join(runDir, "context.json"), JSON.stringify({ localSources: [] }), "utf8");
   const harness = new DeepSeekHarness({
-    launch: { command: process.execPath, args: [bin, CONFIG_FILE], cwd: process.cwd(), env: probeEnv, requestTimeoutMs: 30_000 },
+    launch: { command: process.execPath, args: probeConfig.args, cwd: process.cwd(), env: probeConfig.env, requestTimeoutMs: 30_000 },
     cwd: process.cwd(), provider: "xenho", model: "xenho-probe", maxTokens: 1024,
   });
   try {
