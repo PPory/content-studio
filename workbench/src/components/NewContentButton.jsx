@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { api } from "../lib/api.js";
 import { startWriting } from "../lib/start-writing.js";
+import { markTemporaryProject } from "../lib/temporary-project.js";
 import { IconLoader2, IconPlus } from "./icons.jsx";
 
 export function NewContentButton({ onGo, onChanged, label = "新建内容", className }) {
@@ -21,6 +22,8 @@ export function NewContentButton({ onGo, onChanged, label = "新建内容", clas
         platform: profile.platform || "公众号",
         audience: profile.audience || "",
       });
+      // 只有这颗“直接新建空内容”的入口是临时项目；从种子、素材或已有项目进入都不是。
+      markTemporaryProject(projectId);
       onChanged?.();
       onGo("project", projectId);
     } catch (cause) {

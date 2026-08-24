@@ -4,7 +4,7 @@
 .writing-assist__trigger[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
 .writing-assist__trigger svg { width: 15px; height: 15px; }
 .writing-assist__trigger[aria-busy="true"] svg, .writing-assist__wait svg { animation: writing-assist-spin .72s linear infinite; }
-.writing-assist__card { position: fixed; z-index: 120; top: clamp(72px, 9vh, 110px); left: 50%; right: auto; transform: translateX(-50%); width: min(620px, calc(100vw - 48px)); max-height: min(520px, calc(100vh - 140px)); display: flex; flex-direction: column; overflow: hidden; padding: 12px 12px 12px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: var(--r-lg); background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
+.writing-assist__card { position: fixed; z-index: 120; top: clamp(72px, 9vh, 110px); left: 50%; right: auto; transform: translateX(-50%); width: min(620px, calc(100vw - 48px)); max-height: min(460px, calc(100vh - 140px)); display: flex; flex-direction: column; overflow: hidden; padding: 12px 12px 12px; border: 1px solid color-mix(in srgb, var(--on-accent) 18%, transparent); border-radius: var(--r-lg); background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); }
 .writing-assist__card[data-mode="chat"] { height: min(600px, calc(100vh - 140px)); max-height: min(600px, calc(100vh - 140px)); }
 .writing-assist__card > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .writing-assist__modes { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--on-accent) 10%, transparent); }
@@ -16,6 +16,7 @@
 .writing-assist__context > span { overflow: hidden; max-width: 210px; text-overflow: ellipsis; white-space: nowrap; }
 .writing-assist__context label { display: inline-flex; align-items: center; gap: 5px; }
 .writing-assist__context select { max-width: 180px; padding: 3px 22px 3px 6px; border: 1px solid color-mix(in srgb, var(--on-accent) 24%, transparent); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); font: inherit; }
+.writing-assist__context > small { flex-basis: 100%; color: color-mix(in srgb, var(--on-accent) 70%, transparent); line-height: 1.45; }
 .writing-assist__close { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: color-mix(in srgb, var(--on-accent) 72%, transparent); }
 .writing-assist__close:hover { background: color-mix(in srgb, var(--on-accent) 12%, transparent); color: var(--on-accent); }
 .writing-assist__close svg { width: 15px; }

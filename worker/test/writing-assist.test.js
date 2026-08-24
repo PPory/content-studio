@@ -18,11 +18,14 @@ test("默认风格和临时专家被保留为本轮上下文并限制长度", ()
     title: "独立思考",
     style: `克制直接${"风".repeat(8_000)}`,
     expert: `事实核查${"专".repeat(8_000)}`,
+    materials: `素材来源${"材".repeat(10_000)}`,
   });
   assert.ok(input.style.startsWith("克制直接"));
   assert.ok(input.expert.startsWith("事实核查"));
   assert.equal(input.style.length, 6_000);
   assert.equal(input.expert.length, 6_000);
+  assert.ok(input.materials.startsWith("素材来源"));
+  assert.equal(input.materials.length, 8_000);
 });
 
 test("长正文同时保留开头与结尾", () => {

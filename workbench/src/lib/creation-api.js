@@ -103,7 +103,7 @@ export async function interviewStream({ signal, sessionId, message, title, platf
   return full.trim();
 }
 
-export async function brainstormStream({ signal, sessionId, message, title, platform, content, audience, phase, expert, style, onSession, onChunk }) {
+export async function brainstormStream({ signal, sessionId, message, title, platform, content, audience, materials, phase, expert, style, onSession, onChunk }) {
   const response = await fetch("/api/agent/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -115,6 +115,7 @@ export async function brainstormStream({ signal, sessionId, message, title, plat
       draftTitle: title,
       platform,
       audience,
+      materials: String(materials || "").slice(0, 8_000),
       phase,
       pageContext: String(content || "").slice(0, 12_000),
       expert: expert ? { name: expert.name, instructions: expert.instructions } : null,

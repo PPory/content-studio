@@ -20,7 +20,15 @@ import "./writing-assist.css";
  * - 聊一聊：逐问挖出用户已有的经历和判断，最后只整理线索，不生成成稿。
  * - 帮我写：明确选择后才生成候选段落，由用户再决定是否插入。
  */
-export function WritingAssist({ title, body, platform, profile, getCursor, onInsert }) {
+function attachedMaterialContext(materials = []) {
+  return materials.slice(0, 12).map((item, index) => {
+    const text = String(item.content || item.note || item.summary || "").trim().slice(0, 900);
+    const source = String(item.sourceUrl || item.source || "").trim().slice(0, 300);
+    return [`${index + 1}. ${item.title || "未命名素材"}`, text, source ? `来源：${source}` : ""].filter(Boolean).join("\n");
+  }).join("\n\n").slice(0, 8_000);
+}
+
+export function WritingAssist({ title, body, platform, profile, materials = [], getCursor, onInsert }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("think");
   const [result, setResult] = useState(null);
@@ -40,16 +48,21 @@ export function WritingAssist({ title, body, platform, profile, getCursor, onIns
   const expert = experts.find((item) => item.id === expertId) || null;
   const style = profile?.style || null;
   const audience = profile?.profile?.audience || "";
+  const materialContext = attachedMaterialContext(materials);
 
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => { chatEnd.current?.scrollIntoView({ block: "nearest" }); }, [chat, chatStream]);
 
   function localStarter() {
-    turn.current += 1;
-    setResult({
-      mode: "starter",
-      kind: "起始句",
-      text: startingLine({ topic: title, seed: `${title}-${Date.now()}-${turn.current}` }),
+    setResult((current) => {
+      let text = "";
+      // 组合库是确定性取样，相邻 seed 仍可能落到同一句；“换一句”必须保证肉眼真的换。
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        turn.current += 1;
+        text = startingLine({ topic: title, seed: `${title}-${Date.now()}-${turn.current}` });
+        if (text !== current?.text) break;
+      }
+      return { mode: "starter", kind: "起始句", text };
     });
     setError(null);
   }
@@ -68,6 +81,7 @@ export function WritingAssist({ title, body, platform, profile, getCursor, onIns
         content: body,
         cursor: Math.max(0, Math.min(body.length, Number(getCursor?.()) || 0)),
         platform,
+        materials: materialContext,
         expert: expert ? `${expert.name}\n${expert.instructions}` : "",
         style: style ? `${style.name}\n${style.instructions}` : "",
       }, ac.signal);
@@ -101,6 +115,7 @@ export function WritingAssist({ title, body, platform, profile, getCursor, onIns
         platform,
         content: body,
         audience,
+        materials: materialContext,
         phase,
         expert,
         style,
@@ -184,13 +199,14 @@ export function WritingAssist({ title, body, platform, profile, getCursor, onIns
             <div className="writing-assist__context">
               {style ? <span>风格 · {style.name}</span> : <span>风格 · 原本语气</span>}
               {experts.length ? (
-                <label>专家
+                <label>本轮专家
                   <select value={expertId} onChange={(event) => changeExpert(event.target.value)}>
                     <option value="">不调用</option>
                     {experts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
               ) : null}
+              {expert ? <small>{expert.description}</small> : null}
             </div>
           ) : null}
 

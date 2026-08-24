@@ -1649,6 +1649,7 @@ async function writingAssist(env, raw) {
     input.platform ? `【目标平台】${input.platform}` : "",
     input.style ? `【默认写作风格】\n${input.style}` : "",
     input.expert ? `【本轮调用专家】\n${input.expert}` : "",
+    input.materials ? `【这篇已采用的素材】\n${input.materials}` : "",
     input.overview ? `【全文开头（仅用于理解主题）】\n${input.overview}` : "",
     `【光标前文】\n${input.before || "（光标在文首）"}`,
     "【当前光标】← 本次提问或续写必须以这里为中心",

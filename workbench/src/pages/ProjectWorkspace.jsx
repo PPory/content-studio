@@ -13,6 +13,7 @@ import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
+import { clearTemporaryProject, isBlankTemporaryDraft, isTemporaryProject } from "../lib/temporary-project.js";
 import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 /**
@@ -174,7 +175,7 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
   );
 }
 
-export function ProjectWorkspace({ projectId, onGo, onChanged }) {
+export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNavigationGuard, onChanged }) {
   const [project, setProject] = useState(null);
   const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
@@ -205,6 +206,9 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const cover = useDocChat({ docTitle: project?.title || "" });
   const [coverOpen, setCoverOpen] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
+  const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
+  const [pendingLeave, setPendingLeave] = useState(null);
+  const [leaving, setLeaving] = useState(false);
   const cursor = useRef(null);
   const selectedDraftRef = useRef("");
 
@@ -233,6 +237,10 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
+    setTemporary(isTemporaryProject(projectId));
+    setPendingLeave(null);
+  }, [projectId]);
+  useEffect(() => {
     api.writingProfile().then(setWritingProfile).catch(() => setWritingProfile(null));
   }, []);
 
@@ -240,6 +248,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
   const masterDraft = project?.masterDraft;
   const draft = drafts.find((item) => item.id === selectedDraftId) || masterDraft;
   const dirty = !!draft && releaseChanged(draft, form);
+  const blankTemporary = isBlankTemporaryDraft({ temporary, title: form.title, body: form.body, materials: project?.materials });
   const writingEditable = project?.stage === "写作中" && draft?.id === masterDraft?.id;
   /**
    * ⚠️ **「待发布」那一档的正文也能就地改，母版也一样。**
@@ -258,6 +267,47 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
     setSaved(false);
   }
 
+  function promoteTemporaryProject() {
+    if (!temporary) return;
+    clearTemporaryProject(projectId);
+    setTemporary(false);
+  }
+
+  useEffect(() => {
+    if (!registerNavigationGuard) return undefined;
+    return registerNavigationGuard((next) => {
+      // 这次只管理“新建后尚未确认保存”的项目；已有项目沿用原来的编辑行为。
+      if (!temporary) return false;
+      setPendingLeave(next);
+      return true;
+    });
+  }, [dirty, registerNavigationGuard, temporary]);
+
+  useEffect(() => {
+    if (!temporary) return undefined;
+    const beforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const pageHide = () => {
+      // 只有用户真的关掉页面才会触发；取消浏览器提示不会误删。
+      if (!blankTemporary) return;
+      clearTemporaryProject(projectId);
+      fetch(`/api/pipe/projects/${encodeURIComponent(projectId)}/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        keepalive: true,
+      }).catch(() => {});
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("pagehide", pageHide);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("pagehide", pageHide);
+    };
+  }, [blankTemporary, dirty, projectId, temporary]);
+
   async function saveDraft() {
     if (!draft || busy || !dirty) return true;
     setBusy(true); setError(null);
@@ -272,6 +322,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
       }
       acceptProject(result.project, draft.id);
       setSaved(true);
+      promoteTemporaryProject();
       onChanged?.();
       return true;
     } catch (e) {
@@ -289,6 +340,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
     try {
       const result = await api.transitionProject(projectId, action, input);
       acceptProject(result.project);
+      promoteTemporaryProject();
       onChanged?.();
     } catch (e) {
       setError(e);
@@ -312,6 +364,7 @@ export function ProjectWorkspace({ projectId, onGo, onChanged }) {
     try {
       const result = await api.updateProjectMaterials(projectId, change);
       acceptProject(result.project);
+      promoteTemporaryProject();
       onChanged?.();
     } catch (e) {
       setError(e);
@@ -463,6 +516,30 @@ ${(form.body || "").slice(0, 3000)}`);
     }
   }
 
+  async function confirmLeave() {
+    if (!pendingLeave || leaving) return;
+    setLeaving(true);
+    setError(null);
+    try {
+      if (blankTemporary) {
+        await api.removeProject(projectId);
+        clearTemporaryProject(projectId);
+        setTemporary(false);
+        onChanged?.();
+      } else if (dirty) {
+        const ok = await saveDraft();
+        if (!ok) return;
+      }
+      const target = pendingLeave;
+      setPendingLeave(null);
+      onForceGo(target.view, target.state);
+    } catch (cause) {
+      setError(cause);
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
     return (
@@ -567,7 +644,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
                 readOnly={!draftEditable}
-                toolbarExtra={writingEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} getCursor={() => cursor.current}
+                toolbarExtra={writingEditable ? <WritingAssist title={form.title} body={form.body} platform={draft.platform} profile={writingProfile} materials={project.materials || []} getCursor={() => cursor.current}
                   onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })} /> : null}
               />
             </>
@@ -674,6 +751,24 @@ ${(form.body || "").slice(0, 3000)}`);
         </>}
       </div>
       {["待复盘", "已完成"].includes(project.stage) ? <ErrorNote error={error} what="保存复盘" /> : null}
+      {pendingLeave ? (
+        <div className="scrim scrim--center project-leave-scrim" onMouseDown={(event) => event.target === event.currentTarget && !leaving && setPendingLeave(null)}>
+          <section className="modal project-leave" role="dialog" aria-modal="true" aria-label="退出当前内容">
+            <span className="eyebrow">LEAVE DRAFT</span>
+            <h2>{blankTemporary ? "这篇还是空的" : "还有内容没保存"}</h2>
+            <p>{blankTemporary
+              ? "现在退出，这次新建不会保留，也不会在“发芽”里留下一个未命名项目。"
+              : "先保存再退出，刚才写下的内容就不会丢。"}</p>
+            <footer>
+              <button type="button" className="btn" onClick={() => setPendingLeave(null)} disabled={leaving}>继续写</button>
+              <button type="button" className="btn btn-primary" onClick={confirmLeave} disabled={leaving}>
+                {leaving ? <IconLoader2 className="spin" aria-hidden="true" /> : null}
+                {blankTemporary ? "退出，不保留" : "保存并退出"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

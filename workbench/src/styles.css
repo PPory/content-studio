@@ -2006,14 +2006,28 @@ svg[data-tone] { color: var(--tone); }
 .profile-experts > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .profile-experts > div:first-child span { color: var(--text-3); font-size: var(--fs-xs); }
 .profile-experts p { margin: 5px 0 9px; }
-.profile-experts__list { display: flex; flex-wrap: wrap; gap: 6px; }
-.profile-experts__list span { padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); color: var(--text-2); font-size: var(--fs-xs); }
+.profile-experts__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.profile-experts__list article {
+  display: grid; gap: 3px; min-width: 0; padding: 9px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface);
+}
+.profile-experts__list strong { color: var(--text-1); font-size: var(--fs-xs); font-weight: 650; }
+.profile-experts__list article span { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
 .profile-source { display: grid; gap: 4px; padding: 12px; border-radius: var(--r-ctl); background: var(--sunken); }
 .profile-source > span { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
 .profile-source code { overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .profile-save { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
 .profile-save > span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-xs); }
 .profile-save > span svg { width: 14px; height: 14px; }
+
+/* 新建空稿退出提示：只确认一个决定，不长成一张新的流程表单。 */
+.project-leave-scrim { z-index: 120; }
+.project-leave {
+  width: min(420px, 100%); padding: 22px 24px 20px; overflow: visible;
+}
+.project-leave h2 { margin: 7px 0 8px; color: var(--text-1); font-size: var(--fs-xl); letter-spacing: -.025em; }
+.project-leave p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65; }
+.project-leave footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
 .new-content-action { position: relative; display: inline-flex; align-items: center; gap: 8px; }
 .new-content-action .note-danger--inline { position: absolute; top: calc(100% + 6px); right: 0; z-index: 4; width: max-content; max-width: 320px; }
 /* 提示词是要读的一整段话，行距按正文来。留着 resize 是因为几行和几十行的提示词

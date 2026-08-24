@@ -47,6 +47,7 @@ export function brainstormPromptParts(body = {}) {
       "无论用户怎样要求，都不要把这一步变成完整成稿；最终产物只能是可供用户确认的写作线索。",
     ].join("\n"),
     `【当前内容】\n暂定标题：${String(body.draftTitle || "未命名").slice(0, 200)}\n目标平台：${String(body.platform || "").slice(0, 20)}\n固定读者：${String(body.audience || "未设置").slice(0, 100)}`,
+    body.materials ? `【这篇已采用的素材】\n${String(body.materials).slice(0, 8000)}` : "",
     body.expert?.instructions ? `【本轮调用专家：${String(body.expert.name || "未命名").slice(0, 80)}】\n${String(body.expert.instructions).slice(0, 6000)}` : "",
     body.style?.instructions ? `【默认输出风格：${String(body.style.name || "未命名").slice(0, 80)}】\n${String(body.style.instructions).slice(0, 6000)}` : "",
   ].filter(Boolean);

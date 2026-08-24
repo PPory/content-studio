@@ -626,16 +626,27 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("新建内容是一颗直达编辑器的按钮", /startWriting/.test(button) && /writingProfile/.test(button));
   check("新建内容不再展开起稿方式", !/MenuButton|CreationDialog|MODES/.test(button));
 
-  const { normalizeWritingProfile } = await import("../server/lib/writing-profile.mjs");
+  const { loadWritingRecords, normalizeWritingProfile } = await import("../server/lib/writing-profile.mjs");
   const profile = normalizeWritingProfile({ audience: "  固定   读者  ", platform: "小红书", styleId: "克制-直接" });
   check("长期创作设置会清洗读者并保留合法平台", profile.audience === "固定 读者" && profile.platform === "小红书", JSON.stringify(profile));
-  check("长期风格只保存安全的 Boujoy 记录 id", profile.styleId === "克制-直接", profile.styleId);
+  check("长期风格只保存安全的工作台预设 id", profile.styleId === "克制-直接", profile.styleId);
   check("非法平台回到稳定默认值", normalizeWritingProfile({ platform: "随便一个站" }).platform === "公众号");
 
+  const records = await loadWritingRecords();
+  check("工作台自带六位写作专家", records.experts.length === 6, records.experts.map((item) => item.name).join("/"));
+  check("工作台自带五种可选风格", records.styles.length === 5, records.styles.map((item) => item.name).join("/"));
+  check("专家团不包含排版和笔记整理", records.experts.every((item) => !/排版|整理/.test(item.name)));
+  check("素材与事实专家不冒充已联网查证", records.experts.filter((item) => /素材|事实/.test(item.name)).every((item) => /待核|不能|不把|无法/.test(item.instructions)));
+
   const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
-  const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者" }).join("\n");
+  const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者", materials: "素材 A：真实案例" }).join("\n");
   check("聊一聊的总结只整理四类写作线索", ["核心判断", "可用经历或例子", "可能展开的要点", "仍待回答的问题"].every((part) => prompt.includes(part)));
   check("聊一聊明确禁止生成完整成稿", /不要.*完整成稿|不替用户写完整文章/.test(prompt));
+  check("聊一聊会把本篇已采用素材交给专家", prompt.includes("素材 A：真实案例"));
+
+  const { isBlankTemporaryDraft } = await import("../src/lib/temporary-project.js");
+  check("只有未命名、无正文、无素材的临时项目才可自动清理", isBlankTemporaryDraft({ temporary: true, title: "未命名", body: "", materials: [] }));
+  check("写过内容的临时项目不会按空稿自动清理", !isBlankTemporaryDraft({ temporary: true, title: "未命名", body: "已经写了一句", materials: [] }));
 }
 
 /**
@@ -839,6 +850,57 @@ check("UTF-8 不被误判成 GBK", decodeText(Buffer.from("粉丝", "utf8")) ===
   const merged = readSheet(Buffer.from(bz), "小红书.xlsx");
   check("合并横幅抢不走表头", merged.headers.join("/") === "发布时间/标题/观看量", merged.headers.join("/"));
   check("横幅塌不掉整份表", merged.rows[0]?.["观看量"] === "391.0" && merged.rows[0]?.["标题"] === "甲", JSON.stringify(merged.rows[0]));
+}
+
+/* 单篇报告：公众号后台**只有单篇导出**，给的是「一份文件一篇内容、指标竖着排」。
+ * 通用的「第一行表头、下面一行一条」套上去会把「数据指标 / 数值」当表头、
+ * 把十几个指标当成十几条内容——**两种读法都不报错**，所以判据要单测钉住。 */
+{
+  const { looksLikeSingleReport, parseSingleReport } = await import("../server/lib/single-report.mjs");
+  const grid = [
+    ["", "推荐一个公众号排版工具：Typeset"],
+    ["", "数据概况"],
+    ["", "数据指标", "数值"],
+    ["", "阅读(人)", "104"],
+    ["", "完读率", "0.423077"],
+    ["", "分享(人)", "10"],
+    ["", "在看(人)", "2"],
+    ["", "点赞(人)", "2"],
+    ["", "收藏(人)", "6"],
+    ["", "评论（条）", "0"],
+    ["", "阅读转化"],
+    ["", "公众号消息阅读人数", "0"],
+    ["", "总分享人数", "10"],
+    ["", "阅读数据趋势明细"],
+    ["", "日期", "传播渠道", "阅读人数", "分享人数"],
+    ["", "2026-08-19", "全部", "9", "4"],
+    ["", "2026-08-18", "全部", "95", "6"],
+    ["", "2026-08-18", "其他", "1", "0"],
+  ];
+  check("认得出单篇报告", looksLikeSingleReport(grid) === true);
+  // ⚠️ 反面同样要钉：普通的列表导出**绝不能**走这条路
+  check(
+    "普通列表不被误判成单篇报告",
+    looksLikeSingleReport([["发布时间", "标题", "观看数"], ["2026-08-01", "甲", "10"], ["2026-08-02", "乙", "20"]]) === false
+  );
+
+  const one = parseSingleReport(grid);
+  const row = one.rows[0];
+  check("标题取的是那一行独苗", row["标题"] === "推荐一个公众号排版工具：Typeset", row["标题"]);
+  /* ⚠️ 发布日期是**推断**出来的：文件里没有这个字段，按日明细的第一天就是发出去那天。
+   * 明细里 08-19 排在 08-18 前面，所以判据必须是「最早的那天」不是「第一行」。 */
+  check("发布日期取明细里最早的那天", row["发布时间"] === "2026-08-18", row["发布时间"]);
+  /* ⚠️ **「数据概况」的指标必须排在「阅读转化」前面。** 后者有「公众号消息阅读人数」
+   * 这种同样带「阅读」的名字，而列名映射是从前往后挑第一个匹配的——
+   * 顺序反了 views 会取到 0，阅读量当场归零而没有任何地方报错。 */
+  const keys = Object.keys(row);
+  check("概况的指标排在转化前面", keys.indexOf("阅读(人)") < keys.indexOf("公众号消息阅读人数"), keys.join("/"));
+  check("按日相加对得上就不啰嗦", one.warnings.length === 0, one.warnings.join("；"));
+
+  /* ⚠️ **交叉验算是这条链上唯一能自己发现「二进制读串了」的地方。**
+   * 这类解析器错了不会报错，只会给出看着正常的错数字。 */
+  const bad = grid.map((r) => (r[1] === "阅读(人)" ? ["", "阅读(人)", "999"] : r));
+  check("按日相加对不上要说出来", parseSingleReport(bad).warnings.length === 1, JSON.stringify(parseSingleReport(bad).warnings));
 }
 
 // 列名映射：一列只能喂给一个字段，且不能被别的规则抢走

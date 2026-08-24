@@ -171,6 +171,9 @@ function readHash() {
 
 export function App() {
   const [route, setRoute] = useState(readHash);
+  const acceptedHash = useRef(window.location.hash || "#/today");
+  const navigationGuard = useRef(null);
+  const bypassNavigationGuard = useRef(false);
   const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState(null);
@@ -195,9 +198,26 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const onHash = () => setRoute(readHash());
+    const onHash = () => {
+      const next = readHash();
+      if (!bypassNavigationGuard.current && navigationGuard.current?.(next)) {
+        // hashchange 已经发生，但页面还没换：把地址轻量还原，等项目页里的确认框做决定。
+        window.history.replaceState(null, "", acceptedHash.current);
+        return;
+      }
+      bypassNavigationGuard.current = false;
+      acceptedHash.current = window.location.hash || "#/today";
+      setRoute(next);
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const registerNavigationGuard = useCallback((guard) => {
+    navigationGuard.current = guard;
+    return () => {
+      if (navigationGuard.current === guard) navigationGuard.current = null;
+    };
   }, []);
 
   // 设置面板改完 VAULT_ROOT / WORKER_URL 之后要重新拉一遍：整页的空态引导都看它
@@ -266,6 +286,12 @@ export function App() {
    * 一眼就知道现在看的是哪一档。
    */
   const go = useCallback((view, state) => {
+    const s = state === undefined ? SOURCES[view]?.defaultState || "" : state;
+    window.location.hash = `#/${view}${s ? `/${encodeURIComponent(s)}` : ""}`;
+  }, []);
+
+  const forceGo = useCallback((view, state) => {
+    bypassNavigationGuard.current = true;
     const s = state === undefined ? SOURCES[view]?.defaultState || "" : state;
     window.location.hash = `#/${view}${s ? `/${encodeURIComponent(s)}` : ""}`;
   }, []);
@@ -520,7 +546,13 @@ export function App() {
               onSettings={() => setSettings(true)}
             />
           ) : route.view === "project" ? (
-            <ProjectWorkspace projectId={route.state} onGo={go} onChanged={refreshStatus} />
+            <ProjectWorkspace
+              projectId={route.state}
+              onGo={go}
+              onForceGo={forceGo}
+              registerNavigationGuard={registerNavigationGuard}
+              onChanged={refreshStatus}
+            />
           ) : route.view === "review" ? (
             <Review onGo={go} />
           ) : route.view === "review-performance" ? (

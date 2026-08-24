@@ -53,5 +53,6 @@ export function normalizeWritingAssistRequest(body = {}) {
   }
   const expert = String(body.expert || "").trim().slice(0, 6_000);
   const style = String(body.style || "").trim().slice(0, 6_000);
-  return { mode, title, platform, content, expert, style, ...context };
+  const materials = String(body.materials || "").trim().slice(0, 8_000);
+  return { mode, title, platform, content, expert, style, materials, ...context };
 }

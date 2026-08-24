@@ -24,7 +24,8 @@ import { DATA_FILES } from "../server/lib/backup.mjs";
 import { MATERIAL_WORKSPACE } from "../src/lib/material-workspace.js";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const PORT = 5199;
+// 另一个开发窗口可能正在跑 5199；允许本轮验证换端口，避免为了测试去停用户的服务。
+const PORT = Number(process.env.WORKBENCH_SMOKE_PORT || 5199);
 const VAULT_ROOT = path.resolve(loadEnv("development", ROOT, "").VAULT_ROOT || "");
 // 书架在 vault 里的位置从服务端那份单一真源里拿，不在测试里抄第二份——
 // 抄了的话改布局时测试会连绿两次：一次是真的过了，一次是它在量一个没人用的旧路径。
@@ -1084,7 +1085,8 @@ try {
       }));
       check("我的创作只收长期会复用的三项", profilePane.fields === 3 && /固定目标读者/.test(profilePane.text) && /常用首发平台/.test(profilePane.text) && /默认写作风格/.test(profilePane.text), JSON.stringify(profilePane));
       check("专家只在需要时调用，不绑进每篇简报", /不预先绑/.test(profilePane.text) && /AI 协作/.test(profilePane.text), profilePane.text.slice(0, 120));
-      check("风格和专家显示 Boujoy 共享来源", /Boujoy-Harness/.test(profilePane.source), profilePane.source);
+      check("工作台自带六位专家和五种风格", /6 位专家/.test(profilePane.source) && /5 种风格/.test(profilePane.source), profilePane.source);
+      check("专家团不包含排版和整理", !/排版顾问|整理顾问/.test(profilePane.text), profilePane.text.slice(0, 240));
 
       // 下面继续验证原有连接设置；默认页已经变成「我的创作」，需显式切回 vault。
       await go("vault");
@@ -1450,6 +1452,7 @@ try {
     if (createBtn) {
       const expectedProfile = await page.evaluate(() => fetch("/api/writing-profile").then((r) => r.json()).then((r) => r.profile));
       let created = 0;
+      let discarded = 0;
       let createdBody = null;
       await page.route("**/api/pipe/create", (route) => {
         created += 1;
@@ -1460,13 +1463,47 @@ try {
           body: JSON.stringify({ ok: true, draft: { id: "smoke-draft", topicId: "smoke-topic" }, project: { id: "smoke-topic" } }),
         });
       });
+      await page.route("**/api/pipe/projects/smoke-topic**", (route) => {
+        if (new URL(route.request().url()).pathname.endsWith("/delete")) {
+          discarded += 1;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, deleted: 1, archives: [] }) });
+        }
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            project: {
+              id: "smoke-topic",
+              title: "未命名",
+              stage: "写作中",
+              stageReason: "正文还在创作中",
+              masterDraft: { id: "smoke-draft", title: "未命名", body: "", platform: expectedProfile.platform, status: "草稿", release: {} },
+              variants: [], materials: [], releaseOptions: [],
+            },
+          }),
+        });
+      });
       await createBtn.click();
       await page.waitForFunction(() => location.hash.startsWith("#/project/"), { timeout: 8000 }).catch(() => {});
+      await page.waitForSelector(".project-back", { timeout: 8000 });
       const landed = await page.evaluate(() => location.hash);
       check("新建内容一次点击直达项目", landed === "#/project/smoke-topic" && created === 1, `${landed} · ${created} 次建项目`);
       check("新建内容不再弹起稿方式", !(await page.$(".menu-btn__pop, .creation")));
       check("新建内容自动沿用常用平台和固定读者", createdBody?.platform === expectedProfile.platform && createdBody?.audience === expectedProfile.audience, JSON.stringify(createdBody));
+
+      await page.click(".project-back");
+      await page.waitForSelector(".project-leave");
+      check("空白新稿退出前有轻量提示", /这篇还是空的/.test(await page.textContent(".project-leave")));
+      await page.click('.project-leave button:has-text("继续写")');
+      check("继续写不会删除项目", discarded === 0 && (await page.evaluate(() => location.hash)) === "#/project/smoke-topic");
+      await page.click(".project-back");
+      await page.click('.project-leave button:has-text("退出，不保留")');
+      await page.waitForFunction(() => location.hash === "#/content", { timeout: 8000 });
+      check("确认退出会删除空白临时项目", discarded === 1, `${discarded} 次删除`);
+      check("退出后清掉临时项目标记", await page.evaluate(() => !sessionStorage.getItem("workbench:temporary-project:v1:smoke-topic")));
       await page.unroute("**/api/pipe/create").catch(() => {});
+      await page.unroute("**/api/pipe/projects/smoke-topic**").catch(() => {});
       await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
       await page.waitForSelector(".page-bar__end .btn-primary", { timeout: 15000 }).catch(() => {});
     }

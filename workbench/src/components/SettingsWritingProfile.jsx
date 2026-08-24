@@ -82,22 +82,27 @@ export function SettingsWritingProfile({ onSaved }) {
           <option value="">保持我原本的语气</option>
           {enabledStyles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
         </select>
-        <small>{enabledStyles.length ? "AI 协作会默认遵守这个风格，正文仍然只在你确认后插入。" : "Boujoy 里还没有启用的风格；新增后会自动出现在这里。"}</small>
+        <small>AI 协作会默认遵守这个风格；当前文章仍可保持原本语气，正文也只在你确认后插入。</small>
       </label>
 
       <section className="profile-experts" aria-label="可调用专家">
         <div><b>可调用专家</b><span>{enabledExperts.length} 位</span></div>
-        <p>专家不预先绑在每篇文章上。打开编辑器里的“AI 协作”时，再按当下问题选一位。</p>
+        <p>专家不预先绑在每篇文章上。打开编辑器里的“AI 协作”时，再按当下问题选一位；选题、写作、素材、审稿、风格和核查都围绕当前文章工作。</p>
         {enabledExperts.length ? (
           <div className="profile-experts__list">
-            {enabledExperts.map((expert) => <span key={expert.id} title={expert.description || expert.name}>{expert.name}</span>)}
+            {enabledExperts.map((expert) => (
+              <article key={expert.id}>
+                <strong>{expert.name}</strong>
+                <span>{expert.description}</span>
+              </article>
+            ))}
           </div>
         ) : null}
       </section>
 
       <div className="profile-source">
-        <span>Boujoy 共享预设</span>
-        <code>{data?.source || "还没有配置知识库路径"}</code>
+        <span>工作台内置能力</span>
+        <code>{enabledExperts.length} 位专家 · {enabledStyles.length} 种风格</code>
         <small>{data?.hint}</small>
       </div>
 

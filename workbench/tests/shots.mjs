@@ -312,7 +312,7 @@ const shots = [
   // 而写提示词改的是 content-pipeline 的真文件
   ["settings", "/", ".todo-card, .note-title", async () => {
     await page.click(".topbar__icon").catch(() => {});
-    // 设置默认先打开「我的创作」；等真实资料和 Boujoy 来源都画出来再截。
+    // 设置默认先打开「我的创作」；等工作台内置专家与风格都画出来再截。
     await page.waitForSelector(".writing-profile-settings .profile-source", { timeout: 15000 }).catch(() => {});
   }],
   // 「可选能力」：这一段自检最多，也是「已配」最容易堆成一排灰盒子的地方。

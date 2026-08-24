@@ -28,7 +28,7 @@ import { typesetDir } from "../routes/tools.mjs";
  * 哪一段出了事，这才是左导航在这儿真正的价值。
  *
  * `kind` 决定右边画什么：
- *   writing-profile 长期创作偏好，以及 Boujoy 共享的风格/专家
+ *   writing-profile 长期创作偏好，以及工作台内置的风格/专家
  *   env             这一段是 `.env` 字段（`SETTINGS` 里 `group` 等于这个 key 的那些）
  *   prompts-local   工作台自己的提示词（`config/prompts.json`，改完立刻生效）
  *   prompts-worker  流水线的提示词（worker/prompt 底下的 *.md，改完要 deploy）

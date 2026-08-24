@@ -1,4 +1,4 @@
-// /api/writing-profile：长期创作设置 + Boujoy 的共享风格/专家清单。
+// /api/writing-profile：长期创作设置 + 工作台内置风格/专家清单。
 
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import {

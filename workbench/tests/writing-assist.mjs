@@ -183,10 +183,14 @@ try {
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("改变看法"));
   assert(requests.find((item) => item.mode === "nudge")?.cursor === 3, "新建文章没有把当前光标位置发给 AI");
 
-  // 连续两次小推动：第二次必须真的再发请求，而不是重复展示第一次缓存。
-  await page.click('.writing-assist__result button[aria-label="再生成一个"]');
+  // 工作台自己的六位专家必须真实进入请求，而不只是设置页上的装饰名单。
+  const expertOptions = await page.$$eval(".writing-assist__context select option", (items) => items.map((item) => ({ value: item.value, text: item.textContent.trim() })));
+  assert(expertOptions.length === 7 && expertOptions.some((item) => item.value === "fact-checker"), `专家清单没有完整出现：${JSON.stringify(expertOptions)}`);
+  await page.selectOption(".writing-assist__context select", "fact-checker");
+  await page.click('.writing-assist__modes button:has-text("想一想")');
   await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("读者最可能反对"));
   assert(nudges === 2, `小推动请求次数不对：${nudges}`);
+  assert(requests.at(-1)?.expert?.includes("事实核查") && typeof requests.at(-1)?.materials === "string", "选中的专家或本篇素材没有进入 AI 请求");
 
   await page.click('.writing-assist__modes button:has-text("帮我写")');
   await page.click('.writing-assist__choice button:has-text("续写一段")');
@@ -360,6 +364,7 @@ try {
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ 起始句可换、可插入");
   console.log("✓ 连续两次 AI 小推动都返回新结果");
+  console.log("✓ 六位工作台专家可选择，选中后连同本篇素材进入 AI 请求");
   console.log("✓ 浮层位于页面顶部中央，等待图标实际播放转动动画");
   console.log("✓ AI 续写先预览，并在当前光标精确插入、不额外换行");
   console.log("✓ 长结果限制高度并在浮层内部滚动");
