@@ -59,13 +59,13 @@ const STANDALONE_SKILLS = [
 const revisionLabel = { polish: "润色", rewrite: "改写", proofread: "纠错" };
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
 
-function Working({ label = "Harness 正在处理" }) {
+function Working({ label = "Harness 正在处理", detail = "" }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setSeconds((value) => value + 1), 1_000);
     return () => clearInterval(timer);
   }, []);
-  const stage = seconds < 3 ? "正在读取上下文" : seconds < 12 ? "正在组织回答" : seconds < 30 ? "正在生成内容" : "这次思考较久，可停止后重试";
+  const stage = detail || (seconds < 3 ? "正在读取上下文" : seconds < 12 ? "正在组织回答" : seconds < 30 ? "正在生成内容" : "这次思考较久，可停止后重试");
   return <div className="assistant-working" role="status"><span className="assistant-orbit"><i /></span><div><b>{label}</b><small>{stage} · {seconds}s</small></div></div>;
 }
 
@@ -111,6 +111,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [menu, setMenu] = useState("");
@@ -120,6 +121,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [conversationItems, setConversationItems] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(standalone);
   const [models, setModels] = useState([]);
+  const [harnessSkills, setHarnessSkills] = useState([]);
   const [model, setModel] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -145,6 +147,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setMessages(conversation?.messages || []);
     setAttachments(conversation?.attachments || []);
     if (conversation?.model) setModel(conversation.model);
+    if (conversation?.lastTurn?.status === "interrupted") {
+      setError(Object.assign(new Error("上次对话因工作台重启而中断"), { hint: "已保留之前的对话；重新发送最后一个问题即可继续。" }));
+    }
   };
 
   useEffect(() => {
@@ -154,12 +159,14 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       api.assistantConversation(scopeId),
       standalone ? api.assistantConversations(scopeId) : Promise.resolve({ conversations: { items: [] } }),
       standalone ? api.assistantModels() : Promise.resolve({ models: { items: [], configured: "" } }),
-    ]).then(([conversationResult, historyResult, modelResult]) => {
+      api.assistantSkills(),
+    ]).then(([conversationResult, historyResult, modelResult, skillResult]) => {
       if (cancelled) return;
       applyConversation(conversationResult.conversation);
       setConversationItems(historyResult.conversations?.items || []);
       const nextModels = modelResult.models?.items || [];
       setModels(nextModels);
+      setHarnessSkills((skillResult.skills?.items || []).map((item) => ({ id: `harness:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` })));
       setModel(conversationResult.conversation?.model || modelResult.models?.configured || nextModels[0]?.id || "");
     }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -173,16 +180,26 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     const message = String(text || "").trim();
     if (!message || busy) return;
     const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, createdAt: new Date().toISOString() };
-    setMessages((current) => [...current, optimistic]);
-    setInput(""); setMenu(""); setBusy(true); setError(null);
+    const streamingId = `streaming-${Date.now()}`;
+    setMessages((current) => [...current, optimistic, { id: streamingId, role: "assistant", text: "", createdAt: new Date().toISOString(), pending: true }]);
+    setInput(""); setMenu(""); setBusy(true); setActivity("正在读取上下文"); setError(null);
     try {
-      const result = await api.assistantChat({ scopeId, conversationId, message, document, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" });
+      const result = await api.assistantChatStream(
+        { scopeId, conversationId, message, document, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" },
+        (event) => {
+          if (event.type === "status") setActivity(event.stage || "Harness 正在继续处理");
+          if (event.type === "text" && event.text) {
+            setActivity("正在生成回答");
+            setMessages((current) => current.map((item) => item.id === streamingId ? { ...item, text: `${item.text || ""}${event.text}` } : item));
+          }
+        },
+      );
       applyConversation(result.conversation);
       await refreshHistory();
     } catch (next) {
       setError(next);
     } finally {
-      setBusy(false);
+      setBusy(false); setActivity("");
     }
   };
 
@@ -239,7 +256,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setInput(item.prompt || ""); inputRef.current?.focus();
   }
 
-  const availableSkills = standalone ? STANDALONE_SKILLS : SKILLS;
+  const availableSkills = [...harnessSkills, ...(standalone ? STANDALONE_SKILLS : SKILLS)];
 
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
@@ -256,7 +273,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
       {messages.map((item) => <Message key={item.id} item={item} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
-      {busy ? <Working label="Harness 正在调用模型和工具" /> : null}
+      {busy ? <Working label="Harness 正在调用模型和工具" detail={activity} /> : null}
       {error ? <div className="assistant-error" role="alert"><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <p>{error.hint}</p> : null}<button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试这条</button></div> : null}
       <div ref={endRef} />
     </div>

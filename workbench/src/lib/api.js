@@ -234,7 +234,44 @@ export const api = {
   assistantConversation: (scope, conversationId = "") => req(`/api/assistant/conversation?scope=${encodeURIComponent(scope)}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ""}`),
   assistantConversations: (scope) => req(`/api/assistant/conversations?scope=${encodeURIComponent(scope)}`),
   assistantModels: () => req("/api/assistant/models"),
+  assistantSkills: () => req("/api/assistant/skills"),
   assistantChat: (body) => postJson("/api/assistant/chat", body),
+  async assistantChatStream(body, onEvent) {
+    let response;
+    try {
+      response = await fetch("/api/assistant/chat/stream", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw Object.assign(new Error("本地服务没响应"), { hint: "确认工作台仍在运行" });
+    }
+    if (!response.ok || !response.body) throw new Error(`AI 助手响应异常（HTTP ${response.status}）`);
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      return response.json();
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "error") throw Object.assign(new Error(event.error || "AI 助手没有完成"), { hint: event.hint });
+        if (event.type === "done") result = event.result;
+        else onEvent?.(event);
+      }
+      if (done) break;
+    }
+    if (!result) throw new Error("AI 助手连接已结束，可稍后重新打开该对话查看结果");
+    return result;
+  },
   cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
   newAssistantConversation: (scopeId, model = "") => postJson("/api/assistant/new", { scopeId, model }),
   uploadAssistantAttachment: (scope, conversationId, file) => req(`/api/assistant/attachment?scope=${encodeURIComponent(scope)}&conversationId=${encodeURIComponent(conversationId)}&filename=${encodeURIComponent(file.name)}`, {

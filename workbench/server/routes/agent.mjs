@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { json, readJsonBody } from "../lib/http.mjs";
 import { vaultRoot } from "../lib/vault.mjs";
 import { DEFAULT_PROMPTS, chatSystem, loadPrompts } from "../lib/prompts.mjs";
+import { cancelGuidedTurn, guidedSessionId, runGuidedTurn } from "../agent-runtime/guided-runner.mjs";
 
 const MAX_TURNS = "12"; // 兜住失控的多轮工具调用
 const WORKBENCH_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -159,8 +160,49 @@ export const agentRoutes = [
       const interview = body.workflow === "interview";
       const brainstorm = body.workflow === "brainstorm";
       const guidedWriting = interview || brainstorm;
-      // 访谈起稿必须走 Claude：这个入口调用的是项目内 interview-to-draft skill，
-      // Codex 通道不认识 Claude Code 的 skill。普通对话仍按白名单选择引擎。
+      if (guidedWriting) {
+        const workflow = interview ? "interview" : "brainstorm";
+        const sessionId = guidedSessionId(body.sessionId);
+        const promptParts = interview ? interviewPromptParts(body, body.sessionId) : [!body.sessionId ? "/idea-dialogue" : "", ...brainstormPromptParts(body)];
+        const prompt = [...promptParts, `【本轮输入】\n${message}`].filter(Boolean).join("\n\n");
+        let headersSent = false;
+        let completed = false;
+        const write = (text) => {
+          if (!headersSent) {
+            headersSent = true;
+            res.writeHead(200, {
+              "content-type": "text/plain; charset=utf-8",
+              "cache-control": "no-cache, no-transform",
+              "x-session-id": sessionId,
+              "x-agent-engine": "deepseek-harness",
+            });
+          }
+          if (!res.destroyed && !res.writableEnded) res.write(text);
+        };
+        res.on("close", () => {
+          if (!completed) cancelGuidedTurn(workflow, sessionId, body.model || env.HARNESS_LLM_MODEL).catch(() => {});
+        });
+        try {
+          await runGuidedTurn(env, {
+            workflow,
+            sessionId,
+            prompt,
+            model: body.model || env.HARNESS_LLM_MODEL,
+            context: { title: body.draftTitle || "", platform: body.platform || "", audience: body.audience || "", materials: body.materials || "" },
+            onText: write,
+          });
+          completed = true;
+          if (!headersSent) write("");
+          if (!res.destroyed && !res.writableEnded) res.end();
+        } catch (error) {
+          completed = true;
+          if (!headersSent) return json(res, { ok: false, error: error.message, hint: error.hint || "检查 AI 助手模型配置后重试" }, error.status || 502);
+          if (!res.destroyed && !res.writableEnded) res.end();
+        }
+        return;
+      }
+      // 访谈和想法梳理已在上方交给 Harness；这里仅保留旧的通用文档读取入口，
+      // 继续按白名单选择 Claude/Codex，避免改变尚未迁移的工作流。
       //
       // ⚠️ **「按素材起稿」曾经也在这条通道上，已经搬去 Worker 了**（`/wb/draft/material`）。
       // 它既不读 vault 也不用 skill——CLI 只是被当成一个要冷启动十几秒的 API 客户端，

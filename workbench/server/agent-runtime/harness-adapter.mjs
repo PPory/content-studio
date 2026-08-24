@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { DeepSeekHarness } from "@deepseek-ai/dsh-sdk-client";
 
 export const HARNESS_VERSION = "0.1.1-rc.2";
+export const HARNESS_RESIDENT_IDLE_MS = 15 * 60 * 1_000;
 const CONFIG_FILE = fileURLToPath(new URL("./cordis.yml", import.meta.url));
 const PROXY_BOOTSTRAP = fileURLToPath(new URL("./proxy-bootstrap.mjs", import.meta.url));
 const PROXY_BOOTSTRAP_URL = pathToFileURL(PROXY_BOOTSTRAP).href;
@@ -22,6 +23,46 @@ const PACKAGES = [
   "@deepseek-ai/dsh-tool-web",
   "@deepseek-ai/dsh-web-fetch-http",
 ];
+const residentHarnesses = new Map();
+
+const residentKeyOf = (value) => String(value || "").trim().slice(0, 500);
+
+function residentFingerprint(env, runDir, kind, options = {}) {
+  return JSON.stringify({
+    runDir: path.resolve(runDir),
+    kind,
+    baseUrl: String(env.HARNESS_LLM_BASE_URL || "").trim(),
+    model: String(options.model || env.HARNESS_LLM_MODEL || "").trim(),
+    protocol: String(env.HARNESS_LLM_PROTOCOL || "openai-completions").trim(),
+    persona: String(options.persona || ""),
+    sessionRoot: path.resolve(options.sessionRoot || path.join(runDir, "sessions")),
+  });
+}
+
+async function closeResidentEntry(key, entry) {
+  if (!entry || residentHarnesses.get(key) !== entry) return false;
+  residentHarnesses.delete(key);
+  if (entry.timer) clearTimeout(entry.timer);
+  await entry.harness.close().catch(() => {});
+  return true;
+}
+
+function scheduleResidentClose(key, entry) {
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => {
+    if (!entry.running) closeResidentEntry(key, entry).catch(() => {});
+  }, HARNESS_RESIDENT_IDLE_MS);
+  entry.timer.unref?.();
+}
+
+export async function closeResidentHarness(residentKey) {
+  const key = residentKeyOf(residentKey);
+  return key ? closeResidentEntry(key, residentHarnesses.get(key)) : false;
+}
+
+export async function closeAllResidentHarnesses() {
+  await Promise.all([...residentHarnesses.entries()].map(([key, entry]) => closeResidentEntry(key, entry)));
+}
 
 async function installedVersions() {
   return Object.fromEntries(await Promise.all(PACKAGES.map(async (name) => {
@@ -80,7 +121,7 @@ function launchConfig(env, runDir, kind, bin, options = {}) {
   };
 }
 
-export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens, model }) {
+export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens, model, residentKey }) {
   const info = await harnessRuntimeInfo(env);
   if (!info.available) throw Object.assign(new Error(`Harness ${info.version} 兼容检查未通过`), { hint: info.reason });
   if (!info.configured) {
@@ -91,25 +132,49 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
   const bin = fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-sdk-jsonrpc-demo/bin"));
   const selectedModel = String(model || env.HARNESS_LLM_MODEL || "").trim();
   const launch = launchConfig(env, runDir, kind, bin, { persona, sessionRoot, model: selectedModel });
-  const harness = new DeepSeekHarness({
-    launch: {
-      command: process.execPath,
-      args: launch.args,
+  const options = { persona, sessionRoot, model: selectedModel };
+  const key = residentKeyOf(residentKey);
+  const fingerprint = residentFingerprint(env, runDir, kind, options);
+  let entry = key ? residentHarnesses.get(key) : null;
+  if (entry && entry.fingerprint !== fingerprint) {
+    await closeResidentEntry(key, entry);
+    entry = null;
+  }
+  if (!entry) {
+    const harness = new DeepSeekHarness({
+      launch: {
+        command: process.execPath,
+        args: launch.args,
+        cwd: process.cwd(),
+        env: launch.env,
+        requestTimeoutMs: 300_000,
+      },
       cwd: process.cwd(),
-      env: launch.env,
-      requestTimeoutMs: 300_000,
-    },
-    cwd: process.cwd(),
-    provider: "xenho",
-    model: selectedModel,
-    maxTokens: Math.max(1024, Math.min(32768, Number(maxTokens) || Number(env.HARNESS_LLM_MAX_TOKENS) || 8192)),
-  });
-  onHarness?.(harness);
-  const result = await harness.run(prompt, {
-    sessionId: sessionId || `session-${path.basename(runDir).replace(/[^a-z0-9-]/gi, "")}`,
-    onNotification,
-  });
-  return { harness, result };
+      provider: "xenho",
+      model: selectedModel,
+      maxTokens: Math.max(1024, Math.min(32768, Number(maxTokens) || Number(env.HARNESS_LLM_MAX_TOKENS) || 8192)),
+    });
+    entry = { harness, fingerprint, running: 0, timer: null };
+    if (key) residentHarnesses.set(key, entry);
+  }
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = null;
+  entry.running += 1;
+  onHarness?.(entry.harness, { resident: !!key, residentKey: key });
+  try {
+    const result = await entry.harness.run(prompt, {
+      sessionId: sessionId || `session-${path.basename(runDir).replace(/[^a-z0-9-]/gi, "")}`,
+      onNotification,
+    });
+    return { harness: entry.harness, result, resident: !!key, residentKey: key };
+  } catch (error) {
+    if (key) await closeResidentEntry(key, entry);
+    else await entry.harness.close().catch(() => {});
+    throw error;
+  } finally {
+    entry.running = Math.max(0, entry.running - 1);
+    if (key && residentHarnesses.get(key) === entry) scheduleResidentClose(key, entry);
+  }
 }
 
 export async function probeHarnessRuntime() {

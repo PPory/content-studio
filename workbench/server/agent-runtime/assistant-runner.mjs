@@ -4,7 +4,7 @@ import path from "node:path";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
 import { searchAll } from "../lib/search.mjs";
-import { createHarnessRun } from "./harness-adapter.mjs";
+import { closeResidentHarness, createHarnessRun } from "./harness-adapter.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
 const active = new Map();
@@ -79,6 +79,8 @@ async function readConversationRecord(scopeId, conversationId) {
       updatedAt: data.updatedAt || data.createdAt || now(),
       messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
       attachments: Array.isArray(data.attachments) ? data.attachments.slice(-40) : [],
+      activeTurn: data.activeTurn && typeof data.activeTurn === "object" ? data.activeTurn : null,
+      lastTurn: data.lastTurn && typeof data.lastTurn === "object" ? data.lastTurn : null,
     };
   } catch {
     return null;
@@ -97,6 +99,8 @@ async function writeConversationRecord(scopeId, record) {
     updatedAt: now(),
     messages: (record.messages || []).slice(-120),
     attachments: (record.attachments || []).slice(-40),
+    activeTurn: record.activeTurn || null,
+    lastTurn: record.lastTurn || null,
   };
   await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
   const index = await readIndex(scopeId);
@@ -115,6 +119,8 @@ export async function createAssistantConversation(scopeId, options = {}) {
     createdAt: now(),
     messages: [],
     attachments: [],
+    activeTurn: null,
+    lastTurn: null,
   });
 }
 
@@ -146,14 +152,21 @@ async function ensureConversation(scopeId, conversationId = "", options = {}) {
   return createAssistantConversation(scopeId, options);
 }
 
+async function recoverInterruptedConversation(scopeId, record) {
+  if (!record?.activeTurn || active.has(activeKey(scopeId, record.id))) return record;
+  record.lastTurn = { ...record.activeTurn, status: "interrupted", finishedAt: now(), error: "工作台重启前这轮对话没有正常结束" };
+  record.activeTurn = null;
+  return writeConversationRecord(scopeId, record);
+}
+
 export async function assistantConversations(scopeId) {
-  const current = await ensureConversation(scopeId);
+  const current = await recoverInterruptedConversation(scopeId, await ensureConversation(scopeId));
   const index = await readIndex(scopeId);
   return { ...index, activeId: current.id };
 }
 
 export async function assistantConversation(scopeId, conversationId = "") {
-  return ensureConversation(scopeId, conversationId);
+  return recoverInterruptedConversation(scopeId, await ensureConversation(scopeId, conversationId));
 }
 
 export async function assistantModels(env) {
@@ -179,6 +192,23 @@ export async function assistantModels(env) {
   } catch (error) {
     return { items: configured ? [{ id: configured, name: configured }] : [], configured, source: "settings", warning: `模型列表获取失败：${error.message}` };
   }
+}
+
+export async function assistantSkills() {
+  const root = path.resolve(process.cwd(), ".agents", "skills");
+  let entries = [];
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return { items: [] }; }
+  const items = [];
+  for (const entry of entries.filter((item) => item.isDirectory())) {
+    try {
+      const source = await fs.readFile(path.join(root, entry.name, "SKILL.md"), "utf8");
+      const header = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+      const name = clean(header?.[1].match(/^name:\s*(.+)$/m)?.[1], 100) || entry.name;
+      const description = clean(header?.[1].match(/^description:\s*(.+)$/m)?.[1], 500);
+      items.push({ id: name, name, description, source: "project" });
+    } catch {}
+  }
+  return { items: items.sort((a, b) => a.name.localeCompare(b.name, "zh-CN")) };
 }
 
 function searchQueries(input) {
@@ -249,7 +279,42 @@ function generalPrompt(input, context) {
   ].join("\n\n");
 }
 
-export async function runAssistantTurn(env, input = {}) {
+const TOOL_LABELS = {
+  knowledge_search: "正在检索本地知识库",
+  attachment_read: "正在读取附件",
+  web_search: "正在搜索公开网页",
+  web_fetch: "正在阅读网页来源",
+  skill: "正在加载 Harness Skill",
+  submit_expert_report: "正在整理专家结论",
+};
+
+function emitHarnessEvent(notification, emit) {
+  if (!emit || notification?.method !== "session.event") return;
+  const event = notification.params?.event;
+  const type = event?.type;
+  const data = event?.data || {};
+  if (type === "assistant/chunk") {
+    const chunk = data.chunk || {};
+    if (chunk.type === "text-delta" && chunk.text) emit({ type: "text", text: chunk.text });
+    if (chunk.type === "tool-call-delta" && chunk.name) emit({ type: "status", stage: TOOL_LABELS[chunk.name] || `正在调用 ${chunk.name}`, tool: chunk.name });
+    return;
+  }
+  if (type === "text-chunks") {
+    for (const text of data.texts || []) if (text) emit({ type: "text", text });
+    return;
+  }
+  if (type === "tool/call") {
+    emit({ type: "status", stage: TOOL_LABELS[data.name] || `正在调用 ${data.name || "工具"}`, tool: data.name || "" });
+    return;
+  }
+  if (type === "tool/result") {
+    emit({ type: "status", stage: "已取得工具结果，正在继续分析" });
+    return;
+  }
+  if (type === "llm/retry-started" || type === "llm/retry") emit({ type: "status", stage: "模型响应不稳定，正在自动重试" });
+}
+
+export async function runAssistantTurn(env, input = {}, options = {}) {
   const startedAt = Date.now();
   const scopeId = clean(input.scopeId, 240);
   const message = clean(input.message, 8_000);
@@ -263,11 +328,13 @@ export async function runAssistantTurn(env, input = {}) {
   const dir = conversationDir(scopeId, record.id);
   await fs.mkdir(dir, { recursive: true });
   let context;
+  const turnId = `turn-${crypto.randomUUID().replaceAll("-", "")}`;
   try {
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
     record.model = clean(input.model, 240) || record.model || clean(env.HARNESS_LLM_MODEL, 240);
     record.title = record.messages.length ? record.title : titleFrom(message);
     record.messages = [...record.messages, userMessage];
+    record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文" };
     await writeConversationRecord(scopeId, record);
     context = await localContext(env, input, record);
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
@@ -277,6 +344,7 @@ export async function runAssistantTurn(env, input = {}) {
   }
 
   let harness;
+  let resident = false;
   try {
     const standalone = input.mode === "general";
     const result = await createHarnessRun({
@@ -291,7 +359,9 @@ export async function runAssistantTurn(env, input = {}) {
       sessionId: `assistant-${record.id}`,
       maxTokens: 4096,
       model: record.model,
-      onHarness(instance) { harness = instance; active.set(key, instance); },
+      residentKey: `assistant:${key}:${record.model}`,
+      onNotification(notification) { emitHarnessEvent(notification, options.onEvent); },
+      onHarness(instance, meta) { harness = instance; resident = !!meta?.resident; active.set(key, { harness: instance, residentKey: meta?.residentKey || "" }); },
     });
     const text = clean(result.result.finalResponse, 40_000);
     if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
@@ -299,11 +369,22 @@ export async function runAssistantTurn(env, input = {}) {
     const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode };
     latest.messages = [...latest.messages, assistantMessage];
     latest.model = record.model;
+    latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs };
+    latest.activeTurn = null;
     const saved = await writeConversationRecord(scopeId, latest);
+    options.onEvent?.({ type: "complete", turnId, durationMs: assistantMessage.durationMs });
     return { conversation: saved, message: assistantMessage };
+  } catch (error) {
+    const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
+    if (latest) {
+      latest.lastTurn = { id: turnId, status: "failed", startedAt: latest.activeTurn?.startedAt, finishedAt: now(), error: clean(error.message, 1_000) };
+      latest.activeTurn = null;
+      await writeConversationRecord(scopeId, latest).catch(() => {});
+    }
+    throw error;
   } finally {
     active.delete(key);
-    await harness?.close().catch(() => {});
+    if (!resident) await harness?.close().catch(() => {});
   }
 }
 
@@ -342,9 +423,16 @@ export async function saveAssistantAttachment(scopeId, conversationId, fileName,
 export async function cancelAssistantTurn(scopeId, conversationId = "") {
   const record = await ensureConversation(scopeId, conversationId);
   const key = activeKey(scopeId, record.id);
-  const harness = active.get(key);
-  if (!harness) return false;
-  await harness.close().catch(() => {});
+  const running = active.get(key);
+  if (!running?.harness) return false;
+  if (running.residentKey) await closeResidentHarness(running.residentKey);
+  else await running.harness.close().catch(() => {});
   active.delete(key);
+  const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
+  if (latest?.activeTurn) {
+    latest.lastTurn = { ...latest.activeTurn, status: "cancelled", finishedAt: now() };
+    latest.activeTurn = null;
+    await writeConversationRecord(scopeId, latest).catch(() => {});
+  }
   return true;
 }

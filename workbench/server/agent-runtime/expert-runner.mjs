@@ -161,7 +161,21 @@ export async function startExpertRun(env, input = {}) {
 
 export async function getExpertRun(id) {
   if (live.has(id)) return publicRun(live.get(id));
-  try { return publicRun(JSON.parse(await fs.readFile(runFile(id), "utf8"))); } catch { return null; }
+  try {
+    const run = JSON.parse(await fs.readFile(runFile(id), "utf8"));
+    if (["queued", "running"].includes(run.status)) {
+      Object.assign(run, {
+        status: "failed",
+        stage: "interrupted",
+        stageLabel: "任务因工作台重启而中断",
+        error: "上次专家任务没有正常结束",
+        hint: "正文和已保存内容不受影响；点击重新检查即可从当前正文重新执行。",
+        finishedAt: now(),
+      });
+      await persist(run);
+    }
+    return publicRun(run);
+  } catch { return null; }
 }
 
 export async function listExpertRuns(scopeId = "") {

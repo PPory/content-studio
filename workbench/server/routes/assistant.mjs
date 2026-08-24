@@ -3,6 +3,7 @@ import {
   assistantConversation,
   assistantConversations,
   assistantModels,
+  assistantSkills,
   cancelAssistantTurn,
   createAssistantConversation,
   runAssistantTurn,
@@ -32,6 +33,13 @@ export const assistantRoutes = [
     },
   },
   {
+    method: "GET",
+    path: "/api/assistant/skills",
+    async handler({ res }) {
+      json(res, { ok: true, skills: await assistantSkills() });
+    },
+  },
+  {
     method: "POST",
     path: "/api/assistant/chat",
     async handler({ env, req, res }) {
@@ -40,6 +48,28 @@ export const assistantRoutes = [
         json(res, { ok: true, ...result });
       } catch (error) {
         fail(res, error.message, { status: error.status || 500, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/chat/stream",
+    async handler({ env, req, res }) {
+      const send = (event) => {
+        if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+      };
+      res.writeHead(200, {
+        "content-type": "application/x-ndjson; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+      });
+      try {
+        const result = await runAssistantTurn(env, await readJsonBody(req), { onEvent: send });
+        send({ type: "done", result });
+      } catch (error) {
+        send({ type: "error", error: error.message, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
+      } finally {
+        if (!res.destroyed && !res.writableEnded) res.end();
       }
     },
   },
