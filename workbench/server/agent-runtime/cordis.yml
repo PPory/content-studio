@@ -12,6 +12,9 @@
         apiKeyEnv: XENHO_LLM_API_KEY
         api: !!js process.env.XENHO_LLM_PROTOCOL ?? 'openai-completions'
         baseURL: !!js process.env.XENHO_LLM_BASE_URL
+        defaultInput:
+          - text
+          - image
         models:
           - id: !!js process.env.XENHO_LLM_MODEL
             name: !!js process.env.XENHO_LLM_MODEL
@@ -33,6 +36,9 @@
 
 - id: xenho-tools
   name: './xenho-tools.mjs'
+
+- id: xenho-attachments
+  name: './xenho-attachments.mjs'
 
 - id: web
   name: '@deepseek-ai/dsh-web'

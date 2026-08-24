@@ -68,7 +68,8 @@
 .assistant-history-toggle:hover,
 .assistant-history-toggle[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); }
 .assistant-history-toggle svg { width: 15px; height: 15px; }
-.assistant-pane__context > button {
+.assistant-context-actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); overflow: visible !important; }
+.assistant-context-actions > button {
   flex: none; display: inline-flex; align-items: center; gap: var(--sp-3);
   height: 28px; padding: 0 var(--sp-5);
   border: 1px solid var(--border); border-radius: var(--r-ctl);
@@ -76,10 +77,10 @@
   font: inherit; font-size: var(--fs-sm); cursor: pointer;
   transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
 }
-.assistant-pane__context > button:hover { border-color: var(--border-strong); color: var(--text-1); }
-.assistant-pane__context > button svg { width: 14px; height: 14px; }
+.assistant-context-actions > button:hover { border-color: var(--border-strong); color: var(--text-1); }
+.assistant-context-actions > button svg { width: 14px; height: 14px; }
 /* 收窄时按钮只剩图标，宽度跟着塌 */
-.assistant-pane__context > button:not(:has(span)) { width: 28px; padding: 0; justify-content: center; }
+.assistant-context-actions > button:not(:has(span)) { width: 28px; padding: 0; justify-content: center; }
 
 /* 上下文芯片：读的是全文还是选区、有没有素材。**只报事实，不可点** */
 .assistant-context-chip {
@@ -115,13 +116,23 @@
  * 靠右 + 深底是聊天界面里最省的「谁说的」编码，不需要再写一个「你」。
  */
 .assistant-message--user { display: flex; justify-content: flex-end; }
-.assistant-message--user > p {
+.assistant-message__user { position: relative; display: flex; justify-content: flex-end; max-width: min(560px, 84%); }
+.assistant-message__user > p {
   max-width: min(560px, 84%);
   padding: var(--sp-5) var(--sp-6);
   border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
   background: var(--accent); color: var(--on-accent);
   font-size: var(--fs-base);
 }
+.assistant-message__user > button {
+  position: absolute; right: 100%; bottom: 0; display: grid; place-items: center;
+  width: 26px; height: 26px; margin-right: var(--sp-2); border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-3); opacity: 0; cursor: pointer;
+}
+.assistant-message--user:hover .assistant-message__user > button { opacity: 1; }
+.assistant-message__user > button:hover { background: var(--surface-2); color: var(--text-1); }
+.assistant-message__user > button svg { width: 13px; height: 13px; }
+.assistant-message__stream { margin: 0; white-space: pre-wrap; line-height: 1.78; }
 .assistant-message--assistant { padding-bottom: var(--sp-7); border-bottom: 1px solid var(--border); }
 .assistant-message__avatar {
   display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
@@ -184,6 +195,20 @@
   border-left: 2px solid var(--warning); border-radius: 0 var(--r-sm) var(--r-sm) 0;
   background: color-mix(in srgb, var(--warning) 8%, var(--surface));
   color: var(--text-2); font-size: var(--fs-xs); line-height: 1.55;
+}
+
+.assistant-action-card {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6);
+  max-width: 760px; margin: calc(var(--sp-7) * -0.5) auto var(--sp-7); padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+}
+.assistant-action-card > div { display: grid; gap: var(--sp-1); min-width: 0; }
+.assistant-action-card small { color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-action-card b { font-size: var(--fs-base); }
+.assistant-action-card p { margin: 0; overflow: hidden; color: var(--text-2); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
+.assistant-action-card > button {
+  flex: none; height: 30px; padding: 0 var(--sp-5); border: 0; border-radius: var(--r-ctl);
+  background: var(--accent); color: var(--on-accent); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 
 /* --------------------------------------------------------------------------
@@ -314,6 +339,14 @@
   color: inherit; font: inherit; font-size: var(--fs-sm); outline: 0; cursor: pointer;
 }
 .assistant-composer__model { min-width: 0; }
+.assistant-model-glyph {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
+  border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: 11px; font-weight: 700;
+}
+.assistant-model-glyph[data-brand="grok"] { background: var(--accent); color: var(--on-accent); }
+.assistant-model-glyph[data-brand="gemini"] { color: #7357c8; }
+.assistant-model-glyph[data-brand="deepseek"] { color: #315ccf; }
+.assistant-model-glyph[data-brand="glm"] { color: #3b5b83; }
 .assistant-composer__model b {
   min-width: 0; max-width: 138px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--fs-sm); font-weight: 500;
@@ -379,9 +412,15 @@
   border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2);
   font-size: var(--fs-sm); font-weight: 600;
 }
+.assistant-command-menu__mark .assistant-model-glyph { width: 24px; height: 24px; }
 .assistant-command-menu b { font-size: var(--fs-base); font-weight: 600; }
+.assistant-command-menu b em {
+  margin-left: var(--sp-3); padding: 1px var(--sp-3); border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-3); font-size: var(--fs-2xs); font-style: normal; font-weight: 500;
+}
 .assistant-command-menu small { overflow: hidden; color: var(--text-3); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 .assistant-command-menu__empty { margin: 0; padding: var(--sp-7); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
+.assistant-command-menu__notice { margin: 0 var(--sp-3) var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
 
 /* --------------------------------------------------------------------------
    独立页的密度：一栏可读宽度居中，输入器跟着居中
@@ -404,6 +443,7 @@
   width: min(800px, calc(100% - var(--sp-9))); margin: 0 auto var(--sp-8);
 }
 .assistant-pane--standalone .assistant-composer textarea { min-height: 56px; max-height: 200px; }
+.assistant-pane--standalone .assistant-command-menu { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
 
 /* 独立助手才有历史列。它与消息区同高，不另套卡片；收起后对话重新占满。 */
 .assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 232px minmax(0, 1fr); }
@@ -495,6 +535,9 @@
 .project-assistant .assistant-thread { padding: var(--sp-6) var(--sp-5) var(--sp-3); }
 .project-assistant .assistant-message { margin-bottom: var(--sp-6); }
 .project-assistant .assistant-composer { margin: 0 var(--sp-5) var(--sp-5); }
+.project-assistant .assistant-composer textarea { min-height: 48px; max-height: 132px; padding-bottom: var(--sp-2); }
+.project-assistant .assistant-command-menu { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
+.project-assistant .assistant-action-card { margin-inline: 0; }
 /**
  * 右栏只有 336px，那一排药丸放不下三组文字 + 一颗发送钮。
  * ⚠️ **收的是文字不是控件**：`@` 和 `/` 留着（那就是你要敲的字符），
@@ -503,8 +546,7 @@
  */
 .project-assistant .assistant-composer__hint { display: none; }
 .project-assistant .assistant-composer > footer { gap: var(--sp-3); padding-left: var(--sp-4); }
-.project-assistant .assistant-composer > footer > div { flex: 1 1 100%; gap: var(--sp-2); }
-.project-assistant .assistant-composer > footer > div button > span { display: none; }
+.project-assistant .assistant-composer > footer > div { flex: 1 1 auto; gap: var(--sp-2); }
 .project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-4); font-weight: 600; }
 .project-assistant .assistant-composer__style { max-width: 100%; min-width: 0; }
 .project-assistant .assistant-composer__style > span { display: none; }
@@ -512,6 +554,7 @@
 .project-assistant .assistant-composer__model { max-width: 132px; padding-inline: var(--sp-4); }
 .project-assistant .assistant-composer__model-label { display: none; }
 .project-assistant .assistant-composer__model b { max-width: 82px; }
+.project-assistant .assistant-composer__model .assistant-model-glyph { width: 18px; height: 18px; }
 .project-assistant .assistant-empty { padding: var(--sp-8) var(--sp-3); }
 .project-assistant .assistant-empty h3 { font-size: var(--fs-lg); }
 

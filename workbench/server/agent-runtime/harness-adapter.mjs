@@ -106,6 +106,8 @@ export function harnessChildEnv(env, runDir, kind, options = {}) {
     XENHO_EXPERT_PERSONA: String(options.persona || "你是 Xenho OS 的专业内容顾问。用户是主创。只读研究、保留来源、提交结构化报告；不得修改正文、不得编造经历或证据。"),
     XENHO_CONTEXT_FILE: path.join(runDir, "context.json"),
     XENHO_REPORT_FILE: path.join(runDir, "report.json"),
+    XENHO_ACTIONS_FILE: options.actionsFile || path.join(runDir, "actions.jsonl"),
+    XENHO_IMAGE_INDEX_FILE: options.imageIndexFile || path.join(runDir, "images.json"),
     XENHO_SESSION_ROOT: options.sessionRoot || path.join(runDir, "sessions"),
     XENHO_EXPERT_KIND: kind,
     BRAVE_SEARCH_API_KEY: String(env.BRAVE_SEARCH_API_KEY || "").trim(),
@@ -121,7 +123,7 @@ function launchConfig(env, runDir, kind, bin, options = {}) {
   };
 }
 
-export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens, model, residentKey }) {
+export async function createHarnessRun({ env, runDir, kind, prompt, onNotification, onHarness, persona, sessionRoot, sessionId, maxTokens, model, residentKey, actionsFile, imageIndexFile }) {
   const info = await harnessRuntimeInfo(env);
   if (!info.available) throw Object.assign(new Error(`Harness ${info.version} 兼容检查未通过`), { hint: info.reason });
   if (!info.configured) {
@@ -131,8 +133,8 @@ export async function createHarnessRun({ env, runDir, kind, prompt, onNotificati
   }
   const bin = fileURLToPath(import.meta.resolve("@deepseek-ai/dsh-sdk-jsonrpc-demo/bin"));
   const selectedModel = String(model || env.HARNESS_LLM_MODEL || "").trim();
-  const launch = launchConfig(env, runDir, kind, bin, { persona, sessionRoot, model: selectedModel });
-  const options = { persona, sessionRoot, model: selectedModel };
+  const launch = launchConfig(env, runDir, kind, bin, { persona, sessionRoot, model: selectedModel, actionsFile, imageIndexFile });
+  const options = { persona, sessionRoot, model: selectedModel, actionsFile, imageIndexFile };
   const key = residentKeyOf(residentKey);
   const fingerprint = residentFingerprint(env, runDir, kind, options);
   let entry = key ? residentHarnesses.get(key) : null;

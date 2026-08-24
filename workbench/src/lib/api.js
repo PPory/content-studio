@@ -275,6 +275,8 @@ export const api = {
     return result;
   },
   cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
+  rewindAssistant: (scopeId, conversationId) => postJson("/api/assistant/rewind", { scopeId, conversationId }),
+  applyAssistantAction: (scopeId, conversationId, actionId) => postJson("/api/assistant/action", { scopeId, conversationId, actionId }),
   newAssistantConversation: (scopeId, model = "") => postJson("/api/assistant/new", { scopeId, model }),
   uploadAssistantAttachment: (scope, conversationId, file) => req(`/api/assistant/attachment?scope=${encodeURIComponent(scope)}&conversationId=${encodeURIComponent(conversationId)}&filename=${encodeURIComponent(file.name)}`, {
     method: "POST",

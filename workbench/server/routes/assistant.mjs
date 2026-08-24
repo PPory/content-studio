@@ -3,10 +3,12 @@ import {
   assistantConversation,
   assistantConversations,
   assistantExperts,
-  assistantModels,
+  assistantModelCatalog,
   assistantSkills,
   cancelAssistantTurn,
   createAssistantConversation,
+  applyAssistantAction,
+  rewindAssistantConversation,
   runAssistantTurn,
   saveAssistantAttachment,
   updateAssistantConversationModel,
@@ -31,7 +33,7 @@ export const assistantRoutes = [
     method: "GET",
     path: "/api/assistant/models",
     async handler({ env, res }) {
-      json(res, { ok: true, models: await assistantModels(env) });
+      json(res, { ok: true, models: await assistantModelCatalog(env) });
     },
   },
   {
@@ -104,11 +106,35 @@ export const assistantRoutes = [
     async handler({ env, req, res }) {
       try {
         const body = await readJsonBody(req);
-        const catalog = await assistantModels(env);
+        const catalog = await assistantModelCatalog(env);
         if (!catalog.items.some((item) => item.id === body.model)) {
           return fail(res, "这个模型不在当前接口返回的可用列表中", { status: 400, hint: "重新展开模型菜单并选择其中一项。" });
         }
         json(res, { ok: true, conversation: await updateAssistantConversationModel(body.scopeId, body.conversationId, body.model) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/rewind",
+    async handler({ req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, ...(await rewindAssistantConversation(body.scopeId, body.conversationId)) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/action",
+    async handler({ env, req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, ...(await applyAssistantAction(env, body.scopeId, body.conversationId, body.actionId)) });
       } catch (error) {
         fail(res, error.message, { status: error.status || 500, hint: error.hint });
       }

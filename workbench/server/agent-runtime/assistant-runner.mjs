@@ -6,9 +6,11 @@ import { parsePdf } from "../lib/books.mjs";
 import { searchAll } from "../lib/search.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
+import { callWorker } from "../lib/worker.mjs";
 import { closeResidentHarness, createHarnessRun } from "./harness-adapter.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
+const MODEL_CACHE_FILE = path.join(ROOT, "models.json");
 const active = new Map();
 const providerDispatcher = new EnvHttpProxyAgent();
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
@@ -82,8 +84,10 @@ async function readConversationRecord(scopeId, conversationId) {
       updatedAt: data.updatedAt || data.createdAt || now(),
       messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
       attachments: Array.isArray(data.attachments) ? data.attachments.slice(-40) : [],
+      actions: Array.isArray(data.actions) ? data.actions.slice(-40) : [],
       activeTurn: data.activeTurn && typeof data.activeTurn === "object" ? data.activeTurn : null,
       lastTurn: data.lastTurn && typeof data.lastTurn === "object" ? data.lastTurn : null,
+      replayHistory: Boolean(data.replayHistory),
     };
   } catch {
     return null;
@@ -103,8 +107,10 @@ async function writeConversationRecord(scopeId, record) {
     updatedAt: now(),
     messages: (record.messages || []).slice(-120),
     attachments: (record.attachments || []).slice(-40),
+    actions: (record.actions || []).slice(-40),
     activeTurn: record.activeTurn || null,
     lastTurn: record.lastTurn || null,
+    replayHistory: Boolean(record.replayHistory),
   };
   await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
   const index = await readIndex(scopeId);
@@ -124,8 +130,10 @@ export async function createAssistantConversation(scopeId, options = {}) {
     createdAt: now(),
     messages: [],
     attachments: [],
+    actions: [],
     activeTurn: null,
     lastTurn: null,
+    replayHistory: false,
   });
 }
 
@@ -136,24 +144,26 @@ async function ensureConversation(scopeId, conversationId = "", options = {}) {
     if (record) return record;
   }
   const index = await readIndex(scopeId);
-  if (index.activeId) {
+  if (!options.forceNew && index.activeId) {
     const record = await readConversationRecord(scopeId, index.activeId);
     if (record) return record;
   }
-  try {
-    const legacy = JSON.parse(await fs.readFile(path.join(scopeDir(scopeId), "conversation.json"), "utf8"));
-    if (Array.isArray(legacy.messages) && legacy.messages.length) {
-      const firstUser = legacy.messages.find((message) => message.role === "user")?.text;
-      return writeConversationRecord(scopeId, {
-        id: newConversationId(),
-        title: titleFrom(firstUser || "历史对话"),
-        model: clean(options.model, 240),
-        createdAt: legacy.messages[0]?.createdAt || now(),
-        messages: legacy.messages,
-        attachments: [],
-      });
-    }
-  } catch {}
+  if (!options.forceNew) {
+    try {
+      const legacy = JSON.parse(await fs.readFile(path.join(scopeDir(scopeId), "conversation.json"), "utf8"));
+      if (Array.isArray(legacy.messages) && legacy.messages.length) {
+        const firstUser = legacy.messages.find((message) => message.role === "user")?.text;
+        return writeConversationRecord(scopeId, {
+          id: newConversationId(),
+          title: titleFrom(firstUser || "历史对话"),
+          model: clean(options.model, 240),
+          createdAt: legacy.messages[0]?.createdAt || now(),
+          messages: legacy.messages,
+          attachments: [],
+        });
+      }
+    } catch {}
+  }
   return createAssistantConversation(scopeId, options);
 }
 
@@ -165,38 +175,71 @@ async function recoverInterruptedConversation(scopeId, record) {
 }
 
 export async function assistantConversations(scopeId) {
-  const current = await recoverInterruptedConversation(scopeId, await ensureConversation(scopeId));
   const index = await readIndex(scopeId);
-  return { ...index, activeId: current.id };
+  return {
+    ...index,
+    items: (index.items || []).filter((item) => Number(item?.messageCount || 0) > 0 || clean(item?.preview, 2_000)),
+  };
 }
 
 export async function assistantConversation(scopeId, conversationId = "") {
   return recoverInterruptedConversation(scopeId, await ensureConversation(scopeId, conversationId));
 }
 
-export async function assistantModels(env) {
+export async function assistantModels(env, extraIds = []) {
   const configured = clean(env.HARNESS_LLM_MODEL, 240);
   const base = clean(env.HARNESS_LLM_BASE_URL, 1_000).replace(/\/+$/, "");
   const key = clean(env.HARNESS_LLM_API_KEY, 4_000);
-  if (!base || !key) return { items: configured ? [{ id: configured, name: configured }] : [], configured, source: "settings" };
+  const remembered = [...new Set([configured, ...extraIds].map((item) => clean(item, 240)).filter(Boolean))];
+  let cached = [];
   try {
-    const response = await undiciFetch(`${base}/models`, {
-      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-      dispatcher: providerDispatcher,
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+    const data = JSON.parse(await fs.readFile(MODEL_CACHE_FILE, "utf8"));
+    cached = Array.isArray(data.items) ? data.items.map((item) => ({ id: clean(item.id, 240), name: clean(item.name, 240) || clean(item.id, 240), ownedBy: clean(item.ownedBy, 120) })).filter((item) => item.id) : [];
+  } catch {}
+  const withRemembered = (items) => {
+    const result = [...items];
+    for (const id of remembered.toReversed()) if (!result.some((item) => item.id === id)) result.unshift({ id, name: id, remembered: true });
+    return result;
+  };
+  if (!base || !key) return { items: withRemembered(cached), configured, source: cached.length ? "cache" : "settings", warning: "模型目录未连接，显示的是本机上次成功获取的目录" };
+  try {
+    const root = base.replace(/\/chat\/completions$/i, "");
+    const urls = [...new Set([`${root}/models`, ...(!/\/v1$/i.test(root) ? [`${root}/v1/models`] : [])])];
+    const data = await Promise.any(urls.map(async (url) => {
+      const response = await undiciFetch(url, {
+        headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+        dispatcher: providerDispatcher,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error(`${new URL(url).pathname} 返回 HTTP ${response.status}`);
+      return response.json();
+    }));
     const rows = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
     const items = [...new Map(rows.map((item) => {
       const id = clean(typeof item === "string" ? item : item?.id || item?.name, 240);
       return id ? [id, { id, name: clean(item?.name, 240) || id, ownedBy: clean(item?.owned_by || item?.provider, 120) }] : null;
     }).filter(Boolean)).values()];
-    if (configured && !items.some((item) => item.id === configured)) items.unshift({ id: configured, name: configured });
-    return { items, configured, source: "provider" };
+    const complete = withRemembered(items);
+    await fs.mkdir(ROOT, { recursive: true });
+    await fs.writeFile(MODEL_CACHE_FILE, JSON.stringify({ updatedAt: now(), items: complete }, null, 2), "utf8").catch(() => {});
+    return { items: complete, configured, source: "provider" };
   } catch (error) {
-    return { items: configured ? [{ id: configured, name: configured }] : [], configured, source: "settings", warning: `模型列表获取失败：${error.message}` };
+    return { items: withRemembered(cached), configured, source: cached.length ? "cache" : "settings", warning: cached.length ? "模型服务本次没有返回目录，已显示上次成功获取的可用模型" : `模型目录暂时不可用：${error.message}` };
   }
+}
+
+export async function assistantModelCatalog(env) {
+  const ids = [];
+  try {
+    const scopes = await fs.readdir(ROOT, { withFileTypes: true });
+    for (const scope of scopes.filter((item) => item.isDirectory()).slice(0, 80)) {
+      try {
+        const data = JSON.parse(await fs.readFile(path.join(ROOT, scope.name, "index.json"), "utf8"));
+        for (const item of data.items || []) if (item.model) ids.push(item.model);
+      } catch {}
+    }
+  } catch {}
+  return assistantModels(env, ids);
 }
 
 export async function assistantSkills() {
@@ -296,7 +339,7 @@ async function localContext(env, input, record) {
     queries,
     localSources: sources.slice(0, 40),
     retrievalMode: asksForSources ? "按需检索" : "未检索",
-    attachments: (record.attachments || []).map(({ id, name, type, bytes, characters, textPath }) => ({ id, name, type, bytes, characters, textPath })),
+    attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, textPath }) => ({ id, name, type, kind, bytes, characters, textPath })),
     project: {
       title: clean(input.document?.title, 300),
       body: clean(input.document?.body, 60_000),
@@ -326,7 +369,7 @@ function contentPrompt(input, context, model) {
   const style = input.style?.instructions ? `【本篇调用风格：${clean(input.style.name || "未命名风格", 80)}】\n${clean(input.style.instructions, 8_000)}` : "【本篇调用风格】未指定；保持清楚、克制，不模仿不存在的个人口吻。";
   return [
     "你正在 Xenho OS 的内容项目中协助主创。先回答用户当前这一步，不抢走创作主导权。",
-    "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。",
+    "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。用户明确要求在工作台另建内容时，调用 propose_content_create 提交待确认操作。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
@@ -334,6 +377,7 @@ function contentPrompt(input, context, model) {
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
     style,
     expertInstruction(input),
+    input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
   ].join("\n\n");
@@ -344,8 +388,10 @@ function generalPrompt(input, context, model) {
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
     "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
+    "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
     runtimeModelInstruction(model),
     expertInstruction(input),
+    input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
   ].join("\n\n");
@@ -361,6 +407,7 @@ const TOOL_LABELS = {
   web_fetch: "正在阅读网页来源",
   skill: "正在加载 Harness Skill",
   submit_expert_report: "正在整理专家结论",
+  propose_content_create: "正在准备工作台新建内容候选",
 };
 
 function emitHarnessEvent(notification, emit) {
@@ -395,15 +442,17 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   const message = clean(input.message, 8_000);
   if (!scopeId) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
   if (!message) throw Object.assign(new Error("先写下想让 AI 帮你做什么"), { status: 400 });
-  const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.HARNESS_LLM_MODEL });
+  const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.HARNESS_LLM_MODEL, forceNew: Boolean(input.startNew && !input.conversationId) });
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("AI 助手还在处理上一条消息"), { status: 409 });
   active.set(key, null);
+  options.onEvent?.({ type: "conversation", conversationId: record.id });
 
   const dir = conversationDir(scopeId, record.id);
   await fs.mkdir(dir, { recursive: true });
-  let context;
   const turnId = `turn-${crypto.randomUUID().replaceAll("-", "")}`;
+  const actionsFile = path.join(dir, "actions.jsonl");
+  let context;
   try {
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
     record.model = clean(input.model, 240) || record.model || clean(env.HARNESS_LLM_MODEL, 240);
@@ -422,11 +471,19 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   let resident = false;
   try {
     const standalone = input.mode === "general";
+    await fs.rm(actionsFile, { force: true }).catch(() => {});
+    const replayHistory = record.replayHistory ? record.messages.slice(0, -1).slice(-20).map((item) => `${item.role === "assistant" ? "助手" : "用户"}：${clean(item.text, 6_000)}`).join("\n\n") : "";
+    const turnInput = replayHistory ? { ...input, replayHistory } : input;
+    const prompt = standalone ? generalPrompt(turnInput, context, record.model) : contentPrompt(turnInput, context, record.model);
+    const pendingImages = (record.attachments || []).filter((item) => item.kind === "image" && !item.usedAt);
+    const runInput = pendingImages.length
+      ? [{ type: "text", text: prompt }, ...pendingImages.map((item) => ({ type: "image", attachment: item.imageRef }))]
+      : prompt;
     const result = await createHarnessRun({
       env,
       runDir: dir,
       kind: "assistant-chat",
-      prompt: standalone ? generalPrompt(input, context, record.model) : contentPrompt(input, context, record.model),
+      prompt: runInput,
       persona: standalone
         ? `你是 Xenho OS 的通用 AI 助手。当前实际调用模型 ID 是 ${record.model}。直接回应用户真实意图，可调用知识库、公开网页、附件和 Harness Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。`
         : `你是 Xenho OS 的内容项目助手。当前实际调用模型 ID 是 ${record.model}。协助主创分析、检索和生成候选；不得静默改正文，不得伪造事实、来源或用户经历。`,
@@ -434,6 +491,8 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
       sessionId: record.harnessSessionId || `assistant-${record.id}`,
       maxTokens: 4096,
       model: record.model,
+      actionsFile,
+      imageIndexFile: path.join(dir, "images.json"),
       residentKey: `assistant:${key}:${record.model}`,
       onNotification(notification) { emitHarnessEvent(notification, options.onEvent); },
       onHarness(instance, meta) { harness = instance; resident = !!meta?.resident; active.set(key, { harness: instance, residentKey: meta?.residentKey || "" }); },
@@ -441,21 +500,41 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const text = clean(result.result.finalResponse, 40_000);
     if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
     const latest = await readConversationRecord(scopeId, record.id) || record;
-    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document) };
+    let proposed = [];
+    try {
+      const lines = (await fs.readFile(actionsFile, "utf8")).split(/\r?\n/).filter(Boolean);
+      proposed = lines.map((line) => JSON.parse(line)).filter((item) => item?.type === "create_content").map((item) => ({
+        id: `action-${crypto.randomUUID().replaceAll("-", "")}`,
+        type: "create_content",
+        status: "pending",
+        title: clean(item.title, 200) || "未命名",
+        platform: ["公众号", "X", "小红书", "视频号", "YouTube"].includes(item.platform) ? item.platform : "公众号",
+        audience: clean(item.audience, 500),
+        viewpoint: clean(item.viewpoint, 2_000),
+        body: clean(item.body, 200_000),
+        createdAt: now(),
+      })).slice(0, 3);
+    } catch {}
+    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id) };
     latest.messages = [...latest.messages, assistantMessage];
+    latest.actions = [...(latest.actions || []), ...proposed];
+    latest.attachments = (latest.attachments || []).map((item) => pendingImages.some((image) => image.id === item.id) ? { ...item, usedAt: now() } : item);
     latest.model = record.model;
     latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs };
     latest.activeTurn = null;
+    latest.replayHistory = false;
     const saved = await writeConversationRecord(scopeId, latest);
     options.onEvent?.({ type: "complete", turnId, durationMs: assistantMessage.durationMs });
     return { conversation: saved, message: assistantMessage };
   } catch (error) {
     const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
-    if (latest) {
+    const cancelled = latest?.lastTurn?.id === turnId && latest.lastTurn.status === "cancelled";
+    if (latest && !cancelled) {
       latest.lastTurn = { id: turnId, status: "failed", startedAt: latest.activeTurn?.startedAt, finishedAt: now(), error: clean(error.message, 1_000) };
       latest.activeTurn = null;
       await writeConversationRecord(scopeId, latest).catch(() => {});
     }
+    if (cancelled) return { conversation: latest, message: null, cancelled: true };
     throw error;
   } finally {
     active.delete(key);
@@ -477,22 +556,93 @@ async function extractAttachment(name, bytes) {
   return text;
 }
 
+function imageInfo(name, bytes) {
+  const ext = path.extname(name).toLowerCase();
+  const types = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
+  const mediaType = types[ext];
+  if (!mediaType) return null;
+  const b = Buffer.from(bytes);
+  let width = 0; let height = 0;
+  if (mediaType === "image/png" && b.length >= 24 && b.subarray(1, 4).toString() === "PNG") { width = b.readUInt32BE(16); height = b.readUInt32BE(20); }
+  else if (mediaType === "image/gif" && b.length >= 10 && b.subarray(0, 3).toString() === "GIF") { width = b.readUInt16LE(6); height = b.readUInt16LE(8); }
+  else if (mediaType === "image/webp" && b.length >= 30 && b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP") {
+    const kind = b.subarray(12, 16).toString();
+    if (kind === "VP8X") { width = 1 + b.readUIntLE(24, 3); height = 1 + b.readUIntLE(27, 3); }
+    else if (kind === "VP8 " && b.length >= 30) { width = b.readUInt16LE(26) & 0x3fff; height = b.readUInt16LE(28) & 0x3fff; }
+    else if (kind === "VP8L" && b.length >= 25 && b[20] === 0x2f) {
+      const bits = b.readUInt32LE(21);
+      width = 1 + (bits & 0x3fff);
+      height = 1 + ((bits >>> 14) & 0x3fff);
+    }
+  } else if (mediaType === "image/jpeg" && b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
+    for (let offset = 2; offset + 9 < b.length;) {
+      if (b[offset] !== 0xff) { offset += 1; continue; }
+      const marker = b[offset + 1]; const size = b.readUInt16BE(offset + 2);
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) { height = b.readUInt16BE(offset + 5); width = b.readUInt16BE(offset + 7); break; }
+      offset += Math.max(2, size + 2);
+    }
+  }
+  if (!width || !height) throw Object.assign(new Error("这张图片无法识别，请换成 PNG、JPG、WebP 或 GIF"), { status: 400 });
+  if (bytes.length > 1_000_000 || width * height > 4_194_304) throw Object.assign(new Error("图片过大，请压缩到 1MB、约 400 万像素以内"), { status: 400 });
+  return { mediaType, width, height };
+}
+
 export async function saveAssistantAttachment(scopeId, conversationId, fileName, bytes) {
-  const record = await ensureConversation(scopeId, conversationId);
+  const record = await ensureConversation(scopeId, conversationId, { forceNew: !conversationId });
   if (!bytes?.length) throw Object.assign(new Error("没有收到文件内容"), { status: 400 });
   const name = safeUploadName(fileName);
-  const text = await extractAttachment(name, bytes);
+  const image = imageInfo(name, bytes);
+  const text = image ? "" : await extractAttachment(name, bytes);
   const id = `file-${crypto.randomUUID().replaceAll("-", "")}`;
   const dir = path.join(conversationDir(scopeId, record.id), "attachments", id);
   await fs.mkdir(dir, { recursive: true });
   const originalPath = path.join(dir, name);
   const textPath = path.join(dir, "content.txt");
   await fs.writeFile(originalPath, bytes);
-  await fs.writeFile(textPath, text.slice(0, 1_000_000), "utf8");
-  const item = { id, name, type: path.extname(name).slice(1) || "text", bytes: bytes.length, characters: Math.min(text.length, 1_000_000), originalPath, textPath, createdAt: now() };
+  if (!image) await fs.writeFile(textPath, text.slice(0, 1_000_000), "utf8");
+  const attachmentId = image ? `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` : "";
+  const imageRef = image ? { attachmentId, mediaType: image.mediaType, bytes: bytes.length, width: image.width, height: image.height, name } : null;
+  const item = { id, name, type: image?.mediaType || path.extname(name).slice(1) || "text", kind: image ? "image" : "text", bytes: bytes.length, characters: Math.min(text.length, 1_000_000), originalPath, ...(!image ? { textPath } : {}), ...(image ? { imageRef } : {}), createdAt: now() };
   record.attachments = [...record.attachments, item];
+  if (image) {
+    const images = Object.fromEntries(record.attachments.filter((entry) => entry.kind === "image").map((entry) => [entry.imageRef.attachmentId, { ...entry.imageRef, path: entry.originalPath }]));
+    await fs.writeFile(path.join(conversationDir(scopeId, record.id), "images.json"), JSON.stringify(images, null, 2), "utf8");
+  }
   const saved = await writeConversationRecord(scopeId, record);
-  return { conversationId: saved.id, attachment: { id, name, type: item.type, bytes: item.bytes, characters: item.characters, createdAt: item.createdAt } };
+  return { conversationId: saved.id, attachment: { id, name, type: item.type, kind: item.kind, bytes: item.bytes, characters: item.characters, createdAt: item.createdAt } };
+}
+
+export async function rewindAssistantConversation(scopeId, conversationId) {
+  const record = await ensureConversation(scopeId, conversationId);
+  const key = activeKey(scopeId, record.id);
+  if (active.has(key)) throw Object.assign(new Error("当前回复完成后才能重新生成"), { status: 409 });
+  let userIndex = -1;
+  for (let index = record.messages.length - 1; index >= 0; index -= 1) if (record.messages[index].role === "user") { userIndex = index; break; }
+  if (userIndex < 0) throw Object.assign(new Error("这轮对话还没有可重新发送的问题"), { status: 400 });
+  const message = record.messages[userIndex].text;
+  record.messages = record.messages.slice(0, userIndex);
+  record.actions = (record.actions || []).map((item) => item.status === "pending" ? { ...item, status: "superseded" } : item);
+  if (record.model) await closeResidentHarness(`assistant:${key}:${record.model}`).catch(() => {});
+  record.harnessSessionId = `assistant-${record.id}-${Date.now().toString(36)}`;
+  record.replayHistory = true;
+  record.activeTurn = null;
+  const saved = await writeConversationRecord(scopeId, record);
+  return { conversation: saved, message };
+}
+
+export async function applyAssistantAction(env, scopeId, conversationId, actionId) {
+  const record = await ensureConversation(scopeId, conversationId);
+  const action = (record.actions || []).find((item) => item.id === clean(actionId, 100));
+  if (!action) throw Object.assign(new Error("没有找到这项待执行操作"), { status: 404 });
+  if (action.status === "applied") return { conversation: record, action, result: action.result };
+  if (action.status !== "pending" || action.type !== "create_content") throw Object.assign(new Error("这项操作已经失效"), { status: 409 });
+  const response = await callWorker(env, "create", { method: "POST", body: { kind: "draft", mode: "blank", title: action.title, platform: action.platform, audience: action.audience, viewpoint: action.viewpoint, body: action.body, materialIds: [] } });
+  if (response.status >= 400 || response.data?.ok === false) throw Object.assign(new Error(response.data?.error || "工作台没有完成新建内容"), { status: response.status || 500, hint: response.data?.hint });
+  action.status = "applied";
+  action.appliedAt = now();
+  action.result = { projectId: response.data?.project?.id || response.data?.topic?.id || "", title: response.data?.topic?.title || action.title };
+  const saved = await writeConversationRecord(scopeId, record);
+  return { conversation: saved, action, result: action.result };
 }
 
 export async function cancelAssistantTurn(scopeId, conversationId = "") {

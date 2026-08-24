@@ -24,6 +24,25 @@ function compactSource(item) {
 
 export function apply(ctx) {
   ctx.tools.register(defineTool({
+    name: "propose_content_create",
+    description: "Propose creating a new Xenho content draft. Use when the user explicitly asks to create/write content in the workbench. This does not write data; the user must confirm the returned action card before Xenho calls its Worker.",
+    parameters: {
+      title: { type: "string", required: true, description: "Content title, up to 200 characters." },
+      platform: { type: "string", required: true, description: "One of: 公众号, X, 小红书, 视频号, YouTube." },
+      audience: { type: "string", description: "Target audience." },
+      viewpoint: { type: "string", description: "One-sentence core idea or summary." },
+      body: { type: "string", required: true, description: "Complete proposed draft body." },
+    },
+    output: textOutput,
+    async execute({ title, platform, audience = "", viewpoint = "", body }) {
+      const action = { type: "create_content", title: String(title || "").slice(0, 200), platform: String(platform || ""), audience: String(audience || "").slice(0, 500), viewpoint: String(viewpoint || "").slice(0, 2_000), body: String(body || "").slice(0, 200_000) };
+      if (!action.title || !action.body) throw new Error("新建内容候选必须包含标题和正文");
+      await fs.appendFile(process.env.XENHO_ACTIONS_FILE, `${JSON.stringify(action)}\n`, "utf8");
+      return "新建内容候选已提交给工作台，等待用户确认后写入。请简要说明候选已经准备好，不要声称已经创建成功。";
+    },
+  }));
+
+  ctx.tools.register(defineTool({
     name: "project_read",
     description: "Read the current Xenho content project snapshot, including title, body, audience, platform and current selection. Read-only.",
     parameters: {},
@@ -96,6 +115,7 @@ export function apply(ctx) {
       const context = await readJson(process.env.XENHO_CONTEXT_FILE);
       const item = (context.attachments || []).find((entry) => entry.id === String(id));
       if (!item) throw new Error("当前对话中没有这个附件");
+      if (item.kind === "image") throw new Error("图片已经作为本轮视觉输入直接交给模型，不需要 attachment_read");
       const text = await fs.readFile(item.textPath, "utf8");
       return JSON.stringify({ id: item.id, name: item.name, text: text.slice(0, 120_000), truncated: text.length > 120_000 }, null, 2);
     },
