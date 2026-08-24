@@ -23,12 +23,14 @@ import { Review } from "./pages/Review.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
+import { AssistantDockToggle, GlobalAssistantDock } from "./components/GlobalAssistantDock.jsx";
 
 /**
  * 状态读失败后的退避重试间隔。**三档就够**：代理抖一下是秒级的，30 秒还不通
  * 基本就是代理没开或 Worker 挂了——那种情况再退下去只是让红框来得更晚。
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
+const ASSISTANT_DOCK_KEY = "workbench:assistant-dock:v1";
 
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
 const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts", "review"]);
@@ -187,6 +189,9 @@ export function App() {
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
   const [finder, setFinder] = useState(false); // 全局检索（Ctrl/⌘ + K）
   const [settings, setSettings] = useState(false); // 设置面板
+  const [assistantDockOpen, setAssistantDockOpen] = useState(() => {
+    try { return localStorage.getItem(ASSISTANT_DOCK_KEY) === "open"; } catch { return false; }
+  });
 
   const toggleRail = useCallback(() => {
     setRailCollapsed((v) => {
@@ -198,6 +203,16 @@ export function App() {
       return !v;
     });
   }, []);
+
+  const toggleAssistantDock = useCallback(() => {
+    setAssistantDockOpen((open) => {
+      const next = !open;
+      try { localStorage.setItem(ASSISTANT_DOCK_KEY, next ? "open" : "closed"); } catch {}
+      return next;
+    });
+  }, []);
+
+  const canDockAssistant = route.view !== "assistant" && route.view !== "project";
 
   useEffect(() => {
     const onHash = () => {
@@ -440,6 +455,7 @@ export function App() {
           * ⚠️ **点本身不做成按钮**：它只有 7px，一个点看不出可点；齿轮才是入口。
           */}
         <div className="topbar__end">
+          {canDockAssistant ? <AssistantDockToggle open={assistantDockOpen} onClick={toggleAssistantDock} /> : null}
           <span
             className={`dot ${connTone(config, statusError, status, statusRetrying)}`}
             title={connLabel(config, statusError, status, statusRetrying)}
@@ -596,6 +612,7 @@ export function App() {
           ) : null}
         </div>
       </main>
+      {canDockAssistant && assistantDockOpen ? <GlobalAssistantDock onClose={toggleAssistantDock} /> : null}
       </div>
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />

@@ -200,18 +200,34 @@ export async function assistantModels(env) {
 }
 
 export async function assistantSkills() {
-  const root = path.resolve(process.cwd(), ".agents", "skills");
-  let entries = [];
-  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return { items: [] }; }
-  const items = [];
-  for (const entry of entries.filter((item) => item.isDirectory())) {
+  let projectRoot = process.cwd();
+  while (true) {
     try {
-      const source = await fs.readFile(path.join(root, entry.name, "SKILL.md"), "utf8");
-      const header = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
-      const name = clean(header?.[1].match(/^name:\s*(.+)$/m)?.[1], 100) || entry.name;
-      const description = clean(header?.[1].match(/^description:\s*(.+)$/m)?.[1], 500);
-      items.push({ id: name, name, description, source: "project" });
-    } catch {}
+      await fs.stat(path.join(projectRoot, ".git"));
+      break;
+    } catch {
+      const parent = path.dirname(projectRoot);
+      if (parent === projectRoot) break;
+      projectRoot = parent;
+    }
+  }
+  const roots = [path.join(projectRoot, ".dsh", "skills"), path.join(projectRoot, ".agents", "skills")];
+  const items = [];
+  const seen = new Set();
+  for (const root of roots) {
+    let entries = [];
+    try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries.filter((item) => item.isDirectory())) {
+      try {
+        const source = await fs.readFile(path.join(root, entry.name, "SKILL.md"), "utf8");
+        const header = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+        const name = clean(header?.[1].match(/^name:\s*(.+)$/m)?.[1], 100) || entry.name;
+        if (seen.has(name)) continue;
+        seen.add(name);
+        const description = clean(header?.[1].match(/^description:\s*(.+)$/m)?.[1], 500);
+        items.push({ id: name, name, description, source: path.relative(projectRoot, root).replaceAll("\\", "/") });
+      } catch {}
+    }
   }
   return { items: items.sort((a, b) => a.name.localeCompare(b.name, "zh-CN")) };
 }
@@ -299,7 +315,11 @@ function expertInstruction(input) {
   return expert ? `【本轮调用专家：${expert.name}】\n${expert.instructions}` : "";
 }
 
-function contentPrompt(input, context) {
+function runtimeModelInstruction(model) {
+  return `【当前实际调用模型】${clean(model, 240) || "未配置"}。如果用户询问模型身份，只按这个模型 ID 回答；不要根据历史回复、自我训练来源或旧会话猜测品牌。`;
+}
+
+function contentPrompt(input, context, model) {
   const document = input.document || {};
   const selection = document.selection?.text ? `【当前选区】\n${clean(document.selection.text, 30_000)}` : "【当前选区】无；本轮默认围绕全文。";
   const body = clean(document.body, 60_000);
@@ -308,6 +328,7 @@ function contentPrompt(input, context) {
     "你正在 Xenho OS 的内容项目中协助主创。先回答用户当前这一步，不抢走创作主导权。",
     "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
+    runtimeModelInstruction(model),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
@@ -318,11 +339,12 @@ function contentPrompt(input, context) {
   ].join("\n\n");
 }
 
-function generalPrompt(input, context) {
+function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
     "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
+    runtimeModelInstruction(model),
     expertInstruction(input),
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
@@ -404,10 +426,10 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
       env,
       runDir: dir,
       kind: "assistant-chat",
-      prompt: standalone ? generalPrompt(input, context) : contentPrompt(input, context),
+      prompt: standalone ? generalPrompt(input, context, record.model) : contentPrompt(input, context, record.model),
       persona: standalone
-        ? "你是 Xenho OS 的通用 AI 助手。直接回应用户真实意图，可调用知识库、公开网页、附件和 Harness Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。"
-        : "你是 Xenho OS 的内容项目助手。协助主创分析、检索和生成候选；不得静默改正文，不得伪造事实、来源或用户经历。",
+        ? `你是 Xenho OS 的通用 AI 助手。当前实际调用模型 ID 是 ${record.model}。直接回应用户真实意图，可调用知识库、公开网页、附件和 Harness Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。`
+        : `你是 Xenho OS 的内容项目助手。当前实际调用模型 ID 是 ${record.model}。协助主创分析、检索和生成候选；不得静默改正文，不得伪造事实、来源或用户经历。`,
       sessionRoot: path.join(dir, "sessions"),
       sessionId: record.harnessSessionId || `assistant-${record.id}`,
       maxTokens: 4096,

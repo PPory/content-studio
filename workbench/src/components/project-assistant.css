@@ -129,6 +129,19 @@
   background: var(--surface); color: var(--text-1);
 }
 .assistant-message__avatar svg { width: 12px; height: 12px; }
+.assistant-message__live {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  color: var(--text-3);
+}
+.assistant-message__live i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+  animation: assistant-live-pulse 1.1s ease-in-out infinite;
+}
+@keyframes assistant-live-pulse {
+  0%, 100% { opacity: 0.28; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
 .assistant-message__markdown {
   color: var(--text-1); font-size: var(--fs-base); line-height: 1.78; overflow-wrap: anywhere;
 }
@@ -287,6 +300,10 @@
 .assistant-composer__style:hover,
 .assistant-composer__model:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-composer > footer > div button > span { font-weight: 400; }
+.assistant-composer > footer > div .assistant-composer__attach {
+  width: 28px; padding: 0; justify-content: center; border-radius: 50%;
+}
+.assistant-composer__attach svg { width: 15px; height: 15px; }
 /* 风格那颗里面是个原生 select（冒烟测试用 `selectOption` 点它），所以只能把框脱掉 */
 .assistant-composer__style,
 .assistant-composer__model { max-width: 220px; }
@@ -581,5 +598,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .assistant-orbit { animation-duration: 1.8s; }
+  .assistant-message__live i { animation-duration: 2.2s; }
   .assistant-thread { scroll-behavior: auto; }
 }

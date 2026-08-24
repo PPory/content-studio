@@ -18,7 +18,6 @@ import {
   IconSend,
   IconShieldCheck,
   IconSparkles,
-  IconUpload,
   IconX,
 } from "./icons.jsx";
 import "./project-assistant.css";
@@ -46,23 +45,6 @@ const EXPERTS = [
 
 const PROJECT_EXPERTS = new Set(["writing-coach", "material-researcher", "quality-reviewer", "fact-checker"]);
 
-const SKILLS = [
-  { id: "continue", label: "续写一段", hint: "结合上下文给候选段落", prompt: "/续写一段 请接着当前光标继续写，先给候选，不要声称已写入正文。" },
-  { id: "complete", label: "完成全文", hint: "补全尚未完成的部分", prompt: "/完成全文 请保持本文主题和结构，给出完整候选稿。" },
-  { id: "polish", label: "润色选区", hint: "保持原意，改善表达", revision: "polish" },
-  { id: "rewrite", label: "改写选区", hint: "按要求重新表达", revision: "rewrite" },
-  { id: "proofread", label: "纠错选区", hint: "只处理明确错误", revision: "proofread" },
-  { id: "card", label: "沉淀知识卡片", hint: "预览确认后进入知识库", card: true },
-];
-
-const STANDALONE_SKILLS = [
-  { id: "knowledge", label: "搜索知识库", hint: "从书、笔记、知识卡和素材中查找", prompt: "/搜索知识库 请根据我的问题检索本地知识库，并标出实际找到的来源。" },
-  { id: "web", label: "联网查证", hint: "搜索公开网页并保留来源", prompt: "/联网查证 请联网核查我接下来提出的事实，只使用能找到来源的内容。" },
-  { id: "connect", label: "寻找关联", hint: "发现近期内容之间的联系", prompt: "/寻找关联 请搜索我的知识库，找出最近内容之间值得继续追问的关联。" },
-  { id: "card", label: "沉淀知识卡片", hint: "预览确认后进入知识库", card: true },
-];
-
-const revisionLabel = { polish: "润色", rewrite: "改写", proofread: "纠错" };
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
 
 function commandAt(value, cursor) {
@@ -109,16 +91,17 @@ function EmptyAssistant({ onPrompt, standalone = false }) {
   </div>;
 }
 
-function Message({ item, canRevise, canInsert, currentVersion, onRevise, onInsert, onCard }) {
+function Message({ item, canRevise, canInsert, currentVersion, onRevise, onInsert, onCard, working = false, activity = "" }) {
   const assistant = item.role === "assistant";
   const stale = assistant && item.documentVersion && currentVersion && item.documentVersion !== currentVersion;
+  if (assistant && !item.text && item.pending) return null;
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
-    {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}</small> : null}
+    {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
     {assistant ? <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} /> : <p>{item.text}</p>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
-    {assistant ? <footer>
+    {assistant && item.text && !working ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
       {canInsert ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插入后会带底纹，仍需确认采用"}><IconPlus aria-hidden="true" />作为候选插入</button> : null}
       {canRevise ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议生成选区改写候选"}><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
@@ -127,7 +110,7 @@ function Message({ item, canRevise, canInsert, currentVersion, onRevise, onInser
   </article>;
 }
 
-export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, standalone = false }) {
+export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, standalone = false, docked = false }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -142,7 +125,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [conversationId, setConversationId] = useState("");
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [conversationItems, setConversationItems] = useState([]);
-  const [historyOpen, setHistoryOpen] = useState(standalone);
+  const [historyOpen, setHistoryOpen] = useState(standalone && !docked);
   const [models, setModels] = useState([]);
   const [harnessSkills, setHarnessSkills] = useState([]);
   const [expertPresets, setExpertPresets] = useState([]);
@@ -150,14 +133,10 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [modelPending, setModelPending] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [styleId, setStyleId] = useState(() => {
-    try { return localStorage.getItem(`workbench:draft-style:v1:${scopeId}`) || profile?.profile?.styleId || ""; } catch { return profile?.profile?.styleId || ""; }
-  });
   const endRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
-  const styles = (profile?.styles || []).filter((item) => item.enabled);
-  const style = styles.find((item) => item.id === styleId) || null;
+  const style = (profile?.styles || []).find((item) => item.enabled && item.id === profile?.profile?.styleId) || null;
   const currentVersion = documentVersion(document);
 
   const refreshHistory = async () => {
@@ -199,16 +178,13 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     return () => { cancelled = true; };
   }, [scopeId, standalone]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
-  useEffect(() => {
-    if (!styleId && styles.length) setStyleId(profile?.profile?.styleId || styles[0].id);
-  }, [profile?.profile?.styleId, styleId, styles]);
 
   const send = async (text = input) => {
     const message = String(text || "").trim();
     if (!message || busy) return;
     const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, createdAt: new Date().toISOString() };
     const streamingId = `streaming-${Date.now()}`;
-    setMessages((current) => [...current, optimistic, { id: streamingId, role: "assistant", text: "", createdAt: new Date().toISOString(), pending: true }]);
+    setMessages((current) => [...current, optimistic, { id: streamingId, role: "assistant", text: "", createdAt: new Date().toISOString(), pending: true, model }]);
     setInput(""); setMenu(""); setBusy(true); setActivity("正在读取上下文"); setError(null);
     try {
       const result = await api.assistantChatStream(
@@ -271,18 +247,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   }
 
   function chooseSkill(item) {
-    setMenu(""); setMenuQuery(""); setCommandRange(null);
-    if (item.card) { setCardOpen(true); return; }
-    if (item.revision) {
-      if (!selection?.text) { setError(new Error(`先在正文里选中一段，再使用“${item.label}”`)); return; }
-      onRevision?.({ mode: item.revision, label: revisionLabel[item.revision], instruction: "", selection });
-      return;
-    }
     insertCommand(item.prompt || `/${item.label} `);
   }
 
   const experts = (expertPresets.length ? expertPresets : EXPERTS).filter((item) => standalone || PROJECT_EXPERTS.has(item.id));
-  const availableSkills = [...harnessSkills, ...(standalone ? STANDALONE_SKILLS : SKILLS)];
+  const availableSkills = harnessSkills;
   const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : models.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.ownedBy || "可用模型" }));
   const filteredMenuItems = menuItems.filter((item) => !menuQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(menuQuery.toLowerCase())).slice(0, 80);
 
@@ -343,7 +312,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
       <div>
-        {standalone ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="对话历史"><IconHistory aria-hidden="true" /></button> : null}
+        {standalone && !docked ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="对话历史"><IconHistory aria-hidden="true" /></button> : null}
         {standalone ? <strong>{conversationTitle}</strong> : <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>}
         {standalone ? <span className="assistant-context-note">知识库 · 联网 · 文件 · Skill</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
@@ -354,8 +323,8 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     <div className="assistant-thread">
       {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
-      {messages.map((item) => <Message key={item.id} item={item} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} />)}
-      {busy ? <Working label="Harness 正在调用模型和工具" detail={activity} /> : null}
+      {messages.map((item) => <Message key={item.id} item={item} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onCard={() => setCardOpen(true)} working={busy && item.pending && !!item.text} activity={activity} />)}
+      {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Harness 正在调用模型和工具" detail={activity} /> : null}
       {error ? <div className="assistant-error" role="alert"><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <p>{error.hint}</p> : null}<button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试这条</button></div> : null}
       <div ref={endRef} />
     </div>
@@ -369,10 +338,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       </div> : null}
       <footer>
         <div>
-          {standalone ? <><input ref={fileRef} type="file" hidden accept=".pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" title="上传文件（PDF、文本、Markdown、CSV、JSON 等）" onClick={() => fileRef.current?.click()} disabled={uploading}><IconUpload aria-hidden="true" /><span>{uploading ? "读取中" : "文件"}</span></button></> : null}
-          <button type="button" title="调用专家；也可以直接输入 @" onClick={() => menu === "experts" ? setMenu("") : openMenu("experts")} aria-expanded={menu === "experts"}>@ <span>专家</span></button>
-          <button type="button" title="使用 Harness Skill；也可以直接输入 /" onClick={() => menu === "skills" ? setMenu("") : openMenu("skills")} aria-expanded={menu === "skills"}>/ <span>Skill</span></button>
-          {!standalone ? <label className="assistant-composer__style" title="这次发送要带上的写作风格"><span>风格</span><select value={styleId} onChange={(event) => { setStyleId(event.target.value); try { localStorage.setItem(`workbench:draft-style:v1:${scopeId}`, event.target.value); } catch {} }}><option value="">不调用</option>{styles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
+          {standalone ? <><input ref={fileRef} type="file" hidden accept=".pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加附件"} aria-label={uploading ? "正在读取附件" : "添加附件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></> : null}
           <button type="button" className="assistant-composer__model" title="从当前接口返回的可用模型中选择" onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={!models.length || busy || modelPending}><span className="assistant-composer__model-label">模型</span><b>{models.find((item) => item.id === model)?.name || model || "未配置"}</b><IconChevronDown aria-hidden="true" /></button>
         </div>
         <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
@@ -382,7 +348,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "DeepSeek Harness" }} />
   </div>;
 
-  return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}`}>
+  return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}${docked ? " assistant-pane--docked" : ""}`}>
     {standalone && historyOpen ? <aside className="assistant-history" aria-label="对话历史">
       <header><strong>对话</strong><button onClick={newConversation} title="新建对话"><IconPlus aria-hidden="true" /></button></header>
       <nav>{conversationItems.map((item) => <button key={item.id} aria-current={item.id === conversationId ? "page" : undefined} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.preview || "还没有消息"}</small><time>{new Date(item.updatedAt || item.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>)}</nav>
