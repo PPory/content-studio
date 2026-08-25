@@ -15,6 +15,7 @@ const active = new Map();
 const providerDispatcher = new EnvHttpProxyAgent();
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
 const now = () => new Date().toISOString();
+const assistantModelUsable = (id) => !/(?:^|[-_.])(image|imagine|video|audio|tts|speech|whisper|transcri(?:be|ption)|embedding|rerank|moderation|realtime)(?:$|[-_.])/i.test(String(id || ""));
 const scopeKey = (scopeId) => crypto.createHash("sha256").update(clean(scopeId, 240) || "global").digest("hex").slice(0, 24);
 const scopeDir = (scopeId) => path.join(ROOT, scopeKey(scopeId));
 const indexFile = (scopeId) => path.join(scopeDir(scopeId), "index.json");
@@ -45,6 +46,13 @@ function summaryOf(item) {
     updatedAt: item.updatedAt,
     messageCount: Array.isArray(item.messages) ? item.messages.length : 0,
     preview: clean([...((item.messages || []))].reverse().find((message) => message.role === "user")?.text, 90),
+    activeTurn: item.activeTurn ? {
+      id: clean(item.activeTurn.id, 120),
+      status: clean(item.activeTurn.status, 40),
+      stage: clean(item.activeTurn.stage, 240),
+      startedAt: item.activeTurn.startedAt,
+      stageUpdatedAt: item.activeTurn.stageUpdatedAt,
+    } : null,
   };
 }
 
@@ -194,11 +202,11 @@ export async function assistantModels(env, extraIds = []) {
   let cached = [];
   try {
     const data = JSON.parse(await fs.readFile(MODEL_CACHE_FILE, "utf8"));
-    cached = Array.isArray(data.items) ? data.items.map((item) => ({ id: clean(item.id, 240), name: clean(item.name, 240) || clean(item.id, 240), ownedBy: clean(item.ownedBy, 120) })).filter((item) => item.id) : [];
+    cached = Array.isArray(data.items) ? data.items.map((item) => ({ id: clean(item.id, 240), name: clean(item.name, 240) || clean(item.id, 240), ownedBy: clean(item.ownedBy, 120) })).filter((item) => item.id && assistantModelUsable(item.id)) : [];
   } catch {}
   const withRemembered = (items) => {
     const result = [...items];
-    for (const id of remembered.toReversed()) if (!result.some((item) => item.id === id)) result.unshift({ id, name: id, remembered: true });
+    for (const id of remembered.toReversed()) if (assistantModelUsable(id) && !result.some((item) => item.id === id)) result.unshift({ id, name: id, remembered: true });
     return result;
   };
   if (!base || !key) return { items: withRemembered(cached), configured, source: cached.length ? "cache" : "settings", warning: "模型目录未连接，显示的是本机上次成功获取的目录" };
@@ -218,7 +226,7 @@ export async function assistantModels(env, extraIds = []) {
     const items = [...new Map(rows.map((item) => {
       const id = clean(typeof item === "string" ? item : item?.id || item?.name, 240);
       return id ? [id, { id, name: clean(item?.name, 240) || id, ownedBy: clean(item?.owned_by || item?.provider, 120) }] : null;
-    }).filter(Boolean)).values()];
+    }).filter(Boolean)).values()].filter((item) => assistantModelUsable(item.id));
     const complete = withRemembered(items);
     await fs.mkdir(ROOT, { recursive: true });
     await fs.writeFile(MODEL_CACHE_FILE, JSON.stringify({ updatedAt: now(), items: complete }, null, 2), "utf8").catch(() => {});
@@ -410,7 +418,7 @@ const TOOL_LABELS = {
   propose_content_create: "正在准备工作台新建内容候选",
 };
 
-function emitHarnessEvent(notification, emit) {
+function emitHarnessEvent(notification, emit, tracker = {}) {
   if (!emit || notification?.method !== "session.event") return;
   const event = notification.params?.event;
   const type = event?.type;
@@ -419,6 +427,22 @@ function emitHarnessEvent(notification, emit) {
     const chunk = data.chunk || {};
     if (chunk.type === "text-delta" && chunk.text) emit({ type: "text", text: chunk.text });
     if (chunk.type === "tool-call-delta" && chunk.name) emit({ type: "status", stage: TOOL_LABELS[chunk.name] || `正在调用 ${chunk.name}`, tool: chunk.name });
+    return;
+  }
+  if (type === "tool-call-chunks") {
+    const name = data.name || "";
+    const callId = data.id || `${data.turn || 0}:${data.step || 0}:${data.index || 0}`;
+    const added = (data.args || []).reduce((sum, value) => sum + String(value || "").length, 0);
+    const state = tracker.toolCalls || (tracker.toolCalls = new Map());
+    const current = state.get(callId) || { chars: 0, emittedAt: 0 };
+    current.chars += added;
+    const timestamp = Date.now();
+    if (name && (timestamp - current.emittedAt >= 1_500 || current.chars < 80)) {
+      current.emittedAt = timestamp;
+      const label = TOOL_LABELS[name] || `正在调用 ${name}`;
+      emit({ type: "status", stage: `${label} · 已接收 ${current.chars.toLocaleString("zh-CN")} 字`, tool: name, receivedCharacters: current.chars });
+    }
+    state.set(callId, current);
     return;
   }
   if (type === "text-chunks") {
@@ -452,16 +476,33 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   await fs.mkdir(dir, { recursive: true });
   const turnId = `turn-${crypto.randomUUID().replaceAll("-", "")}`;
   const actionsFile = path.join(dir, "actions.jsonl");
+  let stageWrite = Promise.resolve();
+  let lastStageWriteAt = 0;
+  const emit = (event) => {
+    options.onEvent?.(event);
+    if (event?.type !== "status" || !event.stage) return;
+    const timestamp = Date.now();
+    if (timestamp - lastStageWriteAt < 1_200) return;
+    lastStageWriteAt = timestamp;
+    stageWrite = stageWrite.then(async () => {
+      const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
+      if (!latest?.activeTurn || latest.activeTurn.id !== turnId) return;
+      latest.activeTurn = { ...latest.activeTurn, stage: clean(event.stage, 240), stageUpdatedAt: now() };
+      await writeConversationRecord(scopeId, latest);
+    }).catch(() => {});
+  };
   let context;
   try {
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
     record.model = clean(input.model, 240) || record.model || clean(env.HARNESS_LLM_MODEL, 240);
     record.title = record.messages.length ? record.title : titleFrom(message);
     record.messages = [...record.messages, userMessage];
-    record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文" };
+    record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文", stageUpdatedAt: now() };
     await writeConversationRecord(scopeId, record);
+    emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(env, input, record);
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
+    emit({ type: "status", stage: "上下文已就绪，正在启动 Harness" });
   } catch (error) {
     active.delete(key);
     throw error;
@@ -479,7 +520,11 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const runInput = pendingImages.length
       ? [{ type: "text", text: prompt }, ...pendingImages.map((item) => ({ type: "image", attachment: item.imageRef }))]
       : prompt;
-    const result = await createHarnessRun({
+    emit({ type: "status", stage: "已交给模型，正在等待首个响应" });
+    const eventTracker = {};
+    const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.HARNESS_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
+    let timeout;
+    const harnessRun = createHarnessRun({
       env,
       runDir: dir,
       kind: "assistant-chat",
@@ -494,9 +539,21 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
       actionsFile,
       imageIndexFile: path.join(dir, "images.json"),
       residentKey: `assistant:${key}:${record.model}`,
-      onNotification(notification) { emitHarnessEvent(notification, options.onEvent); },
+      onNotification(notification) { emitHarnessEvent(notification, emit, eventTracker); },
       onHarness(instance, meta) { harness = instance; resident = !!meta?.resident; active.set(key, { harness: instance, residentKey: meta?.residentKey || "" }); },
     });
+    const result = await Promise.race([
+      harnessRun,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          harness?.close().catch(() => {});
+          reject(Object.assign(new Error(`模型在 ${Math.round(timeoutMs / 60_000)} 分钟内没有完成这轮任务`), {
+            hint: "已自动停止本轮，可换用更快的模型，或将长任务拆成几步。",
+          }));
+        }, timeoutMs);
+        timeout.unref?.();
+      }),
+    ]).finally(() => clearTimeout(timeout));
     const text = clean(result.result.finalResponse, 40_000);
     if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
     const latest = await readConversationRecord(scopeId, record.id) || record;
@@ -524,6 +581,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     latest.activeTurn = null;
     latest.replayHistory = false;
     const saved = await writeConversationRecord(scopeId, latest);
+    await stageWrite;
     options.onEvent?.({ type: "complete", turnId, durationMs: assistantMessage.durationMs });
     return { conversation: saved, message: assistantMessage };
   } catch (error) {
@@ -583,7 +641,7 @@ function imageInfo(name, bytes) {
     }
   }
   if (!width || !height) throw Object.assign(new Error("这张图片无法识别，请换成 PNG、JPG、WebP 或 GIF"), { status: 400 });
-  if (bytes.length > 1_000_000 || width * height > 4_194_304) throw Object.assign(new Error("图片过大，请压缩到 1MB、约 400 万像素以内"), { status: 400 });
+  if (bytes.length > 15_000_000 || width * height > 25_165_824) throw Object.assign(new Error("这张图超出当前模型可靠读取的范围"), { status: 400, hint: "工作台会自动压缩大图；如果仍然失败，请换用 1500 万字节、2500 万像素以内的图片。" });
   return { mediaType, width, height };
 }
 

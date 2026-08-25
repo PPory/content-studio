@@ -79,6 +79,16 @@
 }
 .assistant-context-actions > button:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-context-actions > button svg { width: 14px; height: 14px; }
+.assistant-context-actions > .assistant-background-task {
+  border-color: color-mix(in srgb, var(--ok) 28%, var(--border));
+  background: color-mix(in srgb, var(--ok) 7%, var(--surface)); color: var(--text-2);
+}
+.assistant-background-task__dot,
+.assistant-history__running {
+  width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 12%, transparent);
+  animation: assistant-live-pulse 1.4s ease-in-out infinite;
+}
 /* 收窄时按钮只剩图标，宽度跟着塌 */
 .assistant-context-actions > button:not(:has(span)) { width: 28px; padding: 0; justify-content: center; }
 
@@ -254,6 +264,7 @@
 .assistant-working > div { display: grid; gap: var(--sp-1); }
 .assistant-working b { font-size: var(--fs-base); font-weight: 600; }
 .assistant-working small { color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-working em { color: var(--text-3); font-size: var(--fs-2xs); font-style: normal; }
 .assistant-orbit {
   position: relative; flex: none; width: 24px; height: 24px;
   border: 1.5px solid var(--border-strong); border-top-color: var(--text-1); border-radius: 50%;
@@ -268,17 +279,18 @@
 
 /* 失败：走全局的告警语义色，不再自带一套砖红 */
 .assistant-error {
-  display: grid; gap: var(--sp-3); margin: var(--sp-5) 0;
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
-  color: var(--danger); font-size: var(--fs-sm); line-height: 1.6;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--sp-5); margin: var(--sp-5) 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 0; border-left: 2px solid var(--danger); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+  color: var(--text-1); font-size: var(--fs-sm); line-height: 1.5;
 }
+.assistant-error > span { display: grid; gap: var(--sp-1); min-width: 0; }
+.assistant-error > span small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-error p { margin: 0; color: var(--text-2); }
 .assistant-error button {
-  justify-self: start; border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
-  padding: var(--sp-3) var(--sp-5); background: var(--surface); color: var(--text-1);
+  justify-self: end; border: 0; border-radius: var(--r-ctl);
+  padding: var(--sp-3) var(--sp-4); background: var(--surface-2); color: var(--text-2);
   font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 
@@ -341,9 +353,10 @@
 .assistant-composer__model { min-width: 0; }
 .assistant-model-glyph {
   display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
-  border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: 11px; font-weight: 700;
+  border-radius: 6px; background: transparent; color: var(--text-1);
 }
-.assistant-model-glyph[data-brand="grok"] { background: var(--accent); color: var(--on-accent); }
+.assistant-model-glyph svg { width: 16px; height: 16px; }
+.assistant-model-glyph[data-brand="grok"] { color: var(--text-1); }
 .assistant-model-glyph[data-brand="gemini"] { color: #7357c8; }
 .assistant-model-glyph[data-brand="deepseek"] { color: #315ccf; }
 .assistant-model-glyph[data-brand="glm"] { color: #3b5b83; }
@@ -352,6 +365,7 @@
   font-size: var(--fs-sm); font-weight: 500;
 }
 .assistant-composer__model svg { width: 12px; height: 12px; flex: none; }
+.assistant-composer__model .assistant-model-glyph svg { width: 16px; height: 16px; }
 .assistant-composer__hint { margin-left: auto; flex: none; color: var(--text-3); font-size: var(--fs-2xs); }
 /* 发送：右下角一颗深色圆钮。**这是这一块唯一的实心黑**（它就是这一屏的主操作） */
 .assistant-send {
@@ -366,12 +380,23 @@
 .assistant-attachments {
   display: flex; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5) 0; overflow-x: auto;
 }
-.assistant-attachments span {
+.assistant-attachments > span {
   display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 220px; flex: none;
   padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm); background: var(--surface-2);
   color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.assistant-attachments > span > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .assistant-attachments svg { width: 13px; height: 13px; flex: none; }
+.assistant-attachments img {
+  width: 24px; height: 24px; flex: none; border-radius: var(--r-sm); object-fit: cover; background: var(--surface);
+}
+.assistant-composer__notice {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
+  margin: var(--sp-4) var(--sp-5) 0; padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs);
+}
+.assistant-composer__notice button { display: grid; place-items: center; width: 20px; height: 20px; flex: none; border: 0; background: transparent; color: var(--text-3); cursor: pointer; }
+.assistant-composer__notice svg { width: 12px; height: 12px; }
 
 /* @ 和 / 的菜单：浮在输入器上方 */
 .assistant-command-menu {
@@ -413,6 +438,7 @@
   font-size: var(--fs-sm); font-weight: 600;
 }
 .assistant-command-menu__mark .assistant-model-glyph { width: 24px; height: 24px; }
+.assistant-command-menu__mark:has(.assistant-model-glyph) { background: transparent; }
 .assistant-command-menu b { font-size: var(--fs-base); font-weight: 600; }
 .assistant-command-menu b em {
   margin-left: var(--sp-3); padding: 1px var(--sp-3); border-radius: var(--r-pill);
@@ -475,6 +501,8 @@
 .assistant-history nav small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-history nav b { padding-right: 34px; font-size: var(--fs-sm); font-weight: 600; }
 .assistant-history nav small { color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-history nav small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
+.assistant-history__running { display: inline-block; width: 6px; height: 6px; }
 .assistant-history nav time { position: absolute; right: var(--sp-4); top: var(--sp-4); color: var(--text-3); font-size: var(--fs-2xs); }
 
 /* --------------------------------------------------------------------------
@@ -592,7 +620,7 @@
 /* 进度是「走到哪儿了」——**这儿才是墨绿该在的地方**（全局那条：绿说进展，黑说动作） */
 .assistant-report-track span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width 0.25s var(--ease); }
 .assistant-report-running > p { color: var(--text-3); font-size: var(--fs-xs); }
-.assistant-report-error { margin: var(--sp-7); }
+.assistant-report-error { display: grid; grid-template-columns: 1fr; align-items: initial; margin: var(--sp-7); border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--border)); border-radius: var(--r-md); }
 .assistant-report-global { position: absolute; inset: auto var(--sp-6) var(--sp-6); }
 .assistant-report-result > header {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5);

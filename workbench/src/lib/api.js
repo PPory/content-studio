@@ -14,7 +14,7 @@ async function req(path, options) {
   } catch {
     throw new Error(`响应不是 JSON（HTTP ${res.status}）`);
   }
-  if (!data.ok) throw Object.assign(new Error(data.error || `请求失败（HTTP ${res.status}）`), { hint: data.hint });
+  if (!data.ok) throw Object.assign(new Error(data.error || `请求失败（HTTP ${res.status}）`), { hint: data.hint, status: res.status });
   return data;
 }
 
@@ -265,7 +265,7 @@ export const api = {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        if (event.type === "error") throw Object.assign(new Error(event.error || "AI 助手没有完成"), { hint: event.hint });
+        if (event.type === "error") throw Object.assign(new Error(event.error || "AI 助手没有完成"), { hint: event.hint, status: event.status });
         if (event.type === "done") result = event.result;
         else onEvent?.(event);
       }

@@ -78,7 +78,7 @@ export const assistantRoutes = [
         const result = await runAssistantTurn(env, await readJsonBody(req), { onEvent: send });
         send({ type: "done", result });
       } catch (error) {
-        send({ type: "error", error: error.message, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
+        send({ type: "error", status: error.status || 500, error: error.message, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
       } finally {
         if (!res.destroyed && !res.writableEnded) res.end();
       }
