@@ -19,7 +19,7 @@ const TIMEOUT_MS = 30_000; // status 要拉 D1 全库计数，数据多时可能
 function connectHint(url) {
   const { via, local } = proxyInfo(url);
   if (local) return "本机地址，直连。确认 wrangler dev 起来了";
-  if (via) return `走的是代理 ${via}，先确认它开着；再确认 .env 里的 WORKER_URL`;
+  if (via) return `当前配置为通过代理 ${via} 访问 Worker；本次连接失败。确认代理仍在运行，代理设置变更后请重启工作台`;
   return "这次是直连（没有 HTTPS_PROXY）。如果这台机器访问 workers.dev 需要代理，从终端 npm run dev 起，或重新点一次快捷方式";
 }
 

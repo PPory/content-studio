@@ -506,7 +506,7 @@ function contentPrompt(input, context, model) {
 function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
-    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
+    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。用户询问工作台当前有哪些内容、各阶段数量、写作中或待发布项目、阻塞原因和下一步时，必须调用 workbench_projects，以它实时返回的 stage/counts 为准；不要从当前空文档、知识搜索结果或固定状态清单推断。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
     "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮工作台检索、vault_list、vault_read 或 annotation_list 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
@@ -520,6 +520,7 @@ function generalPrompt(input, context, model) {
 }
 
 const TOOL_LABELS = {
+  workbench_projects: "正在读取工作台内容状态",
   knowledge_search: "正在检索本地知识库",
   project_read: "正在读取当前内容项目",
   material_evidence: "正在核对项目素材与证据",

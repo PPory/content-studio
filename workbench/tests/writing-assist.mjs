@@ -648,6 +648,13 @@ try {
   assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
   assert((await page.$$(".assistant-pane--standalone .assistant-composer__left > button")).length === 2, "输入框左侧没有保持为附件与权限两个紧凑入口");
   assert(await page.$(".assistant-pane--standalone .assistant-composer__right .assistant-composer__model"), "模型选择没有放在输入框右侧");
+  await page.click(".assistant-pane--standalone .assistant-composer__model");
+  await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models");
+  const modelButtonBox = await page.locator(".assistant-pane--standalone .assistant-composer__model").boundingBox();
+  const modelMenuBox = await page.locator(".assistant-pane--standalone .assistant-command-menu--models").boundingBox();
+  assert(modelButtonBox && modelMenuBox && modelMenuBox.y + modelMenuBox.height <= modelButtonBox.y && Math.abs(modelMenuBox.x + modelMenuBox.width - modelButtonBox.x - modelButtonBox.width) <= 3, "模型面板没有从模型按钮上方向右对齐展开");
+  assert(modelMenuBox.width <= 322, `模型面板仍然过宽：${modelMenuBox.width}`);
+  await page.click(".assistant-pane--standalone .assistant-command-menu--models header button");
   assert(!(await page.$(".assistant-pane--standalone .assistant-composer__hint")), "输入框底部仍有常驻快捷键提示");
   assert(await page.$(".assistant-pane--standalone .assistant-composer__access"), "独立助手没有紧凑权限入口");
   assert((await page.textContent(".assistant-pane__context")).includes("历史对话") && !(await page.textContent(".assistant-pane__context")).includes("知识库 · 联网 · 文件 · Skill"), "助手顶栏没有收敛为历史对话入口");
@@ -678,6 +685,11 @@ try {
   const composerDuring = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
   assert(Math.abs(composerDuring.y - composerBefore.y) < 2, "AI 运行时输入框发生了位移");
   await page.waitForFunction(() => document.querySelector(".assistant-pane--standalone .assistant-message--assistant")?.textContent.includes("0.2s"));
+  assert(await page.$('.assistant-pane--standalone .assistant-message--user button[aria-label="复制消息"]'), "用户消息没有直接复制操作");
+  assert(await page.$('.assistant-pane--standalone .assistant-message--user button[aria-label="编辑并重新发送"]'), "最新用户消息没有编辑操作");
+  const userBubbleBox = await page.locator(".assistant-pane--standalone .assistant-message__user > p").last().boundingBox();
+  const userActionsBox = await page.locator(".assistant-pane--standalone .assistant-message__user-actions").last().boundingBox();
+  assert(userBubbleBox && userActionsBox && userActionsBox.y >= userBubbleBox.y + userBubbleBox.height && Math.abs(userActionsBox.x + userActionsBox.width - userBubbleBox.x - userBubbleBox.width) <= 2, "用户消息操作没有贴在气泡下方右侧");
   await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final.png"), fullPage: false });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final-1920.png"), fullPage: false });

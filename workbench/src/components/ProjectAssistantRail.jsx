@@ -172,7 +172,7 @@ const Message = memo(function Message({ item, canRevise, canInsert, currentVersi
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
     {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Pi Agent SDK{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
-    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user"><p>{item.text}</p>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</div>}
+    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user"><p>{item.text}</p><footer className="assistant-message__user-actions"><button type="button" onClick={() => navigator.clipboard?.writeText(item.text)} title="复制消息" aria-label="复制消息"><IconCopy aria-hidden="true" /></button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer></div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {assistant && item.text && !working ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
@@ -628,7 +628,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       {permissionOpen ? <div className="assistant-permission-menu" ref={permissionRef} role="menu" aria-label="选择权限">
         {permissionModes.map((item) => <button type="button" role="menuitemradio" key={item.id} aria-checked={item.id === permissionMode} onClick={() => choosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span>{item.id === permissionMode ? <IconCheck aria-hidden="true" /> : null}</button>)}
       </div> : null}
-      {menu ? <div className="assistant-command-menu" role="menu">
+      {menu && menu !== "models" ? <div className="assistant-command-menu" role="menu">
         <header><span>{menu === "models" ? "选择模型" : menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
         {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={menu === "models" && modelPending}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : menu === "skills" ? "/" : <ModelGlyph id={item.id} provider={item.provider} />}</span><span><b>{item.label}{menu === "models" && item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">{menu === "models" ? "暂时没有可用模型" : "没有匹配项"}</p>}
       </div> : null}
@@ -638,7 +638,13 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
           <button type="button" className="assistant-composer__access" title="权限" onClick={() => { setPermissionOpen((value) => !value); setMenu(""); }} aria-expanded={permissionOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>
         </div>
         <div className="assistant-composer__right">
-          <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
+          <div className="assistant-model-picker">
+            <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
+            {menu === "models" ? <div className="assistant-command-menu assistant-command-menu--models" role="menu">
+              <header><span>选择模型</span><button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
+              {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={modelPending}><span className="assistant-command-menu__mark"><ModelGlyph id={item.id} provider={item.provider} /></span><span><b>{item.label}{item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">暂时没有可用模型</p>}
+            </div> : null}
+          </div>
           {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
         </div>
       </footer>

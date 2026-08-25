@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createPiTools } from "../server/agent-runtime/pi-tools.mjs";
@@ -30,6 +31,7 @@ assert(!PERMISSION_MODES.daily.tools.includes("document_create"));
 assert(PERMISSION_MODES.creative.tools.includes("document_create"));
 assert(!PERMISSION_MODES.creative.tools.includes("powershell"));
 assert(PERMISSION_MODES.developer.tools.includes("powershell"));
+assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"), "工作台实时状态必须在日常模式可读");
 
 const skills = await assistantSkills();
 assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
@@ -48,7 +50,25 @@ await fs.mkdir(path.join(vault, WB_ROOT), { recursive: true });
 await fs.mkdir(outside, { recursive: true });
 await fs.writeFile(path.join(vault, WB_ROOT, "read.md"), "# 临时文档\n", "utf8");
 await fs.writeFile(path.join(outside, "secret.md"), "outside", "utf8");
-const env = { VAULT_ROOT: vault };
+const workerProjects = [
+  { id: "p-writing", title: "写作项目", stage: "写作中", stageReason: "主稿仍在写作", nextAction: "继续写作", blockers: [], updatedAt: "2026-08-25T01:00:00.000Z" },
+  { id: "p-release", title: "待发项目", stage: "待发布", stageReason: "诊断已通过", nextAction: "去排版发布", blockers: [], updatedAt: "2026-08-25T02:00:00.000Z" },
+  { id: "p-legal", title: "新状态项目", stage: "等待法务", stageReason: "等待新增流程", nextAction: "确认授权", blockers: ["版权待确认"], updatedAt: "2026-08-25T03:00:00.000Z" },
+];
+const workerServer = http.createServer((req, res) => {
+  const url = new URL(req.url, "http://127.0.0.1");
+  if (url.pathname !== "/wb/projects" || req.headers["x-workbench-key"] !== "test-key") {
+    res.writeHead(404, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ ok: false, error: "not found" }));
+  }
+  const counts = Object.fromEntries([...new Set(workerProjects.map((item) => item.stage))].map((stage) => [stage, workerProjects.filter((item) => item.stage === stage).length]));
+  const selected = url.searchParams.get("stage") ? workerProjects.filter((item) => item.stage === url.searchParams.get("stage")) : workerProjects;
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ ok: true, projects: selected, counts, total: selected.length, nextCursor: null }));
+});
+await new Promise((resolve) => workerServer.listen(0, "127.0.0.1", resolve));
+const workerAddress = workerServer.address();
+const env = { VAULT_ROOT: vault, WORKER_URL: `http://127.0.0.1:${workerAddress.port}`, WORKBENCH_KEY: "test-key" };
 try {
   await assert.rejects(() => resolveVaultPath(env, "../outside/secret.md"), /路径越界/);
   await assert.rejects(() => resolveVaultPath(env, path.join(outside, "secret.md")), /路径越界/);
@@ -87,10 +107,15 @@ try {
   const daily = createPiTools({ env: sessionEnv, mode: "daily", context, actionsFile });
   const creative = createPiTools({ env: sessionEnv, mode: "creative", context, actionsFile });
   const developer = createPiTools({ env: sessionEnv, mode: "developer", context, actionsFile });
-  const required = ["workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert", "web_search", "web_fetch"];
+  const required = ["workbench_projects", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert", "web_search", "web_fetch"];
   const allNames = new Set(developer.map((item) => item.name));
   for (const name of required) assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
   const execute = (items, name, params) => items.find((item) => item.name === name).execute("test-call", params, undefined, undefined, {});
+  const overview = JSON.parse((await execute(daily, "workbench_projects", {})).content[0].text);
+  assert.equal(overview.counts["等待法务"], 1, "新增状态没有从 Worker 动态返回");
+  assert.equal(overview.projects.length, 3, "工作台状态工具没有返回当前项目");
+  const legalOnly = JSON.parse((await execute(daily, "workbench_projects", { stage: "等待法务" })).content[0].text);
+  assert.deepEqual(legalOnly.projects.map((item) => item.id), ["p-legal"], "状态筛选没有原样交给 Worker");
   await assert.rejects(() => execute(daily, "document_create", { path: `${WB_ROOT}/daily.md`, content: "x" }), /日常模式不允许/);
   const localRead = await execute(daily, "workspace_read", { mountId: external.id, path: "secret.md" });
   assert.match(localRead.content[0].text, /outside/);
@@ -109,6 +134,7 @@ try {
   await assert.rejects(() => execute(developer, "powershell", { command: "Remove-Item -Recurse ." }), /破坏性删除/);
 
 } finally {
+  await new Promise((resolve) => workerServer.close(resolve));
   await fs.rm(tempRoot, { recursive: true, force: true });
 }
 

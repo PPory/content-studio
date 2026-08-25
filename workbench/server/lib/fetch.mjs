@@ -36,11 +36,13 @@ export function proxyInfo(url) {
 function dispatcherFor(url) {
   if (isDirect(url)) return undefined;
 
-  if (cached === undefined) {
-    const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || "";
-    cached = proxy ? new ProxyAgent(proxy) : null;
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || "";
+  if (!proxy) return undefined;
+  if (!cached || cached.url !== proxy) {
+    cached?.dispatcher?.close?.().catch(() => {});
+    cached = { url: proxy, dispatcher: new ProxyAgent(proxy) };
   }
-  return cached || undefined;
+  return cached.dispatcher;
 }
 
 export function proxyFetch(url, options = {}) {

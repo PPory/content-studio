@@ -128,22 +128,21 @@
  * 靠右 + 深底是聊天界面里最省的「谁说的」编码，不需要再写一个「你」。
  */
 .assistant-message--user { display: flex; justify-content: flex-end; }
-.assistant-message__user { position: relative; display: flex; justify-content: flex-end; max-width: min(560px, 84%); }
+.assistant-message__user { display: grid; justify-items: end; max-width: min(560px, 84%); }
 .assistant-message__user > p {
-  max-width: min(560px, 84%);
+  max-width: 100%;
   padding: var(--sp-5) var(--sp-6);
   border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
   background: var(--accent); color: var(--on-accent);
   font-size: var(--fs-base);
 }
-.assistant-message__user > button {
-  position: absolute; right: 100%; bottom: 0; display: grid; place-items: center;
-  width: 26px; height: 26px; margin-right: var(--sp-2); border: 0; border-radius: var(--r-sm);
-  background: transparent; color: var(--text-3); opacity: 0; cursor: pointer;
+.assistant-message__user-actions { display: flex; justify-content: flex-end; gap: var(--sp-1); margin-top: var(--sp-2); }
+.assistant-message__user-actions > button {
+  display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); opacity: 0.7; cursor: pointer;
 }
-.assistant-message--user:hover .assistant-message__user > button { opacity: 1; }
-.assistant-message__user > button:hover { background: var(--surface-2); color: var(--text-1); }
-.assistant-message__user > button svg { width: 13px; height: 13px; }
+.assistant-message__user-actions > button:hover { background: var(--surface-2); color: var(--text-1); opacity: 1; }
+.assistant-message__user-actions svg { width: 13px; height: 13px; }
 .assistant-message__stream { margin: 0; white-space: pre-wrap; line-height: 1.78; }
 .assistant-message--assistant { padding-bottom: var(--sp-7); border-bottom: 1px solid var(--border); }
 .assistant-message__avatar {
@@ -416,6 +415,11 @@
   padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); box-shadow: var(--shadow-lg);
 }
+.assistant-model-picker { position: relative; flex: none; }
+.assistant-command-menu--models {
+  left: auto; right: 0; bottom: calc(100% + var(--sp-3));
+  width: min(320px, calc(100vw - var(--sp-8))); max-height: min(320px, 46vh);
+}
 .assistant-command-menu header {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--sp-3) var(--sp-4); color: var(--text-3); font-size: var(--fs-xs);
@@ -503,7 +507,7 @@
   width: min(800px, calc(100% - var(--sp-9))); margin: 0 auto var(--sp-8);
 }
 .assistant-pane--standalone .assistant-composer textarea { min-height: 56px; max-height: 200px; }
-.assistant-pane--standalone .assistant-command-menu { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
+.assistant-pane--standalone .assistant-command-menu:not(.assistant-command-menu--models) { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
 
 /* 独立助手才有历史列。它与消息区同高，不另套卡片；收起后对话重新占满。 */
 .assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 248px minmax(0, 1fr); }
@@ -612,7 +616,7 @@
 .project-assistant .assistant-message { margin-bottom: var(--sp-6); }
 .project-assistant .assistant-composer { margin: 0 var(--sp-5) var(--sp-5); }
 .project-assistant .assistant-composer textarea { min-height: 48px; max-height: 132px; padding-bottom: var(--sp-2); }
-.project-assistant .assistant-command-menu { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
+.project-assistant .assistant-command-menu:not(.assistant-command-menu--models) { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
 .project-assistant .assistant-action-card { margin-inline: 0; }
 /**
  * 右栏只有 336px：附件、权限、风格、模型保留在输入区，专家和 Skill 只由 @ / 唤起。
@@ -623,6 +627,7 @@
 .project-assistant .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
 .project-assistant .assistant-composer > footer > .assistant-composer__right { flex: none; }
 .project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-3); font-weight: 600; }
+.project-assistant .assistant-model-picker .assistant-command-menu--models > button { padding: var(--sp-4) var(--sp-5); font-weight: 400; }
 .project-assistant .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
 .project-assistant .assistant-composer__model b { max-width: 56px; }
 .project-assistant .assistant-composer__model .assistant-model-glyph { width: 18px; height: 18px; }

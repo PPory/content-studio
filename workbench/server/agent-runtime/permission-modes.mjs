@@ -6,6 +6,7 @@ export const DEFAULT_PERMISSION_MODE = "daily";
 
 const COMMON_TOOLS = [
   "project_read",
+  "workbench_projects",
   "material_evidence",
   "publication_metrics",
   "knowledge_search",

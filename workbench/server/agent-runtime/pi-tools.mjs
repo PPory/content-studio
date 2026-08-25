@@ -6,6 +6,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { parseNotes } from "../lib/notes.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
+import { callWorker } from "../lib/worker.mjs";
 import { searchAll } from "../lib/search.mjs";
 import { fetchBoards } from "../lib/sixty.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
@@ -168,6 +169,39 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
   tools.push(tool("project_read", "读取当前内容", "读取当前内容项目快照。只读。", Type.Object({}), async () => {
     allowed("project_read");
     return text(context.project || context.document || {});
+  }));
+
+  tools.push(tool("workbench_projects", "读取工作台内容状态", "实时读取工作台内容项目的权威聚合状态、数量、阻塞原因与下一步。每次直接查询 Worker，不从知识搜索或当前文档猜测。", Type.Object({
+    stage: Type.Optional(Type.String({ maxLength: 80 })),
+  }), async ({ stage = "" }) => {
+    allowed("workbench_projects");
+    const selectedStage = clean(stage, 80);
+    const search = new URLSearchParams({ pageSize: "100" });
+    if (selectedStage) search.set("stage", selectedStage);
+    const response = await callWorker(env, "projects", { search: search.toString() });
+    if (response.status >= 400 || response.data?.ok === false) {
+      const error = new Error(response.data?.error || `工作台内容状态读取失败（HTTP ${response.status}）`);
+      if (response.data?.hint) error.hint = response.data.hint;
+      throw error;
+    }
+    const projects = (response.data?.projects || []).map((item) => ({
+      id: item.id,
+      title: item.title,
+      stage: item.stage,
+      stageReason: item.stageReason,
+      nextAction: item.nextAction,
+      blockers: item.blockers || [],
+      updatedAt: item.updatedAt,
+    }));
+    return text({
+      source: "Worker /wb/projects",
+      fetchedAt: new Date().toISOString(),
+      stage: selectedStage || null,
+      total: Number(response.data?.total) || 0,
+      counts: response.data?.counts || {},
+      projects,
+      truncated: Boolean(response.data?.nextCursor),
+    });
   }));
 
   tools.push(tool("material_evidence", "读取项目素材", "读取项目明确关联的素材与来源字段。只读。", Type.Object({}), async () => {
