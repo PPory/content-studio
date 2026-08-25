@@ -630,8 +630,10 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   const scopeId = clean(input.scopeId, 240);
   const message = clean(input.message, 8_000);
   if (!scopeId) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
-  if (!message) throw Object.assign(new Error("先写下想让 AI 帮你做什么"), { status: 400 });
+
   const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.AGENT_LLM_MODEL, permissionMode: input.permissionMode, forceNew: Boolean(input.startNew && !input.conversationId) });
+  const pendingAttachments = (record.attachments || []).filter((item) => !item.usedAt);
+  if (!message && !pendingAttachments.length) throw Object.assign(new Error("先写下想让 AI 帮你做什么"), { status: 400 });
   let runtimeEnv = env;
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("AI 助手还在处理上一条消息"), { status: 409 });
@@ -660,12 +662,12 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   };
   let context;
   try {
-    const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
+    const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), createdAt: now() };
     const grants = await agentMountsFromUserMessage(message);
     record.pathGrants = [...(record.pathGrants || []), ...grants].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index).slice(-12);
     record.archivedAt = "";
     record.model = clean(input.model, 240) || record.model || clean(env.AGENT_LLM_MODEL, 240);
-    record.title = record.messages.length || record.titleMode === "manual" ? record.title : titleFrom(message);
+    record.title = record.messages.length || record.titleMode === "manual" ? record.title : titleFrom(message || pendingAttachments.map((item) => item.name).join("、"));
     record.messages = [...record.messages, userMessage];
     runtimeEnv = { ...env, AGENT_SESSION_MOUNTS: record.pathGrants, AGENT_PERMISSION_MODE: record.permissionMode };
     record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文", stageUpdatedAt: now() };
@@ -683,10 +685,12 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   try {
     const standalone = input.mode === "general";
     await fs.rm(actionsFile, { force: true }).catch(() => {});
+    const pendingImages = pendingAttachments.filter((item) => item.kind === "image");
+    const attachmentOnlyInstruction = pendingImages.length ? "请直接查看本轮发送的图片并回应；用户本轮没有另外输入文字。" : "请直接阅读本轮发送的附件并回应；用户本轮没有另外输入文字。";
     const replayHistory = record.replayHistory ? record.messages.slice(0, -1).slice(-20).map((item) => `${item.role === "assistant" ? "助手" : "用户"}：${clean(item.text, 6_000)}`).join("\n\n") : "";
-    const turnInput = replayHistory ? { ...input, replayHistory } : input;
+    const turnInput = { ...input, message: message || attachmentOnlyInstruction, ...(replayHistory ? { replayHistory } : {}) };
     const prompt = standalone ? generalPrompt(turnInput, context, record.model) : contentPrompt(turnInput, context, record.model);
-    const pendingImages = (record.attachments || []).filter((item) => item.kind === "image" && !item.usedAt);
+
     emit({ type: "status", stage: "已交给 Pi 模型，正在等待首个响应" });
     const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.AGENT_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
     let timeout;
@@ -739,7 +743,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "Pi Agent SDK", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id) };
     latest.messages = [...latest.messages, assistantMessage];
     latest.actions = [...(latest.actions || []), ...proposed];
-    latest.attachments = (latest.attachments || []).map((item) => pendingImages.some((image) => image.id === item.id) ? { ...item, usedAt: now() } : item);
+    latest.attachments = (latest.attachments || []).map((item) => pendingAttachments.some((attachment) => attachment.id === item.id) ? { ...item, usedAt: now() } : item);
     latest.model = record.model;
     latest.piSessionId = result.piSessionId;
     latest.piSessionFile = result.piSessionFile;

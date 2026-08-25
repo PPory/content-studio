@@ -7,7 +7,7 @@ import path from "node:path";
 import { createPiTools } from "../server/agent-runtime/pi-tools.mjs";
 import { agentAccess, agentMountsFromUserMessage, resolveAgentMountPath } from "../server/agent-runtime/agent-access.mjs";
 import { permissionModeCatalog, PERMISSION_MODES, resolveProjectPath, resolveVaultPath } from "../server/agent-runtime/permission-modes.mjs";
-import { PI_RUNTIME_VERSION, piRuntimeInfo, probePiRuntime } from "../server/agent-runtime/pi-runtime.mjs";
+import { PI_RUNTIME_VERSION, piImageContent, piRuntimeInfo, probePiRuntime } from "../server/agent-runtime/pi-runtime.mjs";
 import { assistantConversations, assistantExperts, assistantSkills, createAssistantConversation, manageAssistantConversation } from "../server/agent-runtime/assistant-runner.mjs";
 import { guidedSessionId } from "../server/agent-runtime/guided-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
@@ -22,6 +22,7 @@ assert.deepEqual(info.versions, {
   "@earendil-works/pi-ai": "0.84.3",
 });
 assert.equal(info.configured, false, "空配置不该被误判为可执行");
+assert.deepEqual(piImageContent(Buffer.from([1, 2, 3]), "image/png"), { type: "image", data: "AQID", mimeType: "image/png" }, "图片必须按 Pi SDK 0.84.3 的 ImageContent 契约发送");
 assert.equal(XENHO_QUALITY_NINE.length, 9, "Xenho 品控问题必须保持九项唯一真源");
 assert.equal(new Set(XENHO_QUALITY_NINE.map((item) => item.id)).size, 9, "品控九问 id 重复");
 

@@ -326,7 +326,7 @@
 .assistant-composer__left { flex: 1 1 auto; }
 .assistant-composer__right { flex: none; margin-left: auto; }
 /* 输入区底行只放这轮真正要确认的设置：权限 · 写作风格 · 模型。@ 和 / 由键盘直接唤起。 */
-.assistant-composer > footer > div button,
+.assistant-composer > footer > div > button,
 .assistant-composer__mode,
 .assistant-composer__style,
 .assistant-composer__model {
@@ -337,12 +337,12 @@
   font: inherit; font-size: var(--fs-sm); cursor: pointer;
   transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
 }
-.assistant-composer > footer > div button:hover,
-.assistant-composer > footer > div button[aria-expanded="true"],
+.assistant-composer > footer > div > button:hover,
+.assistant-composer > footer > div > button[aria-expanded="true"],
 .assistant-composer__mode:hover,
 .assistant-composer__style:hover,
 .assistant-composer__model:hover { border-color: var(--border-strong); color: var(--text-1); }
-.assistant-composer > footer > div button > span { font-weight: 400; }
+.assistant-composer > footer > div > button > span { font-weight: 400; }
 .assistant-composer > footer > div .assistant-composer__attach {
   width: 28px; padding: 0; justify-content: center; border-radius: 50%;
 }
@@ -399,6 +399,16 @@
 .assistant-attachments svg { width: 13px; height: 13px; flex: none; }
 .assistant-attachments img {
   width: 24px; height: 24px; flex: none; border-radius: var(--r-sm); object-fit: cover; background: var(--surface);
+}
+.assistant-message__attachments { display: flex; justify-content: flex-end; gap: var(--sp-2); max-width: min(420px, 70vw); }
+.assistant-message__attachments > span {
+  display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 260px;
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent);
+  font-size: var(--fs-xs); white-space: nowrap; overflow: hidden;
+}
+.assistant-message__attachments > span > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.assistant-message__attachments img { width: 32px; height: 32px; flex: none; border-radius: var(--r-sm); object-fit: cover; }
+.assistant-message__attachments svg { width: 14px; height: 14px; flex: none;
 }
 .assistant-composer__notice {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
@@ -626,7 +636,7 @@
 .project-assistant .assistant-composer > footer > div { gap: var(--sp-2); }
 .project-assistant .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
 .project-assistant .assistant-composer > footer > .assistant-composer__right { flex: none; }
-.project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-3); font-weight: 600; }
+.project-assistant .assistant-composer > footer > div > button { padding: 0 var(--sp-3); font-weight: 600; }
 .project-assistant .assistant-model-picker .assistant-command-menu--models > button { padding: var(--sp-4) var(--sp-5); font-weight: 400; }
 .project-assistant .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
 .project-assistant .assistant-composer__model b { max-width: 56px; }

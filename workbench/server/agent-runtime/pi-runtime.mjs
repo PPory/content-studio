@@ -13,6 +13,10 @@ import { createPiTools } from "./pi-tools.mjs";
 import { findProjectRoot, normalizePermissionMode, PERMISSION_MODES } from "./permission-modes.mjs";
 
 export const PI_RUNTIME_VERSION = "0.84.3";
+
+export function piImageContent(bytes, mimeType) {
+  return { type: "image", data: Buffer.from(bytes).toString("base64"), mimeType };
+}
 const PROVIDER_ID = "content-studio-agent";
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
 
@@ -231,7 +235,7 @@ export async function createPiRun({
     const imageContent = [];
     for (const image of images) {
       const data = await fs.readFile(image.path);
-      imageContent.push({ type: "image", source: { type: "base64", mediaType: image.mediaType, data: data.toString("base64") } });
+      imageContent.push(piImageContent(data, image.mediaType));
     }
     await session.prompt(prompt, imageContent.length ? { images: imageContent } : undefined);
     if (!settled) await session.waitForIdle();

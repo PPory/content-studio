@@ -164,15 +164,16 @@ function EmptyAssistant({ onPrompt, standalone = false }) {
   </div>;
 }
 
-const Message = memo(function Message({ item, canRevise, canInsert, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "" }) {
+const Message = memo(function Message({ item, attachments = [], canRevise, canInsert, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "" }) {
   const assistant = item.role === "assistant";
   const stale = assistant && item.documentVersion && currentVersion && item.documentVersion !== currentVersion;
+  const sentAttachments = assistant ? [] : attachments.filter((attachment) => item.attachmentIds?.includes(attachment.id));
   if (assistant && !item.text && item.pending) return null;
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
     {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Pi Agent SDK{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
-    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user"><p>{item.text}</p><footer className="assistant-message__user-actions"><button type="button" onClick={() => navigator.clipboard?.writeText(item.text)} title="复制消息" aria-label="复制消息"><IconCopy aria-hidden="true" /></button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer></div>}
+    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user">{sentAttachments.length ? <div className="assistant-message__attachments">{sentAttachments.map((attachment) => <span key={attachment.id}>{attachment.kind === "image" ? (attachment.previewUrl ? <img src={attachment.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{attachment.name}</span></span>)}</div> : null}{item.text ? <p>{item.text}</p> : null}{item.text ? <footer className="assistant-message__user-actions"><button type="button" onClick={() => navigator.clipboard?.writeText(item.text)} title="复制消息" aria-label="复制消息"><IconCopy aria-hidden="true" /></button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer> : null}</div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {assistant && item.text && !working ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
@@ -271,7 +272,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setConversationId(conversationIdRef.current);
     setConversationTitle(conversation?.title || "新对话");
     setMessages(conversation?.messages || []);
-    setAttachments(conversation?.attachments || []);
+    setAttachments((current) => (conversation?.attachments || []).map((item) => ({ ...item, previewUrl: current.find((candidate) => candidate.id === item.id)?.previewUrl || "" })));
     setActions(conversation?.actions || []);
     if (conversation?.model) { setModel(conversation.model); rememberAssistantModel(conversation.model); }
     setPermissionMode(conversation?.permissionMode || "daily");
@@ -365,8 +366,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   const send = async (text = input) => {
     const message = String(text || "").trim();
-    if (!message || busy) return;
-    const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, createdAt: new Date().toISOString() };
+    const pendingAttachments = attachments.filter((item) => !item.usedAt);
+    if ((!message && !pendingAttachments.length) || busy) return;
+    const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), createdAt: new Date().toISOString() };
     const streamingId = `streaming-${Date.now()}`;
     const requestId = Symbol("assistant-request");
     setMessages((current) => [...current, optimistic, { id: streamingId, role: "assistant", text: "", createdAt: new Date().toISOString(), pending: true, model }]);
@@ -454,7 +456,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
         setConversationId(result.conversationId);
       }
       setAttachments((current) => [...current, { ...result.attachment, previewUrl: prepared.type.startsWith("image/") ? URL.createObjectURL(prepared) : "" }]);
-      setInput((current) => current || `${file.type.startsWith("image/") ? "请查看图片" : "请阅读附件"}《${file.name}》并告诉我你发现了什么`);
+
       inputRef.current?.focus();
     } catch (next) { setUploadError(next.hint || next.message || "这个附件暂时无法读取"); }
     finally { setUploading(false); }
@@ -595,6 +597,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant" && item.text)?.id;
   const canArchive = !busy && messages.some((item) => item.role === "assistant" && item.text);
   const backgroundConversation = conversationItems.find((item) => item.activeTurn?.status === "running" && item.id !== conversationId);
+  const pendingAttachments = attachments.filter((item) => !item.usedAt);
 
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
@@ -615,14 +618,14 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     <div className="assistant-thread">
       {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
-      {messages.map((item) => <div className="assistant-turn" key={item.id}><Message item={item} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={() => rewind(false)} onEdit={() => rewind(true)} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={applyAction} />)}</div>)}
+      {messages.map((item) => <div className="assistant-turn" key={item.id}><Message item={item} attachments={attachments} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={() => rewind(false)} onEdit={() => rewind(true)} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={applyAction} />)}</div>)}
       {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Pi 正在处理" detail={activity} startedAt={turnStartedAt} /> : null}
       {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试</button></div> : null}
       <div ref={endRef} />
     </div>
 
     <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); send(); }}>
-      {attachments.length ? <div className="assistant-attachments">{attachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
+      {pendingAttachments.length && !busy ? <div className="assistant-attachments">{pendingAttachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
       {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={() => setUploadError("")} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
       <textarea ref={inputRef} value={input} onChange={changeInput} onKeyDown={inputKeyDown} placeholder={standalone ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
       {permissionOpen ? <div className="assistant-permission-menu" ref={permissionRef} role="menu" aria-label="选择权限">
@@ -645,7 +648,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
               {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={modelPending}><span className="assistant-command-menu__mark"><ModelGlyph id={item.id} provider={item.provider} /></span><span><b>{item.label}{item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">暂时没有可用模型</p>}
             </div> : null}
           </div>
-          {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
+          {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={(!input.trim() && !pendingAttachments.length) || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
         </div>
       </footer>
     </form>

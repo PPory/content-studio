@@ -1,6 +1,7 @@
 /** AI 协作的真实浏览器闭环：推动、梳理和候选写作都必须由用户明确采用。 */
 import { createServer } from "vite";
 import { createRequire } from "node:module";
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +42,11 @@ const styleSaves = [];
 const expertStarts = [];
 const assistantRequests = [];
 let assistantMessages = [];
+let assistantAttachments = [];
+const assistantModelItems = [
+  { id: "test-model", name: "测试模型", ownedBy: "Pi" },
+  ...Array.from({ length: 11 }, (_, index) => ({ id: `test-model-${index + 2}`, name: `测试模型 ${index + 2}`, ownedBy: index % 2 ? "antigravity" : "openai" })),
+];
 let assistantConversationItems = [{ id: "chat-recent", title: "最近对话", preview: "继续讨论工作台", updatedAt: "2026-08-25T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "" }, { id: "chat-archived", title: "归档对话", preview: "已经整理完成", updatedAt: "2026-08-24T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "2026-08-25T09:00:00.000Z" }];
 const expertRunStore = new Map();
 const revisionDocuments = new Map();
@@ -197,7 +203,7 @@ await page.route("**/api/assistant/**", async (route) => {
   const request = route.request();
   const url = new URL(request.url());
   if (request.method() === "GET" && url.pathname.endsWith("/models")) {
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, models: { items: [{ id: "test-model", name: "测试模型", ownedBy: "Pi" }], configured: "test-model" } }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, models: { items: assistantModelItems, configured: "test-model" } }) });
   }
   if (request.method() === "GET" && url.pathname.endsWith("/skills")) {
     const names = ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"];
@@ -214,6 +220,11 @@ await page.route("**/api/assistant/**", async (route) => {
   }
   if (request.method() === "GET") {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } }) });
+  }
+  if (request.method() === "POST" && url.pathname.endsWith("/attachment")) {
+    const item = { id: `file-${assistantAttachments.length + 1}`, name: url.searchParams.get("filename") || "图片.png", type: "image/png", kind: "image", bytes: request.postDataBuffer()?.length || 0, characters: 0, createdAt: new Date().toISOString() };
+    assistantAttachments.push(item);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversationId: "chat-upload", attachment: item }) });
   }
   if (url.pathname.endsWith("/conversation/manage")) {
     const body = request.postDataJSON();
@@ -235,13 +246,15 @@ await page.route("**/api/assistant/**", async (route) => {
   }
   const body = request.postDataJSON();
   assistantRequests.push(body);
+  const sentAttachmentIds = assistantAttachments.filter((item) => !item.usedAt).map((item) => item.id);
   await new Promise((resolve) => setTimeout(resolve, 180));
   assistantMessages = [
     ...assistantMessages,
-    { id: `user-${assistantMessages.length}`, role: "user", text: body.message, createdAt: new Date().toISOString() },
+    { id: `user-${assistantMessages.length}`, role: "user", text: body.message, attachmentIds: sentAttachmentIds, createdAt: new Date().toISOString() },
     { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "Pi Agent SDK", durationMs: 180 },
   ];
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
+  assistantAttachments = assistantAttachments.map((item) => sentAttachmentIds.includes(item.id) ? { ...item, usedAt: new Date().toISOString() } : item);
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, attachments: assistantAttachments, actions: [], permissionMode: "daily", model: "test-model" } }) });
 });
 
 function assert(value, message) {
@@ -654,7 +667,23 @@ try {
   const modelMenuBox = await page.locator(".assistant-pane--standalone .assistant-command-menu--models").boundingBox();
   assert(modelButtonBox && modelMenuBox && modelMenuBox.y + modelMenuBox.height <= modelButtonBox.y && Math.abs(modelMenuBox.x + modelMenuBox.width - modelButtonBox.x - modelButtonBox.width) <= 3, "模型面板没有从模型按钮上方向右对齐展开");
   assert(modelMenuBox.width <= 322, `模型面板仍然过宽：${modelMenuBox.width}`);
+  const modelRows = await page.$$eval(".assistant-pane--standalone .assistant-command-menu--models > button", (items) => items.map((item) => {
+    const box = item.getBoundingClientRect();
+    return { y: box.y, bottom: box.bottom, height: box.height };
+  }));
+  assert(modelRows.length === assistantModelItems.length && modelRows.every((row) => row.height >= 44) && modelRows.slice(1).every((row, index) => row.y >= modelRows[index].bottom - 0.5), `模型列表行发生重叠：${JSON.stringify(modelRows)}`);
   await page.click(".assistant-pane--standalone .assistant-command-menu--models header button");
+  const uploadImage = path.join(ROOT, "extension", "icons", "icon-64.png");
+  await page.locator('.assistant-pane--standalone input[type="file"]').setInputFiles(uploadImage);
+  await page.waitForSelector(".assistant-pane--standalone .assistant-attachments");
+  assert(await page.inputValue('.assistant-pane--standalone textarea[placeholder*="问任何问题"]') === "", "上传图片后仍自动填写提示语");
+  assert(!(await page.locator('.assistant-pane--standalone button[aria-label="发送"]').isDisabled()), "只有图片时发送按钮仍不可用");
+  await page.click('.assistant-pane--standalone button[aria-label="发送"]');
+  await page.waitForFunction(() => document.querySelectorAll(".assistant-pane--standalone .assistant-message--assistant").length > 0 && !document.querySelector(".assistant-pane--standalone .assistant-working"));
+  assert(assistantRequests.at(-1)?.message === "", "纯图片发送被改写成了可见提示语");
+  assert((await page.textContent(".assistant-pane--standalone .assistant-message__attachments")).includes("icon-64.png"), "图片没有作为用户消息发送出去");
+  assert(!(await page.textContent(".assistant-pane--standalone .assistant-thread")).includes("请查看图片"), "对话中仍出现自动生成的图片提示语");
+  assert(!(await page.$(".assistant-pane--standalone .assistant-composer .assistant-attachments")), "已发送图片仍滞留在输入框");
   assert(!(await page.$(".assistant-pane--standalone .assistant-composer__hint")), "输入框底部仍有常驻快捷键提示");
   assert(await page.$(".assistant-pane--standalone .assistant-composer__access"), "独立助手没有紧凑权限入口");
   assert((await page.textContent(".assistant-pane__context")).includes("历史对话") && !(await page.textContent(".assistant-pane__context")).includes("知识库 · 联网 · 文件 · Skill"), "助手顶栏没有收敛为历史对话入口");
