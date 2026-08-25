@@ -105,8 +105,18 @@ export function Ideas({ onGo, onChanged }) {
    *
    * ⚠️ 整张卡写进 `source_excerpt`：项目页右栏靠它显示「这一篇是从哪儿来的」。
    */
-  const openSeed = (card, seed) => {
+  const openSeed = async (card, seed) => {
     setSaveError("");
+    if (!groups.length) {
+      try {
+        const data = await api.seeds();
+        const nextGroups = data.reactionGroups || [];
+        if (!nextGroups.length) throw new Error("反应清单暂时不可用");
+        setGroups(nextGroups);
+      } catch (error) {
+        setSaveError(error.message || "反应清单暂时不可用，请重试");
+      }
+    }
     setSeeding({
       title: card.angle,
       take: card.angle,

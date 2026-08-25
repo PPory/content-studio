@@ -78,6 +78,13 @@
   transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
 }
 .assistant-context-actions > button:hover { border-color: var(--border-strong); color: var(--text-1); }
+.assistant-mode-select {
+  display: inline-flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 var(--sp-4);
+  border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.assistant-mode-select select { border: 0; background: transparent; color: var(--text-1); font: inherit; font-weight: 600; outline: 0; cursor: pointer; }
+.assistant-mode-select select:disabled { cursor: default; opacity: .55; }
 .assistant-context-actions > button svg { width: 14px; height: 14px; }
 .assistant-context-actions > .assistant-background-task {
   border-color: color-mix(in srgb, var(--ok) 28%, var(--border));
@@ -216,6 +223,7 @@
 .assistant-action-card small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-action-card b { font-size: var(--fs-base); }
 .assistant-action-card p { margin: 0; overflow: hidden; color: var(--text-2); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
+.assistant-action-card > span { color: var(--text-3); font-size: var(--fs-sm); }
 .assistant-action-card > button {
   flex: none; height: 30px; padding: 0 var(--sp-5); border: 0; border-radius: var(--r-ctl);
   background: var(--accent); color: var(--on-accent); font: inherit; font-size: var(--fs-sm); cursor: pointer;

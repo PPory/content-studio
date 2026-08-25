@@ -195,8 +195,24 @@ await page.route("**/api/revisions**", async (route) => {
 await page.route("**/api/assistant/**", async (route) => {
   const request = route.request();
   const url = new URL(request.url());
+  if (request.method() === "GET" && url.pathname.endsWith("/models")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, models: { items: [{ id: "test-model", name: "测试模型", ownedBy: "Pi" }], configured: "test-model" } }) });
+  }
+  if (request.method() === "GET" && url.pathname.endsWith("/skills")) {
+    const names = ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"];
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, skills: { items: names.map((name) => ({ id: name, name, description: "项目 Skill" })) } }) });
+  }
+  if (request.method() === "GET" && url.pathname.endsWith("/modes")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, modes: { defaultMode: "daily", items: [{ id: "daily", label: "日常" }, { id: "creative", label: "创作" }, { id: "developer", label: "开发", warning: "可触及项目代码和命令" }] } }) });
+  }
+  if (request.method() === "GET" && url.pathname.endsWith("/experts")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, experts: { items: profileFixture.experts } }) });
+  }
+  if (request.method() === "GET" && url.pathname.endsWith("/conversations")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversations: { items: [] } }) });
+  }
   if (request.method() === "GET") {
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } }) });
   }
   if (url.pathname.endsWith("/new")) {
     assistantMessages = [];
@@ -211,7 +227,7 @@ await page.route("**/api/assistant/**", async (route) => {
   assistantMessages = [
     ...assistantMessages,
     { id: `user-${assistantMessages.length}`, role: "user", text: body.message, createdAt: new Date().toISOString() },
-    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "DeepSeek Harness", durationMs: 180 },
+    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "Pi Agent SDK", durationMs: 180 },
   ];
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages } }) });
 });
@@ -274,20 +290,15 @@ try {
     await page.click('.assistant-command-menu header button');
     await page.click('.assistant-composer footer button:has-text("Skill")');
     const skills = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
-    assert(skills.join("/") === "续写一段/完成全文/润色选区/改写选区/纠错选区/沉淀知识卡片", `Skill 菜单不完整：${skills.join("/")}`);
-    await page.click('.assistant-command-menu header button');
-
+    assert(skills.join("/") === "fact-check/idea-dialogue/interview-to-draft/material-extraction/material-gap/publish-review/topic-clustering/xenho-quality-nine", "Skill 菜单不完整：" + skills.join("/"));
+    await page.click('.assistant-command-menu [role=menuitem]:has-text("fact-check")');
+    assert((await page.inputValue(".assistant-composer textarea")).includes("/fact-check"), "选择 Skill 后没有插入 Pi Skill 命令");
+    await page.fill(".assistant-composer textarea", "");
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+Home");
     for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
     await page.waitForFunction(() => document.querySelector(".assistant-context-chip[data-live=true]")?.textContent.includes("选中 6 字"));
-    await page.click('.assistant-composer footer button:has-text("Skill")');
-    await page.click('.assistant-command-menu [role=menuitem]:has-text("润色选区")');
-    await page.waitForSelector(".text-revision-review textarea");
-    assert(revisionRequests.at(-1)?.selected === "收藏处理的是", "右栏 Skill 没有把当前选区交给修订流程");
-    assert((await editorValue(".project-draft .cm-content")).startsWith("收藏处理的是"), "修订候选在采纳前改动了正文");
-    await page.click('.text-revision-review__decide button:has-text("弃用")');
-    await page.waitForSelector(".text-revision-review", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")).startsWith("收藏处理的是"), "选择 Skill 前后不应改动正文");
 
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+End");
@@ -295,7 +306,7 @@ try {
     await page.click('.assistant-composer button[aria-label="发送"]');
     await page.waitForSelector(".assistant-working");
     const orbit = await page.$eval(".assistant-orbit", (item) => getComputedStyle(item).animationName);
-    assert(orbit !== "none", "Harness 工作状态没有动态指示");
+    assert(orbit !== "none", "Pi 工作状态没有动态指示");
     await page.waitForFunction(() => document.querySelector(".assistant-message--assistant")?.textContent.includes("真实场景"));
     assert(assistantRequests.at(-1)?.style?.id === "story-led", "AI 助手没有使用编辑器里选择的本次写作风格");
     assert(assistantRequests.at(-1)?.document?.body.includes("收藏处理的是焦虑"), "AI 助手没有收到当前全文");

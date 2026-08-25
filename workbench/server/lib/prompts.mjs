@@ -60,7 +60,7 @@ export const PROMPT_FIELDS = [
     key: "chat.role",
     label: "对话的角色设定",
     hint: "阅读区右栏「对话」那条通道的系统提示词。",
-    why: "这条链路是本机 spawn 出来的 Claude Code / Codex，跑在你的 vault 目录里、只给了只读工具（Read/Glob/Grep）。它和划词的「理解」不是一回事——后者走 Worker 的 LLM 代理，提示词在流水线那一段。",
+    why: "这条链路由服务端 Pi Agent SDK 直接运行，并按当前权限模式开放经过路径校验和确认约束的工具。它和划词的「理解」不是一回事——后者走 Worker 的 LLM 代理，提示词在流水线那一段。",
     rows: 8,
     guard: CHAT_GUARD,
   },

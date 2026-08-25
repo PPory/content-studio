@@ -4,6 +4,7 @@ import {
   assistantConversations,
   assistantExperts,
   assistantModelCatalog,
+  assistantPermissionModes,
   assistantSkills,
   cancelAssistantTurn,
   createAssistantConversation,
@@ -12,6 +13,7 @@ import {
   runAssistantTurn,
   saveAssistantAttachment,
   updateAssistantConversationModel,
+  updateAssistantPermissionMode,
 } from "../agent-runtime/assistant-runner.mjs";
 
 export const assistantRoutes = [
@@ -49,6 +51,24 @@ export const assistantRoutes = [
     async handler({ res }) {
       json(res, { ok: true, experts: assistantExperts() });
     },
+  },  {
+    method: "GET",
+    path: "/api/assistant/modes",
+    async handler({ res }) {
+      json(res, { ok: true, modes: assistantPermissionModes() });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/mode",
+    async handler({ req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, conversation: await updateAssistantPermissionMode(body.scopeId, body.conversationId, body.permissionMode) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
   },
   {
     method: "POST",
@@ -58,7 +78,7 @@ export const assistantRoutes = [
         const result = await runAssistantTurn(env, await readJsonBody(req));
         json(res, { ok: true, ...result });
       } catch (error) {
-        fail(res, error.message, { status: error.status || 500, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
+        fail(res, error.message, { status: error.status || 500, hint: error.hint || "检查 Pi 模型配置后重试；正文和已保存内容不受影响。" });
       }
     },
   },
@@ -78,7 +98,7 @@ export const assistantRoutes = [
         const result = await runAssistantTurn(env, await readJsonBody(req), { onEvent: send });
         send({ type: "done", result });
       } catch (error) {
-        send({ type: "error", status: error.status || 500, error: error.message, hint: error.hint || "检查 Harness 模型配置后重试；正文和已保存内容不受影响。" });
+        send({ type: "error", status: error.status || 500, error: error.message, hint: error.hint || "检查 Pi 模型配置后重试；正文和已保存内容不受影响。" });
       } finally {
         if (!res.destroyed && !res.writableEnded) res.end();
       }
@@ -97,7 +117,7 @@ export const assistantRoutes = [
     path: "/api/assistant/new",
     async handler({ req, res }) {
       const body = await readJsonBody(req);
-      json(res, { ok: true, conversation: await createAssistantConversation(body.scopeId, { model: body.model }) });
+      json(res, { ok: true, conversation: await createAssistantConversation(body.scopeId, { model: body.model, permissionMode: body.permissionMode }) });
     },
   },
   {

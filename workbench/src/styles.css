@@ -3200,16 +3200,25 @@ kbd {
 /* 动作条整体压下来，不给每个按钮各加一次 margin——按钮不止一个之后，
    逐个加的话它们之间还是对齐的，但 `gap` 和 `margin` 会一起算进行高。 */
 .msg-agent__acts { margin-top: 10px; }
-/* 换引擎留下的一行痕迹。居中细字，明显不是谁说的话 */
+/* 权限模式变化留下的一行痕迹。居中细字，明显不是谁说的话 */
 .msg-sys {
   align-self: center; font-size: var(--fs-xs); color: var(--text-3);
   padding: 2px 10px; border: 1px dashed var(--border); border-radius: var(--r-pill);
 }
 
-/* 头上一行：发给谁 + 重开一轮。这两件事都是**关于这场对话本身**的，
+/* 头上一行：权限模式 + 重开一轮。这两件事都是**关于这场对话本身**的，
    不是关于正在打的这句话，所以不该挤在输入框旁边。 */
 .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.chat-engine button { height: 24px; padding: 0 8px; font-size: var(--fs-xs); }
+.chat-permission-mode {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 7px;
+  border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-3);
+  font-size: var(--fs-xs); background: var(--surface);
+}
+.chat-permission-mode select {
+  border: 0; outline: 0; padding: 0; color: var(--text-1); background: transparent;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.chat-permission-mode select:disabled { cursor: not-allowed; opacity: .6; }
 .chat-head .icon-btn { width: 26px; height: 26px; border-color: transparent; color: var(--text-3); }
 .chat-head .icon-btn:hover:not(:disabled) { color: var(--text-1); border-color: var(--border-strong); }
 
@@ -4548,55 +4557,55 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* ---------- 阅读设置 ---------- */
 
 .prefs { position: relative; display: inline-flex; }
-.pmat__pop {
+.prefs__pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 5;
   width: 268px; padding: 12px; display: grid; gap: 8px;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
   max-height: calc(100vh - 120px); overflow-y: auto;
 }
-.pmat__name { font-size: var(--fs-sm); color: var(--text-2); }
+.prefs__name { font-size: var(--fs-sm); color: var(--text-2); }
 /* 一行 = 名字 + 当前值 + 一对步进按钮。值用等宽字体，加减的时候数字不会左右跳 */
-.pmat__num { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
-.pmat__val {
+.prefs__num { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
+.prefs__val {
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-1);
   min-width: 46px; text-align: right;
 }
-.pmat__step { display: inline-flex; gap: 2px; }
-.pmat__step button {
+.prefs__step { display: inline-flex; gap: 2px; }
+.prefs__step button {
   width: 24px; height: 24px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
   background: var(--surface); color: var(--text-1); font-size: var(--fs-md); line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.pmat__step button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.pmat__step button:disabled { opacity: 0.35; cursor: not-allowed; }
+.prefs__step button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.prefs__step button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* 字体按钮**用它自己的字**显示：选之前就看得出长什么样，比看名字准 */
-.pmat__fonts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
-.pmat__aside { float: right; font-style: normal; font-size: var(--fs-xs); color: var(--text-3); }
+.prefs__fonts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.prefs__aside { float: right; font-style: normal; font-size: var(--fs-xs); color: var(--text-3); }
 /* 本机没装的字体：留在原位但点不动，并在 title 里说清为什么——
    直接藏掉的话，用户会以为是自己看错了 */
-.pmat__fonts button:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
-.pmat__fonts button {
+.prefs__fonts button:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+.prefs__fonts button {
   height: 30px; padding: 0 8px; font-size: var(--fs-base);
   border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); color: var(--text-2);
 }
-.pmat__fonts button:hover { border-color: var(--accent-soft); color: var(--accent); }
-.pmat__fonts button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.prefs__fonts button:hover { border-color: var(--accent-soft); color: var(--accent); }
+.prefs__fonts button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 
-.pmat__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pmat__divider { height: 1px; background: var(--border); margin: 2px 0; }
-.pmat__switch {
+.prefs__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.prefs__divider { height: 1px; background: var(--border); margin: 2px 0; }
+.prefs__switch {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   font-size: var(--fs-sm); color: var(--text-2);
 }
-.pmat__switch input { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
-.pmat__reset {
+.prefs__switch input { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.prefs__reset {
   border: 0; background: none; cursor: pointer; padding: 2px 0 0;
   font-size: var(--fs-xs); color: var(--text-3); text-align: left;
 }
-.pmat__reset:hover { color: var(--accent); }
+.prefs__reset:hover { color: var(--accent); }
 
 /* ---------- 书内搜索 ---------- */
 

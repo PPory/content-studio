@@ -1,4 +1,4 @@
--- AI/Harness 长任务的持久状态。正文和业务状态仍由原表负责；这里只保存执行租约与结果。
+-- AI Agent 长任务的持久状态。正文和业务状态仍由原表负责；这里只保存执行租约与结果。
 CREATE TABLE IF NOT EXISTS agent_tasks (
   id                 TEXT PRIMARY KEY,
   idempotency_key    TEXT NOT NULL UNIQUE,

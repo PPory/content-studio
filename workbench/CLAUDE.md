@@ -249,28 +249,25 @@ node tests/shots.mjs   # 截图到 tmp/shot-*.png（末尾加 dark 出暗色版�
 
 ⚠️ **落地是一组 CSS 变量挂在 `.reader-overlay` 上，不进正文组件的 props**——进了的话改一次字号就重渲染一次正文，选区会被抹掉。
 
-## 「对话」走的是本机 CLI，「理解」走的是 API
+## 「对话」由 Pi Agent SDK 运行，「理解」走 Worker API
 
-这两条链路不一样，**等待文案必须说清楚是哪一条**，否则用户会以为「都是 API 为什么这么慢」：
+这两条链路不一样，等待文案必须说清楚是哪一条：
 
-- **理解**（划词的解释/展开/反驳）→ Worker 的 `/wb/explain` → LLM 代理。秒级，不该显示任何「慢一点正常」。
-- **对话** → 本地 spawn headless CLI。**这条才能读你整个 vault**，代价是第一次要把 CLI 拉起来，十几秒是正常的。
-- **翻译** → DeepL，走服务端转发。
+- 理解（划词的解释/展开/反驳）→ Worker 的 /wb/explain → LLM 代理。
+- 对话 → 本地服务内直接运行 Pi Agent SDK，按服务端权限读取 vault、Skills、附件和业务上下文，并通过 NDJSON 增量回传。
+- 翻译 → DeepL，走服务端转发。
 
-`Waiting` 的 `slow` 文案和 `slowAt` 秒数都是按调用方传的，不是写死在组件里——写死的话「理解」也会跟着说一句不属于它的话。
+Waiting 的 slow 文案和 slowAt 秒数由调用方传入，不写死在组件里。
 
-### 对话引擎二选一：Claude Code / Codex
+### Pi 是唯一 Agent 运行时，权限由服务端决定
 
-引擎表在 `server/routes/agent.mjs` 的 `ENGINES`，前端的选择存在 `src/lib/chat-agent.js`（localStorage）。加第三个引擎只要加一项：`bin` / `args(sessionId)` / `prompt(parts)` / `onEvent(ev, out)`，`out` 把各家的事件流翻译成同一套动作（记会话号 / 吐字 / 记失败）。
+server/agent-runtime/pi-runtime.mjs 建立和续接 Pi session；pi-tools.mjs 定义工具；permission-modes.mjs 定义 daily / creative / developer 三种模式。
 
-- **引擎名从请求体来，但必须过白名单再 spawn。** 认不出就退回 claude，绝不拿用户传的字符串当可执行文件名。
-- **Codex 不吐增量。** claude 的 stream-json 有 `content_block_delta`，一个字一个字走；codex 的 `--json` 只在整条消息完成时给一个 `item.completed`。所以 codex 的等待提示要**早点**出（`slowAt: 4`）并且讲清是「先想完再一次性给」，否则空屏十几秒看着就是死了。
-- **`codex exec resume` 不认 `--sandbox`**（它只继承 `-c` / `--model` / `--json` 那几个）。两条路各写一套 flag 的话，续聊那一路会直接 `unexpected argument` 起不来——所以只读统一用 `-c sandbox_mode=read-only`。值不加引号是故意的：codex 先按 TOML 解析，解析不了就当原字符串用，正好绕开 `shell: true` 下的引号转义。
-- **不给 codex 传 prompt 参数**：它在 stdin 是管道时就从 stdin 读，正好符合「用户输入绝不进 argv」。codex 也没有 `--append-system-prompt`，角色设定只能拼进 stdin 的提示里。
-- 只读的落地方式两家不同：claude 靠 `--allowedTools` 白名单，codex 靠沙箱。**结果一样：agent 不能写你的知识库。**
-- **换引擎必须清掉 session id**——那是上一家自己的 session 文件，拿去 resume 另一家只会失败。上下文因此断掉，所以在对话里留一条 `msg-sys` 说明，别让人以为它突然失忆了。
-- 每条回复记下 `agent` 字段，署名按它显示。换过引擎之后，回头能看出上下两段不是同一个模型答的。
-
+- 新对话默认 daily，模式写进 conversation.json；运行期间服务端拒绝切换。
+- daily 只读、检索、联网、附件、Skills 和候选动作；creative 增加个人工作台目录内的受控写入候选；developer 才增加项目写入、edit 和 PowerShell 候选。
+- 工具是否可用、路径是否越界、写入是否需要确认，全部由服务端工具层校验，不能只靠提示词。
+- Agent 只生成候选动作。正文修改、发布、删除、业务状态变化和命令执行，都必须经过用户确认后的独立应用接口。
+- Worker/D1 仍是业务状态、关系、幂等和长任务的唯一真源；Pi session 只保存模型上下文。
 ## 编辑器：所见即源码，但源码长得像文档
 
 `components/MarkdownEditor.jsx`，CodeMirror 6（只装用到的六个包）。
@@ -1135,11 +1132,11 @@ CommonMark 的 flanking rules 和中文标点天生打架：闭合的 `**` 不�
 
 ### 能力自检（`server/lib/settings-check.mjs`，`POST /api/settings/verify`）
 
-存在的理由是有一整类问题**现在没有任何地方会说**：`claude` / `codex` 不在 PATH 上时「对话」永远起不来；DeepL 免费版 key 打 Pro 域名回 403 而报错里看不出原因；vault 子目录不存在时界面显示的是「还没建，去导一本」的空态引导，看起来像「你还没用过这个功能」。
+存在的理由是有一整类问题现在没有任何地方会说：Pi 模型地址、模型名或密钥缺失时对话起不来；DeepL 免费版 key 打 Pro 域名回 403；vault 子目录不存在时空态引导会让人误以为从未使用过。
 
-- **可选能力没配 = `off`，不是 `bad`。** 把「你没开这个功能」画成红的，等于每次打开面板都在骂人。
-- **Worker 要区分 401（密钥不对）和连不上（地址错/网络）**——这两种在界面上本来长得一模一样，而下一步完全不同。
-- **CLI 探针照着 `agent.mjs` 的 `ENGINES` 探**（那也是它导出的理由），不另写一份判断：自己写一份就会出现「自检说装了、点对话起不来」。
+- 可选能力没配 = off，不是 bad。
+- Worker 要区分 401（密钥不对）和连不上（地址错/网络）。
+- Agent 自检直接复用 piRuntimeInfo 和 AGENT_LLM_* 配置，不另写一份运行时判断，避免自检说可用、点对话起不来。
 - **逐条 try**，一条抛异常不能把整块变成一句「失败」；**自检失败不挡保存**。
 - ⚠️ **测试和截图等的是自检出结论**（`.set-field__dot:not(--wait)` 或 `.set-check--ok/bad/warn/off`），不是 `.set-check` 这个壳——壳里全是转圈时断言照样全绿，那是假绿。
 - `hint` / `why` / `desc` / `label` **都是纯文本**，直接塞进 `<div>`，不过 `renderMarkdown`。写了 `**加粗**` 屏幕上就是两个星号（踩过，截图才看得出来）。

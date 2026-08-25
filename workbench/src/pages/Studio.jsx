@@ -21,7 +21,7 @@ import { contextOf } from "../lib/reading.js";
 import { noteOpened } from "../lib/recent.js";
 import { setOpenTarget, takeOpenTarget } from "../lib/open-target.js";
 import { useAiRuns } from "../lib/use-ai-runs.js";
-import { agentName } from "../lib/chat-agent.js";
+import { piAgentName } from "../lib/chat-agent.js";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { ReaderOverlay, DraftLinks } from "../components/ReaderOverlay.jsx";
 import { ACTIONS } from "../components/Reader.jsx";
@@ -81,7 +81,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
    * 和 agent 聊这一篇。**和书架共用 `useDocChat`**——合并之前两边各一份 66 行，
    * 逐行只差两行（标题和路径从哪儿取）。
    */
-  const { chat, chatAgent, sendChat, switchAgent, newChat, stopChat } = useDocChat({
+  const { chat, chatMode, sendChat, switchMode, newChat, stopChat } = useDocChat({
     docTitle: active?.title || "",
     docPath: active?.raw?.bookPath || active?.key || "",
   });
@@ -506,9 +506,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
 
   const saveChatAsNote = useCallback(
     async (text) => {
-      await saveNote({ quote: "", body: `**与 ${agentName(chatAgent)} 的讨论**\n\n${text}` });
+      await saveNote({ quote: "", body: `**与 ${piAgentName()} 的讨论**\n\n${text}` });
     },
-    [saveNote, chatAgent]
+    [saveNote]
   );
 
   // 配封面：不在工作台里重写一遍出图逻辑，而是把已有的 xenho-cover skill 通过
@@ -818,10 +818,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             onStopAi: stopAi,
             // 右栏换模式重跑同一段：上下文从正文里现取，用户不用回去重新划一次
             onRunAi: (mode, text) => runAi(mode, text, contextOf(doc?.content, text)),
-            chat: { ...chat, agent: chatAgent },
+            chat: { ...chat, permissionMode: chatMode },
             onSend: sendChat,
             onStopChat: stopChat,
-            onChatAgent: switchAgent,
+            onChatMode: switchMode,
             onNewChat: newChat,
             onRailSelect,
             onSaveChatAsNote: saveChatAsNote,

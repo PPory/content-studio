@@ -1254,22 +1254,22 @@ try {
     // 而且标签本来就会改字——按文字点的选择器在这个项目里已经栽过一次（收起态的「创作」）
     const go = (key) => page.click(`.set-nav__item[data-key="${key}"]`);
     try {
-      await page.click(".topbar__icon");
+      await page.click('.topbar__icon[aria-label="设置"]');
       await page.waitForSelector(".set-overlay .set-nav__item", { timeout: 8000 });
 
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
       const navs = await page.$$eval(".set-nav__item", (els) => els.map((e) => e.innerText.trim()));
       check("左栏分六组", groups.join("/") === "创作/连接/能力/模型/提示词/其他", groups.join("/"));
-      check("左栏九项", navs.length === 9, navs.join("/"));
+      check("左栏十项", navs.length === 10, navs.join("/"));
       await page.waitForSelector(".writing-profile-settings", { timeout: 8000 });
       const profilePane = await page.evaluate(() => ({
         fields: document.querySelectorAll(".writing-profile-settings .profile-field").length,
         text: document.querySelector(".writing-profile-settings")?.textContent || "",
         source: document.querySelector(".profile-source code")?.textContent || "",
       }));
-      check("我的创作只收长期会复用的三项", profilePane.fields === 3 && /固定目标读者/.test(profilePane.text) && /常用首发平台/.test(profilePane.text) && /默认写作风格/.test(profilePane.text), JSON.stringify(profilePane));
+      check("我的创作收齐长期复用设置", profilePane.fields === 5 && /固定目标读者/.test(profilePane.text) && /常用首发平台/.test(profilePane.text) && /默认写作风格/.test(profilePane.text), JSON.stringify(profilePane));
       check("专家按真实任务出现而不是统一下拉", /不是一个统一下拉框/.test(profilePane.text) && /找题时定方向/.test(profilePane.text), profilePane.text.slice(0, 160));
-      check("工作台自带六位专家和五种风格", /6 位专家/.test(profilePane.source) && /5 种风格/.test(profilePane.source), profilePane.source);
+      check("工作台自带六位专家和六种风格", /6 位专家/.test(profilePane.source) && /6 种风格/.test(profilePane.source), profilePane.source);
       check("专家团不包含排版和整理", !/排版顾问|整理顾问/.test(profilePane.text), profilePane.text.slice(0, 240));
 
       // 下面继续验证原有连接设置；默认页已经变成「我的创作」，需显式切回 vault。
@@ -3599,7 +3599,7 @@ try {
      * ---- 7.9 书架侧的对话链路、换文档清场、关掉时中止 ----------------------
      *
      * 补这一段的直接原因：**书架里那 104 行对话代码，冒烟测试一条都没跑过。**
-     * 完整的一轮（换引擎 / msg-sys / 重开一轮）只在 `#/materials`（内容工作台）跑，
+     * 完整的一轮（换权限模式 / msg-sys / 重开一轮）只在 `#/materials`（内容工作台）跑，
      * 而书架里是**另一份几乎一样的实现**——两份各写各的，坏了一份没人知道。
      *
      * 这三条正好是「把这两份合成一个 hook」时最容易弄坏的地方，所以先在**现在的代码上**
@@ -3607,7 +3607,7 @@ try {
      *
      * **这一轮不真打 CLI，拦下来给假流。** 理由和「只断言选题按钮在、不点它」一样：
      * 真跑一轮 agent 要几十秒和一把 token，而这里要验的是**接线**——
-     * 请求体里的 docTitle/docPath 从哪儿来、换引擎清不清会话、关掉时中不中止。
+     * 请求体里的 docTitle/docPath 从哪儿来、换模式清不清会话、关掉时中不中止。
      * 那条真实链路已经由内容工作台那一轮盖住了，不必再烧一次。
      */
     let chatBody = null;
@@ -3633,7 +3633,8 @@ try {
       await page.waitForSelector(".reader .prose", { timeout: 10000 });
       await page.click('.rail-tabs button:has-text("对话")');
       await page.waitForSelector(".composer textarea", { timeout: 5000 });
-      check("书架的阅读区也能选引擎", (await page.$$(".chat-engine button")).length === 2);
+      const shelfModes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
+      check("书架的阅读区有三种权限模式", shelfModes.join("/") === "日常/创作/开发", shelfModes.join("/"));
 
       await page.fill(".composer textarea", "只回答两个字：收到");
       await page.click(".composer .btn-primary");
@@ -3646,15 +3647,15 @@ try {
        */
       check(
         "对话带上了这一章的身份",
-        String(chatBody?.docPath || "").includes(mdBook) && !!String(chatBody?.docTitle || "").trim(),
+        String(chatBody?.docPath || "").includes(mdBook) && !!String(chatBody?.docTitle || "").trim() && chatBody?.permissionMode === "daily",
         `${chatBody?.docTitle} | ${chatBody?.docPath}`
       );
 
-      // 换引擎必须清掉上一家的会话号，并且**留一条痕迹**——不说的话只会像「它突然失忆了」
-      await page.click('.chat-engine button:has-text("Codex")');
+      // 换权限模式会重开 Pi 上下文并留下痕迹，避免看起来像突然失忆。
+      await page.selectOption(".chat-permission-mode select", "creative");
       await page.waitForSelector(".msg-sys", { timeout: 4000 });
-      check("书架换引擎也会说明上下文不带过去", (await page.textContent(".msg-sys")).includes("不带过去"));
-      await page.click('.chat-engine button:has-text("Claude Code")');
+      check("书架换权限模式会说明由服务端执行", (await page.textContent(".msg-sys")).includes("服务端"));
+      await page.selectOption(".chat-permission-mode select", "daily");
 
       /**
        * **换一篇文档，右栏必须清空。** 不清的话就是「上一篇的对话挂在这一篇上」，
@@ -4879,11 +4880,10 @@ try {
   await page.waitForSelector(".rail", { timeout: 15000 });
   await page.click('.rail-tabs button:has-text("对话")');
   await page.waitForSelector(".composer textarea", { timeout: 5000 });
-  // 引擎二选一，开关就在输入框旁边——换引擎和「发给谁」是同一个决定
-  const engines = await page.$$eval(".chat-engine button", (els) => els.map((e) => e.textContent.trim()));
-  check("对话能选引擎", engines.join("/") === "Claude Code/Codex", engines.join("/"));
-  const engineOn = await page.$eval('.chat-engine button[aria-pressed="true"]', (e) => e.textContent.trim());
-  check("默认引擎是 Claude Code", engineOn === "Claude Code", engineOn);
+  const modes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
+  check("对话有三种权限模式", modes.join("/") === "日常/创作/开发", modes.join("/"));
+  const defaultMode = await page.$eval(".chat-permission-mode select", (e) => e.value);
+  check("新对话默认日常模式", defaultMode === "daily", defaultMode);
   await page.fill(".composer textarea", "只回答两个字：收到");
   await page.click(".composer .btn-primary");
   await page.waitForSelector(".msg-agent .prose-sm", { timeout: 120000 });
@@ -4895,7 +4895,7 @@ try {
   const reply = await page.textContent(".msg-agent .prose-sm");
   check("agent 对话有回复", reply.trim().length > 0, reply.trim().slice(0, 40));
   check("对话无乱码", !reply.includes("�"), reply.slice(0, 30));
-  check("回复标着是谁答的", (await page.textContent(".msg-agent__who")).includes("Claude"), await page.textContent(".msg-agent__who"));
+  check("回复标着 Pi 运行时", (await page.textContent(".msg-agent__who")).includes("Pi"), await page.textContent(".msg-agent__who"));
   // 回复的两个去处并排：写进 vault，或者拷走贴到别处。后者原来只能手动划选，
   // 而回复动辄几百字带标题和列表，划全一段本身就很难。
   //
@@ -4907,21 +4907,22 @@ try {
     els.map((e) => e.getAttribute("aria-label") || e.textContent.trim())
   );
   check("回复能存也能复制", msgActs.join("/") === "存为笔记/复制这条回复", msgActs.join("/"));
-  /**
-   * 换引擎要**留一条痕迹**：会话号是上一家自己的 session 文件，拿去 resume 另一家只会失败，
-   * 所以切换必然把上下文断掉。不说的话，用户只会觉得「它怎么突然失忆了」。
-   * 这里只切不发——真发一轮 Codex 要几十秒，而它自己那条路已经在 CLI 上验过了。
-   */
-  await page.click('.chat-engine button:has-text("Codex")');
-  await page.waitForSelector(".msg-sys", { timeout: 4000 });
-  check("换引擎会说明上下文不带过去", (await page.textContent(".msg-sys")).includes("不带过去"), await page.textContent(".msg-sys"));
-  await page.click('.chat-engine button:has-text("Claude Code")');
-
+  await page.selectOption(".chat-permission-mode select", "creative");
+  await page.waitForFunction(() => document.querySelector(".chat-permission-mode select")?.value === "creative");
+  check("对话可切到创作模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "creative"));
+  page.once("dialog", async (dialog) => {
+    check("切入开发模式会警告", dialog.message().includes("项目代码") && dialog.message().includes("命令"), dialog.message());
+    await dialog.accept();
+  });
+  await page.selectOption(".chat-permission-mode select", "developer");
+  await page.waitForFunction(() => document.querySelector(".chat-permission-mode select")?.value === "developer");
+  check("确认后可切到开发模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "developer"));
   // 换个话题就该重开一轮：一直聊下去上下文越滚越长也越跑越偏，
   // 而只靠刷新页面的话，整个阅读区会跟着关掉。
   await page.click('.chat-head button[aria-label="新对话"]');
   await page.waitForFunction(() => !document.querySelector(".msg-agent, .msg-user"), null, { timeout: 5000 });
   check("能重开一轮对话", !!(await page.$(".chat-log .rail-empty")));
+  check("新对话重新回到日常模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "daily"));
   await shot("chat", false);
 
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });

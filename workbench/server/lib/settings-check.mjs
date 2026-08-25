@@ -1,7 +1,7 @@
 // 能力自检：每条链路现在通不通。
 //
 // 存在的理由是有一整类问题**现在没有任何地方会说**：
-//  - `claude` / `codex` 不在 PATH 上时「对话」永远起不来，界面上只是一直转圈然后报一句超时
+//  - Pi SDK 或模型配置不完整时「对话」无法启动
 //  - DeepL 免费版的 key 打 Pro 域名会回 403，而报错里看不出是这个原因
 //  - vault 配了、但 `99 - 个人工作台/` 那几个子目录不存在时，界面显示的是
 //    「还没建，去导一本」的**空态引导**——看起来像「你还没用过这个功能」，不像出错
@@ -16,12 +16,11 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { DIRS } from "./vault-dirs.mjs";
 import { callWorker } from "./worker.mjs";
 import { mediacrawlerDir, workerDir } from "./settings-schema.mjs";
 import { typesetDir } from "../routes/tools.mjs";
-import { ENGINES } from "../routes/agent.mjs";
+import { piRuntimeInfo } from "../agent-runtime/pi-runtime.mjs";
 import { probeSixty, sixtyConfigured } from "./sixty.mjs";
 
 // ok=通了 / warn=能用但有话说 / bad=配了却不通 / off=没配（可选能力的正常态）
@@ -112,52 +111,12 @@ async function checkSixty(env) {
   return R("sixty", "平台热榜", "ok", "连上了");
 }
 
-/**
- * CLI 探针。**照着 `ENGINES` 里真正会 spawn 的 bin + shell 探**，不另写一份判断。
- * 超时 5 秒：探不到就当没有，不能让一次自检把面板挂在那儿。
- */
-function probeBin({ bin, shell }, timeoutMs = 5000) {
-  return new Promise((resolve) => {
-    let child;
-    const timer = setTimeout(() => {
-      try {
-        child?.kill();
-      } catch {
-        /* 已经退了 */
-      }
-      resolve(false);
-    }, timeoutMs);
-    try {
-      // 参数是常量，没有任何用户输入进 argv
-      child = spawn(bin, ["--version"], { shell, windowsHide: true, stdio: "ignore" });
-    } catch {
-      clearTimeout(timer);
-      return resolve(false);
-    }
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve(false);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve(code === 0);
-    });
-  });
-}
-
-async function checkEngines() {
-  const found = [];
-  for (const [key, engine] of Object.entries(ENGINES)) {
-    if (await probeBin(engine)) found.push(engine.label || key);
-  }
-  const all = Object.values(ENGINES).map((e) => e.label);
-  if (!found.length) {
-    return R("agent", "AI 对话", "bad", `${all.join(" / ")} 都不在命令行里`, "「对话」是本机跑 CLI 的（这条链路才读得到你整个 vault）。装一个再回来，划词的「理解」不受影响");
-  }
-  if (found.length < all.length) {
-    return R("agent", "AI 对话", "ok", `${found.join(" / ")} 可用`, `${all.filter((l) => !found.includes(l)).join(" / ")} 没装，右栏里选到它会起不来`);
-  }
-  return R("agent", "AI 对话", "ok", `${found.join(" / ")} 都可用`);
+/** Pi 运行时和模型配置探针。不会发送模型请求，也不会读取或返回密钥。 */
+async function checkAgentRuntime(env) {
+  const info = await piRuntimeInfo(env);
+  if (!info.available) return R("agent", "AI 对话", "bad", "Pi SDK 版本检查未通过", info.reason || "重新安装工作台依赖");
+  if (!info.configured) return R("agent", "AI 对话", "off", "Pi 已就绪，模型尚未配置", "填写模型地址、模型 id 和密钥后即可对话");
+  return R("agent", "AI 对话", "ok", `Pi Agent SDK ${info.version} 已就绪`);
 }
 
 async function checkTypeset(env) {
@@ -196,7 +155,7 @@ async function checkWorkerDir(env) {
  * 那时候用户会以为所有配置都错了。
  */
 export async function runChecks(env) {
-  const jobs = [checkVault, checkWorker, checkDeepl, checkFirecrawl, checkSixty, checkEngines, checkTypeset, checkMediacrawler, checkWorkerDir];
+  const jobs = [checkVault, checkWorker, checkDeepl, checkFirecrawl, checkSixty, checkAgentRuntime, checkTypeset, checkMediacrawler, checkWorkerDir];
   return Promise.all(
     jobs.map(async (fn) => {
       try {

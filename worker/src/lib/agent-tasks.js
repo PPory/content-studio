@@ -21,7 +21,7 @@ function mapTask(row) {
     leaseOwner: row.lease_owner,
     leaseExpiresAt: row.lease_expires_at,
     heartbeatAt: row.heartbeat_at,
-    harnessSessionId: row.harness_session_id,
+    piSessionId: row.pi_session_id || "",
     stage: row.stage,
     stageLabel: row.stage_label,
     percent: row.percent,
@@ -47,19 +47,19 @@ export async function claimAgentTask(env, input = {}) {
   const leaseSeconds = Math.max(30, Math.min(300, Number(input.leaseSeconds) || 90));
   const maxAttempts = Math.max(1, Math.min(10, Number(input.maxAttempts) || 3));
   await run(env, `INSERT OR IGNORE INTO agent_tasks
-    (id,idempotency_key,kind,scope_id,document_id,document_version,status,attempt,max_attempts,lease_owner,lease_expires_at,heartbeat_at,harness_session_id,stage,stage_label,percent,payload_json,result_json,error,created_at,updated_at,finished_at)
+    (id,idempotency_key,kind,scope_id,document_id,document_version,status,attempt,max_attempts,lease_owner,lease_expires_at,heartbeat_at,pi_session_id,stage,stage_label,percent,payload_json,result_json,error,created_at,updated_at,finished_at)
     VALUES (?,?,?,?,?,?,'queued',0,?,'',0,0,?,'queued','准备专家任务',2,?,'','',?,?,0)`,
     id, idempotencyKey, kind, clean(input.scopeId, 180), clean(input.documentId, 180), clean(input.documentVersion, 180),
-    maxAttempts, clean(input.harnessSessionId, 180), jsonText(input.payload), ts, ts);
+    maxAttempts, clean(input.piSessionId, 180), jsonText(input.payload), ts, ts);
   const row = await first(env, "SELECT * FROM agent_tasks WHERE idempotency_key = ?", idempotencyKey);
   if (!row) throw new Error("任务写入后无法读取");
   if (FINAL.has(row.status)) return { claimed: false, task: mapTask(row) };
   await run(env, `UPDATE agent_tasks SET
       status='running', attempt=attempt+1, lease_owner=?, lease_expires_at=?, heartbeat_at=?,
-      harness_session_id=?, stage='running', stage_label='专家任务已领取', updated_at=?, error=''
+      pi_session_id=?, stage='running', stage_label='专家任务已领取', updated_at=?, error=''
     WHERE id=? AND attempt < max_attempts
       AND (status='queued' OR status='failed' OR (status='running' AND lease_expires_at < ?))`,
-    owner, ts + leaseSeconds, ts, clean(input.harnessSessionId, 180), ts, row.id, ts);
+    owner, ts + leaseSeconds, ts, clean(input.piSessionId, 180), ts, row.id, ts);
   const claimed = await first(env, "SELECT * FROM agent_tasks WHERE id = ?", row.id);
   return { claimed: claimed?.status === "running" && claimed?.lease_owner === owner, task: mapTask(claimed) };
 }

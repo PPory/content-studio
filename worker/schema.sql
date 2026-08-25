@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at INTEGER NOT NULL
 );
 
--- Harness 长任务的租约、心跳、重试和结构化结果；正文与发布状态不放在这里。
+-- Agent 长任务的租约、心跳、重试和结构化结果；正文与发布状态不放在这里。
 CREATE TABLE IF NOT EXISTS agent_tasks (
   id TEXT PRIMARY KEY,
   idempotency_key TEXT NOT NULL UNIQUE,
@@ -292,6 +292,7 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
   lease_expires_at INTEGER NOT NULL DEFAULT 0,
   heartbeat_at INTEGER NOT NULL DEFAULT 0,
   harness_session_id TEXT NOT NULL DEFAULT '',
+  pi_session_id TEXT NOT NULL DEFAULT '',
   stage TEXT NOT NULL DEFAULT 'queued',
   stage_label TEXT NOT NULL DEFAULT '',
   percent INTEGER NOT NULL DEFAULT 0,

@@ -1,19 +1,27 @@
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
 import { searchAll } from "../lib/search.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { callWorker } from "../lib/worker.mjs";
-import { closeResidentHarness, createHarnessRun } from "./harness-adapter.mjs";
+import { createPiRun } from "./pi-runtime.mjs";
+import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath, resolveVaultPath } from "./permission-modes.mjs";
+import { appendNote, fileStamp, readFile as readVaultFile, writeVaultFile } from "../lib/vault.mjs";
+import { atomicWrite } from "../lib/safe-write.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
+const execFileAsync = promisify(execFile);
 const MODEL_CACHE_FILE = path.join(ROOT, "models.json");
 const active = new Map();
+const indexWrites = new Map();
 const providerDispatcher = new EnvHttpProxyAgent();
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
+const boundedText = (value, max = 200_000) => String(value ?? "").slice(0, max);
 const now = () => new Date().toISOString();
 const assistantModelUsable = (id) => !/(?:^|[-_.])(image|imagine|video|audio|tts|speech|whisper|transcri(?:be|ption)|embedding|rerank|moderation|realtime)(?:$|[-_.])/i.test(String(id || ""));
 const scopeKey = (scopeId) => crypto.createHash("sha256").update(clean(scopeId, 240) || "global").digest("hex").slice(0, 24);
@@ -22,6 +30,15 @@ const indexFile = (scopeId) => path.join(scopeDir(scopeId), "index.json");
 const conversationDir = (scopeId, conversationId) => path.join(scopeDir(scopeId), "conversations", conversationId);
 const conversationFile = (scopeId, conversationId) => path.join(conversationDir(scopeId, conversationId), "conversation.json");
 const activeKey = (scopeId, conversationId) => `${clean(scopeId, 240)}:${conversationId}`;
+
+async function queueIndexUpdate(scopeId, task) {
+  const key = scopeKey(scopeId);
+  const previous = indexWrites.get(key) || Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+  indexWrites.set(key, next);
+  try { return await next; }
+  finally { if (indexWrites.get(key) === next) indexWrites.delete(key); }
+}
 
 function newConversationId() {
   return `chat-${crypto.randomUUID().replaceAll("-", "")}`;
@@ -42,6 +59,7 @@ function summaryOf(item) {
     id: item.id,
     title: item.title || "新对话",
     model: item.model || "",
+    permissionMode: normalizePermissionMode(item.permissionMode),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     messageCount: Array.isArray(item.messages) ? item.messages.length : 0,
@@ -73,7 +91,7 @@ async function writeIndex(scopeId, index) {
   const file = indexFile(scopeId);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const data = { scopeId: clean(scopeId, 240), activeId: index.activeId, items: index.items.slice(0, 100) };
-  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
+  await atomicWrite(file, JSON.stringify(data, null, 2), { verify: (text) => JSON.parse(text) });
   return data;
 }
 
@@ -83,11 +101,14 @@ async function readConversationRecord(scopeId, conversationId) {
   try {
     const data = JSON.parse(await fs.readFile(conversationFile(scopeId, id), "utf8"));
     return {
+      ...data,
       id,
       scopeId: clean(scopeId, 240),
       title: clean(data.title, 120) || "新对话",
       model: clean(data.model, 240),
-      harnessSessionId: clean(data.harnessSessionId, 160) || `assistant-${id}`,
+      piSessionId: clean(data.piSessionId, 160),
+      piSessionFile: clean(data.piSessionFile, 2_000),
+      permissionMode: normalizePermissionMode(data.permissionMode),
       createdAt: data.createdAt || now(),
       updatedAt: data.updatedAt || data.createdAt || now(),
       messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
@@ -106,11 +127,14 @@ async function writeConversationRecord(scopeId, record) {
   const file = conversationFile(scopeId, record.id);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const data = {
+    ...record,
     id: record.id,
     scopeId: clean(scopeId, 240),
     title: clean(record.title, 120) || "新对话",
     model: clean(record.model, 240),
-    harnessSessionId: clean(record.harnessSessionId, 160) || `assistant-${record.id}`,
+    piSessionId: clean(record.piSessionId, 160),
+    piSessionFile: clean(record.piSessionFile, 2_000),
+    permissionMode: normalizePermissionMode(record.permissionMode),
     createdAt: record.createdAt || now(),
     updatedAt: now(),
     messages: (record.messages || []).slice(-120),
@@ -120,11 +144,13 @@ async function writeConversationRecord(scopeId, record) {
     lastTurn: record.lastTurn || null,
     replayHistory: Boolean(record.replayHistory),
   };
-  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
-  const index = await readIndex(scopeId);
-  const summary = summaryOf(data);
-  const items = [summary, ...index.items.filter((item) => item.id !== record.id)].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  await writeIndex(scopeId, { ...index, activeId: record.id, items });
+  await atomicWrite(file, JSON.stringify(data, null, 2), { verify: (text) => JSON.parse(text) });
+  await queueIndexUpdate(scopeId, async () => {
+    const index = await readIndex(scopeId);
+    const summary = summaryOf(data);
+    const items = [summary, ...index.items.filter((item) => item.id !== record.id)].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    await writeIndex(scopeId, { ...index, activeId: record.id, items });
+  });
   return data;
 }
 
@@ -134,7 +160,9 @@ export async function createAssistantConversation(scopeId, options = {}) {
     id,
     title: "新对话",
     model: clean(options.model, 240),
-    harnessSessionId: `assistant-${id}`,
+    piSessionId: crypto.randomUUID(),
+    piSessionFile: "",
+    permissionMode: normalizePermissionMode(options.permissionMode),
     createdAt: now(),
     messages: [],
     attachments: [],
@@ -162,10 +190,14 @@ async function ensureConversation(scopeId, conversationId = "", options = {}) {
       if (Array.isArray(legacy.messages) && legacy.messages.length) {
         const firstUser = legacy.messages.find((message) => message.role === "user")?.text;
         return writeConversationRecord(scopeId, {
+          ...legacy,
           id: newConversationId(),
           title: titleFrom(firstUser || "历史对话"),
           model: clean(options.model, 240),
           createdAt: legacy.messages[0]?.createdAt || now(),
+          piSessionId: crypto.randomUUID(),
+          piSessionFile: "",
+          permissionMode: DEFAULT_PERMISSION_MODE,
           messages: legacy.messages,
           attachments: [],
         });
@@ -195,9 +227,9 @@ export async function assistantConversation(scopeId, conversationId = "") {
 }
 
 export async function assistantModels(env, extraIds = []) {
-  const configured = clean(env.HARNESS_LLM_MODEL, 240);
-  const base = clean(env.HARNESS_LLM_BASE_URL, 1_000).replace(/\/+$/, "");
-  const key = clean(env.HARNESS_LLM_API_KEY, 4_000);
+  const configured = clean(env.AGENT_LLM_MODEL, 240);
+  const base = clean(env.AGENT_LLM_BASE_URL, 1_000).replace(/\/+$/, "");
+  const key = clean(env.AGENT_LLM_API_KEY, 4_000);
   const remembered = [...new Set([configured, ...extraIds].map((item) => clean(item, 240)).filter(Boolean))];
   let cached = [];
   try {
@@ -262,7 +294,7 @@ export async function assistantSkills() {
       projectRoot = parent;
     }
   }
-  const roots = [path.join(projectRoot, ".dsh", "skills"), path.join(projectRoot, ".agents", "skills")];
+  const roots = [path.join(projectRoot, ".agents", "skills")];
   const items = [];
   const seen = new Set();
   for (const root of roots) {
@@ -306,7 +338,6 @@ export async function updateAssistantConversationModel(scopeId, conversationId, 
   const record = await ensureConversation(scopeId, conversationId);
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("当前回复完成后才能切换模型"), { status: 409 });
-  if (record.model && record.model !== next) await closeResidentHarness(`assistant:${key}:${record.model}`).catch(() => {});
   record.model = next;
   return writeConversationRecord(scopeId, record);
 }
@@ -413,51 +444,48 @@ const TOOL_LABELS = {
   attachment_read: "正在读取附件",
   web_search: "正在搜索公开网页",
   web_fetch: "正在阅读网页来源",
-  skill: "正在加载 Harness Skill",
+  skill: "正在加载 Skill",
   submit_expert_report: "正在整理专家结论",
   propose_content_create: "正在准备工作台新建内容候选",
 };
 
-function emitHarnessEvent(notification, emit, tracker = {}) {
-  if (!emit || notification?.method !== "session.event") return;
-  const event = notification.params?.event;
-  const type = event?.type;
-  const data = event?.data || {};
-  if (type === "assistant/chunk") {
-    const chunk = data.chunk || {};
-    if (chunk.type === "text-delta" && chunk.text) emit({ type: "text", text: chunk.text });
-    if (chunk.type === "tool-call-delta" && chunk.name) emit({ type: "status", stage: TOOL_LABELS[chunk.name] || `正在调用 ${chunk.name}`, tool: chunk.name });
-    return;
+function normalizeProposedAction(item, permissionMode) {
+  if (!item || typeof item !== "object") return null;
+  const base = {
+    id: `action-${crypto.randomUUID().replaceAll("-", "")}`,
+    type: clean(item.type, 80),
+    status: "pending",
+    permissionMode: normalizePermissionMode(item.permissionMode || permissionMode),
+    createdAt: now(),
+  };
+  if (item.type === "create_content") return {
+    ...base,
+    title: clean(item.title, 200) || "未命名",
+    platform: ["公众号", "X", "小红书", "视频号", "YouTube"].includes(item.platform) ? item.platform : "公众号",
+    audience: clean(item.audience, 500), viewpoint: clean(item.viewpoint, 2_000), body: clean(item.body, 200_000),
+  };
+  if (["document_create", "document_update", "annotation_append", "reference_insert", "project_write", "project_edit", "powershell"].includes(item.type)) {
+    return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
   }
-  if (type === "tool-call-chunks") {
-    const name = data.name || "";
-    const callId = data.id || `${data.turn || 0}:${data.step || 0}:${data.index || 0}`;
-    const added = (data.args || []).reduce((sum, value) => sum + String(value || "").length, 0);
-    const state = tracker.toolCalls || (tracker.toolCalls = new Map());
-    const current = state.get(callId) || { chars: 0, emittedAt: 0 };
-    current.chars += added;
-    const timestamp = Date.now();
-    if (name && (timestamp - current.emittedAt >= 1_500 || current.chars < 80)) {
-      current.emittedAt = timestamp;
-      const label = TOOL_LABELS[name] || `正在调用 ${name}`;
-      emit({ type: "status", stage: `${label} · 已接收 ${current.chars.toLocaleString("zh-CN")} 字`, tool: name, receivedCharacters: current.chars });
-    }
-    state.set(callId, current);
-    return;
-  }
-  if (type === "text-chunks") {
-    for (const text of data.texts || []) if (text) emit({ type: "text", text });
-    return;
-  }
-  if (type === "tool/call") {
-    emit({ type: "status", stage: TOOL_LABELS[data.name] || `正在调用 ${data.name || "工具"}`, tool: data.name || "" });
-    return;
-  }
-  if (type === "tool/result") {
-    emit({ type: "status", stage: "已取得工具结果，正在继续分析" });
-    return;
-  }
-  if (type === "llm/retry-started" || type === "llm/retry") emit({ type: "status", stage: "模型响应不稳定，正在自动重试" });
+  return null;
+}
+
+export function assistantPermissionModes() {
+  return { items: permissionModeCatalog(), defaultMode: DEFAULT_PERMISSION_MODE };
+}
+
+export async function updateAssistantPermissionMode(scopeId, conversationId, permissionMode) {
+  const record = await ensureConversation(scopeId, conversationId);
+  const key = activeKey(scopeId, record.id);
+  assertConversationIdle(active, key);
+  const requested = String(permissionMode || "").trim();
+  if (!permissionModeCatalog().some((item) => item.id === requested)) throw Object.assign(new Error("未知的权限模式"), { status: 400 });
+  record.permissionMode = requested;
+  record.piSessionId = crypto.randomUUID();
+  record.piSessionFile = "";
+  record.replayHistory = true;
+  record.actions = (record.actions || []).map((item) => item.status === "pending" ? { ...item, status: "superseded" } : item);
+  return writeConversationRecord(scopeId, record);
 }
 
 export async function runAssistantTurn(env, input = {}, options = {}) {
@@ -466,17 +494,18 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   const message = clean(input.message, 8_000);
   if (!scopeId) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
   if (!message) throw Object.assign(new Error("先写下想让 AI 帮你做什么"), { status: 400 });
-  const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.HARNESS_LLM_MODEL, forceNew: Boolean(input.startNew && !input.conversationId) });
+  const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.AGENT_LLM_MODEL, permissionMode: input.permissionMode, forceNew: Boolean(input.startNew && !input.conversationId) });
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("AI 助手还在处理上一条消息"), { status: 409 });
-  active.set(key, null);
+  let stageWrite = Promise.resolve();
+  const runState = { session: null, cancelled: false, drain: () => stageWrite };
+  active.set(key, runState);
   options.onEvent?.({ type: "conversation", conversationId: record.id });
 
   const dir = conversationDir(scopeId, record.id);
   await fs.mkdir(dir, { recursive: true });
   const turnId = `turn-${crypto.randomUUID().replaceAll("-", "")}`;
   const actionsFile = path.join(dir, "actions.jsonl");
-  let stageWrite = Promise.resolve();
   let lastStageWriteAt = 0;
   const emit = (event) => {
     options.onEvent?.(event);
@@ -494,7 +523,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   let context;
   try {
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
-    record.model = clean(input.model, 240) || record.model || clean(env.HARNESS_LLM_MODEL, 240);
+    record.model = clean(input.model, 240) || record.model || clean(env.AGENT_LLM_MODEL, 240);
     record.title = record.messages.length ? record.title : titleFrom(message);
     record.messages = [...record.messages, userMessage];
     record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文", stageUpdatedAt: now() };
@@ -502,14 +531,13 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(env, input, record);
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
-    emit({ type: "status", stage: "上下文已就绪，正在启动 Harness" });
+    emit({ type: "status", stage: "上下文已就绪，正在启动 Pi" });
   } catch (error) {
     active.delete(key);
     throw error;
   }
 
-  let harness;
-  let resident = false;
+  let piSession;
   try {
     const standalone = input.mode === "general";
     await fs.rm(actionsFile, { force: true }).catch(() => {});
@@ -517,36 +545,40 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const turnInput = replayHistory ? { ...input, replayHistory } : input;
     const prompt = standalone ? generalPrompt(turnInput, context, record.model) : contentPrompt(turnInput, context, record.model);
     const pendingImages = (record.attachments || []).filter((item) => item.kind === "image" && !item.usedAt);
-    const runInput = pendingImages.length
-      ? [{ type: "text", text: prompt }, ...pendingImages.map((item) => ({ type: "image", attachment: item.imageRef }))]
-      : prompt;
-    emit({ type: "status", stage: "已交给模型，正在等待首个响应" });
-    const eventTracker = {};
-    const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.HARNESS_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
+    emit({ type: "status", stage: "已交给 Pi 模型，正在等待首个响应" });
+    const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.AGENT_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
     let timeout;
-    const harnessRun = createHarnessRun({
+    if (runState.cancelled) throw Object.assign(new Error("本轮已停止"), { code: "ASSISTANT_CANCELLED" });
+    const runPromise = createPiRun({
       env,
       runDir: dir,
       kind: "assistant-chat",
-      prompt: runInput,
+      prompt,
       persona: standalone
-        ? `你是 Xenho OS 的通用 AI 助手。当前实际调用模型 ID 是 ${record.model}。直接回应用户真实意图，可调用知识库、公开网页、附件和 Harness Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。`
+        ? `你是 Xenho OS 的通用 AI 助手。当前实际调用模型 ID 是 ${record.model}。直接回应用户真实意图，可调用知识库、公开网页、附件和 Skill；不预设用户正在写文章，不伪造事实、来源、文件内容或已执行动作。`
         : `你是 Xenho OS 的内容项目助手。当前实际调用模型 ID 是 ${record.model}。协助主创分析、检索和生成候选；不得静默改正文，不得伪造事实、来源或用户经历。`,
-      sessionRoot: path.join(dir, "sessions"),
-      sessionId: record.harnessSessionId || `assistant-${record.id}`,
-      maxTokens: 4096,
+      sessionRoot: path.join(dir, "pi-sessions"),
+      sessionId: record.piSessionId,
+      sessionFile: record.piSessionFile,
       model: record.model,
+      mode: record.permissionMode,
+      context,
       actionsFile,
-      imageIndexFile: path.join(dir, "images.json"),
-      residentKey: `assistant:${key}:${record.model}`,
-      onNotification(notification) { emitHarnessEvent(notification, emit, eventTracker); },
-      onHarness(instance, meta) { harness = instance; resident = !!meta?.resident; active.set(key, { harness: instance, residentKey: meta?.residentKey || "" }); },
+      images: pendingImages.map((item) => ({ path: item.originalPath, mediaType: item.imageRef?.mediaType || item.type })),
+      onEvent: emit,
+      onSession(instance, meta) {
+        piSession = instance;
+        record.piSessionId = meta.sessionId;
+        record.piSessionFile = meta.sessionFile;
+        runState.session = instance;
+        active.set(key, runState);
+      },
     });
     const result = await Promise.race([
-      harnessRun,
+      runPromise,
       new Promise((_, reject) => {
         timeout = setTimeout(() => {
-          harness?.close().catch(() => {});
+          piSession?.abort().catch(() => {});
           reject(Object.assign(new Error(`模型在 ${Math.round(timeoutMs / 60_000)} 分钟内没有完成这轮任务`), {
             hint: "已自动停止本轮，可换用更快的模型，或将长任务拆成几步。",
           }));
@@ -555,28 +587,21 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
       }),
     ]).finally(() => clearTimeout(timeout));
     const text = clean(result.result.finalResponse, 40_000);
-    if (!text) throw new Error("Harness 已结束，但没有返回可显示的内容");
+    if (!text) throw new Error("Pi 已结束，但没有返回可显示的内容");
     const latest = await readConversationRecord(scopeId, record.id) || record;
     let proposed = [];
     try {
       const lines = (await fs.readFile(actionsFile, "utf8")).split(/\r?\n/).filter(Boolean);
-      proposed = lines.map((line) => JSON.parse(line)).filter((item) => item?.type === "create_content").map((item) => ({
-        id: `action-${crypto.randomUUID().replaceAll("-", "")}`,
-        type: "create_content",
-        status: "pending",
-        title: clean(item.title, 200) || "未命名",
-        platform: ["公众号", "X", "小红书", "视频号", "YouTube"].includes(item.platform) ? item.platform : "公众号",
-        audience: clean(item.audience, 500),
-        viewpoint: clean(item.viewpoint, 2_000),
-        body: clean(item.body, 200_000),
-        createdAt: now(),
-      })).slice(0, 3);
+      proposed = lines.map((line) => normalizeProposedAction(JSON.parse(line), record.permissionMode)).filter(Boolean).slice(0, 8);
     } catch {}
-    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "DeepSeek Harness", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id) };
+    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "Pi Agent SDK", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id) };
     latest.messages = [...latest.messages, assistantMessage];
     latest.actions = [...(latest.actions || []), ...proposed];
     latest.attachments = (latest.attachments || []).map((item) => pendingImages.some((image) => image.id === item.id) ? { ...item, usedAt: now() } : item);
     latest.model = record.model;
+    latest.piSessionId = result.piSessionId;
+    latest.piSessionFile = result.piSessionFile;
+    latest.permissionMode = result.permissionMode;
     latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs };
     latest.activeTurn = null;
     latest.replayHistory = false;
@@ -596,7 +621,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     throw error;
   } finally {
     active.delete(key);
-    if (!resident) await harness?.close().catch(() => {});
+    piSession?.dispose();
   }
 }
 
@@ -680,8 +705,8 @@ export async function rewindAssistantConversation(scopeId, conversationId) {
   const message = record.messages[userIndex].text;
   record.messages = record.messages.slice(0, userIndex);
   record.actions = (record.actions || []).map((item) => item.status === "pending" ? { ...item, status: "superseded" } : item);
-  if (record.model) await closeResidentHarness(`assistant:${key}:${record.model}`).catch(() => {});
-  record.harnessSessionId = `assistant-${record.id}-${Date.now().toString(36)}`;
+  record.piSessionId = crypto.randomUUID();
+  record.piSessionFile = "";
   record.replayHistory = true;
   record.activeTurn = null;
   const saved = await writeConversationRecord(scopeId, record);
@@ -693,24 +718,68 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
   const action = (record.actions || []).find((item) => item.id === clean(actionId, 100));
   if (!action) throw Object.assign(new Error("没有找到这项待执行操作"), { status: 404 });
   if (action.status === "applied") return { conversation: record, action, result: action.result };
-  if (action.status !== "pending" || action.type !== "create_content") throw Object.assign(new Error("这项操作已经失效"), { status: 409 });
-  const response = await callWorker(env, "create", { method: "POST", body: { kind: "draft", mode: "blank", title: action.title, platform: action.platform, audience: action.audience, viewpoint: action.viewpoint, body: action.body, materialIds: [] } });
-  if (response.status >= 400 || response.data?.ok === false) throw Object.assign(new Error(response.data?.error || "工作台没有完成新建内容"), { status: response.status || 500, hint: response.data?.hint });
+  if (action.status !== "pending") throw Object.assign(new Error("这项操作已经失效"), { status: 409 });
+  let result;
+  if (action.type === "create_content") {
+    const response = await callWorker(env, "create", { method: "POST", body: { kind: "draft", mode: "blank", title: action.title, platform: action.platform, audience: action.audience, viewpoint: action.viewpoint, body: action.body, materialIds: [] } });
+    if (response.status >= 400 || response.data?.ok === false) throw Object.assign(new Error(response.data?.error || "工作台没有完成新建内容"), { status: response.status || 500, hint: response.data?.hint });
+    result = { projectId: response.data?.project?.id || response.data?.topic?.id || "", title: response.data?.topic?.title || action.title };
+  } else if (["document_create", "document_update", "annotation_append", "reference_insert"].includes(action.type)) {
+    if (!['creative', 'developer'].includes(action.permissionMode) || !['creative', 'developer'].includes(record.permissionMode)) throw Object.assign(new Error("这项写入没有创作权限"), { status: 403 });
+    const resolved = await resolveVaultPath(env, action.path, { write: true, markdownOnly: true });
+    if (action.type === "document_create") {
+      try { await fs.access(resolved.absolute); throw Object.assign(new Error("目标文档已经存在"), { status: 409 }); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+      await writeVaultFile(resolved.root, resolved.relative, boundedText(action.content, 200_000));
+    } else if (action.type === "annotation_append") {
+      await appendNote(resolved.root, resolved.relative, { body: clean(action.body, 8_000), quote: clean(action.quote, 4_000), source: clean(action.source, 2_000), quoteLimit: 4_000 });
+    } else {
+      const currentStamp = await fileStamp(resolved.root, resolved.relative);
+      if (!action.stamp || action.stamp !== currentStamp) throw Object.assign(new Error("文档已在别处变化，拒绝覆盖"), { status: 409, hint: "重新读取文档后再准备这项修改。" });
+      if (action.type === "document_update") await writeVaultFile(resolved.root, resolved.relative, boundedText(action.content, 200_000));
+      else {
+        const before = await readVaultFile(resolved.root, resolved.relative);
+        const addition = `\n\n> ${clean(action.text, 20_000).replace(/\s*\n+\s*/g, "\n> ")}\n\n来源: ${clean(action.source, 2_000)}\n`;
+        await writeVaultFile(resolved.root, resolved.relative, `${before.replace(/\s*$/, "")}${addition}`);
+      }
+    }
+    result = { path: resolved.relative, stamp: await fileStamp(resolved.root, resolved.relative) };
+  } else if (["project_write", "project_edit", "powershell"].includes(action.type)) {
+    if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
+    if (action.type === "powershell") {
+      const output = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", clean(action.command, 8_000)], { cwd: (await resolveProjectPath(".")).absolute, timeout: 60_000, windowsHide: true, maxBuffer: 2_000_000 });
+      result = { stdout: clean(output.stdout, 20_000), stderr: clean(output.stderr, 20_000) };
+    } else {
+      const resolved = await resolveProjectPath(action.path, { write: true });
+      let next = boundedText(action.content, 200_000);
+      if (action.type === "project_edit") {
+        const before = await fs.readFile(resolved.absolute, "utf8");
+        const oldText = String(action.oldText || "");
+        const first = before.indexOf(oldText);
+        if (first < 0 || before.indexOf(oldText, first + oldText.length) >= 0) throw Object.assign(new Error("原片段不存在或不唯一，拒绝编辑"), { status: 409 });
+        next = before.slice(0, first) + String(action.newText || "") + before.slice(first + oldText.length);
+      }
+      await atomicWrite(resolved.absolute, next);
+      result = { path: resolved.relative };
+    }
+  } else {
+    throw Object.assign(new Error("这项操作类型不能执行"), { status: 409 });
+  }
   action.status = "applied";
   action.appliedAt = now();
-  action.result = { projectId: response.data?.project?.id || response.data?.topic?.id || "", title: response.data?.topic?.title || action.title };
+  action.result = result;
   const saved = await writeConversationRecord(scopeId, record);
-  return { conversation: saved, action, result: action.result };
+  return { conversation: saved, action, result };
 }
 
 export async function cancelAssistantTurn(scopeId, conversationId = "") {
   const record = await ensureConversation(scopeId, conversationId);
   const key = activeKey(scopeId, record.id);
   const running = active.get(key);
-  if (!running?.harness) return false;
-  if (running.residentKey) await closeResidentHarness(running.residentKey);
-  else await running.harness.close().catch(() => {});
+  if (!running) return false;
+  running.cancelled = true;
+  await running.session?.abort().catch(() => {});
   active.delete(key);
+  await running.drain?.().catch(() => {});
   const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
   if (latest?.activeTurn) {
     latest.lastTurn = { ...latest.activeTurn, status: "cancelled", finishedAt: now() };

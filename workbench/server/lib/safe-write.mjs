@@ -5,6 +5,7 @@
 // `fs.writeFile` 会先把文件截成 0 字节再往里写，中断的那一刻磁盘上留下的是**半份文件**，
 // 而原来那份已经没了。现象不是报错，是下次打开发现内容少了一截——而且没人说得清是什么时候没的。
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -21,10 +22,11 @@ import path from "node:path";
  * `verify` 是可选的一道自检：拿到即将写下去的字符串，觉得不对就抛。
  * 校验放在替换**之前**，所以校验不过时原文件一个字节都没动过。
  */
-export async function atomicWrite(abs, content, { verify } = {}) {
-  if (verify) verify(content);
+const writeQueues = new Map();
+
+async function atomicWriteNow(abs, content) {
   await fs.mkdir(path.dirname(abs), { recursive: true });
-  const tmp = `${abs}.tmp-${process.pid}-${Date.now().toString(36)}`;
+  const tmp = `${abs}.tmp-${process.pid}-${Date.now().toString(36)}-${crypto.randomUUID()}`;
   let fh;
   try {
     fh = await fs.open(tmp, "w");
@@ -39,6 +41,16 @@ export async function atomicWrite(abs, content, { verify } = {}) {
     throw e;
   }
   return abs;
+}
+
+export async function atomicWrite(abs, content, { verify } = {}) {
+  if (verify) verify(content);
+  const key = path.resolve(abs);
+  const previous = writeQueues.get(key) || Promise.resolve();
+  const next = previous.catch(() => {}).then(() => atomicWriteNow(key, content));
+  writeQueues.set(key, next);
+  try { return await next; }
+  finally { if (writeQueues.get(key) === next) writeQueues.delete(key); }
 }
 
 /**

@@ -392,7 +392,7 @@ export async function handleWorkbench(request, env, ctx, url) {
       return json({ ok: true, values: await writeModelMap(env, body?.values || {}) });
     }
 
-    // Harness 长任务只在这里保存执行状态。任务正文仍由工作台按需提供，任何正文写入仍需用户确认。
+    // Agent 长任务只在这里保存执行状态。任务正文仍由工作台按需提供，任何正文写入仍需用户确认。
     if (path === "agent-tasks/claim" && request.method === "POST") {
       return json({ ok: true, ...(await claimAgentTask(env, await request.json())) });
     }

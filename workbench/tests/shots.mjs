@@ -439,7 +439,7 @@ const shots = [
     await page.click(".reader-overlay__bar .prefs button[aria-expanded]").catch(() => {});
     await page.waitForSelector(".prefs__pop", { timeout: 6000 }).catch(() => {});
   }],
-  // 对话区：引擎开关在输入框旁边，空态要说清现在发给谁
+  // 对话区：权限模式在输入框旁边，空态要说清当前能做什么
   ["rail-chat", "/#/shelf", ".book-card, .empty", async () => {
     await page.click('.book-card:has-text("章")').catch(() => {});
     await page.waitForSelector(".book-hero", { timeout: 15000 }).catch(() => {});

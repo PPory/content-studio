@@ -17,7 +17,7 @@ import { api } from "../lib/api.js";
 import { noteOpened } from "../lib/recent.js";
 import { takeOpenTarget } from "../lib/open-target.js";
 import { useAiRuns } from "../lib/use-ai-runs.js";
-import { agentName } from "../lib/chat-agent.js";
+import { piAgentName } from "../lib/chat-agent.js";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { ReaderOverlay } from "../components/ReaderOverlay.jsx";
 // 展示件搬进 pages/shelf/。**页面只留组合和状态边界**——
@@ -66,7 +66,7 @@ export function Shelf({ onIntake, state = "" }) {
    * 和 agent 聊这一篇。**和内容工作台共用 `useDocChat`**——合并之前两边各一份
    * 66 行、逐行只差两行（标题和路径从哪儿取），而书架这一份从来没被测过。
    */
-  const { chat, chatAgent, sendChat, switchAgent, newChat, stopChat } = useDocChat({
+  const { chat, chatMode, sendChat, switchMode, newChat, stopChat } = useDocChat({
     docTitle: reading?.item.title || "",
     docPath: reading?.entry.path || "",
   });
@@ -608,12 +608,12 @@ export function Shelf({ onIntake, state = "" }) {
             onSaveAiAsNote: async (r) => r?.text && saveNote({ quote: ai?.quote, body: `**AI ${r.mode}**\n\n${r.text}` }),
             onStopAi: stopAi,
             onRunAi: (mode, text) => runAi(mode, text, contextOf(doc?.content, text)),
-            chat: { ...chat, agent: chatAgent },
+            chat: { ...chat, permissionMode: chatMode },
             onSend: sendChat,
             onStopChat: stopChat,
-            onChatAgent: switchAgent,
+            onChatMode: switchMode,
             onNewChat: newChat,
-            onSaveChatAsNote: (text) => saveNote({ quote: "", body: `**与 ${agentName(chatAgent)} 的讨论**\n\n${text}` }),
+            onSaveChatAsNote: (text) => saveNote({ quote: "", body: `**与 ${piAgentName()} 的讨论**\n\n${text}` }),
             knowledgeSource: {
               kind: "document",
               ref: reading?.entry?.path || "",
@@ -653,6 +653,3 @@ export function Shelf({ onIntake, state = "" }) {
     </>
   );
 }
-
-
-

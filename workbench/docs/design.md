@@ -40,11 +40,11 @@
 │  /api/vault/*   读写 vault 文件（书架、热点、洞察、伴生笔记、归档）        │
 │  /api/pipe/*    转发同仓 worker/ 的 /wb/*（列表、状态、intake、批注）    │
 │  /api/ai/*      划词即时 AI（转发 LLM 代理，流式）                       │
-│  /api/agent/*   headless CLI 对话（spawn claude -p / codex exec）      │
+│  /api/agent/*   Pi Agent SDK 对话（服务端权限模式 + NDJSON）      │
 │  /api/data/*    平台数据（抖音 Excel 解析、手动 metrics）                │
 └──────┬──────────────┬──────────────┬──────────────┬─────────────────┘
        │              │              │              │
-   VAULT_ROOT     CF Worker      LLM 代理      claude / codex CLI
+   VAULT_ROOT     CF Worker      LLM 代理      Pi Agent SDK
   （Obsidian）    （D1 四库）
 ```
 
@@ -166,11 +166,10 @@ content-pipeline 的 Telegram 命令（/金句 /概念 /案例 /数据 /框架 /
 
 ### 7.3 agent 深度对话
 
-不自研 chat 壳。本地服务 spawn headless CLI（`claude -p` 或 `codex exec`），把当前文件路径 + 用户问题传入，SSE 流式回传。质变在于对话对象是**能操作整个系统的 agent**：能读 vault 关联笔记、能调已有 skills、能把结论写进 notes.md、能调 intake 存素材卡——**对话本身是流水线入口**。对话记录点「存档」才落 `对话/<日期>.md`。
-
+保留现有 React chat 壳和 /api/assistant/* NDJSON 契约，本地服务直接运行 Pi Agent SDK。Pi 可读取 vault、批注、附件、Skills 和 Worker/D1 业务上下文，但能力由 daily / creative / developer 三种服务端模式裁剪。所有写入、命令和业务动作先生成候选卡，只有用户明确确认后才由应用层执行；Worker/D1 始终是业务状态、关系、幂等和长任务的唯一真源。对话历史继续落本地 conversation.json，并额外保存 Pi session 标识。
 ### 7.4 每日热点
 
-定时任务（Claude Code schedule 或本地 cron）拉公开聚合 API → 按日存 JSON。**定性为 best-effort**：API 挂了显示「今日无数据」，不修不救；30 天自动清理；看中的条目一键入灵感库。
+定时任务（本地调度器或 cron）拉公开聚合 API → 按日存 JSON。**定性为 best-effort**：API 挂了显示「今日无数据」，不修不救；30 天自动清理；看中的条目一键入灵感库。
 
 ### 7.5 社媒洞察
 
@@ -351,7 +350,7 @@ content-pipeline 的 Telegram 命令（/金句 /概念 /案例 /数据 /框架 /
 2. **排版页的「重置」真的会清空了**。原来只重挂 iframe，而工具把草稿存在同源 localStorage 的 `wechat-typeset` 键里，重挂之后照样读回来。现在先删那个键再重挂，**只删它那一个**（同源共用 localStorage，clear() 会连阅读进度和设置一起抹掉），并且要点两下。
 3. **划词工具条换了图标 + 自绘 tooltip**（标题 + 一句人话）。八个图标 = 八个谜语，除非每个都带说明；原生 `title` 要等一秒才出，等于每次都要等。
 4. **阅读设置改成数值步进**，加了字重；字体换成 Lexend / Inter / Source Sans / Literata / Georgia（拉丁字形自带，中文落系统字体；Bookerly 是亚马逊专有字体，拿不到）。
-5. **等待文案讲清楚是哪条链路**：「对话」走本机 Claude Code（那才能读整个 vault），不是 API——所以第一次要拉起它；「理解」走 API，不该说这句话。
+5. **等待文案讲清楚是哪条链路**：「对话」走本机 Pi Agent SDK，并按服务端权限读取 vault；「理解」走 Worker API，两条链路的等待文案不能混用。
 6. **封面入口挪到书卡上**：单篇书根本不经过书详情，只把入口放在那儿等于大半的书没有入口。
 7. **建空书能取消了**（点外面 / Esc / 取消按钮）。
 8. 修了一个自己引入的 bug：`.highlights.md` 被当成了章节。
@@ -361,7 +360,7 @@ content-pipeline 的 Telegram 命令（/金句 /概念 /案例 /数据 /框架 /
 1. **封面点击回归主动作**。上一版整块封面都是「换封面」的按钮，贴完封面之后再点它弹出来的还是选图片——而那时候人想做的显然是读书。现在点封面 = 打开这本书，换封面缩成压在角上的小按钮（有封面时 hover 才出，没封面时常驻）。
 2. **《明智创富指南》的正文回来了**。真 bug，而且是上一批自己埋的：判「哪些 `.md` 算章节」时只排掉了 `.notes.md`（带点前缀的那种），漏了目录里正牌的 `notes.md`。于是单篇书写下第一条批注之后，`notes.md` 变成「唯一的一章」，点开书看到的是自己的批注。判据收进 `isChapterFile` 一处，`readBookDir` 和 `searchBook` 共用；顺带让卡片上的进度只在「它指的那份文件还在」时才显示。
 3. **字体分中文 / 拉丁两组，默认改回黑体**。中文那组新增苹方 / 思源黑体 / 微软雅黑 / 宋体；拉丁那几个包只有拉丁字形，选它们只改数字英文标点。系统字体先量一下本机有没有（canvas 测宽），没装的禁用并说明原因——摆一个点了没反应的按钮比不摆更糟。
-4. **对话能选引擎（Claude Code / Codex）**，开关就在输入框旁边。Codex 那条已实测跑通（含续聊）。**它不吐增量**，所以等待提示要早点出并讲清「先想完再一次性给」。换引擎会清掉 session id（那是上一家的会话文件），并在对话里留一行说明上下文不带过去。
+4. **对话统一迁到 Pi Agent SDK**，保留续聊与流式界面；引擎开关改为日常 / 创作 / 开发权限模式，模式随对话持久化并由服务端强制执行。
 5. **「理解」里的追问改成叠着看**。解释 → 展开 → 反驳本来就该对着看，后一次把前一次冲掉等于逼人重跑、再花一次 token。「存为笔记」也随之挪进每一条自己的头上。
 
 **第十七批：回访修正之五** — ✅ 已完成 2026-08-11（`npm test` 128/128、`node tests/unit.mjs` 68/68）

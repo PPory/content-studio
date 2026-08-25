@@ -7,11 +7,11 @@ import { claimDurableTask, finishDurableTask, heartbeatDurableTask } from "../li
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { qualityNinePrompt, XENHO_QUALITY_NINE } from "../lib/quality-nine.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
-import { createHarnessRun, harnessRuntimeInfo } from "./harness-adapter.mjs";
+import { createPiRun, piRuntimeInfo } from "./pi-runtime.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "expert-runs");
 const live = new Map();
-const activeHarness = new Map();
+const activeSessions = new Map();
 const KINDS = new Set(["material-research", "quality-review", "fact-check", "style-calibration"]);
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
 const now = () => new Date().toISOString();
@@ -91,8 +91,7 @@ function validateReport(kind, report) {
 
 async function execute(env, run, document) {
   const dir = path.dirname(runFile(run.id));
-  let harness;
-  let terminalFailure;
+  let piSession;
   const heartbeat = setInterval(() => {
     if (!run.durable || run.status !== "running") return;
     void heartbeatDurableTask(env, run.id, { leaseOwner: run.leaseOwner, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent }).catch(() => {});
@@ -107,35 +106,32 @@ async function execute(env, run, document) {
     Object.assign(run, { localSourceCount: evidence.sources.length, stage: "expert-run", stageLabel: run.kind === "quality-review" ? "逐项回答品控九问" : "专家正在研究并交叉核对", percent: 34 });
     await persist(run);
     const trace = [];
-    const started = await createHarnessRun({ env, runDir: dir, kind: run.kind, sessionId: run.harnessSessionId, prompt: promptFor(run.kind, document, context), onHarness(instance) {
-      harness = instance;
-      activeHarness.set(run.id, instance);
-    }, onNotification(notification) {
-      trace.push(notification);
-      if (trace.length > 240) trace.shift();
-      if (notification.method === "session.event") {
-        const event = notification.params?.event;
-        const type = event?.type || "";
-        if (type === "tool/call") Object.assign(run, { stage: "tool-use", stageLabel: "查找并核对来源", percent: Math.max(run.percent, 56) });
-        if (type === "tool/result") run.percent = Math.min(86, run.percent + 8);
-        if (type === "llm/retry") {
-          const retry = Number(event.data?.retry) || 1;
-          const maxRetries = Number(event.data?.maxRetries) || 5;
-          Object.assign(run, { stage: "model-retry", stageLabel: `模型连接中断，正在重试 ${retry}/${maxRetries}`, percent: Math.max(run.percent, 38) });
-        }
-        if (type === "turn/end" && event.data?.reason?.kind === "error") terminalFailure = event.data.reason.error;
-      }
-    } });
-    harness = started.harness;
-    if (terminalFailure) {
-      const code = clean(terminalFailure.code, 80);
-      const transport = code === "TRANSPORT" || /connection|network|fetch/i.test(terminalFailure.message || "");
-      throw Object.assign(new Error(transport ? "专家模型连接失败" : `专家执行失败${code ? `（${code}）` : ""}`), {
-        hint: transport
-          ? "已读取你配置的 URL、模型和密钥，但请求未能连通模型服务。请确认模型地址可访问、本机网络或代理正在运行，然后重试。"
-          : clean(terminalFailure.message, 500) || "可以重试；普通写作和正文保存不受影响。",
-      });
-    }
+    const started = await createPiRun({
+      env,
+      runDir: dir,
+      kind: run.kind,
+      sessionId: run.piSessionId,
+      sessionFile: run.piSessionFile,
+      prompt: promptFor(run.kind, document, context),
+      persona: "你是 Xenho OS 的专业内容顾问。用户是主创。只读研究、保留来源、提交结构化报告；不得修改正文、不得编造经历或证据。",
+      mode: "daily",
+      context,
+      reportFile: path.join(dir, "report.json"),
+      onSession(instance, meta) {
+        piSession = instance;
+        activeSessions.set(run.id, instance);
+        run.piSessionId = meta.sessionId;
+        run.piSessionFile = meta.sessionFile;
+      },
+      onEvent(event) {
+        trace.push(event);
+        if (trace.length > 240) trace.shift();
+        if (event.type === "status" && event.tool) Object.assign(run, { stage: "tool-use", stageLabel: event.stage || "查找并核对来源", percent: Math.min(86, Math.max(run.percent, 56) + 4) });
+      },
+    });
+    piSession = started.session;
+    run.piSessionId = started.piSessionId;
+    run.piSessionFile = started.piSessionFile;
     Object.assign(run, { rawTrace: trace, stage: "validate", stageLabel: "整理结构化报告", percent: 92 });
     await persist(run);
     let reportJson;
@@ -157,8 +153,8 @@ async function execute(env, run, document) {
     }
   } finally {
     clearInterval(heartbeat);
-    activeHarness.delete(run.id);
-    await harness?.close().catch(() => {});
+    activeSessions.delete(run.id);
+    piSession?.dispose();
   }
 }
 
@@ -176,10 +172,10 @@ export async function startExpertRun(env, input = {}) {
   const baseKey = crypto.createHash("sha256").update(`${kind}\n${scopeId}\n${version}\n${target}`).digest("hex");
   const idempotencyKey = input.force ? `${baseKey}:${Date.now().toString(36)}` : baseKey;
   const proposedId = `expert-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
-  const proposedSession = `expert-session-${proposedId}`;
+  const proposedPiSession = crypto.randomUUID();
   const claimed = await claimDurableTask(env, {
     id: proposedId, idempotencyKey, kind, scopeId, documentId: document.id, documentVersion: version,
-    leaseOwner: INSTANCE_ID, harnessSessionId: proposedSession, payload: { selection: document.selection ? { from: document.selection.from, to: document.selection.to } : null },
+    leaseOwner: INSTANCE_ID, piSessionId: proposedPiSession, payload: { selection: document.selection ? { from: document.selection.from, to: document.selection.to } : null },
   });
   if (claimed.available && !claimed.claimed) {
     const task = claimed.task;
@@ -189,7 +185,7 @@ export async function startExpertRun(env, input = {}) {
       id: task.id, kind: task.kind, scopeId: task.scopeId, status: task.status, stage: task.stage,
       stageLabel: task.stageLabel || (task.status === "done" ? "检查完成" : "同一任务已在执行"), percent: task.percent,
       report: task.result || undefined, error: task.error || undefined, documentVersion: task.documentVersion,
-      harnessSessionId: task.harnessSessionId, durable: true,
+      piSessionId: task.piSessionId || crypto.randomUUID(), durable: true,
       createdAt: task.createdAt ? new Date(task.createdAt * 1000).toISOString() : now(),
       finishedAt: task.finishedAt ? new Date(task.finishedAt * 1000).toISOString() : undefined,
     });
@@ -198,7 +194,7 @@ export async function startExpertRun(env, input = {}) {
   const id = task?.id || proposedId;
   const run = await persist({
     id, kind, scopeId, documentVersion: version, idempotencyKey,
-    harnessSessionId: task?.harnessSessionId || proposedSession, leaseOwner: INSTANCE_ID,
+    piSessionId: task?.piSessionId || proposedPiSession, piSessionFile: "", leaseOwner: INSTANCE_ID,
     durable: !!claimed.available, attempt: task?.attempt || 1,
     status: "queued", stage: "queued", stageLabel: "准备专家任务", percent: 2, createdAt: now(),
   });
@@ -239,8 +235,8 @@ export async function cancelExpertRun(id, env) {
   Object.assign(run, { status: "cancelled", stage: "cancelled", stageLabel: "已中止", finishedAt: now() });
   await persist(run);
   if (run.durable) await finishDurableTask(env, run.id, { leaseOwner: run.leaseOwner, status: "cancelled", stageLabel: run.stageLabel, percent: run.percent }).catch(() => {});
-  await activeHarness.get(id)?.close().catch(() => {});
+  await activeSessions.get(id)?.abort().catch(() => {});
   return publicRun(run);
 }
 
-export { harnessRuntimeInfo };
+export { piRuntimeInfo };

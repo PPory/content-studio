@@ -4,11 +4,14 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { claimAgentTask, finishAgentTask, heartbeatAgentTask } from "../src/lib/agent-tasks.js";
 
-const migration = readFileSync(new URL("../migrations/0006_agent_tasks_v1.sql", import.meta.url), "utf8");
+const migrations = [
+  readFileSync(new URL("../migrations/0006_agent_tasks_v1.sql", import.meta.url), "utf8"),
+  readFileSync(new URL("../migrations/0007_agent_tasks_pi_session.sql", import.meta.url), "utf8"),
+].join("\n");
 
 function envWithDb() {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(migration);
+  sqlite.exec(migrations);
   const wrap = (prepared) => ({
     bind(...params) {
       const bound = prepared;
@@ -23,7 +26,7 @@ function envWithDb() {
 
 const claim = (overrides = {}) => ({
   id: "expert-task-000000000001", idempotencyKey: "quality:scope:v1", kind: "quality-review",
-  scopeId: "scope-1", documentVersion: "v1-10-abcd", leaseOwner: "worker-a", harnessSessionId: "expert-session-1",
+  scopeId: "scope-1", documentVersion: "v1-10-abcd", leaseOwner: "worker-a", piSessionId: "pi-session-1",
   ...overrides,
 });
 
@@ -32,6 +35,9 @@ test("同一幂等键只有一个持有者能领取任务", async () => {
   const first = await claimAgentTask(env, claim());
   assert.equal(first.claimed, true);
   assert.equal(first.task.attempt, 1);
+  assert.equal(first.task.piSessionId, "pi-session-1");
+
+
   const duplicate = await claimAgentTask(env, claim({ id: "expert-task-000000000002", leaseOwner: "worker-b" }));
   assert.equal(duplicate.claimed, false);
   assert.equal(duplicate.task.id, first.task.id);

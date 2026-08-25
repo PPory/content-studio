@@ -236,6 +236,8 @@ export const api = {
   assistantModels: () => req("/api/assistant/models"),
   assistantSkills: () => req("/api/assistant/skills"),
   assistantExperts: () => req("/api/assistant/experts"),
+  assistantModes: () => req("/api/assistant/modes"),
+  setAssistantMode: (body) => postJson("/api/assistant/mode", body),
   setAssistantModel: (body) => postJson("/api/assistant/model", body),
   assistantChat: (body) => postJson("/api/assistant/chat", body),
   async assistantChatStream(body, onEvent) {
@@ -277,7 +279,7 @@ export const api = {
   cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
   rewindAssistant: (scopeId, conversationId) => postJson("/api/assistant/rewind", { scopeId, conversationId }),
   applyAssistantAction: (scopeId, conversationId, actionId) => postJson("/api/assistant/action", { scopeId, conversationId, actionId }),
-  newAssistantConversation: (scopeId, model = "") => postJson("/api/assistant/new", { scopeId, model }),
+  newAssistantConversation: (scopeId, model = "", permissionMode = "daily") => postJson("/api/assistant/new", { scopeId, model, permissionMode }),
   uploadAssistantAttachment: (scope, conversationId, file) => req(`/api/assistant/attachment?scope=${encodeURIComponent(scope)}&conversationId=${encodeURIComponent(conversationId)}&filename=${encodeURIComponent(file.name)}`, {
     method: "POST",
     headers: { "content-type": "application/octet-stream" },
@@ -375,7 +377,7 @@ export async function downloadBackup() {
 
 /**
  * 和本机 agent 深聊：流式读取，和 explainStream 同一套路。
- * `agent` 选引擎（claude / codex），服务端按白名单取，认不出就退回 claude。
+ * 通用对话统一走 Pi Agent SDK，服务端固定权限工具；x-session-id 用于续聊。
  * 额外把 x-session-id 回调出去——续聊要靠它，不然每轮都是新会话、没有上下文。
  */
 export function agentStream({ signal, onChunk, onSession, ...body }) {

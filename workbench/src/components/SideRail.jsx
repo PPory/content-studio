@@ -1,4 +1,4 @@
-// 阅读区右栏 = 批注台：我留下的东西（高亮/批注）· 让 AI 看这段 · 和 Claude 深聊。
+// 阅读区右栏 = 批注台：我留下的东西（高亮/批注）· 让 AI 看这段 · 和 Pi 深聊。
 //
 // **每个页签都是同一套三段结构：固定的上下文 → 滚动的内容 → 固定的动作条。**
 // 这不是排版洁癖。上一版是「所有东西排成一列一起滚」，三个具体后果：
@@ -13,7 +13,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ErrorNote } from "./ui.jsx";
-import { CHAT_AGENTS, agentName } from "../lib/chat-agent.js";
+import { CHAT_PERMISSION_MODES, chatModeInfo, piAgentName } from "../lib/chat-agent.js";
 import { KnowledgeCardDialog } from "./KnowledgeCardDialog.jsx";
 import {
   IconArchive,
@@ -110,7 +110,7 @@ export function SideRail({
   onSend,
   onStopChat,
   onSaveChatAsNote,
-  onChatAgent,
+  onChatMode,
   onNewChat,
   noteItems,
   onEditNote,
@@ -161,7 +161,7 @@ export function SideRail({
           onSend={onSend}
           onStop={onStopChat}
           onSave={onSaveChatAsNote}
-          onAgent={onChatAgent}
+          onMode={onChatMode}
           onNewChat={onNewChat}
           knowledgeSource={knowledgeSource}
         />
@@ -677,20 +677,19 @@ function AiBody({ ai, results, answered, onSave, onStop, onRun, saveLabel }) {
  * 和一个**本机 agent** 深聊当前这篇。它跑在 vault 里、能读你的全部笔记——
  * 所以问「这个观点我以前在哪写过」这种问题才有意义，贴一段文字给模型是做不到的。
  *
- * 引擎二选一（Claude Code / Codex），开关放在**输入框旁边**而不是设置里：这是随时会换的
- * 选择（哪个登录着、哪个还有额度、想不想换个角度），不是配一次就忘的偏好。
+ * 权限模式放在对话头部，随时可按任务切换；运行期间锁定，真正的能力边界由服务端工具层执行。
  *
  * 流式回复没到字之前**不画空气泡**：流式是先插一条 `text: ""` 的占位再往里灌字，
  * 照着渲染的话屏幕上会挂一个灰色空条，旁边同时还有个「正在想」——两个东西说同一件事，
- * 其中一个还是空的。（Codex 根本不吐增量，那个空条会挂十几秒，更得靠 Waiting 说清楚。）
+ * 其中一个还是空的，所以用 Waiting 明确说明正在处理。
  */
-function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledgeSource }) {
+function ChatPanel({ chat, onSend, onStop, onSave, onMode, onNewChat, knowledgeSource }) {
   const [text, setText] = useState("");
   const [cardOpen, setCardOpen] = useState(false);
   const endRef = useRef(null);
   const boxRef = useRef(null);
   const msgs = chat?.messages || [];
-  const engine = CHAT_AGENTS.find((a) => a.id === chat?.agent) || CHAT_AGENTS[0];
+  const mode = chatModeInfo(chat?.permissionMode);
   const canCard = !chat?.running && msgs.some((m) => m.role === "user" && m.text) && msgs.some((m) => ["assistant", "agent"].includes(m.role) && m.text);
 
   useEffect(() => {
@@ -717,26 +716,26 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledge
     <>
     <Panel
       /**
-       * 头上放「发给谁」和「重开一轮」：这两件事都是**关于这场对话本身**的，
-       * 而不是关于正在打的这句话。上一版把引擎开关塞在发送按钮旁边，结果输入区
+       * 头上放「权限模式」和「重开一轮」：这两件事都是**关于这场对话本身**的，
+       * 而不是关于正在打的这句话。上一版把切换开关塞在发送按钮旁边，结果输入区
        * 挤成三层（输入框 + 一排按钮 + 一行快捷键提示），最该干净的地方最乱。
        */
       head={
         <div className="chat-head">
-          <div className="seg seg-sm chat-engine">
-            {CHAT_AGENTS.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                aria-pressed={engine.id === a.id}
-                disabled={chat?.running || !onAgent}
-                onClick={() => onAgent?.(a.id)}
-                title={`${a.name} · ${a.note} · 跑在 vault 里，只读`}
-              >
-                {a.name}
-              </button>
-            ))}
-          </div>
+          <label className="chat-permission-mode" title={mode.note}>
+            <span>权限</span>
+            <select
+              value={mode.id}
+              disabled={chat?.running || !onMode}
+              onChange={(event) => {
+                const next = chatModeInfo(event.target.value);
+                if (next.id === "developer" && !window.confirm(next.warning)) return;
+                onMode?.(next.id);
+              }}
+            >
+              {CHAT_PERMISSION_MODES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
           <button type="button" className="btn btn-sm" onClick={() => setCardOpen(true)} disabled={!canCard} title={canCard ? "把整轮对话整理成知识卡" : "至少完成一轮提问和回答后可用"}>沉淀卡片</button>
           {/* 一直聊下去上下文会越滚越长、也越跑越偏。**换个话题就该重开一轮**，
               而且不能只靠刷新页面——那会把整个阅读区一起关掉。 */}
@@ -784,9 +783,7 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledge
             <IconMessageCircle aria-hidden="true" stroke={1.5} />
             <strong>问点什么</strong>
             它能读你整个 vault——「这个观点我以前写过吗」这类问题问它最合适
-            <span className="rail-empty__hint">
-              现在发给 {engine.name}（{engine.note}）。两个都跑在你本机、只读你的知识库，下面能随时换。
-            </span>
+            <span className="rail-empty__hint">当前是 {mode.name}模式：{mode.note}。Pi 是唯一运行时，能力由服务端限制。</span>
           </div>
         ) : null}
 
@@ -794,11 +791,11 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledge
           m.role === "user" ? (
             <div key={i} className="msg msg-user">{m.text}</div>
           ) : m.role === "sys" ? (
-            // 换引擎这种事要留一条痕迹：不然回头看不出上下两段是两个模型答的
+            // 权限模式变化要留一条痕迹：不然回头看不出上下文为什么重新开始
             <div key={i} className="msg msg-sys">{m.text}</div>
           ) : m.text ? (
             <div key={i} className="msg msg-agent">
-              <span className="msg-agent__who">{agentName(m.agent || chat?.agent)}</span>
+              <span className="msg-agent__who">{piAgentName()}</span>
               <Md text={m.text} />
               {!chat.running ? (
                 <div className="row-actions msg-agent__acts">
@@ -810,12 +807,12 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledge
           ) : null
         )}
 
-        {chat?.running ? <Waiting label={`${engine.name} 正在想`} slow={engine.waiting} slowAt={engine.slowAt} /> : null}
+        {chat?.running ? <Waiting label="Pi 正在处理" slow="Pi 正在按当前权限模式读取上下文并生成回答" slowAt={8} /> : null}
         <ErrorNote error={chat?.error} what="对话" />
         <div ref={endRef} />
       </div>
     </Panel>
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={msgs} source={{ ...(knowledgeSource || {}), engine: engine.name }} />
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={msgs} source={{ ...(knowledgeSource || {}), engine: piAgentName() }} />
     </>
   );
 }
@@ -824,12 +821,8 @@ function ChatPanel({ chat, onSend, onStop, onSave, onAgent, onNewChat, knowledge
  * 等待态要**说明白在等什么、等了多久**。一条光秃秃的骨架屏挂在那儿，
  * 十几秒之后用户只会以为它卡死了。
  *
- * `slow` 那句话要讲**为什么**慢，不能只说「慢一点正常」——「对话」这一栏走的不是 API，
- * 是本机的 CLI（那才能读你整个 vault），第一次要把它拉起来。
- * 划词的「理解」走的是 API，快得多，所以那边不该说这句话。
- *
- * `slowAt` 是**按引擎给的**：Claude 会一个字一个字往外走，十几秒没动静才反常；
- * Codex 根本不吐增量，屏幕从头到尾都是空的，那句解释必须早点出来。
+ * `slow` 那句话要讲**为什么**慢，不能只说「慢一点正常」：对话会先读取当前文档、
+ * vault 上下文和权限模式，再开始生成；划词的「理解」只处理当前片段，通常快得多。
  */
 function Waiting({ label, slow, slowAt = 12 }) {
   const [secs, setSecs] = useState(0);

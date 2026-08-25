@@ -1,11 +1,11 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { cancelExpertRun, getExpertRun, harnessRuntimeInfo, listExpertRuns, startExpertRun } from "../agent-runtime/expert-runner.mjs";
+import { cancelExpertRun, getExpertRun, piRuntimeInfo, listExpertRuns, startExpertRun } from "../agent-runtime/expert-runner.mjs";
 
 export const expertRunRoutes = [
   {
     method: "GET",
     path: "/api/expert-runtime",
-    async handler({ env, res }) { json(res, { ok: true, runtime: await harnessRuntimeInfo(env) }); },
+    async handler({ env, res }) { json(res, { ok: true, runtime: await piRuntimeInfo(env) }); },
   },
   {
     method: "POST",

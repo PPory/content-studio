@@ -81,7 +81,7 @@ function elapsedLabel(seconds) {
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
-function Working({ label = "Harness 正在处理", detail = "", startedAt = "" }) {
+function Working({ label = "Pi 正在处理", detail = "", startedAt = "" }) {
   const [seconds, setSeconds] = useState(() => elapsedSeconds(startedAt));
   useEffect(() => {
     setSeconds(elapsedSeconds(startedAt));
@@ -156,7 +156,7 @@ const Message = memo(function Message({ item, canRevise, canInsert, currentVersi
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
-    {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Xenho AI{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
+    {assistant ? <small><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span>Pi Agent SDK{item.model ? ` · ${item.model}` : ""}{item.durationMs ? ` · ${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
     {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user"><p>{item.text}</p>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {assistant && item.text && !working ? <footer>
@@ -168,12 +168,25 @@ const Message = memo(function Message({ item, canRevise, canInsert, currentVersi
   </article>;
 });
 
+const ACTION_LABELS = {
+  create_content: ["新建到「创作」", "确认新建"],
+  document_create: ["新建工作台文档", "确认写入"],
+  document_update: ["更新工作台文档", "确认更新"],
+  annotation_append: ["追加工作台批注", "确认追加"],
+  reference_insert: ["插入来源引用", "确认插入"],
+  project_write: ["写入项目文件", "确认写入"],
+  project_edit: ["编辑项目文件", "确认编辑"],
+  powershell: ["执行 PowerShell", "确认执行"],
+};
+
 function ActionCard({ action, onApply }) {
   if (!action || action.status === "superseded") return null;
   const applied = action.status === "applied";
+  const [title, button] = ACTION_LABELS[action.type] || ["执行候选操作", "确认执行"];
+  const detail = action.type === "create_content" ? `${action.title} · ${action.platform}` : action.path || action.command?.slice(0, 120) || "已由服务端校验范围";
   return <section className="assistant-action-card">
-    <div><small>{applied ? "已执行" : "等待你确认"}</small><b>新建到「创作」</b><p>{action.title} · {action.platform}</p></div>
-    {applied ? <button type="button" onClick={() => { if (action.result?.projectId) window.location.hash = `#/project/${action.result.projectId}`; }}>打开内容</button> : <button type="button" onClick={() => onApply(action.id)}>确认新建</button>}
+    <div><small>{applied ? "已执行" : "等待你确认"}</small><b>{title}</b><p>{detail}</p></div>
+    {applied ? (action.result?.projectId ? <button type="button" onClick={() => { window.location.hash = `#/project/${action.result.projectId}`; }}>打开内容</button> : <span>已完成</span>) : <button type="button" onClick={() => onApply(action.id)}>{button}</button>}
   </section>;
 }
 
@@ -197,10 +210,14 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [historyOpen, setHistoryOpen] = useState(standalone && !docked);
   const [models, setModels] = useState([]);
   const [modelNotice, setModelNotice] = useState("");
-  const [harnessSkills, setHarnessSkills] = useState([]);
+  const [skills, setSkills] = useState([]);
   const [expertPresets, setExpertPresets] = useState([]);
   const [model, setModel] = useState("");
   const [modelPending, setModelPending] = useState(false);
+  const [permissionModes, setPermissionModes] = useState([{ id: "daily", label: "日常", description: "只读、检索和候选动作", warning: "" }, { id: "creative", label: "创作", description: "个人工作台内的受控写入", warning: "所有写入仍需确认。" }, { id: "developer", label: "开发", description: "项目写入和 PowerShell", warning: "开发模式可触及项目代码和命令，请确认当前任务确实需要。" }]);
+  const [permissionMode, setPermissionMode] = useState("daily");
+  const [styleId, setStyleId] = useState("");
+  const [modePending, setModePending] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -211,7 +228,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const fileRef = useRef(null);
   const activeRequestRef = useRef(null);
   const conversationIdRef = useRef("");
-  const style = (profile?.styles || []).find((item) => item.enabled && item.id === profile?.profile?.styleId) || null;
+  const enabledStyles = (profile?.styles || []).filter((item) => item.enabled);
+  const style = enabledStyles.find((item) => item.id === styleId) || null;
+  useEffect(() => {
+    setStyleId((current) => enabledStyles.some((item) => item.id === current) ? current : enabledStyles.some((item) => item.id === profile?.profile?.styleId) ? profile.profile.styleId : "");
+  }, [profile, scopeId]);
   const currentVersion = documentVersion(document);
 
   const refreshHistory = async () => {
@@ -228,10 +249,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setAttachments(conversation?.attachments || []);
     setActions(conversation?.actions || []);
     if (conversation?.model) setModel(conversation.model);
+    setPermissionMode(conversation?.permissionMode || "daily");
     const running = conversation?.activeTurn?.status === "running";
     if (running) {
       setBusy(true);
-      setActivity(conversation.activeTurn.stage || "Harness 正在处理");
+      setActivity(conversation.activeTurn.stage || "Pi 正在处理");
       setTurnStartedAt(conversation.activeTurn.startedAt || "");
     } else if (!activeRequestRef.current) {
       setBusy(false);
@@ -255,7 +277,8 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       setModels(nextModels); setModelNotice(result.models?.warning || "");
       setModel((current) => current || result.models?.configured || nextModels[0]?.id || "");
     }).catch((next) => { if (!cancelled) setModelNotice(next.message || "模型目录暂时不可用"); });
-    api.assistantSkills().then((result) => { if (!cancelled) setHarnessSkills((result.skills?.items || []).map((item) => ({ id: `harness:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
+    api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: `skill:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
+    api.assistantModes().then((result) => { if (!cancelled) setPermissionModes(result.modes?.items || []); }).catch(() => {});
     api.assistantExperts().then((result) => { if (!cancelled) setExpertPresets((result.experts?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description }))); }).catch(() => {});
     return () => { cancelled = true; clearTimeout(streamRef.current.timer); cancelAnimationFrame(scrollFrameRef.current); };
   }, [scopeId, standalone]);
@@ -306,7 +329,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setInput(""); setMenu(""); setBusy(true); setActivity("正在读取上下文"); setTurnStartedAt(new Date().toISOString()); setError(null); setUploadError("");
     try {
       const result = await api.assistantChatStream(
-        { scopeId, conversationId, startNew: !conversationId, message, document, documentVersion: currentVersion, materials, style: standalone ? null : style, model, mode: standalone ? "general" : "content" },
+        { scopeId, conversationId, startNew: !conversationId, message, document, documentVersion: currentVersion, materials, style: standalone ? null : style, model, permissionMode, mode: standalone ? "general" : "content" },
         (event) => {
           if (activeRequestRef.current !== requestId) return;
           if (event.type === "conversation" && event.conversationId) {
@@ -314,7 +337,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
             setConversationId(event.conversationId);
             refreshHistory().catch(() => {});
           }
-          if (event.type === "status") setActivity(event.stage || "Harness 正在继续处理");
+          if (event.type === "status") setActivity(event.stage || "Pi 正在继续处理");
           if (event.type === "text" && event.text) {
             setActivity("正在生成回答");
             queueStream(streamingId, event.text);
@@ -342,7 +365,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     clearTimeout(streamRef.current.timer);
     streamRef.current = { id: "", text: "", timer: 0 };
     conversationIdRef.current = "";
-    setConversationId(""); setConversationTitle("新对话"); setMessages([]); setActions([]); setAttachments([]); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
+    setConversationId(""); setConversationTitle("新对话"); setPermissionMode("daily"); setMessages([]); setActions([]); setAttachments([]); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
     refreshHistory().catch(() => {});
     inputRef.current?.focus();
   };
@@ -401,7 +424,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   }
 
   const experts = (expertPresets.length ? expertPresets : EXPERTS).filter((item) => standalone || PROJECT_EXPERTS.has(item.id));
-  const availableSkills = harnessSkills;
+  const availableSkills = skills;
   const modelItems = model && !models.some((item) => item.id === model) ? [{ id: model, name: model, remembered: true }, ...models] : models;
   const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.ownedBy || (item.remembered ? "最近使用" : "可用模型"), provider: item.ownedBy || "" }));
   const filteredMenuItems = (menu === "models" ? menuItems : menuItems.filter((item) => !menuQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(menuQuery.toLowerCase()))).slice(0, 80);
@@ -429,6 +452,21 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     } finally { setModelPending(false); }
   }
 
+  async function choosePermissionMode(event) {
+    const next = event.target.value;
+    const item = permissionModes.find((modeItem) => modeItem.id === next);
+    if (!item || next === permissionMode || busy) return;
+    if (next === "developer" && !window.confirm(`${item.warning}\n\n只有明确的开发任务才应使用此模式。`)) return;
+    const previous = permissionMode;
+    setPermissionMode(next); setModePending(true); setError(null);
+    if (!conversationId) { setModePending(false); return; }
+    try {
+      const result = await api.setAssistantMode({ scopeId, conversationId, permissionMode: next });
+      applyConversation(result.conversation);
+    } catch (nextError) {
+      setPermissionMode(previous); setError(nextError);
+    } finally { setModePending(false); }
+  }
   async function rewind(edit = false) {
     if (!conversationId || busy) return;
     setError(null);
@@ -493,7 +531,8 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
       <div className="assistant-context-actions">
-        {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
+<label className="assistant-mode-select" title={permissionModes.find((item) => item.id === permissionMode)?.description || "服务端权限模式"}><span>权限</span><select value={permissionMode} onChange={choosePermissionMode} disabled={busy || modePending}>{permissionModes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+                {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
         {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="把本轮完整对话整理成知识卡片"><IconArchive aria-hidden="true" /><span>沉淀对话</span></button> : null}
         <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
       </div>
@@ -503,7 +542,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
       {messages.map((item) => <div className="assistant-turn" key={item.id}><Message item={item} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={() => rewind(false)} onEdit={() => rewind(true)} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={applyAction} />)}</div>)}
-      {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Harness 正在处理" detail={activity} startedAt={turnStartedAt} /> : null}
+      {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Pi 正在处理" detail={activity} startedAt={turnStartedAt} /> : null}
       {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试</button></div> : null}
       <div ref={endRef} />
     </div>
@@ -518,6 +557,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       </div> : null}
       <footer>
         <div>
+          <button type="button" onClick={() => menu === "experts" ? setMenu("") : openMenu("experts")} aria-expanded={menu === "experts"}><span>@</span>专家</button>
+          <button type="button" onClick={() => menu === "skills" ? setMenu("") : openMenu("skills")} aria-expanded={menu === "skills"}><span>/</span>Skill</button>
+          {!standalone ? <label className="assistant-composer__style"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
           <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
           <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "选择模型"}</b><IconChevronDown aria-hidden="true" /></button>
         </div>
@@ -525,7 +567,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
       </footer>
     </form>
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "DeepSeek Harness" }} />
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "Pi Agent SDK" }} />
   </div>;
 
   return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}${docked ? " assistant-pane--docked" : ""}`}>
