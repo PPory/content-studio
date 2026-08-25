@@ -236,6 +236,17 @@
    * ⚠️ **两组必须逐档对应**，少一个的表现是那一档的 pill 字色回落到继承值，
    * 而它看着只是「颜色有点淡」，不像出错。
    */
+  /**
+   * 数据图的**黑白色槽**（首页那张每日发布量在用）。
+   * 一档比一档淡，最深那档就是正文黑；暗色下整组翻过来。
+   * ⚠️ 后两档在浅底上对比度很低——**身份不能只靠它们**，
+   * 所以用它的图必须常驻图例 + 「看数字」表格（和彩色版同一条强制项）。
+   */
+  --series-1: #18181b;
+  --series-2: #4a4a53;
+  --series-3: #7c828c;
+  --series-4: #aeb2ba;
+
   --st-backlog-ink: #5b6270;
   --st-todo-ink:    #565c66;
   --st-doing-ink:   #8a6410;
@@ -274,7 +285,16 @@
      **下限不是导航项定的，是品牌行定的**：logo + 「Xenho OS」+ 收起按钮一行排开要 194px，
      再窄品牌名就折成两行了（试过 184，「Xenho」和「OS」分了家）。
      收起态 60px = 左右各 10px 内边距 + 一个 40px 的图标按钮，正好装下一颗图标。 */
-  --sidebar-w: 200px;
+  /**
+   * ⚠️ **两个变量，别合成一个。**
+   * `--rail-w` 是**展开态**的宽度，收起时它不变；`--sidebar-w` 是**此刻**的宽度，
+   * 收起时被 `.app[data-rail="collapsed"]` 改成 60。
+   * 顶栏的品牌区量的是前者——它必须在两种形态下一样宽，否则面包屑会跟着侧栏
+   * 收放左右挪一次，而「收侧栏时顶栏纹丝不动」正是把这些东西搬上顶栏的全部理由
+   *（冒烟测试钉着这条）。
+   */
+  --rail-w: 200px;
+  --sidebar-w: var(--rail-w);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   /**
@@ -318,6 +338,12 @@
     --ink-400: #8e8e99;
     --line-1: #26262c;
     --line-2: #35353d;
+
+    /* 数据图黑白色槽：深底上从近白往下走 */
+    --series-1: #f4f4f5;
+    --series-2: #bdbdc6;
+    --series-3: #90939c;
+    --series-4: #6b6e77;
 
     --accent: #f4f4f5;
     --accent-strong: #ffffff;
@@ -521,20 +547,61 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 而左段（logo + 会变长的面包屑）和右段（两个图标）宽度差一大截——
  * 结果是每换一页搜索框就往旁边挪一次。两侧各占 1fr，中间那格才真的在视口中心。
  */
+/* ⚠️ 左内边距归零：品牌区自己带内边距，因为**它的宽度就是侧栏的宽度**
+   （见下面 `.topbar__brand`），左边多一层 padding 那条竖线就落不到缝上 */
 .topbar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center; gap: 10px; flex: none;
-  height: 48px; padding: 0 12px 0 14px;
+  height: 48px; padding: 0 12px 0 0;
 }
-.topbar__left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.topbar__brand { display: flex; align-items: center; gap: 9px; flex: none; padding-right: 12px; }
-/* 一道竖线把「身份」和「位置」分开——它们是两件事，而中间只有 10px 的话读起来是一串 */
-.topbar__brand::after { content: ""; width: 1px; height: 18px; margin-left: 3px; background: var(--border-strong); }
+.topbar__left { display: flex; align-items: center; gap: 10px; min-width: 0; align-self: stretch; }
+/**
+ * ⚠️ **品牌区就是「导航那一栏的栏头」：宽度恒等于 `--sidebar-w`，跟着侧栏一起收放。**
+ *
+ * 所以那道竖线永远落在侧栏和正文之间的缝上，顶栏和下面两栏是同一套网格。
+ * 两版都栽过：一版是「内容多宽就多宽」（竖线停在 197 而缝在 200，**差三像素**
+ * 就是整个外壳看着没对齐的地方）；一版把它钉死在展开态的 200px 上，
+ * 收起之后**顶上留着 200 宽的品牌区、底下的栏只有 60**，那道线悬在半空。
+ *
+ * 内边距写在这儿而不是 `.topbar` 上——外面再来一层的话，`width` 就不等于栏宽了。
+ */
+.topbar__brand {
+  position: relative;
+  display: flex; align-items: center; gap: 9px; flex: none; align-self: stretch;
+  width: var(--sidebar-w); padding: 0 9px 0 14px;
+  transition: width 0.18s var(--ease);
+}
+/**
+ * 一道竖线把「身份」和「位置」分开，而且它就是那条缝的一段：顶到底、同一个颜色。
+ * ⚠️ **绝对定位在右缘，不当 flex 子项**——当子项的话它要吃掉 gap 和内边距，
+ * 收起态那 10px 的居中内边距会把它从缝上推开 10 像素，而那正是这一轮要修的毛病。
+ */
+.topbar__brand::after {
+  content: ""; position: absolute; right: 0; top: 0; bottom: 0;
+  width: 1px; background: var(--border);
+}
+/**
+ * 收起态：**一个 40px 的方块，和底下那一列图标同宽同轴**（10px 内边距 + 40 = 60）。
+ * 名字藏起来，收放钮铺满整块盖在 logo 上——**靶子一直在那儿**，
+ * 悬停/聚焦时它才画出「展开」那枚图标。60px 里摆不下两个方块，
+ * 而 logo 和收放钮争的是同一个格子。
+ */
+.app[data-rail="collapsed"] .topbar__brand { padding: 0 10px; justify-content: center; position: relative; }
+.app[data-rail="collapsed"] .topbar__name { display: none; }
+.app[data-rail="collapsed"] .topbar__rail {
+  position: absolute; left: 10px; right: 10px; top: 4px; bottom: 4px;
+  width: auto; height: auto; margin: 0; opacity: 0; background: var(--surface);
+  transition: opacity 0.12s var(--ease);
+}
+.app[data-rail="collapsed"] .topbar__rail:hover,
+.app[data-rail="collapsed"] .topbar__rail:focus-visible { opacity: 1; color: var(--text-1); }
 .topbar__brand .brand-mark,
 .topbar__brand > svg { width: 22px; height: 22px; flex: none; border-radius: var(--r-sm); }
 .topbar__name { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; }
+/* 收放钮推到品牌区右端，紧挨着那道缝——和 Fincai 一样，它属于「这一栏」而不是「logo 旁边」 */
 .topbar__rail {
   display: grid; place-items: center; width: 26px; height: 26px; flex: none;
+  margin-left: auto;
   padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3);
 }
 .topbar__rail:hover { background: var(--surface-2); color: var(--text-1); }
@@ -581,6 +648,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .sidebar {
   width: var(--sidebar-w);
   flex: none;
+  /* 收放要看得出是同一条栏在变宽变窄，不是换了一张图。
+     文字先消失、宽度再收（`display:none` 是瞬时的），顺序正好不会出现挤字 */
+  transition: width 0.18s var(--ease);
   /* ⚠️ **侧栏是白的**（上一版是透明、露出浅灰的应用底色）。翻过来之后：
      白的是**框架**（顶栏 + 侧栏 + 卡片），浅灰的是**工作区**。 */
   background: var(--surface);
@@ -605,7 +675,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    本身就是成本。收起态才接管展开这个动作（见下面的收起规则）。 */
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
-.nav-group { display: flex; flex-direction: column; gap: 2px; }
+/* `position: relative` 是给收起态那个二级浮层当锚点的，见 `.subnav[data-flyout]` */
+.nav-group { position: relative; display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   position: relative;
   display: flex; align-items: center; gap: 10px;
@@ -633,14 +704,46 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 /* 有下级的一级项只负责定位任务域，当前页由二级项承担。两层都画黑块会像有两个
    当前页，所以这里用安静底色托住分组，把最强对比留给真正打开的页面。 */
 .nav-group.has-children > .nav-item[data-current="true"] { background: transparent; color: var(--text-1); font-weight: 600; }
+/**
+ * 二级项。⚠️ **那条竖线对齐的是一级项图标的中轴**（10px 内边距 + 18px 图标的一半 = 19px），
+ * 不是随手挑的缩进——对齐之后这一组读起来是「挂在那枚图标下面」，
+ * 而不是「又一列缩进不明的按钮」。参照的第三张图（那个可展开的侧栏）是同一个做法。
+ */
 .subnav {
   position: relative; display: flex; flex-direction: column; gap: 1px;
-  margin: 1px 0 4px 20px; padding-left: 16px;
+  margin: 2px 0 6px 19px; padding-left: 13px;
 }
 .subnav::before {
-  content: ""; position: absolute; left: 3px; top: 3px; bottom: 3px;
+  content: ""; position: absolute; left: 0; top: 4px; bottom: 4px;
   width: 1px; background: var(--border);
 }
+/**
+ * 收起态：二级项变成一块**浮出来的面板**，不是消失。
+ *
+ * ⚠️ **上一版是 `display: none`**，于是收起之后「找题 / 选题 / 创作 / 复盘」一个都点不到——
+ * 而收起是个会一直保持的状态（存在 localStorage 里），等于那四页从此只剩 Ctrl+K 一条路。
+ * `:focus-within` 不能省：只写 `:hover` 的话，键盘 Tab 进去它是看不见的。
+ */
+.subnav[data-flyout] {
+  position: absolute; left: calc(100% + 6px); top: -6px; z-index: 40;
+  margin: 0; padding: 6px; min-width: 148px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow);
+  visibility: hidden; opacity: 0; transform: translateX(-4px);
+  transition: opacity .12s var(--ease), transform .12s var(--ease), visibility .12s;
+}
+.subnav[data-flyout]::before { display: none; }
+.nav-group:hover > .subnav[data-flyout],
+.subnav[data-flyout]:focus-within {
+  visibility: visible; opacity: 1; transform: none;
+}
+/* 浮层里第一行写清这是哪一组：脱离了那枚图标之后，光看四个词认不出自己在哪一栏 */
+.subnav__title {
+  display: block; padding: 3px 8px 5px; color: var(--text-3);
+  font-size: var(--fs-xs); font-weight: 600;
+}
+.subnav[data-flyout] .subnav-item { padding-left: 8px; }
+.subnav[data-flyout] .subnav-item > span { display: none; }
 .subnav-item {
   position: relative; display: flex; align-items: center; gap: 8px;
   width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-ctl);
@@ -665,6 +768,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   border: 1px solid var(--border); border-radius: var(--r-pill); padding: 0 6px;
 }
 .nav-item[aria-current] .count { color: var(--text-2); }
+/* 有下级的那两项才有的小角标。**它只报状态、不是第二个开关**（展开是跟着当前页自动的），
+   所以颜色压到最淡的一档——它要回答的是「这底下还有东西」，不是「点我」。 */
+.nav-item__caret {
+  width: 13px; height: 13px; flex: none; margin-left: auto; color: var(--text-3);
+  transition: transform 0.16s var(--ease);
+}
+.nav-group.has-children[data-open="true"] .nav-item__caret { transform: rotate(180deg); }
 /* 收起态才出现的那颗点，见下面的收起规则 */
 .nav-item__dot {
   position: absolute; top: -1px; right: -2px; width: 6px; height: 6px;
@@ -686,8 +796,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    26px 的 logo 挂在一列 40px 宽的图标块上面，比谁都小一圈，看着像还没加载完；
    等宽之后左右边缘和下面所有图标连成一条竖线。 */
 .app[data-rail="collapsed"] .nav-item__label,
+.app[data-rail="collapsed"] .nav-item__caret,
 .app[data-rail="collapsed"] .nav-item .count { display: none; }
-.app[data-rail="collapsed"] .subnav { display: none; }
+/* ⚠️ **二级项不再是 `display: none`，它改成了浮层**，见上面 `.subnav[data-flyout]`。
+   一刀切藏掉的代价是收起之后那四页一个都点不到。 */
 /* 图标居中：`gap` 留着的话，藏掉文字后图标会偏左几像素 */
 .app[data-rail="collapsed"] .nav-item,
 .app[data-rail="collapsed"] .btn-block { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
@@ -696,8 +808,38 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    和 .nav-item__dot 是同一条规则（60px 里放不下就退成一颗点），
    所以两种形态用的是同一批 DOM——写两套的话，以后动这一行要改两处。 */
 
-.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
-/* 长文案（「本地服务连接中…」）不许把齿轮挤出去 */
+.sidebar-foot {
+  margin-top: auto; display: flex; flex-direction: column; gap: 10px;
+  padding-top: 10px; border-top: 1px solid var(--border);
+}
+/**
+ * 侧栏底部那一行：**这台工作台此刻连着什么**。
+ *
+ * ⚠️ **不是按钮**（`div` 不是 `button`）：收起态它只剩一颗 7px 的点，一个点看不出可点；
+ * 去改配置的入口是顶栏那枚齿轮。这一行回答「通没通」，不回答「去哪儿改」。
+ *
+ * 参照的四个侧栏底部都压着一块「你是谁 / 在哪个工作区」——这里没有多用户，
+ * 对应的东西就是**连接状态 + vault 名**。它同时解决了两件事：
+ * 底下那六百像素的空白有了收口，而「流水线不可达」从一个 7px 的 title 变成了一行字。
+ */
+.rail-ws {
+  display: flex; align-items: center; gap: 9px; min-width: 0;
+  padding: 7px 8px; border-radius: var(--r-ctl);
+}
+.rail-ws .dot { flex: none; }
+.rail-ws__text { display: grid; gap: 1px; min-width: 0; }
+.rail-ws__text b {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rail-ws__text i {
+  font-style: normal; font-size: var(--fs-2xs); color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 收起态：60px 里放不下两行字，退成一颗点——和 `.nav-item__dot` 同一条规则，
+   而且仍然是同一批 DOM（说明进 title）。 */
+.app[data-rail="collapsed"] .rail-ws { justify-content: center; padding: 7px 0; }
+.app[data-rail="collapsed"] .rail-ws__text { display: none; }
 
 /* ---------- 内容项目工作区 ---------- */
 /* 面板已经定高，这里按面板算不按视口算（视口那份会高出 16px 的沟 + 边框） */
@@ -1244,7 +1386,8 @@ html[data-scroll-lock] .main { overflow: hidden; }
 /* 页面内容的内边距和可读宽度上限**从面板挪到这一层**。
    留在面板上的话，限宽 1320 会让面板自己缩到 1320 —— 右边露出一条底色，
    看着是「面板没铺满」而不是「正文不该太宽」。 */
-.main__inner { padding: 32px clamp(22px, 3.4vw, 52px) 80px; max-width: 1320px; }
+/* 左右内边距抽成变量，因为吸顶的页头要用负 margin 把它抵掉、好让底色铺到栏边 */
+.main__inner { --main-pad: clamp(22px, 3.4vw, 52px); --main-pad-top: 32px; padding: var(--main-pad-top) var(--main-pad) 80px; max-width: 1320px; }
 
 /* ---------- 页头 ---------- */
 
@@ -1258,6 +1401,38 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .page-bar {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px 20px; flex-wrap: wrap; margin-bottom: 20px; min-height: 34px;
+}
+/**
+ * ⚠️ **页头吸顶。** 它右端放着这一页的主操作（「新建内容」）和条数，
+ * 而这几页都比一屏长——滚下去之后要新建一篇，得先滚回顶上。
+ * 参照的那两个后台（Fincai / Tsenta）都是把这条动作行钉在内容区顶上的。
+ *
+ * ⚠️ **负 margin 抵掉 `.main__inner` 的内边距**，让底色铺到栏边：不抵的话
+ * 内容会从它左右两侧的缝里钻过去，看着像页头浮在字上面。
+ * 上边距挪进 padding，所以**视觉间距一点没变**，变的只是这个盒子的顶边在哪儿。
+ *
+ * ⚠️ **只认「`.main__inner` 的头一个孩子」**：页头夹在内容中间的页面（如果以后有）
+ * 套上这条会被负 margin 往上拽一截，而那不报错、只是位置错了。
+ */
+.main__inner > .page-bar:first-child,
+.main__inner > .filter-head:first-child {
+  position: sticky; top: 0; z-index: 6;
+  margin-top: calc(var(--main-pad-top) * -1);
+  margin-inline: calc(var(--main-pad) * -1);
+  padding: var(--main-pad-top) var(--main-pad) 14px;
+  background: var(--sunken);
+}
+/**
+ * 分隔线**只在真有东西从底下过去时才画**——没滚动时它是一条无中生有的线。
+ *
+ * ⚠️ **画成 `::after` 而不是 `border-bottom`**：正文栏卡着 1320 的可读宽度上限，
+ * 而面板比它宽，`border-bottom` 会在栏的右边缘**断掉**，看着像一条没画完的线。
+ * 这条 rule 两端各收进一个内边距，**和它上面那行字左右对齐**，读起来是有意的。
+ */
+.main[data-scrolled="true"] .main__inner > .page-bar:first-child::after,
+.main[data-scrolled="true"] .main__inner > .filter-head:first-child::after {
+  content: ""; position: absolute; left: var(--main-pad); right: var(--main-pad);
+  bottom: 0; height: 1px; background: var(--border);
 }
 .page-bar__desc {
   margin: 0; min-width: 0; max-width: 620px;
@@ -1727,12 +1902,64 @@ svg[data-tone] { color: var(--tone); }
 }
 .drawer {
   width: min(500px, 100%); background: var(--surface); height: 100%;
-  border-left: 1px solid var(--border); padding: 24px 24px 40px;
+  border-left: 1px solid var(--border); padding: 20px 24px 20px;
   display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
   box-shadow: var(--shadow-lg);
 }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+/**
+ * ⚠️ **标题行和底部动作行不跟着内容滚**（参照 ShipO 那张图：标题钉在顶上、
+ * Cancel/Save 钉在底下，中间那段自己滚）。落地是内容多包一层 `.drawer-body`，
+ * 由它滚；外壳改成 `overflow: hidden`。**只对有那一层的抽屉生效**——
+ * 另外两个（备份、整理 Inbox）还是整份滚，加了 `.drawer-body` 才会跟着变。
+ */
+.drawer:has(> .drawer-body) { overflow: hidden; }
+.drawer-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 16px;
+  /* 滚起来时内容要从标题底下钻过去，而不是贴着它断掉 */
+  padding-bottom: 4px;
+}
+/* 标题行给一道下边线：它是「这一层叫什么」，和下面要填的东西是两件事 */
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex: none; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
 .drawer-title { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.03em; }
+/**
+ * ⚠️ **抽屉里的字段名用正文字体，不套等宽 + 0.14em 字距。**
+ * `.field label` 的全局样式是给英文小标题挑的，而这里全是中文（「内容」「出处（可选）」）——
+ * 宽字距把两个汉字撑开成一排孤立的字，这正是 CLAUDE.md 里
+ * 「内容是中文的地方仍然该用正文字体」说的那条。**只在抽屉里改**，
+ * 别处的表单不在这一轮的范围内。
+ */
+.drawer .field label, .drawer .field > span {
+  font-family: inherit; font-size: var(--fs-sm); font-weight: 500;
+  letter-spacing: 0; color: var(--text-3);
+}
+/* 正文框吃掉剩下的高度：抽屉里它是主角，而固定 150px 会在下面留一大片空白，
+   看着像这一屏没做完（三个字段填不满一整条侧栏的高度）。 */
+.field--grow { flex: 1 1 auto; min-height: 0; }
+.field--grow textarea { flex: 1 1 auto; min-height: 120px; }
+
+/**
+ * 可选项做成一列卡片：名字一行、这一项意味着什么一行。
+ * ⚠️ **说明必须逐项都在**，这是它取代那排芯片的全部理由——
+ * 芯片那版只讲选中的那一个，而分流是不可逆的，选之前就得读得到差别。
+ */
+.opt-list { display: grid; gap: 8px; }
+.opt {
+  display: grid; gap: 3px; text-align: left; width: 100%;
+  padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--surface); color: var(--text-1);
+  transition: border-color .14s var(--ease), background .14s var(--ease);
+}
+.opt b { font-size: var(--fs-base); font-weight: 600; }
+.opt span { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.55; }
+.opt:hover:not(:disabled) { border-color: var(--text-3); }
+/* 选中：轻底 + 描边变实。和侧栏当前项同一套语汇（`--sel-bg`），不新造一种记号 */
+.opt[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--text-1); }
+.opt[aria-pressed="true"] span { color: var(--text-2); }
+.opt:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label, .field > span {
@@ -1755,11 +1982,17 @@ svg[data-tone] { color: var(--tone); }
 .field-hint { font-size: var(--fs-base); color: var(--text-3); line-height: 1.6; }
 /* 底部动作行：退路在左、主动作在右。人填完表之后目光在底部，
    退出的路不该要求他先把视线拉回右上角那个 ×。 */
+/**
+ * 底部动作行：**两颗按钮并排在右下角**，退路在左、主动作在右。
+ * ⚠️ 上一版给第一颗按了 `margin-right: auto`，两颗分居抽屉两头——
+ * 和设计系统里骂过的「底部两个按钮隔着一千多像素」是同一个毛病。
+ * 参照的 ShipO 那张图里 Cancel / Save 也是挨着的。
+ */
 .drawer-foot {
-  display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 16px;
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+  flex: none; margin-top: auto; padding-top: 16px;
   border-top: 1px solid var(--border);
 }
-.drawer-foot .btn:first-child { margin-right: auto; }
 
 /* ---------- 全局检索（Ctrl + K）----------
  *
@@ -2212,7 +2445,7 @@ svg[data-tone] { color: var(--tone); }
 /* ---------- 阅读工作区 ---------- */
 
 /* 阅读页吃满宽度：正文自己有 max-width 控行长，外层再限宽会把右栏挤没 */
-.main-wide { max-width: none; padding: 0; height: 100vh; }
+.main-wide { max-width: none; padding: 0; height: 100vh; --main-pad: 0px; --main-pad-top: 0px; }
 
 .workspace { display: flex; height: 100vh; align-items: stretch; }
 
@@ -3491,7 +3724,9 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 }
 .act-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 /* 「先做这一件」那张：描边加重一档。**不涂底色**——白底 + 彩色状态元素是这一版的基调 */
-.act-card__top { display: flex; align-items: center; gap: 8px; }
+/* 首行：状态 · 现状（或阻塞）· 时间。**现状不再单占一行**——它是一句短话，
+   和 pill 并排放得下，而单占一行让每张卡凭空高出三十来像素。 */
+.act-card__top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .act-card__top time { margin-left: auto; flex: none; font-size: var(--fs-xs); color: var(--text-3); }
 .act-card__title {
   font-size: var(--fs-lg); font-weight: 650; line-height: 1.35; letter-spacing: -0.015em;
@@ -3499,19 +3734,24 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   min-height: 2.7em;   /* ⚠️ 固定两行高，否则一排卡片下面每一行都落在不同高度 */
 }
+/* ⚠️ **一行，截断，不换行。** 它现在住在首行里，换行会把整张卡撑高一截，
+   而那正是这一轮要压掉的东西；完整那句在 `title` 里。 */
 .act-card__note {
-  font-size: var(--fs-sm); line-height: 1.6; color: var(--text-2); margin: 0;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  min-height: 2.6em;
+  flex: 1 1 auto; min-width: 0; margin: 0;
+  font-size: var(--fs-xs); line-height: 1.5; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 阻塞：这一版**唯一**用红的地方，和它原来在项目卡上的用法一致 */
+/* 阻塞：这张卡上**唯一**用红的地方。
+   ⚠️ **退成一行红字，不再是一只红框**——那只框自带内边距和底色，
+   一张卡为它高出三十多像素，而它装的只有五个字。 */
 .act-card__warn {
-  display: flex; align-items: flex-start; gap: 6px;
-  padding: 7px 9px; border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  flex: 1 1 auto; min-width: 0;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 0; background: none;
   color: var(--danger); font-size: var(--fs-xs); line-height: 1.5;
 }
-.act-card__warn svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+.act-card__warn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-card__warn svg { width: 13px; height: 13px; flex: none; }
 /**
  * 底部一行：**进度 + 下一步**。
  * ⚠️ 上一版是「一道分隔线 + 一整条 48px 的出血动作区」，装的只有一句
@@ -3526,17 +3766,26 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 /* ⚠️ 这颗是**真 button**（键盘要够得着），但**不该长得像个按钮**：
    卡片上最重的已经是标题和进度，底部这一行是「下一步是什么」，
    给它画个框会让一排三张卡的底部出现三个抢眼的方块。所以退成一行绿字 + 箭头。 */
+/**
+ * ⚠️ **这一行和进度条都是黑的，不是墨绿。**
+ * 「绿说走到哪儿了、黑说点这儿」那条规则没撤，撤的是**在这张卡上同时用两个颜色**：
+ * 一屏三张卡、每张两处绿（进度条 + 下一步），那点绿加起来比首屏任何一处主操作都密，
+ * 而它说的是这一屏信息量最低的一件事。收成黑白之后，彩色只剩状态 pill 和阻塞那行红——
+ * 那两样才是真的要一眼分出来的。
+ */
 .act-card__go {
   margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px;
   padding: 0; border: 0; background: none;
-  font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--brand);
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
 }
 .act-card__go:disabled { color: var(--text-3); cursor: default; }
 .act-card__go:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
 /* 按钮上写的是 `nextAction` 本身（「去排版发布」），长短不一，要能截断而不撑破那一行 */
 .act-card__go { margin-left: auto; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-card__go svg { flex: none; }
-.act-card:hover .act-card__go { color: var(--brand-strong); }
+.act-card:hover .act-card__go { color: var(--accent-strong); }
+/* 进度条同理：同一张卡上不再出现第二个颜色 */
+.act-card .meter__track i { background: var(--accent); }
 .act-card__go svg { width: 15px; height: 15px; }
 /* 一排卡片 */
 /**
@@ -4207,13 +4456,13 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * 看着不像「这一页的顶栏」，像页面里浮着的一个盒子。
  * ⚠️ 内边距也一起去掉——这一页自己给了内边距，外面再来一层就是双份。
  */
-.main__inner:has(.project-workspace) { max-width: none; padding: 0; }
+.main__inner:has(.project-workspace) { max-width: none; padding: 0; --main-pad: 0px; --main-pad-top: 0px; }
 .main__inner:has(.assistant-page) { max-width: none; height: 100%; padding: 0; --main-pad: 0px; --main-pad-top: 0px; }
 .main:has(.assistant-page) { overflow: hidden; }
 /* 内嵌工具那一页把内边距全去掉：工具自己有留白，外面再留一圈只是白丢面积。
    ⚠️ 高度从 `100vh` 改成 `100%`——面板本身已经被 `.app` 定高了，
    再按视口算会比面板高出 16px 的沟 + 两条边框，底下凭空多出一条滚动。 */
-.main__inner:has(.embed-page) { padding: 0; height: 100%; }
+.main__inner:has(.embed-page) { padding: 0; height: 100%; --main-pad: 0px; --main-pad-top: 0px; }
 .main:has(.embed-page) { overflow: hidden; }
 
 /* 越过面板的内边距去用满宽度，右边压一道渐隐：宽度再不够时「还有一列在外面」
@@ -4634,7 +4883,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * 图表卡内部用 `flex` 把图例压到底（`margin-top: auto`），高度就自己吃满了。
  */
 .today-split { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; }
-.today-split .act-cards { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.today-split .act-cards { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 /**
  * ⚠️ **竖排的卡要收紧：`min-height` 那几条撤掉。**
  * 它们是为**横排**设的——一排三张时，标题一行还是两行会让下面每一行落在不同高度，
@@ -4642,9 +4891,12 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * 那些占位一个都不解决问题，只是让每张卡凭空高出三四十像素：
  * 三张加起来比右边那张图高一倍，而它们说的是同一个问题的两半。
  */
-.today-split .act-card { gap: 6px; padding: 12px 14px; }
-.today-split .act-card__title { min-height: 0; font-size: var(--fs-base); }
-.today-split .act-card__note { min-height: 0; -webkit-line-clamp: 1; }
+/* ⚠️ **竖排这一栏再收一档：三张卡加起来只占原来两张的高度。**
+   `min-height` 那几条是给**横排**设的（一排三张时要让下面每一行落在同一高度），
+   竖排根本不需要，留着只是让每张卡凭空高出三四十像素。 */
+.today-split .act-card { gap: 4px; padding: 9px 14px; }
+.today-split .act-card__title { min-height: 0; font-size: var(--fs-base); -webkit-line-clamp: 2; }
+.today-split .act-card__foot { font-size: var(--fs-xs); }
 @media (max-width: 1080px) { .today-split { grid-template-columns: minmax(0, 1fr); } }
 
 .today-chart {
@@ -4654,6 +4906,16 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 }
 .today-chart__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .today-chart__label { display: block; font-size: var(--fs-sm); color: var(--text-2); margin-bottom: 4px; }
+/* 周区间跟在标题后面：「本周」是相对的，看图的人得知道它指的是哪七天 */
+.today-chart__label i {
+  font-style: normal; margin-left: 6px;
+  font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
+}
+/* ⚠️ **图要吃满这一栏剩下的高度**（左边三张卡决定这一栏多高）。
+   `--lines-h` 是复盘页那张图的固定高度，照搬过来的话首页这一栏下面会空出一片，
+   看着和「还没加载完」一模一样——`WeeklyBars` 写死 168px 时栽的就是这个。 */
+.today-chart .lines { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.today-chart .lines__plot { flex: 1 1 auto; min-height: 96px; height: auto; }
 .today-chart__head b {
   font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 700;
   letter-spacing: -0.03em; line-height: 1;

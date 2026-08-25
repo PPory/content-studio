@@ -49,34 +49,35 @@ export function ProjectCard({ project, onOpen }) {
       data-stage={project.stage}
       onClick={canOpen ? onOpen : undefined}
     >
+      {/**
+        * ⚠️ **状态 · 现状 · 时间挤在同一行，「现状」不再单占一行。**
+        * 这张卡原来是四行（状态 / 标题 / 现状 / 进度＋下一步），竖排三张就是半屏多；
+        * 而那一行现状是一句短话，和 pill 并排完全放得下——**项目页顶栏那条
+        * 「pill + 为什么在这一档」用的就是这个形状**，不是新造的。
+        *
+        * ⚠️ **原因和阻塞二选一，永远只画一条。**
+        * 两者常常是同一句话（「缺少目标读者」既是卡住的原因、也是要解决的那件事），
+        * 都画就是同一句话在一张卡上印两遍——一遍灰字一遍红字，看着像界面出了错。
+        * 有阻塞时让阻塞说（它带着下一步），没有才退回原因。
+        *
+        * ⚠️ **阻塞退成一行红字，不再是一只红框。**
+        * 那只框自带内边距和底色，一张卡为它高出三十多像素，而它装的只有五个字。
+        * 红字 + 警告图标在一行灰字中间已经足够跳出来——**这仍是这张卡上唯一用红的地方**。
+        */}
       <div className="act-card__top">
         <StatePill state={project.stage} />
+        {blockers.length ? (
+          <span className="act-card__warn" role="status" title={blockers[0]}>
+            <IconAlertTriangle aria-hidden="true" stroke={1.8} />
+            <span>{blockers[0]}</span>
+          </span>
+        ) : (
+          <span className="act-card__note" title={note || undefined}>{note}</span>
+        )}
         <time>{relTime(project.updatedAt)}</time>
       </div>
 
       <h3 className="act-card__title" title={title}>{title}</h3>
-
-      {/**
-        * ⚠️ 没有 stageReason 也要占高（`.act-card__note` 有 min-height），
-        * 不占的话一排卡片里下面每一行都落在不同高度，扫的时候眼睛得上下找。
-        *
-        * ⚠️ **但它和下面那条阻塞常常是同一句话**（「缺少目标读者」既是卡住的原因、
-        * 也是要解决的那件事），照直画就是同一句话在一张卡上印两遍——
-        * 一遍灰字一遍红框，看着像界面出了什么错。重了就让阻塞那条说，它带下一步。
-        */}
-      <p className="act-card__note">{note === blockers[0] ? "" : note}</p>
-
-      {/**
-        * 阻塞：这张卡上**唯一**用红的地方。只显示第一条——
-        * 卡片回答的是「要不要现在处理它」，不是「一共有几个问题」；
-        * 全部阻塞在项目详情页的左栏里列着。
-        */}
-      {blockers.length ? (
-        <div className="act-card__warn" role="status">
-          <IconAlertTriangle aria-hidden="true" stroke={1.8} />
-          <span>{blockers[0]}</span>
-        </div>
-      ) : null}
 
       {/**
         * ⚠️ **进度和动作合成一行，不再是一条出血的底栏。**

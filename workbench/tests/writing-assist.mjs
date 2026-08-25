@@ -613,10 +613,18 @@ try {
   await page.click('.sidebar .nav-item:has-text("AI助手")');
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
+  /**
+   * ⚠️ **量的是「贴着这一页的底」，不是「贴着那张画布的底」。**
+   * `.assistant-page__canvas` 已经撤了——那是套在 `.main` 里面的第二层白圆角卡片，
+   * 而 `.main` 本身就是浮在应用底色上的面板，白框套白框。
+   * 要钉的规矩没变（输入框永远在最底下、AI 跑起来时不许位移），换的只是参照物。
+   */
   const composerBefore = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
-  const canvasBox = await page.locator(".assistant-page__canvas").boundingBox();
-  const composerGap = canvasBox && composerBefore ? canvasBox.y + canvasBox.height - composerBefore.y - composerBefore.height : -1;
-  assert(composerBefore && composerGap >= 10 && composerGap <= 28, `独立对话输入框没有贴着对话画布底部：gap=${composerGap}`);
+  const pageBox = await page.locator(".assistant-page").boundingBox();
+  const composerGap = pageBox && composerBefore ? pageBox.y + pageBox.height - composerBefore.y - composerBefore.height : -1;
+  assert(composerBefore && composerGap >= 10 && composerGap <= 28, `独立对话输入框没有贴着这一页的底部：gap=${composerGap}`);
+  // ⚠️ 顺便钉住「没有第二层容器」：它回来一次就又是白框套白框
+  assert(!(await page.$(".assistant-page__canvas")), "独立对话页又套回了一层画布容器");
   await page.fill('.assistant-pane--standalone textarea[placeholder*="问任何问题"]', "帮我找一个值得继续思考的问题");
   await page.click('.assistant-pane--standalone button[aria-label="发送"]');
   await page.waitForSelector(".assistant-pane--standalone .assistant-working");

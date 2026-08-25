@@ -34,6 +34,31 @@ const { chromium } = require(require.resolve("playwright", { paths: [ROOT, "C:/U
  * 缺口提示、空指标整格消失、0 篇的那根柱子，都得在图上看得见。
  */
 const DATA = path.join(ROOT, "data");
+
+/**
+ * ⚠️ **本周那几条必须按「跑图的当天」算出来，不能写死日期。**
+ * 首页那张图的口径是**本周**，而写死的样例日期过几天就不在本周了——
+ * 于是首页永远截出一张「这周还没有发布记录」的空态，
+ * 而**看着和「图坏了」一模一样**。这正是这个脚本存在的理由：它是用来看图的。
+ */
+const MONDAY = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+})();
+const dayOfWeek = (n) => {
+  const d = new Date(MONDAY);
+  d.setDate(d.getDate() + n);
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const THIS_WEEK = [
+  `${dayOfWeek(0)},小红书,做了个「内容封面生成」Skill,https://example.invalid/w1,391,17,2,24,3,,,`,
+  `${dayOfWeek(1)},公众号,推荐一个公众号排版工具：Typeset,https://example.invalid/w2,104,2,0,,1,,,`,
+  `${dayOfWeek(3)},小红书,推荐一个自己做的公众号排版工具：Typeset,https://example.invalid/w3,243,15,1,19,4,,,`,
+  `${dayOfWeek(4)},抖音,把重复三遍的事情自动化,https://example.invalid/w4,8600,201,14,52,33,,,`,
+].join(String.fromCharCode(10));
+
 const SEED = [
   ["posts.csv", `date,platform,title,url,views,likes,comments,collects,shares,extra,doc,synced
 2026-08-02,小红书,用 AI 帮朋友做了个很急的项目，分享一些思路,https://example.invalid/1,3085,103,7,105,17,,,2026-08-12
@@ -44,6 +69,7 @@ const SEED = [
 2026-08-11,小红书,一个 skill 解决四大业务场景,https://example.invalid/6,2173,102,8,90,17,,,2026-08-12
 2026-08-11,抖音,把重复三遍的事情自动化,https://example.invalid/7,8600,201,14,52,33,,,2026-08-12
 2026-08-12,小红书,今天刚发的，还没有数据,https://example.invalid/8,,,,,,,,
+${THIS_WEEK}
 `],
   ["metrics.csv", `date,platform,followers,views,note
 2026-07-14,小红书,4120,,
@@ -444,7 +470,7 @@ const shots = [
   }],
   // 入库抽屉：全工作台最常用的一个入口，值得每次改完都看一眼
   ["intake", "/", ".todo-card, .note-title", async () => {
-    await page.click(".sidebar-foot .btn-primary").catch(() => {});
+    await page.click(".sidebar .btn-primary").catch(() => {});
     await page.waitForSelector(".drawer", { timeout: 6000 }).catch(() => {});
     await page.fill(".drawer textarea", "复利不是利滚利，是「同一件事做久了，别人再进来就追不上」。").catch(() => {});
   }],

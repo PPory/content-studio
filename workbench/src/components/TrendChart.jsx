@@ -17,6 +17,24 @@ export const PLATFORM_ORDER = ["公众号", "X", "小红书", "抖音", "视频�
 const LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"];
 const DARK = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"];
 
+/**
+ * 黑白版的色槽。**首页那张图用它**，理由见 `TodayChart`：
+ * 首屏收成黑白之后，彩色只留给状态和告警——那两样才是要一眼分出来的。
+ *
+ * ⚠️ **仍然按 `PLATFORM_ORDER` 取槽，不按当前有几条线循环**（和彩色版同一条）：
+ * 筛掉一个平台后剩下的线不能换深浅，否则你会以为数据变了。
+ * ⚠️ 深浅差不够时**图例和「看数字」就是唯一的身份来源**——那两样本来就是强制项，
+ * 不是装饰。取语义 token 而不是写死灰度值，暗色下才跟着翻。
+ */
+const MONO = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+
+/** 一条线该是什么颜色。`mono` 为真时走黑白色槽。 */
+export function seriesColor(platform, dark, mono) {
+  if (!mono) return platformColor(platform, dark);
+  const i = PLATFORM_ORDER.indexOf(platform);
+  return MONO[(i < 0 ? PLATFORM_ORDER.length : i) % MONO.length];
+}
+
 export function platformColor(platform, dark) {
   const i = PLATFORM_ORDER.indexOf(platform);
   const ramp = dark ? DARK : LIGHT;

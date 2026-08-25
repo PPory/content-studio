@@ -11,11 +11,13 @@
 // 身份不能只靠颜色。和 `WeeklyBars` 同一条。
 
 import { useState } from "react";
-import { platformColor } from "./TrendChart.jsx";
+import { seriesColor } from "./TrendChart.jsx";
 import { IconTable } from "./icons.jsx";
 
-export function DailyLines({ days, platforms, dark }) {
+export function DailyLines({ days, platforms, dark, mono }) {
   const [table, setTable] = useState(false);
+  // 一条线一个颜色，`mono` 时走黑白色槽（首页那张图）。**判据只写一处**
+  const hue = (p) => seriesColor(p, dark, mono);
   // ⚠️ 分母取**单平台单日的最大值**，不是当天合计：线是逐平台画的，
   // 拿合计当分母的话每条线都被压扁到下半截，两个平台各发一篇会看着像都没发。
   const max = Math.max(1, ...days.flatMap((d) => platforms.map((p) => d.byPlatform[p] || 0)));
@@ -70,7 +72,7 @@ export function DailyLines({ days, platforms, dark }) {
                 key={p}
                 className="lines__path"
                 points={days.map((d, i) => `${xAt(i)},${yAt(d.byPlatform[p] || 0)}`).join(" ")}
-                stroke={platformColor(p, dark)}
+                stroke={hue(p)}
                 fill="none"
                 /* ⚠️ `preserveAspectRatio="none"` 把坐标系拉扁了，线宽会跟着被拉成
                    横粗竖细。`non-scaling-stroke` 让描边不参与缩放，两个方向一样粗。 */
@@ -86,7 +88,7 @@ export function DailyLines({ days, platforms, dark }) {
                 key={`${p}-${d.key}`}
                 className="lines__dot"
                 data-zero={(d.byPlatform[p] || 0) === 0 ? "" : undefined}
-                style={{ left: `${xAt(i)}%`, bottom: `${((d.byPlatform[p] || 0) / max) * 100}%`, background: platformColor(p, dark) }}
+                style={{ left: `${xAt(i)}%`, bottom: `${((d.byPlatform[p] || 0) / max) * 100}%`, background: hue(p) }}
                 title={`${d.label} ${d.day.slice(5)} · ${p} ${d.byPlatform[p] || 0} 篇`}
               />
             ))
@@ -108,7 +110,7 @@ export function DailyLines({ days, platforms, dark }) {
         <div className="legend">
           {platforms.map((p) => (
             <span key={p} className="legend-item">
-              <span className="dot" style={{ background: platformColor(p, dark) }} />
+              <span className="dot" style={{ background: hue(p) }} />
               {p}
             </span>
           ))}

@@ -6,7 +6,7 @@ import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
 import { normalizeMaterialRoute } from "./lib/open-target.js";
-import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, BrandMark } from "./components/icons.jsx";
+import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
@@ -106,6 +106,9 @@ const NAV = [
   { key: "review", to: "review-performance", match: (v) => REVIEW_VIEWS.has(v) },
 ];
 
+// 这个 view 归哪一栏。侧栏高亮、面包屑、二级展开三处都问它，别各写各的
+const groupOf = (view) => NAV.find((n) => (n.match ? n.match(view) : view === n.key));
+
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
 const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
@@ -192,6 +195,35 @@ export function App() {
   const [assistantDockOpen, setAssistantDockOpen] = useState(() => {
     try { return localStorage.getItem(ASSISTANT_DOCK_KEY) === "open"; } catch { return false; }
   });
+  /**
+   * 哪一栏的二级项是展开的。
+   *
+   * ⚠️ **点「内容」「发现」只展开，不跳页。** 上一版点一下就直接落到那一栏的第一页
+   *（内容→创作、发现→热点），于是**「想看看这栏底下有什么」和「我要去那一页」
+   * 用的是同一个动作**——你只是想展开看看，页面已经换掉了，回不去刚才那一屏。
+   * 现在一级项是纯粹的展开开关，去哪一页由二级项说。
+   *
+   * 初始值和路由变化都跟着当前页走：深链进来时那一栏必须是开的，
+   * 否则屏幕上看不出自己在哪一组底下。
+   */
+  const [openGroup, setOpenGroup] = useState(() => {
+    const g = groupOf(route.view);
+    return g?.children ? g.key : null;
+  });
+
+  // 换页时把当前页所在那一栏展开。**只开不关**：用户手动收起别的栏是他的选择，
+  // 不该因为换了个页面又被摆回去。
+  useEffect(() => {
+    const g = groupOf(route.view);
+    if (g?.children) setOpenGroup(g.key);
+  }, [route.view]);
+
+  // 滚动标记：吸顶的页头只在真有内容从它底下过去时才画分隔线（见 `.main[data-scrolled]`）
+  const onMainScroll = useCallback((e) => {
+    const el = e.currentTarget;
+    const on = el.scrollTop > 4 ? "true" : "false";
+    if (el.dataset.scrolled !== on) el.dataset.scrolled = on;
+  }, []);
 
   const toggleRail = useCallback(() => {
     setRailCollapsed((v) => {
@@ -401,12 +433,26 @@ export function App() {
         {/* 左段包一层：顶栏是三列 grid（左 1fr · 中 auto · 右 1fr），
             中间那格才真的落在视口中心——见 styles.css 里那条注释 */}
         <div className="topbar__left">
+        {/**
+          * ⚠️ **品牌区跟着侧栏收放，不跟着顶栏。**
+          * 它画的是「导航那一栏的栏头」——logo、栏名、收放钮说的都是侧栏的事，
+          * 所以侧栏收到 60px 时它也得收到 60px。上一版把它钉死在展开态的宽度上，
+          * 于是收起之后**顶上还留着一条 200px 宽的品牌区、底下的栏只有 60px**，
+          * 那道竖线悬在半空，一眼就看出是两个不相干的东西拼在一起。
+          *
+          * 代价说清楚：**面包屑会跟着左右挪一次**（冒烟测试里那条「顶栏纹丝不动」
+          * 已经改成「搜索和齿轮不动 + 面包屑跟着栏走」）。搜索框在三列 grid 的中格、
+          * 齿轮 `justify-self: end`，两者都不受左段宽度影响。
+          */}
         <div className="topbar__brand">
           <BrandMark />
           <span className="topbar__name">Xenho OS</span>
-          {/* 折叠钮**常驻在顶栏**。搬上来之前它长在侧栏里，收起态时 logo 还得兼职当
-              展开按钮（因为 60px 宽的一条里放不下两个方块）——那套「两种形态」的
-              绕法现在整个不需要了：顶栏的宽度不受侧栏收放影响。 */}
+          {/**
+            * 收放钮**两种形态都在同一个位置**（栏头右端；收起态它铺满那 40px 的方块，
+            * 盖在 logo 上、悬停或聚焦才现形）。**不是「hover 才出现」的按钮**——
+            * 靶子一直在那儿、大小位置都不变，变的只是那一刻画哪个图标：
+            * 60px 的一条里摆不下两个方块，而 logo 和「展开」争的是同一个格子。
+            */}
           <button
             className="topbar__rail"
             onClick={toggleRail}
@@ -450,16 +496,13 @@ export function App() {
         </button>
 
         {/**
-          * 右端：连接状态 + 设置。**它们说的是同一件事的两面**——这颗点报的就是
-          * 「WORKER_URL / WORKBENCH_KEY 配没配、通不通」，而齿轮是去改它的地方。
-          * ⚠️ **点本身不做成按钮**：它只有 7px，一个点看不出可点；齿轮才是入口。
+          * 右端只剩设置。⚠️ **那颗 7px 的连接点搬去侧栏底部了**（`.rail-ws`）——
+          * 顶栏里它旁边放不下一行字，于是「流水线不可达」这件事只能挂在 `title` 里，
+          * **而没人会去悬停一个 7px 的点**。侧栏底部那一行放得下把话说完。
+          * 齿轮留在顶栏：它是「跨页面不变的三件事」之一，而且收起侧栏时也不能跟着变窄。
           */}
         <div className="topbar__end">
           {canDockAssistant ? <AssistantDockToggle open={assistantDockOpen} onClick={toggleAssistantDock} /> : null}
-          <span
-            className={`dot ${connTone(config, statusError, status, statusRetrying)}`}
-            title={connLabel(config, statusError, status, statusRetrying)}
-          />
           <button
             className="topbar__icon"
             onClick={() => setSettings(true)}
@@ -476,6 +519,22 @@ export function App() {
         {/* ⚠️ **品牌块和搜索框都搬去顶栏了。** 副标 `CREATOR WORKBENCH` 一起撤掉：
             顶栏一行放不下两行字，而那句话是说给「第一次见」听的——天天看着它，
             它就是「每个都说的话等于没说」里的那一个。 */}
+        {/**
+          * ⚠️ **「收集」从侧栏最底下搬到了导航上面。**
+          * 它原来钉在 `margin-top: auto` 的页脚上，而这个工作台只有五个一级项——
+          * 导航到页脚之间是**六百多像素的空白**，那颗按钮孤零零飘在底下，
+          * 看着像被落下的，不像这一栏最重的动作。
+          * 参考的四个侧栏都是同一个读法：**动作在最上面 · 导航在中间 · 身份在底部**。
+          * 快捷键提示不刻在按钮上（`n` 学一次就记住，而那枚小方块要跟着最显眼的按钮
+          * 出现在每一屏），留在 title 里。
+          */}
+        <div className="sidebar-head">
+          <button className="btn btn-primary btn-block" onClick={() => setIntake({})} title="入库（快捷键 n）">
+            <IconPlus aria-hidden="true" stroke={2} />
+            <span className="nav-item__label">收集</span>
+          </button>
+        </div>
+
         <nav className="nav">
           {NAV.map((item) => {
             const Icon = NAV_ICONS[item.key];
@@ -483,15 +542,23 @@ export function App() {
             // 选题数 + 稿件数不等于内容项目数：同一篇会被算两次。
             // 在项目汇总没有上收到 App 前，导航不显示这个会误导人的数字。
             const badge = 0;
+            const open = !!item.children && openGroup === item.key;
             return (
-              <div className={`nav-group${item.children ? " has-children" : ""}`} key={item.key} data-current={current ? "true" : undefined}>
+              <div
+                className={`nav-group${item.children ? " has-children" : ""}`}
+                key={item.key}
+                data-current={current ? "true" : undefined}
+                data-open={open ? "true" : undefined}
+              >
                 <button
                   className="nav-item"
                   aria-current={current && !item.children ? "page" : undefined}
+                  aria-expanded={item.children ? open : undefined}
                   data-current={current ? "true" : undefined}
-                  onClick={() => go(item.to)}
+                  // ⚠️ **有下级的项只展开，不跳页**（见上面 `openGroup` 那段注释）。
+                  onClick={() => (item.children ? setOpenGroup((k) => (k === item.key ? null : item.key)) : go(item.to))}
                   // 收起后只剩图标，名字得有地方可查；展开时浏览器不会为同文本再弹一次
-                  title={NAV_LABELS[item.key]}
+                  title={item.children ? `${NAV_LABELS[item.key]}（展开）` : NAV_LABELS[item.key]}
                 >
                   <span className="nav-item__icon">
                     <Icon aria-hidden="true" className="nav-icon" stroke={1.7} />
@@ -501,9 +568,27 @@ export function App() {
                   </span>
                   <span className="nav-item__label">{NAV_LABELS[item.key]}</span>
                   {badge ? <span className="count">{badge}</span> : null}
+                  {/* 有下级的项给一枚小角标：这一项**就是**那个开关（点它只展开、不跳页），
+                      所以它要照实报开合。没有它的话，「内容」和「排版」长得一模一样——
+                      看不出其中一个点下去是展开、另一个点下去是换页。 */}
+                  {item.children ? (
+                    <IconChevronDown className="nav-item__caret" aria-hidden="true" stroke={2} />
+                  ) : null}
                 </button>
-                {item.children && current && !railCollapsed ? (
-                  <div className="subnav" aria-label={`${NAV_LABELS[item.key]}下的页面`}>
+                {/**
+                  * ⚠️ **收起态也要渲染二级项，只是改成浮层。**
+                  * 上一版是 `display: none` 一刀切，代价是收起之后「找题 / 选题 / 创作 / 复盘」
+                  * **一个都点不到**——而收起是个会一直保持的状态，等于那四页从此只能靠 Ctrl+K。
+                  * 浮层靠 CSS 的 `:hover` / `:focus-within` 出现（键盘 Tab 进去同样能用），
+                  * DOM 仍然只有一套：加一个二级项不用改两处。
+                  */}
+                {item.children && (railCollapsed || open) ? (
+                  <div
+                    className="subnav"
+                    data-flyout={railCollapsed ? "true" : undefined}
+                    aria-label={`${NAV_LABELS[item.key]}下的页面`}
+                  >
+                    {railCollapsed ? <span className="subnav__title">{NAV_LABELS[item.key]}</span> : null}
                     {item.children.map((child) => (
                       <button
                         key={child.to}
@@ -526,20 +611,41 @@ export function App() {
           })}
         </nav>
 
+        {/**
+          * 侧栏底部：**这台工作台此刻连着什么**——一颗状态点 + 一行字。
+          *
+          * ⚠️ **整行不做成按钮**（和上一版 `.conn` 同一条理由）：收起态它只剩一颗 7px 的点，
+          * 一个点看不出可点；去改配置的入口是顶栏那枚齿轮。这里回答的是「通没通」，
+          * 不是「去哪儿改」。搬回侧栏是因为**顶栏那一格放不下一行字**：
+          * 「流水线不可达」只能藏在 title 里，而那句话正是出事时唯一该被看见的。
+          *
+          * vault 名跟在下面一行：它是「我在哪个知识库上干活」，
+          * 而在这之前整个界面只有设置面板里提过一次。
+          */}
         <div className="sidebar-foot">
-          {/* 快捷键提示不刻在按钮上：`n` 这条快捷键学一次就记住了，而那枚小方块要跟着
-              这个最显眼的按钮出现在每一屏——常驻的提示只有第一天有用。留在 title 里 */}
-          <button className="btn btn-primary btn-block" onClick={() => setIntake({})} title="入库（快捷键 n）">
-            <IconPlus aria-hidden="true" stroke={2} />
-            <span className="nav-item__label">收集</span>
-          </button>
+          <div
+            className="rail-ws"
+            title={`${connLabel(config, statusError, status, statusRetrying)}${config?.vault?.root ? ` · ${config.vault.root}` : ""}`}
+          >
+            <span className={`dot ${connTone(config, statusError, status, statusRetrying)}`} aria-hidden="true" />
+            <span className="rail-ws__text">
+              <b>{connLabel(config, statusError, status, statusRetrying)}</b>
+              {config?.vault?.name ? <i>{config.vault.name}</i> : null}
+            </span>
+          </div>
         </div>
       </aside>
 
       {/* 正文面板。⚠️ **内容多包一层 `.main__inner`**：面板负责「浮起来 + 自己滚」，
           内层负责内边距和可读宽度上限。合成一层的话，限宽会让面板本身缩窄，
           右边露出一条应用底色——那看着是「面板没铺满」，不是「正文不该太宽」。 */}
-      <main className="main" key={route.view}>
+      {/**
+        * ⚠️ **`data-scrolled` 直接写 DOM，不进 React state。**
+        * 它每滚一像素就要判断一次，进 state 等于整页跟着重渲染——
+        * 而它唯一的作用是让吸顶的页头在内容从底下钻过去时长出一道分隔线。
+        * `key={route.view}` 换页时这一层整个重挂，所以不用手动复位。
+        */}
+      <main className="main" key={route.view} onScroll={onMainScroll}>
         <div className="main__inner">
           {route.view === "today" ? (
             <Today

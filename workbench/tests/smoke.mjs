@@ -119,7 +119,19 @@ try {
     nav.join("/") === wantNav.join("/"),
     `${nav.join("/")}（常量 ${wantNav.join("/")}）`
   );
-  check("标签一律两个字", nav.every((n) => n.length === 2), nav.join("/"));
+  /**
+   * ⚠️ **「一律两个字」现在有一个例外：`AI助手`。**
+   * 这条规矩钉的是「别让侧栏被最长的那个标签撑宽」，而 `AI` 是两个半角字母，
+   * 排出来比一个汉字还窄——四个字符实际占的宽度和三个汉字差不多。
+   * `tests/unit.mjs` 里那条同名断言早就这么写了，两边口径必须一致，
+   * 否则同一件事一个红一个绿，谁也说不清哪个才是规矩。
+   */
+  const { NAV_LABELS: LABELS_FOR_LEN } = await import("../src/lib/views.js");
+  const twoCharExempt = new Set(["assistant"]);
+  const longNames = Object.entries(LABELS_FOR_LEN)
+    .filter(([key, name]) => !twoCharExempt.has(key) && name.length !== 2)
+    .map(([, name]) => name);
+  check("标签一律两个字", longNames.length === 0, longNames.length ? `超长的：${longNames.join("/")}` : nav.join("/"));
   check("默认进入今日", (await page.textContent(".crumbs")).trim() === "今日", await page.textContent(".crumbs"));
 
   /**
@@ -187,10 +199,29 @@ try {
         * 量「柱子有多高」会随数据变，量整栏高度又量不出空的是哪一段。
         */
       dead: (() => {
-        const plot = document.querySelector(".today-chart .bars__plot");
+        // ⚠️ **两种图形都要认**：首页那张已经从柱状（`.bars__plot`）换成了
+        // 折线（`.lines__plot`），只认前者的话这条会**安静地跳过去**——
+        // 而「一条被跳过的断言和一条不存在的断言是同一回事」。
+        // 这周一篇都没发时**本来就不画图**（空图既不报告什么也不指引下一步），
+        // 那不是「量不到」，是「此刻没有图」——两者要分开，-1 才是真出事
+        if (document.querySelector(".today-chart__empty")) return -2;
+        const plot = document.querySelector(".today-chart .bars__plot, .today-chart .lines__plot");
         const foot = document.querySelector(".today-chart .bars__foot");
         if (!plot || !foot) return -1;
         return Math.round(foot.getBoundingClientRect().top - plot.getBoundingClientRect().bottom);
+      })(),
+      // 首页那张图的口径是**本周**，不是本月：写死「本月」的话改口径不会红
+      chartLabel: (document.querySelector(".today-chart__label")?.textContent || "").trim(),
+      // ⚠️ 黑白：线的描边不能再是彩色的平台色（那是复盘页那张图的事）
+      chartMono: (() => {
+        const paths = [...document.querySelectorAll(".today-chart .lines__path")];
+        if (!paths.length) return null;
+        return paths.every((p) => {
+          const m = getComputedStyle(p).stroke.match(/\d+/g);
+          if (!m) return false;
+          const [r, g, b] = m.map(Number);
+          return Math.max(r, g, b) - Math.min(r, g, b) <= 12;   // 灰：三通道基本相等
+        });
       })(),
       table: document.querySelectorAll(".rtable__row").length,
       tableHead: [...document.querySelectorAll(".rtable__head span")].map((e) => e.textContent.trim()),
@@ -200,7 +231,14 @@ try {
   });
   if (home.split) {
     check("卡片那栏和图那栏底边齐平", home.gap <= 1, `底边差 ${home.gap}px`);
-    if (home.dead >= 0) check("图那一栏里没有一大片空地", home.dead <= 24, `柱区底下空了 ${home.dead}px`);
+    check(
+      "图那一栏里没有一大片空地",
+      home.dead === -2 || (home.dead >= 0 && home.dead <= 24),
+      home.dead === -2 ? "这周没有发布记录，本来就不画图" : `图区底下空了 ${home.dead}px（-1 = 有图却量不到，那是真出事）`
+    );
+    check("首页那张图看的是本周", /本周/.test(home.chartLabel), home.chartLabel);
+    // 有数据才有线可量；没有就照实说跳过，别当成绿的
+    check("首页那张图是黑白的", home.chartMono !== false, home.chartMono === null ? "这周没有发布记录，没有线可量" : "有彩色描边");
   }
   check("首屏最下面是一张表，不是第三份待办", home.table > 0 && !home.plan, `${home.table} 行 · ${home.tableHead.join("/")}`);
 
@@ -250,11 +288,13 @@ try {
        * ⚠️ **卡住的原因和那条阻塞常常是同一句话**（「缺少目标读者」既是原因也是要办的事），
        * 照直画就是同一句话在一张卡上印两遍——一遍灰字一遍红框，看着像界面出了什么错。
        */
-      echoed: cards.filter((c) => {
-        const n = (c.querySelector(".act-card__note")?.textContent || "").trim();
-        const w = (c.querySelector(".act-card__warn")?.textContent || "").trim();
-        return n && w && n === w;
-      }).length,
+      /**
+       * ⚠️ **原因和阻塞现在是二选一，一张卡上只画一条。**
+       * 两者常常是同一句话（「缺少目标读者」既是原因也是要办的事），都画就是
+       * 同一句话在一张卡上印两遍。上一版比的是两段文字相不相等——而结构改成
+       * 互斥之后那种比法**恒为 0、永远绿**，等于这条断言不存在了。改成量结构。
+       */
+      echoed: cards.filter((c) => c.querySelector(".act-card__note") && c.querySelector(".act-card__warn")).length,
       more: document.querySelector(".today-more")?.tagName || "",
       // 那颗动作得是**真按钮**，键盘要够得着
       go: cards.filter((c) => c.querySelector("button.act-card__go")).length,
@@ -271,7 +311,7 @@ try {
     check("同一行里的卡片等高", todayTop.spread <= 1, `同行高度差 ${todayTop.spread}px`);
     check("每张卡都有状态 pill，且 pill 里有图标", todayTop.pills === todayTop.n && todayTop.pillsWithIcon === todayTop.n, `${todayTop.pillsWithIcon}/${todayTop.n}`);
     check("每张卡要么给进度要么给阻塞", todayTop.told === todayTop.n, `${todayTop.told}/${todayTop.n}`);
-    check("同一句话不在一张卡上印两遍", todayTop.echoed === 0, `${todayTop.echoed} 张重了`);
+    check("原因和阻塞一张卡上只画一条", todayTop.echoed === 0, `${todayTop.echoed} 张两条都画了`);
     check("卡片上那颗动作是真按钮不是一行字", todayTop.go === todayTop.n, `${todayTop.go}/${todayTop.n}`);
     check("按钮上写的是下一步本身，不是「去处理」", todayTop.vague === 0, `${todayTop.vague} 颗写着「去处理」`);
     // ⚠️ 「还有 N 篇」必须**点得动**，否则它只是个说了不算的数字
@@ -292,9 +332,20 @@ try {
     check("后台计数条数跟着 AUTO_CARDS 走", autoN === want, `界面 ${autoN} 个 / 常量 ${want} 条`);
   }
 
-  // 一级任务展开后，稳定目的地直接出现在左栏；不再先进入一张页内中转页。
+  /**
+   * ⚠️ **点一级项只展开二级，不跳页。**
+   * 上一版点「内容」直接落到创作页——于是「想看看这栏底下有什么」和「我要去那一页」
+   * 是同一个动作，你只是想展开看看，页面已经换掉了。
+   * 所以这里断言的是**两件事分开了**：点完还在原地，而二级项出来了。
+   */
+  const beforeExpand = await page.evaluate(() => location.hash);
   await page.click('.nav-item:has-text("内容")');
-  await page.waitForSelector(".crumbs", { timeout: 8000 });
+  await page.waitForSelector('.nav-group[data-open="true"] .subnav-item', { timeout: 8000 });
+  check("点一级项只展开、不跳页", (await page.evaluate(() => location.hash)) === beforeExpand,
+    `${beforeExpand} → ${await page.evaluate(() => location.hash)}`);
+  // 展开之后再点二级项，那一下才换页
+  await page.click('.subnav-item:has-text("创作")');
+  await page.waitForFunction(() => /内容/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 });
   check("内容成为独立任务页", /^内容/.test((await page.textContent(".crumbs")).trim()), (await page.textContent(".crumbs")).trim());
 
   /**
@@ -387,6 +438,25 @@ try {
        时候就渲染好了，等它等于「等容器不等内容」——下面整段会安静地跳过去，
        而跳过去的输出和「这一段通过了」长得一模一样。这个坑这一轮已经踩到第三次。 */
     await page.waitForSelector(".project-workspace, .project-workspace-load .note-danger", { timeout: 25000 }).catch(() => {});
+
+    /**
+     * ⚠️ **右栏现在是三页签（AI 助手 / 项目素材 / 检查报告），默认落在 AI 助手。**
+     * 底下那一整段量的是**素材那一栏**（种子、找相关素材、候选是不是混进列表），
+     * 而它们现在住在第二个页签里——不先切过去的话，`querySelector` 一个都找不到，
+     * 于是那几条要么红、要么落进「没有种子」这种**看着像结论、其实是没看见**的分支。
+     * 「量不到要红，不能悄悄跳过」在这个文件里已经记过好几次，这是同一类。
+     */
+    const railTabs = await page.$$eval(".project-assistant__tabs button", (els) => els.map((e) => ({
+      label: e.textContent.trim().replace(/\d+$/, ""),
+      on: e.getAttribute("aria-pressed") === "true",
+    }))).catch(() => []);
+    if (railTabs.length) {
+      check("右栏是三页签，默认落在 AI 助手", railTabs.length === 3 && railTabs[0].on,
+        railTabs.map((t) => `${t.label}${t.on ? "(当前)" : ""}`).join("/"));
+      await page.click('.project-assistant__tabs button:has-text("项目素材")');
+      await page.waitForTimeout(200);
+    }
+
     const proj = await page.evaluate(() => {
       const ws = document.querySelector(".project-workspace");
       if (!ws) return null;
@@ -415,7 +485,9 @@ try {
          * 「写死外部状态的断言等于没有断言」在这个文件里已经栽过三次。
          */
         rail: document.querySelector(".project-rail .pmat") ? "素材"
-          : document.querySelector(".project-publish") ? "发布准备" : "",
+          : document.querySelector(".project-publish") ? "发布准备"
+          // 三页签的壳在、但素材那一档还没渲染出来：这是**没看见**，不是「右栏换了一种」
+          : document.querySelector(".project-assistant") ? "" : "",
         /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目素材那一栏必须叫别的 */
         clash: document.querySelectorAll(".project-rail .prefs").length,
         /* 「待诊断」那一档撤了：不许在这一页任何地方长回来 */
@@ -570,10 +642,19 @@ try {
             if (!bar) return null;
             return Math.round(bar.getBoundingClientRect().bottom - rail.getBoundingClientRect().top);
           })();
+          /**
+           * ⚠️ **参照物是它真正的滚动容器，不是右栏的外沿。**
+           * 右栏现在最上面还压着一条三页签的条（AI 助手 / 项目素材 / 检查报告），
+           * 素材列表滚在 `.project-assistant__materials` 里——拿右栏外沿当基准的话，
+           * 量到的是「页签条 + 内边距」那几十像素，断言红着而吸顶其实是好的。
+           * 没有那层壳时（旧结构 / 别处复用）就退回右栏本身。
+           */
           out.headTop = (() => {
             const head = rail.querySelector(".pmat__head");
             if (!head) return -1;
-            return Math.round(head.getBoundingClientRect().top - rail.getBoundingClientRect().top);
+            const box = head.closest(".project-assistant__materials") || rail;
+            const pad = parseFloat(getComputedStyle(box).paddingTop) || 0;
+            return Math.round(head.getBoundingClientRect().top - box.getBoundingClientRect().top - pad);
           })();
           main.scrollTop = 0;
           await settle();
@@ -601,7 +682,7 @@ try {
           stuck.underBar == null ? "这一页不够长或没有操作条" : `离操作条底 ${-stuck.underBar}px`);
         // 「项目素材」那一行吸在右栏顶上，滚完还得在那儿
         check("滚完「项目素材」那一行还在右栏顶上", stuck.headTop == null || stuck.headTop < 0 || Math.abs(stuck.headTop) <= 2,
-          stuck.headTop == null ? "这一页不够长，标题位移量不到" : stuck.headTop < 0 ? "这一档右栏是发布准备，没有那一行" : `离右栏顶 ${stuck.headTop}px`);
+          stuck.headTop == null ? "这一页不够长，标题位移量不到" : stuck.headTop < 0 ? "这一档右栏是发布准备，没有那一行" : `离滚动容器顶 ${stuck.headTop}px`);
         /**
          * ⚠️ **右栏不许横向被撑破。** 这条和上面那条是同一个根因的两个症状——
          * 修完只量 sticky 的话，下次某个 `nowrap` 的长标题回来时，
@@ -643,11 +724,20 @@ try {
        * 黑在这套界面里的意思是「点这儿」，一屏两处就等于没说。
        * 量的是**渲染后有几个元素的底色等于正文黑**，不是「样式表里写了几次 --accent」。
        */
+      /**
+       * ⚠️ **两处深色不算在内，理由不一样，都写在这儿。**
+       * - `.assistant-message` 里那个气泡：**它不是动作**。设计系统给了明确的例外——
+       *   表示「东西在这儿」的数据记号（流水线非 0 的节点、自己发的聊天气泡）不算选中态。
+       * - `.assistant-composer` 里那颗发送圆钮：它是**那个输入框**的主操作，
+       *   跟着输入框走，不是这一页的主操作。这一页的那一颗是右上角「写完了，去发布」。
+       * 排掉它们之后这条断言仍然抓得住真正要防的东西：**页面上凭空多出来的黑块**。
+       */
       const solids = await page.evaluate(() => {
         const ink = getComputedStyle(document.body).color;
         return [...document.querySelectorAll(".project-workspace *")]
           .filter((el) => getComputedStyle(el).backgroundColor === ink)
-          .map((el) => el.className.toString().slice(0, 40));
+          .filter((el) => !el.closest(".assistant-message") && !el.closest(".assistant-composer"))
+          .map((el) => el.className.toString().slice(0, 40) || el.tagName.toLowerCase());
       });
       check("这一页只有一颗实心黑", solids.length <= 1, solids.join(" · ") || "(一颗都没有)");
     } else {
@@ -955,12 +1045,15 @@ try {
   check("内容二级导航可直接进入", wantSubnav.length > 0 && contentSubnav === wantSubnav.join("/"),
     `${contentSubnav}（常量 ${wantSubnav.join("/")}）`);
   check("内容流程使用真实任务名", contentSubnav === "找题/选题/创作/复盘", contentSubnav);
+  // 同上：一级只展开，去哪一页由二级说
   await page.click('.nav-item:has-text("发现")');
+  await page.waitForSelector('.nav-group[data-open="true"] .subnav-item:has-text("热点")', { timeout: 8000 });
+  await page.click('.subnav-item:has-text("热点")');
   /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
      那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
      「等容器不等内容」在这个文件里已经记过三次，这是第四处。 */
   await page.waitForFunction(() => /热点/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
-  check("发现直接进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
+  check("发现进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
   /**
    * ⚠️ **跟 `App.jsx` 的 NAV 常量比，不写死那一串。**
    * 这个文件已经为「钉了一个本来就会变的名字」红过四次了
@@ -986,8 +1079,9 @@ try {
   check("素材归到「发现」底下", /素材/.test(await page.textContent(".crumbs")), await page.textContent(".crumbs"));
   // 素材自己仍然是**一整页**（链路那一排就是筛选器），没有再往下分二级
   check("素材没有再拆成三个入口", !(await page.$(".main > .pill-tabs")));
+  // 「今日」没有二级项，点它仍然是直接换页
   await page.click('.nav-item:has-text("今日")');
-  await page.waitForSelector(".crumbs", { timeout: 8000 });
+  await page.waitForFunction(() => /今日/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 });
 
   /**
    * 侧栏能收起，而且**记得住**。
@@ -1003,8 +1097,30 @@ try {
    * 侧栏里**，而 60px 宽的一条里塞不下它们。这些东西现在都在**顶栏**，
    * 顶栏的宽度不受侧栏收放影响，所以那三个问题连同那套绕法一起没有了。
    *
-   * 换来的是一条**更该钉的**：收侧栏时顶栏必须纹丝不动。那才是把它们搬上去的理由。
+   * ⚠️ **「收侧栏时顶栏纹丝不动」那条已经改了口径，不是放宽了。**
+   * 品牌区（logo + 栏名 + 收放钮）画的是**导航那一栏的栏头**，所以它跟着侧栏一起收放；
+   * 顶上留着一条 200px 的品牌区、底下的栏只有 60px 时，那道竖线悬在半空。
+   * 面包屑贴着品牌区，于是它也跟着挪——**这是有意的，它属于那条缝右边**。
+   * 真正不许动的是**搜索和齿轮**：那两样跟侧栏没关系，一动就是每收一次栏它们跳一次。
    */
+  /**
+   * ⚠️ **顶栏那道竖线要落在侧栏和正文之间的那条缝上。**
+   *
+   * 品牌区原来是「内容多宽就多宽」，竖线停在 197px 而缝在 200px——**差三像素**，
+   * 而那三像素就是整个外壳看着「没对齐」的地方。现在品牌区量的是 `--rail-w`
+   *（展开态侧栏宽度），所以两者必然同一个 x。量不到就回 -1 让它红。
+   */
+  const seam = await page.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().right) : -1; };
+    const main = document.querySelector(".main");
+    return { brand: r(".topbar__brand"), rail: r(".sidebar"), main: main ? Math.round(main.getBoundingClientRect().left) : -2 };
+  });
+  check(
+    "顶栏的竖线落在侧栏和正文之间的缝上",
+    seam.brand > 0 && seam.brand === seam.rail && seam.rail === seam.main,
+    `品牌区 ${seam.brand} · 侧栏 ${seam.rail} · 正文 ${seam.main}`
+  );
+
   const topBefore = await page.evaluate(() => {
     const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
     return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
@@ -1014,7 +1130,16 @@ try {
   const railW = await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width));
   check("收起后只剩一列图标的宽度", railW <= 64, `${railW}px`);
   check("收起后文字不占位", (await page.$eval(".nav-item", (e) => e.innerText.trim())) === "", await page.$eval(".nav-item", (e) => e.innerText));
-  check("收起后图标还在", (await page.$$(".nav-item .nav-icon")).length === 5);
+  /**
+   * ⚠️ **跟导航项的个数比，别写死 5。**
+   * 写死的话加一页就红，而代码是对的（已经为这个栽过一次）。
+   * 真正要钉的是「**每一项**收起后都还剩得下那枚图标」。
+   */
+  const iconCount = await page.$$eval(".nav-item", (els) => ({
+    items: els.length,
+    icons: els.filter((el) => el.querySelector(".nav-icon")).length,
+  }));
+  check("收起后每一项都还剩着图标", iconCount.items > 0 && iconCount.icons === iconCount.items, `${iconCount.icons}/${iconCount.items}`);
   // 角标退成一颗点：60px 里放不下数字，而「这儿有没有事」才是这一刻要回答的
   const dotOk = await page.evaluate(() => {
     const d = document.querySelector(".nav-item__dot");
@@ -1022,14 +1147,45 @@ try {
   });
   check("角标退成一颗点", dotOk);
 
+  /**
+   * ⚠️ **收起态二级项要还点得到。**
+   *
+   * 上一版是 `.subnav { display: none }` 一刀切，于是收起之后「找题 / 选题 / 创作 / 复盘」
+   * **一个都点不到**——而收起是个存在 localStorage 里、会一直保持的状态，
+   * 等于那四页从此只剩 Ctrl+K 一条路。现在它们变成悬停浮出来的一块浮层。
+   * 断言量的是**悬停之后真的可见**，不是「元素存在」：藏着的元素也是存在的。
+   */
+  await page.hover(".nav-group.has-children .nav-item");
+  await page.waitForTimeout(250);
+  const flyout = await page.evaluate(() => {
+    const el = document.querySelector(".subnav[data-flyout]");
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    return {
+      shown: getComputedStyle(el).visibility === "visible" && box.width > 0,
+      items: [...el.querySelectorAll(".subnav-item")].length,
+    };
+  });
+  check("收起态二级项浮出来还点得到", !!flyout?.shown && flyout.items > 0, JSON.stringify(flyout));
+
   const topAfter = await page.evaluate(() => {
     const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
     return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
   });
   check(
-    "收侧栏时顶栏纹丝不动",
-    topAfter.find === topBefore.find && topAfter.gear === topBefore.gear && topAfter.crumb === topBefore.crumb,
-    `搜索 ${topBefore.find}→${topAfter.find} · 齿轮 ${topBefore.gear}→${topAfter.gear} · 面包屑 ${topBefore.crumb}→${topAfter.crumb}`
+    "收侧栏时搜索和齿轮纹丝不动",
+    topAfter.find === topBefore.find && topAfter.gear === topBefore.gear,
+    `搜索 ${topBefore.find}→${topAfter.find} · 齿轮 ${topBefore.gear}→${topAfter.gear}`
+  );
+  // 品牌区和面包屑属于「那条缝的左右两边」，跟着栏一起收
+  const seamAfter = await page.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().right) : -1; };
+    return { brand: r(".topbar__brand"), rail: r(".sidebar") };
+  });
+  check(
+    "收起后品牌区跟着栏一起收",
+    seamAfter.brand > 0 && seamAfter.brand === seamAfter.rail && topAfter.crumb < topBefore.crumb,
+    `品牌区 ${seamAfter.brand} · 侧栏 ${seamAfter.rail} · 面包屑 ${topBefore.crumb}→${topAfter.crumb}`
   );
   // ⚠️ **设置入口在收起态下不能消失**：工作台没配好时它是唯一那条能走的路，
   // 而收起是个会一直保持的状态。搬去顶栏之后这条是天然成立的，但仍要钉着。
@@ -1047,6 +1203,33 @@ try {
   await page.click(".topbar__rail");
   await page.waitForTimeout(250);
   check("再点一下展开回去", (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) > 150);
+
+  /**
+   * ⚠️ **页头吸顶：滚下去之后这一页的主操作要还在屏幕上。**
+   *
+   * 它右端放着「新建内容」和条数，而这几页都比一屏长——不吸顶的话，
+   * 滚到一半想新建一篇得先滚回顶上。量的是**滚动之后页头的上沿贴着面板上沿**，
+   * 不是「有没有 `position: sticky`」：负 margin 或内边距算错时属性照样是 sticky，
+   * 而它停的位置是错的。
+   */
+  await page.evaluate(() => { const m = document.querySelector(".main"); if (m) m.scrollTop = 400; });
+  await page.waitForTimeout(250);
+  const stickyHead = await page.evaluate(() => {
+    const main = document.querySelector(".main");
+    const bar = document.querySelector(".main__inner > .page-bar");
+    if (!main || !bar) return null;
+    const b = bar.getBoundingClientRect();
+    const m = main.getBoundingClientRect();
+    return { gap: Math.round(b.top - m.top), scrolled: main.scrollTop > 0, marked: main.dataset.scrolled };
+  });
+  if (stickyHead?.scrolled) {
+    check("滚下去页头还钉在正文栏顶上", Math.abs(stickyHead.gap) <= 1, `离面板上沿 ${stickyHead.gap}px`);
+    check("滚起来了才画那条分隔线", stickyHead.marked === "true", String(stickyHead.marked));
+  } else {
+    // 页面没长到能滚（数据少的时候）——这条不适用，但要说出来，别当成绿的
+    check("滚下去页头还钉在正文栏顶上", true, "这一页没长到能滚，跳过");
+  }
+  await page.evaluate(() => { const m = document.querySelector(".main"); if (m) m.scrollTop = 0; });
 
   /**
    * 2.5 设置：整屏覆盖层，左栏分类、右栏一段。
@@ -1898,8 +2081,15 @@ try {
   // 排版是侧栏就有的一页，总览不该再放一个把人带出工作台的外链
   check("排版不在总览里另开标签页", !(await page.$('.main a[href="/tools/typeset/"]')));
 
-  // 5. 入库抽屉能开能关——它是「万物皆可入库」的唯一入口，坏了整个打通机制就断了
-  await page.click(".sidebar-foot .btn-primary");
+  /**
+   * 5. 入库抽屉能开能关——它是「万物皆可入库」的唯一入口，坏了整个打通机制就断了。
+   *
+   * ⚠️ **选择器是 `.sidebar .btn-primary` 不是 `.sidebar-foot .btn-primary`。**
+   * 「收集」从侧栏页脚搬到了导航上面（页脚现在放连接状态），而按位置写的选择器
+   * 会跟着一起坏——**其中一条还会「坏成绿的」**：
+   * `!(await page.$(".sidebar-foot .btn-primary kbd"))` 在按钮压根不在那儿时恒为真。
+   */
+  await page.click(".sidebar .btn-primary");
   await page.waitForSelector(".drawer", { timeout: 4000 });
   check("入库抽屉打开", true);
   /**
@@ -1912,9 +2102,16 @@ try {
    * 上一次改文案时这里漏了，测试红了一整个 commit——**按文字点的选择器每次改文案都要回头看这儿**，
    * 和「收起态文字 display:none，:has-text() 点不中」是同一类坑。
    */
-  const defaultTarget = await page.textContent('.drawer .seg button[aria-pressed="true"]');
+  const defaultTarget = await page.textContent('.drawer .opt[aria-pressed="true"] b');
   check("默认落在稍后整理", defaultTarget.trim() === "稍后整理", defaultTarget.trim());
-  await page.click('.drawer .seg button:has-text("直接作为素材")');
+  /**
+   * ⚠️ **三条去向的说明要**逐项**都在屏幕上**，不是只讲选中的那一条。
+   * 芯片那一版只有一句 `.field-hint` 跟着选中项变——而入库是**不可逆的分流**
+   *（存进哪个库决定了它后面走哪条链），差别得在选之前就读得到。
+   */
+  const optDescs = await page.$$eval(".drawer .opt span", (els) => els.map((e) => e.textContent.trim()).filter(Boolean));
+  check("三条去向各自带着说明", optDescs.length === 3, `${optDescs.length} 条：${optDescs.join(" / ")}`);
+  await page.click('.drawer .opt:has-text("直接作为素材")');
   const typeBtns = await page.$$eval(".drawer .chip", (els) => els.map((e) => e.textContent.trim()));
   check("入库类型齐全", typeBtns.includes("自动判断") && typeBtns.includes("金句"), typeBtns.join("/"));
   /**
@@ -1930,7 +2127,7 @@ try {
   check("入库表单先问内容", firstField === "内容", firstField);
   check("底部有退路也有主动作", (await page.textContent(".drawer-foot")).includes("取消"));
   // 快捷键提示不刻在按钮上：`n` 学一次就记住了，而那枚小方块要跟着最显眼的按钮出现在每一屏
-  check("入库按钮上没有常驻的快捷键角标", !(await page.$(".sidebar-foot .btn-primary kbd")));
+  check("入库按钮上没有常驻的快捷键角标", !(await page.$(".sidebar .btn-primary kbd")));
   await page.keyboard.press("Escape");
   await page.waitForSelector(".drawer", { state: "detached", timeout: 4000 });
   check("Esc 关闭抽屉", true);
@@ -4331,6 +4528,15 @@ try {
     check("预览阶段不写盘", (fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "") === writesBefore);
     await page.click('.preview .btn-primary');
     await page.waitForTimeout(900);
+    /**
+     * ⚠️ **确认之后要当场验一次写盘。**
+     * 这儿原来一条断言都没有，代价是下面 9c 那条「同一篇再导一次算更新不算新增」红的时候
+     * **完全看不出是哪个环节坏了**：是幂等判断错了，还是上一步压根没写进去？
+     * 两个毛病差着十万八千里，而输出长得一模一样。
+     */
+    const wroteAfterImport = fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "";
+    check("点了确认真的写进去了", wroteAfterImport.includes("冒烟测试甲"),
+      wroteAfterImport === writesBefore ? "文件一个字节都没变——那一下没写盘" : "写了，但没有「冒烟测试甲」那一行");
 
     // 9b. 总览：发布量、渠道分布、空值不被记成 0
     /* ⚠️ **必须显式写出要哪个 tab。** 数据页收成了一页三 tab（内容明细 / 月度总览 /
@@ -5109,7 +5315,7 @@ try {
   // 关掉之后焦点要回到打开它的那个按钮上，不能掉回 body（那样下一次 Tab 从整页开头重来）
   check(
     "关闭后焦点回到打开它的按钮",
-    await page.evaluate(() => document.activeElement?.closest(".sidebar-foot .btn-primary") != null),
+    await page.evaluate(() => document.activeElement?.closest(".sidebar .btn-primary") != null),
     await page.evaluate(() => document.activeElement?.className || "(body)")
   );
 
