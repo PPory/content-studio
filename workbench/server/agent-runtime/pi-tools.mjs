@@ -101,6 +101,22 @@ async function workspaceFiles(env, mountId, query, signal, maxResults = 12) {
   const needle = clean(query, 300).toLowerCase();
   const matches = [];
   for (const mount of mounts) {
+    if (mount.kind === "file") {
+      const resolved = await resolveAgentMountPath(env, mount.id, ".");
+      try {
+        const stat = await fs.stat(resolved.absolute);
+        if (stat.size <= 1_000_000) {
+          const body = await fs.readFile(resolved.absolute, { encoding: "utf8", signal });
+          if (!body.includes("\0")) {
+            const index = body.toLowerCase().indexOf(needle);
+            const nameHit = mount.onlyPath.toLowerCase().includes(needle);
+            const excerpt = index >= 0 ? body.slice(Math.max(0, index - 180), index + needle.length + 420).replace(/\s+/g, " ") : "";
+            if (nameHit || excerpt) matches.push({ mountId: mount.id, mount: mount.label, path: mount.onlyPath, excerpt: clean(excerpt, 800) });
+          }
+        }
+      } catch {}
+      continue;
+    }
     const queue = ["."];
     let inspected = 0;
     while (queue.length && inspected < 1_200 && matches.length < maxResults) {
@@ -182,7 +198,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ query: needle, total: sources.length, sources });
   }));
 
-  tools.push(tool("workspace_list", "查看已授权工作区", "列出 Agent 当前可访问的工作台、Obsidian 和本地文件夹，或浏览其中一个目录。", Type.Object({
+  tools.push(tool("workspace_list", "查看已授权工作区", "列出 Agent 当前可访问的工作台与本轮对话明确指定的本地项目或文件。", Type.Object({
     mountId: Type.Optional(Type.String({ maxLength: 80 })),
     path: Type.Optional(Type.String({ maxLength: 1_000 })),
   }), async ({ mountId = "", path: requested = "." }) => {
@@ -192,6 +208,8 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
       return text({ summary: access.summary, mounts: access.public });
     }
     const resolved = await resolveAgentMountPath(env, mountId, requested);
+    const stat = await fs.stat(resolved.absolute);
+    if (stat.isFile()) return text({ mountId, path: resolved.relative, items: [{ name: path.basename(resolved.absolute), type: "file" }] });
     const entries = await fs.readdir(resolved.absolute, { withFileTypes: true });
     return text({ mountId, path: resolved.relative, items: entries.filter((item) => !SEARCH_SKIP.has(item.name)).slice(0, 300).map((item) => ({ name: item.name, type: item.isDirectory() ? "directory" : item.isFile() ? "file" : "other" })) });
   }));

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createPiTools } from "../server/agent-runtime/pi-tools.mjs";
-import { addAgentMount, agentAccess, removeAgentMount, resolveAgentMountPath } from "../server/agent-runtime/agent-access.mjs";
+import { agentAccess, agentMountsFromUserMessage, resolveAgentMountPath } from "../server/agent-runtime/agent-access.mjs";
 import { permissionModeCatalog, PERMISSION_MODES, resolveProjectPath, resolveVaultPath } from "../server/agent-runtime/permission-modes.mjs";
 import { PI_RUNTIME_VERSION, piRuntimeInfo, probePiRuntime } from "../server/agent-runtime/pi-runtime.mjs";
-import { assistantExperts, assistantSkills } from "../server/agent-runtime/assistant-runner.mjs";
+import { assistantConversations, assistantExperts, assistantSkills, createAssistantConversation, manageAssistantConversation } from "../server/agent-runtime/assistant-runner.mjs";
 import { guidedSessionId } from "../server/agent-runtime/guided-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
 import { WB_ROOT } from "../server/lib/vault-dirs.mjs";
@@ -47,7 +48,7 @@ await fs.mkdir(path.join(vault, WB_ROOT), { recursive: true });
 await fs.mkdir(outside, { recursive: true });
 await fs.writeFile(path.join(vault, WB_ROOT, "read.md"), "# 临时文档\n", "utf8");
 await fs.writeFile(path.join(outside, "secret.md"), "outside", "utf8");
-const env = { VAULT_ROOT: vault, AGENT_ACCESS_FILE: path.join(tempRoot, "access.json") };
+const env = { VAULT_ROOT: vault };
 try {
   await assert.rejects(() => resolveVaultPath(env, "../outside/secret.md"), /路径越界/);
   await assert.rejects(() => resolveVaultPath(env, path.join(outside, "secret.md")), /路径越界/);
@@ -63,19 +64,29 @@ try {
     if (!["EPERM", "EACCES", "UNKNOWN"].includes(error?.code)) throw error;
   }
 
-const external = await addAgentMount(env, { path: outside, label: "外部项目", write: true, execute: true });
-  const access = await agentAccess(env);
+  const [external] = await agentMountsFromUserMessage(`请读取项目目录 "${outside}"`);
+  assert(external && external.kind === "folder", "本轮消息中的真实目录没有生成对话级授权");
+  assert.deepEqual(await agentMountsFromUserMessage(`错误日志：${outside}`), [], "无访问意图的日志路径不该自动授权");
+  assert.deepEqual(await agentMountsFromUserMessage("请读取 \\\\server\\share"), [], "UNC 路径不该自动授权");
+  const dailyAccess = await agentAccess({ ...env, AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "daily" });
+  assert(dailyAccess.public.every((item) => !item.write && !item.execute), "日常模式下工作台和本地项目必须保持只读");
+  const sessionEnv = { ...env, AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "developer" };
+  const access = await agentAccess(sessionEnv);
   assert(access.public.some((item) => item.id === external.id && item.write && item.execute));
-  assert.equal((await resolveAgentMountPath(env, external.id, "secret.md")).absolute, path.join(outside, "secret.md"));
-  await assert.rejects(() => resolveAgentMountPath(env, external.id, "../vault"), /越过了已授权|越过/);
-  await assert.rejects(() => resolveAgentMountPath(env, external.id, "secret.md:stream"), /数据流/);
-  await assert.rejects(() => addAgentMount(env, { path: "\\\\server\\share" }), /本机磁盘/);
-  await assert.rejects(() => resolveAgentMountPath(env, external.id, ".GIT/config", { write: true }), /版本库元数据/);
+  assert.equal((await resolveAgentMountPath(sessionEnv, external.id, "secret.md")).absolute, path.join(outside, "secret.md"));
+  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, "../vault"), /越过了已授权|越过/);
+  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, "secret.md:stream"), /数据流/);
+  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, ".GIT/config", { write: true }), /版本库元数据/);
+
+  const [singleFile] = await agentMountsFromUserMessage(`请打开文件 "${path.join(outside, "secret.md")}"`);
+  const fileEnv = { ...env, AGENT_SESSION_MOUNTS: [singleFile], AGENT_PERMISSION_MODE: "daily" };
+  assert.equal((await resolveAgentMountPath(fileEnv, singleFile.id, ".")).absolute, path.join(outside, "secret.md"));
+  await assert.rejects(() => resolveAgentMountPath(fileEnv, singleFile.id, "sibling.md"), /只允许读取指定文件/);
 
   const context = { project: { title: "临时" }, attachments: [], localSources: [], projectMaterials: [] };
-  const daily = createPiTools({ env, mode: "daily", context, actionsFile });
-  const creative = createPiTools({ env, mode: "creative", context, actionsFile });
-  const developer = createPiTools({ env, mode: "developer", context, actionsFile });
+  const daily = createPiTools({ env: sessionEnv, mode: "daily", context, actionsFile });
+  const creative = createPiTools({ env: sessionEnv, mode: "creative", context, actionsFile });
+  const developer = createPiTools({ env: sessionEnv, mode: "developer", context, actionsFile });
   const required = ["workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert", "web_search", "web_fetch"];
   const allNames = new Set(developer.map((item) => item.name));
   for (const name of required) assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
@@ -96,15 +107,39 @@ const external = await addAgentMount(env, { path: outside, label: "外部项目"
   assert.equal(queued.at(-1).permissionMode, "creative");
   await assert.rejects(() => execute(creative, "powershell", { command: "Get-Location" }), /创作模式不允许/);
   await assert.rejects(() => execute(developer, "powershell", { command: "Remove-Item -Recurse ." }), /破坏性删除/);
-  await removeAgentMount(external.id, env);
-  await assert.rejects(() => resolveAgentMountPath(env, external.id, "secret.md"), /尚未授权/);
+
 } finally {
   await fs.rm(tempRoot, { recursive: true, force: true });
+}
+
+const conversationScope = `test-conversations-${crypto.randomUUID()}`;
+const conversationScopeKey = crypto.createHash("sha256").update(conversationScope).digest("hex").slice(0, 24);
+const conversationStore = path.resolve(process.cwd(), ".xenho", "assistant", conversationScopeKey);
+try {
+  const first = await createAssistantConversation(conversationScope);
+  const second = await createAssistantConversation(conversationScope);
+  await manageAssistantConversation(conversationScope, first.id, { action: "rename", title: "手动标题 A" });
+  await manageAssistantConversation(conversationScope, second.id, { action: "rename", title: "手动标题 B" });
+  await manageAssistantConversation(conversationScope, first.id, { action: "pin" });
+  let index = await assistantConversations(conversationScope);
+  assert.equal(index.items[0].id, first.id, "置顶对话没有排在最近列表前面");
+  await manageAssistantConversation(conversationScope, second.id, { action: "archive" });
+  index = await assistantConversations(conversationScope);
+  assert.equal(index.activeId, first.id, "归档当前对话后没有回退到下一条最近对话");
+  assert(index.items.find((item) => item.id === second.id)?.archivedAt, "归档时间没有进入对话摘要");
+  await manageAssistantConversation(conversationScope, second.id, { action: "restore" });
+  assert(!(await assistantConversations(conversationScope)).items.find((item) => item.id === second.id)?.archivedAt, "恢复对话没有清除归档状态");
+  await manageAssistantConversation(conversationScope, first.id, { action: "delete" });
+  assert(!(await assistantConversations(conversationScope)).items.some((item) => item.id === first.id), "删除后的对话仍出现在历史列表");
+  assert((await fs.readdir(path.join(conversationStore, ".trash"))).some((name) => name.startsWith(first.id)), "删除没有进入本地回收目录");
+} finally {
+  await fs.rm(conversationStore, { recursive: true, force: true });
 }
 
 const probe = await probePiRuntime();
 assert.equal(probe.ok, true);
 assert.equal(probe.version, "0.84.3");
 console.log("✓ Pi Agent SDK 0.84.3 已完成直接 SDK、defineTool、Skill 和会话标识校验");
-console.log("✓ daily / creative / developer 能力预设、外部工作区授权、候选写入和越界防护已校验");
+console.log("✓ daily / creative / developer 能力预设、消息内对话级工作区授权、候选写入和越界防护已校验");
+console.log("✓ 历史对话的重命名、置顶、归档、恢复、删除与 activeId 回退已校验");
 console.log("✓ Xenho 品控九问保持九项唯一真源");

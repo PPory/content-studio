@@ -11,7 +11,7 @@ import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { callWorker } from "../lib/worker.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
-import { addAgentMount, agentAccess, agentPathStamp, removeAgentMount, resolveAgentMountPath } from "./agent-access.mjs";
+import { agentMountsFromUserMessage, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath, resolveVaultPath } from "./permission-modes.mjs";
 import { appendNote, fileStamp, listBooks, readFile as readVaultFile, vaultRoot, writeVaultFile } from "../lib/vault.mjs";
 import { atomicWrite } from "../lib/safe-write.mjs";
@@ -62,6 +62,9 @@ function summaryOf(item) {
     title: item.title || "新对话",
     model: item.model || "",
     permissionMode: normalizePermissionMode(item.permissionMode),
+    titleMode: item.titleMode === "manual" ? "manual" : "auto",
+    pinnedAt: clean(item.pinnedAt, 80),
+    archivedAt: clean(item.archivedAt, 80),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     messageCount: Array.isArray(item.messages) ? item.messages.length : 0,
@@ -74,6 +77,13 @@ function summaryOf(item) {
       stageUpdatedAt: item.activeTurn.stageUpdatedAt,
     } : null,
   };
+}
+
+function sortConversationSummaries(items) {
+  return [...items].sort((a, b) => {
+    const pin = Number(Boolean(b.pinnedAt)) - Number(Boolean(a.pinnedAt));
+    return pin || String(b.updatedAt).localeCompare(String(a.updatedAt));
+  });
 }
 
 async function readIndex(scopeId) {
@@ -111,6 +121,10 @@ async function readConversationRecord(scopeId, conversationId) {
       piSessionId: clean(data.piSessionId, 160),
       piSessionFile: clean(data.piSessionFile, 2_000),
       permissionMode: normalizePermissionMode(data.permissionMode),
+      titleMode: data.titleMode === "manual" ? "manual" : "auto",
+      pinnedAt: clean(data.pinnedAt, 80),
+      archivedAt: clean(data.archivedAt, 80),
+      pathGrants: Array.isArray(data.pathGrants) ? data.pathGrants.slice(-12) : [],
       createdAt: data.createdAt || now(),
       updatedAt: data.updatedAt || data.createdAt || now(),
       messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
@@ -125,7 +139,7 @@ async function readConversationRecord(scopeId, conversationId) {
   }
 }
 
-async function writeConversationRecord(scopeId, record) {
+async function writeConversationRecord(scopeId, record, options = {}) {
   const file = conversationFile(scopeId, record.id);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const data = {
@@ -137,8 +151,12 @@ async function writeConversationRecord(scopeId, record) {
     piSessionId: clean(record.piSessionId, 160),
     piSessionFile: clean(record.piSessionFile, 2_000),
     permissionMode: normalizePermissionMode(record.permissionMode),
+    titleMode: record.titleMode === "manual" ? "manual" : "auto",
+    pinnedAt: clean(record.pinnedAt, 80),
+    archivedAt: clean(record.archivedAt, 80),
+    pathGrants: Array.isArray(record.pathGrants) ? record.pathGrants.slice(-12) : [],
     createdAt: record.createdAt || now(),
-    updatedAt: now(),
+    updatedAt: options.touch === false ? (record.updatedAt || record.createdAt || now()) : now(),
     messages: (record.messages || []).slice(-120),
     attachments: (record.attachments || []).slice(-40),
     actions: (record.actions || []).slice(-40),
@@ -150,8 +168,8 @@ async function writeConversationRecord(scopeId, record) {
   await queueIndexUpdate(scopeId, async () => {
     const index = await readIndex(scopeId);
     const summary = summaryOf(data);
-    const items = [summary, ...index.items.filter((item) => item.id !== record.id)].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-    await writeIndex(scopeId, { ...index, activeId: record.id, items });
+    const items = sortConversationSummaries([summary, ...index.items.filter((item) => item.id !== record.id)]);
+    await writeIndex(scopeId, { ...index, activeId: options.activate === false || data.archivedAt ? index.activeId : record.id, items });
   });
   return data;
 }
@@ -165,6 +183,10 @@ export async function createAssistantConversation(scopeId, options = {}) {
     piSessionId: crypto.randomUUID(),
     piSessionFile: "",
     permissionMode: normalizePermissionMode(options.permissionMode),
+    titleMode: "auto",
+    pinnedAt: "",
+    archivedAt: "",
+    pathGrants: [],
     createdAt: now(),
     messages: [],
     attachments: [],
@@ -184,7 +206,7 @@ async function ensureConversation(scopeId, conversationId = "", options = {}) {
   const index = await readIndex(scopeId);
   if (!options.forceNew && index.activeId) {
     const record = await readConversationRecord(scopeId, index.activeId);
-    if (record) return record;
+    if (record && !record.archivedAt) return record;
   }
   if (!options.forceNew) {
     try {
@@ -220,7 +242,7 @@ export async function assistantConversations(scopeId) {
   const index = await readIndex(scopeId);
   return {
     ...index,
-    items: (index.items || []).filter((item) => Number(item?.messageCount || 0) > 0 || clean(item?.preview, 2_000)),
+    items: (index.items || []).filter((item) => Number(item?.messageCount || 0) > 0 || clean(item?.preview, 2_000) || item?.titleMode === "manual"),
   };
 }
 
@@ -531,22 +553,61 @@ function normalizeProposedAction(item, permissionMode) {
   return null;
 }
 
-export async function assistantAccess(env) {
-  const access = await agentAccess(env);
-  return { mounts: access.public, summary: access.summary };
-}
-
-export async function addAssistantMount(env, input) {
-  await addAgentMount(env, input);
-  return assistantAccess(env);
-}
-
-export async function removeAssistantMount(env, id) {
-  await removeAgentMount(id, env);
-  return assistantAccess(env);
-}
 export function assistantPermissionModes() {
   return { items: permissionModeCatalog(), defaultMode: DEFAULT_PERMISSION_MODE };
+}
+
+export async function manageAssistantConversation(scopeId, conversationId, input = {}) {
+  const id = safeConversationId(conversationId);
+  const action = clean(input.action, 40);
+  if (!id || !["rename", "pin", "unpin", "archive", "restore", "delete"].includes(action)) {
+    throw Object.assign(new Error("未知的对话管理操作"), { status: 400 });
+  }
+  const record = await readConversationRecord(scopeId, id);
+  if (!record) throw Object.assign(new Error("对话不存在"), { status: 404 });
+  assertConversationIdle(active, activeKey(scopeId, id));
+
+  if (action === "delete") {
+    const source = conversationDir(scopeId, id);
+    const trash = path.join(scopeDir(scopeId), ".trash");
+    await fs.mkdir(trash, { recursive: true });
+    await fs.rename(source, path.join(trash, `${id}-${Date.now()}`));
+    await queueIndexUpdate(scopeId, async () => {
+      const index = await readIndex(scopeId);
+      const items = index.items.filter((item) => item.id !== id);
+      const activeId = index.activeId === id ? (items.find((item) => !item.archivedAt)?.id || "") : index.activeId;
+      await writeIndex(scopeId, { ...index, activeId, items });
+    });
+    return { deletedId: id, conversations: await assistantConversations(scopeId) };
+  }
+
+  if (action === "rename") {
+    const title = clean(input.title, 120);
+    if (!title) throw Object.assign(new Error("对话名称不能为空"), { status: 400 });
+    record.title = title;
+    record.titleMode = "manual";
+  } else if (action === "pin") {
+    record.pinnedAt = now();
+    record.archivedAt = "";
+  } else if (action === "unpin") {
+    record.pinnedAt = "";
+  } else if (action === "archive") {
+    record.archivedAt = now();
+    record.pinnedAt = "";
+  } else if (action === "restore") {
+    record.archivedAt = "";
+  }
+
+  const saved = await writeConversationRecord(scopeId, record, { activate: false, touch: false });
+  if (action === "archive") {
+    await queueIndexUpdate(scopeId, async () => {
+      const index = await readIndex(scopeId);
+      if (index.activeId !== id) return;
+      const activeId = index.items.find((item) => item.id !== id && !item.archivedAt)?.id || "";
+      await writeIndex(scopeId, { ...index, activeId });
+    });
+  }
+  return { conversation: saved, conversations: await assistantConversations(scopeId) };
 }
 
 export async function updateAssistantPermissionMode(scopeId, conversationId, permissionMode) {
@@ -570,6 +631,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   if (!scopeId) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
   if (!message) throw Object.assign(new Error("先写下想让 AI 帮你做什么"), { status: 400 });
   const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.AGENT_LLM_MODEL, permissionMode: input.permissionMode, forceNew: Boolean(input.startNew && !input.conversationId) });
+  let runtimeEnv = env;
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("AI 助手还在处理上一条消息"), { status: 409 });
   let stageWrite = Promise.resolve();
@@ -598,13 +660,17 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   let context;
   try {
     const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, createdAt: now() };
+    const grants = await agentMountsFromUserMessage(message);
+    record.pathGrants = [...(record.pathGrants || []), ...grants].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index).slice(-12);
+    record.archivedAt = "";
     record.model = clean(input.model, 240) || record.model || clean(env.AGENT_LLM_MODEL, 240);
-    record.title = record.messages.length ? record.title : titleFrom(message);
+    record.title = record.messages.length || record.titleMode === "manual" ? record.title : titleFrom(message);
     record.messages = [...record.messages, userMessage];
+    runtimeEnv = { ...env, AGENT_SESSION_MOUNTS: record.pathGrants, AGENT_PERMISSION_MODE: record.permissionMode };
     record.activeTurn = { id: turnId, status: "running", startedAt: now(), stage: "正在读取上下文", stageUpdatedAt: now() };
     await writeConversationRecord(scopeId, record);
     emit({ type: "status", stage: "正在读取上下文" });
-    context = await localContext(env, input, record);
+    context = await localContext(runtimeEnv, input, record);
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
     emit({ type: "status", stage: "上下文已就绪，正在启动 Pi" });
   } catch (error) {
@@ -625,7 +691,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     let timeout;
     if (runState.cancelled) throw Object.assign(new Error("本轮已停止"), { code: "ASSISTANT_CANCELLED" });
     const runPromise = createPiRun({
-      env,
+      env: runtimeEnv,
       runDir: dir,
       kind: "assistant-chat",
       prompt,
@@ -790,6 +856,7 @@ export async function rewindAssistantConversation(scopeId, conversationId) {
 
 export async function applyAssistantAction(env, scopeId, conversationId, actionId) {
   const record = await ensureConversation(scopeId, conversationId);
+  const runtimeEnv = { ...env, AGENT_SESSION_MOUNTS: record.pathGrants || [], AGENT_PERMISSION_MODE: record.permissionMode };
   const action = (record.actions || []).find((item) => item.id === clean(actionId, 100));
   if (!action) throw Object.assign(new Error("没有找到这项待执行操作"), { status: 404 });
   if (action.status === "applied") return { conversation: record, action, result: action.result };
@@ -821,11 +888,11 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
   } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
     if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
     if (action.type === "workspace_powershell") {
-      const resolved = await resolveAgentMountPath(env, action.mountId, ".", { execute: true });
+      const resolved = await resolveAgentMountPath(runtimeEnv, action.mountId, ".", { execute: true });
       const output = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", clean(action.command, 8_000)], { cwd: resolved.absolute, timeout: 60_000, windowsHide: true, maxBuffer: 2_000_000 });
       result = { mountId: action.mountId, stdout: clean(output.stdout, 20_000), stderr: clean(output.stderr, 20_000) };
     } else {
-      const resolved = await resolveAgentMountPath(env, action.mountId, action.path, { write: true });
+      const resolved = await resolveAgentMountPath(runtimeEnv, action.mountId, action.path, { write: true });
       if (await agentPathStamp(resolved.absolute) !== String(action.expectedStamp || "")) throw Object.assign(new Error("文件在确认前发生了变化，拒绝覆盖"), { status: 409 });
       let next = boundedText(action.content, 200_000);
       if (action.type === "workspace_edit") {

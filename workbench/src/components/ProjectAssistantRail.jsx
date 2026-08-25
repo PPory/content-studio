@@ -9,6 +9,9 @@ import {
   IconLetterK,
   IconLetterQ,
   IconLetterZ,
+  IconDots,
+  IconPin,
+  IconTrash,
 } from "@tabler/icons-react";
 import { api } from "../lib/api.js";
 import { documentVersion } from "../lib/document-version.js";
@@ -223,6 +226,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [conversationItems, setConversationItems] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyView, setHistoryView] = useState("recent");
+  const [historyMenuId, setHistoryMenuId] = useState("");
+  const [renameId, setRenameId] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [historyPending, setHistoryPending] = useState("");
   const [models, setModels] = useState([]);
   const [modelNotice, setModelNotice] = useState("");
   const [skills, setSkills] = useState([]);
@@ -231,11 +239,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [modelPending, setModelPending] = useState(false);
   const [permissionModes, setPermissionModes] = useState([{ id: "daily", label: "日常", description: "只读、检索和候选动作", warning: "" }, { id: "creative", label: "创作", description: "个人工作台内的受控写入", warning: "所有写入仍需确认。" }, { id: "developer", label: "开发", description: "项目写入和 PowerShell", warning: "开发模式可触及项目代码和命令，请确认当前任务确实需要。" }]);
   const [permissionMode, setPermissionMode] = useState("daily");
-  const [accessOpen, setAccessOpen] = useState(false);
-  const [access, setAccess] = useState({ mounts: [], summary: {} });
-  const [mountPath, setMountPath] = useState("");
-  const [mountWrite, setMountWrite] = useState(false);
-  const [accessPending, setAccessPending] = useState(false);
+  const [permissionOpen, setPermissionOpen] = useState(false);
   const [styleId, setStyleId] = useState("");
   const [modePending, setModePending] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -246,7 +250,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const scrollFrameRef = useRef(0);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
-  const accessRef = useRef(null);
+  const permissionRef = useRef(null);
   const activeRequestRef = useRef(null);
   const conversationIdRef = useRef("");
   const enabledStyles = (profile?.styles || []).filter((item) => item.enabled);
@@ -305,7 +309,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     }).catch((next) => { if (!cancelled) setModelNotice(next.message || "模型目录暂时不可用"); });
     api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: `skill:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
     api.assistantModes().then((result) => { if (!cancelled) setPermissionModes(result.modes?.items || []); }).catch(() => {});
-    api.assistantAccess().then((result) => { if (!cancelled) setAccess(result.access || { mounts: [], summary: {} }); }).catch(() => {});
+
     api.assistantExperts().then((result) => { if (!cancelled) setExpertPresets((result.experts?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description }))); }).catch(() => {});
     return () => { cancelled = true; clearTimeout(streamRef.current.timer); cancelAnimationFrame(scrollFrameRef.current); };
   }, [scopeId, standalone]);
@@ -327,15 +331,19 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     return () => clearInterval(timer);
   }, [standalone, scopeId, hasRunningHistory]);
   useEffect(() => {
-    if (!accessOpen) return undefined;
+    if (!permissionOpen && !historyMenuId && !renameId) return undefined;
     const close = (event) => {
-      if (!accessRef.current?.contains(event.target) && !event.target.closest?.(".assistant-composer__access")) setAccessOpen(false);
+      if (permissionOpen && !permissionRef.current?.contains(event.target) && !event.target.closest?.(".assistant-composer__access")) setPermissionOpen(false);
+      if (historyMenuId && !event.target.closest?.(".assistant-history__item")) setHistoryMenuId("");
     };
-    const key = (event) => { if (event.key === "Escape") setAccessOpen(false); };
+    const key = (event) => {
+      if (event.key !== "Escape") return;
+      setPermissionOpen(false); setHistoryMenuId(""); setRenameId("");
+    };
     window.document.addEventListener("pointerdown", close);
     window.document.addEventListener("keydown", key);
     return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key); };
-  }, [accessOpen]);
+  }, [permissionOpen, historyMenuId, renameId]);
   useEffect(() => {
     cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
@@ -491,7 +499,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   async function choosePermissionMode(value) {
     const next = typeof value === "string" ? value : value.target.value;
-    setAccessOpen(false);
+    setPermissionOpen(false);
     const item = permissionModes.find((modeItem) => modeItem.id === next);
     if (!item || next === permissionMode || busy) return;
     if (next === "developer" && !window.confirm(`${item.warning}\n\n只有明确的开发任务才应使用此模式。`)) return;
@@ -505,23 +513,33 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       setPermissionMode(previous); setError(nextError);
     } finally { setModePending(false); }
   }
-  async function addMount() {
-    if (!mountPath.trim() || accessPending) return;
-    setAccessPending(true); setError(null);
+
+  async function manageHistory(item, action, payload = {}) {
+    if (!item?.id || historyPending || item.activeTurn?.status === "running") return;
+    if (action === "delete" && !window.confirm(`永久从历史列表删除“${item.title || "这段对话"}”？工作台会把原始记录移入本地回收目录。`)) return;
+    setHistoryPending(`${item.id}:${action}`); setHistoryMenuId(""); setError(null);
     try {
-      const result = await api.addAssistantMount({ path: mountPath.trim(), write: mountWrite, execute: mountWrite });
-      setAccess(result.access || access); setMountPath(""); setMountWrite(false);
+      const result = await api.manageAssistantConversation({ scopeId, conversationId: item.id, action, ...payload });
+      setConversationItems(result.conversations?.items || []);
+      if (result.conversation && item.id === conversationId) applyConversation(result.conversation);
+      if (["archive", "delete"].includes(action) && item.id === conversationId) await newConversation();
+      if (action === "restore") setHistoryView("recent");
     } catch (next) { setError(next); }
-    finally { setAccessPending(false); }
+    finally { setHistoryPending(""); }
   }
 
-  async function removeMount(id) {
-    if (accessPending) return;
-    setAccessPending(true); setError(null);
-    try { setAccess((await api.removeAssistantMount(id)).access || access); }
-    catch (next) { setError(next); }
-    finally { setAccessPending(false); }
+  function startRename(item) {
+    setHistoryMenuId(""); setRenameId(item.id); setRenameValue(item.title || "新对话");
+    requestAnimationFrame(() => window.document.querySelector(`[data-rename-id="${item.id}"]`)?.focus());
   }
+
+  async function submitRename(item) {
+    const title = renameValue.trim();
+    setRenameId("");
+    if (!title || title === item.title) return;
+    await manageHistory(item, "rename", { title });
+  }
+
   async function rewind(edit = false) {
     if (!conversationId || busy) return;
     setError(null);
@@ -572,6 +590,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
   }
 
+  const visibleConversations = conversationItems.filter((item) => historyView === "archived" ? Boolean(item.archivedAt) : !item.archivedAt);
   const latestUserId = [...messages].reverse().find((item) => item.role === "user")?.id;
   const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant" && item.text)?.id;
   const canArchive = !busy && messages.some((item) => item.role === "assistant" && item.text);
@@ -580,14 +599,14 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
       <div>
-        {standalone && !docked ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="对话历史"><IconHistory aria-hidden="true" /></button> : null}
-        {standalone ? <strong>{conversationTitle}</strong> : <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span>}
-        {standalone ? <span className="assistant-context-note">知识库 · 联网 · 文件 · Skill</span> : null}
+        {standalone && !docked ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" /><span>历史对话</span></button> : null}
+        {!standalone ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
       <div className="assistant-context-actions">
 
-                {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
+                {!standalone && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
+        {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
         {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="把本轮完整对话整理成知识卡片"><IconArchive aria-hidden="true" /><span>沉淀对话</span></button> : null}
         <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
       </div>
@@ -605,38 +624,42 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); send(); }}>
       {attachments.length ? <div className="assistant-attachments">{attachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
       {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={() => setUploadError("")} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
-      <textarea ref={inputRef} value={input} onChange={changeInput} onKeyDown={inputKeyDown} placeholder={standalone ? "问任何问题；输入 @ 调专家，输入 / 使用 Skill" : "问当前内容；输入 @ 调专家，输入 / 使用 Skill"} rows="2" disabled={busy} />
-      {accessOpen ? <div className="assistant-access-menu" ref={accessRef} role="dialog" aria-label="Agent 访问范围">
-        <header><div><b>权限与访问范围</b><small>预设决定本轮能做什么；文件夹决定能在哪里做。</small></div><button type="button" onClick={() => setAccessOpen(false)} aria-label="关闭"><IconX aria-hidden="true" /></button></header>
-        <div className="assistant-access-menu__modes">{permissionModes.map((item) => <button type="button" key={item.id} aria-pressed={item.id === permissionMode} onClick={() => choosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span></button>)}</div>
-        <section>
-          <div className="assistant-access-menu__summary"><b>可访问范围</b><small>工作台{access.summary?.vault ? " · Obsidian" : ""}{access.summary?.externalCount ? " · " + access.summary.externalCount + " 个本地文件夹" : ""} · 热点{access.summary?.network ? " · 联网" : " · 联网待配置"}</small></div>
-          <div className="assistant-access-menu__mounts">{(access.mounts || []).map((item) => <div key={item.id}><span><b>{item.label}</b><small>{item.path}{item.builtin ? "" : item.write ? " · 可修改/执行" : " · 只读"}</small></span>{item.builtin ? null : <button type="button" onClick={() => removeMount(item.id)} disabled={accessPending} aria-label={"移除 " + item.label}><IconX aria-hidden="true" /></button>}</div>)}</div>
-          <div className="assistant-access-menu__add"><input value={mountPath} onChange={(event) => setMountPath(event.target.value)} placeholder="粘贴本地文件夹绝对路径" /><label><input type="checkbox" checked={mountWrite} onChange={(event) => setMountWrite(event.target.checked)} />允许修改与命令</label><button type="button" onClick={addMount} disabled={!mountPath.trim() || accessPending}>添加</button></div>
-        </section>
+      <textarea ref={inputRef} value={input} onChange={changeInput} onKeyDown={inputKeyDown} placeholder={standalone ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
+      {permissionOpen ? <div className="assistant-permission-menu" ref={permissionRef} role="menu" aria-label="选择权限">
+        {permissionModes.map((item) => <button type="button" role="menuitemradio" key={item.id} aria-checked={item.id === permissionMode} onClick={() => choosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span>{item.id === permissionMode ? <IconCheck aria-hidden="true" /> : null}</button>)}
       </div> : null}
       {menu ? <div className="assistant-command-menu" role="menu">
         <header><span>{menu === "models" ? "选择模型" : menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
         {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={menu === "models" && modelPending}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : menu === "skills" ? "/" : <ModelGlyph id={item.id} provider={item.provider} />}</span><span><b>{item.label}{menu === "models" && item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">{menu === "models" ? "暂时没有可用模型" : "没有匹配项"}</p>}
       </div> : null}
       <footer>
-        <div>
+        <div className="assistant-composer__left">
           <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
-          <button type="button" className="assistant-composer__access" title="权限与访问范围" onClick={() => { setAccessOpen((value) => !value); setMenu(""); }} aria-expanded={accessOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>
-          {!standalone ? <label className="assistant-composer__style"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
-          <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
+          <button type="button" className="assistant-composer__access" title="权限" onClick={() => { setPermissionOpen((value) => !value); setMenu(""); }} aria-expanded={permissionOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>
         </div>
-        <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
-        {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
+        <div className="assistant-composer__right">
+          <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
+          {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
+        </div>
       </footer>
     </form>
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: standalone ? "AI 助手对话" : "内容项目对话", engine: "Pi Agent SDK" }} />
   </div>;
 
   return <div className={`assistant-pane${standalone ? " assistant-pane--standalone" : ""}${docked ? " assistant-pane--docked" : ""}`}>
-    {standalone && historyOpen ? <aside className="assistant-history" aria-label="对话历史">
-      <header><strong>对话</strong><button onClick={newConversation} title="新建对话"><IconPlus aria-hidden="true" /></button></header>
-      <nav>{conversationItems.map((item) => <button key={item.id} aria-current={item.id === conversationId ? "page" : undefined} onClick={() => openConversation(item.id)}><b>{item.title}</b><small>{item.activeTurn?.status === "running" ? <><i className="assistant-history__running" />{item.activeTurn.stage || "后台运行中"}</> : item.preview || "还没有消息"}</small><time>{new Date(item.updatedAt || item.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>)}</nav>
+    {standalone && historyOpen ? <aside className="assistant-history" aria-label="历史对话">
+      <header><strong>历史对话</strong><button onClick={newConversation} title="新建对话" aria-label="新建对话"><IconPlus aria-hidden="true" /></button></header>
+      <div className="assistant-history__filters" role="tablist" aria-label="历史范围"><button type="button" role="tab" aria-selected={historyView === "recent"} onClick={() => { setHistoryView("recent"); setHistoryMenuId(""); }}>最近</button><button type="button" role="tab" aria-selected={historyView === "archived"} onClick={() => { setHistoryView("archived"); setHistoryMenuId(""); }}>已归档</button></div>
+      <nav>{visibleConversations.length ? visibleConversations.map((item) => <div className="assistant-history__item" key={item.id} data-current={item.id === conversationId ? "true" : undefined}>
+        {renameId === item.id ? <form className="assistant-history__rename" onSubmit={(event) => { event.preventDefault(); submitRename(item); }}><input data-rename-id={item.id} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onBlur={() => setRenameId("")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setRenameId(""); } }} aria-label="新的对话名称" /></form> : <button className="assistant-history__open" type="button" aria-current={item.id === conversationId ? "page" : undefined} onClick={() => openConversation(item.id)}><b><span>{item.title}</span>{item.pinnedAt ? <IconPin aria-label="已置顶" /> : null}</b><small>{item.activeTurn?.status === "running" ? <><i className="assistant-history__running" />{item.activeTurn.stage || "后台运行中"}</> : item.preview || "还没有消息"}</small><time>{new Date(item.updatedAt || item.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>}
+        <button className="assistant-history__more" type="button" onClick={() => setHistoryMenuId((current) => current === item.id ? "" : item.id)} aria-expanded={historyMenuId === item.id} aria-label={`管理对话：${item.title}`}><IconDots aria-hidden="true" /></button>
+        {historyMenuId === item.id ? <div className="assistant-history__menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => startRename(item)} disabled={item.activeTurn?.status === "running"}><IconPencil aria-hidden="true" />重命名</button>
+          {!item.archivedAt ? <button type="button" role="menuitem" onClick={() => manageHistory(item, item.pinnedAt ? "unpin" : "pin")} disabled={item.activeTurn?.status === "running"}><IconPin aria-hidden="true" />{item.pinnedAt ? "取消置顶" : "置顶聊天"}</button> : null}
+          <button type="button" role="menuitem" onClick={() => manageHistory(item, item.archivedAt ? "restore" : "archive")} disabled={item.activeTurn?.status === "running"}><IconArchive aria-hidden="true" />{item.archivedAt ? "移出归档" : "归档"}</button>
+          <button type="button" role="menuitem" className="is-danger" onClick={() => manageHistory(item, "delete")} disabled={item.activeTurn?.status === "running"}><IconTrash aria-hidden="true" />删除</button>
+        </div> : null}
+      </div>) : <p className="assistant-history__empty">{historyView === "archived" ? "还没有归档对话" : "还没有历史对话"}</p>}</nav>
     </aside> : null}
     {dialog}
   </div>;

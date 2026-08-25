@@ -58,7 +58,6 @@
   padding-inline: var(--sp-5);
 }
 
-.global-assistant-dock .assistant-context-note,
 .global-assistant-dock .assistant-pane__context > div > strong {
   max-width: 180px;
 }
@@ -108,3 +107,8 @@
     box-shadow: var(--shadow-lg);
   }
 }
+
+.global-assistant-dock .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
+.global-assistant-dock .assistant-composer > footer > div { gap: var(--sp-2); }
+.global-assistant-dock .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
+.global-assistant-dock .assistant-composer__model b { max-width: 56px; }

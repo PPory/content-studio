@@ -60,14 +60,15 @@
   max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--fs-base); font-weight: 600;
 }
-.assistant-context-note { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; }
 .assistant-history-toggle {
-  display: grid; place-items: center; width: 28px; height: 28px; flex: none;
-  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 var(--sp-3); flex: none;
+  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 .assistant-history-toggle:hover,
 .assistant-history-toggle[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); }
 .assistant-history-toggle svg { width: 15px; height: 15px; }
+.assistant-context-style { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-context-style select { max-width: 140px; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-xs); outline: 0; }
 .assistant-context-actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); overflow: visible !important; }
 .assistant-context-actions > button {
   flex: none; display: inline-flex; align-items: center; gap: var(--sp-3);
@@ -319,10 +320,12 @@
 }
 .assistant-composer textarea::placeholder { color: var(--text-3); }
 .assistant-composer > footer {
-  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
 }
-.assistant-composer > footer > div { display: flex; flex: 1 1 auto; align-items: center; gap: var(--sp-3); min-width: 0; flex-wrap: wrap; }
+.assistant-composer > footer > div { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.assistant-composer__left { flex: 1 1 auto; }
+.assistant-composer__right { flex: none; margin-left: auto; }
 /* 输入区底行只放这轮真正要确认的设置：权限 · 写作风格 · 模型。@ 和 / 由键盘直接唤起。 */
 .assistant-composer > footer > div button,
 .assistant-composer__mode,
@@ -461,62 +464,24 @@
 .assistant-composer__access > svg { width: 13px; height: 13px; flex: none; }
 .assistant-composer__access > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.assistant-access-menu {
+.assistant-permission-menu {
   position: absolute; z-index: 8; left: var(--sp-4); bottom: calc(100% - var(--sp-4));
-  width: min(460px, calc(100% - var(--sp-8))); max-height: min(560px, 72vh); overflow: auto;
+  width: min(330px, calc(100% - var(--sp-8))); padding: var(--sp-2);
   border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); box-shadow: var(--shadow-lg);
 }
-.assistant-access-menu > header {
-  position: sticky; top: 0; z-index: 1;
-  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-5);
-  padding: var(--sp-5); border-bottom: 1px solid var(--border); background: var(--surface);
-}
-.assistant-access-menu > header > div { display: grid; gap: var(--sp-1); }
-.assistant-access-menu > header b { font-size: var(--fs-base); }
-.assistant-access-menu > header small,
-.assistant-access-menu__summary small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
-.assistant-access-menu > header > button,
-.assistant-access-menu__mounts button {
-  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
-  border: 0; background: transparent; color: var(--text-3); cursor: pointer;
-}
-.assistant-access-menu > header svg,
-.assistant-access-menu__mounts svg { width: 13px; height: 13px; }
-.assistant-access-menu__modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); }
-.assistant-access-menu__modes > button {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: var(--sp-2);
-  min-width: 0; border: 1px solid var(--border); border-radius: var(--r-ctl); padding: var(--sp-4);
+.assistant-permission-menu > button {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) 16px; align-items: start; gap: var(--sp-3);
+  width: 100%; min-width: 0; border: 0; border-radius: var(--r-ctl); padding: var(--sp-4);
   background: transparent; color: var(--text-2); text-align: left; cursor: pointer;
 }
-.assistant-access-menu__modes > button[aria-pressed="true"] { border-color: var(--border-strong); background: var(--sel-bg); color: var(--sel-fg); }
-.assistant-access-menu__modes svg { width: 14px; height: 14px; margin-top: 2px; }
-.assistant-access-menu__modes span { display: grid; gap: var(--sp-1); min-width: 0; }
-.assistant-access-menu__modes b { font-size: var(--fs-sm); }
-.assistant-access-menu__modes small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
-.assistant-access-menu > section { display: grid; gap: var(--sp-4); padding: 0 var(--sp-5) var(--sp-5); }
-.assistant-access-menu__summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
-.assistant-access-menu__summary b { font-size: var(--fs-sm); }
-.assistant-access-menu__mounts { display: grid; max-height: 168px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-ctl); }
-.assistant-access-menu__mounts > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-width: 0; padding: var(--sp-3) var(--sp-4); }
-.assistant-access-menu__mounts > div + div { border-top: 1px solid var(--border); }
-.assistant-access-menu__mounts span { display: grid; gap: 1px; min-width: 0; }
-.assistant-access-menu__mounts b,
-.assistant-access-menu__mounts small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.assistant-access-menu__mounts b { font-size: var(--fs-xs); }
-.assistant-access-menu__mounts small { color: var(--text-3); font-size: var(--fs-2xs); }
-.assistant-access-menu__add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; }
-.assistant-access-menu__add > input {
-  height: 32px; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-ctl);
-  padding: 0 var(--sp-4); background: var(--surface-2); color: var(--text-1); font: inherit; font-size: var(--fs-xs); outline: 0;
-}
-.assistant-access-menu__add > input:focus { border-color: var(--border-strong); background: var(--surface); }
-.assistant-access-menu__add > label { grid-column: 1; display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
-.assistant-access-menu__add > button {
-  grid-column: 2; grid-row: 1 / span 2; height: 32px; border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
-  padding: 0 var(--sp-4); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); cursor: pointer;
-}
-.assistant-access-menu__add > button:disabled { opacity: .45; cursor: default; }
+.assistant-permission-menu > button:hover,
+.assistant-permission-menu > button[aria-checked="true"] { background: var(--surface-2); color: var(--text-1); }
+.assistant-permission-menu > button:disabled { opacity: .48; cursor: default; }
+.assistant-permission-menu > button > svg { width: 15px; height: 15px; margin-top: 2px; }
+.assistant-permission-menu > button > span { display: grid; gap: var(--sp-1); min-width: 0; }
+.assistant-permission-menu b { font-size: var(--fs-sm); font-weight: 600; }
+.assistant-permission-menu small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 /* --------------------------------------------------------------------------
    独立页的密度：一栏可读宽度居中，输入器跟着居中
    -------------------------------------------------------------------------- */
@@ -541,15 +506,15 @@
 .assistant-pane--standalone .assistant-command-menu { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
 
 /* 独立助手才有历史列。它与消息区同高，不另套卡片；收起后对话重新占满。 */
-.assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 232px minmax(0, 1fr); }
+.assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 248px minmax(0, 1fr); }
 .assistant-history {
   min-width: 0; min-height: 0; overflow: hidden;
-  display: grid; grid-template-rows: auto minmax(0, 1fr);
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr);
   border-right: 1px solid var(--border); background: var(--surface);
 }
 .assistant-history > header {
   display: flex; align-items: center; justify-content: space-between;
-  height: 58px; padding: 0 var(--sp-5); border-bottom: 1px solid var(--border);
+  height: 58px; padding: 0 var(--sp-5);
 }
 .assistant-history > header strong { font-size: var(--fs-base); }
 .assistant-history > header button {
@@ -558,22 +523,36 @@
 }
 .assistant-history > header button:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-history > header svg { width: 14px; height: 14px; }
-.assistant-history nav { min-height: 0; overflow-y: auto; padding: var(--sp-3); }
-.assistant-history nav button {
-  position: relative; display: grid; gap: var(--sp-1); width: 100%; min-width: 0;
-  border: 0; border-radius: var(--r-ctl); padding: var(--sp-4) var(--sp-5);
-  background: transparent; color: var(--text-2); text-align: left; cursor: pointer;
-}
-.assistant-history nav button:hover { background: var(--surface-2); color: var(--text-1); }
-.assistant-history nav button[aria-current="page"] { background: var(--sel-bg); color: var(--sel-fg); }
-.assistant-history nav b,
-.assistant-history nav small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.assistant-history nav b { padding-right: 34px; font-size: var(--fs-sm); font-weight: 600; }
-.assistant-history nav small { color: var(--text-3); font-size: var(--fs-xs); }
-.assistant-history nav small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
+.assistant-history__filters { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-1); margin: 0 var(--sp-4) var(--sp-2); padding: 3px; border-radius: var(--r-ctl); background: var(--surface-2); }
+.assistant-history__filters button { height: 26px; border: 0; border-radius: calc(var(--r-ctl) - 2px); background: transparent; color: var(--text-3); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.assistant-history__filters button[aria-selected="true"] { background: var(--surface); color: var(--text-1); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.assistant-history nav { min-height: 0; overflow-y: auto; padding: var(--sp-2) var(--sp-3) var(--sp-5); }
+.assistant-history__item { position: relative; min-width: 0; border-radius: var(--r-ctl); }
+.assistant-history__item:hover,
+.assistant-history__item[data-current="true"] { background: var(--surface-2); }
+.assistant-history__open { position: relative; display: grid; gap: var(--sp-1); width: 100%; min-width: 0; border: 0; border-radius: inherit; padding: var(--sp-4) 38px var(--sp-4) var(--sp-4); background: transparent; color: var(--text-2); text-align: left; cursor: pointer; }
+.assistant-history__open b { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding-right: 28px; font-size: var(--fs-sm); font-weight: 600; }
+.assistant-history__open b span,
+.assistant-history__open small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-history__open b svg { width: 12px; height: 12px; flex: none; color: var(--text-3); }
+.assistant-history__open small { color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-history__open small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
 .assistant-history__running { display: inline-block; width: 6px; height: 6px; }
-.assistant-history nav time { position: absolute; right: var(--sp-4); top: var(--sp-4); color: var(--text-3); font-size: var(--fs-2xs); }
-
+.assistant-history__open time { position: absolute; right: 38px; top: var(--sp-4); color: var(--text-3); font-size: var(--fs-2xs); }
+.assistant-history__more { position: absolute; z-index: 2; right: var(--sp-2); top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
+.assistant-history__item:hover .assistant-history__more,
+.assistant-history__more[aria-expanded="true"] { opacity: 1; }
+.assistant-history__more:hover { background: var(--surface); color: var(--text-1); }
+.assistant-history__more svg { width: 16px; height: 16px; }
+.assistant-history__menu { position: absolute; z-index: 12; top: 36px; right: var(--sp-2); width: 154px; padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-lg); }
+.assistant-history__menu button { display: flex; align-items: center; gap: var(--sp-3); width: 100%; height: 32px; border: 0; border-radius: var(--r-ctl); padding: 0 var(--sp-3); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.assistant-history__menu button:hover { background: var(--surface-2); color: var(--text-1); }
+.assistant-history__menu button:disabled { opacity: .42; cursor: default; }
+.assistant-history__menu button.is-danger { color: var(--danger); }
+.assistant-history__menu svg { width: 14px; height: 14px; }
+.assistant-history__rename { padding: var(--sp-3); }
+.assistant-history__rename input { width: 100%; height: 32px; border: 1px solid var(--border-strong); border-radius: var(--r-ctl); padding: 0 var(--sp-3); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-sm); outline: 0; }
+.assistant-history__empty { margin: 0; padding: var(--sp-8) var(--sp-4); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
 /* --------------------------------------------------------------------------
    项目页右栏：同一套件，密度更高
    ⚠️ **它不是「第二张卡片」。** 上一版给自己配了 18px 圆角 + 一层投影 + 一块 wash 底的
@@ -639,17 +618,13 @@
  * 右栏只有 336px：附件、权限、风格、模型保留在输入区，专家和 Skill 只由 @ / 唤起。
  * 快捷键提示撤掉——它是「学一次就记住」的那类，不能长期挤占这一行。
  */
-.project-assistant .assistant-composer__hint { display: none; }
-.project-assistant .assistant-composer > footer { gap: var(--sp-3); padding-left: var(--sp-4); }
-.project-assistant .assistant-composer > footer > div { flex: 1 1 auto; gap: var(--sp-2); }
-.project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-4); font-weight: 600; }
-.project-assistant .assistant-composer__style { max-width: 100%; min-width: 0; }
-.project-assistant .assistant-composer__mode > span,
-.project-assistant .assistant-composer__style > span { display: none; }
-.project-assistant .assistant-composer__style select { max-width: 100%; }
-.project-assistant .assistant-composer__model { max-width: 132px; padding-inline: var(--sp-4); }
-.project-assistant .assistant-composer__model-label { display: none; }
-.project-assistant .assistant-composer__model b { max-width: 82px; }
+.project-assistant .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
+.project-assistant .assistant-composer > footer > div { gap: var(--sp-2); }
+.project-assistant .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
+.project-assistant .assistant-composer > footer > .assistant-composer__right { flex: none; }
+.project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-3); font-weight: 600; }
+.project-assistant .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
+.project-assistant .assistant-composer__model b { max-width: 56px; }
 .project-assistant .assistant-composer__model .assistant-model-glyph { width: 18px; height: 18px; }
 .project-assistant .assistant-empty { padding: var(--sp-8) var(--sp-3); }
 .project-assistant .assistant-empty h3 { font-size: var(--fs-lg); }

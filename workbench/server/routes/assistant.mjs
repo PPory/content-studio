@@ -1,7 +1,5 @@
 import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import {
-  addAssistantMount,
-  assistantAccess,
   assistantConversation,
   assistantConversations,
   assistantExperts,
@@ -10,8 +8,8 @@ import {
   assistantSkills,
   cancelAssistantTurn,
   createAssistantConversation,
+  manageAssistantConversation,
   applyAssistantAction,
-  removeAssistantMount,
   rewindAssistantConversation,
   runAssistantTurn,
   saveAssistantAttachment,
@@ -35,6 +33,18 @@ export const assistantRoutes = [
     },
   },
   {
+    method: "POST",
+    path: "/api/assistant/conversation/manage",
+    async handler({ req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, ...(await manageAssistantConversation(body.scopeId, body.conversationId, body)) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
+  },
+  {
     method: "GET",
     path: "/api/assistant/models",
     async handler({ env, res }) {
@@ -55,32 +65,7 @@ export const assistantRoutes = [
       json(res, { ok: true, experts: assistantExperts() });
     },
   },
-  {
-    method: "GET",
-    path: "/api/assistant/access",
-    async handler({ env, res }) {
-      try { json(res, { ok: true, access: await assistantAccess(env) }); }
-      catch (error) { fail(res, error.message, { status: error.status || 500, hint: error.hint }); }
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/assistant/access/mount",
-    async handler({ env, req, res }) {
-      try { json(res, { ok: true, access: await addAssistantMount(env, await readJsonBody(req)) }); }
-      catch (error) { fail(res, error.message, { status: error.status || 500, hint: error.hint }); }
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/assistant/access/remove",
-    async handler({ env, req, res }) {
-      try {
-        const body = await readJsonBody(req);
-        json(res, { ok: true, access: await removeAssistantMount(env, body.id) });
-      } catch (error) { fail(res, error.message, { status: error.status || 500, hint: error.hint }); }
-    },
-  },
+
   {
     method: "GET",
     path: "/api/assistant/modes",

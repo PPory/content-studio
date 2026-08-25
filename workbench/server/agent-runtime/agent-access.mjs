@@ -1,14 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { atomicWrite } from "../lib/safe-write.mjs";
 import { findProjectRoot } from "./permission-modes.mjs";
 
-const DEFAULT_ACCESS_FILE = path.resolve(process.cwd(), ".xenho", "assistant", "access.json");
 const BLOCKED_PARTS = new Set([".git", "node_modules", ".xenho"]);
-
 const clean = (value, max = 2_000) => String(value || "").trim().slice(0, max);
-const accessFile = (env = {}) => path.resolve(clean(env.AGENT_ACCESS_FILE) || DEFAULT_ACCESS_FILE);
 
 function denied(message = "路径越过了已授权的工作区") {
   throw Object.assign(new Error(message), { status: 403, code: "AGENT_PATH_DENIED" });
@@ -23,21 +19,6 @@ function safeRelative(value = ".") {
   return normalized.replace(/^\.\//, "") || ".";
 }
 
-async function readStored(env = {}) {
-  try {
-    const data = JSON.parse(await fs.readFile(accessFile(env), "utf8"));
-    return { version: 1, mounts: Array.isArray(data.mounts) ? data.mounts : [] };
-  } catch {
-    return { version: 1, mounts: [] };
-  }
-}
-
-async function writeStored(data, env = {}) {
-  const file = accessFile(env);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ version: 1, mounts: data.mounts }, null, 2), { verify: JSON.parse });
-}
-
 function publicMount(item) {
   return {
     id: item.id,
@@ -48,25 +29,32 @@ function publicMount(item) {
     read: true,
     write: Boolean(item.write),
     execute: Boolean(item.execute),
+    focusPath: clean(item.focusPath, 1_000),
   };
 }
 
 export async function agentAccess(env = {}) {
   const projectRoot = await findProjectRoot();
-  const stored = await readStored(env);
-  const mounts = [{ id: "workbench", label: "Xenho OS 工作台", root: projectRoot, kind: "workbench", builtin: true, write: true, execute: true }];
+  const developer = env.AGENT_PERMISSION_MODE === "developer";
+  const mounts = [{ id: "workbench", label: "Xenho OS 工作台", root: projectRoot, kind: "workbench", builtin: true, write: developer, execute: developer }];
   const vault = clean(env.VAULT_ROOT);
   if (vault) {
     try {
-      mounts.push({ id: "vault", label: "Obsidian 知识库", root: await fs.realpath(path.resolve(vault)), kind: "vault", builtin: true, write: false, execute: false });
+      mounts.push({ id: "vault", label: "本地知识库", root: await fs.realpath(path.resolve(vault)), kind: "vault", builtin: true, write: false, execute: false });
     } catch {}
   }
-  for (const item of stored.mounts) {
+  for (const item of Array.isArray(env.AGENT_SESSION_MOUNTS) ? env.AGENT_SESSION_MOUNTS : []) {
     try {
       const root = await fs.realpath(path.resolve(clean(item.root)));
       const stat = await fs.stat(root);
-      if (!stat.isDirectory() || mounts.some((mount) => mount.root.toLowerCase() === root.toLowerCase())) continue;
-      mounts.push({ id: clean(item.id, 80), label: clean(item.label, 120) || path.basename(root), root, kind: "folder", builtin: false, write: Boolean(item.write), execute: Boolean(item.execute) });
+      if (!stat.isDirectory() || mounts.some((mount) => mount.id === clean(item.id, 80))) continue;
+      const kind = item.kind === "file" ? "file" : "folder";
+      const onlyPath = kind === "file" ? path.basename(clean(item.onlyPath, 1_000)) : "";
+      if (kind === "file") {
+        const target = await fs.realpath(path.join(root, onlyPath));
+        if (!(await fs.stat(target)).isFile() || path.dirname(target).toLowerCase() !== root.toLowerCase()) continue;
+      }
+      mounts.push({ id: clean(item.id, 80), label: clean(item.label, 120) || path.basename(root), root, focusPath: clean(item.focusPath, 1_000), onlyPath, kind, builtin: false, write: developer, execute: developer && kind === "folder" });
     } catch {}
   }
   return {
@@ -75,42 +63,61 @@ export async function agentAccess(env = {}) {
     summary: {
       mountCount: mounts.length,
       externalCount: mounts.filter((item) => !item.builtin).length,
-      vault: mounts.some((item) => item.kind === "vault"),
       network: Boolean(clean(env.BRAVE_SEARCH_API_KEY) || clean(env.FIRECRAWL_API_KEY) || clean(env.FIRECRAWL_BASE_URL)),
       hotspots: true,
     },
   };
 }
 
-export async function addAgentMount(env, input = {}) {
-  const requested = clean(input.path);
-  if (!requested || !path.isAbsolute(requested) || /^\\\\/.test(requested)) denied("请选择本机磁盘上的绝对文件夹路径");
-  const root = await fs.realpath(path.resolve(requested));
-  const stat = await fs.stat(root);
-  if (!stat.isDirectory()) throw Object.assign(new Error("授权路径必须是文件夹"), { status: 400 });
-  const current = await agentAccess(env);
-  if (current.mounts.some((item) => item.root.toLowerCase() === root.toLowerCase())) throw Object.assign(new Error("这个文件夹已经在访问范围内"), { status: 409 });
-  const stored = await readStored(env);
-  const item = {
-    id: `folder-${crypto.createHash("sha256").update(root.toLowerCase()).digest("hex").slice(0, 12)}`,
-    label: clean(input.label, 120) || path.basename(root),
-    root,
-    write: Boolean(input.write),
-    execute: Boolean(input.execute && input.write),
-  };
-  stored.mounts.push(item);
-  await writeStored(stored, env);
-  return publicMount({ ...item, kind: "folder", builtin: false });
+function pathCandidates(message) {
+  const text = String(message || "");
+  const found = [];
+  for (const match of text.matchAll(/["'“”‘’`]([A-Za-z]:[\\/][^"'“”‘’`\r\n]+)["'“”‘’`]/g)) found.push(match[1]);
+  for (const line of text.split(/\r?\n/)) {
+    if (!/(?:读取|打开|看看|看下|检查|分析|搜索|列出|项目|文件夹|目录|内容)/u.test(line)) continue;
+    for (const match of line.matchAll(/(?:^|[\s（(])([A-Za-z]:[\\/][^\r\n]+)/g)) found.push(match[1]);
+  }
+  return [...new Set(found.map((item) => item.trim().replace(/[，。；;！!？?）)】\]]+$/u, "")).filter(Boolean))];
 }
 
-export async function removeAgentMount(id, env = {}) {
-  const mountId = clean(id, 80);
-  if (!mountId.startsWith("folder-")) throw Object.assign(new Error("内置工作区不能移除"), { status: 400 });
-  const stored = await readStored(env);
-  const next = stored.mounts.filter((item) => item.id !== mountId);
-  if (next.length === stored.mounts.length) throw Object.assign(new Error("没有找到这个授权文件夹"), { status: 404 });
-  await writeStored({ ...stored, mounts: next }, env);
-  return true;
+async function existingUserPath(value) {
+  let candidate = clean(value).replaceAll("/", path.sep);
+  if (!path.win32.isAbsolute(candidate) || /^\\\\/.test(candidate) || /[?*]/.test(candidate) || candidate.slice(2).includes(":")) return null;
+  for (;;) {
+    try {
+      const absolute = await fs.realpath(path.resolve(candidate));
+      const stat = await fs.stat(absolute);
+      return { absolute, stat };
+    } catch (error) {
+      if (error?.code !== "ENOENT") return null;
+      const cut = Math.max(candidate.lastIndexOf(" "), candidate.lastIndexOf("\t"));
+      if (cut <= 2) return null;
+      candidate = candidate.slice(0, cut).trimEnd();
+    }
+  }
+}
+
+export async function agentMountsFromUserMessage(message) {
+  const mounts = [];
+  for (const candidate of pathCandidates(message).slice(0, 6)) {
+    const resolved = await existingUserPath(candidate);
+    if (!resolved) continue;
+    const file = resolved.stat.isFile();
+    const root = file ? path.dirname(resolved.absolute) : resolved.absolute;
+    const focusPath = file ? path.basename(resolved.absolute) : ".";
+    const kind = file ? "file" : "folder";
+    const fingerprint = file ? resolved.absolute.toLowerCase() : root.toLowerCase();
+    if (mounts.some((item) => item.id === `local-${crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 12)}`)) continue;
+    mounts.push({
+      id: `local-${crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 12)}`,
+      label: file ? path.basename(resolved.absolute) : path.basename(root),
+      root,
+      focusPath,
+      onlyPath: file ? focusPath : "",
+      kind,
+    });
+  }
+  return mounts;
 }
 
 async function nearestExisting(candidate) {
@@ -132,7 +139,11 @@ export async function resolveAgentMountPath(env, mountId, relativePath = ".", { 
   if (!mount) throw Object.assign(new Error("这个工作区尚未授权"), { status: 403 });
   if (write && !mount.write) throw Object.assign(new Error("这个工作区只有读取权限"), { status: 403 });
   if (execute && !mount.execute) throw Object.assign(new Error("这个工作区没有命令执行权限"), { status: 403 });
-  const relative = safeRelative(relativePath);
+  let relative = safeRelative(relativePath);
+  if (mount.kind === "file") {
+    if (![".", mount.onlyPath].includes(relative)) denied("这个授权只允许读取指定文件");
+    relative = mount.onlyPath;
+  }
   const parts = relative.split("/");
   if (write && parts.some((part) => BLOCKED_PARTS.has(part.toLowerCase()))) denied("不能写入依赖、版本库元数据或 Agent 状态目录");
   const candidate = path.resolve(mount.root, relative);
@@ -154,5 +165,3 @@ export async function agentPathStamp(absolutePath) {
     throw error;
   }
 }
-
-export const agentAccessFile = (env = {}) => accessFile(env);

@@ -41,6 +41,7 @@ const styleSaves = [];
 const expertStarts = [];
 const assistantRequests = [];
 let assistantMessages = [];
+let assistantConversationItems = [{ id: "chat-recent", title: "最近对话", preview: "继续讨论工作台", updatedAt: "2026-08-25T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "" }, { id: "chat-archived", title: "归档对话", preview: "已经整理完成", updatedAt: "2026-08-24T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "2026-08-25T09:00:00.000Z" }];
 const expertRunStore = new Map();
 const revisionDocuments = new Map();
 const profileFixture = {
@@ -209,10 +210,21 @@ await page.route("**/api/assistant/**", async (route) => {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, experts: { items: profileFixture.experts } }) });
   }
   if (request.method() === "GET" && url.pathname.endsWith("/conversations")) {
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversations: { items: [] } }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversations: { items: assistantConversationItems } }) });
   }
   if (request.method() === "GET") {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } }) });
+  }
+  if (url.pathname.endsWith("/conversation/manage")) {
+    const body = request.postDataJSON();
+    if (body.action === "rename") assistantConversationItems = assistantConversationItems.map((item) => item.id === body.conversationId ? { ...item, title: body.title } : item);
+    if (body.action === "pin") assistantConversationItems = assistantConversationItems.map((item) => item.id === body.conversationId ? { ...item, pinnedAt: new Date().toISOString(), archivedAt: "" } : item);
+    if (body.action === "unpin") assistantConversationItems = assistantConversationItems.map((item) => item.id === body.conversationId ? { ...item, pinnedAt: "" } : item);
+    if (body.action === "archive") assistantConversationItems = assistantConversationItems.map((item) => item.id === body.conversationId ? { ...item, pinnedAt: "", archivedAt: new Date().toISOString() } : item);
+    if (body.action === "restore") assistantConversationItems = assistantConversationItems.map((item) => item.id === body.conversationId ? { ...item, archivedAt: "" } : item);
+    if (body.action === "delete") assistantConversationItems = assistantConversationItems.filter((item) => item.id !== body.conversationId);
+    const conversation = assistantConversationItems.find((item) => item.id === body.conversationId);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: conversation ? { ...conversation, messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } : undefined, conversations: { items: assistantConversationItems }, deletedId: body.action === "delete" ? body.conversationId : undefined }) });
   }
   if (url.pathname.endsWith("/new")) {
     assistantMessages = [];
@@ -281,16 +293,17 @@ try {
 
     await page.click(".project-draft .cm-content");
     await page.keyboard.type("收藏处理的是焦虑，而不是内容。");
-    await page.selectOption(".assistant-composer__style select", "story-led");
+    await page.selectOption(".assistant-context-style select", "story-led");
     assert(styleSaves.length === 0, "编辑器调用风格时不该修改或保存提示词");
     assert(await page.evaluate(() => localStorage.getItem("xenho-assistant-model")) === "test-model", "AI 助手没有记住已用模型");
 
     assert(!(await page.$('.assistant-composer footer button:has-text("专家")')) && !(await page.$('.assistant-composer footer button:has-text("Skill")')), "输入框底部仍显示专家或 Skill 按钮");
     assert(await page.$(".assistant-composer .assistant-composer__access"), "输入框底部没有唯一的权限入口");
     await page.click(".assistant-composer__access");
-    assert((await page.$$eval(".assistant-access-menu__modes > button", (items) => items.map((item) => item.textContent))).length === 3, "权限浮层没有三种预设");
-    assert((await page.textContent(".assistant-access-menu")).includes("可访问范围"), "权限浮层没有资源范围摘要");
-    await page.click(".assistant-access-menu > header > button");
+    assert((await page.$$(".assistant-permission-menu > button")).length === 3, "权限浮层没有三种预设");
+    const permissionText = await page.textContent(".assistant-permission-menu");
+    assert(!permissionText.includes("可访问范围") && !permissionText.includes("允许修改与命令"), "权限浮层仍混入路径或命令设置");
+    await page.keyboard.press("Escape");
     assert(!(await page.$(".assistant-pane__context .assistant-mode-select")), "权限仍占在对话顶栏");
     await page.fill(".assistant-composer textarea", "@");
     const experts = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
@@ -633,9 +646,20 @@ try {
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
   assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
-  const persistentControls = await page.$$(".assistant-pane--standalone .assistant-composer > footer > div > button");
-  assert(persistentControls.length <= 3, "独立助手输入框底部常驻控件过多");
+  assert((await page.$$(".assistant-pane--standalone .assistant-composer__left > button")).length === 2, "输入框左侧没有保持为附件与权限两个紧凑入口");
+  assert(await page.$(".assistant-pane--standalone .assistant-composer__right .assistant-composer__model"), "模型选择没有放在输入框右侧");
+  assert(!(await page.$(".assistant-pane--standalone .assistant-composer__hint")), "输入框底部仍有常驻快捷键提示");
   assert(await page.$(".assistant-pane--standalone .assistant-composer__access"), "独立助手没有紧凑权限入口");
+  assert((await page.textContent(".assistant-pane__context")).includes("历史对话") && !(await page.textContent(".assistant-pane__context")).includes("知识库 · 联网 · 文件 · Skill"), "助手顶栏没有收敛为历史对话入口");
+  await page.click(".assistant-history-toggle");
+  await page.waitForSelector(".assistant-history");
+  assert((await page.textContent(".assistant-history")).includes("最近对话"), "历史栏没有展示最近对话");
+  await page.click('.assistant-history__item:has-text("最近对话") .assistant-history__more');
+  assert((await page.textContent(".assistant-history__menu")).includes("重命名") && (await page.textContent(".assistant-history__menu")).includes("置顶聊天") && (await page.textContent(".assistant-history__menu")).includes("归档") && (await page.textContent(".assistant-history__menu")).includes("删除"), "历史对话管理菜单不完整");
+  await page.keyboard.press("Escape");
+  await page.click('.assistant-history__filters button:has-text("已归档")');
+  assert((await page.textContent(".assistant-history")).includes("归档对话"), "已归档视图没有展示归档对话");
+  await page.click(".assistant-history-toggle");
   /**
    * ⚠️ **量的是「贴着这一页的底」，不是「贴着那张画布的底」。**
    * `.assistant-page__canvas` 已经撤了——那是套在 `.main` 里面的第二层白圆角卡片，
