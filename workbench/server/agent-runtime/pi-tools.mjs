@@ -288,11 +288,20 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ query: clean(query, 200), total: items.length, items, warning: boards.error || ai.error || "" });
   }));
 
-  tools.push(tool("attachment_read", "读取附件", "按当前对话附件 ID 读取已提取文本。只读。", Type.Object({ id: Type.String({ maxLength: 160 }) }), async ({ id }, signal) => {
+  tools.push(tool("attachment_read", "读取附件", "按当前对话附件 ID 读取内容。文本返回已提取内容，图片返回视觉内容。只读。", Type.Object({ id: Type.String({ maxLength: 160 }) }), async ({ id }, signal) => {
     allowed("attachment_read");
     const item = (context.attachments || []).find((entry) => entry.id === clean(id, 160));
     if (!item) throw Object.assign(new Error("当前对话中没有这个附件"), { status: 404 });
-    if (item.kind === "image") throw new Error("图片已直接作为视觉输入交给模型");
+    if (item.kind === "image") {
+      const data = await fs.readFile(item.originalPath, { signal });
+      return {
+        content: [
+          { type: "text", text: `图片附件：${item.name}` },
+          { type: "image", data: data.toString("base64"), mimeType: item.imageRef?.mediaType || item.type },
+        ],
+        details: { id: item.id, name: item.name, kind: "image", bytes: data.length },
+      };
+    }
     const content = await fs.readFile(item.textPath, { encoding: "utf8", signal });
     return text({ id: item.id, name: item.name, text: content.slice(0, 120_000), truncated: content.length > 120_000 });
   }));

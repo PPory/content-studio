@@ -445,7 +445,7 @@ const shots = [
     await page.waitForSelector(".book-hero", { timeout: 15000 }).catch(() => {});
     await page.click(".chapter-row:nth-child(6)").catch(() => {});
     await page.waitForSelector(".reader .prose", { timeout: 25000 }).catch(() => {});
-    await page.click('.rail-tabs button:has-text("对话")').catch(() => {});
+    await page.click('.rail-tabs button:has-text("AI 助手")').catch(() => {});
     await page.waitForSelector(".composer", { timeout: 6000 }).catch(() => {});
   }],
   // 「理解」栏：模式芯片的三态（没问过 / 问过了 / 正在跑）+ 结果是叠着的。

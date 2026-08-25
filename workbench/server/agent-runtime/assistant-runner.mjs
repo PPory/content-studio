@@ -450,7 +450,7 @@ async function localContext(env, input, record) {
     queries,
     localSources: sources.slice(0, 40),
     retrievalMode: asksForSources ? "按需检索" : "未检索",
-    attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, textPath }) => ({ id, name, type, kind, bytes, characters, textPath })),
+    attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
       title: clean(input.document?.title, 300),
       body: clean(input.document?.body, 60_000),
@@ -488,8 +488,8 @@ function contentPrompt(input, context, model) {
   const style = input.style?.instructions ? `【本篇调用风格：${clean(input.style.name || "未命名风格", 80)}】\n${clean(input.style.instructions, 8_000)}` : "【本篇调用风格】未指定；保持清楚、克制，不模仿不存在的个人口吻。";
   return [
     "你正在 Xenho OS 的内容项目中协助主创。先回答用户当前这一步，不抢走创作主导权。",
-    "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。用户明确要求在工作台另建内容时，调用 propose_content_create 提交待确认操作。",
-    "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
+    "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。图片已作为视觉内容随本轮消息发送；需要再次查看时也可调用 attachment_read。用户明确要求在工作台另建内容时，调用 propose_content_create 提交待确认操作。",
+    "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
@@ -506,7 +506,7 @@ function contentPrompt(input, context, model) {
 function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
-    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。用户询问工作台当前有哪些内容、各阶段数量、写作中或待发布项目、阻塞原因和下一步时，必须调用 workbench_projects，以它实时返回的 stage/counts 为准；不要从当前空文档、知识搜索结果或固定状态清单推断。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
+    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。用户询问工作台当前有哪些内容、各阶段数量、写作中或待发布项目、阻塞原因和下一步时，必须调用 workbench_projects，以它实时返回的 stage/counts 为准；不要从当前空文档、知识搜索结果或固定状态清单推断。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。图片已作为视觉内容随本轮消息发送，需要再次查看时也可调用 attachment_read；如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。",
     "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮工作台检索、vault_list、vault_read 或 annotation_list 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",

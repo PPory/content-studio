@@ -3332,7 +3332,7 @@ try {
 
     // 批注 → 右栏编辑器 → 保存 → 落盘
     const tabsRail = await page.$$eval(".rail-tabs button", (els) => els.map((e) => e.textContent.trim()));
-    check("批注台三个页签", tabsRail.join("/") === "标记/衍生/对话", tabsRail.join("/"));
+    check("批注台三个页签", tabsRail.join("/") === "标记/衍生/AI 助手", tabsRail.join("/"));
     await page.click('.sel-bar button[aria-label="批注"]');
     await page.waitForSelector(".rail textarea", { timeout: 4000 });
     check("批注引用了原文", (await page.textContent(".rail-quote")).includes("深度工作"));
@@ -3631,7 +3631,7 @@ try {
       await page.waitForSelector(".chapter-row", { timeout: 8000 });
       await page.click(".chapter-row");
       await page.waitForSelector(".reader .prose", { timeout: 10000 });
-      await page.click('.rail-tabs button:has-text("对话")');
+      await page.click('.rail-tabs button:has-text("AI 助手")');
       await page.waitForSelector(".composer textarea", { timeout: 5000 });
       const shelfModes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
       check("书架的阅读区有三种权限模式", shelfModes.join("/") === "日常/创作/开发", shelfModes.join("/"));
@@ -3665,7 +3665,7 @@ try {
       await page.waitForSelector(".chapter-row", { timeout: 8000 });
       await (await page.$$(".chapter-row"))[1].click();
       await page.waitForSelector(".reader .prose", { timeout: 10000 });
-      await page.click('.rail-tabs button:has-text("对话")');
+      await page.click('.rail-tabs button:has-text("AI 助手")');
       await page.waitForSelector(".composer textarea", { timeout: 5000 });
       check("换一章之后对话是空的，不带上一章的消息", (await page.$$(".msg-agent, .msg-user")).length === 0);
 
@@ -4190,7 +4190,7 @@ try {
     await page.waitForSelector(".reader-overlay .rail-tabs", { timeout: 25000 });
     check("灵感来源仍能进阅读区", !!(await page.$(".reader-overlay .rail")));
     const ideaTabs = await page.$$eval(".reader-overlay .rail-tabs button", (els) => els.map((e) => e.textContent.trim()));
-    check("灵感来源仍能划词批注/问 AI", ideaTabs.join("/") === "标记/衍生/对话", ideaTabs.join("/"));
+    check("灵感来源仍能划词批注/问 AI", ideaTabs.join("/") === "标记/衍生/AI 助手", ideaTabs.join("/"));
     await page.keyboard.press("Escape");
     await page.waitForSelector(".reader-overlay", { state: "detached", timeout: 5000 });
   }
@@ -4878,7 +4878,7 @@ try {
   await page.waitForSelector(".doc-row", { timeout: 20000 });
   await page.click(".doc-row__open");
   await page.waitForSelector(".rail", { timeout: 15000 });
-  await page.click('.rail-tabs button:has-text("对话")');
+  await page.click('.rail-tabs button:has-text("AI 助手")');
   await page.waitForSelector(".composer textarea", { timeout: 5000 });
   const modes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
   check("对话有三种权限模式", modes.join("/") === "日常/创作/开发", modes.join("/"));

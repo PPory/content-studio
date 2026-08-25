@@ -37,7 +37,7 @@ const TABS = [
   // 选题更不是。它们的共同点是**都从选中那段派生出一个新产出，且都不落盘除非你存**——
   // 「衍生」说的是这个，「理解」把其中两个排除在外了。
   { key: "ai", label: "衍生", icon: IconSparkles },
-  { key: "chat", label: "对话", icon: IconMessageCircle },
+  { key: "chat", label: "AI 助手", icon: IconMessageCircle },
 ];
 
 /**
@@ -566,7 +566,7 @@ function AiPanel({ ai, onSave, onStop, onRun, saveLabel }) {
           在正文里选中一段话，工具条上点灯泡（解释）、箭头（展开）、天平（反驳）、A 字（翻译）
           或魔杖（选题，把这段变成能发的标题）。
           <span className="rail-empty__hint">
-            要问它整篇文档、或者要它翻你以前写过的东西，用旁边的「对话」——那条通道能读你整个 vault。
+            要问它整篇文档、或者要它翻你以前写过的东西，用旁边的「AI 助手」——那条通道能读你整个 vault。
           </span>
         </div>
       </Panel>
@@ -808,7 +808,7 @@ function ChatPanel({ chat, onSend, onStop, onSave, onMode, onNewChat, knowledgeS
         )}
 
         {chat?.running ? <Waiting label="Pi 正在处理" slow="Pi 正在按当前权限模式读取上下文并生成回答" slowAt={8} /> : null}
-        <ErrorNote error={chat?.error} what="对话" />
+        <ErrorNote error={chat?.error} what="AI 助手" />
         <div ref={endRef} />
       </div>
     </Panel>

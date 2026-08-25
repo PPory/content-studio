@@ -104,7 +104,14 @@ try {
   assert.equal((await resolveAgentMountPath(fileEnv, singleFile.id, ".")).absolute, path.join(outside, "secret.md"));
   await assert.rejects(() => resolveAgentMountPath(fileEnv, singleFile.id, "sibling.md"), /只允许读取指定文件/);
 
-  const context = { project: { title: "临时" }, attachments: [], localSources: [], projectMaterials: [] };
+  const imageAttachmentPath = path.join(tempRoot, "attachment.png");
+  await fs.writeFile(imageAttachmentPath, Buffer.from([1, 2, 3]));
+  const context = {
+    project: { title: "临时" },
+    attachments: [{ id: "image-1", name: "attachment.png", kind: "image", type: "image/png", originalPath: imageAttachmentPath, imageRef: { mediaType: "image/png" } }],
+    localSources: [],
+    projectMaterials: [],
+  };
   const daily = createPiTools({ env: sessionEnv, mode: "daily", context, actionsFile });
   const creative = createPiTools({ env: sessionEnv, mode: "creative", context, actionsFile });
   const developer = createPiTools({ env: sessionEnv, mode: "developer", context, actionsFile });
@@ -112,6 +119,11 @@ try {
   const allNames = new Set(developer.map((item) => item.name));
   for (const name of required) assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
   const execute = (items, name, params) => items.find((item) => item.name === name).execute("test-call", params, undefined, undefined, {});
+  const imageAttachment = await execute(daily, "attachment_read", { id: "image-1" });
+  assert.deepEqual(imageAttachment.content, [
+    { type: "text", text: "图片附件：attachment.png" },
+    { type: "image", data: "AQID", mimeType: "image/png" },
+  ], "图片附件工具必须返回同一份图像字节，而不是报错后让模型猜测");
   const overview = JSON.parse((await execute(daily, "workbench_projects", {})).content[0].text);
   assert.equal(overview.counts["等待法务"], 1, "新增状态没有从 Worker 动态返回");
   assert.equal(overview.projects.length, 3, "工作台状态工具没有返回当前项目");
