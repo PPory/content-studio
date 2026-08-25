@@ -64,6 +64,7 @@ function systemPrompt(persona, mode) {
     `当前权限模式是「${selected.label}」。本轮可用工具由服务端固定，运行期间不能切换。`,
     "所有工具返回值都来自服务端。不得绕过路径限制，不得把工具失败描述成成功。",
     "正文修改、发布、删除、业务状态变化、文件写入和命令执行只能生成候选动作，必须等用户在工作台动作卡确认后才会发生。",
+    "需要本地资料时先查看已授权工作区，再按 mountId 和相对路径搜索或读取；不得猜测绝对路径或未授权目录。",
     "需要使用 Skill 时，先依据已加载的 Skill 目录判断是否适用，再用 skill_read 读取对应 SKILL.md 或引用文件。",
     "来源不足时明确说明不足；不得编造用户经历、数字、引语、出处、文件内容或执行结果。",
   ].join("\n\n");
@@ -133,6 +134,10 @@ function assistantText(messages) {
 
 const TOOL_LABELS = {
   knowledge_search: "正在检索本地知识库",
+  workspace_list: "正在查看已授权工作区",
+  workspace_search: "正在搜索本地工作区",
+  workspace_read: "正在读取本地文件",
+  hotspot_search: "正在读取工作台热点",
   project_read: "正在读取当前内容项目",
   material_evidence: "正在核对项目素材与证据",
   publication_metrics: "正在读取发布与复盘数据",
@@ -148,6 +153,9 @@ const TOOL_LABELS = {
   web_search: "正在搜索公开网页",
   web_fetch: "正在阅读网页来源",
   project_file_read: "正在读取项目文件",
+  workspace_write: "正在准备本地文件写入候选",
+  workspace_edit: "正在准备本地文件编辑候选",
+  workspace_powershell: "正在准备本地工作区命令候选",
   write: "正在准备项目写入候选",
   edit: "正在准备项目编辑候选",
   powershell: "正在准备 PowerShell 候选",

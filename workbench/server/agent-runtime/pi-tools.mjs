@@ -5,6 +5,11 @@ import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { parseNotes } from "../lib/notes.mjs";
+import { proxyFetch } from "../lib/fetch.mjs";
+import { searchAll } from "../lib/search.mjs";
+import { fetchBoards } from "../lib/sixty.mjs";
+import { fetchAiHot } from "../lib/aihot.mjs";
+import { agentAccess, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import { listDir } from "../lib/vault.mjs";
 import {
   assertModeTool,
@@ -87,6 +92,47 @@ function validatePowerShell(command) {
   return value;
 }
 
+const SEARCH_SKIP = new Set([".git", "node_modules", ".xenho", "dist", "build", "coverage"]);
+
+async function workspaceFiles(env, mountId, query, signal, maxResults = 12) {
+  const access = await agentAccess(env);
+  const mounts = mountId ? access.mounts.filter((item) => item.id === mountId) : access.mounts;
+  if (!mounts.length) throw Object.assign(new Error("这个工作区尚未授权"), { status: 403 });
+  const needle = clean(query, 300).toLowerCase();
+  const matches = [];
+  for (const mount of mounts) {
+    const queue = ["."];
+    let inspected = 0;
+    while (queue.length && inspected < 1_200 && matches.length < maxResults) {
+      assertNotAborted(signal);
+      const relative = queue.shift();
+      const resolved = await resolveAgentMountPath(env, mount.id, relative);
+      let entries;
+      try { entries = await fs.readdir(resolved.absolute, { withFileTypes: true }); }
+      catch { continue; }
+      for (const entry of entries) {
+        if (SEARCH_SKIP.has(entry.name) || entry.name.startsWith(".git")) continue;
+        const child = relative === "." ? entry.name : `${relative}/${entry.name}`;
+        if (entry.isDirectory()) { queue.push(child); continue; }
+        if (!entry.isFile()) continue;
+        inspected += 1;
+        const nameHit = child.toLowerCase().includes(needle);
+        let excerpt = "";
+        try {
+          const stat = await fs.stat(path.join(resolved.absolute, entry.name));
+          if (stat.size > 1_000_000) continue;
+          const body = await fs.readFile(path.join(resolved.absolute, entry.name), { encoding: "utf8", signal });
+          if (body.includes("\0")) continue;
+          const index = body.toLowerCase().indexOf(needle);
+          if (index >= 0) excerpt = body.slice(Math.max(0, index - 180), index + needle.length + 420).replace(/\s+/g, " ");
+        } catch {}
+        if (nameHit || excerpt) matches.push({ mountId: mount.id, mount: mount.label, path: child, excerpt: clean(excerpt, 800) });
+        if (matches.length >= maxResults) break;
+      }
+    }
+  }
+  return matches;
+}
 export function createPiTools({ env, mode, context, actionsFile = "", reportFile = "", expertKind = "" }) {
   const allowed = (name) => assertModeTool(mode, name);
   const tools = [];
@@ -124,14 +170,70 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ publication: context.project?.publication || null, review: context.project?.review || null });
   }));
 
-  tools.push(tool("knowledge_search", "检索本地知识", "检索本轮任务已经取得的本地知识快照。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }) => {
+  tools.push(tool("knowledge_search", "检索本地知识", "实时检索工作台知识索引和已授权工作区，不依赖预载快照。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }, signal) => {
     allowed("knowledge_search");
-    const terms = clean(query, 300).toLowerCase().split(/\s+/).filter(Boolean);
-    const sources = (context.localSources || []).filter((item) => {
-      const haystack = JSON.stringify(item).toLowerCase();
-      return !terms.length || terms.some((term) => haystack.includes(term));
-    }).slice(0, 12).map(compactSource);
-    return text({ query: clean(query, 300), total: sources.length, sources });
+    const needle = clean(query, 300);
+    const indexed = await searchAll(env, needle, { limit: 12 }).catch(() => ({ results: [] }));
+    const files = await workspaceFiles(env, "", needle, signal, 8).catch(() => []);
+    const sources = [
+      ...(indexed.results || []).map(compactSource),
+      ...files.map((item) => compactSource({ id: `${item.mountId}:${item.path}`, type: "本地文件", title: path.basename(item.path), source: item.mount, snippet: item.excerpt, path: `${item.mountId}:${item.path}` })),
+    ].slice(0, 16);
+    return text({ query: needle, total: sources.length, sources });
+  }));
+
+  tools.push(tool("workspace_list", "查看已授权工作区", "列出 Agent 当前可访问的工作台、Obsidian 和本地文件夹，或浏览其中一个目录。", Type.Object({
+    mountId: Type.Optional(Type.String({ maxLength: 80 })),
+    path: Type.Optional(Type.String({ maxLength: 1_000 })),
+  }), async ({ mountId = "", path: requested = "." }) => {
+    allowed("workspace_list");
+    if (!mountId) {
+      const access = await agentAccess(env);
+      return text({ summary: access.summary, mounts: access.public });
+    }
+    const resolved = await resolveAgentMountPath(env, mountId, requested);
+    const entries = await fs.readdir(resolved.absolute, { withFileTypes: true });
+    return text({ mountId, path: resolved.relative, items: entries.filter((item) => !SEARCH_SKIP.has(item.name)).slice(0, 300).map((item) => ({ name: item.name, type: item.isDirectory() ? "directory" : item.isFile() ? "file" : "other" })) });
+  }));
+
+  tools.push(tool("workspace_search", "搜索已授权工作区", "按文件名和正文搜索工作台、Obsidian 或用户授权的本地项目。只读。", Type.Object({
+    query: Type.String({ maxLength: 300 }),
+    mountId: Type.Optional(Type.String({ maxLength: 80 })),
+    maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
+  }), async ({ query, mountId = "", maxResults = 12 }, signal) => {
+    allowed("workspace_search");
+    const results = await workspaceFiles(env, mountId, query, signal, maxResults);
+    return text({ query: clean(query, 300), total: results.length, results });
+  }));
+
+  tools.push(tool("workspace_read", "读取已授权文件", "用工作区 ID 和相对路径读取本地文本文件。只读。", Type.Object({
+    mountId: Type.String({ maxLength: 80 }),
+    path: Type.String({ maxLength: 1_000 }),
+  }), async ({ mountId, path: requested }, signal) => {
+    allowed("workspace_read");
+    const resolved = await resolveAgentMountPath(env, mountId, requested);
+    const stat = await fs.stat(resolved.absolute);
+    if (!stat.isFile() || stat.size > 5_000_000) throw Object.assign(new Error("只能读取不超过 5 MB 的文本文件"), { status: 400 });
+    const content = await fs.readFile(resolved.absolute, { encoding: "utf8", signal });
+    if (content.includes("\0")) throw Object.assign(new Error("这个文件不是可读取的文本"), { status: 400 });
+    return text({ mountId, path: resolved.relative, stamp: String(Math.round(stat.mtimeMs)), content: content.slice(0, 160_000), truncated: content.length > 160_000 });
+  }));
+
+  tools.push(tool("hotspot_search", "读取工作台热点", "读取工作台已接入的平台热榜和 AI 情报源。只读。", Type.Object({
+    query: Type.Optional(Type.String({ maxLength: 200 })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
+  }), async ({ query = "", limit = 15 }) => {
+    allowed("hotspot_search");
+    const [boards, ai] = await Promise.all([
+      fetchBoards(env, { limit }).catch((error) => ({ error: error.message, boards: [] })),
+      fetchAiHot({ limit: Math.max(limit, 20) }).catch((error) => ({ ok: false, error: error.message, items: [] })),
+    ]);
+    const needle = clean(query, 200).toLowerCase();
+    const boardRows = Array.isArray(boards) ? boards : (boards.boards || []);
+    const boardItems = boardRows.flatMap((board) => (board.items || []).map((item) => ({ source: board.label, title: item.title, url: item.url, rank: item.rank })));
+    const aiItems = (ai.items || []).map((item) => ({ source: "AI 情报", title: item.title, summary: item.summary, url: item.url, at: item.at }));
+    const items = [...boardItems, ...aiItems].filter((item) => !needle || JSON.stringify(item).toLowerCase().includes(needle)).slice(0, limit);
+    return text({ query: clean(query, 200), total: items.length, items, warning: boards.error || ai.error || "" });
   }));
 
   tools.push(tool("attachment_read", "读取附件", "按当前对话附件 ID 读取已提取文本。只读。", Type.Object({ id: Type.String({ maxLength: 160 }) }), async ({ id }, signal) => {
@@ -223,7 +325,37 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return appendAction(actionsFile, { type: "powershell", command: validatePowerShell(command), permissionMode: mode });
   }));
 
-  tools.push(tool("web_search", "搜索公开网页", "使用 Brave 搜索公开网页。只读。", Type.Object({ query: Type.String({ maxLength: 300 }), maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })) }), async ({ query, maxResults = 8 }, signal) => {
+  tools.push(tool("workspace_write", "准备写入已授权文件", "开发模式下准备写入有写权限的本地工作区；确认后才执行。", Type.Object({
+    mountId: Type.String({ maxLength: 80 }),
+    path: Type.String({ maxLength: 1_000 }),
+    content: Type.String({ maxLength: 200_000 }),
+  }), async ({ mountId, path: requested, content }) => {
+    allowed("workspace_write");
+    const resolved = await resolveAgentMountPath(env, mountId, requested, { write: true });
+    return appendAction(actionsFile, { type: "workspace_write", mountId: resolved.mount.id, path: resolved.relative, content: clean(content, 200_000), expectedStamp: await agentPathStamp(resolved.absolute), permissionMode: mode });
+  }));
+
+  tools.push(tool("workspace_edit", "准备编辑已授权文件", "开发模式下准备精确替换有写权限的本地文件；确认后才执行。", Type.Object({
+    mountId: Type.String({ maxLength: 80 }),
+    path: Type.String({ maxLength: 1_000 }),
+    oldText: Type.String({ maxLength: 80_000 }),
+    newText: Type.String({ maxLength: 80_000 }),
+  }), async ({ mountId, path: requested, oldText, newText }) => {
+    allowed("workspace_edit");
+    if (!oldText) throw new Error("精确编辑必须提供原片段");
+    const resolved = await resolveAgentMountPath(env, mountId, requested, { write: true });
+    return appendAction(actionsFile, { type: "workspace_edit", mountId: resolved.mount.id, path: resolved.relative, oldText: String(oldText).slice(0, 80_000), newText: String(newText).slice(0, 80_000), expectedStamp: await agentPathStamp(resolved.absolute), permissionMode: mode });
+  }));
+
+  tools.push(tool("workspace_powershell", "准备在已授权工作区执行命令", "开发模式下准备在有执行权限的工作区运行 PowerShell；确认后才执行。", Type.Object({
+    mountId: Type.String({ maxLength: 80 }),
+    command: Type.String({ maxLength: 8_000 }),
+  }), async ({ mountId, command }) => {
+    allowed("workspace_powershell");
+    const resolved = await resolveAgentMountPath(env, mountId, ".", { execute: true });
+    return appendAction(actionsFile, { type: "workspace_powershell", mountId: resolved.mount.id, command: validatePowerShell(command), permissionMode: mode });
+  }));
+  tools.push(tool("web_search", "搜索公开网页", "通过工作台统一网络通道使用 Brave 搜索公开网页。只读。", Type.Object({ query: Type.String({ maxLength: 300 }), maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })) }), async ({ query, maxResults = 8 }, signal) => {
     allowed("web_search");
     const key = clean(env.BRAVE_SEARCH_API_KEY, 4_000);
     if (!key) throw Object.assign(new Error("联网搜索尚未配置"), { status: 400, hint: "在设置中填写 Brave Search 密钥。" });
@@ -231,7 +363,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     url.searchParams.set("q", clean(query, 300));
     url.searchParams.set("count", String(Math.max(1, Math.min(10, Number(maxResults) || 8))));
     url.searchParams.set("search_lang", "zh-hans");
-    const response = await fetch(url, { headers: { Accept: "application/json", "X-Subscription-Token": key }, signal });
+    const response = await proxyFetch(url, { headers: { Accept: "application/json", "X-Subscription-Token": key }, signal });
     if (!response.ok) throw new Error(`Brave Search 返回 HTTP ${response.status}`);
     const data = await response.json();
     return text({ query: clean(query, 300), sources: (data.web?.results || []).map((item) => ({ url: clean(item.url, 2_000), title: clean(item.title, 500), snippet: clean(item.description, 1_200), publishedAt: clean(item.page_age || item.age, 100) })).filter((item) => item.url).slice(0, maxResults) });
@@ -240,7 +372,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
   tools.push(tool("web_fetch", "读取公开网页", "读取一个公开 HTTP/HTTPS 网页，阻止本机和局域网地址。只读。", Type.Object({ url: Type.String({ maxLength: 2_000 }) }), async ({ url: inputUrl }, signal) => {
     allowed("web_fetch");
     const url = await safeWebUrl(inputUrl);
-    const response = await fetch(url, { headers: { Accept: "text/html, text/plain;q=0.9, application/json;q=0.8", "User-Agent": "Xenho-Content-Studio/1.0" }, redirect: "error", signal });
+    const response = await proxyFetch(url, { headers: { Accept: "text/html, text/plain;q=0.9, application/json;q=0.8", "User-Agent": "Xenho-Content-Studio/1.0" }, redirect: "error", signal });
     if (!response.ok) throw new Error(`网页返回 HTTP ${response.status}`);
     const body = await response.text();
     return text({ url: url.href, contentType: clean(response.headers.get("content-type"), 200), content: body.slice(0, 120_000), truncated: body.length > 120_000 });

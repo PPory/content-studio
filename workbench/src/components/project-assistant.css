@@ -456,6 +456,67 @@
 .assistant-command-menu__empty { margin: 0; padding: var(--sp-7); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
 .assistant-command-menu__notice { margin: 0 var(--sp-3) var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
 
+/* 权限是输入器唯一的能力入口；详细资源留在浮层，不占常驻空间。 */
+.assistant-composer__access { max-width: 160px; }
+.assistant-composer__access > svg { width: 13px; height: 13px; flex: none; }
+.assistant-composer__access > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.assistant-access-menu {
+  position: absolute; z-index: 8; left: var(--sp-4); bottom: calc(100% - var(--sp-4));
+  width: min(460px, calc(100% - var(--sp-8))); max-height: min(560px, 72vh); overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.assistant-access-menu > header {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-5);
+  padding: var(--sp-5); border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.assistant-access-menu > header > div { display: grid; gap: var(--sp-1); }
+.assistant-access-menu > header b { font-size: var(--fs-base); }
+.assistant-access-menu > header small,
+.assistant-access-menu__summary small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.assistant-access-menu > header > button,
+.assistant-access-menu__mounts button {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
+  border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.assistant-access-menu > header svg,
+.assistant-access-menu__mounts svg { width: 13px; height: 13px; }
+.assistant-access-menu__modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); padding: var(--sp-4) var(--sp-5); }
+.assistant-access-menu__modes > button {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: var(--sp-2);
+  min-width: 0; border: 1px solid var(--border); border-radius: var(--r-ctl); padding: var(--sp-4);
+  background: transparent; color: var(--text-2); text-align: left; cursor: pointer;
+}
+.assistant-access-menu__modes > button[aria-pressed="true"] { border-color: var(--border-strong); background: var(--sel-bg); color: var(--sel-fg); }
+.assistant-access-menu__modes svg { width: 14px; height: 14px; margin-top: 2px; }
+.assistant-access-menu__modes span { display: grid; gap: var(--sp-1); min-width: 0; }
+.assistant-access-menu__modes b { font-size: var(--fs-sm); }
+.assistant-access-menu__modes small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
+.assistant-access-menu > section { display: grid; gap: var(--sp-4); padding: 0 var(--sp-5) var(--sp-5); }
+.assistant-access-menu__summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
+.assistant-access-menu__summary b { font-size: var(--fs-sm); }
+.assistant-access-menu__mounts { display: grid; max-height: 168px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-ctl); }
+.assistant-access-menu__mounts > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-width: 0; padding: var(--sp-3) var(--sp-4); }
+.assistant-access-menu__mounts > div + div { border-top: 1px solid var(--border); }
+.assistant-access-menu__mounts span { display: grid; gap: 1px; min-width: 0; }
+.assistant-access-menu__mounts b,
+.assistant-access-menu__mounts small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-access-menu__mounts b { font-size: var(--fs-xs); }
+.assistant-access-menu__mounts small { color: var(--text-3); font-size: var(--fs-2xs); }
+.assistant-access-menu__add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; }
+.assistant-access-menu__add > input {
+  height: 32px; min-width: 0; border: 1px solid var(--border); border-radius: var(--r-ctl);
+  padding: 0 var(--sp-4); background: var(--surface-2); color: var(--text-1); font: inherit; font-size: var(--fs-xs); outline: 0;
+}
+.assistant-access-menu__add > input:focus { border-color: var(--border-strong); background: var(--surface); }
+.assistant-access-menu__add > label { grid-column: 1; display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
+.assistant-access-menu__add > button {
+  grid-column: 2; grid-row: 1 / span 2; height: 32px; border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
+  padding: 0 var(--sp-4); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); cursor: pointer;
+}
+.assistant-access-menu__add > button:disabled { opacity: .45; cursor: default; }
 /* --------------------------------------------------------------------------
    独立页的密度：一栏可读宽度居中，输入器跟着居中
    -------------------------------------------------------------------------- */

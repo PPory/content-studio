@@ -11,6 +11,7 @@ import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { callWorker } from "../lib/worker.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
+import { addAgentMount, agentAccess, agentPathStamp, removeAgentMount, resolveAgentMountPath } from "./agent-access.mjs";
 import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath, resolveVaultPath } from "./permission-modes.mjs";
 import { appendNote, fileStamp, listBooks, readFile as readVaultFile, vaultRoot, writeVaultFile } from "../lib/vault.mjs";
 import { atomicWrite } from "../lib/safe-write.mjs";
@@ -483,7 +484,7 @@ function contentPrompt(input, context, model) {
 function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
-    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
+    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
     "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮工作台检索、vault_list、vault_read 或 annotation_list 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
@@ -524,12 +525,26 @@ function normalizeProposedAction(item, permissionMode) {
     platform: ["公众号", "X", "小红书", "视频号", "YouTube"].includes(item.platform) ? item.platform : "公众号",
     audience: clean(item.audience, 500), viewpoint: clean(item.viewpoint, 2_000), body: clean(item.body, 200_000),
   };
-  if (["document_create", "document_update", "annotation_append", "reference_insert", "project_write", "project_edit", "powershell"].includes(item.type)) {
+  if (["document_create", "document_update", "annotation_append", "reference_insert", "workspace_write", "workspace_edit", "workspace_powershell", "project_write", "project_edit", "powershell"].includes(item.type)) {
     return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
   }
   return null;
 }
 
+export async function assistantAccess(env) {
+  const access = await agentAccess(env);
+  return { mounts: access.public, summary: access.summary };
+}
+
+export async function addAssistantMount(env, input) {
+  await addAgentMount(env, input);
+  return assistantAccess(env);
+}
+
+export async function removeAssistantMount(env, id) {
+  await removeAgentMount(id, env);
+  return assistantAccess(env);
+}
 export function assistantPermissionModes() {
   return { items: permissionModeCatalog(), defaultMode: DEFAULT_PERMISSION_MODE };
 }
@@ -803,6 +818,26 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
       }
     }
     result = { path: resolved.relative, stamp: await fileStamp(resolved.root, resolved.relative) };
+  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
+    if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
+    if (action.type === "workspace_powershell") {
+      const resolved = await resolveAgentMountPath(env, action.mountId, ".", { execute: true });
+      const output = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", clean(action.command, 8_000)], { cwd: resolved.absolute, timeout: 60_000, windowsHide: true, maxBuffer: 2_000_000 });
+      result = { mountId: action.mountId, stdout: clean(output.stdout, 20_000), stderr: clean(output.stderr, 20_000) };
+    } else {
+      const resolved = await resolveAgentMountPath(env, action.mountId, action.path, { write: true });
+      if (await agentPathStamp(resolved.absolute) !== String(action.expectedStamp || "")) throw Object.assign(new Error("文件在确认前发生了变化，拒绝覆盖"), { status: 409 });
+      let next = boundedText(action.content, 200_000);
+      if (action.type === "workspace_edit") {
+        const before = await fs.readFile(resolved.absolute, "utf8");
+        const oldText = String(action.oldText || "");
+        const first = before.indexOf(oldText);
+        if (first < 0 || before.indexOf(oldText, first + oldText.length) >= 0) throw Object.assign(new Error("原片段不存在或不唯一，拒绝编辑"), { status: 409 });
+        next = before.slice(0, first) + String(action.newText || "") + before.slice(first + oldText.length);
+      }
+      await atomicWrite(resolved.absolute, next);
+      result = { mountId: action.mountId, path: resolved.relative };
+    }
   } else if (["project_write", "project_edit", "powershell"].includes(action.type)) {
     if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
     if (action.type === "powershell") {

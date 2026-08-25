@@ -189,6 +189,9 @@ const ACTION_LABELS = {
   project_write: ["写入项目文件", "确认写入"],
   project_edit: ["编辑项目文件", "确认编辑"],
   powershell: ["执行 PowerShell", "确认执行"],
+  workspace_write: ["写入授权工作区", "确认写入"],
+  workspace_edit: ["编辑授权工作区", "确认编辑"],
+  workspace_powershell: ["在授权工作区执行命令", "确认执行"],
 };
 
 function ActionCard({ action, onApply }) {
@@ -228,6 +231,11 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [modelPending, setModelPending] = useState(false);
   const [permissionModes, setPermissionModes] = useState([{ id: "daily", label: "日常", description: "只读、检索和候选动作", warning: "" }, { id: "creative", label: "创作", description: "个人工作台内的受控写入", warning: "所有写入仍需确认。" }, { id: "developer", label: "开发", description: "项目写入和 PowerShell", warning: "开发模式可触及项目代码和命令，请确认当前任务确实需要。" }]);
   const [permissionMode, setPermissionMode] = useState("daily");
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [access, setAccess] = useState({ mounts: [], summary: {} });
+  const [mountPath, setMountPath] = useState("");
+  const [mountWrite, setMountWrite] = useState(false);
+  const [accessPending, setAccessPending] = useState(false);
   const [styleId, setStyleId] = useState("");
   const [modePending, setModePending] = useState(false);
   const [attachments, setAttachments] = useState([]);
@@ -238,6 +246,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const scrollFrameRef = useRef(0);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const accessRef = useRef(null);
   const activeRequestRef = useRef(null);
   const conversationIdRef = useRef("");
   const enabledStyles = (profile?.styles || []).filter((item) => item.enabled);
@@ -296,6 +305,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     }).catch((next) => { if (!cancelled) setModelNotice(next.message || "模型目录暂时不可用"); });
     api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: `skill:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
     api.assistantModes().then((result) => { if (!cancelled) setPermissionModes(result.modes?.items || []); }).catch(() => {});
+    api.assistantAccess().then((result) => { if (!cancelled) setAccess(result.access || { mounts: [], summary: {} }); }).catch(() => {});
     api.assistantExperts().then((result) => { if (!cancelled) setExpertPresets((result.experts?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description }))); }).catch(() => {});
     return () => { cancelled = true; clearTimeout(streamRef.current.timer); cancelAnimationFrame(scrollFrameRef.current); };
   }, [scopeId, standalone]);
@@ -317,6 +327,16 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     return () => clearInterval(timer);
   }, [standalone, scopeId, hasRunningHistory]);
   useEffect(() => {
+    if (!accessOpen) return undefined;
+    const close = (event) => {
+      if (!accessRef.current?.contains(event.target) && !event.target.closest?.(".assistant-composer__access")) setAccessOpen(false);
+    };
+    const key = (event) => { if (event.key === "Escape") setAccessOpen(false); };
+    window.document.addEventListener("pointerdown", close);
+    window.document.addEventListener("keydown", key);
+    return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key); };
+  }, [accessOpen]);
+  useEffect(() => {
     cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
   }, [messages.length, busy]);
@@ -325,7 +345,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     const current = streamRef.current;
     if (!current.text || current.id !== streamingId) return;
     const text = current.text; current.text = ""; current.timer = 0;
-    setMessages((items) => items.map((item) => item.id === streamingId ? { ...item, text: `${item.text || ""}${text}` } : item));
+    setMessages((items) => items.map((item) => item.id === streamingId ? { ...item, text: (item.text || "") + text } : item));
     cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
   }
@@ -469,8 +489,9 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     } finally { setModelPending(false); }
   }
 
-  async function choosePermissionMode(event) {
-    const next = event.target.value;
+  async function choosePermissionMode(value) {
+    const next = typeof value === "string" ? value : value.target.value;
+    setAccessOpen(false);
     const item = permissionModes.find((modeItem) => modeItem.id === next);
     if (!item || next === permissionMode || busy) return;
     if (next === "developer" && !window.confirm(`${item.warning}\n\n只有明确的开发任务才应使用此模式。`)) return;
@@ -483,6 +504,23 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     } catch (nextError) {
       setPermissionMode(previous); setError(nextError);
     } finally { setModePending(false); }
+  }
+  async function addMount() {
+    if (!mountPath.trim() || accessPending) return;
+    setAccessPending(true); setError(null);
+    try {
+      const result = await api.addAssistantMount({ path: mountPath.trim(), write: mountWrite, execute: mountWrite });
+      setAccess(result.access || access); setMountPath(""); setMountWrite(false);
+    } catch (next) { setError(next); }
+    finally { setAccessPending(false); }
+  }
+
+  async function removeMount(id) {
+    if (accessPending) return;
+    setAccessPending(true); setError(null);
+    try { setAccess((await api.removeAssistantMount(id)).access || access); }
+    catch (next) { setError(next); }
+    finally { setAccessPending(false); }
   }
   async function rewind(edit = false) {
     if (!conversationId || busy) return;
@@ -568,6 +606,15 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       {attachments.length ? <div className="assistant-attachments">{attachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
       {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={() => setUploadError("")} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
       <textarea ref={inputRef} value={input} onChange={changeInput} onKeyDown={inputKeyDown} placeholder={standalone ? "问任何问题；输入 @ 调专家，输入 / 使用 Skill" : "问当前内容；输入 @ 调专家，输入 / 使用 Skill"} rows="2" disabled={busy} />
+      {accessOpen ? <div className="assistant-access-menu" ref={accessRef} role="dialog" aria-label="Agent 访问范围">
+        <header><div><b>权限与访问范围</b><small>预设决定本轮能做什么；文件夹决定能在哪里做。</small></div><button type="button" onClick={() => setAccessOpen(false)} aria-label="关闭"><IconX aria-hidden="true" /></button></header>
+        <div className="assistant-access-menu__modes">{permissionModes.map((item) => <button type="button" key={item.id} aria-pressed={item.id === permissionMode} onClick={() => choosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span></button>)}</div>
+        <section>
+          <div className="assistant-access-menu__summary"><b>可访问范围</b><small>工作台{access.summary?.vault ? " · Obsidian" : ""}{access.summary?.externalCount ? " · " + access.summary.externalCount + " 个本地文件夹" : ""} · 热点{access.summary?.network ? " · 联网" : " · 联网待配置"}</small></div>
+          <div className="assistant-access-menu__mounts">{(access.mounts || []).map((item) => <div key={item.id}><span><b>{item.label}</b><small>{item.path}{item.builtin ? "" : item.write ? " · 可修改/执行" : " · 只读"}</small></span>{item.builtin ? null : <button type="button" onClick={() => removeMount(item.id)} disabled={accessPending} aria-label={"移除 " + item.label}><IconX aria-hidden="true" /></button>}</div>)}</div>
+          <div className="assistant-access-menu__add"><input value={mountPath} onChange={(event) => setMountPath(event.target.value)} placeholder="粘贴本地文件夹绝对路径" /><label><input type="checkbox" checked={mountWrite} onChange={(event) => setMountWrite(event.target.checked)} />允许修改与命令</label><button type="button" onClick={addMount} disabled={!mountPath.trim() || accessPending}>添加</button></div>
+        </section>
+      </div> : null}
       {menu ? <div className="assistant-command-menu" role="menu">
         <header><span>{menu === "models" ? "选择模型" : menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={() => setMenu("")}><IconX aria-hidden="true" /></button></header>
         {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => setMenuIndex(index)} onClick={() => chooseMenuItem(item)} disabled={menu === "models" && modelPending}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : menu === "skills" ? "/" : <ModelGlyph id={item.id} provider={item.provider} />}</span><span><b>{item.label}{menu === "models" && item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">{menu === "models" ? "暂时没有可用模型" : "没有匹配项"}</p>}
@@ -575,7 +622,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       <footer>
         <div>
           <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
-          <label className="assistant-composer__mode" title={permissionModes.find((item) => item.id === permissionMode)?.description || "服务端权限模式"}><span>权限</span><select value={permissionMode} onChange={choosePermissionMode} disabled={busy || modePending}>{permissionModes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <button type="button" className="assistant-composer__access" title="权限与访问范围" onClick={() => { setAccessOpen((value) => !value); setMenu(""); }} aria-expanded={accessOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>
           {!standalone ? <label className="assistant-composer__style"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
           <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
         </div>

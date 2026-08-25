@@ -40,7 +40,7 @@
 │  /api/vault/*   读写 vault 文件（书架、热点、洞察、伴生笔记、归档）        │
 │  /api/pipe/*    转发同仓 worker/ 的 /wb/*（列表、状态、intake、批注）    │
 │  /api/ai/*      划词即时 AI（转发 LLM 代理，流式）                       │
-│  /api/agent/*   Pi Agent SDK 对话（服务端权限模式 + NDJSON）      │
+│  /api/assistant/*  Pi Agent SDK 对话（能力预设 + 资源授权 + NDJSON）      │
 │  /api/data/*    平台数据（抖音 Excel 解析、手动 metrics）                │
 └──────┬──────────────┬──────────────┬──────────────┬─────────────────┘
        │              │              │              │
@@ -166,7 +166,11 @@ content-pipeline 的 Telegram 命令（/金句 /概念 /案例 /数据 /框架 /
 
 ### 7.3 agent 深度对话
 
-保留现有 React chat 壳和 /api/assistant/* NDJSON 契约，本地服务直接运行 Pi Agent SDK。Pi 可读取 vault、批注、附件、Skills 和 Worker/D1 业务上下文，但能力由 daily / creative / developer 三种服务端模式裁剪。所有写入、命令和业务动作先生成候选卡，只有用户明确确认后才由应用层执行；Worker/D1 始终是业务状态、关系、幂等和长任务的唯一真源。对话历史继续落本地 conversation.json，并额外保存 Pi session 标识。
+保留 React chat 壳和 /api/assistant/* NDJSON 契约，本地服务直接运行 Pi Agent SDK。Agent 运行时是独立服务层，不依赖某个页面是否存在；工作台改版只能改适配器，不能让 Agent 重新学习页面 DOM 或内部字段。
+
+资源用**挂载表**管理：工作台项目和 Obsidian vault 是内置挂载，其他本地项目必须由用户显式授权后才出现。工具只接受 mountId + 相对路径，每次读取、写入和最终执行都会重新做真实路径、junction/symlink、ADS、越界与权限校验。knowledge_search 是实时检索，不再只过滤本轮预载快照；热点直接复用工作台已有数据源；公开网页统一复用工作台的代理网络通道。
+
+daily / creative / developer 只是 read / search / network / workspace-write / project-write / execute 的预设，不是三套互不相干的 Agent。所有写入、命令和业务动作先生成候选卡，只有用户明确确认后才由应用层执行；Worker/D1 始终是业务状态、关系、幂等和长任务的唯一真源。第三方 Pi 扩展保持 noExtensions: true，只允许锁定版本并通过显式白名单加载；缺入口、额外注册工具或依赖终端 UI 的扩展不得接入工作台。
 ### 7.4 每日热点
 
 定时任务（本地调度器或 cron）拉公开聚合 API → 按日存 JSON。**定性为 best-effort**：API 挂了显示「今日无数据」，不修不救；30 天自动清理；看中的条目一键入灵感库。

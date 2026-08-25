@@ -286,7 +286,11 @@ try {
     assert(await page.evaluate(() => localStorage.getItem("xenho-assistant-model")) === "test-model", "AI 助手没有记住已用模型");
 
     assert(!(await page.$('.assistant-composer footer button:has-text("专家")')) && !(await page.$('.assistant-composer footer button:has-text("Skill")')), "输入框底部仍显示专家或 Skill 按钮");
-    assert(await page.$(".assistant-composer .assistant-composer__mode select"), "权限没有放进输入框底部");
+    assert(await page.$(".assistant-composer .assistant-composer__access"), "输入框底部没有唯一的权限入口");
+    await page.click(".assistant-composer__access");
+    assert((await page.$$eval(".assistant-access-menu__modes > button", (items) => items.map((item) => item.textContent))).length === 3, "权限浮层没有三种预设");
+    assert((await page.textContent(".assistant-access-menu")).includes("可访问范围"), "权限浮层没有资源范围摘要");
+    await page.click(".assistant-access-menu > header > button");
     assert(!(await page.$(".assistant-pane__context .assistant-mode-select")), "权限仍占在对话顶栏");
     await page.fill(".assistant-composer textarea", "@");
     const experts = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
@@ -629,6 +633,9 @@ try {
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
   assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
+  const persistentControls = await page.$$(".assistant-pane--standalone .assistant-composer > footer > div > button");
+  assert(persistentControls.length <= 3, "独立助手输入框底部常驻控件过多");
+  assert(await page.$(".assistant-pane--standalone .assistant-composer__access"), "独立助手没有紧凑权限入口");
   /**
    * ⚠️ **量的是「贴着这一页的底」，不是「贴着那张画布的底」。**
    * `.assistant-page__canvas` 已经撤了——那是套在 `.main` 里面的第二层白圆角卡片，
