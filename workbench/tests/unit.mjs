@@ -595,10 +595,16 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
 }
 
 {
-  const { assistantRetrievalRequested } = await import("../server/agent-runtime/assistant-runner.mjs");
+  const { assistantModels, assistantRetrievalRequested, assistantSearchQueries } = await import("../server/agent-runtime/assistant-runner.mjs");
   check("普通写作对话不预搜资料源", !assistantRetrievalRequested({ message: "帮我看看这段话的逻辑" }));
   check("明确知识库请求会启用检索", assistantRetrievalRequested({ message: "去我的知识库里找两个案例" }));
   check("明确事实核查会启用检索", assistantRetrievalRequested({ message: "请联网核实这组数据" }));
+  check("独立助手会查工作台文章进度", assistantRetrievalRequested({ mode: "general", message: "有一篇如何用好 AI 的文章，帮我看看看到哪一步了" }));
+  check("独立助手会查书里的笔记", assistantRetrievalRequested({ mode: "general", message: "纳瓦尔宝典里面是不是有笔记？" }));
+  check("工作台文章标题会提成完整检索词", assistantSearchQueries({ message: "有一篇如何用好 AI 的文章，帮我看看看到哪一步了" })[0] === "如何用好 AI");
+  check("书名会提成完整检索词", assistantSearchQueries({ message: "纳瓦尔宝典里面是不是有笔记？" })[0] === "纳瓦尔宝典");
+  const modelCatalog = await assistantModels({ AGENT_LLM_MODEL: "unit-default-model" }, [], { refresh: false });
+  check("模型目录先返回已配置模型，不等待远端刷新", modelCatalog.items[0]?.id === "unit-default-model");
 }
 
 {

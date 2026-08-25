@@ -58,6 +58,18 @@ const EXPERTS = [
 const PROJECT_EXPERTS = new Set(["writing-coach", "material-researcher", "quality-reviewer", "fact-checker"]);
 
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
+const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
+
+function storedAssistantModel() {
+  try { return localStorage.getItem(ASSISTANT_MODEL_STORAGE_KEY) || ""; }
+  catch { return ""; }
+}
+
+function rememberAssistantModel(value) {
+  if (!value) return;
+  try { localStorage.setItem(ASSISTANT_MODEL_STORAGE_KEY, value); }
+  catch {}
+}
 
 function commandAt(value, cursor) {
   const before = String(value || "").slice(0, cursor);
@@ -207,12 +219,12 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [conversationId, setConversationId] = useState("");
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [conversationItems, setConversationItems] = useState([]);
-  const [historyOpen, setHistoryOpen] = useState(standalone && !docked);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [models, setModels] = useState([]);
   const [modelNotice, setModelNotice] = useState("");
   const [skills, setSkills] = useState([]);
   const [expertPresets, setExpertPresets] = useState([]);
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState(storedAssistantModel);
   const [modelPending, setModelPending] = useState(false);
   const [permissionModes, setPermissionModes] = useState([{ id: "daily", label: "日常", description: "只读、检索和候选动作", warning: "" }, { id: "creative", label: "创作", description: "个人工作台内的受控写入", warning: "所有写入仍需确认。" }, { id: "developer", label: "开发", description: "项目写入和 PowerShell", warning: "开发模式可触及项目代码和命令，请确认当前任务确实需要。" }]);
   const [permissionMode, setPermissionMode] = useState("daily");
@@ -248,7 +260,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     setMessages(conversation?.messages || []);
     setAttachments(conversation?.attachments || []);
     setActions(conversation?.actions || []);
-    if (conversation?.model) setModel(conversation.model);
+    if (conversation?.model) { setModel(conversation.model); rememberAssistantModel(conversation.model); }
     setPermissionMode(conversation?.permissionMode || "daily");
     const running = conversation?.activeTurn?.status === "running";
     if (running) {
@@ -275,7 +287,12 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       if (cancelled) return;
       const nextModels = result.models?.items || [];
       setModels(nextModels); setModelNotice(result.models?.warning || "");
-      setModel((current) => current || result.models?.configured || nextModels[0]?.id || "");
+      setModel((current) => {
+        const currentStillAvailable = nextModels.some((item) => item.id === current);
+        const next = currentStillAvailable ? current : result.models?.configured || nextModels[0]?.id || current || "";
+        rememberAssistantModel(next);
+        return next;
+      });
     }).catch((next) => { if (!cancelled) setModelNotice(next.message || "模型目录暂时不可用"); });
     api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: `skill:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
     api.assistantModes().then((result) => { if (!cancelled) setPermissionModes(result.modes?.items || []); }).catch(() => {});
@@ -442,13 +459,13 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   async function chooseModel(item) {
     const previous = model;
-    setMenu(""); setMenuQuery(""); setCommandRange(null); setModel(item.id); setModelPending(true); setError(null);
+    setMenu(""); setMenuQuery(""); setCommandRange(null); setModel(item.id); rememberAssistantModel(item.id); setModelPending(true); setError(null);
     if (!conversationId) { setModelPending(false); return; }
     try {
       const result = await api.setAssistantModel({ scopeId, conversationId, model: item.id });
       applyConversation(result.conversation);
     } catch (next) {
-      setModel(previous); setError(next);
+      setModel(previous); rememberAssistantModel(previous); setError(next);
     } finally { setModelPending(false); }
   }
 
@@ -531,7 +548,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
       <div className="assistant-context-actions">
-<label className="assistant-mode-select" title={permissionModes.find((item) => item.id === permissionMode)?.description || "服务端权限模式"}><span>权限</span><select value={permissionMode} onChange={choosePermissionMode} disabled={busy || modePending}>{permissionModes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+
                 {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
         {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="把本轮完整对话整理成知识卡片"><IconArchive aria-hidden="true" /><span>沉淀对话</span></button> : null}
         <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
@@ -557,11 +574,10 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       </div> : null}
       <footer>
         <div>
-          <button type="button" onClick={() => menu === "experts" ? setMenu("") : openMenu("experts")} aria-expanded={menu === "experts"}><span>@</span>专家</button>
-          <button type="button" onClick={() => menu === "skills" ? setMenu("") : openMenu("skills")} aria-expanded={menu === "skills"}><span>/</span>Skill</button>
-          {!standalone ? <label className="assistant-composer__style"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
           <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={uploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
-          <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "选择模型"}</b><IconChevronDown aria-hidden="true" /></button>
+          <label className="assistant-composer__mode" title={permissionModes.find((item) => item.id === permissionMode)?.description || "服务端权限模式"}><span>权限</span><select value={permissionMode} onChange={choosePermissionMode} disabled={busy || modePending}>{permissionModes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          {!standalone ? <label className="assistant-composer__style"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
+          <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={() => menu === "models" ? setMenu("") : openMenu("models")} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
         </div>
         <small className="assistant-composer__hint">Enter 发送 · Shift+Enter 换行</small>
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={stop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={!input.trim() || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}

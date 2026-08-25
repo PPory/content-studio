@@ -78,13 +78,7 @@
   transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
 }
 .assistant-context-actions > button:hover { border-color: var(--border-strong); color: var(--text-1); }
-.assistant-mode-select {
-  display: inline-flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 var(--sp-4);
-  border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-3);
-  font-size: var(--fs-xs);
-}
-.assistant-mode-select select { border: 0; background: transparent; color: var(--text-1); font: inherit; font-weight: 600; outline: 0; cursor: pointer; }
-.assistant-mode-select select:disabled { cursor: default; opacity: .55; }
+
 .assistant-context-actions > button svg { width: 14px; height: 14px; }
 .assistant-context-actions > .assistant-background-task {
   border-color: color-mix(in srgb, var(--ok) 28%, var(--border));
@@ -329,8 +323,9 @@
   padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
 }
 .assistant-composer > footer > div { display: flex; flex: 1 1 auto; align-items: center; gap: var(--sp-3); min-width: 0; flex-wrap: wrap; }
-/* 三颗药丸一个形状：@专家 · /Skill · 写作风格 */
+/* 输入区底行只放这轮真正要确认的设置：权限 · 写作风格 · 模型。@ 和 / 由键盘直接唤起。 */
 .assistant-composer > footer > div button,
+.assistant-composer__mode,
 .assistant-composer__style,
 .assistant-composer__model {
   display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -342,6 +337,7 @@
 }
 .assistant-composer > footer > div button:hover,
 .assistant-composer > footer > div button[aria-expanded="true"],
+.assistant-composer__mode:hover,
 .assistant-composer__style:hover,
 .assistant-composer__model:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-composer > footer > div button > span { font-weight: 400; }
@@ -350,14 +346,18 @@
 }
 .assistant-composer__attach svg { width: 15px; height: 15px; }
 /* 风格那颗里面是个原生 select（冒烟测试用 `selectOption` 点它），所以只能把框脱掉 */
+.assistant-composer__mode,
 .assistant-composer__style,
 .assistant-composer__model { max-width: 220px; }
+.assistant-composer__mode > span,
 .assistant-composer__style > span,
 .assistant-composer__model > span { flex: none; color: var(--text-3); }
+.assistant-composer__mode select,
 .assistant-composer__style select {
   min-width: 0; border: 0; padding: 0; background: transparent;
   color: inherit; font: inherit; font-size: var(--fs-sm); outline: 0; cursor: pointer;
 }
+.assistant-composer__mode select:disabled { cursor: default; opacity: .55; }
 .assistant-composer__model { min-width: 0; }
 .assistant-model-glyph {
   display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
@@ -575,16 +575,15 @@
 .project-assistant .assistant-command-menu { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
 .project-assistant .assistant-action-card { margin-inline: 0; }
 /**
- * 右栏只有 336px，那一排药丸放不下三组文字 + 一颗发送钮。
- * ⚠️ **收的是文字不是控件**：`@` 和 `/` 留着（那就是你要敲的字符），
- * 说明进 `title`；快捷键提示整条撤掉——它是「学一次就记住」的那类。
- * 三颗按钮的位置、大小和行为一个都没变，独立页那边照旧显示全称。
+ * 右栏只有 336px：附件、权限、风格、模型保留在输入区，专家和 Skill 只由 @ / 唤起。
+ * 快捷键提示撤掉——它是「学一次就记住」的那类，不能长期挤占这一行。
  */
 .project-assistant .assistant-composer__hint { display: none; }
 .project-assistant .assistant-composer > footer { gap: var(--sp-3); padding-left: var(--sp-4); }
 .project-assistant .assistant-composer > footer > div { flex: 1 1 auto; gap: var(--sp-2); }
 .project-assistant .assistant-composer > footer > div button { padding: 0 var(--sp-4); font-weight: 600; }
 .project-assistant .assistant-composer__style { max-width: 100%; min-width: 0; }
+.project-assistant .assistant-composer__mode > span,
 .project-assistant .assistant-composer__style > span { display: none; }
 .project-assistant .assistant-composer__style select { max-width: 100%; }
 .project-assistant .assistant-composer__model { max-width: 132px; padding-inline: var(--sp-4); }

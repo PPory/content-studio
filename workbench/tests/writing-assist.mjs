@@ -283,12 +283,16 @@ try {
     await page.keyboard.type("收藏处理的是焦虑，而不是内容。");
     await page.selectOption(".assistant-composer__style select", "story-led");
     assert(styleSaves.length === 0, "编辑器调用风格时不该修改或保存提示词");
+    assert(await page.evaluate(() => localStorage.getItem("xenho-assistant-model")) === "test-model", "AI 助手没有记住已用模型");
 
-    await page.click('.assistant-composer footer button:has-text("专家")');
+    assert(!(await page.$('.assistant-composer footer button:has-text("专家")')) && !(await page.$('.assistant-composer footer button:has-text("Skill")')), "输入框底部仍显示专家或 Skill 按钮");
+    assert(await page.$(".assistant-composer .assistant-composer__mode select"), "权限没有放进输入框底部");
+    assert(!(await page.$(".assistant-pane__context .assistant-mode-select")), "权限仍占在对话顶栏");
+    await page.fill(".assistant-composer textarea", "@");
     const experts = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
     assert(experts.join("/") === "写作教练/素材顾问/审稿顾问/事实核查", `专家菜单不完整：${experts.join("/")}`);
     await page.click('.assistant-command-menu header button');
-    await page.click('.assistant-composer footer button:has-text("Skill")');
+    await page.fill(".assistant-composer textarea", "/");
     const skills = await page.$$eval(".assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
     assert(skills.join("/") === "fact-check/idea-dialogue/interview-to-draft/material-extraction/material-gap/publish-review/topic-clustering/xenho-quality-nine", "Skill 菜单不完整：" + skills.join("/"));
     await page.click('.assistant-command-menu [role=menuitem]:has-text("fact-check")');
@@ -624,6 +628,7 @@ try {
   await page.click('.sidebar .nav-item:has-text("AI助手")');
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
+  assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
   /**
    * ⚠️ **量的是「贴着这一页的底」，不是「贴着那张画布的底」。**
    * `.assistant-page__canvas` 已经撤了——那是套在 `.main` 里面的第二层白圆角卡片，
@@ -642,6 +647,9 @@ try {
   const composerDuring = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
   assert(Math.abs(composerDuring.y - composerBefore.y) < 2, "AI 运行时输入框发生了位移");
   await page.waitForFunction(() => document.querySelector(".assistant-pane--standalone .assistant-message--assistant")?.textContent.includes("0.2s"));
+  await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final.png"), fullPage: false });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final-1920.png"), fullPage: false });
   assert(!(await page.$('.assistant-pane--standalone button:has-text("作为候选插入")')), "独立对话不应出现稿件插入操作");
   console.log("✓ 左侧 AI 助手打开独立对话页，输入框始终贴底");
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);

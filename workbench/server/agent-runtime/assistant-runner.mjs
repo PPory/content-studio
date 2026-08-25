@@ -5,13 +5,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
+import { readBookMarks } from "../lib/marks.mjs";
 import { searchAll } from "../lib/search.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { callWorker } from "../lib/worker.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
 import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath, resolveVaultPath } from "./permission-modes.mjs";
-import { appendNote, fileStamp, readFile as readVaultFile, writeVaultFile } from "../lib/vault.mjs";
+import { appendNote, fileStamp, listBooks, readFile as readVaultFile, vaultRoot, writeVaultFile } from "../lib/vault.mjs";
 import { atomicWrite } from "../lib/safe-write.mjs";
 
 const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
@@ -226,7 +227,7 @@ export async function assistantConversation(scopeId, conversationId = "") {
   return recoverInterruptedConversation(scopeId, await ensureConversation(scopeId, conversationId));
 }
 
-export async function assistantModels(env, extraIds = []) {
+export async function assistantModels(env, extraIds = [], options = {}) {
   const configured = clean(env.AGENT_LLM_MODEL, 240);
   const base = clean(env.AGENT_LLM_BASE_URL, 1_000).replace(/\/+$/, "");
   const key = clean(env.AGENT_LLM_API_KEY, 4_000);
@@ -241,6 +242,16 @@ export async function assistantModels(env, extraIds = []) {
     for (const id of remembered.toReversed()) if (assistantModelUsable(id) && !result.some((item) => item.id === id)) result.unshift({ id, name: id, remembered: true });
     return result;
   };
+  if (options.refresh === false) {
+    if (base && key) void assistantModels(env, extraIds).catch(() => {});
+    return {
+      items: withRemembered(cached),
+      configured,
+      source: cached.length ? "cache" : "settings",
+      refreshing: Boolean(base && key),
+      warning: !base || !key ? "模型目录未连接，显示的是本机上次成功获取的目录" : "",
+    };
+  }
   if (!base || !key) return { items: withRemembered(cached), configured, source: cached.length ? "cache" : "settings", warning: "模型目录未连接，显示的是本机上次成功获取的目录" };
   try {
     const root = base.replace(/\/chat\/completions$/i, "");
@@ -279,7 +290,9 @@ export async function assistantModelCatalog(env) {
       } catch {}
     }
   } catch {}
-  return assistantModels(env, ids);
+  // 打开助手先把已配置模型和本机缓存交给前端；远端模型目录在后台刷新。
+  // 否则 provider 慢十秒，输入框就会一直写着“选择模型”，看起来像不能开始对话。
+  return assistantModels(env, ids, { refresh: false });
 }
 
 export async function assistantSkills() {
@@ -342,23 +355,59 @@ export async function updateAssistantConversationModel(scopeId, conversationId, 
   return writeConversationRecord(scopeId, record);
 }
 
-function searchQueries(input) {
+export function assistantSearchQueries(input) {
   const text = `${input.document?.title || ""}\n${input.message || ""}\n${input.document?.selection?.text || ""}`;
-  const quoted = [...text.matchAll(/[“\"《]([^”\"》]{2,30})[”\"》]/g)].map((match) => match[1]);
+  const articleTitles = [...text.matchAll(/(?:有一篇|这篇|那篇|一篇)\s*[《“"]?(.{2,40}?)[》”"]?\s*(?:的)?(?:文章|稿件)/g)].map((match) => match[1].replace(/的$/u, "").trim());
+  const bookTitles = [...text.matchAll(/(?:^|[\n，。！？])\s*[《“"]?([^\n，。！？《》“”"]{2,40}?)[》”"]?(?:里面|里)(?=[^\n，。！？]{0,8}(?:笔记|批注|高亮|标注|内容))/g)].map((match) => match[1].trim());
+  const quoted = [...text.matchAll(/[“"《]([^”"》]{2,30})[”"》]/g)].map((match) => match[1]);
   const latin = text.match(/[A-Za-z][A-Za-z0-9._-]{2,36}/g) || [];
   const chinese = text.match(/[\u4e00-\u9fff]{2,12}/g) || [];
-  return [...new Set([...quoted, ...latin, ...chinese, clean(input.document?.title, 36)])].filter(Boolean).slice(0, 2);
+  return [...new Set([...articleTitles, ...bookTitles, ...quoted, ...latin, ...chinese, clean(input.document?.title, 36)])].filter((item) => item && item.length > 1).slice(0, 3);
 }
 
 export function assistantRetrievalRequested(input = {}) {
-  return /(搜索|搜一下|查一下|查找|检索|知识库|我的笔记|书里|找案例|找数据|找来源|出处|联网|事实核查|核实|查证)/i.test(`${input.message || ""} ${input.document?.selection?.text || ""}`);
+  const text = `${input.message || ""} ${input.document?.selection?.text || ""}`;
+  if (/(搜索|搜一下|查一下|查找|检索|知识库|我的笔记|书里|找案例|找数据|找来源|出处|联网|事实核查|核实|查证)/i.test(text)) return true;
+  if (input.mode !== "general") return false;
+  const workspaceNoun = /(工作台|书架|收件箱|灵感库|素材库|选题库|稿件库|知识卡片|文章|稿件|书|笔记|批注|高亮|标注|阅读进度)/i.test(text);
+  const lookupCue = /(有一篇|有没有|有没|是不是|是否|哪里|在哪|里面|读到|看到哪|进度|帮我看|找一下|打开)/i.test(text);
+  return workspaceNoun && lookupCue;
 }
 
+async function matchingBookSources(env, input, queries) {
+  const message = clean(input.message, 8_000);
+  if (!queries.length || !/(书|书架|笔记|批注|高亮|标注|阅读进度|读到)/i.test(message)) return [];
+  try {
+    const root = vaultRoot(env);
+    const books = await listBooks(root) || [];
+    const needles = [...queries, message].map((item) => clean(item, 200).toLowerCase()).filter(Boolean);
+    const matched = books.filter((book) => needles.some((needle) => needle.includes(book.name.toLowerCase()) || book.name.toLowerCase().includes(needle))).slice(0, 6);
+    return Promise.all(matched.map(async (book) => {
+      const marks = await readBookMarks(root, book.dir);
+      return {
+        id: `book:${book.dir}`,
+        type: "book",
+        typeLabel: "书架",
+        title: book.name,
+        source: [book.author, book.status].filter(Boolean).join(" · ") || "书架",
+        state: book.status,
+        snippet: `共 ${book.chapterCount || 1} 章；${marks.notes} 条批注，${marks.highlights} 条高亮；批注文件：${book.notePath}`,
+        path: book.notePath,
+      };
+    }));
+  } catch {
+    return [];
+  }
+}
 async function localContext(env, input, record) {
   const asksForSources = assistantRetrievalRequested(input);
-  const queries = asksForSources ? searchQueries(input) : [];
+  const queries = asksForSources ? assistantSearchQueries(input) : [];
   const sources = [];
   const seen = new Set();
+  for (const item of await matchingBookSources(env, input, queries)) {
+    seen.add(item.id);
+    sources.push(item);
+  }
   for (const query of queries) {
     const result = await searchAll(env, query, { limit: 8 });
     for (const item of result.results || []) {
@@ -392,6 +441,14 @@ async function localContext(env, input, record) {
   };
 }
 
+function retrievalPrompt(context) {
+  if (context.retrievalMode === "未检索") return "【本轮工作台检索】未触发；不要据此断言工作台里没有内容。";
+  const candidates = (context.localSources || []).slice(0, 12).map((item) => {
+    const detail = [item.typeLabel || item.type, item.title, item.state, item.source, item.snippet, item.path].filter(Boolean).join(" · ");
+    return `- ${detail}`;
+  });
+  return `【本轮工作台检索】查询：${(context.queries || []).join(" / ") || "无"}\n${candidates.length ? candidates.join("\n") : "没有命中。只能说本轮检索未命中，不能把它说成工作台没有内容。"}`;
+}
 function expertInstruction(input) {
   const expert = expertForMessage(input.message);
   return expert ? `【本轮调用专家：${expert.name}】\n${expert.instructions}` : "";
@@ -411,6 +468,7 @@ function contentPrompt(input, context, model) {
     "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。用户明确要求在工作台另建内容时，调用 propose_content_create 提交待确认操作。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
+    retrievalPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
@@ -426,9 +484,11 @@ function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
     "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。需要用户本地知识时调用 knowledge_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。",
+    "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮工作台检索、vault_list、vault_read 或 annotation_list 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
     runtimeModelInstruction(model),
+    retrievalPrompt(context),
     expertInstruction(input),
     input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
