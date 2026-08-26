@@ -13,7 +13,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ErrorNote } from "./ui.jsx";
-import { AssistantPane } from "./ProjectAssistantRail.jsx";
+import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import {
   IconArchive,
   IconCheck,

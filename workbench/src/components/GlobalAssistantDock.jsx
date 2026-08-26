@@ -1,4 +1,4 @@
-import { AssistantPane } from "./ProjectAssistantRail.jsx";
+import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import { IconLayoutSidebarRight, IconSparkles, IconX } from "./icons.jsx";
 import "./global-assistant-dock.css";
 

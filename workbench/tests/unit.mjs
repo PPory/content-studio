@@ -661,7 +661,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("专家显示名来自唯一真源", expertKindDisplayName("material-audit") === "素材查缺" && expertKindDisplayName("quality-review") === "Xenho 品控九问" && expertKindDisplayName("fact-check") === "事实核查");
   check("AI 报告统一为三档用户名称", [reportSeverity("quality-review", "fail"), reportSeverity("quality-review", "warn"), reportSeverity("quality-review", "pass")].map((item) => item.displayName).join("/") === "高风险/建议修改/可选优化");
 
-  const projectAssistant = await fs.readFile(new URL("../src/components/ProjectAssistantRail.jsx", import.meta.url), "utf8");
+  const projectAssistant = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
   const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
   const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
   check("阅读区无 revision 回调时不显示改选区动作", /typeof onRevision === "function" && !!selection\?\.text/.test(projectAssistant));

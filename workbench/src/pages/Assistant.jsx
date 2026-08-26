@@ -11,7 +11,7 @@
 // 那句「一个不绑定某篇文章的思考空间…」跟着撤了——空态里那两行说的是同一件事，
 // 而空态那两行才真的在回答「现在该干嘛」。
 
-import { AssistantPane } from "../components/ProjectAssistantRail.jsx";
+import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 
 export function Assistant() {
   return (
