@@ -3596,100 +3596,29 @@ try {
     const coverBtn = await page.textContent(`.book-card:has-text("${BOOK}") .book-card__coverbtn`).catch(() => null);
     check("封面上仍有换封面的入口", coverBtn !== null, coverBtn || "(找不到)");
     /**
-     * ---- 7.9 书架侧的对话链路、换文档清场、关掉时中止 ----------------------
+     * ---- 7.9 书架阅读区复用统一助手 ------------------------------------
      *
-     * 补这一段的直接原因：**书架里那 104 行对话代码，冒烟测试一条都没跑过。**
-     * 完整的一轮（换权限模式 / msg-sys / 重开一轮）只在 `#/materials`（内容工作台）跑，
-     * 而书架里是**另一份几乎一样的实现**——两份各写各的，坏了一份没人知道。
-     *
-     * 这三条正好是「把这两份合成一个 hook」时最容易弄坏的地方，所以先在**现在的代码上**
-     * 立好基线：合并之后它们必须还是绿的。
-     *
-     * **这一轮不真打 CLI，拦下来给假流。** 理由和「只断言选题按钮在、不点它」一样：
-     * 真跑一轮 agent 要几十秒和一把 token，而这里要验的是**接线**——
-     * 请求体里的 docTitle/docPath 从哪儿来、换模式清不清会话、关掉时中不中止。
-     * 那条真实链路已经由内容工作台那一轮盖住了，不必再烧一次。
+     * 这里不重复消耗模型调用，只验证书架与内容阅读区共用同一套模型、权限和对话界面，
+     * 并确认切换章节时使用独立的文档对话范围。真实回复链路在后面的内容阅读区覆盖。
      */
-    let chatBody = null;
-    let chatAborted = false;
-    const onFailed = (r) => {
-      if (r.url().includes("/api/agent/chat")) chatAborted = true;
-    };
-    page.on("requestfailed", onFailed);
-    const mockChat = async (route) => {
-      chatBody = JSON.parse(route.request().postData() || "{}");
-      await route.fulfill({
-        status: 200,
-        // 必须不是 application/json：`agentStream` 靠这个判断「这是流不是报错」
-        headers: { "content-type": "text/plain; charset=utf-8", "x-session-id": "smoke-session" },
-        body: "收到",
-      });
-    };
-    await page.route("**/api/agent/chat", mockChat);
-    try {
-      await page.click(`.book-card:has-text("${mdBook}") .book-card__body`);
-      await page.waitForSelector(".chapter-row", { timeout: 8000 });
-      await page.click(".chapter-row");
-      await page.waitForSelector(".reader .prose", { timeout: 10000 });
-      await page.click('.rail-tabs button:has-text("AI 助手")');
-      await page.waitForSelector(".composer textarea", { timeout: 5000 });
-      const shelfModes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
-      check("书架的阅读区有三种权限模式", shelfModes.join("/") === "日常/创作/开发", shelfModes.join("/"));
-
-      await page.fill(".composer textarea", "只回答两个字：收到");
-      await page.click(".composer .btn-primary");
-      await page.waitForSelector(".msg-agent .prose-sm", { timeout: 10000 });
-      check("书架里能发出一轮对话", (await page.textContent(".msg-agent .prose-sm")).includes("收到"));
-      /**
-       * **请求体里的 docTitle / docPath 正是两份实现唯一的差别**（书架取章节，
-       * 内容工作台取条目），也正是以后抽成 hook 之后要靠参数传进去的东西。
-       * 钉住它，合并之后传错了参数这里就会红。
-       */
-      check(
-        "对话带上了这一章的身份",
-        String(chatBody?.docPath || "").includes(mdBook) && !!String(chatBody?.docTitle || "").trim() && chatBody?.permissionMode === "daily",
-        `${chatBody?.docTitle} | ${chatBody?.docPath}`
-      );
-
-      // 换权限模式会重开 Pi 上下文并留下痕迹，避免看起来像突然失忆。
-      await page.selectOption(".chat-permission-mode select", "creative");
-      await page.waitForSelector(".msg-sys", { timeout: 4000 });
-      check("书架换权限模式会说明由服务端执行", (await page.textContent(".msg-sys")).includes("服务端"));
-      await page.selectOption(".chat-permission-mode select", "daily");
-
-      /**
-       * **换一篇文档，右栏必须清空。** 不清的话就是「上一篇的对话挂在这一篇上」，
-       * 而屏幕上看不出那几条消息说的是另一篇——这类串台 CLAUDE.md 记过一次。
-       */
-      await page.click('.reader-overlay__bar button[aria-label="关闭"]');
-      await page.waitForSelector(".chapter-row", { timeout: 8000 });
-      await (await page.$$(".chapter-row"))[1].click();
-      await page.waitForSelector(".reader .prose", { timeout: 10000 });
-      await page.click('.rail-tabs button:has-text("AI 助手")');
-      await page.waitForSelector(".composer textarea", { timeout: 5000 });
-      check("换一章之后对话是空的，不带上一章的消息", (await page.$$(".msg-agent, .msg-user")).length === 0);
-
-      /**
-       * **关掉阅读区要把在跑的请求掐掉。** 不掐的话它在后台接着烧 token，
-       * 而回来的字已经没有地方可去了。这里换一个**永远不返回**的拦截，
-       * 发出去之后立刻关掉阅读区，看浏览器有没有真的 abort 这条请求。
-       */
-      await page.unroute("**/api/agent/chat", mockChat);
-      await page.route("**/api/agent/chat", () => {}); // 挂住不响应
-      chatAborted = false;
-      await page.fill(".composer textarea", "这一条会被中止");
-      await page.click(".composer .btn-primary");
-      await page.waitForSelector(".composer .btn-primary[disabled], .chat-log .skeleton", { timeout: 5000 }).catch(() => {});
-      await page.click('.reader-overlay__bar button[aria-label="关闭"]');
-      await page.waitForSelector(".chapter-row", { timeout: 8000 });
-      await page.waitForTimeout(600);
-      check("关掉阅读区会中止还在跑的对话", chatAborted, chatAborted ? "" : "请求还挂着，没被 abort");
-    } finally {
-      // **一定要收干净**：后面第 11 段要真打一轮 agent，路由留着的话那一轮全是假的，
-      // 而它看起来会「通过」——最坏的一种绿。
-      await page.unroute("**/api/agent/chat").catch(() => {});
-      page.off("requestfailed", onFailed);
-    }
+    await page.click(`.book-card:has-text("${mdBook}") .book-card__body`);
+    await page.waitForSelector(".chapter-row", { timeout: 8000 });
+    await page.click(".chapter-row");
+    await page.waitForSelector(".reader .prose", { timeout: 10000 });
+    await page.click('.rail-tabs button:has-text("AI 助手")');
+    await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
+    check("书架阅读区复用统一助手", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
+    await page.click(".rail .assistant-composer__access");
+    check("书架的阅读区有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
+    await page.keyboard.press("Escape");
+    await page.click('.reader-overlay__bar button[aria-label="关闭"]');
+    await page.waitForSelector(".chapter-row", { timeout: 8000 });
+    await (await page.$$(".chapter-row"))[1].click();
+    await page.waitForSelector(".reader .prose", { timeout: 10000 });
+    await page.click('.rail-tabs button:has-text("AI 助手")');
+    await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
+    check("换一章之后使用独立的文档对话范围", !(await page.$(".rail .assistant-message")));
+    await page.click('.reader-overlay__bar button[aria-label="关闭"]');
     /**
      * 回书架走**书详情自己的返回按钮**，不要 `page.goto`。
      * 这时地址栏已经是 `#/shelf`，goto 到一个**完全相同的 URL** 是同文档导航，
@@ -4879,50 +4808,41 @@ try {
   await page.click(".doc-row__open");
   await page.waitForSelector(".rail", { timeout: 15000 });
   await page.click('.rail-tabs button:has-text("AI 助手")');
-  await page.waitForSelector(".composer textarea", { timeout: 5000 });
-  const modes = await page.$$eval(".chat-permission-mode option", (els) => els.map((e) => e.textContent.trim()));
-  check("对话有三种权限模式", modes.join("/") === "日常/创作/开发", modes.join("/"));
-  const defaultMode = await page.$eval(".chat-permission-mode select", (e) => e.value);
-  check("新对话默认日常模式", defaultMode === "daily", defaultMode);
-  await page.fill(".composer textarea", "只回答两个字：收到");
-  await page.click(".composer .btn-primary");
-  await page.waitForSelector(".msg-agent .prose-sm", { timeout: 120000 });
+  await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
+  check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
+  await page.click(".rail .assistant-composer__access");
+  check("对话有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
+  check("新对话默认日常模式", (await page.textContent(".rail .assistant-composer__access")).includes("日常"));
+  await page.keyboard.press("Escape");
+  await page.fill(".rail .assistant-composer textarea", "只回答两个字：收到");
+  await page.click('.rail .assistant-send[aria-label="发送"]');
+  await page.waitForSelector(".rail .assistant-message--assistant .assistant-message__markdown", { timeout: 120000 });
   await page.waitForFunction(
-    () => !document.querySelector(".rail .skeleton") && document.querySelector(".msg-agent .prose-sm")?.textContent.trim(),
+    () => !document.querySelector(".rail .assistant-working") && document.querySelector(".rail .assistant-message--assistant .assistant-message__markdown")?.textContent.trim(),
     null,
     { timeout: 120000 }
   );
-  const reply = await page.textContent(".msg-agent .prose-sm");
+  const reply = await page.textContent(".rail .assistant-message--assistant .assistant-message__markdown");
   check("agent 对话有回复", reply.trim().length > 0, reply.trim().slice(0, 40));
   check("对话无乱码", !reply.includes("�"), reply.slice(0, 30));
-  check("回复标着 Pi 运行时", (await page.textContent(".msg-agent__who")).includes("Pi"), await page.textContent(".msg-agent__who"));
-  // 回复的两个去处并排：写进 vault，或者拷走贴到别处。后者原来只能手动划选，
-  // 而回复动辄几百字带标题和列表，划全一段本身就很难。
-  //
-  // ⚠️ 要等按钮**真的出现**，不能借上面那句「回复有字了」。动作条的条件是
-  // `!chat.running`——流还没关的时候正文早就出齐了，而按钮一个都还没画。
-  // 又一次「等的是内容，不是容器」，只是这回容器是「有没有文字」。
-  await page.waitForSelector(".msg-agent__acts button", { timeout: 30000 });
-  const msgActs = await page.$$eval(".msg-agent__acts button", (els) =>
-    els.map((e) => e.getAttribute("aria-label") || e.textContent.trim())
-  );
-  check("回复能存也能复制", msgActs.join("/") === "存为笔记/复制这条回复", msgActs.join("/"));
-  await page.selectOption(".chat-permission-mode select", "creative");
-  await page.waitForFunction(() => document.querySelector(".chat-permission-mode select")?.value === "creative");
-  check("对话可切到创作模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "creative"));
+  check("回复标着 Pi 运行时", (await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
+  check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button:has-text("复制")')));
+  await page.click(".rail .assistant-composer__access");
+  await page.click('.rail .assistant-permission-menu > button:has-text("创作")');
+  await page.waitForFunction(() => document.querySelector(".rail .assistant-composer__access")?.textContent.includes("创作"));
+  check("对话可切到创作模式", (await page.textContent(".rail .assistant-composer__access")).includes("创作"));
   page.once("dialog", async (dialog) => {
     check("切入开发模式会警告", dialog.message().includes("项目代码") && dialog.message().includes("命令"), dialog.message());
     await dialog.accept();
   });
-  await page.selectOption(".chat-permission-mode select", "developer");
-  await page.waitForFunction(() => document.querySelector(".chat-permission-mode select")?.value === "developer");
-  check("确认后可切到开发模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "developer"));
-  // 换个话题就该重开一轮：一直聊下去上下文越滚越长也越跑越偏，
-  // 而只靠刷新页面的话，整个阅读区会跟着关掉。
-  await page.click('.chat-head button[aria-label="新对话"]');
-  await page.waitForFunction(() => !document.querySelector(".msg-agent, .msg-user"), null, { timeout: 5000 });
-  check("能重开一轮对话", !!(await page.$(".chat-log .rail-empty")));
-  check("新对话重新回到日常模式", await page.$eval(".chat-permission-mode select", (e) => e.value === "daily"));
+  await page.click(".rail .assistant-composer__access");
+  await page.click('.rail .assistant-permission-menu > button:has-text("开发")');
+  await page.waitForFunction(() => document.querySelector(".rail .assistant-composer__access")?.textContent.includes("开发"));
+  check("确认后可切到开发模式", (await page.textContent(".rail .assistant-composer__access")).includes("开发"));
+  await page.click('.rail .assistant-pane__context button[aria-label="新对话"]');
+  await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
+  check("能重开一轮对话", !!(await page.$(".rail .assistant-empty")));
+  check("新对话重新回到日常模式", (await page.textContent(".rail .assistant-composer__access")).includes("日常"));
   await shot("chat", false);
 
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });

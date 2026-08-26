@@ -21,8 +21,6 @@ import { contextOf } from "../lib/reading.js";
 import { noteOpened } from "../lib/recent.js";
 import { setOpenTarget, takeOpenTarget } from "../lib/open-target.js";
 import { useAiRuns } from "../lib/use-ai-runs.js";
-import { piAgentName } from "../lib/chat-agent.js";
-import { useDocChat } from "../lib/use-doc-chat.js";
 import { ReaderOverlay, DraftLinks } from "../components/ReaderOverlay.jsx";
 import { ACTIONS } from "../components/Reader.jsx";
 import { PlatformGate } from "../components/PlatformGate.jsx";
@@ -77,14 +75,10 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   const [railMode, setRailMode] = useState("notes");
   const [outline, setOutline] = useState([]);   // 正文的小标题，画在阅读区左栏
   const [quote, setQuote] = useState("");
-  /**
-   * 和 agent 聊这一篇。**和书架共用 `useDocChat`**——合并之前两边各一份 66 行，
-   * 逐行只差两行（标题和路径从哪儿取）。
-   */
-  const { chat, chatMode, sendChat, switchMode, newChat, stopChat } = useDocChat({
-    docTitle: active?.title || "",
-    docPath: active?.raw?.bookPath || active?.key || "",
-  });
+  const [assistantPrompt, setAssistantPrompt] = useState(null);
+  const askAssistant = useCallback((text) => {
+    setAssistantPrompt({ id: `reader-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`, text });
+  }, []);
   const searchRef = useRef(null);
 
   // 划词 AI 那一套（攒结果、中止、翻译）三处共用一个 hook，见 lib/use-ai-runs.js
@@ -112,7 +106,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     setFacet("");
     setVerification("");
     setRailMode("notes");
-    newChat();   // 换源：掐掉在跑的、清会话号、清消息
+    setAssistantPrompt(null);
   }, [source, state, resetAi]);
 
   useEffect(() => reload(), [reload]);
@@ -175,7 +169,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       setDocLoading(true);
       resetAi();
       setRailMode("notes");
-      newChat();   // 换一篇：不清的话上一条的对话会挂在这一条上
+      setAssistantPrompt(null);
       source.load(item).then(setDoc).catch(setDocError).finally(() => setDocLoading(false));
       // 选题：顺带把「这题写出来的稿子在哪」查出来。查不到就不显示，不该报错
       if (sourceKey === "topics" && item.raw?.draftIds?.length) {
@@ -229,7 +223,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
 
   const closeItem = useCallback(() => {
     resetAi();
-    stopChat();
+    setAssistantPrompt(null);
     setActive(null);
     setDoc(null);
   }, [resetAi]);
@@ -449,14 +443,14 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       } else if (action === "chat") {
         // 划一段直接扔进对话，不用自己再复制粘贴一遍
         setRailMode("chat");
-        sendChat(`就这一段说说你的看法：\n\n> ${text.slice(0, 1200)}`);
+        askAssistant(`就这一段说说你的看法：\n\n> ${text.slice(0, 1200)}`);
       } else if (action === "intake") {
         onIntake({ content: text, source: source.sourceOf(active) });
       } else {
         runAi(action, text, context);
       }
     },
-    [active, onIntake, runAi, source, translate, sendChat]
+    [active, onIntake, runAi, source, translate, askAssistant]
   );
 
   const saveNote = useCallback(
@@ -504,12 +498,6 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     [ai, saveNote]
   );
 
-  const saveChatAsNote = useCallback(
-    async (text) => {
-      await saveNote({ quote: "", body: `**与 ${piAgentName()} 的讨论**\n\n${text}` });
-    },
-    [saveNote]
-  );
 
   // 配封面：不在工作台里重写一遍出图逻辑，而是把已有的 xenho-cover skill 通过
   // agent 通道跑起来。工作台只负责把「这篇稿子 + 目标平台」喂进去、把提示词流回来。
@@ -524,8 +512,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     setRailMode("chat");
     const { values } = await api.prompts();
     const head = String(values?.cover?.instruction || "").replaceAll("{platform}", platform);
-    sendChat(`${head}\n\n标题：${doc.title}\n\n正文：\n${(doc.content || "").slice(0, 3000)}`);
-  }, [doc, active, sendChat]);
+    askAssistant(`${head}\n\n标题：${doc.title}\n\n正文：\n${(doc.content || "").slice(0, 3000)}`);
+  }, [doc, active, askAssistant]);
 
   // 去排版：正文进剪贴板，然后跳工作台自己的排版页（不再另开浏览器标签）
   const openTypeset = useCallback(async () => {
@@ -603,8 +591,6 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     onChanged?.();
   }, [active, onChanged, patchItem, reload, source]);
 
-  // 划词 AI 的中止归 useAiRuns 自己管，这里只收对话那条
-  useEffect(() => () => stopChat(), [stopChat]);   // 卸载时别让请求接着烧 token
 
   const isPipeline = source.kind === "pipeline" || PIPELINE.includes(sourceKey);
   const canBoard = source.board !== false && !!source.states?.length;
@@ -818,13 +804,11 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             onStopAi: stopAi,
             // 右栏换模式重跑同一段：上下文从正文里现取，用户不用回去重新划一次
             onRunAi: (mode, text) => runAi(mode, text, contextOf(doc?.content, text)),
-            chat: { ...chat, permissionMode: chatMode },
-            onSend: sendChat,
-            onStopChat: stopChat,
-            onChatMode: switchMode,
-            onNewChat: newChat,
+            assistantScopeId: `reader:${activeSourceKey}:${active?.raw?.entityId || active?.key || "document"}`,
+            assistantDocument: { ...doc, path: active?.raw?.bookPath || active?.key || "" },
+            assistantSelection: quote ? { text: quote } : null,
+            assistantPrompt,
             onRailSelect,
-            onSaveChatAsNote: saveChatAsNote,
             knowledgeSource: {
               kind: activeSourceKey === "collections" ? "inbox" : activeSourceKey,
               ref: active ? (activeSourceKey === "collections" ? `inbox:${active.raw?.entityId || active.key}` : `${activeSourceKey}:${active.raw?.entityId || active.key}`) : "",

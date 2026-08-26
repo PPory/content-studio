@@ -17,8 +17,6 @@ import { api } from "../lib/api.js";
 import { noteOpened } from "../lib/recent.js";
 import { takeOpenTarget } from "../lib/open-target.js";
 import { useAiRuns } from "../lib/use-ai-runs.js";
-import { piAgentName } from "../lib/chat-agent.js";
-import { useDocChat } from "../lib/use-doc-chat.js";
 import { ReaderOverlay } from "../components/ReaderOverlay.jsx";
 // 展示件搬进 pages/shelf/。**页面只留组合和状态边界**——
 // 这一个文件原来 1200 行、其中 `Shelf` 一个函数就占 596 行。
@@ -62,14 +60,10 @@ export function Shelf({ onIntake, state = "" }) {
   const [railMode, setRailMode] = useState("notes");
   const [outline, setOutline] = useState([]);
   const [quote, setQuote] = useState("");
-  /**
-   * 和 agent 聊这一篇。**和内容工作台共用 `useDocChat`**——合并之前两边各一份
-   * 66 行、逐行只差两行（标题和路径从哪儿取），而书架这一份从来没被测过。
-   */
-  const { chat, chatMode, sendChat, switchMode, newChat, stopChat } = useDocChat({
-    docTitle: reading?.item.title || "",
-    docPath: reading?.entry.path || "",
-  });
+  const [assistantPrompt, setAssistantPrompt] = useState(null);
+  const askAssistant = useCallback((text) => {
+    setAssistantPrompt({ id: `reader-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`, text });
+  }, []);
   const resumedRef = useRef(false);   // `#/shelf/resume` 只认一次，见下面那个 effect
 
   // 划词 AI 那一套（攒结果、中止、翻译）三处共用一个 hook，见 lib/use-ai-runs.js
@@ -163,7 +157,7 @@ export function Shelf({ onIntake, state = "" }) {
       setDocLoading(true);
       resetAi();
       setRailMode("notes");
-      newChat();   // 换一篇：掐掉在跑的、清会话号、清消息，三件事是一件事
+      setAssistantPrompt(null);
       SHELF.load(item).then(setDoc).catch(setDocError).finally(() => setDocLoading(false));
       // 高亮跟着这一章走。取不到就是没有，不该让整页报错
       const hp = SHELF.highlightPath(item);
@@ -235,7 +229,7 @@ export function Shelf({ onIntake, state = "" }) {
 
   const closeDoc = useCallback(() => {
     resetAi();
-    stopChat();
+    setAssistantPrompt(null);
     // 单篇书是从书架直接打开的，没经过书详情那一层，关掉当然要回书架
     if (reading && !reading.detail) setBook(null);
     setReading(null);
@@ -338,9 +332,9 @@ export function Shelf({ onIntake, state = "" }) {
   const askAboutSelection = useCallback(
     (text) => {
       setRailMode("chat");
-      sendChat(`就这一段说说你的看法：\n\n> ${text.slice(0, 1200)}`);
+      askAssistant(`就这一段说说你的看法：\n\n> ${text.slice(0, 1200)}`);
     },
-    [sendChat]
+    [askAssistant]
   );
 
   /**
@@ -384,7 +378,6 @@ export function Shelf({ onIntake, state = "" }) {
   );
 
 
-  useEffect(() => () => stopChat(), [stopChat]);   // 卸载时别让请求接着烧 token
 
   // Esc：阅读区 → 书详情 → 书架，一层一层退
   useEffect(() => {
@@ -608,12 +601,10 @@ export function Shelf({ onIntake, state = "" }) {
             onSaveAiAsNote: async (r) => r?.text && saveNote({ quote: ai?.quote, body: `**AI ${r.mode}**\n\n${r.text}` }),
             onStopAi: stopAi,
             onRunAi: (mode, text) => runAi(mode, text, contextOf(doc?.content, text)),
-            chat: { ...chat, permissionMode: chatMode },
-            onSend: sendChat,
-            onStopChat: stopChat,
-            onChatMode: switchMode,
-            onNewChat: newChat,
-            onSaveChatAsNote: (text) => saveNote({ quote: "", body: `**与 ${piAgentName()} 的讨论**\n\n${text}` }),
+            assistantScopeId: `reader:shelf:${reading?.entry?.path || "document"}`,
+            assistantDocument: { ...doc, path: reading?.entry?.path || "" },
+            assistantSelection: quote ? { text: quote } : null,
+            assistantPrompt,
             knowledgeSource: {
               kind: "document",
               ref: reading?.entry?.path || "",

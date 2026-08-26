@@ -13,8 +13,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ErrorNote } from "./ui.jsx";
-import { CHAT_PERMISSION_MODES, chatModeInfo, piAgentName } from "../lib/chat-agent.js";
-import { KnowledgeCardDialog } from "./KnowledgeCardDialog.jsx";
+import { AssistantPane } from "./ProjectAssistantRail.jsx";
 import {
   IconArchive,
   IconCheck,
@@ -106,12 +105,10 @@ export function SideRail({
   onSaveAiAsNote,
   onStopAi,
   onRunAi,
-  chat, // { messages, running, error, agent }
-  onSend,
-  onStopChat,
-  onSaveChatAsNote,
-  onChatMode,
-  onNewChat,
+  assistantScopeId,
+  assistantDocument,
+  assistantSelection,
+  assistantPrompt,
   noteItems,
   onEditNote,
   onDeleteNote,
@@ -156,14 +153,11 @@ export function SideRail({
       ) : mode === "ai" ? (
         <AiPanel ai={ai} onSave={onSaveAiAsNote} onStop={onStopAi} onRun={onRunAi} saveLabel={saveLabel} />
       ) : mode === "chat" ? (
-        <ChatPanel
-          chat={chat}
-          onSend={onSend}
-          onStop={onStopChat}
-          onSave={onSaveChatAsNote}
-          onMode={onChatMode}
-          onNewChat={onNewChat}
-          knowledgeSource={knowledgeSource}
+        <AssistantPane
+          scopeId={assistantScopeId || `reader:${knowledgeSource?.ref || "document"}`}
+          document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
+          selection={assistantSelection}
+          promptRequest={assistantPrompt}
         />
       ) : (
         <MarksPanel
@@ -668,152 +662,6 @@ function AiBody({ ai, results, answered, onSave, onStop, onRun, saveLabel }) {
         </div>
       ) : null}
     </Panel>
-  );
-}
-
-// ---- 对话 ------------------------------------------------------------------
-
-/**
- * 和一个**本机 agent** 深聊当前这篇。它跑在 vault 里、能读你的全部笔记——
- * 所以问「这个观点我以前在哪写过」这种问题才有意义，贴一段文字给模型是做不到的。
- *
- * 权限模式放在对话头部，随时可按任务切换；运行期间锁定，真正的能力边界由服务端工具层执行。
- *
- * 流式回复没到字之前**不画空气泡**：流式是先插一条 `text: ""` 的占位再往里灌字，
- * 照着渲染的话屏幕上会挂一个灰色空条，旁边同时还有个「正在想」——两个东西说同一件事，
- * 其中一个还是空的，所以用 Waiting 明确说明正在处理。
- */
-function ChatPanel({ chat, onSend, onStop, onSave, onMode, onNewChat, knowledgeSource }) {
-  const [text, setText] = useState("");
-  const [cardOpen, setCardOpen] = useState(false);
-  const endRef = useRef(null);
-  const boxRef = useRef(null);
-  const msgs = chat?.messages || [];
-  const mode = chatModeInfo(chat?.permissionMode);
-  const canCard = !chat?.running && msgs.some((m) => m.role === "user" && m.text) && msgs.some((m) => ["assistant", "agent"].includes(m.role) && m.text);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [msgs]);
-
-  // 输入框跟着内容长，一行起、六行封顶。写死 rows 的话：短问题占着两行空白，
-  // 长问题又只能在两行的小窗口里滚——两头都不合适。
-  useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
-  }, [text]);
-
-  function submit(e) {
-    e?.preventDefault();
-    if (!text.trim() || chat?.running) return;
-    onSend(text.trim());
-    setText("");
-  }
-
-  return (
-    <>
-    <Panel
-      /**
-       * 头上放「权限模式」和「重开一轮」：这两件事都是**关于这场对话本身**的，
-       * 而不是关于正在打的这句话。上一版把切换开关塞在发送按钮旁边，结果输入区
-       * 挤成三层（输入框 + 一排按钮 + 一行快捷键提示），最该干净的地方最乱。
-       */
-      head={
-        <div className="chat-head">
-          <label className="chat-permission-mode" title={mode.note}>
-            <span>权限</span>
-            <select
-              value={mode.id}
-              disabled={chat?.running || !onMode}
-              onChange={(event) => {
-                const next = chatModeInfo(event.target.value);
-                if (next.id === "developer" && !window.confirm(next.warning)) return;
-                onMode?.(next.id);
-              }}
-            >
-              {CHAT_PERMISSION_MODES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <button type="button" className="btn btn-sm" onClick={() => setCardOpen(true)} disabled={!canCard} title={canCard ? "把整轮对话整理成知识卡" : "至少完成一轮提问和回答后可用"}>沉淀卡片</button>
-          {/* 一直聊下去上下文会越滚越长、也越跑越偏。**换个话题就该重开一轮**，
-              而且不能只靠刷新页面——那会把整个阅读区一起关掉。 */}
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={onNewChat}
-            disabled={!msgs.length || chat?.running || !onNewChat}
-            title="重开一轮（当前这轮不保留，要留的先「存为笔记」）"
-            aria-label="新对话"
-          >
-            <IconPlus size={15} stroke={2} aria-hidden="true" />
-          </button>
-        </div>
-      }
-      foot={
-        /* 一个盒子，不是三层。聚焦时整块高亮，底下一行只放「发送」和快捷键 */
-        <form className="composer" onSubmit={submit}>
-          <textarea
-            ref={boxRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="问这篇文档，或让它翻你以前写过的东西"
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(e);
-            }}
-          />
-          <div className="composer__foot">
-            <span className="composer__key"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
-            {chat?.running ? (
-              <button type="button" className="btn btn-sm" onClick={onStop}>停止</button>
-            ) : null}
-            <button className="btn btn-primary btn-sm" disabled={!text.trim() || chat?.running}>
-              <IconSend size={14} stroke={1.8} aria-hidden="true" />
-              发送
-            </button>
-          </div>
-        </form>
-      }
-    >
-      <div className="chat-log">
-        {msgs.length === 0 && !chat?.error ? (
-          <div className="rail-empty">
-            <IconMessageCircle aria-hidden="true" stroke={1.5} />
-            <strong>问点什么</strong>
-            它能读你整个 vault——「这个观点我以前写过吗」这类问题问它最合适
-            <span className="rail-empty__hint">当前是 {mode.name}模式：{mode.note}。Pi 是唯一运行时，能力由服务端限制。</span>
-          </div>
-        ) : null}
-
-        {msgs.map((m, i) =>
-          m.role === "user" ? (
-            <div key={i} className="msg msg-user">{m.text}</div>
-          ) : m.role === "sys" ? (
-            // 权限模式变化要留一条痕迹：不然回头看不出上下文为什么重新开始
-            <div key={i} className="msg msg-sys">{m.text}</div>
-          ) : m.text ? (
-            <div key={i} className="msg msg-agent">
-              <span className="msg-agent__who">{piAgentName()}</span>
-              <Md text={m.text} />
-              {!chat.running ? (
-                <div className="row-actions msg-agent__acts">
-                  <button className="btn btn-sm" onClick={() => onSave(m.text)}>存为笔记</button>
-                  <CopyButton text={m.text} label="复制这条回复" />
-                </div>
-              ) : null}
-            </div>
-          ) : null
-        )}
-
-        {chat?.running ? <Waiting label="Pi 正在处理" slow="Pi 正在按当前权限模式读取上下文并生成回答" slowAt={8} /> : null}
-        <ErrorNote error={chat?.error} what="AI 助手" />
-        <div ref={endRef} />
-      </div>
-    </Panel>
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={msgs} source={{ ...(knowledgeSource || {}), engine: piAgentName() }} />
-    </>
   );
 }
 

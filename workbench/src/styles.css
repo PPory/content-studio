@@ -2626,6 +2626,23 @@ kbd {
   flex: none; display: flex; align-items: flex-end; gap: 8px;
   padding: 12px 12px 0 16px; border-bottom: 1px solid var(--border);
 }
+/* 阅读区与创作区复用同一个 AssistantPane；这里只适配 348px 侧栏密度。 */
+.rail > .assistant-pane { flex: 1 1 auto; height: auto; min-height: 0; }
+.rail .assistant-pane__context { padding: var(--sp-3) var(--sp-5); }
+.rail .assistant-thread { padding: var(--sp-6) var(--sp-5) var(--sp-3); }
+.rail .assistant-message { margin-bottom: var(--sp-6); }
+.rail .assistant-composer { margin: 0 var(--sp-5) var(--sp-5); }
+.rail .assistant-composer textarea { min-height: 48px; max-height: 132px; padding-bottom: var(--sp-2); }
+.rail .assistant-command-menu:not(.assistant-command-menu--models) { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
+.rail .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
+.rail .assistant-composer > footer > div { gap: var(--sp-2); }
+.rail .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
+.rail .assistant-composer > footer > .assistant-composer__right { flex: none; }
+.rail .assistant-composer > footer > div > button { padding: 0 var(--sp-3); font-weight: 600; }
+.rail .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
+.rail .assistant-composer__model b { max-width: 56px; }
+.rail .assistant-empty { padding: var(--sp-8) var(--sp-3); }
+.rail .assistant-empty h3 { font-size: var(--fs-lg); }
 .rail-collapse {
   flex: none; width: 26px; height: 26px; margin-bottom: 8px;
   border-color: transparent; color: var(--text-3);

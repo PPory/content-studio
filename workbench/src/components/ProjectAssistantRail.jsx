@@ -62,10 +62,11 @@ const PROJECT_EXPERTS = new Set(["writing-coach", "material-researcher", "qualit
 
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
+export const DEFAULT_ASSISTANT_MODEL = "claude-sonnet-4-6";
 
 function storedAssistantModel() {
-  try { return localStorage.getItem(ASSISTANT_MODEL_STORAGE_KEY) || ""; }
-  catch { return ""; }
+  try { return localStorage.getItem(ASSISTANT_MODEL_STORAGE_KEY) || DEFAULT_ASSISTANT_MODEL; }
+  catch { return DEFAULT_ASSISTANT_MODEL; }
 }
 
 function rememberAssistantModel(value) {
@@ -209,7 +210,7 @@ function ActionCard({ action, onApply }) {
   </section>;
 }
 
-export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, standalone = false, docked = false }) {
+export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, promptRequest = null, standalone = false, docked = false }) {
   const [messages, setMessages] = useState([]);
   const [actions, setActions] = useState([]);
   const [input, setInput] = useState("");
@@ -229,6 +230,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyView, setHistoryView] = useState("recent");
   const [historyMenuId, setHistoryMenuId] = useState("");
+  const [historyDeleteId, setHistoryDeleteId] = useState("");
   const [renameId, setRenameId] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const [historyPending, setHistoryPending] = useState("");
@@ -254,6 +256,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   const permissionRef = useRef(null);
   const activeRequestRef = useRef(null);
   const conversationIdRef = useRef("");
+  const promptRequestRef = useRef("");
   const enabledStyles = (profile?.styles || []).filter((item) => item.enabled);
   const style = enabledStyles.find((item) => item.id === styleId) || null;
   useEffect(() => {
@@ -294,6 +297,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
   useEffect(() => {
     let cancelled = false;
     conversationIdRef.current = "";
+    promptRequestRef.current = "";
     setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(!standalone);
     if (!standalone) api.assistantConversation(scopeId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     if (standalone) api.assistantConversations(scopeId).then((result) => { if (!cancelled) setConversationItems(result.conversations?.items || []); }).catch(() => {});
@@ -302,8 +306,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       const nextModels = result.models?.items || [];
       setModels(nextModels); setModelNotice(result.models?.warning || "");
       setModel((current) => {
-        const currentStillAvailable = nextModels.some((item) => item.id === current);
-        const next = currentStillAvailable ? current : result.models?.configured || nextModels[0]?.id || current || "";
+        const next = current || DEFAULT_ASSISTANT_MODEL;
         rememberAssistantModel(next);
         return next;
       });
@@ -332,19 +335,22 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     return () => clearInterval(timer);
   }, [standalone, scopeId, hasRunningHistory]);
   useEffect(() => {
-    if (!permissionOpen && !historyMenuId && !renameId) return undefined;
+    if (!permissionOpen && !menu && !historyMenuId && !historyDeleteId && !renameId) return undefined;
     const close = (event) => {
       if (permissionOpen && !permissionRef.current?.contains(event.target) && !event.target.closest?.(".assistant-composer__access")) setPermissionOpen(false);
-      if (historyMenuId && !event.target.closest?.(".assistant-history__item")) setHistoryMenuId("");
+      if (menu && !event.target.closest?.(".assistant-command-menu, .assistant-composer__model")) { setMenu(""); setCommandRange(null); }
+      if ((historyMenuId || historyDeleteId) && !event.target.closest?.(".assistant-history__item")) { setHistoryMenuId(""); setHistoryDeleteId(""); }
     };
     const key = (event) => {
       if (event.key !== "Escape") return;
-      setPermissionOpen(false); setHistoryMenuId(""); setRenameId("");
+      event.preventDefault();
+      event.stopPropagation();
+      setPermissionOpen(false); setMenu(""); setCommandRange(null); setHistoryMenuId(""); setHistoryDeleteId(""); setRenameId("");
     };
     window.document.addEventListener("pointerdown", close);
-    window.document.addEventListener("keydown", key);
-    return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key); };
-  }, [permissionOpen, historyMenuId, renameId]);
+    window.document.addEventListener("keydown", key, true);
+    return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key, true); };
+  }, [permissionOpen, menu, historyMenuId, historyDeleteId, renameId]);
   useEffect(() => {
     cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
@@ -518,8 +524,7 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
   async function manageHistory(item, action, payload = {}) {
     if (!item?.id || historyPending || item.activeTurn?.status === "running") return;
-    if (action === "delete" && !window.confirm(`永久从历史列表删除“${item.title || "这段对话"}”？工作台会把原始记录移入本地回收目录。`)) return;
-    setHistoryPending(`${item.id}:${action}`); setHistoryMenuId(""); setError(null);
+    setHistoryPending(`${item.id}:${action}`); setHistoryMenuId(""); setHistoryDeleteId(""); setError(null);
     try {
       const result = await api.manageAssistantConversation({ scopeId, conversationId: item.id, action, ...payload });
       setConversationItems(result.conversations?.items || []);
@@ -592,6 +597,13 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
   }
 
+  useEffect(() => {
+    const requestId = String(promptRequest?.id || "");
+    if (!requestId || loading || busy || promptRequestRef.current === requestId) return;
+    promptRequestRef.current = requestId;
+    send(promptRequest?.text || "");
+  }, [promptRequest?.id, loading, busy]);
+
   const visibleConversations = conversationItems.filter((item) => historyView === "archived" ? Boolean(item.archivedAt) : !item.archivedAt);
   const latestUserId = [...messages].reverse().find((item) => item.role === "user")?.id;
   const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant" && item.text)?.id;
@@ -661,12 +673,14 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
       <div className="assistant-history__filters" role="tablist" aria-label="历史范围"><button type="button" role="tab" aria-selected={historyView === "recent"} onClick={() => { setHistoryView("recent"); setHistoryMenuId(""); }}>最近</button><button type="button" role="tab" aria-selected={historyView === "archived"} onClick={() => { setHistoryView("archived"); setHistoryMenuId(""); }}>已归档</button></div>
       <nav>{visibleConversations.length ? visibleConversations.map((item) => <div className="assistant-history__item" key={item.id} data-current={item.id === conversationId ? "true" : undefined}>
         {renameId === item.id ? <form className="assistant-history__rename" onSubmit={(event) => { event.preventDefault(); submitRename(item); }}><input data-rename-id={item.id} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onBlur={() => setRenameId("")} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setRenameId(""); } }} aria-label="新的对话名称" /></form> : <button className="assistant-history__open" type="button" aria-current={item.id === conversationId ? "page" : undefined} onClick={() => openConversation(item.id)}><b><span>{item.title}</span>{item.pinnedAt ? <IconPin aria-label="已置顶" /> : null}</b><small>{item.activeTurn?.status === "running" ? <><i className="assistant-history__running" />{item.activeTurn.stage || "后台运行中"}</> : item.preview || "还没有消息"}</small><time>{new Date(item.updatedAt || item.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</time></button>}
-        <button className="assistant-history__more" type="button" onClick={() => setHistoryMenuId((current) => current === item.id ? "" : item.id)} aria-expanded={historyMenuId === item.id} aria-label={`管理对话：${item.title}`}><IconDots aria-hidden="true" /></button>
+        <button className="assistant-history__more" type="button" onClick={() => { setHistoryDeleteId(""); setHistoryMenuId((current) => current === item.id ? "" : item.id); }} aria-expanded={historyMenuId === item.id} aria-label={`管理对话：${item.title}`}><IconDots aria-hidden="true" /></button>
         {historyMenuId === item.id ? <div className="assistant-history__menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => startRename(item)} disabled={item.activeTurn?.status === "running"}><IconPencil aria-hidden="true" />重命名</button>
-          {!item.archivedAt ? <button type="button" role="menuitem" onClick={() => manageHistory(item, item.pinnedAt ? "unpin" : "pin")} disabled={item.activeTurn?.status === "running"}><IconPin aria-hidden="true" />{item.pinnedAt ? "取消置顶" : "置顶聊天"}</button> : null}
-          <button type="button" role="menuitem" onClick={() => manageHistory(item, item.archivedAt ? "restore" : "archive")} disabled={item.activeTurn?.status === "running"}><IconArchive aria-hidden="true" />{item.archivedAt ? "移出归档" : "归档"}</button>
-          <button type="button" role="menuitem" className="is-danger" onClick={() => manageHistory(item, "delete")} disabled={item.activeTurn?.status === "running"}><IconTrash aria-hidden="true" />删除</button>
+          {historyDeleteId === item.id ? <div className="assistant-history__delete-confirm" role="alert"><p>删除“{item.title || "这段对话"}”？<small>原始记录会移入本地回收目录。</small></p><div><button type="button" className="is-danger" onClick={() => manageHistory(item, "delete")} disabled={Boolean(historyPending)}>确认删除</button><button type="button" onClick={() => setHistoryDeleteId("")} disabled={Boolean(historyPending)}>取消</button></div></div> : <>
+            <button type="button" role="menuitem" onClick={() => startRename(item)} disabled={item.activeTurn?.status === "running"}><IconPencil aria-hidden="true" />重命名</button>
+            {!item.archivedAt ? <button type="button" role="menuitem" onClick={() => manageHistory(item, item.pinnedAt ? "unpin" : "pin")} disabled={item.activeTurn?.status === "running"}><IconPin aria-hidden="true" />{item.pinnedAt ? "取消置顶" : "置顶聊天"}</button> : null}
+            <button type="button" role="menuitem" onClick={() => manageHistory(item, item.archivedAt ? "restore" : "archive")} disabled={item.activeTurn?.status === "running"}><IconArchive aria-hidden="true" />{item.archivedAt ? "移出归档" : "归档"}</button>
+            <button type="button" role="menuitem" className="is-danger" onClick={() => setHistoryDeleteId(item.id)} disabled={item.activeTurn?.status === "running"}><IconTrash aria-hidden="true" />删除</button>
+          </>}
         </div> : null}
       </div>) : <p className="assistant-history__empty">{historyView === "archived" ? "还没有归档对话" : "还没有历史对话"}</p>}</nav>
     </aside> : null}

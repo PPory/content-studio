@@ -44,8 +44,9 @@ const assistantRequests = [];
 let assistantMessages = [];
 let assistantAttachments = [];
 const assistantModelItems = [
+  { id: "claude-sonnet-4-6", name: "claude-sonnet-4-6", ownedBy: "anthropic" },
   { id: "test-model", name: "测试模型", ownedBy: "Pi" },
-  ...Array.from({ length: 11 }, (_, index) => ({ id: `test-model-${index + 2}`, name: `测试模型 ${index + 2}`, ownedBy: index % 2 ? "antigravity" : "openai" })),
+  ...Array.from({ length: 10 }, (_, index) => ({ id: `test-model-${index + 2}`, name: `测试模型 ${index + 2}`, ownedBy: index % 2 ? "antigravity" : "openai" })),
 ];
 let assistantConversationItems = [{ id: "chat-recent", title: "最近对话", preview: "继续讨论工作台", updatedAt: "2026-08-25T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "" }, { id: "chat-archived", title: "归档对话", preview: "已经整理完成", updatedAt: "2026-08-24T08:00:00.000Z", messageCount: 2, pinnedAt: "", archivedAt: "2026-08-25T09:00:00.000Z" }];
 const expertRunStore = new Map();
@@ -254,7 +255,7 @@ await page.route("**/api/assistant/**", async (route) => {
     { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "Pi Agent SDK", durationMs: 180 },
   ];
   assistantAttachments = assistantAttachments.map((item) => sentAttachmentIds.includes(item.id) ? { ...item, usedAt: new Date().toISOString() } : item);
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, attachments: assistantAttachments, actions: [], permissionMode: "daily", model: "test-model" } }) });
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, attachments: assistantAttachments, actions: [], permissionMode: "daily", model: body.model || "test-model" } }) });
 });
 
 function assert(value, message) {
@@ -654,6 +655,7 @@ try {
   await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
   await page.click('.ws-edit__foot button:has-text("取消")');
 
+  await page.evaluate(() => localStorage.removeItem("xenho-assistant-model"));
   await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });
   await page.click('.sidebar .nav-item:has-text("AI助手")');
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
@@ -661,6 +663,17 @@ try {
   assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
   assert((await page.$$(".assistant-pane--standalone .assistant-composer__left > button")).length === 2, "输入框左侧没有保持为附件与权限两个紧凑入口");
   assert(await page.$(".assistant-pane--standalone .assistant-composer__right .assistant-composer__model"), "模型选择没有放在输入框右侧");
+  assert((await page.textContent(".assistant-pane--standalone .assistant-composer__model")).includes("claude-sonnet-4-6"), "新对话没有默认使用 claude-sonnet-4-6");
+  await page.click(".assistant-pane--standalone .assistant-composer__model");
+  await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models");
+  await page.click(".assistant-pane__context");
+  await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models", { state: "detached" });
+  await page.click(".assistant-pane--standalone .assistant-composer__model");
+  await page.click('.assistant-pane--standalone .assistant-command-menu--models > button:has-text("测试模型 2")');
+  assert(await page.evaluate(() => localStorage.getItem("xenho-assistant-model")) === "test-model-2", "用户选择的模型没有写入本地偏好");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".assistant-page .assistant-pane--standalone");
+  assert((await page.textContent(".assistant-pane--standalone .assistant-composer__model")).includes("测试模型 2"), "刷新后没有保持用户改动的模型");
   await page.click(".assistant-pane--standalone .assistant-composer__model");
   await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models");
   const modelButtonBox = await page.locator(".assistant-pane--standalone .assistant-composer__model").boundingBox();
@@ -692,7 +705,12 @@ try {
   assert((await page.textContent(".assistant-history")).includes("最近对话"), "历史栏没有展示最近对话");
   await page.click('.assistant-history__item:has-text("最近对话") .assistant-history__more');
   assert((await page.textContent(".assistant-history__menu")).includes("重命名") && (await page.textContent(".assistant-history__menu")).includes("置顶聊天") && (await page.textContent(".assistant-history__menu")).includes("归档") && (await page.textContent(".assistant-history__menu")).includes("删除"), "历史对话管理菜单不完整");
-  await page.keyboard.press("Escape");
+  await page.click(".assistant-history__menu > button.is-danger");
+  await page.waitForSelector(".assistant-history__delete-confirm");
+  assert((await page.textContent(".assistant-history__delete-confirm")).includes("原始记录会移入本地回收目录"), "删除没有显示可见的二次确认");
+  await page.click('.assistant-history__delete-confirm button:has-text("确认删除")');
+  await page.waitForSelector('.assistant-history__item:has-text("最近对话")', { state: "detached" });
+  assert(!assistantConversationItems.some((item) => item.id === "chat-recent"), "确认删除后历史记录仍在列表中");
   await page.click('.assistant-history__filters button:has-text("已归档")');
   assert((await page.textContent(".assistant-history")).includes("归档对话"), "已归档视图没有展示归档对话");
   await page.click(".assistant-history-toggle");
