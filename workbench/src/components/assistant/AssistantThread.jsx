@@ -66,6 +66,7 @@ export function AssistantThread({
   activity,
   turnStartedAt,
   scope,
+  showRuntime = true,
   policy,
   target,
   currentVersion,
@@ -81,8 +82,8 @@ export function AssistantThread({
   return <div className="assistant-thread">
     {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={onPrompt} scope={scope} /> : null}
     {loading ? <Working label="正在打开对话" /> : null}
-    {messages.map((item) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} />)}</div>)}
-    {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Pi 正在处理" detail={activity} startedAt={turnStartedAt} /> : null}
+    {messages.map((item) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} />)}</div>)}
+    {busy && !messages.some((item) => item.pending && item.text) ? <Working label={showRuntime ? "Pi 正在处理" : "AI 正在处理"} detail={activity} startedAt={turnStartedAt} /> : null}
     {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={onRetry}>重试</button></div> : null}
     <div ref={endRef} />
   </div>;

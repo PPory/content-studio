@@ -19,6 +19,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // 截图脚本整个挂掉，报错只有一句 "Port 5198 is already in use"）。
 const PORT = Number(process.env.SHOTS_PORT) || 5198;
 const WIDTH = Number(process.argv[2]) || 1600;
+const HEIGHT = Number(process.env.SHOTS_HEIGHT) || 1000;
 const DARK = process.argv.includes("dark");
 const ONLY = new Set(process.argv.slice(3).filter((arg) => arg !== "dark"));
 const SUFFIX = DARK ? "-dark" : "";
@@ -188,7 +189,7 @@ await server.listen();
 
 const browser = await chromium.launch();
 const page = await browser.newPage({
-  viewport: { width: WIDTH, height: 1000 },
+  viewport: { width: WIDTH, height: HEIGHT },
   deviceScaleFactor: 1.5,
   colorScheme: DARK ? "dark" : "light",
 });
@@ -285,6 +286,36 @@ await page.route("**/api/pipe/projects*", (route) => route.fulfill({
   }),
 }));
 
+let quickAssistantFixture = "";
+const quickConversationRequests = [];
+const quickConversation = () => ({
+  id: "shot-global-conversation",
+  scopeId: "global:assistant",
+  title: "把输入变成判断",
+  model: "claude-sonnet-4-6",
+  permissionMode: "daily",
+  messages: quickAssistantFixture === "two-turn" ? [
+    { id: "u1", role: "user", text: "我收藏了很多资料，但总觉得没有真正形成自己的判断。", createdAt: new Date(Date.now() - 180000).toISOString() },
+    { id: "a1", role: "assistant", text: "问题可能不在输入量，而在每次输入后都没有留下一个可反驳的结论。先挑最近的一条收藏，用一句话写下：你同意什么，又不同意什么。", createdAt: new Date(Date.now() - 160000).toISOString(), durationMs: 2300 },
+    { id: "u2", role: "user", text: "我最常停在摘录原文，没有写自己的那一句。", createdAt: new Date(Date.now() - 90000).toISOString() },
+    { id: "a2", role: "assistant", text: "那就把动作缩到足够小：每条摘录后只补一句“这对我意味着什么”。先不追求完整文章，让判断留下来。", createdAt: new Date(Date.now() - 70000).toISOString(), durationMs: 1800 },
+  ] : [],
+  actions: [],
+  attachments: [],
+});
+await page.route("**/api/assistant/conversation?*", (route) => {
+  const url = new URL(route.request().url());
+  if (!quickAssistantFixture || url.searchParams.get("scope") !== "global:assistant") return route.continue();
+  if (url.searchParams.get("conversationId")) quickConversationRequests.push(url.searchParams.get("conversationId"));
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: quickConversation() }) });
+});
+await page.route("**/api/assistant/conversations?*", (route) => {
+  const url = new URL(route.request().url());
+  if (!quickAssistantFixture || url.searchParams.get("scope") !== "global:assistant") return route.continue();
+  const conversation = quickConversation();
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversations: { items: [{ id: conversation.id, title: conversation.title, updatedAt: new Date().toISOString() }] } }) });
+});
+
 // [文件名, hash, 等这个出现, 进页面后再做点什么]
 const shots = [
   ["today", "/", ".today-focus, .project-setup, .note-danger"],
@@ -337,7 +368,7 @@ const shots = [
   // 设置面板。**只开不存**：写 .env 会让这个脚本自己起的 dev server 重启，
   // 而写提示词改的是 content-pipeline 的真文件
   ["settings", "/", ".todo-card, .note-title", async () => {
-    await page.click(".topbar__icon").catch(() => {});
+    await page.click('.topbar__icon[aria-label="设置"]').catch(() => {});
     // 设置默认先打开「我的创作」；等工作台内置专家与风格都画出来再截。
     await page.waitForSelector(".writing-profile-settings .profile-source", { timeout: 15000 }).catch(() => {});
   }],
@@ -499,6 +530,72 @@ const shots = [
     await page.click('.pill-tab:has-text("数据来源")').catch(() => {});
     await page.waitForSelector(".dropzone", { timeout: 8000 }).catch(() => {});
   }],
+  ["quick-hotspot", "/#/hot", ".board, .empty, .note-title", async () => {
+    quickAssistantFixture = "empty";
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.dataset.shotShortcutInput = "true";
+      input.style.cssText = "position:fixed;width:1px;height:1px;opacity:0";
+      document.body.append(input);
+      input.focus();
+    });
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
+    await page.evaluate(() => document.querySelector('[data-shot-shortcut-input]')?.remove());
+    const draft = "关闭后还要保留的未发送问题";
+    await page.fill(".quick-assistant .assistant-composer textarea", draft);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector('.quick-assistant[data-open="true"]', { state: "detached", timeout: 8000 }).catch(async () => page.waitForSelector('.quick-assistant[data-open="true"]', { state: "hidden", timeout: 8000 }));
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
+    if (await page.inputValue(".quick-assistant .assistant-composer textarea") !== draft) throw new Error("Quick Assistant draft was lost after Escape");
+    await page.mouse.click(320, 240);
+    await page.waitForSelector('.quick-assistant[data-open="true"]', { state: "detached", timeout: 8000 }).catch(async () => page.waitForSelector('.quick-assistant[data-open="true"]', { state: "hidden", timeout: 8000 }));
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
+    if (await page.inputValue(".quick-assistant .assistant-composer textarea") !== draft) throw new Error("Quick Assistant draft was lost after outside click");
+    await page.fill(".quick-assistant .assistant-composer textarea", "");
+  }],
+  ["quick-data", "/#/review-performance/总览", ".metric-page, .review-data, .note-title", async () => {
+    quickAssistantFixture = "empty";
+    await page.click("[data-assistant-summoner]");
+    await page.waitForSelector('.quick-assistant[data-open="true"]', { timeout: 8000 });
+  }],
+  ["quick-two-turn", "/#/hot", ".board, .empty, .note-title", async () => {
+    quickAssistantFixture = "two-turn";
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-message--assistant', { timeout: 8000 });
+    await page.click(".quick-assistant .assistant-composer__continue");
+    await page.waitForURL("**/#/assistant", { timeout: 8000 });
+    await page.waitForSelector(".assistant-page .assistant-message--assistant", { timeout: 8000 });
+    if (!quickConversationRequests.includes("shot-global-conversation")) throw new Error("Full Assistant did not continue the Quick conversationId");
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector(".assistant-page .assistant-composer textarea:focus", { timeout: 8000 });
+    if (await page.locator('.quick-assistant[data-open="true"]').count()) throw new Error("Full Assistant summon opened Quick Assistant");
+    await page.goto("http://127.0.0.1:" + PORT + "/#/hot", { waitUntil: "networkidle" });
+    await page.waitForSelector(".board, .empty, .note-title", { timeout: 60000 });
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-message--assistant', { timeout: 8000 });
+  }],
+  ["summon-project", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
+    quickAssistantFixture = "";
+    await page.waitForSelector(".ptable__row", { timeout: 25000 });
+    await page.click(".ptable__row");
+    await page.waitForSelector(".project-workspace .cm-content, .project-draft__empty", { timeout: 25000 });
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.project-assistant .assistant-composer textarea:focus', { timeout: 8000 });
+    if (await page.locator('.quick-assistant[data-open="true"]').count()) throw new Error("Project summon opened Quick Assistant");
+  }],
+  ["summon-reading", "/#/shelf", ".book-card, .empty", async () => {
+    quickAssistantFixture = "";
+    await page.click('.book-card:has-text("章")');
+    await page.waitForSelector(".book-hero", { timeout: 15000 });
+    await page.click(".chapter-row:nth-child(6)");
+    await page.waitForSelector(".reader .prose", { timeout: 25000 });
+    await page.keyboard.press("Control+i");
+    await page.waitForSelector('.rail .assistant-composer textarea:focus', { timeout: 8000 });
+    if (await page.locator('.quick-assistant[data-open="true"]').count()) throw new Error("Reading summon opened Quick Assistant");
+  }],
 ];
 
 for (const [name, hash, waitFor, after] of shots.filter(([name]) => !ONLY.size || ONLY.has(name))) {
@@ -510,9 +607,10 @@ for (const [name, hash, waitFor, after] of shots.filter(([name]) => !ONLY.size |
   if (after) await after();
   await page.waitForTimeout(700);
   // 阅读覆盖层和内嵌工具是整屏布局，fullPage 会把 100vh 拉成一张怪图
-  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-optional", "settings-prompts", "settings-models", "settings-local-prompts", "project-ai"].includes(name);
-  await page.screenshot({ path: path.join(ROOT, "tmp", `shot-${name}${SUFFIX}.png`), fullPage: !inReader });
-  console.log("→", `tmp/shot-${name}${SUFFIX}.png`);
+  const inReader = ["reader", "insight", "insight-card", "book-reader", "gate", "typeset", "prefs", "rail-chat", "rail-ai", "intake", "hot-read", "select", "settings", "settings-optional", "settings-prompts", "settings-models", "settings-local-prompts", "project-ai", "quick-hotspot", "quick-data", "quick-two-turn", "summon-project", "summon-reading"].includes(name);
+  const viewportSuffix = name.startsWith("quick-") || name.startsWith("summon-") ? `-${WIDTH}x${HEIGHT}` : "";
+  await page.screenshot({ path: path.join(ROOT, "tmp", `shot-${name}${viewportSuffix}${SUFFIX}.png`), fullPage: !inReader });
+  console.log("→", `tmp/shot-${name}${viewportSuffix}${SUFFIX}.png`);
 }
 
 await browser.close();

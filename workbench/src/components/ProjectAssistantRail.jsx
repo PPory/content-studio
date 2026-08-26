@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { documentVersion } from "../lib/document-version.js";
 import { EXPERT_KINDS } from "../lib/expert-kinds.js";
+import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { ExpertReport } from "./ExpertTaskPanel.jsx";
 import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import { Working } from "./assistant/AssistantThread.jsx";
@@ -43,6 +44,12 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   const [reportKind, setReportKind] = useState("material-research");
   const [runs, setRuns] = useState([]);
   const [reportError, setReportError] = useState(null);
+  const railRef = useRef(null);
+  const focusAssistant = useCallback(() => {
+    setTab("assistant");
+    requestAnimationFrame(() => requestAnimationFrame(() => railRef.current?.querySelector(".assistant-composer textarea")?.focus({ preventScroll: true })));
+  }, []);
+  useAssistantSummonTarget("project", focusAssistant);
 
   const loadRuns = async () => {
     try { setRuns((await api.expertRuns(scopeId)).runs || []); setReportError(null); }
@@ -66,7 +73,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   const cancel = async (id) => { await api.cancelExpertRun(id); loadRuns(); };
   const counts = useMemo(() => ({ materials: materials.length, reports: new Set(runs.filter((item) => item.status === "done").map((item) => item.kind)).size }), [materials.length, runs]);
 
-  return <aside className="project-rail project-assistant" aria-label="项目 AI 与资料">
+  return <aside className="project-rail project-assistant" aria-label="项目 AI 与资料" ref={railRef}>
     <nav className="project-assistant__tabs" aria-label="右栏">
       {TABS.map((item) => <button key={item.id} aria-pressed={tab === item.id} onClick={() => setTab(item.id)}><item.icon aria-hidden="true" /><span>{item.label}</span>{item.id !== "assistant" && counts[item.id] ? <em>{counts[item.id]}</em> : null}</button>)}
     </nav>

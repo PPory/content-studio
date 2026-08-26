@@ -37,6 +37,7 @@ export function AssistantComposer({
   inputRef,
   input,
   scope,
+  surface,
   permissionOpen,
   permissionRef,
   permissionModes,
@@ -65,11 +66,15 @@ export function AssistantComposer({
   onTogglePermission,
   onToggleModel,
   onStop,
+  onOpenExperts,
+  onOpenSkills,
+  onContinue,
 }) {
+  const overlay = surface === "overlay";
   return <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
     {pendingAttachments.length && !busy ? <div className="assistant-attachments">{pendingAttachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
     {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={onDismissUploadError} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
-    <textarea ref={inputRef} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
+    <textarea ref={inputRef} data-autofocus={overlay ? "true" : undefined} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
     {permissionOpen ? <div className="assistant-permission-menu" ref={permissionRef} role="menu" aria-label="选择权限">
       {permissionModes.map((item) => <button type="button" role="menuitemradio" key={item.id} aria-checked={item.id === permissionMode} onClick={() => onChoosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span>{item.id === permissionMode ? <IconCheck aria-hidden="true" /> : null}</button>)}
     </div> : null}
@@ -80,16 +85,17 @@ export function AssistantComposer({
     <footer>
       <div className="assistant-composer__left">
         <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={onUploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
-        <button type="button" className="assistant-composer__access" title="权限" onClick={onTogglePermission} aria-expanded={permissionOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>
+        {overlay ? <><button type="button" className="assistant-composer__command" onClick={onOpenExperts} aria-expanded={menu === "experts"} title="选择专家">@</button><button type="button" className="assistant-composer__command" onClick={onOpenSkills} aria-expanded={menu === "skills"} title="选择 Skill">/ Skill</button></> : <button type="button" className="assistant-composer__access" title="权限" onClick={onTogglePermission} aria-expanded={permissionOpen} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span>权限 {permissionModes.find((item) => item.id === permissionMode)?.label || "日常"}</span><IconChevronDown aria-hidden="true" /></button>}
       </div>
       <div className="assistant-composer__right">
-        <div className="assistant-model-picker">
+        {overlay && onContinue ? <button type="button" className="assistant-composer__continue" onClick={onContinue}>在完整 AI 工作区继续 <span aria-hidden="true">→</span></button> : null}
+        {!overlay ? <div className="assistant-model-picker">
           <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={onToggleModel} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
           {menu === "models" ? <div className="assistant-command-menu assistant-command-menu--models" role="menu">
             <header><span>选择模型</span><button type="button" onClick={onCloseMenu}><IconX aria-hidden="true" /></button></header>
             {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => onMenuIndex(index)} onClick={() => onChooseMenuItem(item)} disabled={modelPending}><span className="assistant-command-menu__mark"><ModelGlyph id={item.id} provider={item.provider} /></span><span><b>{item.label}{item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">暂时没有可用模型</p>}
           </div> : null}
-        </div>
+        </div> : null}
         {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={onStop} aria-label="停止"><IconX aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={(!input.trim() && !pendingAttachments.length) || loading || uploading} aria-label="发送"><IconSend aria-hidden="true" /></button>}
       </div>
     </footer>

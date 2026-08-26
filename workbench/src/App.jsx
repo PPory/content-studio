@@ -6,7 +6,7 @@ import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
 import { normalizeMaterialRoute } from "./lib/open-target.js";
-import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, BrandMark } from "./components/icons.jsx";
+import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, IconSparkles, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
@@ -23,14 +23,14 @@ import { Review } from "./pages/Review.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
-import { AssistantDockToggle, GlobalAssistantDock } from "./components/GlobalAssistantDock.jsx";
+import { QuickAssistant } from "./components/QuickAssistant.jsx";
+import { summonAssistant } from "./lib/assistant-summoner.js";
 
 /**
  * 状态读失败后的退避重试间隔。**三档就够**：代理抖一下是秒级的，30 秒还不通
  * 基本就是代理没开或 Worker 挂了——那种情况再退下去只是让红框来得更晚。
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
-const ASSISTANT_DOCK_KEY = "workbench:assistant-dock:v1";
 
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
 const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts", "review"]);
@@ -108,6 +108,20 @@ const NAV = [
 
 // 这个 view 归哪一栏。侧栏高亮、面包屑、二级展开三处都问它，别各写各的
 const groupOf = (view) => NAV.find((n) => (n.match ? n.match(view) : view === n.key));
+
+function assistantPageContext(route) {
+  const item = groupOf(route.view);
+  const child = item?.children?.find((entry) => entry.to === route.view);
+  const detail = route.view === "overview"
+    ? "总览"
+    : route.view === "review-performance"
+      ? DATA_TABS.find((entry) => entry.key === route.state)?.label || "数据"
+      : child?.label || "";
+  return {
+    pageType: route.view,
+    label: [item ? NAV_LABELS[item.key] : "工作台", detail].filter(Boolean).join(" · "),
+  };
+}
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
@@ -192,9 +206,8 @@ export function App() {
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
   const [finder, setFinder] = useState(false); // 全局检索（Ctrl/⌘ + K）
   const [settings, setSettings] = useState(false); // 设置面板
-  const [assistantDockOpen, setAssistantDockOpen] = useState(() => {
-    try { return localStorage.getItem(ASSISTANT_DOCK_KEY) === "open"; } catch { return false; }
-  });
+  const [quickAssistantOpen, setQuickAssistantOpen] = useState(false);
+  const [globalConversationId, setGlobalConversationId] = useState("");
   /**
    * 哪一栏的二级项是展开的。
    *
@@ -236,15 +249,10 @@ export function App() {
     });
   }, []);
 
-  const toggleAssistantDock = useCallback(() => {
-    setAssistantDockOpen((open) => {
-      const next = !open;
-      try { localStorage.setItem(ASSISTANT_DOCK_KEY, next ? "open" : "closed"); } catch {}
-      return next;
-    });
-  }, []);
-
-  const canDockAssistant = route.view !== "assistant" && route.view !== "project";
+  const summon = useCallback(() => summonAssistant({
+    routeView: route.view,
+    onQuick: () => setQuickAssistantOpen((value) => !value),
+  }), [route.view]);
 
   useEffect(() => {
     const onHash = () => {
@@ -398,6 +406,11 @@ export function App() {
    */
   useEffect(() => {
     const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        summon();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setFinder((v) => !v);
@@ -411,9 +424,9 @@ export function App() {
         setIntake({});
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [summon]);
 
   return (
     <div className="app" data-rail={railCollapsed ? "collapsed" : "open"}>
@@ -502,7 +515,7 @@ export function App() {
           * 齿轮留在顶栏：它是「跨页面不变的三件事」之一，而且收起侧栏时也不能跟着变窄。
           */}
         <div className="topbar__end">
-          {canDockAssistant ? <AssistantDockToggle open={assistantDockOpen} onClick={toggleAssistantDock} /> : null}
+          <button className="topbar__icon" data-assistant-summoner onClick={summon} aria-label="召唤 AI 助手" title="AI 助手（Ctrl+I）"><IconSparkles aria-hidden="true" stroke={1.7} /></button>
           <button
             className="topbar__icon"
             onClick={() => setSettings(true)}
@@ -659,7 +672,7 @@ export function App() {
               onSettings={() => setSettings(true)}
             />
           ) : route.view === "assistant" ? (
-            <Assistant />
+            <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
           ) : route.view === "ideas" ? (
             <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
           ) : route.view === "seeds" ? (
@@ -718,8 +731,15 @@ export function App() {
           ) : null}
         </div>
       </main>
-      {canDockAssistant && assistantDockOpen ? <GlobalAssistantDock onClose={toggleAssistantDock} /> : null}
       </div>
+      <QuickAssistant
+        open={quickAssistantOpen}
+        context={assistantPageContext(route)}
+        conversationId={globalConversationId}
+        onConversationChange={setGlobalConversationId}
+        onClose={() => setQuickAssistantOpen(false)}
+        onContinue={() => { setQuickAssistantOpen(false); go("assistant"); }}
+      />
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />
 

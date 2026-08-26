@@ -28,7 +28,7 @@ const FOCUSABLE =
 
 const visible = (el) => el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0;
 
-export function useDialog(open, onClose, { autoFocus = true } = {}) {
+export function useDialog(open, onClose, { autoFocus = true, modal = true, dismissOnPointerDownOutside = false, outsideIgnore = "" } = {}) {
   const ref = useRef(null);
   // 记下是谁打开的。**在 open 变 true 的那一帧记**，晚一步焦点就已经被移进弹层了。
   const openerRef = useRef(null);
@@ -52,11 +52,13 @@ export function useDialog(open, onClose, { autoFocus = true } = {}) {
      * 代码在跑，效果是零，而且看不出来。
      */
     const off = [];
-    for (let node = box; node && node !== document.body; node = node.parentElement) {
-      for (const sib of node.parentElement?.children || []) {
-        if (sib === node || sib.contains(box)) continue;
-        off.push([sib, sib.inert]);
-        sib.inert = true;
+    if (modal) {
+      for (let node = box; node && node !== document.body; node = node.parentElement) {
+        for (const sib of node.parentElement?.children || []) {
+          if (sib === node || sib.contains(box)) continue;
+          off.push([sib, sib.inert]);
+          sib.inert = true;
+        }
       }
     }
 
@@ -79,7 +81,7 @@ export function useDialog(open, onClose, { autoFocus = true } = {}) {
         onClose?.();
         return;
       }
-      if (e.key !== "Tab") return;
+      if (!modal || e.key !== "Tab") return;
       const list = items();
       if (!list.length) {
         e.preventDefault();
@@ -103,9 +105,17 @@ export function useDialog(open, onClose, { autoFocus = true } = {}) {
       }
     };
 
+    const onPointerDown = (event) => {
+      if (!dismissOnPointerDownOutside || box.contains(event.target)) return;
+      if (outsideIgnore && event.target.closest?.(outsideIgnore)) return;
+      onClose?.();
+    };
+
     document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown);
     return () => {
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown);
       for (const [el, was] of off) el.inert = was;
       // 焦点归位。**要判断那个元素还在不在**：弹层里的动作可能把它删掉了
       // （比如从卡片上打开、在弹层里把这张卡删了），那时候硬 focus 一个游离节点，
@@ -113,7 +123,7 @@ export function useDialog(open, onClose, { autoFocus = true } = {}) {
       const back = openerRef.current;
       if (back && document.contains(back)) back.focus?.({ preventScroll: true });
     };
-  }, [open, onClose, autoFocus]);
+  }, [open, onClose, autoFocus, modal, dismissOnPointerDownOutside, outsideIgnore]);
 
   return ref;
 }

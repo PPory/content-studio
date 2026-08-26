@@ -68,7 +68,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -133,6 +133,18 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   useEffect(() => {
     setStyleId((current) => enabledStyles.some((item) => item.id === current) ? current : enabledStyles.some((item) => item.id === profile?.profile?.styleId) ? profile.profile.styleId : "");
   }, [profile, scopeId]);
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    try { setInput(sessionStorage.getItem(draftStorageKey) || ""); }
+    catch {}
+  }, [draftStorageKey, scopeId]);
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    try {
+      if (input) sessionStorage.setItem(draftStorageKey, input);
+      else sessionStorage.removeItem(draftStorageKey);
+    } catch {}
+  }, [draftStorageKey, input]);
   const currentVersion = documentVersion(document);
 
   const refreshHistory = async () => {
@@ -144,6 +156,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const applyConversation = (conversation) => {
     conversationIdRef.current = conversation?.id || "";
     setConversationId(conversationIdRef.current);
+    onConversationChange?.(conversationIdRef.current);
     setConversationTitle(conversation?.title || "新对话");
     setMessages(conversation?.messages || []);
     setAttachments((current) => (conversation?.attachments || []).map((item) => ({ ...item, previewUrl: current.find((candidate) => candidate.id === item.id)?.previewUrl || "" })));
@@ -169,8 +182,9 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     let cancelled = false;
     conversationIdRef.current = "";
     promptRequestRef.current = "";
-    setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(!historyEnabled);
-    if (!historyEnabled) api.assistantConversation(scopeId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
+    const shouldResume = !historyEnabled || surface === "overlay" || Boolean(initialConversationId);
+    setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(shouldResume);
+    if (shouldResume) api.assistantConversation(scopeId, initialConversationId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     if (historyEnabled) api.assistantConversations(scopeId).then((result) => { if (!cancelled) setConversationItems(result.conversations?.items || []); }).catch(() => {});
     api.assistantModels().then((result) => {
       if (cancelled) return;
@@ -259,6 +273,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
           if (event.type === "conversation" && event.conversationId) {
             conversationIdRef.current = event.conversationId;
             setConversationId(event.conversationId);
+            onConversationChange?.(event.conversationId);
             refreshHistory().catch(() => {});
           }
           if (event.type === "status") setActivity(event.stage || "Pi 正在继续处理");
@@ -289,6 +304,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     clearTimeout(streamRef.current.timer);
     streamRef.current = { id: "", text: "", timer: 0 };
     conversationIdRef.current = "";
+    onConversationChange?.("");
     setConversationId(""); setConversationTitle("新对话"); setPermissionMode("daily"); setMessages([]); setActions([]); setAttachments([]); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
     refreshHistory().catch(() => {});
     inputRef.current?.focus();
@@ -331,6 +347,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       if (!conversationId) {
         conversationIdRef.current = result.conversationId;
         setConversationId(result.conversationId);
+        onConversationChange?.(result.conversationId);
       }
       setAttachments((current) => [...current, { ...result.attachment, previewUrl: prepared.type.startsWith("image/") ? URL.createObjectURL(prepared) : "" }]);
 
@@ -483,7 +500,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
       <div>
-        {historyEnabled && presentation.history === "sidebar" ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" /><span>历史对话</span></button> : null}
+        {historyEnabled && presentation.history !== "none" ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" />{presentation.history === "sidebar" ? <span>历史对话</span> : null}</button> : null}
         {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </div>
@@ -498,7 +515,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
-      error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope}
+      error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={surface !== "overlay"}
       policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
@@ -507,7 +524,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
     <AssistantComposer
       pendingAttachments={pendingAttachments} busy={busy} uploadError={uploadError} inputRef={inputRef}
-      input={input} scope={scope} permissionOpen={permissionOpen} permissionRef={permissionRef}
+      input={input} scope={scope} surface={surface} permissionOpen={permissionOpen} permissionRef={permissionRef}
       permissionModes={permissionModes} permissionMode={permissionMode} modePending={modePending}
       menu={menu} menuQuery={menuQuery} filteredMenuItems={filteredMenuItems} menuIndex={menuIndex}
       modelPending={modelPending} fileRef={fileRef} uploading={uploading} models={models} model={model}
@@ -517,11 +534,12 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       onMenuIndex={setMenuIndex} onChooseMenuItem={chooseMenuItem} onUploadFile={uploadFile}
       onTogglePermission={() => { setPermissionOpen((value) => !value); setMenu(""); }}
       onToggleModel={() => menu === "models" ? setMenu("") : openMenu("models")} onStop={stop}
+      onOpenExperts={() => openMenu("experts")} onOpenSkills={() => openMenu("skills")} onContinue={onContinue}
     />
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} />
   </div>;
 
-  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${globalScope && surface === "rail" ? " assistant-pane--docked" : ""}`}>
+  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${globalScope && surface === "rail" ? " assistant-pane--docked" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}`}>
     {historyEnabled && historyOpen ? <AssistantHistory
       visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
       historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}

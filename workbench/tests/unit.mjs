@@ -21,6 +21,7 @@ import { STARTING_LINE_COUNT, startingLine } from "../src/lib/writing-prompts.js
 import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src/lib/expert-kinds.js";
 import { reportSeverity } from "../src/lib/report-severity.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant-policy.js";
+import { assistantReferenceDocument, assistantSummonDestination } from "../src/lib/assistant-summoner.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -690,6 +691,15 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
+
+  const quickAssistant = await fs.readFile(new URL("../src/components/QuickAssistant.jsx", import.meta.url), "utf8");
+  const assistantSummoner = await fs.readFile(new URL("../src/lib/assistant-summoner.js", import.meta.url), "utf8");
+  const appShell = await fs.readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  check("召唤器优先路由阅读、项目和完整 AI 页", assistantSummonDestination({ routeView: "project", readingAvailable: true }) === "reading" && assistantSummonDestination({ routeView: "project", readingAvailable: false }) === "project" && assistantSummonDestination({ routeView: "assistant", readingAvailable: false }) === "global-page" && assistantSummonDestination({ routeView: "hot", readingAvailable: false }) === "quick");
+  check("Quick Assistant 使用 global overlay policy", /scope="global"[\s\S]*surface="overlay"[\s\S]*target=/.test(quickAssistant));
+  check("Quick Assistant 默认不发送页面正文或 DOM", JSON.stringify(assistantReferenceDocument({ pageType: "metrics", label: "数据 · 本周总览" })) === "{}" && JSON.stringify(assistantReferenceDocument({ object: { id: "doc-1", type: "vault-document", title: "标题", content: "不得发送" } })) === JSON.stringify({ objectId: "doc-1", objectType: "vault-document", title: "标题" }) && !/document\.body|innerHTML|querySelector\([^)]*main/.test(assistantSummoner));
+  check("Quick Assistant 明示未附带页面内容且可移除上下文", /未附带页面内容/.test(quickAssistant) && /移除当前页面上下文/.test(quickAssistant));
+  check("Ctrl I 与顶栏按钮复用同一 summon", /data-assistant-summoner[\s\S]*onClick=\{summon\}/.test(appShell) && /e\.key === "i"[\s\S]*summon\(\)/.test(appShell) && /addEventListener\("keydown", onKey, true\)/.test(appShell));
 
   const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
   const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者", materials: "素材 A：真实案例" }).join("\n");

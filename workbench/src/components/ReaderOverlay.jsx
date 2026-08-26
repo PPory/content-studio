@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
+import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { useConfirmGuard } from "../lib/use-confirm-guard.js";
 import { api } from "../lib/api.js";
 import { Reader } from "./Reader.jsx";
@@ -154,6 +155,16 @@ export function ReaderOverlay({
    * 而回车就是一次删除。
    */
   const boxRef = useDialog(true, undefined, { autoFocus: false });
+  const focusReadingAssistant = useCallback(() => {
+    setRails((current) => {
+      const next = { ...current, right: true };
+      try { localStorage.setItem(RAILS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    rail?.onMode?.("chat");
+    requestAnimationFrame(() => requestAnimationFrame(() => boxRef.current?.querySelector(".assistant-composer textarea")?.focus({ preventScroll: true })));
+  }, [rail?.onMode]);
+  useAssistantSummonTarget("reading", focusReadingAssistant);
 
   // 字数 / 预计读完。口径在 lib/reading.js 的 readStats 里，洞察卡片用的是同一个——
   // 各写一份的话，同一篇文档在卡片上和阅读区里会显示两个不同的字数。
