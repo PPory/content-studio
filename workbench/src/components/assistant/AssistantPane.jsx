@@ -3,6 +3,7 @@ import { api } from "../../lib/api.js";
 import { documentVersion } from "../../lib/document-version.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../../lib/assistant-policy.js";
 import { EXPERT_KINDS } from "../../lib/expert-kinds.js";
+import { transitionActionResult } from "../../lib/ai/result-model.js";
 import { KnowledgeCardDialog } from "../KnowledgeCardDialog.jsx";
 import { IconArchive, IconHistory, IconPlus } from "../icons.jsx";
 import { AssistantComposer } from "./AssistantComposer.jsx";
@@ -27,6 +28,19 @@ const EXPERTS = [
 const PROJECT_EXPERTS = new Set(["writing-coach", ...EXPERT_KINDS.map((item) => item.expertId)]);
 
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
+
+function rejectedActionIds(scopeId, conversationId) {
+  try { return new Set(JSON.parse(sessionStorage.getItem(`xenho-rejected-actions:${scopeId}:${conversationId}`) || "[]")); }
+  catch { return new Set(); }
+}
+
+function rememberRejectedAction(scopeId, conversationId, actionId) {
+  const ids = rejectedActionIds(scopeId, conversationId);
+  ids.add(actionId);
+  try { sessionStorage.setItem(`xenho-rejected-actions:${scopeId}:${conversationId}`, JSON.stringify([...ids])); }
+  catch {}
+  return ids;
+}
 export const DEFAULT_ASSISTANT_MODEL = "claude-sonnet-4-6";
 
 function storedAssistantModel() {
@@ -160,7 +174,8 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     setConversationTitle(conversation?.title || "新对话");
     setMessages(conversation?.messages || []);
     setAttachments((current) => (conversation?.attachments || []).map((item) => ({ ...item, previewUrl: current.find((candidate) => candidate.id === item.id)?.previewUrl || "" })));
-    setActions(conversation?.actions || []);
+    const rejected = rejectedActionIds(scopeId, conversationIdRef.current);
+    setActions((conversation?.actions || []).map((action) => rejected.has(action.id) && action.status !== "applied" && action.status !== "superseded" ? transitionActionResult(action, "rejected") : action));
     if (conversation?.model) { setModel(conversation.model); rememberAssistantModel(conversation.model); }
     setPermissionMode(conversation?.permissionMode || "daily");
     const running = conversation?.activeTurn?.status === "running";
@@ -453,6 +468,12 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     } catch (next) { setError(next); }
   }
 
+  function rejectAction(actionId) {
+    if (!actionId || !conversationId) return;
+    rememberRejectedAction(scopeId, conversationId, actionId);
+    setActions((items) => items.map((action) => action.id === actionId ? transitionActionResult(action, "rejected") : action));
+  }
+
   function chooseMenuItem(item) {
     if (!item) return;
     if (menu === "experts") chooseExpert(item);
@@ -517,7 +538,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
       error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={surface !== "overlay"}
       policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onRegenerate={() => rewind(false)}
-      onEdit={() => rewind(true)} onApplyAction={applyAction}
+      onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
       endRef={endRef}
     />

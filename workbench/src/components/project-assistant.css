@@ -218,10 +218,15 @@
 .assistant-action-card b { font-size: var(--fs-base); }
 .assistant-action-card p { margin: 0; overflow: hidden; color: var(--text-2); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 .assistant-action-card > span { color: var(--text-3); font-size: var(--fs-sm); }
-.assistant-action-card > button {
-  flex: none; height: 30px; padding: 0 var(--sp-5); border: 0; border-radius: var(--r-ctl);
-  background: var(--accent); color: var(--on-accent); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+.assistant-action-card > button,
+.assistant-action-card__actions button {
+  flex: none; height: 30px; padding: 0 var(--sp-5); border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
+.assistant-action-card > button,
+.assistant-action-card__actions button.is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.assistant-action-card__actions { display: flex; align-items: center; gap: var(--sp-2); }
+.assistant-action-card[data-status="rejected"] { background: var(--surface-2); }
 
 /* --------------------------------------------------------------------------
    空态：参照那张「Good Morning」——一枚记号 · 一句问话 · 一行注脚 · 三张入口卡

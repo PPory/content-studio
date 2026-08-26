@@ -22,6 +22,8 @@ import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src
 import { reportSeverity } from "../src/lib/report-severity.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant-policy.js";
 import { assistantReferenceDocument, assistantSummonDestination } from "../src/lib/assistant-summoner.js";
+import { AI_RESULT_KINDS, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
+import { materialDraftGrounding, normalizeGrounding } from "../src/lib/ai/grounding.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -691,6 +693,37 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
+
+  const grounding = normalizeGrounding({
+    used: [{ id: "m1", title: "真实案例" }],
+    skipped: [{ id: "m2", title: "待核验数据", reason: "待核验" }, { id: "m3", title: "旁支案例", reason: "与当前主题不相关" }],
+    unverified: [{ quote: "增长 40%", why: "没有可核对来源" }],
+    gate: "passed",
+  });
+  check("AiResult 统一四种结果", AI_RESULT_KINDS.join("/") === "answer/candidate/report/action");
+  check("Grounding 完整保留 used skipped unverified", grounding.used.length === 1 && grounding.skipped.length === 2 && grounding.unverified.length === 1);
+  check("每条 skipped 都有明确下一步", grounding.skipped[0].nextStep.label === "去核验" && grounding.skipped[1].nextStep.label === "仍然使用");
+  const documentVersion = documentVersionOf("正文第一版");
+  const readyCandidate = createCandidate({ id: "candidate-1", original: "第一版", text: "第二版", status: "ready", documentVersion, grounding }, documentVersion);
+  const staleCandidate = createCandidate(readyCandidate, documentVersionOf("正文已变化"));
+  const rejectedCandidate = createCandidate({ ...readyCandidate, grounding: { ...grounding, gate: "rejected", gateDetail: "个人经历缺少服务端证据" } }, documentVersion);
+  check("Candidate ready 与 stale 由正文版本统一推导", readyCandidate.status === "ready" && staleCandidate.status === "stale");
+  check("gate rejected 直接进入 failed", rejectedCandidate.status === "failed" && rejectedCandidate.error?.message === "个人经历缺少服务端证据");
+  check("Candidate 变更摘要可比较", JSON.stringify(changeSummary("原文", "新正文")) === JSON.stringify({ added: 2, removed: 1, label: "+2 / −1" }));
+  const materialGrounding = materialDraftGrounding([{ id: "m1", title: "真实案例" }, { id: "m2", title: "待核验数据" }], { skipped: [{ id: "m2", title: "待核验数据", reason: "待核验" }] });
+  check("CreationDialog 素材证据回执进入统一 Grounding", materialGrounding.used[0].id === "m1" && materialGrounding.skipped[0].nextStep.id === "verify");
+  check("Action 同时支持 applied 与 rejected 正式状态", transitionActionResult({ id: "a1", type: "create_content" }, "applied").status === "applied" && transitionActionResult({ id: "a1", type: "create_content" }, "rejected").status === "rejected" && createAiResult({ kind: "action", type: "create_content" }).status === "proposed");
+  check("Report 纳入统一 AiResult 概念", createAiResult({ kind: "report", findings: [{ id: "f1" }] }).findings.length === 1);
+
+  const markdownEditor = await fs.readFile(new URL("../src/components/MarkdownEditor.jsx", import.meta.url), "utf8");
+  const candidateCard = await fs.readFile(new URL("../src/components/assistant/CandidateCard.jsx", import.meta.url), "utf8");
+  const actionCard = await fs.readFile(new URL("../src/components/assistant/ActionCard.jsx", import.meta.url), "utf8");
+  const creationDialog = await fs.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
+  check("选区修订与 Assistant 插入共用 CandidateCard", /<CandidateCard/.test(markdownEditor) && /resultKind === "candidate"/.test(markdownEditor) && !/RevisionReviewCard/.test(markdownEditor));
+  check("Candidate 键盘采纳与弃用有统一实现", /event\.key === "Enter"/.test(candidateCard) && /event\.key === "Backspace"/.test(candidateCard) && /aria-keyshortcuts/.test(candidateCard));
+  check("Grounding 默认直接展示而非折叠", /grounding\.skipped\.map/.test(candidateCard) && /grounding\.unverified\.map/.test(candidateCard) && !/<details/.test(candidateCard));
+  check("ActionCard 同时提供确认和拒绝", /onApply/.test(actionCard) && /onReject/.test(actionCard) && /已拒绝/.test(actionCard));
+  check("旧素材起稿屏复用统一证据回执", /materialDraftGrounding/.test(creationDialog) && /<GroundingReceipt/.test(creationDialog));
 
   const quickAssistant = await fs.readFile(new URL("../src/components/QuickAssistant.jsx", import.meta.url), "utf8");
   const assistantSummoner = await fs.readFile(new URL("../src/lib/assistant-summoner.js", import.meta.url), "utf8");

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
 import { cleanGeneratedDraft, creationApi, deriveDraftTitle, interviewStream } from "../lib/creation-api.js";
 import { readStats } from "../lib/reading.js";
+import { materialDraftGrounding } from "../lib/ai/grounding.js";
+import { GroundingReceipt } from "./assistant/CandidateCard.jsx";
 import { verificationBadge } from "../lib/sources.js";
 import { PLATFORMS } from "../lib/platforms.js";
 import { startWriting } from "../lib/start-writing.js";
@@ -60,7 +62,7 @@ export function CreationDialog({ open, preset, onClose, onStarted, onTopicCreate
   const [message, setMessage] = useState("");
   const [phase, setPhase] = useState("interviewing");
   /**
-   * AI 起稿的结果：`{ body, title, skipped }`。**它停在素材那一屏上，不跳走。**
+   * AI 起稿的结果：`{ body, title, grounding }`。**它停在素材那一屏上，不跳走。**
    *
    * ⚠️ **`skipped` 必须在跳走之前让人看见。** 待核验的金句和数据不进稿，
    * 挑了 5 条只用了 3 条——不说的话用户以为模型漏用了。跳进项目页再说就晚了：
@@ -238,8 +240,8 @@ export function CreationDialog({ open, preset, onClose, onStarted, onTopicCreate
       setGenerated({
         body: result.body || "",
         title: title.trim() || deriveDraftTitle("", result.body || ""),
-        // 剔掉的素材要说出来：挑了 5 条只用了 3 条，不说的话用户会以为模型漏用了
-        skipped: result.skipped || [],
+        // 证据回执来自服务端结果；前端只标准化展示，不重新判断真实性。
+        grounding: materialDraftGrounding(selected, result),
       });
     }).catch((err) => {
       if (err.name !== "AbortError") setError(err);
@@ -714,18 +716,21 @@ function MaterialSetup({ title, setTitle, platform, setPlatform, viewpoint, setV
               <strong>初稿写好了</strong>
               <em>{readStats(generated.body).words} 字</em>
             </p>
-            {generated.skipped.length ? (
-              <p className="creation-generated__skip">
-                <IconAlertTriangle aria-hidden="true" />
-                有 {generated.skipped.length} 条没进稿（待核验的金句和数据不会被引用）：
-                {generated.skipped.map((item) => item.title || item).join("、")}
-              </p>
-            ) : (
-              <p className="creation-generated__skip creation-generated__skip--ok">选中的 {selected.length} 条素材都用上了。</p>
-            )}
+            <GroundingReceipt
+              grounding={generated.grounding}
+              onAction={(item, nextStep) => {
+                if (nextStep.id === "verify") {
+                  close();
+                  window.location.hash = "#/materials/需核验";
+                  return;
+                }
+                setGenerated(null);
+                setViewpoint((current) => [current, `若服务端校验允许，请使用素材“${item.title}”。`].filter(Boolean).join("；"));
+              }}
+            />
             <div className="creation-generated__acts">
               <button className="btn" onClick={onDiscardGenerated} disabled={busy}>重写一版</button>
-              <button className="btn btn-primary" onClick={onUseGenerated} disabled={busy}>
+              <button className="btn btn-primary" onClick={onUseGenerated} disabled={busy || generated.grounding?.gate === "rejected"}>
                 {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconPencil aria-hidden="true" />}去写
               </button>
             </div>

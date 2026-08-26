@@ -43,6 +43,7 @@ const expertStarts = [];
 const assistantRequests = [];
 let assistantMessages = [];
 let assistantAttachments = [];
+let assistantActions = [];
 const assistantModelItems = [
   { id: "claude-sonnet-4-6", name: "claude-sonnet-4-6", ownedBy: "anthropic" },
   { id: "test-model", name: "测试模型", ownedBy: "Pi" },
@@ -183,10 +184,19 @@ await page.route("**/api/agent/chat", async (route) => {
 await page.route("**/api/pipe/text-revision", async (route) => {
   const body = route.request().postDataJSON();
   revisionRequests.push(body);
-  const text = revisionRequests.length === 1
+  const rejected = body.instruction?.includes("真实性拒绝");
+  const text = rejected ? "这段不应进入可采纳状态。" : revisionRequests.length === 1
     ? "第一版候选：把最重要的判断说清楚，再删掉不服务于这个判断的句子。"
     : "第二版候选：先说清最重要的判断，再删掉无关句子。";
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: "润色", text }) });
+  const grounding = rejected ? {
+    used: [], skipped: [], unverified: [{ quote: "我亲历了这件事", why: "服务端没有找到个人经历证据" }],
+    gate: "rejected", gateDetail: "个人经历缺少服务端证据，候选未放行。",
+  } : {
+    used: [{ id: "m1", title: "真实案例" }],
+    skipped: [{ id: "m2", title: "待核验数据", reason: "待核验" }, { id: "m3", title: "旁支案例", reason: "与当前主题不相关" }],
+    unverified: [{ quote: "增长 40%", why: "没有可核对来源" }], gate: "passed",
+  };
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: "润色", text, grounding }) });
 });
 await page.route("**/api/revisions**", async (route) => {
   const request = route.request();
@@ -227,7 +237,7 @@ await page.route("**/api/assistant/**", async (route) => {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversations: { items: assistantConversationItems } }) });
   }
   if (request.method() === "GET") {
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "chat-project", messages: assistantMessages, actions: assistantActions, attachments: [], permissionMode: "daily", model: "test-model" } }) });
   }
   if (request.method() === "POST" && url.pathname.endsWith("/attachment")) {
     const item = { id: `file-${assistantAttachments.length + 1}`, name: url.searchParams.get("filename") || "图片.png", type: "image/png", kind: "image", bytes: request.postDataBuffer()?.length || 0, characters: 0, createdAt: new Date().toISOString() };
@@ -252,17 +262,27 @@ await page.route("**/api/assistant/**", async (route) => {
   if (url.pathname.endsWith("/cancel")) {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, cancelled: true }) });
   }
+  if (url.pathname.endsWith("/action")) {
+    const actionBody = request.postDataJSON();
+    assistantActions = assistantActions.map((action) => action.id === actionBody.actionId ? { ...action, status: "applied", result: { ok: true } } : action);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "chat-project", messages: assistantMessages, actions: assistantActions, attachments: assistantAttachments, permissionMode: "daily", model: "test-model" } }) });
+  }
   const body = request.postDataJSON();
   assistantRequests.push(body);
   const sentAttachmentIds = assistantAttachments.filter((item) => !item.usedAt).map((item) => item.id);
   await new Promise((resolve) => setTimeout(resolve, 180));
+  const actionBase = `action-${assistantMessages.length}`;
+  assistantActions = [
+    { id: `${actionBase}-reject`, type: "workspace_write", path: "候选/拒绝.md", status: "pending" },
+    { id: `${actionBase}-apply`, type: "workspace_write", path: "候选/确认.md", status: "pending" },
+  ];
   assistantMessages = [
     ...assistantMessages,
     { id: `user-${assistantMessages.length}`, role: "user", text: body.message, attachmentIds: sentAttachmentIds, createdAt: new Date().toISOString() },
-    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", createdAt: new Date().toISOString(), engine: "Pi Agent SDK", durationMs: 180 },
+    { id: `assistant-${assistantMessages.length}`, role: "assistant", text: "建议先把读者最难承认的代价写出来，再用一个真实场景支撑。", actionIds: assistantActions.map((action) => action.id), createdAt: new Date().toISOString(), engine: "Pi Agent SDK", durationMs: 180 },
   ];
   assistantAttachments = assistantAttachments.map((item) => sentAttachmentIds.includes(item.id) ? { ...item, usedAt: new Date().toISOString() } : item);
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { messages: assistantMessages, attachments: assistantAttachments, actions: [], permissionMode: "daily", model: body.model || "test-model" } }) });
+  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "chat-project", messages: assistantMessages, attachments: assistantAttachments, actions: assistantActions, permissionMode: "daily", model: body.model || "test-model" } }) });
 });
 
 function assert(value, message) {
@@ -359,13 +379,37 @@ try {
     await page.click('[role="dialog"][aria-label="知识卡片预览"] button:has-text("关闭")');
     assert(assistantRequests.at(-1)?.style?.id === "story-led", "AI 助手没有使用编辑器里选择的本次写作风格");
     assert(assistantRequests.at(-1)?.document?.body.includes("收藏处理的是焦虑"), "AI 助手没有收到当前全文");
+    const actionCards = page.locator(".assistant-action-card");
+    await actionCards.first().waitFor();
+    assert(await actionCards.count() === 2, "Action 没有进入统一结果列表");
+    await actionCards.nth(0).getByRole("button", { name: "拒绝" }).click();
+    assert((await actionCards.nth(0).textContent()).includes("已拒绝"), "Action 拒绝没有成为正式状态");
+    await actionCards.nth(1).getByRole("button", { name: "确认写入" }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll(".assistant-action-card")].some((item) => item.textContent.includes("已执行")));
+    assert((await actionCards.nth(0).textContent()).includes("已拒绝"), "确认另一项 Action 后已拒绝状态丢失");
+
     const beforeCandidate = await editorValue(".project-draft .cm-content");
     assert(!beforeCandidate.includes("读者最难承认"), "AI 回复在确认前写进了正文");
     await page.click('.assistant-message--assistant button:has-text("作为候选插入")');
-    await page.waitForSelector(".cm-ai-draft");
-    assert((await editorValue(".project-draft .cm-content")).includes("读者最难承认"), "明确插入候选后正文没有出现内容");
-    await page.click('.ai-draft-review button[aria-label="确认采用这段，移除底纹"]');
-    await page.waitForSelector(".ai-draft-review", { state: "detached" });
+    await page.waitForSelector(".candidate-card textarea");
+    assert((await editorValue(".project-draft .cm-content")) === beforeCandidate, "Assistant 候选在采纳前写进了正文");
+    assert((await page.textContent(".candidate-card")).includes("第 1 版") && (await page.textContent(".candidate-card")).includes("+"), "Assistant 候选没有版本或变更摘要");
+    await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-candidate-review.png"), fullPage: false });
+    await page.focus(".candidate-card textarea");
+    await page.keyboard.press("Control+Enter");
+    await page.waitForSelector(".candidate-card", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")).includes("读者最难承认"), "Candidate 键盘采纳没有写入正文");
+    await page.click('.project-draft .md-editor__bar button[aria-label="撤销"]');
+    assert((await editorValue(".project-draft .cm-content")) === beforeCandidate, "Candidate 采纳后现有撤销路径失效");
+    await page.click('.project-draft .md-editor__bar button[aria-label="重做"]');
+    assert((await editorValue(".project-draft .cm-content")).includes("读者最难承认"), "Candidate 撤销后无法重做");
+    const beforeKeyboardDiscard = await editorValue(".project-draft .cm-content");
+    await page.click('.assistant-message--assistant button:has-text("作为候选插入")');
+    await page.waitForSelector(".candidate-card textarea");
+    await page.focus(".candidate-card textarea");
+    await page.keyboard.press("Control+Backspace");
+    await page.waitForSelector(".candidate-card", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")) === beforeKeyboardDiscard, "Candidate 键盘弃用改变了正文");
 
     await page.click('.project-assistant__tabs button:has-text("检查报告")');
     const reportTabs = await page.$$eval(".assistant-reports > nav button", (items) => items.map((item) => item.textContent.trim()));
@@ -390,7 +434,8 @@ try {
     assert(await page.$(".project-assistant__materials"), "项目素材没有留在统一右栏");
     console.log("✓ 项目编辑器统一为 AI 助手、项目素材、检查报告三入口");
     console.log("✓ @ 专家、/ Skill、选区与本次风格均进入真实调用上下文");
-    console.log("✓ 对话建议和选区修订都先给候选，明确采纳后才改正文");
+    console.log("✓ 对话建议和选区修订都进入 CandidateCard，键盘采纳与弃用前不改正文");
+    console.log("✓ Action 支持确认与正式拒绝状态");
     console.log("✓ 专家工作状态动态展示，失败可重试，报告关闭后仍有固定入口");
   } else {
 
@@ -625,27 +670,46 @@ try {
   await page.click('.text-revision-menu__actions button:has-text("润色")');
   await page.fill('.text-revision-menu__command input[aria-label="润色要求"]', "更克制");
   await page.click('.text-revision-menu__command button[aria-label="开始润色"]');
-  await page.waitForSelector(".text-revision-review textarea");
+  await page.waitForSelector(".candidate-card textarea");
   assert(revisionRequests[legacyRevisionStart]?.instruction === "更克制", "自定义润色要求没有发给 AI");
+  const groundingText = await page.textContent(".candidate-grounding");
+  assert(groundingText.includes("已使用 1") && groundingText.includes("已跳过 2") && groundingText.includes("未经核验 1"), "Grounding used/skipped/unverified 没有默认显示");
+  assert(groundingText.includes("去核验") && groundingText.includes("仍然使用"), "skipped 没有给出下一步");
   const compareDocument = await editorValue(".ws-edit .cm-content");
   const visuallySplitDocument = `${existingAfter.slice(0, 12)}\n${existingAfter.slice(12)}`;
   assert(compareDocument === visuallySplitDocument, "对比阶段除候选卡片占位外改变了正文内容");
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("临时变化");
+  await page.waitForFunction(() => document.querySelector(".ws-edit .cm-content")?.textContent.includes("临时变化"));
+  await page.keyboard.press("Control+Home");
+  await page.waitForSelector('.candidate-card[data-status="stale"]');
+  assert(await page.locator('.candidate-card .text-revision-review__decide button:has-text("采纳")').isDisabled(), "stale Candidate 仍然可以采纳");
+  await page.click('.ws-edit .md-editor__bar button[aria-label="撤销"]');
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  await page.waitForTimeout(300);
+  const restoredStatus = await page.evaluate(() => document.querySelector(".candidate-card")?.dataset.status ?? "missing");
+  assert(["ready", "edited"].includes(restoredStatus), "正文撤销后 Candidate 状态未恢复：" + restoredStatus);
+  const afterStaleUndo = await editorValue(".ws-edit .cm-content");
+  assert(!afterStaleUndo.includes("临时变化"), "stale 测试撤销后仍残留正文变化：" + afterStaleUndo.slice(-40));
   const compareStyle = await page.evaluate(() => ({
     strike: getComputedStyle(document.querySelector(".cm-text-revision-original")).textDecorationLine,
     wash: getComputedStyle(document.querySelector(".text-revision-review textarea")).backgroundColor,
   }));
   assert(compareStyle.strike.includes("line-through"), "对比状态的原文没有删除线");
   assert(compareStyle.wash !== "transparent" && compareStyle.wash !== "rgba(0, 0, 0, 0)", "修订候选没有轻量底纹");
-  await page.fill('.text-revision-review__command input[aria-label="调整修订要求"]', "更克制、更直接");
+  await page.fill('.text-revision-review__command input[aria-label="调整候选要求"]', "更克制、更直接");
   await page.click('.text-revision-review__command button[aria-label="重新生成"]');
   await page.waitForFunction(() => document.querySelector(".text-revision-review textarea")?.value.includes("第二版候选"));
   assert(revisionRequests[legacyRevisionStart + 1]?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
-  await page.fill('.text-revision-review textarea[aria-label="AI 修订候选，可直接编辑"]', "这是用户调整后的最终候选。 ");
+  await page.fill('.text-revision-review textarea[aria-label="AI 正文候选，可直接编辑"]', "这是用户调整后的最终候选。 ");
   await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-review.png"), fullPage: false });
   await page.click('.text-revision-review__decide button:has-text("采纳")');
   await page.waitForSelector(".text-revision-review", { state: "detached" });
   const revisedAfter = await editorValue(".ws-edit .cm-content");
-  assert(revisedAfter === `这是用户调整后的最终候选。${existingAfter.slice(12)}`, "采纳没有精确替换原选区");
+  const expectedRevisionPrefix = `这是用户调整后的最终候选。${existingAfter.slice(12)}`.slice(0, 160);
+  assert(revisedAfter.startsWith(expectedRevisionPrefix), "采纳没有精确替换原选区前缀：" + JSON.stringify(revisedAfter.slice(0, 160)));
   await page.click(".ws-edit .md-editor__ai-history");
   await page.waitForSelector(".ai-draft-history");
   const historyText = await page.textContent(".ai-draft-history");
@@ -676,6 +740,19 @@ try {
   await page.waitForSelector(".ai-draft-history");
   assert((await page.textContent(".ai-draft-history")).includes("已弃用"), "弃用决定没有进入持久修订历史");
   await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+
+  const beforeRejected = await editorValue(".ws-edit .cm-content");
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.click('.text-revision-menu__actions button:has-text("改写")');
+  await page.fill('.text-revision-menu__command input[aria-label="改写要求"]', "触发真实性拒绝");
+  await page.click('.text-revision-menu__command button[aria-label="开始改写"]');
+  await page.waitForSelector('.candidate-card[data-status="failed"]');
+  assert((await page.textContent(".candidate-card")).includes("个人经历缺少服务端证据，候选未放行"), "gate rejected 没有显示服务端原因");
+  assert(await page.locator('.candidate-card .text-revision-review__decide button:has-text("采纳")').isDisabled(), "gate rejected Candidate 仍能采纳");
+  await page.click('.candidate-card .text-revision-review__decide button:has-text("弃用")');
+  assert((await editorValue(".ws-edit .cm-content")) === beforeRejected, "failed Candidate 弃用后改变了正文");
   await page.click('.ws-edit__foot button:has-text("取消")');
 
   await page.evaluate(() => localStorage.removeItem("xenho-assistant-model"));
@@ -778,7 +855,8 @@ try {
   console.log("✓ 图标按钮都有名称和悬停说明");
   console.log("✓ AI 续写可在底纹内修改、确认后退底纹，并能回看原稿");
   console.log("✓ 两个编辑入口都有选区修订工具，采纳前正文保持不变");
-  console.log("✓ 局部修订支持自定义要求、重新生成、直接编辑和精确采纳");
+  console.log("✓ 局部修订支持自定义要求、重新生成、直接编辑、stale 检测和精确采纳");
+  console.log("✓ Grounding 展示 used/skipped/unverified，服务端拒绝会进入 failed");
   console.log("✓ 弃用修订不改变正文，并持久记录弃用决定");
   console.log("✓ 修订历史跨编辑器重开仍可回看原文与最终候选");
   console.log("✓ 浏览器控制台 0 错误");

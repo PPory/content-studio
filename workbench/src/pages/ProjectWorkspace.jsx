@@ -713,7 +713,7 @@ ${(form.body || "").slice(0, 3000)}`);
             materials={project.materials || []}
             profile={writingProfile}
             selection={activeSelection}
-            onInsert={(text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选" })}
+            onInsert={(text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选", resultKind: meta.resultKind, grounding: meta.grounding, rerun: meta.rerun })}
             onRevision={(request) => setRevisionRequest({ ...request, id: `assistant-revision-${Date.now()}` })}
           >
             {/**

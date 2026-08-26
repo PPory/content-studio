@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { expertKindDisplayName } from "../lib/expert-kinds.js";
 import { reportSeverity } from "../lib/report-severity.js";
+import { createAiResult } from "../lib/ai/result-model.js";
 import { IconRefresh, IconX } from "./icons.jsx";
 import "./expert-report.css";
 
@@ -24,17 +25,18 @@ function Severity({ kind, status }) {
 
 export function ExpertReport({ report }) {
   if (!report) return null;
+  const result = createAiResult({ kind: "report", findings: report.questions || report.claims || [], report });
   if (report.kind === "quality-review") return <div className="expert-report">
     <p className="expert-report__summary">{report.summary}</p>
     <p className="expert-report__reference">AI 报告仅供参考；阶段推进仍由确定性业务规则决定。</p>
     {report.strengths?.length ? <section><h4>值得保留和强化</h4>{report.strengths.map((item, index) => <article key={index}><blockquote>{item.quote}</blockquote><p>{item.reason}</p></article>)}</section> : null}
-    <section><h4>九问结果</h4>{(report.questions || []).map((item, index) => <article className="quality-row" data-status={item.status} key={`${item.id}-${index}`}><span>{index + 1}</span><div><header className="expert-finding-head"><b>{item.finding || item.id}</b><Severity kind={report.kind} status={item.status} /></header>{item.location ? <small>{item.location}</small> : null}{item.direction ? <p>修改方向：{item.direction}</p> : null}</div></article>)}</section>
+    <section><h4>九问结果</h4>{result.findings.map((item, index) => <article className="quality-row" data-status={item.status} key={`${item.id}-${index}`}><span>{index + 1}</span><div><header className="expert-finding-head"><b>{item.finding || item.id}</b><Severity kind={report.kind} status={item.status} /></header>{item.location ? <small>{item.location}</small> : null}{item.direction ? <p>修改方向：{item.direction}</p> : null}</div></article>)}</section>
     {report.mustFix?.length ? <section><h4>高风险</h4><ul>{report.mustFix.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null}
   </div>;
   return <div className="expert-report">
     <p className="expert-report__summary">{report.summary}</p>
     <p className="expert-report__reference">AI 报告仅供参考；阶段推进仍由确定性业务规则决定。</p>
-    <section><h4>{report.kind === "fact-check" ? "逐条核查" : "观点与素材缺口"}</h4>{(report.claims || []).map((item, index) => <article className="claim-row" data-status={item.status} key={index}>
+    <section><h4>{report.kind === "fact-check" ? "逐条核查" : "观点与素材缺口"}</h4>{result.findings.map((item, index) => <article className="claim-row" data-status={item.status} key={index}>
       <header><span>{index + 1}</span><b>{item.quote || item.need || "未命名观点"}</b><Severity kind={report.kind} status={item.status} /></header>
       {item.location ? <small>{item.location}</small> : null}
       {item.need ? <p>需要：{item.need}</p> : null}

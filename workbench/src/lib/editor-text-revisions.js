@@ -24,11 +24,10 @@ class RevisionHost extends WidgetType {
 }
 
 function decorations(active) {
-  if (!active || active.from >= active.to) return Decoration.none;
-  return Decoration.set([
-    Decoration.mark({ class: "cm-text-revision-original", attributes: { "data-revision-original": active.id } }).range(active.from, active.to),
-    Decoration.widget({ widget: new RevisionHost(active.id), block: true, side: 1 }).range(active.to),
-  ], true);
+  if (!active || active.from > active.to) return Decoration.none;
+  const ranges = [Decoration.widget({ widget: new RevisionHost(active.id), block: true, side: 1 }).range(active.to)];
+  if (active.from < active.to) ranges.unshift(Decoration.mark({ class: "cm-text-revision-original", attributes: { "data-revision-original": active.id } }).range(active.from, active.to));
+  return Decoration.set(ranges, true);
 }
 
 export const textRevisionField = StateField.define({
