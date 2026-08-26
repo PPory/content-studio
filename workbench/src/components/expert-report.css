@@ -1,0 +1,7 @@
+.expert-report__reference { margin: var(--sp-4) 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.expert-finding-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.expert-finding-head b { min-width: 0; }
+.expert-severity { flex: none; padding: 3px 7px; border-radius: var(--r-pill); background: var(--canvas); color: var(--text-2); font-size: var(--fs-2xs); font-style: normal; font-weight: 650; white-space: nowrap; }
+.expert-severity[data-severity="risk"] { background: color-mix(in srgb, var(--st-urgent) 14%, var(--surface)); color: var(--st-urgent-ink); }
+.expert-severity[data-severity="suggested"] { background: color-mix(in srgb, var(--st-review) 12%, var(--surface)); color: var(--st-review-ink); }
+.expert-severity[data-severity="optional"] { background: color-mix(in srgb, var(--text-3) 10%, var(--surface)); color: var(--text-2); }

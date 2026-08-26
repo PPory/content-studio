@@ -80,6 +80,13 @@ await page.route("**/api/writing-style", (route) => {
   profileFixture.styles = styles;
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...profileFixture, styles }) });
 });
+await page.route("**/api/ai/knowledge-card", (route) => route.fulfill({
+  status: 200,
+  contentType: "application/json",
+  body: JSON.stringify({ ok: true, card: { title: "收藏焦虑", conclusion: "收藏不能替代消化。", explanation: "需要把信息转成自己的判断。", evidence: "收藏处理的是焦虑。", boundaries: "", questions: "", personalUnderstanding: "", tags: ["内容创作"], evidenceStatus: "有原文支撑" } }),
+}));
+await page.route("**/api/vault/knowledge-card", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, card: { path: "99 - 个人工作台/06 - 知识卡片/收藏焦虑.md" } }) }));
+
 await page.route("**/api/expert-runs**", (route) => {
   const request = route.request();
   const url = new URL(request.url());
@@ -103,12 +110,12 @@ await page.route("**/api/expert-runs**", (route) => {
       kind,
       summary: "核心判断明确，但读者真实困境还需再具体一步。",
       strengths: [{ quote: "收藏处理的是焦虑", reason: "一句话抓住了核心矛盾。" }],
-      questions: Array.from({ length: 9 }, (_, index) => ({ id: `q${index + 1}`, status: index < 7 ? "pass" : "revise", finding: `品控问题 ${index + 1}`, direction: index < 7 ? "保留" : "补一处具体情境" })),
+      questions: Array.from({ length: 9 }, (_, index) => ({ id: `q${index + 1}`, status: index < 6 ? "pass" : index < 8 ? "warn" : "fail", finding: `品控问题 ${index + 1}`, direction: index < 6 ? "保留" : "补一处具体情境" })),
       mustFix: ["补充一个读者当下会遇到的具体场景"],
     } : {
       kind,
       summary: "共提取一项可核查表述，目前证据不足。",
-      claims: [{ quote: "增长 30%", location: "第二段", status: "待核", risk: "缺少统计口径", suggestion: "补充来源和年份", localSources: [], webSources: [{ title: "公开数据页", url: "https://example.com/data", excerpt: "需核对统计口径。" }] }],
+      claims: [{ quote: "增长 30%", location: "第二段", status: "unsupported", risk: "缺少统计口径", suggestion: "补充来源和年份", localSources: [], webSources: [{ title: "公开数据页", url: "https://example.com/data", excerpt: "需核对统计口径。" }] }],
       nextSteps: ["确认原始数据表"],
     };
     const materialAttempt = expertStarts.filter((item) => item.kind === "material-research").length;
@@ -343,6 +350,13 @@ try {
     const orbit = await page.$eval(".assistant-orbit", (item) => getComputedStyle(item).animationName);
     assert(orbit !== "none", "Pi 工作状态没有动态指示");
     await page.waitForFunction(() => document.querySelector(".assistant-message--assistant")?.textContent.includes("真实场景"));
+    const archiveButton = page.locator('.assistant-pane__context button:has-text("存为知识卡")');
+    assert((await archiveButton.getAttribute("title")).includes("Markdown 知识卡") && (await archiveButton.getAttribute("title")).includes("99 - 个人工作台 / 06 - 知识卡片"), "存知识卡入口没有在确认前说明对象和落点");
+    await archiveButton.click();
+    await page.waitForSelector('[role="dialog"][aria-label="知识卡片预览"]');
+    const knowledgeDialogText = await page.textContent('[role="dialog"][aria-label="知识卡片预览"]');
+    assert(knowledgeDialogText.includes("Markdown 知识卡") && knowledgeDialogText.includes("99 - 个人工作台 / 06 - 知识卡片") && knowledgeDialogText.includes("确认保存到知识卡片"), "知识卡确认层没有说明保存格式、位置或确认动作");
+    await page.click('[role="dialog"][aria-label="知识卡片预览"] button:has-text("关闭")');
     assert(assistantRequests.at(-1)?.style?.id === "story-led", "AI 助手没有使用编辑器里选择的本次写作风格");
     assert(assistantRequests.at(-1)?.document?.body.includes("收藏处理的是焦虑"), "AI 助手没有收到当前全文");
     const beforeCandidate = await editorValue(".project-draft .cm-content");
@@ -355,13 +369,22 @@ try {
 
     await page.click('.project-assistant__tabs button:has-text("检查报告")');
     const reportTabs = await page.$$eval(".assistant-reports > nav button", (items) => items.map((item) => item.textContent.trim()));
-    assert(reportTabs.join("/") === "素材查验/审稿建议/事实核查", `检查报告分类不完整：${reportTabs.join("/")}`);
-    await page.click('.assistant-report-empty button:has-text("开始素材查验")');
+    assert(reportTabs.join("/") === "素材查缺/Xenho 品控九问/事实核查", `检查报告分类不完整：${reportTabs.join("/")}`);
+    await page.click('.assistant-report-empty button:has-text("开始素材查缺")');
     await page.waitForSelector(".assistant-report-running .assistant-orbit");
     await page.waitForSelector('.assistant-report-error button:has-text("重新检查")');
     await page.click('.assistant-report-error button:has-text("重新检查")');
     await page.waitForFunction(() => document.querySelector(".assistant-report-result")?.textContent.includes("本地知识卡"));
     assert((await page.textContent(".assistant-report-result")).includes("权威网页来源"), "持久报告没有展示本地与公开来源");
+    assert((await page.textContent(".assistant-report-result")).includes("建议修改"), "素材报告没有使用统一严重度名称");
+
+    await page.click('.assistant-reports > nav button:has-text("Xenho 品控九问")');
+    await page.click('.assistant-report-empty button:has-text("开始Xenho 品控九问")');
+    await page.waitForFunction(() => document.querySelector(".assistant-report-result")?.textContent.includes("品控问题 9"));
+    const qualitySeverities = await page.$$eval(".assistant-report-result .expert-severity", (items) => [...new Set(items.map((item) => item.textContent.trim()))]);
+    assert(qualitySeverities.join("/") === "可选优化/建议修改/高风险", `品控报告严重度不完整：${qualitySeverities.join("/")}`);
+    const qualityReportText = await page.textContent(".assistant-report-result");
+    assert(qualityReportText.includes("AI 报告仅供参考") && !/阻塞发布|blocking/.test(qualityReportText), "品控报告仍暗示 AI 会阻止阶段推进");
 
     await page.click('.project-assistant__tabs button:has-text("项目素材")');
     assert(await page.$(".project-assistant__materials"), "项目素材没有留在统一右栏");
@@ -449,7 +472,7 @@ try {
   await page.click('.writing-assist__close');
   await page.click('.writing-tool-btn:has-text("检查")');
   const checks = await page.$$eval(".writing-checks__menu > button", (items) => items.map((item) => item.textContent.trim()));
-  assert(checks.length === 3 && checks.every((item) => /素材查缺|审一遍|事实核查/.test(item)), `检查任务不完整：${checks.join("/")}`);
+  assert(checks.length === 3 && checks.every((item) => /素材查缺|Xenho 品控九问|事实核查/.test(item)), `检查任务不完整：${checks.join("/")}`);
   await page.click(".project-draft .cm-content");
   await page.waitForSelector(".writing-checks__menu", { state: "detached" });
   await page.click('.writing-tool-btn:has-text("检查")');

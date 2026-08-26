@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
+import { expertKindDisplayName } from "../lib/expert-kinds.js";
+import { reportSeverity } from "../lib/report-severity.js";
 import { IconRefresh, IconX } from "./icons.jsx";
-
-const LABELS = {
-  "material-research": "素材查缺",
-  "quality-review": "Xenho 品控九问",
-  "fact-check": "事实核查",
-};
+import "./expert-report.css";
 
 function Sources({ items = [] }) {
   if (!items.length) return null;
@@ -20,18 +17,25 @@ function Sources({ items = [] }) {
   ))}</div>;
 }
 
+function Severity({ kind, status }) {
+  const severity = reportSeverity(kind, status);
+  return <em className="expert-severity" data-severity={severity.id}>{severity.displayName}</em>;
+}
+
 export function ExpertReport({ report }) {
   if (!report) return null;
   if (report.kind === "quality-review") return <div className="expert-report">
     <p className="expert-report__summary">{report.summary}</p>
+    <p className="expert-report__reference">AI 报告仅供参考；阶段推进仍由确定性业务规则决定。</p>
     {report.strengths?.length ? <section><h4>值得保留和强化</h4>{report.strengths.map((item, index) => <article key={index}><blockquote>{item.quote}</blockquote><p>{item.reason}</p></article>)}</section> : null}
-    <section><h4>九问结果</h4>{(report.questions || []).map((item, index) => <article className="quality-row" data-status={item.status} key={`${item.id}-${index}`}><span>{index + 1}</span><div><b>{item.finding || item.id}</b>{item.location ? <small>{item.location}</small> : null}{item.direction ? <p>修改方向：{item.direction}</p> : null}</div></article>)}</section>
-    {report.mustFix?.length ? <section><h4>发布前必须处理</h4><ul>{report.mustFix.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null}
+    <section><h4>九问结果</h4>{(report.questions || []).map((item, index) => <article className="quality-row" data-status={item.status} key={`${item.id}-${index}`}><span>{index + 1}</span><div><header className="expert-finding-head"><b>{item.finding || item.id}</b><Severity kind={report.kind} status={item.status} /></header>{item.location ? <small>{item.location}</small> : null}{item.direction ? <p>修改方向：{item.direction}</p> : null}</div></article>)}</section>
+    {report.mustFix?.length ? <section><h4>高风险</h4><ul>{report.mustFix.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null}
   </div>;
   return <div className="expert-report">
     <p className="expert-report__summary">{report.summary}</p>
+    <p className="expert-report__reference">AI 报告仅供参考；阶段推进仍由确定性业务规则决定。</p>
     <section><h4>{report.kind === "fact-check" ? "逐条核查" : "观点与素材缺口"}</h4>{(report.claims || []).map((item, index) => <article className="claim-row" data-status={item.status} key={index}>
-      <header><span>{index + 1}</span><b>{item.quote || item.need || "未命名观点"}</b>{item.status ? <em>{item.status}</em> : null}</header>
+      <header><span>{index + 1}</span><b>{item.quote || item.need || "未命名观点"}</b><Severity kind={report.kind} status={item.status} /></header>
       {item.location ? <small>{item.location}</small> : null}
       {item.need ? <p>需要：{item.need}</p> : null}
       {item.risk ? <p>风险：{item.risk}</p> : null}
@@ -69,9 +73,9 @@ export function ExpertTaskPanel({ run: initialRun, onRunChange, onClose, onRetry
   if (!run) return null;
   const working = ["queued", "running"].includes(run.status);
   return <div className="expert-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
-    <section className="expert-task" role="dialog" aria-modal="true" aria-label={LABELS[run.kind] || "专家任务"}>
+    <section className="expert-task" role="dialog" aria-modal="true" aria-label={expertKindDisplayName(run.kind, "专家任务")}>
       <header>
-        <div><small>专家任务 · {run.localSourceCount != null ? `本地找到 ${run.localSourceCount} 条候选来源` : "只读研究"}</small><strong>{LABELS[run.kind] || "专家检查"}</strong></div>
+        <div><small>专家任务 · {run.localSourceCount != null ? `本地找到 ${run.localSourceCount} 条候选来源` : "只读研究"}</small><strong>{expertKindDisplayName(run.kind)}</strong></div>
         <button onClick={onClose} aria-label="关闭专家任务"><IconX aria-hidden="true" /></button>
       </header>
       {working ? <div className="expert-progress" aria-live="polite"><div className="expert-progress__track"><span style={{ width: `${run.percent || 2}%` }} /></div><p><span className="expert-activity" aria-hidden="true"><i /></span><span>{run.stageLabel || "正在执行"}</span></p><small>关闭这个面板不会中止任务，回来仍能看到结果。</small></div> : null}

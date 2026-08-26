@@ -12,6 +12,8 @@ const FIELDS = [
   ["questions", "反例或待验证问题"],
   ["personalUnderstanding", "我的理解"],
 ];
+const KNOWLEDGE_CARD_DESTINATION = "vault / 99 - 个人工作台 / 06 - 知识卡片";
+
 
 export function KnowledgeCardDialog({ open, onClose, messages, source }) {
   const [card, setCard] = useState(null);
@@ -58,11 +60,12 @@ export function KnowledgeCardDialog({ open, onClose, messages, source }) {
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <section className="drawer drawer--wide" ref={boxRef} role="dialog" aria-modal="true" aria-label="知识卡片预览">
         <div className="drawer-head">
-          <div><span className="eyebrow">KNOWLEDGE CARD</span><div className="drawer-title">沉淀知识卡片</div></div>
+          <div><span className="eyebrow">KNOWLEDGE CARD</span><div className="drawer-title">保存知识卡片</div></div>
           <button className="icon-btn" onClick={onClose} title="关闭" aria-label="关闭"><IconX /></button>
         </div>
-        {busy ? <Note title="正在生成预览">确认前不会写入知识库。</Note> : null}
+        {busy ? <Note title="正在生成 Markdown 知识卡预览">确认前不会写入；确认后保存到 {KNOWLEDGE_CARD_DESTINATION}。</Note> : null}
         {card ? <>
+          <Note title="保存为 Markdown 知识卡">保存位置：{KNOWLEDGE_CARD_DESTINATION}</Note>
           <div className="field"><label>标题</label><input data-autofocus="" value={card.title || ""} onChange={(e) => patch("title", e.target.value)} /></div>
           {FIELDS.map(([key, label, short]) => <div className="field" key={key}><label>{label}</label>{short
             ? <input value={card[key] || ""} onChange={(e) => patch(key, e.target.value)} />
@@ -77,7 +80,7 @@ export function KnowledgeCardDialog({ open, onClose, messages, source }) {
         {saved ? <Note tone="success" title="知识卡已保存">{saved.path}</Note> : null}
         <div className="drawer-foot">
           <button className="btn" onClick={onClose}>关闭</button>
-          <button className="btn btn-primary" onClick={save} disabled={!card?.title?.trim() || busy || saving || !!saved}><IconArchive />{saving ? "保存中…" : saved ? "已保存" : "确认保存"}</button>
+          <button className="btn btn-primary" onClick={save} disabled={!card?.title?.trim() || busy || saving || !!saved}><IconArchive />{saving ? "保存中…" : saved ? "已保存" : "确认保存到知识卡片"}</button>
         </div>
       </section>
     </div>

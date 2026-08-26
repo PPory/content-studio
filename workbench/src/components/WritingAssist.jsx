@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
+import { EXPERT_KINDS, normalizeExpertKind } from "../lib/expert-kinds.js";
 import { brainstormStream, creationApi } from "../lib/creation-api.js";
 import { STARTING_LINE_COUNT, startingLine } from "../lib/writing-prompts.js";
 import {
@@ -31,26 +32,18 @@ function attachedMaterialContext(materials = []) {
   }).join("\n\n").slice(0, 8_000);
 }
 
-const CHECKS = Object.freeze([
-  {
-    id: "material-audit",
-    expertId: "material-researcher",
-    label: "素材查缺",
-    description: "逐个观点对照项目素材，指出缺口和下一步检索方向",
-  },
-  {
-    id: "quality-review",
-    expertId: "quality-reviewer",
-    label: "审一遍",
-    description: "检查读者、结构、逻辑、论据和可能误读，不替你重写",
-  },
-  {
-    id: "fact-check",
-    expertId: "fact-checker",
-    label: "事实核查",
-    description: "提取数字、日期、引语等可核查项；没有依据的一律标待核",
-  },
-]);
+const CHECK_DESCRIPTIONS = Object.freeze({
+  "material-research": "逐个观点对照项目素材，指出缺口和下一步检索方向",
+  "quality-review": "检查读者、结构、逻辑、论据和可能误读，不替你重写",
+  "fact-check": "提取数字、日期、引语等可核查项；没有依据的一律标待核",
+});
+
+const CHECKS = Object.freeze(EXPERT_KINDS.map((item) => Object.freeze({
+  id: item.id,
+  expertId: item.expertId,
+  label: item.displayName,
+  description: CHECK_DESCRIPTIONS[item.id],
+})));
 
 const styleStorageKey = (scopeId) => scopeId ? `workbench:draft-style:v1:${scopeId}` : "";
 const storedStyle = (scopeId) => {
@@ -219,18 +212,19 @@ export function WritingAssist({ title, body, platform, profile, materials = [], 
   }
 
   async function runCheck(checkId) {
-    const spec = CHECKS.find((item) => item.id === checkId);
+    const kind = normalizeExpertKind(checkId);
+    const spec = CHECKS.find((item) => item.id === kind);
     const expert = experts.find((item) => item.id === spec?.expertId);
     if (!spec || !expert || !body.trim() || checkBusy) return;
     setOpen(false);
     setCheckMenu(false);
     setCheckOpen(true);
-    setActiveCheck(checkId);
+    setActiveCheck(kind);
     setCheckBusy(true);
-    setExpertRun({ kind: { "material-audit": "material-research", "quality-review": "quality-review", "fact-check": "fact-check" }[checkId], status: "queued", stageLabel: "准备专家任务", percent: 2 });
+    setExpertRun({ kind, status: "queued", stageLabel: "准备专家任务", percent: 2 });
     try {
       const response = await api.startExpertRun({
-        kind: { "material-audit": "material-research", "quality-review": "quality-review", "fact-check": "fact-check" }[checkId],
+        kind,
         scopeId,
         document: { title, body, platform, audience, selection: getSelection?.() || null },
       });

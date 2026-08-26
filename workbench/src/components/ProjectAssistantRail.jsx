@@ -16,6 +16,7 @@ import {
 import { api } from "../lib/api.js";
 import { documentVersion } from "../lib/document-version.js";
 import { renderMarkdown } from "../lib/markdown.js";
+import { EXPERT_KINDS } from "../lib/expert-kinds.js";
 import { KnowledgeCardDialog } from "./KnowledgeCardDialog.jsx";
 import { ExpertReport } from "./ExpertTaskPanel.jsx";
 import {
@@ -43,22 +44,23 @@ const TABS = [
   { id: "reports", label: "检查报告", icon: IconShieldCheck },
 ];
 
-const REPORTS = [
-  { id: "material-research", label: "素材查验", expert: "素材顾问", icon: IconSearch },
-  { id: "quality-review", label: "审稿建议", expert: "审稿顾问", icon: IconFileText },
-  { id: "fact-check", label: "事实核查", expert: "事实核查", icon: IconShieldCheck },
-];
+const REPORT_ICONS = { "material-research": IconSearch, "quality-review": IconFileText, "fact-check": IconShieldCheck };
+const REPORTS = EXPERT_KINDS.map((item) => ({ ...item, label: item.displayName, expert: item.expertName, icon: REPORT_ICONS[item.id] }));
 
+const expertMenuItem = (kindId, hint) => {
+  const item = EXPERT_KINDS.find((entry) => entry.id === kindId);
+  return { id: item.expertId, label: item.expertName, hint };
+};
 const EXPERTS = [
   { id: "topic-editor", label: "选题顾问", hint: "收束方向与核心问题" },
   { id: "writing-coach", label: "写作教练", hint: "梳理、续写和改稿" },
-  { id: "material-researcher", label: "素材顾问", hint: "查知识库与公开来源" },
-  { id: "quality-reviewer", label: "审稿顾问", hint: "逐项回答 Xenho 品控九问" },
+  expertMenuItem("material-research", "查知识库与公开来源"),
+  expertMenuItem("quality-review", "逐项回答 Xenho 品控九问"),
   { id: "style-coach", label: "风格顾问", hint: "调准语气、节奏和表达习惯" },
-  { id: "fact-checker", label: "事实核查", hint: "核对数字、日期、人物与引语" },
+  expertMenuItem("fact-check", "核对数字、日期、人物与引语"),
 ];
 
-const PROJECT_EXPERTS = new Set(["writing-coach", "material-researcher", "quality-reviewer", "fact-checker"]);
+const PROJECT_EXPERTS = new Set(["writing-coach", ...EXPERT_KINDS.map((item) => item.expertId)]);
 
 const statusLabel = { queued: "排队中", running: "正在检查", done: "已完成", failed: "未完成", cancelled: "已中止" };
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
@@ -143,19 +145,29 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-function EmptyAssistant({ onPrompt, standalone = false }) {
+function EmptyAssistant({ onPrompt, standalone = false, context = "project" }) {
+  const reading = context === "reading";
   const actions = standalone ? [
     { icon: IconDatabase, title: "从知识库找关联", detail: "串起书、笔记和近期内容", prompt: "搜索我的知识库，看看最近记录的内容之间有什么关联" },
     { icon: IconSearch, title: "联网核查一个事实", detail: "搜公开来源，把证据边界说清", prompt: "我想核查一个事实，请先问我要查什么" },
     { icon: IconSparkles, title: "让专家一起分析", detail: "从写作、素材或品控角度进入", prompt: "我有一个问题想让专家一起分析，请先问我问题是什么" },
+  ] : reading ? [
+    { icon: IconFileText, title: "梳理这份文档", detail: "概括核心观点与论证关系", prompt: "请梳理这份文档的核心观点和论证关系" },
+    { icon: IconSearch, title: "带着问题深读", detail: "结合全文回答，不改动原文", prompt: "我想围绕这份文档继续深读，请先问我最关心什么" },
   ] : [
     { icon: IconShieldCheck, title: "先看一个关键问题", detail: "找出当前稿件最值得先解决的一处", prompt: "帮我看看这篇文章现在最需要解决的一个问题" },
     { icon: IconFileText, title: "给下一步方向", detail: "结合全文，判断下一段最值得写什么", prompt: "结合当前内容，告诉我下一段最值得写什么" },
   ];
+  const heading = standalone ? "今天想一起想清什么？" : reading ? "想从这份文档看清什么？" : "这篇内容，下一步做什么？";
+  const description = standalone
+    ? "直接开始对话，或选一个更明确的入口。"
+    : reading
+      ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
+      : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
   return <div className="assistant-empty">
     <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
-    <h3>{standalone ? "今天想一起想清什么？" : "这篇内容，下一步做什么？"}</h3>
-    <p>{standalone ? "直接开始对话，或选一个更明确的入口。" : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。"}</p>
+    <h3>{heading}</h3>
+    <p>{description}</p>
     <div className="assistant-empty__actions">
       {actions.map((action) => <button key={action.title} onClick={() => onPrompt(action.prompt)}>
         <action.icon aria-hidden="true" />
@@ -210,7 +222,7 @@ function ActionCard({ action, onApply }) {
   </section>;
 }
 
-export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, promptRequest = null, standalone = false, docked = false }) {
+export function AssistantPane({ scopeId, document = {}, materials = [], profile, selection, onInsert, onRevision, promptRequest = null, standalone = false, docked = false, emptyContext = "project" }) {
   const [messages, setMessages] = useState([]);
   const [actions, setActions] = useState([]);
   const [input, setInput] = useState("");
@@ -622,15 +634,15 @@ export function AssistantPane({ scopeId, document = {}, materials = [], profile,
 
                 {!standalone && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
         {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
-        {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="把本轮完整对话整理成知识卡片"><IconArchive aria-hidden="true" /><span>沉淀对话</span></button> : null}
+        {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
         <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{standalone ? <span>新对话</span> : null}</button>
       </div>
     </header>
 
     <div className="assistant-thread">
-      {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} /> : null}
+      {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={send} standalone={standalone} context={emptyContext} /> : null}
       {loading ? <Working label="正在打开对话" /> : null}
-      {messages.map((item) => <div className="assistant-turn" key={item.id}><Message item={item} attachments={attachments} currentVersion={currentVersion} canRevise={!standalone && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={() => rewind(false)} onEdit={() => rewind(true)} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={applyAction} />)}</div>)}
+      {messages.map((item) => <div className="assistant-turn" key={item.id}><Message item={item} attachments={attachments} currentVersion={currentVersion} canRevise={!standalone && typeof onRevision === "function" && !!selection?.text} canInsert={!standalone && !!onInsert} onRevise={(advice) => onRevision?.({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection })} onInsert={(text) => onInsert?.(text, { ai: true, kind: "AI 助手候选" })} onRegenerate={() => rewind(false)} onEdit={() => rewind(true)} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={applyAction} />)}</div>)}
       {busy && !messages.some((item) => item.pending && item.text) ? <Working label="Pi 正在处理" detail={activity} startedAt={turnStartedAt} /> : null}
       {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}>重试</button></div> : null}
       <div ref={endRef} />

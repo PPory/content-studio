@@ -50,7 +50,7 @@ export const WRITING_EXPERTS = Object.freeze([
   {
     id: "quality-reviewer",
     name: "审稿顾问",
-    scene: "编辑器 · 检查 → 审一遍",
+    scene: "编辑器 · 检查 → Xenho 品控九问",
     description: "从读者、结构、逻辑和证据四处把好质量关",
     enabled: true,
     instructions: [

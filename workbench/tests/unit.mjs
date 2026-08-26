@@ -18,6 +18,8 @@ import { startRun, patchRun, endRun } from "../src/lib/ai-runs.js";
 import { countWords, readStats } from "../src/lib/reading.js";
 import { normalizeAudiences } from "../server/lib/audiences.mjs";
 import { STARTING_LINE_COUNT, startingLine } from "../src/lib/writing-prompts.js";
+import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src/lib/expert-kinds.js";
+import { reportSeverity } from "../src/lib/report-severity.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -654,7 +656,17 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("编辑器只在帮我写中选择风格，不再修改提示词", /这次用什么语气写/.test(assist) && !/saveWritingStyle/.test(assist));
   const writingSettings = await fs.readFile(new URL("../src/components/SettingsWritingProfile.jsx", import.meta.url), "utf8");
   check("风格提示词统一在设置里修改保存", /实际发送给 AI 的提示词/.test(writingSettings) && /saveWritingStyle/.test(writingSettings));
-  check("素材审稿核查是三个独立任务", ["material-audit", "quality-review", "fact-check"].every((mode) => assist.includes(mode)));
+  check("三类专家检查只使用规范 kind", EXPERT_KINDS.map((item) => item.id).join("/") === "material-research/quality-review/fact-check");
+  check("旧素材检查 kind 只保留兼容映射", normalizeExpertKind("material-audit") === "material-research");
+  check("专家显示名来自唯一真源", expertKindDisplayName("material-audit") === "素材查缺" && expertKindDisplayName("quality-review") === "Xenho 品控九问" && expertKindDisplayName("fact-check") === "事实核查");
+  check("AI 报告统一为三档用户名称", [reportSeverity("quality-review", "fail"), reportSeverity("quality-review", "warn"), reportSeverity("quality-review", "pass")].map((item) => item.displayName).join("/") === "高风险/建议修改/可选优化");
+
+  const projectAssistant = await fs.readFile(new URL("../src/components/ProjectAssistantRail.jsx", import.meta.url), "utf8");
+  const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
+  const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
+  check("阅读区无 revision 回调时不显示改选区动作", /typeof onRevision === "function" && !!selection\?\.text/.test(projectAssistant));
+  check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
+  check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
 
   const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
   const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者", materials: "素材 A：真实案例" }).join("\n");

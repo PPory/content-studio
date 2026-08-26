@@ -158,6 +158,7 @@ export function SideRail({
           document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
           selection={assistantSelection}
           promptRequest={assistantPrompt}
+          emptyContext="reading"
         />
       ) : (
         <MarksPanel

@@ -3608,6 +3608,8 @@ try {
     await page.click('.rail-tabs button:has-text("AI 助手")');
     await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
     check("书架阅读区复用统一助手", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
+    const readingEmpty = await page.textContent(".rail .assistant-empty");
+    check("阅读区助手使用阅读语境空态", readingEmpty.includes("想从这份文档看清什么") && readingEmpty.includes("不会修改原文") && !readingEmpty.includes("项目"), readingEmpty.replace(/\s+/g, " ").slice(0, 100));
     await page.click(".rail .assistant-composer__access");
     check("书架的阅读区有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
     await page.keyboard.press("Escape");
@@ -4810,10 +4812,26 @@ try {
   await page.click('.rail-tabs button:has-text("AI 助手")');
   await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
   check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
+  await page.click('.rail .assistant-pane__context button[aria-label="新对话"]');
+  await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   await page.click(".rail .assistant-composer__access");
   check("对话有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
   check("新对话默认日常模式", (await page.textContent(".rail .assistant-composer__access")).includes("日常"));
   await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    const paragraph = document.querySelector(".reader .prose p");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.waitForSelector(".sel-bar", { timeout: 5000 });
+  await page.click('.sel-bar button[aria-label="批注"]');
+  await page.waitForSelector(".rail textarea", { timeout: 5000 });
+  await page.click('.rail-tabs button:has-text("AI 助手")');
+  await page.waitForSelector(".rail .assistant-context-chip[data-live=true]", { timeout: 5000 });
   await page.fill(".rail .assistant-composer textarea", "只回答两个字：收到");
   await page.click('.rail .assistant-send[aria-label="发送"]');
   await page.waitForSelector(".rail .assistant-message--assistant .assistant-message__markdown", { timeout: 120000 });
@@ -4828,6 +4846,7 @@ try {
   check("回复标着 Pi 运行时", (await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
   check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button:has-text("复制")')));
   await page.click(".rail .assistant-composer__access");
+  check("阅读区有选区但无 revision 落点时不显示改选区动作", !(await page.$('.rail .assistant-message--assistant button:has-text("按建议改选区")')));
   await page.click('.rail .assistant-permission-menu > button:has-text("创作")');
   await page.waitForFunction(() => document.querySelector(".rail .assistant-composer__access")?.textContent.includes("创作"));
   check("对话可切到创作模式", (await page.textContent(".rail .assistant-composer__access")).includes("创作"));
