@@ -17,9 +17,11 @@ export function Assistant() {
   return (
     <section className="assistant-page">
       <AssistantPane
+        scope="global"
+        surface="page"
+        target={{ kind: "none", editable: false }}
         scopeId="global:assistant"
         document={{}}
-        standalone
       />
     </section>
   );

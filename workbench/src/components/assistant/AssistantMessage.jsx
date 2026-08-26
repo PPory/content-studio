@@ -2,7 +2,7 @@ import { memo } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles } from "../icons.jsx";
 
-export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], canRevise, canInsert, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "" }) {
+export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], capabilities, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "" }) {
   const assistant = item.role === "assistant";
   const stale = assistant && item.documentVersion && currentVersion && item.documentVersion !== currentVersion;
   const sentAttachments = assistant ? [] : attachments.filter((attachment) => item.attachmentIds?.includes(attachment.id));
@@ -15,8 +15,8 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {assistant && item.text && !working ? <footer>
       <button onClick={() => navigator.clipboard?.writeText(item.text)} title="复制这条回复"><IconCopy aria-hidden="true" />复制</button>
-      {canInsert ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插入后会带底纹，仍需确认采用"}><IconPlus aria-hidden="true" />作为候选插入</button> : null}
-      {canRevise ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议生成选区改写候选"}><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
+      {capabilities.insertCandidate ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插入后会带底纹，仍需确认采用"}><IconPlus aria-hidden="true" />作为候选插入</button> : null}
+      {capabilities.reviseSelection ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议生成选区改写候选"}><IconRefresh aria-hidden="true" />按建议改选区</button> : null}
       {latestAssistant ? <button onClick={onRegenerate} title="用相同问题重新生成"><IconRefresh aria-hidden="true" />重新生成</button> : null}
     </footer> : null}
   </article>;

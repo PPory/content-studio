@@ -20,6 +20,7 @@ import { normalizeAudiences } from "../server/lib/audiences.mjs";
 import { STARTING_LINE_COUNT, startingLine } from "../src/lib/writing-prompts.js";
 import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src/lib/expert-kinds.js";
 import { reportSeverity } from "../src/lib/report-severity.js";
+import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant-policy.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -661,10 +662,32 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("专家显示名来自唯一真源", expertKindDisplayName("material-audit") === "素材查缺" && expertKindDisplayName("quality-review") === "Xenho 品控九问" && expertKindDisplayName("fact-check") === "事实核查");
   check("AI 报告统一为三档用户名称", [reportSeverity("quality-review", "fail"), reportSeverity("quality-review", "warn"), reportSeverity("quality-review", "pass")].map((item) => item.displayName).join("/") === "高风险/建议修改/可选优化");
 
-  const projectAssistant = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
+  const readonlyReading = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: false, selection: { text: "选区" } } });
+  const editableVault = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true, selection: { text: "选区" } } });
+  const editableDraft = resolveAssistantPolicy({ scope: "project", target: { kind: "draft", editable: true } });
+  check("只读阅读 target 永远没有 Candidate", !readonlyReading.results.includes("candidate") && !readonlyReading.capabilities.insertCandidate && !readonlyReading.capabilities.reviseSelection);
+  check("可编辑 vault target 有 Candidate", editableVault.results.includes("candidate") && editableVault.capabilities.insertCandidate && editableVault.capabilities.reviseSelection);
+  check("可编辑 vault target 不获得项目能力", !editableVault.capabilities.projectContext && !editableVault.capabilities.projectMaterials && !editableVault.capabilities.projectReports);
+  check("项目 Draft target 保留 Candidate 与项目能力", editableDraft.results.includes("candidate") && editableDraft.capabilities.projectContext && editableDraft.capabilities.projectMaterials && editableDraft.capabilities.projectReports);
+  const pagePolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "page" });
+  const railPolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "rail" });
+  check("surface 不改变 capability policy", JSON.stringify({ results: pagePolicy.results, capabilities: pagePolicy.capabilities, target: pagePolicy.target }) === JSON.stringify({ results: railPolicy.results, capabilities: railPolicy.capabilities, target: railPolicy.target }));
+  check("surface 配置与 capability policy 分离", Object.keys(ASSISTANT_SURFACES).join("/") === "page/overlay/rail");
+  check("scope policy 统一提供会话键", resolveAssistantPolicy({ scope: "global" }).session() === "global:assistant" && resolveAssistantPolicy({ scope: "project" }).session("draft-1") === "project:draft-1" && resolveAssistantPolicy({ scope: "reading" }).session("shelf", "doc-1") === "reading:shelf:doc-1");
+
+  const assistantPane = await fs.readFile(new URL("../src/components/assistant/AssistantPane.jsx", import.meta.url), "utf8");
+  const assistantThread = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
+  const assistantMessage = await fs.readFile(new URL("../src/components/assistant/AssistantMessage.jsx", import.meta.url), "utf8");
+  const assistantPage = await fs.readFile(new URL("../src/pages/Assistant.jsx", import.meta.url), "utf8");
+  const globalDock = await fs.readFile(new URL("../src/components/GlobalAssistantDock.jsx", import.meta.url), "utf8");
+  const projectRail = await fs.readFile(new URL("../src/components/ProjectAssistantRail.jsx", import.meta.url), "utf8");
+  const readingRail = await fs.readFile(new URL("../src/components/SideRail.jsx", import.meta.url), "utf8");
   const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
   const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
-  check("阅读区无 revision 回调时不显示改选区动作", /typeof onRevision === "function" && !!selection\?\.text/.test(projectAssistant));
+  check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global" surface="rail" target=/.test(globalDock) && /scope="project" surface="rail" target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
+  check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${globalDock}\n${projectRail}\n${readingRail}`));
+  check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
+  check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
 

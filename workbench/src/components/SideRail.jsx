@@ -154,11 +154,12 @@ export function SideRail({
         <AiPanel ai={ai} onSave={onSaveAiAsNote} onStop={onStopAi} onRun={onRunAi} saveLabel={saveLabel} />
       ) : mode === "chat" ? (
         <AssistantPane
+          scope="reading"
+          surface="rail"
+          target={{ kind: "vault-document", editable: false, selection: assistantSelection }}
           scopeId={assistantScopeId || `reader:${knowledgeSource?.ref || "document"}`}
           document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
-          selection={assistantSelection}
           promptRequest={assistantPrompt}
-          emptyContext="reading"
         />
       ) : (
         <MarksPanel

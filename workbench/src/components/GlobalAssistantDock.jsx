@@ -24,7 +24,7 @@ export function GlobalAssistantDock({ onClose }) {
         <span><IconSparkles aria-hidden="true" /><b>AI 助手</b></span>
         <button type="button" onClick={onClose} aria-label="关闭 AI 助手" title="关闭"><IconX aria-hidden="true" /></button>
       </header>
-      <AssistantPane scopeId="global:assistant" document={{}} standalone docked />
+      <AssistantPane scope="global" surface="rail" target={{ kind: "none", editable: false }} scopeId="global:assistant" document={{}} />
     </aside>
   );
 }

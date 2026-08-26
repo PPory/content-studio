@@ -71,7 +71,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       {TABS.map((item) => <button key={item.id} aria-pressed={tab === item.id} onClick={() => setTab(item.id)}><item.icon aria-hidden="true" /><span>{item.label}</span>{item.id !== "assistant" && counts[item.id] ? <em>{counts[item.id]}</em> : null}</button>)}
     </nav>
     <div className="project-assistant__body">
-      {tab === "assistant" ? <AssistantPane scopeId={scopeId} document={document} materials={materials} profile={profile} selection={selection} onInsert={onInsert} onRevision={onRevision} /> : null}
+      {tab === "assistant" ? <AssistantPane scope="project" surface="rail" target={{ kind: "draft", editable: true, selection, actions: { insert: onInsert, revise: onRevision } }} scopeId={scopeId} document={document} materials={materials} profile={profile} /> : null}
       {tab === "materials" ? <div className="project-assistant__materials">{children}</div> : null}
       {tab === "reports" ? <ReportsPane runs={runs} activeKind={reportKind} onKind={setReportKind} onRun={startRun} onRetry={retry} onCancel={cancel} /> : null}
       {reportError ? <div className="assistant-error assistant-report-global"><b>{reportError.message}</b>{reportError.hint ? <p>{reportError.hint}</p> : null}</div> : null}

@@ -36,7 +36,7 @@ export function AssistantComposer({
   uploadError,
   inputRef,
   input,
-  standalone,
+  scope,
   permissionOpen,
   permissionRef,
   permissionModes,
@@ -69,7 +69,7 @@ export function AssistantComposer({
   return <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
     {pendingAttachments.length && !busy ? <div className="assistant-attachments">{pendingAttachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
     {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={onDismissUploadError} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
-    <textarea ref={inputRef} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={standalone ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
+    <textarea ref={inputRef} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
     {permissionOpen ? <div className="assistant-permission-menu" ref={permissionRef} role="menu" aria-label="选择权限">
       {permissionModes.map((item) => <button type="button" role="menuitemradio" key={item.id} aria-checked={item.id === permissionMode} onClick={() => onChoosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span>{item.id === permissionMode ? <IconCheck aria-hidden="true" /> : null}</button>)}
     </div> : null}
