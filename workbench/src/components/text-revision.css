@@ -45,6 +45,78 @@
 .text-revision-menu__command button { width: 32px; border: 0; border-radius: var(--r-ctl); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .text-revision-menu__command button svg { width: 15px; height: 15px; }
 
+.cursor-writing-menu {
+  min-width: min(360px, calc(100vw - 24px));
+}
+.cursor-writing-menu .text-revision-menu__actions button:focus-visible,
+.cursor-writing-menu__result button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cursor-writing-menu__status,
+.cursor-writing-menu__error,
+.cursor-writing-menu__result {
+  margin-top: 4px;
+  padding: 8px 9px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+.cursor-writing-menu__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cursor-writing-menu__status svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+.cursor-writing-menu__error {
+  display: grid;
+  gap: 2px;
+  color: var(--danger);
+}
+.cursor-writing-menu__error small {
+  color: var(--text-3);
+}
+.cursor-writing-menu__result {
+  max-width: 360px;
+}
+.cursor-writing-menu__result small,
+.cursor-writing-menu__hint {
+  color: var(--text-3);
+}
+.cursor-writing-menu__result p {
+  margin: 3px 0 7px;
+  white-space: pre-wrap;
+}
+.cursor-writing-menu__result button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.cursor-writing-menu__result button:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+.cursor-writing-menu__result button svg {
+  width: 13px;
+  height: 13px;
+}
+.cursor-writing-menu__hint {
+  display: block;
+  padding: 4px 8px 2px;
+  font-size: 10.5px;
+}
 .cm-text-revision-original {
   color: var(--text-3);
   text-decoration: line-through;

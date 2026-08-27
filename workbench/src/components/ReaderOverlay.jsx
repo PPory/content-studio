@@ -17,7 +17,6 @@ import { Reader } from "./Reader.jsx";
 import { SideRail } from "./SideRail.jsx";
 import { ReadingPrefs, loadPrefs, prefsToStyle } from "./ReadingPrefs.jsx";
 import { MarkdownEditor } from "./MarkdownEditor.jsx";
-import { WritingAssist } from "./WritingAssist.jsx";
 import { ErrorNote, Loading, MetaItem, Select, relTime } from "./ui.jsx";
 import { readStats } from "../lib/reading.js";
 import { lockScroll } from "../lib/scroll-lock.js";
@@ -387,9 +386,9 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [insertRequest, setInsertRequest] = useState(null);
-  const writingCursor = useRef(0);
-  const writingSelection = useRef(null);
+
+
+
   const armedDel = useConfirmGuard(confirmDel);
 
   useEffect(() => {
@@ -411,7 +410,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
     setTitle(doc.title);
     setError(null);
     setSaved(false);
-    setInsertRequest(null);
+
     setEditing(true);
     setReveal(revealAt ? (cur) => ({ text: revealAt, nonce: (cur?.nonce || 0) + 1 }) : null);
   }
@@ -483,25 +482,12 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           onChange={setDraft}
           ariaLabel="正文（Markdown）"
           revealText={reveal}
-          insertRequest={insertRequest}
-          onCursorChange={(position) => { writingCursor.current = position; }}
-          onSelectionChange={(value) => { writingSelection.current = value; }}
-          onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
           revisionScope={source.key === "drafts" ? `pipeline:drafts:${item.key}` : ""}
           revisionTitle={title}
           revisionPlatform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
-          toolbarExtra={(
-            <WritingAssist
-              title={title}
-              body={draft}
-              platform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
-              profile={writingProfile}
-              scopeId={`${source.key}:${item.key}`}
-              getCursor={() => writingCursor.current}
-              getSelection={() => writingSelection.current}
-              onInsert={(text, meta) => setInsertRequest({ id: `writing-${Date.now()}`, text, spacing: "exact", ai: meta?.ai, kind: meta?.kind })}
-            />
-          )}
+          assistantScope="reading"
+          assistantTarget={{ kind: "vault-document", editable: true }}
+          inlineAiContext={{ profile: writingProfile, materials: [] }}
         />
         <ErrorNote error={error} what="保存" />
         {/* 动作条固定在底部，和右栏批注台那套是同一条规则：按钮永远在同一个位置，

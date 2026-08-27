@@ -669,10 +669,14 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const readonlyReading = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: false, selection: { text: "选区" } } });
   const editableVault = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true, selection: { text: "选区" } } });
   const editableDraft = resolveAssistantPolicy({ scope: "project", target: { kind: "draft", editable: true } });
+  const editableDraftSelection = resolveAssistantPolicy({ scope: "project", target: { kind: "draft", editable: true, selection: { text: "选区" } } });
   check("只读阅读 target 永远没有 Candidate", !readonlyReading.results.includes("candidate") && !readonlyReading.capabilities.insertCandidate && !readonlyReading.capabilities.reviseSelection);
   check("可编辑 vault target 有 Candidate", editableVault.results.includes("candidate") && editableVault.capabilities.insertCandidate && editableVault.capabilities.reviseSelection);
   check("可编辑 vault target 不获得项目能力", !editableVault.capabilities.projectContext && !editableVault.capabilities.projectMaterials && !editableVault.capabilities.projectReports);
   check("项目 Draft target 保留 Candidate 与项目能力", editableDraft.results.includes("candidate") && editableDraft.capabilities.projectContext && editableDraft.capabilities.projectMaterials && editableDraft.capabilities.projectReports);
+  check("Project 与 Reading 可编辑正文共用光标写作能力", editableDraft.capabilities.writeAtCursor && editableVault.capabilities.writeAtCursor);
+  check("Project 与 Reading 选区改写能力矩阵一致", editableDraftSelection.capabilities.reviseSelection && editableVault.capabilities.reviseSelection);
+  check("只读 Reading 不出现光标或选区修改能力", !readonlyReading.capabilities.writeAtCursor && !readonlyReading.capabilities.reviseSelection);
   const pagePolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "page" });
   const railPolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "rail" });
   check("surface 不改变 capability policy", JSON.stringify({ results: pagePolicy.results, capabilities: pagePolicy.capabilities, target: pagePolicy.target }) === JSON.stringify({ results: railPolicy.results, capabilities: railPolicy.capabilities, target: railPolicy.target }));
@@ -688,12 +692,19 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const readingRail = await fs.readFile(new URL("../src/components/SideRail.jsx", import.meta.url), "utf8");
   const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
   const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
+  const inlineMarkdownEditor = await fs.readFile(new URL("../src/components/MarkdownEditor.jsx", import.meta.url), "utf8");
+  const textRevision = await fs.readFile(new URL("../src/components/TextRevision.jsx", import.meta.url), "utf8");
+  const projectWorkspace = await fs.readFile(new URL("../src/pages/ProjectWorkspace.jsx", import.meta.url), "utf8");
+  const readerOverlay = await fs.readFile(new URL("../src/components/ReaderOverlay.jsx", import.meta.url), "utf8");
   check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global" surface="rail" target=/.test(globalDock) && /scope="project"[\s\S]*surface="rail"[\s\S]*target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
   check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${globalDock}\n${projectRail}\n${readingRail}`));
   check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
+  check("编辑器内联 AI 只读取 scope + target policy", /resolveAssistantPolicy/.test(inlineMarkdownEditor) && /capabilities\.writeAtCursor/.test(inlineMarkdownEditor) && /function beginRevision[\s\S]{0,220}capabilities\.reviseSelection/.test(inlineMarkdownEditor));
+  check("Project 与 Reading 显式传入相同内联能力边界", /assistantScope="project"[\s\S]*assistantTarget=\{\{ kind: "draft", editable: draftEditable \}\}/.test(projectWorkspace) && /assistantScope="reading"[\s\S]*assistantTarget=\{\{ kind: "vault-document", editable: true \}\}/.test(readerOverlay));
+  check("WritingAssist 兼容源码保留但不再挂入 Reading 工具栏", /export function CursorWritingMenu/.test(textRevision) && !/<WritingAssist/.test(readerOverlay));
 
   const grounding = normalizeGrounding({
     used: [{ id: "m1", title: "真实案例" }],

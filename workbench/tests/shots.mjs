@@ -335,10 +335,10 @@ const shots = [
   ["project-ai", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
     await page.click(".ptable__row", { timeout: 8000 }).catch(() => {});
-    await page.waitForSelector(".writing-assist__trigger", { timeout: 25000 }).catch(() => {});
-    await page.click(".writing-assist__trigger").catch(() => {});
-    await page.click('.writing-assist__modes button:has-text("聊一聊")').catch(() => {});
-    await page.waitForSelector(".writing-assist__welcome", { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".project-draft .cm-content", { timeout: 25000 }).catch(() => {});
+    await page.click(".project-draft .cm-content").catch(() => {});
+    await page.keyboard.press("Alt+Enter").catch(() => {});
+    await page.waitForSelector(".cursor-writing-menu", { timeout: 8000 }).catch(() => {});
   }],
   ["project-release", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     projectDetailShot = PROJECT_SHOT_RELEASE;

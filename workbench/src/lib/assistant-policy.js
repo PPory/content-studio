@@ -62,6 +62,7 @@ export function resolveAssistantPolicy({ scope, target = {} }) {
     capabilities: Object.freeze({
       candidate,
       insertCandidate: candidate,
+      writeAtCursor: candidate,
       reviseSelection: selectionCandidate,
       history: base.history,
       projectContext: base.projectContext,

@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const STAGE6_SHOT_DIR = path.join(ROOT, "tmp", "stage6-production");
+const STAGE7_SHOT_DIR = path.join(ROOT, "tmp", "stage7-inline-ai");
 await fs.mkdir(STAGE6_SHOT_DIR, { recursive: true });
+await fs.mkdir(STAGE7_SHOT_DIR, { recursive: true });
 const PORT = 5202;
 
 function loadPlaywright() {
@@ -360,6 +362,34 @@ try {
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-long-title.png"), fullPage: false });
     await page.fill(".project-draft__title", originalTitle);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-empty.png"), fullPage: false });
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText("收藏处理的是焦虑，不是信息。");
+    await page.keyboard.press("Control+End");
+    const projectCursorBefore = await editorValue(".project-draft .cm-content");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    assert(!(await page.$(".project-draft .writing-assist__trigger")), "Project 编辑器仍有常驻 AI 按钮");
+    await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-cursor-menu.png"), fullPage: false });
+    await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
+    await page.waitForSelector(".cursor-writing-menu__result");
+    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "想一想不应修改正文");
+    assert(requests.at(-1)?.mode === "nudge" && requests.at(-1)?.cursor === projectCursorBefore.length, "Project 光标位置没有交给想一想");
+    await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("续写")');
+    await page.waitForSelector(".project-draft .candidate-card textarea");
+    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "Project 续写在采纳前修改了正文");
+    await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-inline-candidate.png"), fullPage: false });
+    await page.focus(".project-draft .candidate-card textarea");
+    await page.keyboard.press("Control+Backspace");
+    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "Project 光标 Candidate 弃用后改变正文");
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForSelector(".text-revision-menu");
+    await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-selection-menu.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".text-revision-menu", { state: "detached" });
 
     const beforeSuggestionRequests = assistantRequests.length;
     await page.click(".assistant-empty[data-scope='project'] .assistant-empty__actions button:first-child");
@@ -721,24 +751,33 @@ try {
   await page.waitForSelector('.doc-actions button:has-text("编辑")', { timeout: 25000 });
   await page.click('.doc-actions button:has-text("编辑")');
   await page.waitForSelector(".ws-edit .cm-content", { timeout: 8000 });
-  assert((await page.$$(".ws-edit .writing-assist__trigger")).length === 1, "正式编辑器里没有推动按钮");
+  assert((await page.$$(".ws-edit .writing-assist__trigger")).length === 0, "Reading 编辑器仍保留旧 WritingAssist 常驻按钮");
   await page.click(".ws-edit .cm-content");
   await page.keyboard.press("Control+Home");
   for (let index = 0; index < 12; index += 1) await page.keyboard.press("ArrowRight");
   const existingBefore = await editorValue(".ws-edit .cm-content");
-  await page.click(".ws-edit .writing-assist__trigger");
-  await page.waitForSelector(".ws-edit .writing-assist__result");
+  await page.keyboard.press("Alt+Enter");
+  await page.waitForSelector(".cursor-writing-menu");
+  const firstCursorActionFocused = await page.evaluate(() => document.activeElement === document.querySelector(".cursor-writing-menu .text-revision-menu__actions button"));
+  assert(firstCursorActionFocused, "Reading 光标菜单打开后没有把键盘焦点交给首个动作");
+  await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-cursor-menu.png"), fullPage: false });
+  await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
+  await page.waitForFunction(() => document.querySelector(".cursor-writing-menu__result")?.textContent.includes("读者最可能反对"));
   const existingNudge = requests.filter((item) => item.mode === "nudge").at(-1);
-  assert(existingNudge?.cursor === 12 && existingNudge.cursor < existingNudge.content.length, "正式编辑器仍然按文末而不是当前光标请求");
-  await page.click('.ws-edit .writing-assist__modes button:has-text("帮我写")');
-  await page.click('.ws-edit .writing-assist__choice button:has-text("续写一段")');
-  await page.waitForFunction(() => document.querySelector(".ws-edit .writing-assist__result > p")?.textContent.includes("缺少更多方法"));
-  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-existing-editor.png"), fullPage: false });
-  await page.click('.ws-edit .writing-assist__result button[aria-label="插入光标处"]');
-  await page.waitForFunction(() => document.querySelector(".ws-edit .cm-content")?.textContent.includes("缺少更多方法"));
+  assert(existingNudge?.cursor === 12 && existingNudge.cursor < existingNudge.content.length, "Reading 想一想仍然按文末而不是当前光标请求");
+  assert((await editorValue(".ws-edit .cm-content")) === existingBefore, "Reading 想一想修改了正文");
+  await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-edit-mode.png"), fullPage: false });
+  await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("续写")');
+  await page.waitForSelector(".ws-edit .candidate-card textarea");
+  assert(!(await editorValue(".ws-edit .cm-content")).includes(paragraph), "Reading 光标生成在采纳前写入了候选正文");
+  await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-inline-candidate.png"), fullPage: false });
+  await page.focus(".ws-edit .candidate-card textarea");
+  await page.keyboard.press("Control+Enter");
+  await page.waitForSelector(".ws-edit .candidate-card", { state: "detached" });
   const existingAfter = await editorValue(".ws-edit .cm-content");
-  assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "正式编辑器没有在当前光标精确插入");
-  assert((await page.$$(".ws-edit .cm-ai-draft")).length > 0, "正式编辑器里的 AI 续写没有底纹");
+  assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "Reading 光标 Candidate 没有在采纳后精确插入");
+  const editorFocusRestored = await page.evaluate(() => document.activeElement?.classList.contains("cm-content"));
+  assert(editorFocusRestored, "Reading Candidate 采纳后没有把焦点还给正文");
 
   // 正式改稿：选区 → 自定义润色 → 对比 → 重写 → 编辑候选 → 采纳。
   await page.click(".ws-edit .cm-content");
@@ -832,6 +871,9 @@ try {
   await page.click('.candidate-card .text-revision-review__decide button:has-text("弃用")');
   assert((await editorValue(".ws-edit .cm-content")) === beforeRejected, "failed Candidate 弃用后改变了正文");
   await page.click('.ws-edit__foot button:has-text("取消")');
+  await page.keyboard.press("Alt+Enter");
+  await page.waitForTimeout(100);
+  assert(!(await page.$(".cursor-writing-menu")) && !(await page.$(".text-revision-menu")), "Reading 只读模式仍出现正文修改动作");
 
   await page.evaluate(() => localStorage.removeItem("xenho-assistant-model"));
   await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });

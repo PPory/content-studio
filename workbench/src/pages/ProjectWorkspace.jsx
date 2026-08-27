@@ -665,6 +665,9 @@ ${(form.body || "").slice(0, 3000)}`);
                 revisionScope={`pipeline:drafts:${draft.id}`}
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
+                assistantScope="project"
+                assistantTarget={{ kind: "draft", editable: draftEditable }}
+                inlineAiContext={{ profile: writingProfile, materials: project.materials || [] }}
                 onCandidateReviewModeChange={setCandidateReviewFocused}
                 readOnly={!draftEditable}
               />

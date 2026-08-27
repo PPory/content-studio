@@ -25,6 +25,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { renderMarkdown } from "../lib/markdown.js";
 import { creationApi } from "../lib/creation-api.js";
+import { resolveAssistantPolicy } from "../lib/assistant-policy.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import { clearTextRevision, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
@@ -50,7 +51,7 @@ import {
 } from "./icons.jsx";
 import { Select } from "./ui.jsx";
 import { CandidateCard } from "./assistant/CandidateCard.jsx";
-import { SelectionRevisionMenu, revisionLabel } from "./TextRevision.jsx";
+import { CursorWritingMenu, SelectionRevisionMenu, revisionLabel } from "./TextRevision.jsx";
 import "./ai-draft-review.css";
 
 /**
@@ -118,6 +119,39 @@ function revisionSelectionOf(view) {
   };
 }
 
+function cursorWritingAnchorOf(view) {
+  const { from, to } = view.state.selection.main;
+  if (from !== to) return null;
+  const coords = view.coordsAtPos(from);
+  if (!coords) return null;
+  const placement = coords.top > 132 ? "above" : "below";
+  return {
+    from,
+    to,
+    left: Math.max(18, Math.min(window.innerWidth - 18, coords.left)),
+    top: placement === "above" ? coords.top - 8 : coords.bottom + 8,
+    placement,
+  };
+}
+
+function inlineMaterialContext(materials = []) {
+  return materials.slice(0, 12).map((item, index) => {
+    const text = String(item.content || item.note || item.summary || "").trim().slice(0, 900);
+    const source = String(item.sourceUrl || item.source || "").trim().slice(0, 300);
+    return [`${index + 1}. ${item.title || "未命名素材"}`, text, source ? `来源：${source}` : ""].filter(Boolean).join("\n");
+  }).join("\n\n").slice(0, 8_000);
+}
+
+function inlineWritingPrompts(context = {}, instruction = "") {
+  const profile = context.profile || {};
+  const writer = (profile.experts || []).find((item) => item.enabled && item.id === "writing-coach");
+  const style = profile.style || (profile.styles || []).find((item) => item.enabled && item.id === profile.profile?.styleId);
+  return {
+    expert: [writer ? `${writer.name}\n${writer.instructions}` : "", instruction ? `本次生成要求：${instruction}` : ""].filter(Boolean).join("\n"),
+    style: style ? `${style.name}\n${style.instructions}` : "",
+    materials: inlineMaterialContext(context.materials || []),
+  };
+}
 // ---- 工具栏的动作：**一律是「插入 Markdown 记号」，不是富文本命令** ----------
 // 这样按钮做的事和你自己敲出来的完全一样，没有第二套模型要对账。
 
@@ -247,6 +281,7 @@ export function MarkdownEditor({
   onSelectionChange,              // 有选区时，专家只分析这一段；无选区时回到全文
   revisionRequest, onRevisionHandled, // 右栏 AI 助手发来的选区修订；仍走同一套候选/采纳机制
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
+  assistantScope = "", assistantTarget = { kind: "none", editable: false }, inlineAiContext = {},
   onCandidateReviewModeChange,
   readOnly = false,
 }) {
@@ -266,15 +301,23 @@ export function MarkdownEditor({
   const [aiDrafts, setAiDrafts] = useState([]);
   const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
   const [selectionMenu, setSelectionMenu] = useState(null);
+  const [cursorMenu, setCursorMenu] = useState(null);
   const [activeRevision, setActiveRevision] = useState(null);
   const [, setRevisionHostTick] = useState(0);
   const activeRevisionRef = useRef(null);
   const revisionAbort = useRef(null);
+  const cursorNudgeAbort = useRef(null);
   const revisionSaveTimer = useRef(0);
   const [revisionHistory, setRevisionHistory] = useState([]);
   const [revisionSaveError, setRevisionSaveError] = useState("");
   const revisionScopeRef = useRef(revisionScope);
   revisionScopeRef.current = revisionScope;
+  const assistantScopeRef = useRef(assistantScope);
+  assistantScopeRef.current = assistantScope;
+  const assistantTargetRef = useRef(assistantTarget);
+  assistantTargetRef.current = assistantTarget;
+  const inlineAiContextRef = useRef(inlineAiContext);
+  inlineAiContextRef.current = inlineAiContext;
   const previewRef = useRef(preview);
   previewRef.current = preview;
 
@@ -283,6 +326,30 @@ export function MarkdownEditor({
     setActiveRevision(next);
   };
 
+  function inlinePolicyAt(selection = null) {
+    const scope = assistantScopeRef.current;
+    if (!scope) return null;
+    return resolveAssistantPolicy({
+      scope,
+      target: { ...assistantTargetRef.current, selection },
+    });
+  }
+
+  function closeCursorWriting({ restoreFocus = true } = {}) {
+    cursorNudgeAbort.current?.abort();
+    cursorNudgeAbort.current = null;
+    setCursorMenu(null);
+    if (restoreFocus) requestAnimationFrame(() => view.current?.focus());
+  }
+
+  function openCursorWriting(currentView) {
+    const anchor = cursorWritingAnchorOf(currentView);
+    const policy = inlinePolicyAt(null);
+    if (!anchor || !policy?.capabilities.writeAtCursor || previewRef.current || currentView.state.field(textRevisionField).active) return false;
+    setSelectionMenu(null);
+    setCursorMenu({ ...anchor, busy: false, error: null, result: null, mode: "" });
+    return true;
+  }
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
   // 光标、撤销历史、滚动位置全丢。外部改值走下面那个 effect 的补丁式更新。
   useEffect(() => {
@@ -295,7 +362,12 @@ export function MarkdownEditor({
           history(),
           drawSelection(),
           EditorView.lineWrapping,
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+          keymap.of([
+            { key: "Alt-Enter", preventDefault: true, run: (currentView) => openCursorWriting(currentView) },
+            ...defaultKeymap,
+            ...historyKeymap,
+            indentWithTab,
+          ]),
           markdown({ base: markdownLanguage }),
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
@@ -357,7 +429,11 @@ export function MarkdownEditor({
               setActiveRevision(null);
             }
             if (u.selectionSet || u.docChanged) {
-              setSelectionMenu(revisionScopeRef.current && !previewRef.current && !revisionNow.active ? revisionSelectionOf(u.view) : null);
+              cursorNudgeAbort.current?.abort();
+              setCursorMenu(null);
+              const nextSelection = revisionSelectionOf(u.view);
+              const selectionPolicy = inlinePolicyAt(nextSelection);
+              setSelectionMenu(selectionPolicy?.capabilities.reviseSelection && !previewRef.current && !revisionNow.active ? nextSelection : null);
             }
           }),
         ],
@@ -368,7 +444,11 @@ export function MarkdownEditor({
     onSelectionChangeRef.current?.(null);
     const refreshSelection = () => {
       const active = v.state.field(textRevisionField).active;
-      setSelectionMenu(revisionScopeRef.current && !previewRef.current && !active ? revisionSelectionOf(v) : null);
+      const nextSelection = revisionSelectionOf(v);
+      const selectionPolicy = inlinePolicyAt(nextSelection);
+      setSelectionMenu(selectionPolicy?.capabilities.reviseSelection && !previewRef.current && !active ? nextSelection : null);
+      cursorNudgeAbort.current?.abort();
+      setCursorMenu(null);
       if (active) requestAnimationFrame(() => setRevisionHostTick((tick) => tick + 1));
     };
     v.scrollDOM.addEventListener("scroll", refreshSelection, { passive: true });
@@ -427,10 +507,12 @@ export function MarkdownEditor({
   useEffect(() => {
     let cancelled = false;
     revisionAbort.current?.abort();
+    cursorNudgeAbort.current?.abort();
     clearTimeout(revisionSaveTimer.current);
     setRevisionSaveError("");
     setRevisionHistory([]);
     setSelectionMenu(null);
+    setCursorMenu(null);
     if (view.current?.state.field(textRevisionField).active) view.current.dispatch({ effects: clearTextRevision.of(null) });
     setCurrentRevision(null);
     if (revisionScope) {
@@ -445,6 +527,7 @@ export function MarkdownEditor({
 
   useEffect(() => () => {
     revisionAbort.current?.abort();
+    cursorNudgeAbort.current?.abort();
     clearTimeout(revisionSaveTimer.current);
   }, []);
 
@@ -542,6 +625,109 @@ export function MarkdownEditor({
     }
   }
 
+  async function generateCursorCandidate(base, instruction = base.instruction || "") {
+    const v = view.current;
+    if (!v || !base) return;
+    revisionAbort.current?.abort();
+    const controller = new AbortController();
+    revisionAbort.current = controller;
+    const documentVersion = documentVersionOf(v.state.doc.toString());
+    const pending = createCandidate({ ...base, instruction, documentVersion, status: "generating", error: null }, documentVersion);
+    setCurrentRevision(pending);
+    try {
+      const prompts = inlineWritingPrompts(inlineAiContextRef.current, instruction);
+      const result = await creationApi.writingAssist({
+        mode: "paragraph",
+        title: revisionTitle,
+        content: v.state.doc.toString(),
+        cursor: pending.from,
+        platform: revisionPlatform,
+        materials: prompts.materials,
+        expert: prompts.expert,
+        style: prompts.style,
+      }, controller.signal);
+      const current = activeRevisionRef.current;
+      if (!current || current.id !== base.id) return;
+      const now = new Date().toISOString();
+      const next = createCandidate({
+        ...current,
+        instruction,
+        text: result.text,
+        grounding: result.grounding,
+        generations: [...(current.generations || []), { text: result.text, at: now }],
+        status: "ready",
+        error: null,
+        documentVersion,
+      }, documentVersionOf(v.state.doc.toString()));
+      setCurrentRevision(next);
+      await persistRevision(next, "pending");
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      const current = activeRevisionRef.current;
+      if (current?.id === base.id) setCurrentRevision(createCandidate({ ...current, instruction, status: "failed", error }, documentVersionOf(v.state.doc.toString())));
+    } finally {
+      if (revisionAbort.current === controller) revisionAbort.current = null;
+    }
+  }
+
+  async function runCursorWriting(mode, instruction = "") {
+    const v = view.current;
+    const anchor = cursorMenu;
+    const policy = inlinePolicyAt(null);
+    if (!v || !anchor || !policy?.capabilities.writeAtCursor || activeRevisionRef.current) return;
+    if (mode === "nudge") {
+      cursorNudgeAbort.current?.abort();
+      const controller = new AbortController();
+      cursorNudgeAbort.current = controller;
+      setCursorMenu((current) => current ? { ...current, mode, busy: true, error: null, result: null } : current);
+      try {
+        const prompts = inlineWritingPrompts(inlineAiContextRef.current);
+        const result = await creationApi.writingAssist({
+          mode: "nudge",
+          title: revisionTitle,
+          content: v.state.doc.toString(),
+          cursor: anchor.from,
+          platform: revisionPlatform,
+          materials: prompts.materials,
+          expert: prompts.expert,
+          style: "",
+        }, controller.signal);
+        setCursorMenu((current) => current ? { ...current, busy: false, error: null, result: { kind: result.kind, text: result.text } } : current);
+      } catch (error) {
+        if (!controller.signal.aborted && error.name !== "AbortError") setCursorMenu((current) => current ? { ...current, busy: false, error, result: null } : current);
+      } finally {
+        if (cursorNudgeAbort.current === controller) cursorNudgeAbort.current = null;
+      }
+      return;
+    }
+
+    cursorNudgeAbort.current?.abort();
+    cursorNudgeAbort.current = null;
+    const id = `cursor-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
+    const documentVersion = documentVersionOf(v.state.doc.toString());
+    const candidate = createCandidate({
+      id,
+      source: "cursor-writing",
+      target: { kind: "insertion", from: anchor.from, to: anchor.to },
+      mode: "paragraph",
+      label: instruction ? "按要求生成" : "续写一段",
+      instruction,
+      original: "",
+      text: "",
+      generations: [],
+      from: anchor.from,
+      to: anchor.to,
+      documentVersion,
+      createdAt: new Date().toISOString(),
+      status: "generating",
+      error: null,
+    }, documentVersion);
+    setCursorMenu(null);
+    setCurrentRevision(candidate);
+    v.dispatch({ effects: startTextRevision.of({ id, from: candidate.from, to: candidate.to }), annotations: Transaction.addToHistory.of(false) });
+    requestAnimationFrame(() => v.focus());
+    generateCursorCandidate(candidate, instruction);
+  }
   async function generateRevision(base, instruction = base.instruction || "") {
     const v = view.current;
     if (!v || !base) return;
@@ -588,6 +774,10 @@ export function MarkdownEditor({
 
   function regenerateCandidate(base, instruction = base?.instruction || "") {
     if (!base) return;
+    if (base.source === "cursor-writing") {
+      generateCursorCandidate(base, instruction);
+      return;
+    }
     if (base.source === "assistant" && typeof base.rerun === "function") {
       const rerun = base.rerun;
       closeRevision("discarded");
@@ -599,7 +789,7 @@ export function MarkdownEditor({
 
   function beginRevision(mode, instruction) {
     const v = view.current;
-    if (!v || !selectionMenu || !revisionScope) return;
+    if (!v || !selectionMenu || !inlinePolicyAt(selectionMenu)?.capabilities.reviseSelection) return;
     const id = `revision-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
     const revision = createCandidate({
       id,
@@ -779,7 +969,7 @@ export function MarkdownEditor({
         {/* 预览挂最右边：它切的是整块区域，和左边那些「改一段文字」的按钮不是一类动作 */}
         <button
           className={`btn btn-sm md-editor__preview${preview ? " is-on" : ""}`}
-          onClick={() => { setSelectionMenu(null); setPreview((p) => !p); }}
+          onClick={() => { setSelectionMenu(null); closeCursorWriting({ restoreFocus: false }); setPreview((p) => !p); }}
           aria-pressed={preview}
           disabled={!!activeRevision}
           title={activeRevision ? "先采纳或弃用正在对比的修订" : preview ? "回到编辑" : "看排版后的样子"}
@@ -864,8 +1054,19 @@ export function MarkdownEditor({
           <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       ) : null}
+      {cursorMenu && !preview && !focusedRevision ? createPortal(
+        <CursorWritingMenu anchor={cursorMenu} state={cursorMenu} onRun={runCursorWriting} onClose={closeCursorWriting} />,
+        document.body
+      ) : null}
       {selectionMenu && !preview && !focusedRevision ? createPortal(
-        <SelectionRevisionMenu selection={selectionMenu} onRun={beginRevision} onClose={() => setSelectionMenu(null)} />,
+        <SelectionRevisionMenu
+          selection={selectionMenu}
+          onRun={beginRevision}
+          onClose={() => {
+            setSelectionMenu(null);
+            requestAnimationFrame(() => view.current?.focus());
+          }}
+        />,
         document.body
       ) : null}
       {activeRevision && revisionHost ? createPortal(candidateCard, revisionHost) : null}
