@@ -43,9 +43,7 @@ page.on("console", (message) => {
 
 let nudges = 0;
 const requests = [];
-const brainstormRequests = [];
 const revisionRequests = [];
-const styleSaves = [];
 const expertStarts = [];
 const assistantRequests = [];
 let assistantMessages = [];
@@ -81,13 +79,6 @@ const profileFixture = {
   style: { id: "clear-direct", name: "清晰克制", instructions: "一句只承担一个意思。" },
 };
 await page.route("**/api/writing-profile", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(profileFixture) }));
-await page.route("**/api/writing-style", (route) => {
-  const body = route.request().postDataJSON();
-  styleSaves.push(body);
-  const styles = profileFixture.styles.map((item) => item.id === body.id ? { ...item, instructions: body.instructions, customized: body.instructions !== item.defaultInstructions } : item);
-  profileFixture.styles = styles;
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...profileFixture, styles }) });
-});
 await page.route("**/api/ai/knowledge-card", (route) => route.fulfill({
   status: 200,
   contentType: "application/json",
@@ -174,19 +165,6 @@ await page.route("**/api/pipe/writing-assist", async (route) => {
     ? Array.from({ length: 18 }, (_, index) => `第 ${index + 1} 步，把判断落到一个具体选择上。真正的结束不是再总结一次，而是让读者知道明天可以少做什么。`).join("\n\n")
     : "这不是缺少更多方法，而是还没有把眼前的矛盾说透。先把最不愿承认的那个代价写下来，下一步往往就会自己出现。";
   return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: body.mode === "finish" ? "完成全文" : "续写一段", text }) });
-});
-await page.route("**/api/agent/chat", async (route) => {
-  const body = route.request().postDataJSON();
-  brainstormRequests.push(body);
-  const text = body.phase === "summary"
-    ? "## 核心判断\n收藏处理的是焦虑，不是内容。\n\n## 可用经历或例子\n一次收藏后再也没打开。\n\n## 可能展开的要点\n用复述代替收藏。\n\n## 仍待回答的问题\n哪次真正改变了习惯？"
-    : "最近一次你点完收藏、却再也没有打开，具体是什么内容？";
-  return route.fulfill({
-    status: 200,
-    contentType: "text/plain; charset=utf-8",
-    headers: { "x-session-id": "12345678-1234-1234-1234-123456789abc" },
-    body: text,
-  });
 });
 await page.route("**/api/pipe/text-revision", async (route) => {
   const body = route.request().postDataJSON();
@@ -374,10 +352,8 @@ try {
     throw cause;
   });
   /**
-   * ⚠️ **必须挑一个正文可编辑的项目。**
-   * 「推动一下」（`WritingAssist`）只在 `writingEditable` 时才画——待发布、待复盘那几档
-   * 正文是只读的。盲点第一个的话，这一段会挂在「等 `.writing-assist__trigger`」上超时，
-   * 看着像功能坏了，而其实只是打开了一篇锁住的稿子。
+   * ⚠️ **必须挑一个正文可编辑的项目。** 内联 AI 写作动作只在 target 可编辑时出现；
+   * 待发布、待复盘的正文是只读的，盲点第一个会让后续能力矩阵断言失去意义。
    */
   const opened = await page.evaluate(() => {
     const card = [...document.querySelectorAll(".act-card")].find((c) => /继续写作|开始写/.test(c.textContent));
@@ -727,191 +703,7 @@ try {
     console.log("✓ 短 Candidate 在正文内联审阅，采纳前不修改正文");
     console.log("✓ Report 正面结果进入值得保留，finding 与正文可双向定位");
     console.log("✓ 项目新对话保留最近会话，报告审阅退出后恢复原对话");
-  } else {
-
-  await page.click(".writing-assist__trigger");
-  await page.waitForSelector(".writing-assist__result");
-  const firstStarter = await page.textContent(".writing-assist__result > p");
-  assert((await page.textContent(".writing-assist__result footer")).includes("2,560"), "没有显示真实的起始句库数量");
-  const modes = await page.$$eval(".writing-assist__modes button", (buttons) => buttons.map((button) => button.textContent.trim()));
-  assert(modes.join("/") === "想一想/聊一聊/帮我写", `协作方式不完整：${modes.join("/")}`);
-  const iconActions = await page.evaluate(() => Array.from(document.querySelectorAll(".writing-assist__result footer button"), (button) => ({
-    label: button.getAttribute("aria-label"),
-    title: button.getAttribute("title"),
-    text: button.textContent.trim(),
-    icons: button.querySelectorAll("svg").length,
-  })));
-  assert(iconActions.every((item) => item.label && item.title && !item.text && item.icons === 1), "结果操作没有全部使用带悬停说明的图标按钮");
-  await page.click('.writing-assist__result button[aria-label="换一句起始句"]');
-  const secondStarter = await page.textContent(".writing-assist__result > p");
-  assert(firstStarter !== secondStarter, "换一句没有换内容");
-  await page.click('.writing-assist__result button[aria-label="用这句开头"]');
-  await page.waitForFunction((text) => document.querySelector(".cm-content")?.textContent.includes(text), secondStarter);
-
-  // 编辑器没有独立风格设置；只有“帮我写”需要选择本次调用的语气。
-  assert(!(await page.$('.writing-tool-btn:has-text("风格")')), "编辑器仍保留了独立风格设置入口");
-  await page.click(".writing-assist__trigger");
-  await page.click('.writing-assist__modes button:has-text("帮我写")');
-  await page.waitForSelector(".writing-assist__style-select select");
-  const styleChoices = await page.$$eval(".writing-assist__style-select select option", (items) => items.map((item) => item.textContent.trim()));
-  assert(styleChoices.length === 7 && styleChoices.some((item) => item.includes("故事推进")) && styleChoices.some((item) => item.includes("我的风格")), `风格选项不完整：${styleChoices.join("/")}`);
-  await page.selectOption(".writing-assist__style-select select", "story-led");
-  assert((await page.textContent(".writing-assist__style-select small")).includes("用场景推进观点"), "帮我写没有显示所选风格说明");
-  assert(styleSaves.length === 0, "编辑器选择风格时不该改写或保存提示词");
-  await page.click('.writing-assist__close');
-  nudges = 0;
-  for (let index = requests.length - 1; index >= 0; index -= 1) if (requests[index].mode === "nudge") requests.splice(index, 1);
-
-  // 新稿编辑器同样支持选区工具条；Esc 只收起工具条，不改正文。
-  await page.click(".project-draft .cm-content");
-  await page.keyboard.press("Control+Home");
-  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
-  await page.waitForSelector(".text-revision-menu");
-  const newEditorActions = await page.$$eval(".text-revision-menu__actions button:not(.text-revision-menu__close)", (buttons) => buttons.map((button) => button.textContent.trim()));
-  assert(newEditorActions.join("/") === "润色/纠错/缩写/扩写/改写", `新稿选区工具不完整：${newEditorActions.join("/")}`);
-  await page.keyboard.press("Escape");
-  await page.waitForSelector(".text-revision-menu", { state: "detached" });
-
-  // 光标放在正文中间：请求位置、浮层位置和等待动画必须都以真实界面为准。
-  await page.click(".project-draft .cm-content");
-  await page.keyboard.press("Control+Home");
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await page.click(".writing-assist__trigger");
-  await page.waitForSelector(".writing-assist__wait");
-  const loadingUi = await page.evaluate(() => {
-    const card = document.querySelector(".writing-assist__card");
-    const spinner = document.querySelector(".writing-assist__wait svg");
-    const rect = card.getBoundingClientRect();
-    return {
-      position: getComputedStyle(card).position,
-      centerOffset: Math.abs((rect.left + rect.right) / 2 - innerWidth / 2),
-      top: rect.top,
-      animation: getComputedStyle(spinner).animationName,
-    };
-  });
-  assert(loadingUi.position === "fixed" && loadingUi.centerOffset < 2 && loadingUi.top < 120, "推动浮层没有固定在页面顶部中央");
-  assert(loadingUi.animation !== "none", "等待图标没有播放转动动画");
-  await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("改变看法"));
-  assert(requests.find((item) => item.mode === "nudge")?.cursor === 3, "新建文章没有把当前光标位置发给 AI");
-
-  // AI 协作只调用写作教练；选题顾问不再混进编辑器下拉框。
-  assert(!(await page.$(".writing-assist__context select")) && /写作教练/.test(await page.textContent(".writing-assist__context")), "AI 协作仍在显示统一专家下拉框");
-  await page.click('.writing-assist__modes button:has-text("想一想")');
-  await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("读者最可能反对"));
-  assert(nudges === 2, `小推动请求次数不对：${nudges}`);
-  assert(requests.at(-1)?.expert?.includes("写作教练") && !requests.at(-1)?.style, "小推动不该套用写作风格");
-
-  // 素材、审稿、核查是独立检查任务，结果只显示报告，不提供插入正文。
-  await page.click('.writing-assist__close');
-  await page.click('.writing-tool-btn:has-text("检查")');
-  const checks = await page.$$eval(".writing-checks__menu > button", (items) => items.map((item) => item.textContent.trim()));
-  assert(checks.length === 3 && checks.every((item) => /素材查缺|Xenho 品控九问|事实核查/.test(item)), `检查任务不完整：${checks.join("/")}`);
-  await page.click(".project-draft .cm-content");
-  await page.waitForSelector(".writing-checks__menu", { state: "detached" });
-  await page.click('.writing-tool-btn:has-text("检查")');
-  await page.click(".project-draft .cm-content");
-  await page.keyboard.press("Control+Home");
-  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
-  await page.click('.writing-tool-btn:has-text("检查")');
-  await page.click('.writing-checks__menu > button:has-text("素材查缺")');
-  await page.waitForSelector(".expert-activity");
-  const expertAnimation = await page.$eval(".expert-activity", (item) => getComputedStyle(item).animationName);
-  assert(expertAnimation === "expert-orbit", "专家工作指示器没有播放动画");
-  await page.waitForSelector('.expert-retry:has-text("重试本次检查")');
-  assert((await page.textContent(".expert-error")).includes("专家模型连接失败"), "专家错误没有显示真实连接原因");
-  await page.click('.expert-retry:has-text("重试本次检查")');
-  await page.waitForSelector(".expert-activity");
-  await page.waitForFunction(() => document.querySelector(".expert-report")?.textContent.includes("本地知识卡"));
-  const materialAudit = expertStarts.at(-1);
-  assert(materialAudit?.kind === "material-research" && materialAudit?.document?.selection?.text?.length === 6, "素材顾问没有围绕当前选区启动真实研究任务");
-  assert(expertStarts.filter((item) => item.kind === "material-research").length === 2, "重试没有重新启动同一项专家检查");
-  assert((await page.textContent(".expert-report")).includes("权威网页来源"), "素材报告没有展示联网来源");
-  assert(!(await page.$(".expert-task button[aria-label='插入光标处']")), "检查报告不该提供插入正文动作");
-  await page.keyboard.press("Escape");
-  await page.waitForSelector(".expert-dialog", { state: "detached" });
-
-  await page.click(".project-draft .cm-content");
-  await page.keyboard.press("Control+Home");
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  await page.click(".writing-assist__trigger");
-  await page.waitForSelector(".writing-assist__result");
-  await page.click('.writing-assist__modes button:has-text("帮我写")');
-  await page.selectOption(".writing-assist__style-select select", "story-led");
-  await page.click('.writing-assist__choice button:has-text("续写一段")');
-  await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("缺少更多方法"));
-  const before = await editorValue(".cm-content");
-  const paragraphRequest = requests.findLast((item) => item.mode === "paragraph");
-  assert(paragraphRequest?.style?.includes("从真实场景进入。"), "帮我写没有按所选风格生成候选");
-  assert(!before.includes("缺少更多方法"), "候选在确认前就写进了正文");
-  await page.click('.writing-assist__result button[aria-label="插入光标处"]');
-  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("缺少更多方法"));
-  await page.waitForSelector(".writing-assist__card", { state: "detached" });
-  const after = await editorValue(".cm-content");
-  assert(after === before.slice(0, 3) + paragraph + before.slice(3), "续写没有精确插入当前光标，或额外添加了换行");
-  assert((await page.$$(".cm-ai-draft")).length > 0, "AI 续写插入后没有轻量底纹");
-  const aiWash = await page.$eval(".cm-ai-draft", (node) => getComputedStyle(node).backgroundColor);
-  assert(aiWash !== "rgba(0, 0, 0, 0)" && aiWash !== "transparent", "AI 续写底纹没有实际颜色");
-  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-ai-pending.png"), fullPage: false });
-  await page.keyboard.type("再补一句。");
-  assert((await editorValue(".cm-content")).includes(paragraph + "再补一句。"), "不能直接在 AI 底纹范围内修改");
-  await page.click('.ai-draft-review button[aria-label="回看 AI 插入时的原稿"]');
-  await page.waitForSelector(".ai-draft-history");
-  assert((await page.textContent(".ai-draft-history")).includes(paragraph), "回看历史里没有保留 AI 插入时的原稿");
-  assert((await page.textContent(".ai-draft-history")).includes("已修改"), "修改 AI 续写后历史没有标出状态");
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
-  await page.click('.ai-draft-review button[aria-label="确认采用这段，移除底纹"]');
-  await page.waitForSelector(".ai-draft-review", { state: "detached" });
-  assert((await page.$$(".cm-ai-draft")).length === 0, "确认采用后 AI 底纹没有消失");
-  assert((await page.$$(".md-editor__ai-history")).length === 1, "确认采用后没有保留原稿回看入口");
-  await page.click(".md-editor__ai-history");
-  await page.waitForSelector(".ai-draft-history");
-  assert((await page.textContent(".ai-draft-history")).includes(paragraph), "确认采用后无法再次回看 AI 原稿");
-  await page.screenshot({ path: path.join(ROOT, "tmp", "writing-assist-ai-history.png"), fullPage: false });
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
-
-  await page.click(".writing-assist__trigger");
-  await page.waitForSelector(".writing-assist__wait");
-  await page.waitForSelector(".writing-assist__result");
-  await page.click('.writing-assist__modes button:has-text("帮我写")');
-  await page.waitForSelector(".writing-assist__choice");
-  await page.click('.writing-assist__choice button:has-text("完成全文")');
-  await page.waitForFunction(() => document.querySelector(".writing-assist__result > p")?.textContent.includes("真正的结束"));
-  const overflow = await page.evaluate(() => {
-    const card = document.querySelector(".writing-assist__card");
-    const content = document.querySelector(".writing-assist__result > p");
-    return {
-      cardHeight: card.getBoundingClientRect().height,
-      scrolls: content.scrollHeight > content.clientHeight,
-      overflowY: getComputedStyle(content).overflowY,
-    };
-  });
-  assert(overflow.cardHeight <= 461 && overflow.scrolls && overflow.overflowY === "auto", "长结果没有限制窗口高度并在内部滚动");
-  assert(!(await page.textContent(".cm-content")).includes("真正的结束"), "完成全文在确认前就写进了正文");
-  await page.click('.writing-assist__result button[aria-label="插入光标处"]');
-  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("真正的结束"));
-
-  // 「聊一聊」只逐问和整理线索：总结出现前后都不能静默改正文，最后由用户明确插入。
-  await page.click(".writing-assist__trigger");
-  await page.click('.writing-assist__modes button:has-text("聊一聊")');
-  await page.waitForSelector(".writing-assist__welcome");
-  await page.waitForTimeout(350);
-  assert(!(await page.$(".writing-assist__error")), "切换到聊一聊时串进了上一种模式的错误");
-  const beforeChat = await editorValue(".cm-content");
-  await page.click('.writing-assist__welcome button:has-text("开始梳理")');
-  await page.waitForFunction(() => document.querySelector(".writing-assist__log")?.textContent.includes("具体是什么内容"));
-  assert((await editorValue(".cm-content")) === beforeChat, "第一问自动改了正文");
-  await page.click('.writing-assist__chat-actions button:has-text("整理线索")');
-  await page.waitForSelector('.writing-assist__chat-actions button:has-text("插入正文")');
-  assert((await editorValue(".cm-content")) === beforeChat, "整理线索在确认前改了正文");
-  assert(brainstormRequests.length === 2 && brainstormRequests[1].phase === "summary", "聊一聊没有先问再整理");
-  await page.click('.writing-assist__chat-actions button:has-text("插入正文")');
-  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent.includes("写作线索"));
   }
-
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
   const legacyRevisionStart = revisionRequests.length;
   await page.goto(`http://127.0.0.1:${PORT}/#/drafts`, { waitUntil: "networkidle" });
@@ -1161,17 +953,9 @@ try {
   assert(!(await page.$('.assistant-pane--standalone button:has-text("作为候选插入")')), "独立对话不应出现稿件插入操作");
   console.log("✓ 左侧 AI 助手打开独立对话页，输入框始终贴底");
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
-  console.log("✓ 起始句可换、可插入");
-  console.log("✓ 连续两次 AI 小推动都返回新结果");
-  console.log("✓ 风格提示词不在编辑器修改，只在帮我写时选择并实际进入生成请求");
-  console.log("✓ AI 协作固定由写作教练负责，不再出现统一专家下拉框");
-  console.log("✓ 素材查缺启动可持续的专家任务，报告展示本地与网页来源且不改正文");
-  console.log("✓ 浮层位于页面顶部中央，等待图标实际播放转动动画");
-  console.log("✓ AI 续写先预览，并在当前光标精确插入、不额外换行");
-  console.log("✓ 长结果限制高度并在浮层内部滚动");
-  console.log("✓ 新建文章与稿件库正式编辑器都把当前光标发给 AI");
-  console.log("✓ 图标按钮都有名称和悬停说明");
-  console.log("✓ AI 续写可在底纹内修改、确认后退底纹，并能回看原稿");
+  console.log("✓ Project 与 Reading 共用选区和光标内联 AI，旧 WritingAssist 入口未回归");
+  console.log("✓ 想一想只返回建议，续写和按要求写统一进入 Candidate");
+  console.log("✓ /Skill 可以选择已注册的 interview-to-draft Skill");
   console.log("✓ 两个编辑入口都有选区修订工具，采纳前正文保持不变");
   console.log("✓ 局部修订支持自定义要求、重新生成、直接编辑、stale 检测和精确采纳");
   console.log("✓ Grounding 展示 used/skipped/unverified，服务端拒绝会进入 failed");

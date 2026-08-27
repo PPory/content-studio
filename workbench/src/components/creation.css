@@ -4,19 +4,6 @@
   background: rgba(13, 14, 15, .52);
   -webkit-backdrop-filter: blur(13px) saturate(.72);
   backdrop-filter: blur(13px) saturate(.72);
-  transition: background .38s var(--ease), backdrop-filter .38s var(--ease), -webkit-backdrop-filter .38s var(--ease);
-}
-
-/* 进了编辑器（和访谈）之后再糊深一层。选起点时背后那一页还该认得出来——它是你刚才在看的
-   东西；开始写之后它只剩噪音。**这一下渐深本身就是反馈**：不用写一句「进入专注模式」。
-
-   ⚠️ **深度到 20px 为止，别再往上加。** 试过 34px + brightness(.92)：背后整片糊成一块
-   灰版，弹层看着不再是浮在工作台上，而是浮在一张空白纸上——**「专注」和「与工作台失联」
-   之间就差这几像素**。要的是认不出细节、仍看得出下面还是那一页。 */
-.creation-scrim[data-deep="true"] {
-  background: rgba(13, 14, 15, .58);
-  -webkit-backdrop-filter: blur(20px) saturate(.62);
-  backdrop-filter: blur(20px) saturate(.62);
 }
 
 .creation {
@@ -39,58 +26,10 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.creation[data-screen="material"],
-
-/**
- * 访谈是**一栏对话**，所以它比另外两屏窄（880 而不是 1080）：一栏文字宽过 720px 就难读了，
- * 再宽只是把气泡拉长。
- *
- * ⚠️ **高度分两态，这是这一屏被重做的直接原因。**
- * 还没开口时屏上只有一句引导、三颗起手句和输入框——固定 720px 高的话，
- * 上半屏是一整块谁也不属于的空白（那正是「这个页面不行」的样子）。所以：
- * `start` 不写 height，由内容决定（`.creation` 基类的 `max-height: 88vh` 兜底）；
- * 发出第一句之后转 `live` 再定高，让对话流有一块**不再随消息条数跳动**的地方可滚。
- */
-.creation[data-screen="interview"] { width: min(880px, calc(100vw - 48px)); }
-.creation[data-screen="interview"][data-stage="live"] { height: min(720px, 86vh); }
-
 .creation__head { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
 .creation__head > div { margin-right: auto; }
 .creation__head h2 { margin: 2px 0 0; font-size: var(--fs-xl); letter-spacing: -.04em; }
 .creation__head .icon-btn { width: 34px; height: 34px; }
-/* 访谈屏的平台选择住在这一行上：它是那一屏唯一的设置项，不值一整栏。
-   ⚠️ 菜单要**向右对齐**（`.select__pop` 基类写着 `left: 0` 且比按钮宽 50 多像素，
-   而这颗按钮贴着弹层右缘）——和「靠右那一栏里的下拉」是同一条。 */
-.creation__head .creation-platform .select__btn { min-width: 112px; }
-.creation__head .select__pop { right: 0; left: auto; }
-/* 返回长在眉标那一行上，不另画一颗按钮：那一行本来就是 `// CREATE` 这句装饰，
-   换成面包屑之后同一行同时回答「我在哪」和「退回去是哪儿」。
-   **不套等宽**——退回去的名字是中文（起稿方式 / 从素材开始 / 访谈起稿）。 */
-.creation__crumb {
-  display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 2px 4px;
-  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3);
-  font: inherit; font-size: var(--fs-xs); line-height: 1.2; cursor: pointer;
-  transition: color .14s var(--ease), background .14s var(--ease);
-}
-.creation__crumb svg { width: 13px; height: 13px; }
-.creation__crumb:hover, .creation__crumb:focus-visible { background: var(--surface-2); color: var(--text-1); outline: none; }
-
-/* 起点选择：三张并排的卡。三个起点是平行的三条路，并排摆本身就在说这件事。
-   ⚠️ **不写死卡高、不用 `margin-top:auto` 把文字沉到底。** 上一版正是这么做的
-   （`min-height:142px` + 图标钉左上），于是图标和文字之间挖出一块谁也不属于的空白——
-   那才是「难看」的来源，不是配色。现在内容从上往下自然排，卡有多高由字决定。 */
-
-.creation-choose { padding: 16px 20px 24px; }
-.creation-choose__lead { margin: 0 0 12px; color: var(--text-2); font-size: var(--fs-base); }
-/* hover 时卡片**抬起来并翻白**：从纸底浮到最上层。卡片可以抬，行不行——上一版做成三行时
-   用的是横向位移，因为清单抬起来会散成三张卡；现在它本来就是卡。 */
-/* 图标块平时是描边、命中时才填成实心黑：黑块说的是「你在这儿」，
-   三个常驻的黑圆块等于三个地方同时在喊 */
-/* 「想到就写 / 手上有料 / 只有想法」是中文，**不套等宽**（等宽栈里没有中文字形，
-   兜底回落到正文字体，看着就是这一行和别处不一个字体） */
-/* 键号挂右上角：它是这张卡的编号，不是内容的一部分 */
-
-/* 上次没保存的那篇。夹在标题栏和内容之间，一行说完「有什么 / 多少字 / 什么时候」 */
 
 .creation-platform { display: inline-flex; }
 .creation-platform .select__btn { height: 34px; min-width: 126px; justify-content: flex-start; padding: 0 10px; border-radius: var(--r-md); background: var(--canvas); font-size: var(--fs-sm); }
@@ -104,76 +43,8 @@
 .creation-form__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .creation-form__foot--end { justify-content: flex-end; }
 
-.creation-section-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.creation-section-title h3 { margin: 4px 0 0; font-size: var(--fs-lg); letter-spacing: -.025em; }
-.creation-section-title > small { color: var(--text-3); font: 600 10px/1 var(--font-mono); }
-
-.creation-material-workspace { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); }
-.creation-material-browser { min-height: 0; display: flex; flex-direction: column; padding: 20px 24px 16px; background: var(--canvas); border-right: 1px solid var(--border); }
-.creation-material-search { flex: none; display: flex; align-items: center; gap: 8px; margin: 16px 0 12px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface); box-shadow: 0 1px 0 rgba(0, 0, 0, .02); }
-.creation-material-search:focus-within { border-color: var(--text-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-1) 7%, transparent); }
-.creation-material-search svg { width: 16px; color: var(--text-3); }
-.creation-material-search input { width: 100%; padding: 10px 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
-.creation-material-list { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }
-.creation-material-list button[aria-pressed] { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 20px; gap: 4px 10px; padding: 12px 12px; text-align: left; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: inherit; cursor: pointer; transition: border-color .14s var(--ease), transform .14s var(--ease), background .14s var(--ease); }
-.creation-material-list button[aria-pressed]:hover { transform: translateX(2px); border-color: var(--text-1); }
-.creation-material-list button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
-.creation-material-list button[aria-pressed] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.creation-material-list button[aria-pressed] > small { grid-column: 1; color: var(--text-3); font-size: var(--fs-xs); }
-/* AI 挑出来的那几条多一句「为什么是它」。**必须看得出这是 AI 挑的**：
-   它可能牵强，而牵强的推荐混在关键词命中里，人就没法判断该不该信 */
-.creation-material-list button[aria-pressed] > em { grid-column: 1; color: var(--text-2); font-size: var(--fs-xs); font-style: normal; line-height: 1.5; }
-.creation-material-list button[aria-pressed] > svg { grid-column: 2; grid-row: 1 / 3; align-self: center; width: 16px; color: var(--text-3); }
-.creation-material-list button[aria-pressed="true"] > svg { color: var(--text-1); }
-.creation-material-empty { margin: auto; max-width: 330px; padding: 40px 16px; text-align: center; color: var(--text-3); }
-.creation-material-empty > svg { width: 28px; height: 28px; margin-bottom: 12px; opacity: .55; }
-.creation-material-empty strong { display: block; color: var(--text-2); font-size: var(--fs-md); }
-.creation-material-empty p { margin: 6px 0 0; font-size: var(--fs-sm); line-height: 1.6; }
-.creation-material-empty .btn { margin-top: 12px; }
-
-/* 「让 AI 按意思找」：有结果时它只是一条安静的补充，所以是行内的静默按钮而不是大按钮 */
-.creation-ai-more { align-self: center; margin: 6px 0 2px; }
-.creation-ai-picks { margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--border-strong); display: flex; flex-direction: column; gap: 6px; }
-.creation-ai-picks > header { display: flex; align-items: center; gap: 6px; padding: 0 2px 2px; }
-.creation-ai-picks > header svg { width: 15px; color: var(--text-2); }
-.creation-ai-picks > header b { font-size: var(--fs-sm); }
-.creation-ai-picks > header small { margin-left: auto; color: var(--text-3); font-size: var(--fs-2xs); }
-.creation-ai-wait, .creation-ai-none { display: flex; align-items: center; gap: 8px; margin: 4px 2px 8px; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.6; }
-.creation-ai-wait svg { flex: none; width: 15px; }
-
-.creation-material-plan { min-height: 0; overflow-y: auto; padding: 20px 20px 16px; display: flex; flex-direction: column; gap: 12px; background: var(--surface); }
-/* ⚠️ **靠右那一栏的下拉要向右对齐**（和编辑器顶部、访谈右栏那两处同一条）。
-   菜单默认 `left: 0` 且比按钮宽 50 多像素，而这颗按钮本来就贴着面板右缘——
-   默认展开就会顶出边缘。凡是把 `<Select>` 放在右栏最右端的地方都要补这一条。 */
-.creation-material-plan .creation-platform .select__pop { right: 0; left: auto; }
-/* 已选素材：**一排芯片**，高度跟着条数走。
-   上一版是一个 72–128px 的固定盒子，空着的时候里面居中摆一句「选中的素材会留在这里，
-   进入编辑器后仍会持续显示」——**一件做一次就懂的事，占了这一栏最缺的那样东西**。
-   现在空态是一行小字，选了就是一排名字。 */
-.creation-picked { display: flex; flex-wrap: wrap; gap: 6px; max-height: 116px; overflow-y: auto; }
-.creation-picked[data-empty="true"] { padding: 8px 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-md); }
-.creation-picked__none { color: var(--text-3); font-size: var(--fs-xs); }
-.creation-chip { max-width: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--r-pill); background: var(--canvas); }
-.creation-chip > svg { flex: none; width: 13px; color: var(--text-3); }
-.creation-chip > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-weight: 500; }
-.creation-chip > button { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer; }
-.creation-chip > button:hover { background: var(--surface-2); color: var(--text-1); }
-.creation-chip > button svg { width: 12px; }
-
 .creation-brief-field { display: grid; gap: 6px; }
-/* 文章方向吃掉这一栏多出来的高度：它是 AI 起稿的必填项。
-   剩一块空白在下面，不如给最该多写几个字的那一格 */
-.creation-brief-field--grow { flex: 1; min-height: 0; grid-template-rows: auto minmax(72px, 1fr); }
-.creation-brief-field--grow textarea { height: 100%; resize: none; }
 .creation-brief-field > span { color: var(--text-2); font-size: var(--fs-xs); }
-.creation-brief-field em { margin-left: 4px; color: var(--text-3); font-style: normal; }
-.creation-brief-field input, .creation-brief-field textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); outline: 0; background: var(--canvas); color: inherit; font: inherit; font-size: var(--fs-sm); }
-.creation-brief-field textarea { min-height: 72px; resize: vertical; line-height: 1.55; }
-.creation-brief-field input:focus, .creation-brief-field textarea:focus { border-color: var(--text-1); }
-.creation-brief-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-
-/* 目标读者：能选也能打。菜单复用 `.select__pop` 的样子——同一个界面里
-   「一个可以展开的清单」只该有一种长相 */
 .creation-audience { position: relative; }
 .creation-audience__box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--canvas); }
 .creation-audience__box:focus-within { border-color: var(--text-1); }
@@ -181,223 +52,13 @@
 .creation-audience__toggle { flex: none; width: 28px; height: 28px; margin-right: 2px; display: grid; place-items: center; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer; }
 .creation-audience__toggle:hover { background: var(--surface-2); color: var(--text-1); }
 .creation-audience__toggle svg { width: 15px; }
-/* ⚠️ **菜单是 `position: fixed`，坐标由 JS 量出来**（组件里那段 `measure`）。
-   绝对定位在这里必错：这一格住在 `.creation-material-plan` 里，而那是个
-   `overflow-y: auto` 的滚动容器——绝对定位的浮层会被它裁成一条几像素的白边。
-   裁剪是 overflow 干的，**调 z-index 一点用都没有**。 */
 .creation-audience__pop { max-width: min(340px, calc(100vw - 40px)); max-height: 232px; overflow-y: auto; }
 .creation-audience__pop button > span { overflow: hidden; text-overflow: ellipsis; }
 .creation-audience__pop button { height: 34px; font-size: var(--fs-sm); }
-.creation-form .creation-audience > span { font-size: var(--fs-2xs); letter-spacing: 0.01em; color: var(--text-3); }
-/**
- * 素材屏底部的三态：**在生成 / 生成完了 / 还没开始**。
- * 三个都长在同一个位置（`margin-top: auto` 贴着这一栏的底），
- * 换态时按钮不跳位——跳位的话人会以为是另一块东西。
- */
-.creation-generating,
-.creation-generated { margin-top: auto; }
-
-/* 等几十秒是正常的（整篇收齐 + 过真实性闸门），所以这一格必须说清在等什么 */
-.creation-generating {
-  display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 10px;
-  padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
-  color: var(--text-2);
-}
-.creation-generating strong { display: block; font-size: var(--fs-sm); color: var(--text-1); }
-.creation-generating small { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
-
-.creation-generated {
-  display: grid; gap: 8px; padding: 12px;
-  border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface);
-}
-.creation-generated__head { display: flex; align-items: center; gap: 7px; margin: 0; font-size: var(--fs-sm); }
-.creation-generated__head svg { color: var(--st-done-ink); }
-.creation-generated__head em { margin-left: auto; color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-variant-numeric: tabular-nums; }
-/**
- * ⚠️ **剔掉了哪几条必须在这儿说完。** 待核验的金句和数据不进稿，
- * 挑了 5 条只用了 3 条——跳进项目页就没地方说了（那一页没有
- * 「刚才生成时发生了什么」这个概念，Worker 也不存它）。
- * 全用上时也照实说一句：沉默既可能是「都用了」也可能是「这一行没渲染」。
- */
-.creation-generated__skip {
-  display: flex; align-items: flex-start; gap: 6px; margin: 0;
-  color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6;
-}
-.creation-generated__skip svg { flex: none; margin-top: 2px; width: 14px; height: 14px; color: var(--st-doing-ink); }
-.creation-generated__skip--ok { color: var(--text-3); }
-.creation-generated__acts { display: flex; justify-content: flex-end; gap: 8px; }
-
-.creation-writing-paths { display: grid; gap: 6px; margin-top: auto; }
-.creation-writing-paths > button { display: grid; grid-template-columns: 34px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
-.creation-writing-paths > button:hover:not(:disabled) { border-color: var(--text-1); transform: translateY(-1px); }
-.creation-writing-paths > button:disabled { opacity: .45; cursor: not-allowed; }
-.creation-writing-paths > button > svg:first-child { width: 34px; height: 34px; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); }
-.creation-writing-paths > button.is-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.creation-writing-paths > button.is-primary > svg:first-child { background: color-mix(in srgb, var(--on-accent) 14%, transparent); }
-.creation-writing-paths span { display: grid; gap: 2px; }
-.creation-writing-paths strong { font-size: var(--fs-sm); }
-.creation-writing-paths small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.45; }
-.creation-writing-paths .is-primary small { color: color-mix(in srgb, var(--on-accent) 68%, transparent); }
-.creation-path-arrow { width: 15px; transform: rotate(180deg); }
-
-.creation-generating { position: absolute; z-index: 3; align-self: center; top: 48%; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: var(--shadow-md); }
-.creation-generating > svg { width: 22px; }
-.creation-generating > span { display: grid; gap: 2px; }
-.creation-generating strong { font-size: var(--fs-sm); }
-.creation-generating small { color: var(--text-3); font-size: var(--fs-2xs); }
-.spin-soft { animation: creation-pulse 1.1s ease-in-out infinite; }
-@keyframes creation-pulse { 50% { opacity: .35; transform: rotate(10deg) scale(.9); } }
-
-/* 展开后按素材里真实的换行排版（多数素材是分条写的，挤成一段就读不出结构了）。
-   高度给上限而不是不限：一条几千字的复盘能把右栏撑成一根长条，别的素材全被挤出视野 */
-
-/* ---- 引用标注：这一条素材进正文了没有 -----------------------------------
-
-   ⚠️ **不要给它加左侧那道彩色竖线。** 试过，撤了——理由和 `.note` 当初撤掉那道线
-   一模一样：一道竖线是任何界面套上去都长一个样的形状，而这套界面的层次靠字重、
-   留白和实心块。何况「用过了」这件事已经有两个说法（序号反白 + 「已用 N 处」），
-   再加一道线是第三遍，三样东西叠在一起就是截图里那种杂乱。
-
-
-
-
-/* ⚠️ **这三个值定义了整块访谈屏的对齐轴，改一个就要几处一起对。**
-   所以写成变量而不是各处手抄一个数——手抄的那一版就是下面那条注释记的事故。 */
-.creation-interview {
-  --chat-pad: 24px;      /* 聊天区左右内边距 */
-  --send-size: 34px;     /* 发送键（圆钮，长在输入盒子里） */
-  --chat-col: 720px;     /* 可读列宽：对话、进度行、输入区共用同一条 */
-  min-height: 0; flex: 1; display: flex; flex-direction: column;
-}
-/**
- * ⚠️ **限宽的是里面那层 `__stream`，不是这个滚动容器。**
- *
- * 限在容器上的话，气泡的 `align-self: flex-end` 会贴到弹层右缘去，
- * 「你」那一侧就飞出可读列之外了。
- */
-.creation-chat__log {
-  min-height: 0; flex: 1; overflow-y: auto;
-  padding: 24px var(--chat-pad) 8px;
-  display: flex; flex-direction: column;
-}
-/**
- * 对话列。**和输入区共用同一条 `--chat-col`，两边都是整数 720，不用再算差值。**
- *
- * ⚠️ 这条曾经不是这样：发送键摆在输入框**旁边**时，它只吃掉输入框那一列的宽度，
- * 于是输入框的中轴比整栏中轴左了（42+9）/2 ≈ 25px，这里得反过来让出一截
- * （`padding-right: send + gap`）才能让欢迎区和输入框同轴。**这一屏为此栽过两次。**
- * 现在发送键收进了输入盒子里，那个差值从根上没有了——
- * **两个东西对不齐时，先看看它们是不是本来就不该分成两个。**
- *
- * **这类问题断言测不出来，只能量矩形或者看图**（`tests/smoke.mjs` 里那三条量的就是它）。
- */
-.creation-chat__stream {
-  width: 100%; max-width: var(--chat-col); margin: auto auto 0;
-  display: flex; flex-direction: column; gap: 16px;
-}
-/* ⚠️ **贴底靠的是 `margin-top: auto`（上面那条），不是 `justify-content: flex-end`。**
-   两者在没溢出时看着一样，溢出之后不一样：`flex-end` 会让超出的部分**从顶上被裁掉且滚不到**
-   （Chrome 上的老问题），而这一栏正是会越聊越长的地方。
-
-   贴底本身对两种状态都是对的：还没开口时，说明和起手句要**挨着输入框**——这一屏唯一要做的事
-   是「说第一句」，而说话的地方在最下面；聊起来之后，最新那条也该在最下面。 */
-/* ⚠️ **消息行的样式挂在 `.creation-msg` 上，不按位置写。**
-   原来这几条是 `.creation-chat__stream > div > span/p`——而欢迎区也是这个容器的直接子 div，
-   于是它的第一个 `<span>`（那枚圆形图标）被 `> div > span` 涂成灰色小标签、`display:block`
-   还顶掉了居中，`<p>` 被套上聊天气泡的灰底。**代码在跑、也不报错，只有肉眼看得见。**
-   `:not(.creation-interview-welcome)` 那个补丁只挡住了 `max-width` 一条，剩下三条全漏过去了——
-   按位置写样式就会这样：每加一条都得记得再排除一次。 */
-.creation-msg { max-width: 78%; }
-.creation-msg[data-role="user"] { align-self: flex-end; }
-.creation-msg > span { display: block; margin-bottom: 4px; color: var(--text-3); font: 600 10px/1 var(--font); letter-spacing: 0.01em; }
-.creation-msg > p { margin: 0; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface-2); white-space: pre-wrap; line-height: 1.7; }
-.creation-msg[data-role="user"] > p { background: var(--accent); color: var(--on-accent); }
-.creation-interview-welcome { max-width: 520px; margin: 0 auto; padding: 8px 24px 4px; text-align: center; }
-.creation-interview-welcome > span { width: 40px; height: 40px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 50%; background: var(--accent); color: var(--on-accent); }
-/* ⚠️ **宽高都要写。** 只写 width 的话，svg 上的 `height="24"` 属性还在，
-   元素盒子成了 21×24——图标被 preserveAspectRatio 画在盒子中间，于是在圆圈里偏上一点点。
-   这类偏移小到不会被当成 bug，只会让人觉得「这个图标怪怪的」。 */
-.creation-interview-welcome > span svg { width: 21px; height: 21px; }
-.creation-interview-welcome h3 { margin: 0 0 8px; font-size: var(--fs-xl); letter-spacing: -.04em; }
-.creation-interview-welcome p { margin: 0 auto; max-width: 470px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-.creation-interview-welcome > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 16px; }
-.creation-interview-welcome > div button { padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-pill); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; transition: border-color .14s var(--ease), color .14s var(--ease); }
-.creation-interview-welcome > div button:hover { border-color: var(--text-1); color: var(--text-1); }
-/**
- * 底座：**进度行 + 输入区是一组**，一起贴在底下、共用同一条可读列。
- *
- * 那句「再聊一轮就能整理共识」解释的正是它右边那颗按钮此刻为什么按不了——
- * 上一版把它们分居右栏两头（中间实测空了 335px），解释和被解释的东西隔了半屏。
- */
-.creation-chat__foot {
-  flex: none; display: grid; gap: 8px;
-  padding: 11px var(--chat-pad) 14px; border-top: 1px solid var(--border);
-}
-.creation-phase {
-  width: 100%; max-width: var(--chat-col); margin: 0 auto;
-  display: flex; align-items: center; gap: 12px;
-}
-.creation-phase__steps { margin: 0; padding: 0; list-style: none; display: flex; align-items: center; gap: 6px; counter-reset: phase; }
-.creation-phase__steps li { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap; counter-increment: phase; }
-.creation-phase__steps li::before {
-  content: counter(phase); width: 18px; height: 18px; flex: none; display: grid; place-items: center;
-  border: 1px solid var(--border-strong); border-radius: 50%; font: 600 9px/1 var(--font-mono);
-}
-/* 三步之间那截短横：它们**本来就有顺序**，横线是这件事最省地方的说法
-   （和总览页那条 `PipeFlow` 同一个理由）。最后一步后面不画。 */
-.creation-phase__steps li:not(:last-child)::after { content: ""; width: 16px; height: 1px; margin-left: 1px; background: var(--border-strong); }
-.creation-phase__steps li[data-on="true"] { color: var(--text-1); }
-.creation-phase__steps li[data-on="true"]::before { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-/* 答了几轮：这一屏唯一会变的数字。没有它，步骤条就是一张贴纸 */
-.creation-phase__steps em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; }
-.creation-phase__now { flex: 1; min-width: 0; margin: 0; color: var(--text-3); font-size: var(--fs-xs); text-align: right; }
-.creation-phase .btn { flex: none; }
-/**
- * ⚠️ **输入区是一个盒子，发送键长在盒子里，不是贴在旁边的第二个块。**
- *
- * 上一版是「76px 高的框 + 42px 的方按钮」并排：两个尺寸不一样的东西挨着，
- * 看着就是拼上去的（用户第一句话就指着这儿）。收进来之后这一块是一个整体，
- * 边框和焦点圈都走外壳（`:focus-within`），里面的 textarea 自己不画边。
- *
- * ⚠️ **左右内边距必须相等**：断言量的是 textarea 的中轴和欢迎区的中轴，
- * 左右不等就直接把那条对齐破坏掉了——而这正是这一屏栽过两次的地方。
- */
-.creation-chat__composer {
-  width: 100%; max-width: var(--chat-col); margin: 0 auto;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 12px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--canvas);
-  transition: border-color .14s var(--ease), box-shadow .14s var(--ease);
-}
-.creation-chat__composer:focus-within { border-color: var(--text-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-1) 7%, transparent); }
-/* ⚠️ **不能留 `resize`**：那个手柄会戳穿盒子的圆角。高度由 JS 跟着字算（一行起步，
-   到 168px 封顶再自己滚）——写死三行的话，空态就是个占了三行只用一行的框。 */
-.creation-chat__composer textarea {
-  width: 100%; min-height: 26px; max-height: 168px; resize: none;
-  padding: 2px 2px 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; line-height: 1.6;
-}
-/* 键盘规矩在底行左端。它原来压在输入框右下角，和发送键抢同一块地方 */
-.creation-composer__bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.creation-composer__bar small { color: var(--text-3); font-size: var(--fs-2xs); }
-/* ⚠️ 选择器要带上外壳（`.creation-chat__composer .creation-composer__send`），
-   否则 `.btn` 的圆角在层叠里赢——现象是这颗键还是个圆角方块，而它挨着一个圆角盒子，
-   两个相近但不相同的圆角比一个圆形更显得没对齐。 */
-.creation-chat__composer .creation-composer__send { width: var(--send-size); height: var(--send-size); padding: 0; display: grid; place-items: center; border-radius: 50%; }
-.creation-chat__composer .creation-composer__send svg { width: 16px; height: 16px; }
+.creation-form .creation-audience > span { font-size: var(--fs-2xs); letter-spacing: .01em; color: var(--text-3); }
 
 @media (max-width: 800px) {
   .creation-scrim { padding: 12px; }
-  .creation, .creation[data-screen="material"], .creation[data-screen="interview"] { width: calc(100vw - 24px); }
-  .creation-form__grid, .creation-material-workspace { grid-template-columns: 1fr; }
-  .creation-material-plan { display: none; }
-  .creation-material-browser { border-right: 0; }
+  .creation { width: calc(100vw - 24px); }
+  .creation-form__grid { grid-template-columns: 1fr; }
 }
-
-/* 起稿时被剔掉的素材（待核验的金句/数据不进稿）。
-   **悄悄剔除比不剔除更糟**：挑了 5 条只用了 3 条，不说的话用户会以为模型漏用了。 */
-.creation-skipped {
-  flex: none; display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0;
-  padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--canvas);
-}
-.creation-skipped > svg { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--warn); }
-.creation-skipped > span { min-width: 0; display: grid; gap: 2px; font-size: var(--fs-sm); line-height: 1.55; }
-.creation-skipped small { color: var(--text-3); font-size: var(--fs-xs); }

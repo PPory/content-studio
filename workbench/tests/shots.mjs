@@ -331,7 +331,7 @@ const shots = [
     // 等正文真的挂上来，不是等外壳——正文还在取的时候截出来的是一张骨架图
     await page.waitForSelector(".project-workspace .cm-content, .project-draft__empty, .project-review", { timeout: 25000 }).catch(() => {});
   }],
-  // AI 协作的「聊一聊」是访谈的新位置：它跟着正文，不再是一条新建入口。
+  // 光标级 AI 跟着正文出现，文档级讨论仍留在项目协作右栏。
   ["project-ai", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     await page.waitForSelector(".ptable__row", { timeout: 25000 }).catch(() => {});
     await page.click(".ptable__row", { timeout: 8000 }).catch(() => {});

@@ -24,7 +24,7 @@ import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant
 import { assistantReferenceDocument, assistantSummonDestination } from "../src/lib/assistant-summoner.js";
 import { inlineAiBoundary, placeInlineAiMenu } from "../src/lib/inline-ai-positioning.js";
 import { AI_RESULT_KINDS, candidateReviewMode, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
-import { materialDraftGrounding, normalizeGrounding } from "../src/lib/ai/grounding.js";
+import { normalizeGrounding } from "../src/lib/ai/grounding.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -656,9 +656,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("素材与事实专家必须使用真实检索并保留证据边界", records.experts.filter((item) => /素材|事实/.test(item.name)).every((item) => /knowledge_search/.test(item.instructions) && /web_search/.test(item.instructions)));
   check("六项专家能力都标明真实出现位置", records.experts.every((item) => item.scene) && records.experts.find((item) => item.id === "topic-editor")?.scene === "找题 / 选题");
   check("风格提示词覆盖只接受内置风格且保留换行", JSON.stringify(normalizeWritingStyleOverrides({ "clear-direct": "第一行\n第二行", unknown: "不该留下" })) === JSON.stringify({ "clear-direct": "第一行\n第二行" }));
-  const assist = await fs.readFile(new URL("../src/components/WritingAssist.jsx", import.meta.url), "utf8");
-  check("编辑器不再显示统一专家下拉框", !/本轮专家|changeExpert/.test(assist));
-  check("编辑器只在帮我写中选择风格，不再修改提示词", /这次用什么语气写/.test(assist) && !/saveWritingStyle/.test(assist));
+  check("旧 WritingAssist 实现已删除", !existsSync(new URL("../src/components/WritingAssist.jsx", import.meta.url)) && !existsSync(new URL("../src/components/writing-assist.css", import.meta.url)));
   const writingSettings = await fs.readFile(new URL("../src/components/SettingsWritingProfile.jsx", import.meta.url), "utf8");
   check("风格提示词统一在设置里修改保存", /实际发送给 AI 的提示词/.test(writingSettings) && /saveWritingStyle/.test(writingSettings));
   check("三类专家检查只使用规范 kind", EXPERT_KINDS.map((item) => item.id).join("/") === "material-research/quality-review/fact-check");
@@ -711,26 +709,26 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const assistantThread = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
   const assistantMessage = await fs.readFile(new URL("../src/components/assistant/AssistantMessage.jsx", import.meta.url), "utf8");
   const assistantPage = await fs.readFile(new URL("../src/pages/Assistant.jsx", import.meta.url), "utf8");
-  const globalDock = await fs.readFile(new URL("../src/components/GlobalAssistantDock.jsx", import.meta.url), "utf8");
+  const quickAssistant = await fs.readFile(new URL("../src/components/QuickAssistant.jsx", import.meta.url), "utf8");
   const projectRail = await fs.readFile(new URL("../src/components/ProjectAssistantRail.jsx", import.meta.url), "utf8");
   const readingRail = await fs.readFile(new URL("../src/components/SideRail.jsx", import.meta.url), "utf8");
-  const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
+  const expertReport = await fs.readFile(new URL("../src/components/ExpertReport.jsx", import.meta.url), "utf8");
   const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
   const inlineMarkdownEditor = await fs.readFile(new URL("../src/components/MarkdownEditor.jsx", import.meta.url), "utf8");
   const textRevision = await fs.readFile(new URL("../src/components/TextRevision.jsx", import.meta.url), "utf8");
   const projectWorkspace = await fs.readFile(new URL("../src/pages/ProjectWorkspace.jsx", import.meta.url), "utf8");
   const readerOverlay = await fs.readFile(new URL("../src/components/ReaderOverlay.jsx", import.meta.url), "utf8");
-  check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global" surface="rail" target=/.test(globalDock) && /scope="project"[\s\S]*surface="rail"[\s\S]*target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
-  check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${globalDock}\n${projectRail}\n${readingRail}`));
+  check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global"[\s\S]*surface="overlay"[\s\S]*target=/.test(quickAssistant) && /scope="project"[\s\S]*surface="rail"[\s\S]*target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
+  check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${quickAssistant}\n${projectRail}\n${readingRail}`));
   check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
-  check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
+  check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertReport) && !/阻塞发布|blocking/.test(expertReport));
   check("编辑器内联 AI 只读取 scope + target policy", /resolveAssistantPolicy/.test(inlineMarkdownEditor) && /capabilities\.writeAtCursor/.test(inlineMarkdownEditor) && /function beginRevision[\s\S]{0,220}capabilities\.reviseSelection/.test(inlineMarkdownEditor));
   check("内联 AI 定位不再使用页面固定阈值", /inlineAnchorOf/.test(inlineMarkdownEditor) && /view\.scrollDOM\.getBoundingClientRect/.test(inlineMarkdownEditor) && !/coords\.top >|window\.innerWidth - 18/.test(inlineMarkdownEditor));
   check("光标菜单使用准确动作名并保留输入法保护", /想一想/.test(textRevision) && /续写/.test(textRevision) && /按要求写/.test(textRevision) && /isCompositionEvent/.test(textRevision));
   check("Project 与 Reading 显式传入相同内联能力边界", /assistantScope="project"[\s\S]*assistantTarget=\{\{ kind: "draft", editable: draftEditable \}\}/.test(projectWorkspace) && /assistantScope="reading"[\s\S]*assistantTarget=\{\{ kind: "vault-document", editable: true \}\}/.test(readerOverlay));
-  check("WritingAssist 兼容源码保留但不再挂入 Reading 工具栏", /export function CursorWritingMenu/.test(textRevision) && !/<WritingAssist/.test(readerOverlay));
+  check("Project 与 Reading 只保留共用内联 AI", /export function CursorWritingMenu/.test(textRevision) && !/<WritingAssist/.test(`${projectWorkspace}\n${readerOverlay}`));
 
   const grounding = normalizeGrounding({
     used: [{ id: "m1", title: "真实案例" }],
@@ -749,8 +747,6 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("gate rejected 直接进入 failed", rejectedCandidate.status === "failed" && rejectedCandidate.error?.message === "个人经历缺少服务端证据");
   check("Candidate 变更摘要可比较", JSON.stringify(changeSummary("原文", "新正文")) === JSON.stringify({ added: 2, removed: 1, label: "+2 / −1" }));
   check("短候选内联、大候选专注审阅", candidateReviewMode({ kind: "selection" }) === "inline" && candidateReviewMode({ kind: "paragraph" }) === "inline" && candidateReviewMode({ kind: "section" }) === "focused" && candidateReviewMode({ kind: "whole-document" }) === "focused");
-  const materialGrounding = materialDraftGrounding([{ id: "m1", title: "真实案例" }, { id: "m2", title: "待核验数据" }], { skipped: [{ id: "m2", title: "待核验数据", reason: "待核验" }] });
-  check("CreationDialog 素材证据回执进入统一 Grounding", materialGrounding.used[0].id === "m1" && materialGrounding.skipped[0].nextStep.id === "verify");
   check("Action 同时支持 applied 与 rejected 正式状态", transitionActionResult({ id: "a1", type: "create_content" }, "applied").status === "applied" && transitionActionResult({ id: "a1", type: "create_content" }, "rejected").status === "rejected" && createAiResult({ kind: "action", type: "create_content" }).status === "proposed");
   check("Report 纳入统一 AiResult 概念", createAiResult({ kind: "report", findings: [{ id: "f1" }] }).findings.length === 1);
 
@@ -763,9 +759,9 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Grounding 默认直接展示而非折叠", /grounding\.skipped\.map/.test(candidateCard) && /grounding\.unverified\.map/.test(candidateCard) && !/<details/.test(candidateCard));
   check("ActionCard 同时提供确认和拒绝", /onApply/.test(actionCard) && /onReject/.test(actionCard) && /已拒绝/.test(actionCard));
   check("运行时信息只在完整全局 AI 页面显示", /showRuntime=\{scope === "global" && surface === "page"\}/.test(assistantPane));
-  check("旧素材起稿屏复用统一证据回执", /materialDraftGrounding/.test(creationDialog) && /<GroundingReceipt/.test(creationDialog));
+  check("CreationDialog 只保留新建选题", /新建选题/.test(creationDialog) && !/interview|materialDraftGrounding|draftFromMaterials|MODES|preset/.test(creationDialog));
+  check("旧全局 Dock 与专家任务外壳已删除", !existsSync(new URL("../src/components/GlobalAssistantDock.jsx", import.meta.url)) && !existsSync(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url)));
 
-  const quickAssistant = await fs.readFile(new URL("../src/components/QuickAssistant.jsx", import.meta.url), "utf8");
   const assistantSummoner = await fs.readFile(new URL("../src/lib/assistant-summoner.js", import.meta.url), "utf8");
   const appShell = await fs.readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   check("召唤器优先路由阅读、项目和完整 AI 页", assistantSummonDestination({ routeView: "project", readingAvailable: true }) === "reading" && assistantSummonDestination({ routeView: "project", readingAvailable: false }) === "project" && assistantSummonDestination({ routeView: "assistant", readingAvailable: false }) === "global-page" && assistantSummonDestination({ routeView: "hot", readingAvailable: false }) === "quick");
@@ -774,11 +770,10 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Quick Assistant 明示未附带页面内容且可移除上下文", /未附带页面内容/.test(quickAssistant) && /移除当前页面上下文/.test(quickAssistant));
   check("Ctrl I 与顶栏按钮复用同一 summon", /data-assistant-summoner[\s\S]*onClick=\{summon\}/.test(appShell) && /e\.key === "i"[\s\S]*summon\(\)/.test(appShell) && /addEventListener\("keydown", onKey, true\)/.test(appShell));
 
-  const { brainstormPromptParts } = await import("../server/routes/agent.mjs");
-  const prompt = brainstormPromptParts({ phase: "summary", audience: "固定读者", materials: "素材 A：真实案例" }).join("\n");
-  check("聊一聊的总结只整理四类写作线索", ["核心判断", "可用经历或例子", "可能展开的要点", "仍待回答的问题"].every((part) => prompt.includes(part)));
-  check("聊一聊明确禁止生成完整成稿", /不要.*完整成稿|不替用户写完整文章/.test(prompt));
-  check("聊一聊会把本篇已采用素材交给专家", prompt.includes("素材 A：真实案例"));
+  const assistantComposer = await fs.readFile(new URL("../src/components/assistant/AssistantComposer.jsx", import.meta.url), "utf8");
+  const { assistantSkills } = await import("../server/agent-runtime/assistant-runner.mjs");
+  const registeredSkills = await assistantSkills();
+  check("访谈继续由通用 Skill 选择器调用", /选择 Skill/.test(assistantComposer) && /menu === "skills" \? "\/"/.test(assistantComposer) && registeredSkills.items.some((item) => item.id === "interview-to-draft"));
 
   const { isBlankTemporaryDraft } = await import("../src/lib/temporary-project.js");
   check("只有未命名、无正文、无素材的临时项目才可自动清理", isBlankTemporaryDraft({ temporary: true, title: "未命名", body: "", materials: [] }));

@@ -64,12 +64,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
 
   const [gate, setGate] = useState(null);   // { item, next } 等待选平台
   const [toast, setToast] = useState(null); // { text, undo? }
-  /**
-   * ⚠️ **这个 state 现在只可能是 `"topic"`。** 选题库工具条上那颗「选题」是
-   * 直接建一条选题（`ListHead` 的 `onCreate("topic")`），它和页头那颗「新建」不是一件事。
-   * 起稿那三条路全归 `NewContentButton` 管了，**别再往这儿加第二个值**。
-   */
-  const [creation, setCreation] = useState(null);
+  const [topicDialogOpen, setTopicDialogOpen] = useState(false);
   const [organizerItems, setOrganizerItems] = useState(null);
 
   const [railMode, setRailMode] = useState("notes");
@@ -673,7 +668,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             isPipeline={isPipeline}
             sourceKey={sourceKey}
             onIntake={onIntake}
-            onCreate={setCreation}
+            onCreate={() => setTopicDialogOpen(true)}
             onOrganize={() => {
               const candidates = (query.trim() ? searchList : list)?.items || [];
               setOrganizerItems(source.isMaterialWorkspace
@@ -839,11 +834,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         onDone={() => { reload(); onChanged?.(); }}
       />
 
-      {/* 只剩「新建选题」这一屏。起稿的三条路在 `NewContentButton` 里 */}
       <CreationDialog
-        open={creation === "topic"}
-        preset="topic"
-        onClose={() => setCreation(null)}
+        open={topicDialogOpen}
+        onClose={() => setTopicDialogOpen(false)}
         onTopicCreated={(topic, project) => {
           onChanged?.();
           setToast({ text: `选题《${topic.title}》已建立` });

@@ -1,9 +1,5 @@
-import { useEffect, useState } from "react";
-import { api } from "../lib/api.js";
-import { expertKindDisplayName } from "../lib/expert-kinds.js";
 import { reportSeverity } from "../lib/report-severity.js";
 import { createAiResult } from "../lib/ai/result-model.js";
-import { IconRefresh, IconX } from "./icons.jsx";
 import "./expert-report.css";
 
 function Sources({ items = [] }) {
@@ -59,48 +55,5 @@ export function ExpertReport({ report }) {
       <Sources items={[...(item.localSources || []), ...(item.webSources || [])]} />
     </article>)}</section> : null}
     {report.nextSteps?.length ? <section><h4>下一步</h4><ul>{report.nextSteps.map((item, index) => <li key={index}>{item}</li>)}</ul></section> : null}
-  </div>;
-}
-
-export function ExpertTaskPanel({ run: initialRun, onRunChange, onClose, onRetry }) {
-  const [run, setRun] = useState(initialRun);
-  useEffect(() => setRun(initialRun), [initialRun]);
-  useEffect(() => {
-    if (!run?.id || !["queued", "running"].includes(run.status)) return undefined;
-    let stopped = false;
-    const poll = async () => {
-      try {
-        const next = (await api.expertRun(run.id)).run;
-        if (stopped) return;
-        setRun(next);
-        onRunChange?.(next);
-      } catch { /* 临时重启时继续轮询，不把任务误判成失败。 */ }
-    };
-    const timer = setInterval(poll, 1200);
-    poll();
-    return () => { stopped = true; clearInterval(timer); };
-  }, [run?.id, run?.status, onRunChange]);
-  useEffect(() => {
-    const esc = (event) => { if (event.key === "Escape") onClose?.(); };
-    window.addEventListener("keydown", esc, true);
-    return () => window.removeEventListener("keydown", esc, true);
-  }, [onClose]);
-  if (!run) return null;
-  const working = ["queued", "running"].includes(run.status);
-  return <div className="expert-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
-    <section className="expert-task" role="dialog" aria-modal="true" aria-label={expertKindDisplayName(run.kind, "专家任务")}>
-      <header>
-        <div><small>专家任务 · {run.localSourceCount != null ? `本地找到 ${run.localSourceCount} 条候选来源` : "只读研究"}</small><strong>{expertKindDisplayName(run.kind)}</strong></div>
-        <button onClick={onClose} aria-label="关闭专家任务"><IconX aria-hidden="true" /></button>
-      </header>
-      {working ? <div className="expert-progress" aria-live="polite"><div className="expert-progress__track"><span style={{ width: `${run.percent || 2}%` }} /></div><p><span className="expert-activity" aria-hidden="true"><i /></span><span>{run.stageLabel || "正在执行"}</span></p><small>关闭这个面板不会中止任务，回来仍能看到结果。</small></div> : null}
-      {run.status === "failed" ? <div className="expert-error" role="alert"><small>本次检查未完成</small><strong>{run.error}</strong>{run.hint ? <p>{run.hint}</p> : null}<button className="expert-retry" onClick={onRetry}><IconRefresh aria-hidden="true" />重试本次检查</button></div> : null}
-      {run.status === "cancelled" ? <div className="expert-error"><strong>这次任务已中止</strong></div> : null}
-      <ExpertReport report={run.report} />
-      <footer>
-        <span>报告不会自动改正文；来源与修改建议由你决定是否采用。</span>
-        <div>{working ? <button onClick={async () => { const next = (await api.cancelExpertRun(run.id)).run; setRun(next); onRunChange?.(next); }}>中止任务</button> : run.status === "done" ? <button onClick={onRetry}><IconRefresh aria-hidden="true" />重新检查</button> : <button onClick={onClose}>关闭</button>}</div>
-      </footer>
-    </section>
   </div>;
 }

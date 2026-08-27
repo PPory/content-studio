@@ -1,7 +1,34 @@
+.expert-report { overflow: auto; padding: 4px 24px 28px; }
+.expert-report__summary { margin: 18px 0 24px; font-size: 16px; line-height: 1.75; }
 .expert-report__reference { margin: var(--sp-4) 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.expert-report section + section { margin-top: 28px; }
+.expert-report h4 { margin: 0 0 12px; color: var(--text-2); font-size: 13px; letter-spacing: .04em; }
+.expert-report article { padding: 14px 0; border-top: 1px solid var(--border); }
+.expert-report blockquote { margin: 0 0 6px; padding-left: 12px; border-left: 2px solid var(--border-strong); }
+.quality-row { display: grid; grid-template-columns: 28px 1fr; gap: 10px; }
+.quality-row > span,
+.claim-row header > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); font-size: 11px; }
+.quality-row[data-status="pass"] > span { background: color-mix(in srgb, var(--st-done) 16%, var(--surface)); color: var(--st-done-ink); }
+.quality-row[data-status="fail"] > span { background: color-mix(in srgb, var(--st-urgent) 14%, var(--surface)); color: var(--st-urgent-ink); }
+.quality-row div { display: grid; gap: 5px; }
+.quality-row small,
+.claim-row > small { color: var(--text-3); }
+.quality-row p,
+.claim-row p { margin: 5px 0 0; line-height: 1.65; }
+.claim-row header { display: flex; align-items: center; gap: 9px; }
+.claim-row header b { flex: 1; }
+.expert-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.expert-sources article { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--canvas); }
+.expert-sources p { margin: 0; color: var(--text-2); font-size: 12px; }
+.expert-sources a,
+.expert-sources code { overflow-wrap: anywhere; color: var(--text-2); font-size: 11px; }
 .expert-finding-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
 .expert-finding-head b { min-width: 0; }
 .expert-severity { flex: none; padding: 3px 7px; border-radius: var(--r-pill); background: var(--canvas); color: var(--text-2); font-size: var(--fs-2xs); font-style: normal; font-weight: 650; white-space: nowrap; }
 .expert-severity[data-severity="risk"] { background: color-mix(in srgb, var(--st-urgent) 14%, var(--surface)); color: var(--st-urgent-ink); }
 .expert-severity[data-severity="suggested"] { background: color-mix(in srgb, var(--st-review) 12%, var(--surface)); color: var(--st-review-ink); }
 .expert-severity[data-severity="optional"] { background: color-mix(in srgb, var(--text-3) 10%, var(--surface)); color: var(--text-2); }
+
+@media (max-width: 720px) {
+  .expert-sources { grid-template-columns: 1fr; }
+}

@@ -38,15 +38,3 @@ export function normalizeGrounding(value) {
     gateDetail: clean(value.gateDetail),
   };
 }
-
-export function materialDraftGrounding(selected = [], result = {}) {
-  const skipped = Array.isArray(result.skipped) ? result.skipped : [];
-  const skippedIds = new Set(skipped.map((item) => clean(typeof item === "string" ? item : item?.id || item?.title)));
-  return normalizeGrounding(result.grounding || {
-    used: selected.filter((item) => !skippedIds.has(clean(item?.id)) && !skippedIds.has(clean(item?.title))),
-    skipped,
-    unverified: result.unverified || [],
-    gate: result.gate || "passed",
-    gateDetail: result.gateDetail,
-  });
-}
