@@ -9,8 +9,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const STAGE6_SHOT_DIR = path.join(ROOT, "tmp", "stage6-production");
 const STAGE7_SHOT_DIR = path.join(ROOT, "tmp", "stage7-inline-ai");
+const STAGE7_1_SHOT_DIR = path.join(ROOT, "tmp", "stage7-1-inline-ai");
 await fs.mkdir(STAGE6_SHOT_DIR, { recursive: true });
 await fs.mkdir(STAGE7_SHOT_DIR, { recursive: true });
+await fs.mkdir(STAGE7_1_SHOT_DIR, { recursive: true });
 const PORT = 5202;
 
 function loadPlaywright() {
@@ -294,6 +296,52 @@ await page.route("**/api/assistant/**", async (route) => {
 function assert(value, message) {
   if (!value) throw new Error(message);
 }
+async function inlineMenuLayout(editorSelector) {
+  return page.evaluate((selector) => {
+    const menu = document.querySelector(".text-revision-menu");
+    const editor = document.querySelector(selector);
+    if (!menu || !editor) return null;
+    const menuRect = menu.getBoundingClientRect();
+    const editorRect = editor.getBoundingClientRect();
+    return {
+      menu: { left: menuRect.left, top: menuRect.top, right: menuRect.right, bottom: menuRect.bottom },
+      editor: {
+        left: Math.max(0, editorRect.left),
+        top: Math.max(0, editorRect.top),
+        right: Math.min(window.innerWidth, editorRect.right),
+        bottom: Math.min(window.innerHeight, editorRect.bottom),
+      },
+      placement: menu.dataset.placement,
+    };
+  }, editorSelector);
+}
+
+async function assertInlineMenuInside(editorSelector, label) {
+  const layout = await inlineMenuLayout(editorSelector);
+  assert(layout
+    && layout.menu.left >= layout.editor.left + 7
+    && layout.menu.right <= layout.editor.right - 7
+    && layout.menu.top >= layout.editor.top + 7
+    && layout.menu.bottom <= layout.editor.bottom - 7,
+  `${label} 越出编辑器可视区域：${JSON.stringify(layout)}`);
+  return layout;
+}
+
+async function moveCursorNearViewportBottom(editorSelector) {
+  await page.focus(`${editorSelector} .cm-content`);
+  await page.keyboard.press("Control+End");
+  await page.evaluate((selector) => {
+    const editor = document.querySelector(selector);
+    const scroller = editor?.querySelector(".cm-scroller");
+    const cursor = editor?.querySelector(".cm-cursor");
+    if (!scroller || !cursor) return;
+    const boundary = scroller.getBoundingClientRect();
+    const caret = cursor.getBoundingClientRect();
+    const desiredBottom = boundary.bottom - 14;
+    scroller.scrollTop = Math.max(0, scroller.scrollTop - (desiredBottom - caret.bottom));
+  }, editorSelector);
+  await page.waitForTimeout(120);
+}
 
 function editorValue(selector) {
   return page.$eval(selector, (content) => Array.from(content.children).filter((line) => line.classList.contains("cm-line")).map((line) => line.textContent).join("\n"));
@@ -362,6 +410,119 @@ try {
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-long-title.png"), fullPage: false });
     await page.fill(".project-draft__title", originalTitle);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-empty.png"), fullPage: false });
+
+    const edgeDocument = [
+      "顶部一行用于验证光标靠近标题、编辑器左侧和右侧时，内联 AI 菜单仍然只占正文可视区域而不遮挡两侧面板。",
+      "左边界选区从这里开始，接下来会跨过多行，验证真实选区矩形。",
+      ...Array.from({ length: 42 }, (_, index) => `第 ${index + 1} 行正文用于滚动定位；菜单必须跟随真实光标重排，而不是使用页面固定偏移。`),
+    ].join("\n");
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText(edgeDocument);
+
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 8; index += 1) await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    const projectTopLayout = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 顶部光标菜单");
+    assert(projectTopLayout.placement === "below", `Project 顶部光标菜单没有向下翻转：${JSON.stringify(projectTopLayout)}`);
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-top.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".cursor-writing-menu", { state: "detached" });
+    assert(await page.evaluate(() => document.activeElement?.classList.contains("cm-content")), "Project 光标菜单 Esc 后没有恢复编辑器焦点");
+
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    await assertInlineMenuInside(".project-draft .cm-scroller", "Project 左侧光标菜单");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-left.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    await assertInlineMenuInside(".project-draft .cm-scroller", "Project 右侧光标菜单");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-right.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+
+    await moveCursorNearViewportBottom(".project-draft");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    const projectBottomLayout = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 底部光标菜单");
+    assert(projectBottomLayout.placement === "above", `Project 底部光标菜单没有向上翻转：${JSON.stringify(projectBottomLayout)}`);
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-bottom.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 20; index += 1) await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    const middleBeforeScroll = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 滚动前的光标菜单");
+    await page.$eval(".main", (item) => { item.scrollTop += 48; });
+    await page.waitForTimeout(180);
+    const middleAfterScroll = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 滚动后的光标菜单");
+    assert(Math.abs(middleAfterScroll.menu.top - middleBeforeScroll.menu.top) > 10, `Project 滚动后光标菜单没有跟随锚点重定位：${JSON.stringify({ middleBeforeScroll, middleAfterScroll })}`);
+    await page.keyboard.press("Escape");
+
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    await page.$eval(".project-draft .cm-content", (item) => {
+      item.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "中" }));
+      item.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", altKey: true, isComposing: true, keyCode: 229 }));
+    });
+    await page.waitForTimeout(100);
+    assert(!(await page.$(".cursor-writing-menu")), "Project 中文输入法 composition 期间误触发 Alt+Enter 菜单");
+    await page.$eval(".project-draft .cm-content", (item) => item.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "中" })));
+
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 3; index += 1) await page.keyboard.press("Shift+ArrowDown");
+    await page.waitForSelector(".text-revision-menu");
+    await assertInlineMenuInside(".project-draft .cm-scroller", "Project 左边界长选区菜单");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-selection-left.png"), fullPage: false });
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    const projectKeyboardAction = await page.evaluate(() => document.activeElement?.textContent?.trim());
+    assert(projectKeyboardAction === "纠错", `Project 方向键没有选择第二个菜单动作：${projectKeyboardAction}`);
+    const beforeKeyboardCandidate = await editorValue(".project-draft .cm-content");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".project-draft .candidate-card textarea");
+    assert((await editorValue(".project-draft .cm-content")).replace(/\n/g, "") === beforeKeyboardCandidate.replace(/\n/g, ""), "Project Enter 执行 Candidate 前修改了正文");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-candidate.png"), fullPage: false });
+    await page.focus(".project-draft .candidate-card textarea");
+    await page.keyboard.press("Control+Backspace");
+    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
+
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 8; index += 1) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForSelector(".text-revision-menu");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".text-revision-menu", { state: "detached" });
+    assert(await page.evaluate(() => document.activeElement?.classList.contains("cm-content") && Boolean(document.querySelector(".cm-selectionBackground"))), "Project 选区菜单 Esc 后没有恢复原选区与编辑器焦点");
+    await page.keyboard.press("ArrowLeft");
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForSelector(".text-revision-menu");
+    await page.click(".project-draft__title");
+    await page.waitForSelector(".text-revision-menu", { state: "detached" });
+
+    await page.setViewportSize({ width: 1180, height: 768 });
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.press("Alt+Enter");
+    await page.waitForSelector(".cursor-writing-menu");
+    await assertInlineMenuInside(".project-draft .cm-scroller", "1180 Project 光标菜单");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1180-project-cursor-menu.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < 18; index += 1) await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForSelector(".text-revision-menu");
+    await assertInlineMenuInside(".project-draft .cm-scroller", "1180 Project 选区菜单");
+    await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1180-project-selection-menu.png"), fullPage: false });
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1366, height: 768 });
+
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+A");
     await page.keyboard.insertText("收藏处理的是焦虑，不是信息。");
@@ -369,6 +530,8 @@ try {
     const projectCursorBefore = await editorValue(".project-draft .cm-content");
     await page.keyboard.press("Alt+Enter");
     await page.waitForSelector(".cursor-writing-menu");
+    const projectCursorActions = await page.$$eval(".cursor-writing-menu [data-inline-ai-action=true]", (items) => items.map((item) => item.textContent.trim()));
+    assert(projectCursorActions.join("/") === "想一想/续写/按要求写", `Project 光标动作命名不准确：${projectCursorActions.join("/")}`);
     assert(!(await page.$(".project-draft .writing-assist__trigger")), "Project 编辑器仍有常驻 AI 按钮");
     await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-cursor-menu.png"), fullPage: false });
     await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
@@ -383,6 +546,25 @@ try {
     await page.keyboard.press("Control+Backspace");
     await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
     assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "Project 光标 Candidate 弃用后改变正文");
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("Alt+Enter");
+    await page.click('.cursor-writing-menu [data-inline-ai-action=true]:has-text("按要求写")');
+    await page.fill('.cursor-writing-menu input[aria-label="光标生成要求"]', "写一个克制的过渡段");
+    const requestsBeforeComposition = requests.length;
+    await page.$eval('.cursor-writing-menu input[aria-label="光标生成要求"]', (item) => {
+      item.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "段" }));
+      item.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", isComposing: true, keyCode: 229 }));
+    });
+    await page.waitForTimeout(100);
+    assert(requests.length === requestsBeforeComposition && await page.$(".cursor-writing-menu"), "Project 自定义输入 composition 期间误提交");
+    await page.$eval('.cursor-writing-menu input[aria-label="光标生成要求"]', (item) => item.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "段" })));
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".project-draft .candidate-card textarea");
+    assert(requests.at(-1)?.mode === "paragraph" && requests.at(-1)?.expert?.includes("本次生成要求：写一个克制的过渡段"), "按要求写没有沿用原能力与 Candidate 流程");
+    await page.focus(".project-draft .candidate-card textarea");
+    await page.keyboard.press("Control+Backspace");
+    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+Home");
     for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
@@ -760,7 +942,9 @@ try {
   await page.waitForSelector(".cursor-writing-menu");
   const firstCursorActionFocused = await page.evaluate(() => document.activeElement === document.querySelector(".cursor-writing-menu .text-revision-menu__actions button"));
   assert(firstCursorActionFocused, "Reading 光标菜单打开后没有把键盘焦点交给首个动作");
+  await assertInlineMenuInside(".ws-edit .cm-scroller", "Reading 标题附近光标菜单");
   await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-cursor-menu.png"), fullPage: false });
+  await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-cursor-title.png"), fullPage: false });
   await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
   await page.waitForFunction(() => document.querySelector(".cursor-writing-menu__result")?.textContent.includes("读者最可能反对"));
   const existingNudge = requests.filter((item) => item.mode === "nudge").at(-1);
@@ -771,6 +955,7 @@ try {
   await page.waitForSelector(".ws-edit .candidate-card textarea");
   assert(!(await editorValue(".ws-edit .cm-content")).includes(paragraph), "Reading 光标生成在采纳前写入了候选正文");
   await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-inline-candidate.png"), fullPage: false });
+  await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-candidate.png"), fullPage: false });
   await page.focus(".ws-edit .candidate-card textarea");
   await page.keyboard.press("Control+Enter");
   await page.waitForSelector(".ws-edit .candidate-card", { state: "detached" });
@@ -778,6 +963,17 @@ try {
   assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "Reading 光标 Candidate 没有在采纳后精确插入");
   const editorFocusRestored = await page.evaluate(() => document.activeElement?.classList.contains("cm-content"));
   assert(editorFocusRestored, "Reading Candidate 采纳后没有把焦点还给正文");
+  await moveCursorNearViewportBottom(".ws-edit");
+  await page.keyboard.press("Alt+Enter");
+  await page.waitForSelector(".cursor-writing-menu");
+  const readingBottomLayout = await assertInlineMenuInside(".ws-edit .cm-scroller", "Reading 视口底部光标菜单");
+  assert(readingBottomLayout.placement === "above", `Reading 底部光标菜单没有向上翻转：${JSON.stringify(readingBottomLayout)}`);
+  await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-cursor-bottom.png"), fullPage: false });
+  await page.keyboard.press("Escape");
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  await page.waitForTimeout(120);
+  const readingDocumentBeforeRevision = await editorValue(".ws-edit .cm-content");
 
   // 正式改稿：选区 → 自定义润色 → 对比 → 重写 → 编辑候选 → 采纳。
   await page.click(".ws-edit .cm-content");
@@ -793,8 +989,9 @@ try {
   assert(groundingText.includes("已使用 1") && groundingText.includes("已跳过 2") && groundingText.includes("未经核验 1"), "Grounding used/skipped/unverified 没有默认显示");
   assert(groundingText.includes("去核验") && groundingText.includes("仍然使用"), "skipped 没有给出下一步");
   const compareDocument = await editorValue(".ws-edit .cm-content");
-  const visuallySplitDocument = `${existingAfter.slice(0, 12)}\n${existingAfter.slice(12)}`;
-  assert(compareDocument === visuallySplitDocument, "对比阶段除候选卡片占位外改变了正文内容");
+  const visuallySplitDocument = `${readingDocumentBeforeRevision.slice(0, 12)}\n${readingDocumentBeforeRevision.slice(12)}`;
+  const compareDiffAt = Array.from({ length: Math.max(compareDocument.length, visuallySplitDocument.length) }, (_, index) => index).find((index) => compareDocument[index] !== visuallySplitDocument[index]) ?? -1;
+  assert(compareDocument === visuallySplitDocument, `对比阶段除候选卡片占位外改变了正文内容：${JSON.stringify({ compareLength: compareDocument.length, expectedLength: visuallySplitDocument.length, diffAt: compareDiffAt, actual: compareDocument.slice(Math.max(0, compareDiffAt - 40), compareDiffAt + 140), expected: visuallySplitDocument.slice(Math.max(0, compareDiffAt - 40), compareDiffAt + 140), selected: revisionRequests[legacyRevisionStart]?.selected })}`);
   await page.focus(".ws-edit .cm-content");
   await page.keyboard.press("Control+End");
   await page.keyboard.type("临时变化");
@@ -825,7 +1022,7 @@ try {
   await page.click('.text-revision-review__decide button:has-text("采纳")');
   await page.waitForSelector(".text-revision-review", { state: "detached" });
   const revisedAfter = await editorValue(".ws-edit .cm-content");
-  const expectedRevisionPrefix = `这是用户调整后的最终候选。${existingAfter.slice(12)}`.slice(0, 160);
+  const expectedRevisionPrefix = `这是用户调整后的最终候选。${readingDocumentBeforeRevision.slice(12)}`.slice(0, 160);
   assert(revisedAfter.startsWith(expectedRevisionPrefix), "采纳没有精确替换原选区前缀：" + JSON.stringify(revisedAfter.slice(0, 160)));
   await page.click(".ws-edit .md-editor__ai-history");
   await page.waitForSelector(".ai-draft-history");
@@ -874,6 +1071,7 @@ try {
   await page.keyboard.press("Alt+Enter");
   await page.waitForTimeout(100);
   assert(!(await page.$(".cursor-writing-menu")) && !(await page.$(".text-revision-menu")), "Reading 只读模式仍出现正文修改动作");
+  await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-readonly.png"), fullPage: false });
 
   await page.evaluate(() => localStorage.removeItem("xenho-assistant-model"));
   await page.goto(`http://127.0.0.1:${PORT}/#/content`, { waitUntil: "networkidle" });

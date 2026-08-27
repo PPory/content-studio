@@ -30,6 +30,7 @@ import { citationExtension, citationField, focusCitationAt, revealCitation, setC
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import { clearTextRevision, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
 import { candidateReviewMode, candidateStatus, createCandidate, documentVersionOf } from "../lib/ai/result-model.js";
+import { inlineAiBoundary, intersectRects, rectOf } from "../lib/inline-ai-positioning.js";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -98,40 +99,73 @@ const cmTheme = EditorView.theme({
   ".cm-cursor": { borderLeftColor: "var(--text-1)", borderLeftWidth: "2px" },
 });
 
+function editorVisibleBoundaryOf(view) {
+  return inlineAiBoundary(view.scrollDOM.getBoundingClientRect(), {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+}
+
+function unionRects(rects = []) {
+  if (!rects.length) return null;
+  return rectOf({
+    left: Math.min(...rects.map((item) => item.left)),
+    top: Math.min(...rects.map((item) => item.top)),
+    right: Math.max(...rects.map((item) => item.right)),
+    bottom: Math.max(...rects.map((item) => item.bottom)),
+  });
+}
+
+function selectionAnchorRectOf(view, from, to, boundary) {
+  try {
+    const start = view.domAtPos(from);
+    const end = view.domAtPos(to);
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    const visibleRects = [...range.getClientRects()]
+      .map((item) => intersectRects(item, boundary))
+      .filter(Boolean);
+    const selectionRect = unionRects(visibleRects);
+    if (selectionRect) return selectionRect;
+  } catch {
+    // CodeMirror can recycle an off-screen line between selection and measurement.
+  }
+  const start = view.coordsAtPos(from);
+  const end = view.coordsAtPos(to);
+  if (!start || !end) return null;
+  return unionRects([start, end].map((item) => intersectRects(item, boundary)).filter(Boolean));
+}
+
+function inlineAnchorOf(view, from, to) {
+  const boundaryRect = editorVisibleBoundaryOf(view);
+  if (!boundaryRect) return null;
+  const cursorRect = from === to ? view.coordsAtPos(from) : null;
+  const anchorRect = from === to
+    ? intersectRects(cursorRect && { ...rectOf(cursorRect), right: Math.max(cursorRect.right, cursorRect.left + 1) }, boundaryRect)
+    : selectionAnchorRectOf(view, from, to, boundaryRect);
+  if (!anchorRect) return null;
+  return {
+    anchorRect,
+    boundaryRect,
+    preferredPlacement: "above",
+  };
+}
+
 function revisionSelectionOf(view) {
   const { from, to } = view.state.selection.main;
   if (from === to) return null;
   const text = view.state.sliceDoc(from, to);
   if (!text.trim()) return null;
-  const start = view.coordsAtPos(from);
-  const end = view.coordsAtPos(to);
-  if (!start || !end) return null;
-  const topEdge = Math.min(start.top, end.top);
-  const bottomEdge = Math.max(start.bottom, end.bottom);
-  const placement = topEdge > 92 ? "above" : "below";
-  return {
-    from,
-    to,
-    text,
-    left: Math.max(18, Math.min(window.innerWidth - 18, (start.left + end.right) / 2)),
-    top: placement === "above" ? topEdge - 8 : bottomEdge + 8,
-    placement,
-  };
+  const anchor = inlineAnchorOf(view, from, to);
+  return anchor ? { from, to, text, ...anchor } : null;
 }
 
 function cursorWritingAnchorOf(view) {
   const { from, to } = view.state.selection.main;
   if (from !== to) return null;
-  const coords = view.coordsAtPos(from);
-  if (!coords) return null;
-  const placement = coords.top > 132 ? "above" : "below";
-  return {
-    from,
-    to,
-    left: Math.max(18, Math.min(window.innerWidth - 18, coords.left)),
-    top: placement === "above" ? coords.top - 8 : coords.bottom + 8,
-    placement,
-  };
+  const anchor = inlineAnchorOf(view, from, to);
+  return anchor ? { from, to, ...anchor } : null;
 }
 
 function inlineMaterialContext(materials = []) {
@@ -301,12 +335,18 @@ export function MarkdownEditor({
   const [aiDrafts, setAiDrafts] = useState([]);
   const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
   const [selectionMenu, setSelectionMenu] = useState(null);
+  const selectionMenuRef = useRef(null);
+  selectionMenuRef.current = selectionMenu;
+  const dismissedSelectionRef = useRef("");
   const [cursorMenu, setCursorMenu] = useState(null);
+  const cursorMenuRef = useRef(null);
+  cursorMenuRef.current = cursorMenu;
   const [activeRevision, setActiveRevision] = useState(null);
   const [, setRevisionHostTick] = useState(0);
   const activeRevisionRef = useRef(null);
   const revisionAbort = useRef(null);
   const cursorNudgeAbort = useRef(null);
+  const imeComposingRef = useRef(false);
   const revisionSaveTimer = useRef(0);
   const [revisionHistory, setRevisionHistory] = useState([]);
   const [revisionSaveError, setRevisionSaveError] = useState("");
@@ -335,14 +375,38 @@ export function MarkdownEditor({
     });
   }
 
+  function restoreEditorFocus() {
+    view.current?.focus();
+    requestAnimationFrame(() => view.current?.focus());
+  }
+
   function closeCursorWriting({ restoreFocus = true } = {}) {
     cursorNudgeAbort.current?.abort();
     cursorNudgeAbort.current = null;
     setCursorMenu(null);
-    if (restoreFocus) requestAnimationFrame(() => view.current?.focus());
+    if (restoreFocus) restoreEditorFocus();
+  }
+
+  function closeSelectionRevision({ restoreFocus = true } = {}) {
+    const current = selectionMenuRef.current;
+    if (current) dismissedSelectionRef.current = `${current.from}:${current.to}`;
+    setSelectionMenu(null);
+    if (restoreFocus) restoreEditorFocus();
+  }
+
+  function visibleSelectionMenu(nextSelection, activeRevision) {
+    if (!nextSelection) {
+      dismissedSelectionRef.current = "";
+      return null;
+    }
+    const key = `${nextSelection.from}:${nextSelection.to}`;
+    if (dismissedSelectionRef.current === key) return null;
+    const policy = inlinePolicyAt(nextSelection);
+    return policy?.capabilities.reviseSelection && !previewRef.current && !activeRevision ? nextSelection : null;
   }
 
   function openCursorWriting(currentView) {
+    if (imeComposingRef.current || currentView.composing) return false;
     const anchor = cursorWritingAnchorOf(currentView);
     const policy = inlinePolicyAt(null);
     if (!anchor || !policy?.capabilities.writeAtCursor || previewRef.current || currentView.state.field(textRevisionField).active) return false;
@@ -363,7 +427,7 @@ export function MarkdownEditor({
           drawSelection(),
           EditorView.lineWrapping,
           keymap.of([
-            { key: "Alt-Enter", preventDefault: true, run: (currentView) => openCursorWriting(currentView) },
+            { key: "Alt-Enter", run: (currentView) => openCursorWriting(currentView) },
             ...defaultKeymap,
             ...historyKeymap,
             indentWithTab,
@@ -390,6 +454,12 @@ export function MarkdownEditor({
               // 选中态只能换、不能退出的话，想安静读一遍正文时右边永远有一张卡亮着
               const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
               onCiteClickRef.current?.(focusCitationAt(view, pos));
+            },
+            compositionstart() {
+              imeComposingRef.current = true;
+            },
+            compositionend() {
+              imeComposingRef.current = false;
             },
           }),
           EditorView.updateListener.of((u) => {
@@ -429,11 +499,17 @@ export function MarkdownEditor({
               setActiveRevision(null);
             }
             if (u.selectionSet || u.docChanged) {
-              cursorNudgeAbort.current?.abort();
-              setCursorMenu(null);
               const nextSelection = revisionSelectionOf(u.view);
-              const selectionPolicy = inlinePolicyAt(nextSelection);
-              setSelectionMenu(selectionPolicy?.capabilities.reviseSelection && !previewRef.current && !revisionNow.active ? nextSelection : null);
+              setSelectionMenu(visibleSelectionMenu(nextSelection, revisionNow.active));
+              if (cursorMenuRef.current) {
+                const cursorAnchor = !u.docChanged && !nextSelection && !revisionNow.active ? cursorWritingAnchorOf(u.view) : null;
+                if (cursorAnchor) setCursorMenu((current) => current ? { ...current, ...cursorAnchor } : current);
+                else {
+                  cursorNudgeAbort.current?.abort();
+                  cursorNudgeAbort.current = null;
+                  setCursorMenu(null);
+                }
+              }
             }
           }),
         ],
@@ -442,20 +518,40 @@ export function MarkdownEditor({
     view.current = v;
     onCursorChangeRef.current?.(v.state.selection.main.head);
     onSelectionChangeRef.current?.(null);
-    const refreshSelection = () => {
+    const refreshInlineMenus = () => {
       const active = v.state.field(textRevisionField).active;
       const nextSelection = revisionSelectionOf(v);
-      const selectionPolicy = inlinePolicyAt(nextSelection);
-      setSelectionMenu(selectionPolicy?.capabilities.reviseSelection && !previewRef.current && !active ? nextSelection : null);
-      cursorNudgeAbort.current?.abort();
-      setCursorMenu(null);
+
+      setSelectionMenu(visibleSelectionMenu(nextSelection, active));
+      if (cursorMenuRef.current) {
+        const cursorAnchor = !nextSelection && !active ? cursorWritingAnchorOf(v) : null;
+        if (cursorAnchor) setCursorMenu((current) => current ? { ...current, ...cursorAnchor } : current);
+        else {
+          cursorNudgeAbort.current?.abort();
+          cursorNudgeAbort.current = null;
+          setCursorMenu(null);
+        }
+      }
       if (active) requestAnimationFrame(() => setRevisionHostTick((tick) => tick + 1));
     };
-    v.scrollDOM.addEventListener("scroll", refreshSelection, { passive: true });
-    window.addEventListener("resize", refreshSelection);
+    let refreshFrame = 0;
+    const scheduleInlineRefresh = () => {
+      cancelAnimationFrame(refreshFrame);
+      refreshFrame = requestAnimationFrame(refreshInlineMenus);
+    };
+    const boundaryObserver = typeof ResizeObserver === "function" ? new ResizeObserver(scheduleInlineRefresh) : null;
+    boundaryObserver?.observe(v.scrollDOM);
+    v.scrollDOM.addEventListener("scroll", scheduleInlineRefresh, { passive: true });
+    window.addEventListener("scroll", scheduleInlineRefresh, true);
+    window.addEventListener("resize", scheduleInlineRefresh);
+    document.addEventListener("selectionchange", scheduleInlineRefresh);
     return () => {
-      v.scrollDOM.removeEventListener("scroll", refreshSelection);
-      window.removeEventListener("resize", refreshSelection);
+      cancelAnimationFrame(refreshFrame);
+      boundaryObserver?.disconnect();
+      v.scrollDOM.removeEventListener("scroll", scheduleInlineRefresh);
+      window.removeEventListener("scroll", scheduleInlineRefresh, true);
+      window.removeEventListener("resize", scheduleInlineRefresh);
+      document.removeEventListener("selectionchange", scheduleInlineRefresh);
       v.destroy();
       view.current = null;
     };
@@ -1062,10 +1158,8 @@ export function MarkdownEditor({
         <SelectionRevisionMenu
           selection={selectionMenu}
           onRun={beginRevision}
-          onClose={() => {
-            setSelectionMenu(null);
-            requestAnimationFrame(() => view.current?.focus());
-          }}
+          onClose={closeSelectionRevision}
+
         />,
         document.body
       ) : null}

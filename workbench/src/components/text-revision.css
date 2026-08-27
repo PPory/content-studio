@@ -3,7 +3,7 @@
   z-index: 130;
   width: max-content;
   max-width: min(560px, calc(100vw - 24px));
-  transform: translate(-50%, -100%);
+  overflow: auto;
   padding: 4px;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -11,7 +11,7 @@
   box-shadow: var(--shadow-lg);
   color: var(--text-1);
 }
-.text-revision-menu[data-placement="below"] { transform: translate(-50%, 0); }
+
 .text-revision-menu__actions { display: flex; align-items: center; gap: 2px; }
 .text-revision-menu__actions button {
   min-height: 30px;
@@ -48,7 +48,7 @@
 .cursor-writing-menu {
   min-width: min(360px, calc(100vw - 24px));
 }
-.cursor-writing-menu .text-revision-menu__actions button:focus-visible,
+.text-revision-menu__actions button:focus-visible,
 .cursor-writing-menu__result button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

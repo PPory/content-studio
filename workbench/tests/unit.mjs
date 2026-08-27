@@ -22,6 +22,7 @@ import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src
 import { reportSeverity } from "../src/lib/report-severity.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant-policy.js";
 import { assistantReferenceDocument, assistantSummonDestination } from "../src/lib/assistant-summoner.js";
+import { inlineAiBoundary, placeInlineAiMenu } from "../src/lib/inline-ai-positioning.js";
 import { AI_RESULT_KINDS, candidateReviewMode, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
 import { materialDraftGrounding, normalizeGrounding } from "../src/lib/ai/grounding.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
@@ -677,6 +678,29 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Project 与 Reading 可编辑正文共用光标写作能力", editableDraft.capabilities.writeAtCursor && editableVault.capabilities.writeAtCursor);
   check("Project 与 Reading 选区改写能力矩阵一致", editableDraftSelection.capabilities.reviseSelection && editableVault.capabilities.reviseSelection);
   check("只读 Reading 不出现光标或选区修改能力", !readonlyReading.capabilities.writeAtCursor && !readonlyReading.capabilities.reviseSelection);
+  const visibleBoundary = inlineAiBoundary(
+    { left: 220, top: 72, right: 1020, bottom: 720 },
+    { width: 900, height: 650 },
+  );
+  check("内联 AI 边界只取编辑器与视口的可见交集", JSON.stringify(visibleBoundary) === JSON.stringify({ left: 220, top: 72, right: 900, bottom: 650, width: 680, height: 578 }));
+  const topMenu = placeInlineAiMenu({
+    anchorRect: { left: 230, top: 80, right: 232, bottom: 100 },
+    boundaryRect: visibleBoundary,
+    menuRect: { width: 360, height: 80 },
+  });
+  check("光标靠近顶部时菜单自动翻到下方并留在左边界内", topMenu.placement === "below" && topMenu.left >= visibleBoundary.left + 8 && topMenu.top >= 108);
+  const bottomMenu = placeInlineAiMenu({
+    anchorRect: { left: 890, top: 620, right: 892, bottom: 640 },
+    boundaryRect: visibleBoundary,
+    menuRect: { width: 360, height: 80 },
+  });
+  check("光标靠近底部和右侧时菜单翻到上方并限制在编辑器内", bottomMenu.placement === "above" && bottomMenu.left + 360 <= visibleBoundary.right - 8 && bottomMenu.top + 80 <= 612);
+  const constrainedMenu = placeInlineAiMenu({
+    anchorRect: { left: 500, top: 300, right: 502, bottom: 320 },
+    boundaryRect: { left: 480, top: 120, right: 700, bottom: 560 },
+    menuRect: { width: 360, height: 600 },
+  });
+  check("窄编辑器与高菜单都使用可用宽高上限", constrainedMenu.maxWidth === 204 && constrainedMenu.maxHeight === 424 && constrainedMenu.left === 488 && constrainedMenu.top === 128);
   const pagePolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "page" });
   const railPolicy = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true }, surface: "rail" });
   check("surface 不改变 capability policy", JSON.stringify({ results: pagePolicy.results, capabilities: pagePolicy.capabilities, target: pagePolicy.target }) === JSON.stringify({ results: railPolicy.results, capabilities: railPolicy.capabilities, target: railPolicy.target }));
@@ -703,6 +727,8 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertPanel) && !/阻塞发布|blocking/.test(expertPanel));
   check("编辑器内联 AI 只读取 scope + target policy", /resolveAssistantPolicy/.test(inlineMarkdownEditor) && /capabilities\.writeAtCursor/.test(inlineMarkdownEditor) && /function beginRevision[\s\S]{0,220}capabilities\.reviseSelection/.test(inlineMarkdownEditor));
+  check("内联 AI 定位不再使用页面固定阈值", /inlineAnchorOf/.test(inlineMarkdownEditor) && /view\.scrollDOM\.getBoundingClientRect/.test(inlineMarkdownEditor) && !/coords\.top >|window\.innerWidth - 18/.test(inlineMarkdownEditor));
+  check("光标菜单使用准确动作名并保留输入法保护", /想一想/.test(textRevision) && /续写/.test(textRevision) && /按要求写/.test(textRevision) && /isCompositionEvent/.test(textRevision));
   check("Project 与 Reading 显式传入相同内联能力边界", /assistantScope="project"[\s\S]*assistantTarget=\{\{ kind: "draft", editable: draftEditable \}\}/.test(projectWorkspace) && /assistantScope="reading"[\s\S]*assistantTarget=\{\{ kind: "vault-document", editable: true \}\}/.test(readerOverlay));
   check("WritingAssist 兼容源码保留但不再挂入 Reading 工具栏", /export function CursorWritingMenu/.test(textRevision) && !/<WritingAssist/.test(readerOverlay));
 
