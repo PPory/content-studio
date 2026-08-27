@@ -303,12 +303,7 @@
   font: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
 
-/* --------------------------------------------------------------------------
-   输入器：参照那张输入框细节图——正文在上，一行圆药丸在下，发送是右下角一颗深色圆钮
-   ⚠️ **「写作风格」不再单占一行。** 它原来是输入框上面一条写着「写作风格」的说明行，
-   而它和 `@专家` `/Skill` 是同一类东西：**这次发送要带上什么**。三样并排在同一行，
-   输入框上面那条横线跟着没了，输入器矮了一档。
-   -------------------------------------------------------------------------- */
+/* 输入器：正文在上，当前 surface 允许的低频设置与发送动作在下。 */
 .assistant-composer {
   position: relative; z-index: 3; align-self: end;
   margin: 0 var(--sp-6) var(--sp-6);
@@ -332,10 +327,8 @@
 .assistant-composer > footer > div { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 .assistant-composer__left { flex: 1 1 auto; }
 .assistant-composer__right { flex: none; margin-left: auto; }
-/* 输入区底行只放这轮真正要确认的设置：权限 · 写作风格 · 模型。@ 和 / 由键盘直接唤起。 */
+/* 完整全局页面显示权限和模型；@ 与 / 只由输入字符唤起。 */
 .assistant-composer > footer > div > button,
-.assistant-composer__mode,
-.assistant-composer__style,
 .assistant-composer__model {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   height: 26px; padding: 0 var(--sp-5);
@@ -346,27 +339,14 @@
 }
 .assistant-composer > footer > div > button:hover,
 .assistant-composer > footer > div > button[aria-expanded="true"],
-.assistant-composer__mode:hover,
-.assistant-composer__style:hover,
 .assistant-composer__model:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-composer > footer > div > button > span { font-weight: 400; }
 .assistant-composer > footer > div .assistant-composer__attach {
   width: 28px; padding: 0; justify-content: center; border-radius: 50%;
 }
 .assistant-composer__attach svg { width: 15px; height: 15px; }
-/* 风格那颗里面是个原生 select（冒烟测试用 `selectOption` 点它），所以只能把框脱掉 */
-.assistant-composer__mode,
-.assistant-composer__style,
 .assistant-composer__model { max-width: 220px; }
-.assistant-composer__mode > span,
-.assistant-composer__style > span,
 .assistant-composer__model > span { flex: none; color: var(--text-3); }
-.assistant-composer__mode select,
-.assistant-composer__style select {
-  min-width: 0; border: 0; padding: 0; background: transparent;
-  color: inherit; font: inherit; font-size: var(--fs-sm); outline: 0; cursor: pointer;
-}
-.assistant-composer__mode select:disabled { cursor: default; opacity: .55; }
 .assistant-composer__model { min-width: 0; }
 .assistant-model-glyph {
   display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
@@ -643,19 +623,13 @@
 .project-assistant .assistant-composer textarea { min-height: 48px; max-height: 132px; padding-bottom: var(--sp-2); }
 .project-assistant .assistant-command-menu:not(.assistant-command-menu--models) { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
 .project-assistant .assistant-action-card { margin-inline: 0; }
-/**
- * 右栏只有 336px：附件、权限、风格、模型保留在输入区，专家和 Skill 只由 @ / 唤起。
- * 快捷键提示撤掉——它是「学一次就记住」的那类，不能长期挤占这一行。
- */
+/* 项目右栏只保留附件与发送；专家和 Skill 只由 @ / 唤起。 */
 .project-assistant .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
 .project-assistant .assistant-composer > footer > div { gap: var(--sp-2); }
 .project-assistant .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
 .project-assistant .assistant-composer > footer > .assistant-composer__right { flex: none; }
 .project-assistant .assistant-composer > footer > div > button { padding: 0 var(--sp-3); font-weight: 600; }
 .project-assistant .assistant-model-picker .assistant-command-menu--models > button { padding: var(--sp-4) var(--sp-5); font-weight: 400; }
-.project-assistant .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
-.project-assistant .assistant-composer__model b { max-width: 56px; }
-.project-assistant .assistant-composer__model .assistant-model-glyph { width: 18px; height: 18px; }
 .project-assistant .assistant-empty { padding: var(--sp-8) var(--sp-3); }
 .project-assistant .assistant-empty h3 { font-size: var(--fs-lg); }
 

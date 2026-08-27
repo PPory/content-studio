@@ -66,8 +66,6 @@ export function AssistantComposer({
   onTogglePermission,
   onToggleModel,
   onStop,
-  onOpenExperts,
-  onOpenSkills,
   onContinue,
 }) {
   const overlay = surface === "overlay";
@@ -80,8 +78,8 @@ export function AssistantComposer({
       {permissionModes.map((item) => <button type="button" role="menuitemradio" key={item.id} aria-checked={item.id === permissionMode} onClick={() => onChoosePermissionMode(item.id)} disabled={busy || modePending}><IconShieldCheck aria-hidden="true" /><span><b>{item.label}</b><small>{item.description}</small></span>{item.id === permissionMode ? <IconCheck aria-hidden="true" /> : null}</button>)}
     </div> : null}
     {menu && menu !== "models" ? <div className="assistant-command-menu" role="menu">
-      <header><span>{menu === "models" ? "选择模型" : menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={onCloseMenu}><IconX aria-hidden="true" /></button></header>
-      {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => onMenuIndex(index)} onClick={() => onChooseMenuItem(item)} disabled={menu === "models" && modelPending}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : menu === "skills" ? "/" : <ModelGlyph id={item.id} provider={item.provider} />}</span><span><b>{item.label}{menu === "models" && item.id === model ? <em>当前</em> : null}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">{menu === "models" ? "暂时没有可用模型" : "没有匹配项"}</p>}
+      <header><span>{menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={onCloseMenu}><IconX aria-hidden="true" /></button></header>
+      {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => onMenuIndex(index)} onClick={() => onChooseMenuItem(item)}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : "/"}</span><span><b>{item.label}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">没有匹配项</p>}
     </div> : null}
     <footer>
       <div className="assistant-composer__left">

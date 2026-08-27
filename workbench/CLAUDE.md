@@ -5,7 +5,7 @@ content-studio 的本地创作工作台。React 界面连接同仓 Worker/D1、O
 ## 先看哪里
 
 - 产品目标与流程：[`../docs/工作流.md`](../docs/工作流.md)（目标态，不是实现证明）。
-- 现役架构与存储：[`docs/design.md`](docs/design.md)；视觉与交互：[`docs/design-system.md`](docs/design-system.md)。
+- 现役架构与存储：[`docs/design.md`](docs/design.md)；AI 协作：[`docs/ai-experience-redesign.md`](docs/ai-experience-redesign.md)；视觉与交互：[`docs/design-system.md`](docs/design-system.md)。
 - Agent 运行时：[`server/agent-runtime/README.md`](server/agent-runtime/README.md)；桌面启动链：[`docs/desktop-app.md`](docs/desktop-app.md)。
 - 事实冲突时以当前代码、Worker 契约和测试为准，并同步修正文档。
 
@@ -36,9 +36,9 @@ npm run app:stop
 
 - `src/`：页面、组件和前端 API；共用行为放 `src/lib/`，页面之间不要互相 import。
 - `server/routes/`、`server/lib/`：本地 API、vault、配置与外部服务；所有路径必须经过现有安全函数。
-- `server/agent-runtime/`：Pi 会话、权限模式和受控工具；项目 Skills 位于仓库根 `.agents/skills/`。
+- `server/agent-runtime/`：Pi 会话、权限模式和受控工具；仓库根 `.agents/skills/` 只放产品 Runtime Skills，不放开发期 UI 参考 Skill。
 - `tests/`：浏览器、Pi、写作、扩展、退出和截图验证；`scripts/`：自检与桌面启动。
-- 改 UI 前读 `docs/design-system.md`；改存储、端点或运行边界前读 `docs/design.md`，不要把机制说明重新堆回本文件。
+- 改 AI 协作前读 `docs/ai-experience-redesign.md`，改 UI 前读 `docs/design-system.md`；改存储、端点或运行边界前读 `docs/design.md`，不要把机制说明重新堆回本文件。
 
 ## 验证与提交
 

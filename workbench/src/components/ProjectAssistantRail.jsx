@@ -7,7 +7,7 @@ import { ProjectContextPanel } from "./ProjectContextPanel.jsx";
 import { ProjectReportReview } from "./ProjectReportReview.jsx";
 import { IconChevronDown, IconLayoutSidebarRight, IconX } from "./icons.jsx";
 
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, selection, onInsert, onRevision, onReveal, reviewingCandidate = false, children }) {
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, onReveal, reviewingCandidate = false, children }) {
   const [runs, setRuns] = useState([]);
   const [reportError, setReportError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false);
@@ -90,7 +90,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       {collapsed ? <button className="project-assistant__reopen" type="button" onClick={() => { setCollapsed(false); requestAnimationFrame(() => railRef.current?.querySelector(".assistant-composer textarea")?.focus()); }} aria-label="展开协作区" title="展开协作区"><IconLayoutSidebarRight aria-hidden="true" /><span>协作</span></button> : <AssistantPane
         scope="project"
         surface="rail"
-        target={{ kind: "draft", editable: true, selection, actions: { insert: onInsert, revise: onRevision } }}
+        target={target}
         scopeId={scopeId}
         document={document}
         materials={materials}
@@ -105,7 +105,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       onClose={() => setReviewRun(null)}
       onRetry={retry}
       onGenerateCandidate={(finding, block) => {
-        onRevision?.({ mode: "rewrite", label: "按报告生成候选", instruction: finding.direction || finding.suggestion || finding.risk || finding.gap || findingTitle(finding), selection: { from: block.from, to: block.to, text: document.body.slice(block.from, block.to), targetKind: block.text.length > 800 ? "section" : "paragraph" } });
+        target.actions.revise({ mode: "rewrite", label: "按报告生成候选", instruction: finding.direction || finding.suggestion || finding.risk || finding.gap || findingTitle(finding), selection: { from: block.from, to: block.to, text: document.body.slice(block.from, block.to), targetKind: block.text.length > 800 ? "section" : "paragraph" } });
         setReviewRun(null);
       }}
       onReveal={(block) => { onReveal?.({ text: block.text.replace(/^#{1,6}\s*/, ""), nonce: Date.now() }); setReviewRun(null); }}

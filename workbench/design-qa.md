@@ -1,3 +1,37 @@
+# Design QA — Stage 9 发布基线（2026-08-27）
+
+## Current captures
+
+- `tmp/assistant-standalone-final.png`
+- `tmp/shot-quick-two-turn-1366x768.png`
+- `tmp/shot-project-ai.png`
+- `tmp/stage6-production/1366-project-context-10.png`
+- `tmp/stage6-production/1366-project-history.png`
+- `tmp/stage6-production/1366-project-inline-candidate.png`
+- `tmp/stage6-production/1366-project-focused-candidate.png`
+- `tmp/stage6-production/1366-project-report.png`
+- `tmp/shot-rail-chat.png`
+- `tmp/stage7-1-inline-ai/1366-reading-candidate.png`
+- `tmp/stage6-production/1180-project-assistant-overlay.png`
+- `tmp/stage6-production/1440-project-conversation.png`
+- `tmp/stage6-production/1440-project-report.png`
+
+## Final review
+
+| Surface | Result |
+| --- | --- |
+| 完整 AI | 模型与权限保留在紧凑 Composer footer；正文输入仍是第一视觉重点 |
+| Quick Assistant | 轻量 non-modal 浮层；当前引用、对话和 Composer 层级清楚 |
+| Project Assistant | 正文保持第一主体；右栏只保留 Context、对话、轻量 History 和极简 Composer |
+| Candidate | 短候选内联；大候选专注审阅并折叠协作右栏 |
+| Report | 正文 + 报告双栏；需要处理优先，值得保留默认折叠 |
+| Reading | 阅读正文为主体；Assistant 不暴露模型、权限或运行时信息 |
+| 1180px | 项目协作转为不挤压正文的浮层形态 |
+
+本轮只清理结构与文档，截图未发现新增的布局、文案、控件位置或交互 regression。
+
+---
+
 # Design QA — AI 局部修订
 
 ## Visual sources

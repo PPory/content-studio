@@ -2640,8 +2640,6 @@ kbd {
 .rail .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
 .rail .assistant-composer > footer > .assistant-composer__right { flex: none; }
 .rail .assistant-composer > footer > div > button { padding: 0 var(--sp-3); font-weight: 600; }
-.rail .assistant-composer__model { max-width: 108px; padding-inline: var(--sp-3); }
-.rail .assistant-composer__model b { max-width: 56px; }
 .rail .assistant-empty { padding: var(--sp-8) var(--sp-3); }
 .rail .assistant-empty h3 { font-size: var(--fs-lg); }
 .rail-collapse {

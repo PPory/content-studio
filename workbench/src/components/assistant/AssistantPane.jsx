@@ -572,12 +572,12 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       onMenuIndex={setMenuIndex} onChooseMenuItem={chooseMenuItem} onUploadFile={uploadFile}
       onTogglePermission={() => { setPermissionOpen((value) => !value); setMenu(""); }}
       onToggleModel={() => menu === "models" ? setMenu("") : openMenu("models")} onStop={stop}
-      onOpenExperts={() => openMenu("experts")} onOpenSkills={() => openMenu("skills")} onContinue={onContinue}
+      onContinue={onContinue}
     />
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} />
   </div>;
 
-  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${globalScope && surface === "rail" ? " assistant-pane--docked" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
+  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
     {historyEnabled && historyOpen ? projectRail ? <ProjectAssistantHistory conversationId={conversationId} conversationTitle={conversationTitle} items={conversationItems} onOpen={(id) => { openConversation(id); setHistoryOpen(false); }} onNew={() => { newConversation(); setHistoryOpen(false); }} /> : <AssistantHistory
       visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
       historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}

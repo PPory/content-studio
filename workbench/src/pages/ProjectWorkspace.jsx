@@ -733,9 +733,15 @@ ${(form.body || "").slice(0, 3000)}`);
             }}
             materials={project.materials || []}
             profile={writingProfile}
-            selection={activeSelection}
-            onInsert={(text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选", resultKind: meta.resultKind, grounding: meta.grounding, rerun: meta.rerun })}
-            onRevision={(request) => setRevisionRequest({ ...request, id: `assistant-revision-${Date.now()}` })}
+            target={{
+              kind: "draft",
+              editable: true,
+              selection: activeSelection,
+              actions: {
+                insert: (text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选", resultKind: meta.resultKind, grounding: meta.grounding, rerun: meta.rerun }),
+                revise: (request) => setRevisionRequest({ ...request, id: `assistant-revision-${Date.now()}` }),
+              },
+            }}
           >
             {/**
               * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，

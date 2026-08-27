@@ -706,6 +706,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("scope policy 统一提供会话键", resolveAssistantPolicy({ scope: "global" }).session() === "global:assistant" && resolveAssistantPolicy({ scope: "project" }).session("draft-1") === "project:draft-1" && resolveAssistantPolicy({ scope: "reading" }).session("shelf", "doc-1") === "reading:shelf:doc-1");
 
   const assistantPane = await fs.readFile(new URL("../src/components/assistant/AssistantPane.jsx", import.meta.url), "utf8");
+  const assistantComposer = await fs.readFile(new URL("../src/components/assistant/AssistantComposer.jsx", import.meta.url), "utf8");
   const assistantThread = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
   const assistantMessage = await fs.readFile(new URL("../src/components/assistant/AssistantMessage.jsx", import.meta.url), "utf8");
   const assistantPage = await fs.readFile(new URL("../src/pages/Assistant.jsx", import.meta.url), "utf8");
@@ -720,6 +721,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const readerOverlay = await fs.readFile(new URL("../src/components/ReaderOverlay.jsx", import.meta.url), "utf8");
   check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global"[\s\S]*surface="overlay"[\s\S]*target=/.test(quickAssistant) && /scope="project"[\s\S]*surface="rail"[\s\S]*target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
   check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${quickAssistant}\n${projectRail}\n${readingRail}`));
+  check("Stage 9 已移除 Project Rail callback 适配和 Composer 死入口", /ProjectAssistantRail\(\{[^\n]*target/.test(projectRail) && !/selection, onInsert, onRevision/.test(projectRail) && !/assistant-pane--docked/.test(assistantPane) && !/onOpenExperts|onOpenSkills/.test(assistantComposer));
   check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
   check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
@@ -770,10 +772,9 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Quick Assistant 明示未附带页面内容且可移除上下文", /未附带页面内容/.test(quickAssistant) && /移除当前页面上下文/.test(quickAssistant));
   check("Ctrl I 与顶栏按钮复用同一 summon", /data-assistant-summoner[\s\S]*onClick=\{summon\}/.test(appShell) && /e\.key === "i"[\s\S]*summon\(\)/.test(appShell) && /addEventListener\("keydown", onKey, true\)/.test(appShell));
 
-  const assistantComposer = await fs.readFile(new URL("../src/components/assistant/AssistantComposer.jsx", import.meta.url), "utf8");
   const { assistantSkills } = await import("../server/agent-runtime/assistant-runner.mjs");
   const registeredSkills = await assistantSkills();
-  check("访谈继续由通用 Skill 选择器调用", /选择 Skill/.test(assistantComposer) && /menu === "skills" \? "\/"/.test(assistantComposer) && registeredSkills.items.some((item) => item.id === "interview-to-draft"));
+  check("访谈继续由通用 Skill 选择器调用", /选择 Skill/.test(assistantComposer) && /menu === "experts" \? "@" : "\/"/.test(assistantComposer) && registeredSkills.items.some((item) => item.id === "interview-to-draft"));
 
   const { isBlankTemporaryDraft } = await import("../src/lib/temporary-project.js");
   check("只有未命名、无正文、无素材的临时项目才可自动清理", isBlankTemporaryDraft({ temporary: true, title: "未命名", body: "", materials: [] }));
