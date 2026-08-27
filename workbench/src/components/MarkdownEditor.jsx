@@ -247,6 +247,7 @@ export function MarkdownEditor({
   onSelectionChange,              // 有选区时，专家只分析这一段；无选区时回到全文
   revisionRequest, onRevisionHandled, // 右栏 AI 助手发来的选区修订；仍走同一套候选/采纳机制
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
+  onCandidateReviewModeChange,
   readOnly = false,
 }) {
   const host = useRef(null);
@@ -704,6 +705,11 @@ export function MarkdownEditor({
   }, [activeRevision?.text]);
 
   const focusedRevision = activeRevision && candidateReviewMode(activeRevision.target) === "focused";
+  const focusedRevisionOpen = Boolean(focusedRevision);
+  useEffect(() => {
+    onCandidateReviewModeChange?.(focusedRevisionOpen);
+    return () => { if (focusedRevisionOpen) onCandidateReviewModeChange?.(false); };
+  }, [focusedRevisionOpen, onCandidateReviewModeChange]);
   const revisionHost = activeRevision && !focusedRevision && view.current
     ? view.current.dom.querySelector(`[data-revision-host="${activeRevision.id}"]`)
     : null;

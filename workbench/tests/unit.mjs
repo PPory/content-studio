@@ -725,6 +725,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Candidate 键盘采纳与弃用有统一实现", /event\.key === "Enter"/.test(candidateCard) && /event\.key === "Backspace"/.test(candidateCard) && /aria-keyshortcuts/.test(candidateCard));
   check("Grounding 默认直接展示而非折叠", /grounding\.skipped\.map/.test(candidateCard) && /grounding\.unverified\.map/.test(candidateCard) && !/<details/.test(candidateCard));
   check("ActionCard 同时提供确认和拒绝", /onApply/.test(actionCard) && /onReject/.test(actionCard) && /已拒绝/.test(actionCard));
+  check("运行时信息只在完整全局 AI 页面显示", /showRuntime=\{scope === "global" && surface === "page"\}/.test(assistantPane));
   check("旧素材起稿屏复用统一证据回执", /materialDraftGrounding/.test(creationDialog) && /<GroundingReceipt/.test(creationDialog));
 
   const quickAssistant = await fs.readFile(new URL("../src/components/QuickAssistant.jsx", import.meta.url), "utf8");

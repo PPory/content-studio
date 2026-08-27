@@ -7,7 +7,7 @@ import { ProjectContextPanel } from "./ProjectContextPanel.jsx";
 import { ProjectReportReview } from "./ProjectReportReview.jsx";
 import { IconChevronDown, IconLayoutSidebarRight, IconX } from "./icons.jsx";
 
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, selection, onInsert, onRevision, onReveal, children }) {
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, selection, onInsert, onRevision, onReveal, reviewingCandidate = false, children }) {
   const [runs, setRuns] = useState([]);
   const [reportError, setReportError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false);
@@ -51,6 +51,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
     if (restoreFocus) requestAnimationFrame(() => contextTriggerRef.current?.focus({ preventScroll: true }));
   }, []);
   const visibleMaterials = useMemo(() => materials.slice(0, 10), [materials]);
+  const reviewOpen = Boolean(reviewRun || reviewingCandidate);
 
   const context = <div className="project-assistant__context-anchor">
     <button
@@ -85,7 +86,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   </div>;
 
   return <>
-    <aside className="project-rail project-assistant" data-collapsed={collapsed ? "true" : undefined} hidden={Boolean(reviewRun)} aria-label="项目 AI 与资料" ref={railRef}>
+    <aside className="project-rail project-assistant" data-collapsed={collapsed ? "true" : undefined} data-reviewing={reviewOpen ? "true" : undefined} aria-hidden={reviewOpen || undefined} aria-label="项目 AI 与资料" ref={railRef}>
       {collapsed ? <button className="project-assistant__reopen" type="button" onClick={() => { setCollapsed(false); requestAnimationFrame(() => railRef.current?.querySelector(".assistant-composer textarea")?.focus()); }} aria-label="展开协作区" title="展开协作区"><IconLayoutSidebarRight aria-hidden="true" /><span>协作</span></button> : <AssistantPane
         scope="project"
         surface="rail"

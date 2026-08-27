@@ -451,7 +451,7 @@ try {
         cols: getComputedStyle(document.querySelector(".project-workspace__grid")).gridTemplateColumns.split(" ").length,
         // 标题在这一页只有一份，而且是能改的那一份
         titles: document.querySelectorAll(".project-workspace h1, .project-draft__title").length,
-        editable: document.querySelectorAll("input.project-draft__title").length,
+        editable: document.querySelectorAll(".project-draft__title:not(:disabled)").length,
         // 还没有主稿的项目（`kind: "topic"` 建出来的选题）正文区是一个空态，本来就没有标题框
         noDraft: !!document.querySelector(".project-draft__empty"),
         /**
@@ -4798,13 +4798,33 @@ try {
   const reply = await page.textContent(".rail .assistant-message--assistant .assistant-message__markdown");
   check("agent 对话有回复", reply.trim().length > 0, reply.trim().slice(0, 40));
   check("对话无乱码", !reply.includes("�"), reply.slice(0, 30));
-  check("回复标着 Pi 运行时", (await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
+  check("Reading Assistant 不显示 Pi 运行时", !(await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
   check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button:has-text("复制")')));
   check("阅读区有选区但无 revision 落点时不显示改选区动作", !(await page.$('.rail .assistant-message--assistant button:has-text("按建议改选区")')));
   await page.locator('.rail:visible button[aria-label="新对话"]').click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   check("能重开一轮对话", !!(await page.$(".rail .assistant-empty")));
   await shot("chat", false);
+
+  // Stage 6.1：Reading 的权限设置迁出后，仍有效的能力覆盖应落在完整全局 AI 页面。
+  await page.goto(`http://127.0.0.1:${PORT}/#/assistant`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".assistant-page .assistant-composer", { timeout: 10000 });
+  check("完整全局 AI 页面保留模型选择", !!(await page.$(".assistant-page .assistant-composer__model")));
+  await page.click(".assistant-page .assistant-composer__access");
+  check("完整全局 AI 页面保留三种权限模式", (await page.$$(".assistant-page .assistant-permission-menu > button")).length === 3);
+  await page.click('.assistant-page .assistant-permission-menu > button:has-text("创作")');
+  check("完整全局 AI 可切到创作模式", (await page.textContent(".assistant-page .assistant-composer__access")).includes("创作"));
+  let developerWarning = false;
+  page.once("dialog", async (dialog) => {
+    developerWarning = dialog.message().includes("项目代码") && dialog.message().includes("命令");
+    await dialog.accept();
+  });
+  await page.click(".assistant-page .assistant-composer__access");
+  await page.click('.assistant-page .assistant-permission-menu > button:has-text("开发")');
+  await page.waitForFunction(() => document.querySelector(".assistant-page .assistant-composer__access")?.textContent.includes("开发"));
+  check("完整全局 AI 切入开发模式会警告并生效", developerWarning && (await page.textContent(".assistant-page .assistant-composer__access")).includes("开发"));
+  await page.locator('.assistant-page button[aria-label="新对话"]').click();
+  check("完整全局 AI 新对话回到日常模式", (await page.textContent(".assistant-page .assistant-composer__access")).includes("日常"));
 
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
   await page.waitForSelector(".todo-card, .note-title", { timeout: 20000 });

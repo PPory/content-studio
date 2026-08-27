@@ -36,6 +36,12 @@ function materialText(item) {
   return `> ${item.content || item.title}${source}`;
 }
 
+function resizeProjectTitle(node) {
+  if (!node) return;
+  node.style.height = "auto";
+  node.style.height = `${node.scrollHeight}px`;
+}
+
 function projectMaterialQuery(project, form) {
   const seed = String(project?.seed?.take || "").trim();
   if (seed) return seed;
@@ -207,6 +213,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [coverOpen, setCoverOpen] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
   const [revisionRequest, setRevisionRequest] = useState(null);
+  const [candidateReviewFocused, setCandidateReviewFocused] = useState(false);
   const [activeSelection, setActiveSelection] = useState(null);
   const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
   const [pendingLeave, setPendingLeave] = useState(null);
@@ -623,7 +630,16 @@ ${(form.body || "").slice(0, 3000)}`);
           {draft ? (
             <>
               <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>
-              <input className="project-draft__title" value={form.title} onChange={(e) => changeForm("title", e.target.value)} aria-label={draft.id === masterDraft?.id ? "主稿标题" : `${draft.platform} 版本标题`} disabled={!draftEditable} />
+              <textarea
+                ref={resizeProjectTitle}
+                className="project-draft__title"
+                rows="1"
+                value={form.title}
+                onInput={(event) => resizeProjectTitle(event.currentTarget)}
+                onChange={(event) => changeForm("title", event.target.value.replace(/\s*\n+\s*/g, " "))}
+                aria-label={draft.id === masterDraft?.id ? "主稿标题" : `${draft.platform} 版本标题`}
+                disabled={!draftEditable}
+              />
 
               {/**
                 * 每篇重复填写的简报撤掉了。这里只安静地回显长期设置，让人知道这一篇
@@ -649,6 +665,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 revisionScope={`pipeline:drafts:${draft.id}`}
                 revisionTitle={form.title}
                 revisionPlatform={draft.platform}
+                onCandidateReviewModeChange={setCandidateReviewFocused}
                 readOnly={!draftEditable}
               />
             </>
@@ -702,6 +719,7 @@ ${(form.body || "").slice(0, 3000)}`);
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <ProjectAssistantRail
+            reviewingCandidate={candidateReviewFocused}
             scopeId={draft?.id || projectId}
             document={{
               title: form.title,

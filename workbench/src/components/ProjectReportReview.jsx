@@ -58,6 +58,7 @@ export function ProjectReportReview({ run, document, onClose, onRetry, onGenerat
   const findings = report.questions || report.claims || [];
   const positive = findings.filter((item) => POSITIVE.has(String(item.status).toLowerCase()));
   const actionable = findings.filter((item) => !POSITIVE.has(String(item.status).toLowerCase()));
+  const strengths = [...(report.strengths || []), ...positive.map((item) => ({ quote: findingTitle(item), reason: item.direction || item.reason || "证据与表达成立。" }))];
   const blocks = useMemo(() => blocksOf(document.body), [document.body]);
   const mapping = useMemo(() => new Map(actionable.map((item) => [item.id || findingTitle(item), blockForFinding(blocks, item)])), [actionable, blocks]);
   const [activeId, setActiveId] = useState(actionable[0]?.id || (actionable[0] ? findingTitle(actionable[0]) : ""));
@@ -100,8 +101,7 @@ export function ProjectReportReview({ run, document, onClose, onRetry, onGenerat
       <aside className="project-report-findings">
         <header><div><small>报告摘要</small><strong>{actionable.length} 条待处理</strong></div><span>不改变正文</span></header>
         <p>{report.summary}</p>
-        {report.strengths?.length || positive.length ? <section className="project-report-strengths"><h3>值得保留</h3>{[...(report.strengths || []), ...positive.map((item) => ({ quote: findingTitle(item), reason: item.direction || item.reason || "证据与表达成立。" }))].map((item, index) => <article key={index}><b>{item.quote}</b><small>{item.reason}</small></article>)}</section> : null}
-        <section className="project-report-findings__list"><h3>需要判断</h3>{actionable.map((item, index) => {
+        <section className="project-report-findings__list"><h3>需要处理</h3>{actionable.map((item, index) => {
           const id = item.id || findingTitle(item);
           return <article ref={(node) => node ? findingRefs.current.set(id, node) : findingRefs.current.delete(id)} key={id} data-current={id === activeId ? "true" : undefined} onClick={() => focusFinding(item)}>
             <header><span>{index + 1}</span><div><b>{findingTitle(item)}</b>{item.location ? <small>{item.location}</small> : null}</div><em>{severityLabel(String(item.status).toLowerCase())}</em></header>
@@ -110,6 +110,7 @@ export function ProjectReportReview({ run, document, onClose, onRetry, onGenerat
             {decisions[id] ? <small className="project-report-finding__state">{decisions[id] === "ignored" ? "已忽略此项" : "来源已展开"}</small> : null}
           </article>;
         })}</section>
+        {strengths.length ? <details className="project-report-strengths"><summary>值得保留 <span>{strengths.length}</span></summary><div>{strengths.map((item, index) => <article key={index}><b>{item.quote}</b><small>{item.reason}</small></article>)}</div></details> : null}
       </aside>
     </div>
   </section>;

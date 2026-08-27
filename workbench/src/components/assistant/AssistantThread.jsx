@@ -13,6 +13,24 @@ function elapsedLabel(seconds) {
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
+function actionFingerprint(action) {
+  if (!action || action.status !== "pending") return "";
+  return JSON.stringify([action.type, action.title, action.platform, action.path, action.command, action.audience, action.viewpoint, action.body]);
+}
+
+export function dedupeConsecutiveActionIds(actionIds = [], actions = []) {
+  const byId = new Map(actions.map((action) => [action.id, action]));
+  const visible = [];
+  let previousFingerprint = "";
+  for (const id of actionIds) {
+    const fingerprint = actionFingerprint(byId.get(id));
+    if (fingerprint && fingerprint === previousFingerprint) visible[visible.length - 1] = id;
+    else visible.push(id);
+    previousFingerprint = fingerprint;
+  }
+  return visible;
+}
+
 export function Working({ label = "Pi 正在处理", detail = "", startedAt = "" }) {
   const [seconds, setSeconds] = useState(() => elapsedSeconds(startedAt));
   useEffect(() => {
@@ -84,9 +102,9 @@ export function AssistantThread({
   return <div className="assistant-thread">
     {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={scope === "project" ? onPrefill : onPrompt} scope={scope} /> : null}
     {loading ? <Working label="正在打开对话" /> : null}
-    {messages.map((item, index) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} showIdentity={scope !== "project" || !messages.slice(0, index).some((entry) => entry.role === "assistant")} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
+    {messages.map((item, index) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} showIdentity={scope !== "project" || !messages.slice(0, index).some((entry) => entry.role === "assistant")} />{dedupeConsecutiveActionIds(item.actionIds, actions).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
     {busy && !messages.some((item) => item.pending && item.text) ? <Working label={showRuntime ? "Pi 正在处理" : "AI 正在处理"} detail={activity} startedAt={turnStartedAt} /> : null}
     {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={onRetry}>重试</button></div> : null}
-    <div ref={endRef} />
+    <div ref={endRef} className="assistant-thread__end" aria-hidden="true" />
   </div>;
 }

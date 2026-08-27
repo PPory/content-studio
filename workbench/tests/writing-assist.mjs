@@ -278,6 +278,7 @@ await page.route("**/api/assistant/**", async (route) => {
   assistantActions = [
     { id: `${actionBase}-reject`, type: "workspace_write", path: "候选/拒绝.md", status: "pending" },
     { id: `${actionBase}-apply`, type: "workspace_write", path: "候选/确认.md", status: "pending" },
+    { id: `${actionBase}-apply-duplicate`, type: "workspace_write", path: "候选/确认.md", status: "pending" },
   ];
   assistantMessages = [
     ...assistantMessages,
@@ -351,6 +352,13 @@ try {
     assert(!(await page.$(".project-assistant .assistant-composer__access")) && !(await page.$(".project-assistant .assistant-composer__model")) && !(await page.$(".project-assistant .assistant-composer__style")), "Project Composer 仍常驻显示模型、权限或风格");
     assert(!(await page.$('.project-assistant .assistant-composer footer button:has-text("专家")')) && !(await page.$('.project-assistant .assistant-composer footer button:has-text("Skill")')), "Project Composer 仍常驻显示 Expert 或 Skill");
     await page.setViewportSize({ width: 1366, height: 768 });
+    const originalTitle = await page.inputValue(".project-draft__title");
+    const longTitle = "这是一篇用来验证一千三百六十六像素宽度下长标题能够自然换行而不会被协作右栏裁切的项目稿件";
+    await page.fill(".project-draft__title", longTitle);
+    const titleLayout = await page.$eval(".project-draft__title", (item) => ({ height: item.getBoundingClientRect().height, scrollWidth: item.scrollWidth, clientWidth: item.clientWidth, value: item.value }));
+    assert(titleLayout.value === longTitle && titleLayout.height > 54 && titleLayout.scrollWidth <= titleLayout.clientWidth + 1, `1366 长标题没有自然换行：${JSON.stringify(titleLayout)}`);
+    await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-long-title.png"), fullPage: false });
+    await page.fill(".project-draft__title", originalTitle);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-empty.png"), fullPage: false });
 
     const beforeSuggestionRequests = assistantRequests.length;
@@ -379,6 +387,7 @@ try {
     const userBubbleColor = await page.$eval(".project-assistant .assistant-message__user > p", (item) => getComputedStyle(item).backgroundColor);
     const accentColor = await page.$eval(".project-assistant .assistant-composer button[aria-label='发送']", (item) => getComputedStyle(item).backgroundColor);
     assert(userBubbleColor !== accentColor, "项目用户消息仍使用大面积纯黑强调");
+    assert(!(await page.textContent(".project-assistant .assistant-message--assistant > small")).includes("Pi Agent SDK"), "Project Assistant 仍显示 Pi Agent SDK 运行时信息");
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-conversation.png"), fullPage: false });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1440-project-conversation.png"), fullPage: false });
@@ -390,11 +399,22 @@ try {
       await page.click('.project-assistant .assistant-composer button[aria-label="发送"]');
       await page.waitForFunction((before) => document.querySelectorAll(".project-assistant .assistant-message--assistant").length > before && !document.querySelector(".project-assistant .assistant-working"), count);
     }
+    const bottomCards = page.locator(".project-assistant .assistant-action-card");
+    await bottomCards.first().waitFor();
+    const bottomLayout = await page.evaluate(() => {
+      const card = [...document.querySelectorAll(".project-assistant .assistant-action-card")].at(-1)?.getBoundingClientRect();
+      const composer = document.querySelector(".project-assistant .assistant-composer")?.getBoundingClientRect();
+      const threadNode = document.querySelector(".project-assistant .assistant-thread");
+      const thread = threadNode?.getBoundingClientRect();
+      const end = threadNode?.querySelector(".assistant-thread__end")?.getBoundingClientRect();
+      return card && composer && thread ? { cardBottom: card.bottom, composerTop: composer.top, threadBottom: thread.bottom, endBottom: end?.bottom, scrollTop: threadNode.scrollTop, scrollMax: threadNode.scrollHeight - threadNode.clientHeight } : null;
+    });
+    assert(bottomLayout && bottomLayout.cardBottom <= bottomLayout.composerTop, `最后一条 Action 被 Composer 遮挡：${JSON.stringify(bottomLayout)}`);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-long-conversation.png"), fullPage: false });
 
     const actionCards = page.locator(".project-assistant .assistant-action-card");
     await actionCards.first().waitFor();
-    assert(await actionCards.count() === 2, "Action 没有进入统一结果列表");
+    assert(await actionCards.count() === 2, "连续相同的待确认 Action 没有去重");
     await actionCards.nth(0).getByRole("button", { name: "拒绝" }).click();
     assert((await actionCards.nth(0).textContent()).includes("已拒绝"), "Action 拒绝没有成为正式状态");
     await actionCards.nth(1).getByRole("button", { name: "确认写入" }).click();
@@ -427,6 +447,13 @@ try {
     const reportText = await page.textContent(".project-report-review");
     assert(reportText.includes("值得保留") && reportText.includes("建议修改") && reportText.includes("高风险"), "报告没有区分正面结果与待处理 finding");
     assert(!reportText.includes("可选优化") && !reportText.includes("接受建议") && reportText.includes("生成候选"), "报告仍把 pass 映射成可选优化或使用错误动作名");
+    const reportOrder = await page.evaluate(() => {
+      const needsNode = document.querySelector(".project-report-findings__list > h3");
+      const needs = needsNode?.getBoundingClientRect();
+      const strengths = document.querySelector(".project-report-strengths");
+      return needs && strengths ? { needsTop: needs.top, strengthsTop: strengths.getBoundingClientRect().top, strengthsOpen: strengths.open, label: needsNode.textContent } : null;
+    });
+    assert(reportOrder && reportOrder.label.includes("需要处理") && reportOrder.needsTop < reportOrder.strengthsTop && !reportOrder.strengthsOpen, `Report 首屏顺序或折叠状态错误：${JSON.stringify(reportOrder)}`);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-report.png"), fullPage: false });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1440-project-report.png"), fullPage: false });
@@ -440,7 +467,7 @@ try {
     assert(await firstFinding.getAttribute("data-current") === "true", "点击正文位置没有反向定位 finding");
     await firstFinding.getByRole("button", { name: "生成候选" }).click();
     await page.waitForSelector(".project-draft .candidate-card");
-    assert(await page.$(".project-assistant:not([hidden])"), "退出报告后项目会话没有恢复");
+    assert(await page.$(".project-assistant:not([data-reviewing])"), "退出报告后项目会话没有恢复");
     assert((await page.textContent(".project-assistant .assistant-thread")).includes("真实场景"), "退出报告后原会话内容丢失");
     await page.click('.project-draft .candidate-card .text-revision-review__decide button:has-text("弃用")');
 
@@ -453,10 +480,15 @@ try {
     await page.waitForSelector(".project-assistant .assistant-empty[data-scope='project']");
     await page.click('.project-assistant .assistant-history-toggle[aria-label="最近会话"]');
     assert((await page.textContent(".project-assistant-history")).includes("最近对话"), "新对话后旧会话从最近列表消失");
-    await page.click('.project-assistant .assistant-history-toggle[aria-label="最近会话"]');
+    await page.locator(".project-assistant-history nav button").first().click();
+    await page.waitForSelector(".project-assistant .assistant-message--assistant");
     await page.setViewportSize({ width: 1180, height: 768 });
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1180-project-assistant-overlay.png"), fullPage: false });
     await page.setViewportSize({ width: 1366, height: 768 });
+    const railBeforeFocusedReview = await page.$eval(".project-assistant .assistant-thread", (thread) => {
+      thread.scrollTo({ top: Math.max(0, thread.scrollHeight - thread.clientHeight - 48), behavior: "instant" });
+      return { scrollTop: thread.scrollTop, messages: [...thread.querySelectorAll(".assistant-message__markdown, .assistant-message__user > p")].map((item) => item.textContent) };
+    });
 
     const largeSection = Array.from({ length: 18 }, (_, index) => `第${index + 1}段讨论收藏焦虑如何遮蔽真正的内容判断，并补充一个具体情境作为证据。`).join("\n\n");
     await page.click(".project-draft .cm-content");
@@ -469,8 +501,13 @@ try {
     await page.waitForSelector(".md-candidate-focus .candidate-card textarea");
     assert(/章节审阅|全文审阅/.test(await page.textContent(".md-candidate-focus")) && (await page.textContent(".md-candidate-focus")).includes("弃用并结束审阅"), "大章节或全文 Candidate 没有进入专注审阅或退出文案不清楚");
     assert(!(await page.$(".cm-text-revision-host .candidate-card")), "大章节 Candidate 仍被压在正文内联位置");
+    assert(!(await page.locator(".project-assistant").isVisible()), "大章节或全文 Candidate 专注审阅时没有折叠协作右栏");
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-focused-candidate.png"), fullPage: false });
     await page.click('.md-candidate-focus .text-revision-review__decide button:has-text("弃用")');
+    await page.waitForFunction(() => !document.querySelector(".project-assistant")?.dataset.reviewing);
+    await page.waitForTimeout(120);
+    const railAfterFocusedReview = await page.$eval(".project-assistant .assistant-thread", (thread) => ({ scrollTop: thread.scrollTop, messages: [...thread.querySelectorAll(".assistant-message__markdown, .assistant-message__user > p")].map((item) => item.textContent) }));
+    assert(JSON.stringify(railAfterFocusedReview.messages) === JSON.stringify(railBeforeFocusedReview.messages) && Math.abs(railAfterFocusedReview.scrollTop - railBeforeFocusedReview.scrollTop) <= 2, `专注审阅退出后会话或滚动位置没有恢复：${JSON.stringify({ before: { scrollTop: railBeforeFocusedReview.scrollTop, messages: railBeforeFocusedReview.messages.length }, after: { scrollTop: railAfterFocusedReview.scrollTop, messages: railAfterFocusedReview.messages.length } })}`);
     await page.setViewportSize({ width: 1440, height: 900 });
 
     console.log("✓ 项目协作区收敛为轻量 Header、上下文、对话与极简 Composer");

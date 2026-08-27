@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../lib/api.js";
 import { documentVersion } from "../../lib/document-version.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../../lib/assistant-policy.js";
@@ -253,10 +253,15 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     window.document.addEventListener("keydown", key, true);
     return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key, true); };
   }, [permissionOpen, menu, historyMenuId, historyDeleteId, renameId]);
-  useEffect(() => {
+  function scrollThreadToEnd() {
+    const thread = endRef.current?.closest(".assistant-thread");
+    if (thread) thread.scrollTo({ top: thread.scrollHeight, behavior: "instant" });
+  }
+
+  useLayoutEffect(() => {
     cancelAnimationFrame(scrollFrameRef.current);
-    scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
-  }, [messages.length, busy]);
+    scrollThreadToEnd();
+  }, [messages.length, actions.length, busy]);
 
   function flushStream(streamingId) {
     const current = streamRef.current;
@@ -264,7 +269,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const text = current.text; current.text = ""; current.timer = 0;
     setMessages((items) => items.map((item) => item.id === streamingId ? { ...item, text: (item.text || "") + text } : item));
     cancelAnimationFrame(scrollFrameRef.current);
-    scrollFrameRef.current = requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
+    scrollFrameRef.current = requestAnimationFrame(scrollThreadToEnd);
   }
 
   function queueStream(streamingId, text) {
@@ -548,7 +553,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
-      error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={surface !== "overlay"}
+      error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
       policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onPrefill={(value) => { setInput(value); requestAnimationFrame(() => inputRef.current?.focus()); }} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
