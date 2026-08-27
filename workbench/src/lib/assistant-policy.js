@@ -16,7 +16,7 @@ export const ASSISTANT_SCOPES = Object.freeze({
     baseResults: Object.freeze(["answer", "report", "action"]),
     session: (id) => `project:${id}`,
     requestMode: "content",
-    history: false,
+    history: true,
     projectContext: true,
     documentContext: true,
     writingStyle: true,

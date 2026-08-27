@@ -5,6 +5,13 @@ export const AI_RESULT_KINDS = Object.freeze(["answer", "candidate", "report", "
 export const CANDIDATE_STATUSES = Object.freeze(["generating", "ready", "edited", "adopted", "discarded", "stale", "failed"]);
 export const ACTION_STATUSES = Object.freeze(["proposed", "applied", "rejected", "superseded"]);
 
+const FOCUSED_CANDIDATE_TARGETS = new Set(["section", "chapter", "whole-document", "document"]);
+
+export function candidateReviewMode(target = {}) {
+  if (target.review === "focused") return "focused";
+  return FOCUSED_CANDIDATE_TARGETS.has(target.kind) ? "focused" : "inline";
+}
+
 const clean = (value) => String(value || "");
 
 export function documentVersionOf(text) {

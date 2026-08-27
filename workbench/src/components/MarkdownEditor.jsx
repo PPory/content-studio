@@ -28,7 +28,7 @@ import { creationApi } from "../lib/creation-api.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import { clearTextRevision, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
-import { candidateStatus, createCandidate, documentVersionOf } from "../lib/ai/result-model.js";
+import { candidateReviewMode, candidateStatus, createCandidate, documentVersionOf } from "../lib/ai/result-model.js";
 import {
   IconArrowBackUp,
   IconArrowForwardUp,
@@ -170,6 +170,16 @@ function insertBlock(view, text) {
 }
 
 const HEADINGS = ["正文", "标题 1", "标题 2", "标题 3"];
+
+function candidateTargetKind({ original = "", candidate = "", document = "", preferred }) {
+  if (preferred) return preferred;
+  if (original && original.length === document.length) return "whole-document";
+  const text = original || candidate;
+  const paragraphs = text.split(/\n\s*\n/).filter((part) => part.trim()).length;
+  if (text.length >= 800 || paragraphs >= 3) return "section";
+  if (text.includes("\n")) return "paragraph";
+  return original ? "selection" : "insertion";
+}
 
 /**
  * 「跳到这句话」的落地：**选中 + 滚进视野 + 底色闪一下**。
@@ -455,7 +465,7 @@ export function MarkdownEditor({
       const candidate = createCandidate({
         id: insertRequest.id,
         source: "assistant",
-        target: { kind: from === to ? "insertion" : "selection", from, to },
+        target: { kind: candidateTargetKind({ original: v.state.sliceDoc(from, to), candidate: insert, document: v.state.doc.toString(), preferred: insertRequest.targetKind }), from, to },
         from,
         to,
         mode: "rewrite",
@@ -593,7 +603,7 @@ export function MarkdownEditor({
     const revision = createCandidate({
       id,
       source: "selection-revision",
-      target: { kind: "selection", from: selectionMenu.from, to: selectionMenu.to },
+      target: { kind: candidateTargetKind({ original: selectionMenu.text, document: v.state.doc.toString() }), from: selectionMenu.from, to: selectionMenu.to },
       mode,
       label: revisionLabel(mode),
       instruction,
@@ -630,7 +640,7 @@ export function MarkdownEditor({
     const revision = createCandidate({
       id,
       source: "assistant-revision",
-      target: { kind: "selection", from: selected.from, to: selected.to },
+      target: { kind: candidateTargetKind({ original, document: v.state.doc.toString(), preferred: selected.targetKind }), from: selected.from, to: selected.to },
       mode: revisionRequest.mode || "rewrite",
       label: revisionRequest.label || revisionLabel(revisionRequest.mode || "rewrite"),
       instruction: revisionRequest.instruction || "",
@@ -693,9 +703,27 @@ export function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRevision?.text]);
 
-  const revisionHost = activeRevision && view.current
+  const focusedRevision = activeRevision && candidateReviewMode(activeRevision.target) === "focused";
+  const revisionHost = activeRevision && !focusedRevision && view.current
     ? view.current.dom.querySelector(`[data-revision-host="${activeRevision.id}"]`)
     : null;
+  const candidateCard = activeRevision ? <CandidateCard
+    candidate={activeRevision}
+    persistenceError={revisionSaveError}
+    onText={editRevisionCandidate}
+    onRegenerate={(instruction) => regenerateCandidate(activeRevisionRef.current, instruction)}
+    onAdopt={() => closeRevision("adopted")}
+    onDiscard={() => closeRevision("discarded")}
+    onGroundingAction={(item, nextStep) => {
+      if (nextStep.id === "verify") {
+        window.location.hash = "#/materials/需核验";
+        return;
+      }
+      const current = activeRevisionRef.current;
+      const instruction = [current?.instruction, `在服务端校验允许的前提下，仍然使用素材“${item.title}”。`].filter(Boolean).join("\n");
+      regenerateCandidate(current, instruction);
+    }}
+  /> : null;
 
   return (
     <div className="md-editor" data-readonly={readOnly || undefined}>
@@ -817,8 +845,12 @@ export function MarkdownEditor({
           </div>
         </section>
       ) : null}
-      {/* 编辑器**一直挂在 DOM 里**，预览只是盖上去。卸载再挂的话，撤销历史和滚动位置会丢 */}
-      <div className="md-editor__body" hidden={preview}>
+      {focusedRevision ? <section className="md-candidate-focus" aria-label="专注审阅正文候选">
+        <header><div><small>正文候选</small><strong>{activeRevision.target.kind === "whole-document" ? "全文审阅" : "章节审阅"}</strong></div><button type="button" onClick={() => closeRevision("discarded")} aria-label="弃用候选并结束审阅">弃用并结束审阅</button></header>
+        <div className="md-candidate-focus__original"><small>原文</small><p>{activeRevision.original}</p></div>
+        {candidateCard}
+      </section> : null}      {/* 编辑器**一直挂在 DOM 里**，预览只是盖上去。卸载再挂的话，撤销历史和滚动位置会丢 */}
+      <div className="md-editor__body" hidden={preview || focusedRevision}>
         <div ref={host} className="md-editor__cm" aria-label={ariaLabel} />
       </div>
       {preview ? (
@@ -826,30 +858,11 @@ export function MarkdownEditor({
           <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       ) : null}
-      {selectionMenu && !preview ? createPortal(
+      {selectionMenu && !preview && !focusedRevision ? createPortal(
         <SelectionRevisionMenu selection={selectionMenu} onRun={beginRevision} onClose={() => setSelectionMenu(null)} />,
         document.body
       ) : null}
-      {activeRevision && revisionHost ? createPortal(
-        <CandidateCard
-          candidate={activeRevision}
-          persistenceError={revisionSaveError}
-          onText={editRevisionCandidate}
-          onRegenerate={(instruction) => regenerateCandidate(activeRevisionRef.current, instruction)}
-          onAdopt={() => closeRevision("adopted")}
-          onDiscard={() => closeRevision("discarded")}
-          onGroundingAction={(item, nextStep) => {
-            if (nextStep.id === "verify") {
-              window.location.hash = "#/materials/需核验";
-              return;
-            }
-            const current = activeRevisionRef.current;
-            const instruction = [current?.instruction, `在服务端校验允许的前提下，仍然使用素材“${item.title}”。`].filter(Boolean).join("\n");
-            regenerateCandidate(current, instruction);
-          }}
-        />,
-        revisionHost
-      ) : null}
+      {activeRevision && revisionHost ? createPortal(candidateCard, revisionHost) : null}
     </div>
   );
 }

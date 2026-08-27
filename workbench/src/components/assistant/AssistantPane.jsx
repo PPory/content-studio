@@ -5,9 +5,10 @@ import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../../lib/assistant-
 import { EXPERT_KINDS } from "../../lib/expert-kinds.js";
 import { transitionActionResult } from "../../lib/ai/result-model.js";
 import { KnowledgeCardDialog } from "../KnowledgeCardDialog.jsx";
-import { IconArchive, IconHistory, IconPlus } from "../icons.jsx";
+import { IconArchive, IconHistory, IconLayoutSidebarRight, IconPlus } from "../icons.jsx";
 import { AssistantComposer } from "./AssistantComposer.jsx";
 import { AssistantHistory } from "./AssistantHistory.jsx";
+import { ProjectAssistantHistory } from "./ProjectAssistantHistory.jsx";
 import { AssistantThread } from "./AssistantThread.jsx";
 import "../project-assistant.css";
 
@@ -82,7 +83,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, projectContext = null, onCollapse }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -96,6 +97,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const selection = target.selection || null;
   const historyEnabled = policy.capabilities.history;
   const globalScope = scope === "global";
+  const projectRail = scope === "project" && surface === "rail";
   const [messages, setMessages] = useState([]);
   const [actions, setActions] = useState([]);
   const [input, setInput] = useState("");
@@ -197,7 +199,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     let cancelled = false;
     conversationIdRef.current = "";
     promptRequestRef.current = "";
-    const shouldResume = !historyEnabled || surface === "overlay" || Boolean(initialConversationId);
+    const shouldResume = !historyEnabled || surface !== "page" || Boolean(initialConversationId);
     setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(shouldResume);
     if (shouldResume) api.assistantConversation(scopeId, initialConversationId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     if (historyEnabled) api.assistantConversations(scopeId).then((result) => { if (!cancelled) setConversationItems(result.conversations?.items || []); }).catch(() => {});
@@ -520,24 +522,34 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
   const dialog = <div className="assistant-pane__dialog">
     <header className="assistant-pane__context">
-      <div>
-        {historyEnabled && presentation.history !== "none" ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" />{presentation.history === "sidebar" ? <span>历史对话</span> : null}</button> : null}
-        {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
-        {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
-      </div>
-      <div className="assistant-context-actions">
-
-                {policy.capabilities.writingStyle && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
-        {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
-        {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
-        <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{globalScope ? <span>新对话</span> : null}</button>
-      </div>
+      {projectRail ? <>
+        <strong>协作</strong>
+        <div className="assistant-context-actions">
+          {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /></button> : null}
+          <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="最近会话" aria-label="最近会话"><IconHistory aria-hidden="true" /></button>
+          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /></button>
+          {onCollapse ? <button type="button" onClick={onCollapse} title="收起协作区" aria-label="收起协作区"><IconLayoutSidebarRight aria-hidden="true" /></button> : null}
+        </div>
+      </> : <>
+        <div>
+          {historyEnabled && presentation.history !== "none" ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" />{presentation.history === "sidebar" ? <span>历史对话</span> : null}</button> : null}
+          {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
+          {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
+        </div>
+        <div className="assistant-context-actions">
+          {policy.capabilities.writingStyle && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
+          {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
+          {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
+          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{globalScope ? <span>新对话</span> : null}</button>
+        </div>
+      </>}
     </header>
+    {projectContext}
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
       error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={surface !== "overlay"}
-      policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onRegenerate={() => rewind(false)}
+      policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onPrefill={(value) => { setInput(value); requestAnimationFrame(() => inputRef.current?.focus()); }} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
       endRef={endRef}
@@ -560,8 +572,8 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} />
   </div>;
 
-  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${globalScope && surface === "rail" ? " assistant-pane--docked" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}`}>
-    {historyEnabled && historyOpen ? <AssistantHistory
+  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${globalScope && surface === "rail" ? " assistant-pane--docked" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
+    {historyEnabled && historyOpen ? projectRail ? <ProjectAssistantHistory conversationId={conversationId} conversationTitle={conversationTitle} items={conversationItems} onOpen={(id) => { openConversation(id); setHistoryOpen(false); }} onNew={() => { newConversation(); setHistoryOpen(false); }} /> : <AssistantHistory
       visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
       historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}
       renameValue={renameValue} conversationId={conversationId} onNewConversation={newConversation}

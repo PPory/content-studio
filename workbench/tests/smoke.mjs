@@ -439,23 +439,7 @@ try {
        而跳过去的输出和「这一段通过了」长得一模一样。这个坑这一轮已经踩到第三次。 */
     await page.waitForSelector(".project-workspace, .project-workspace-load .note-danger", { timeout: 25000 }).catch(() => {});
 
-    /**
-     * ⚠️ **右栏现在是三页签（AI 助手 / 项目素材 / 检查报告），默认落在 AI 助手。**
-     * 底下那一整段量的是**素材那一栏**（种子、找相关素材、候选是不是混进列表），
-     * 而它们现在住在第二个页签里——不先切过去的话，`querySelector` 一个都找不到，
-     * 于是那几条要么红、要么落进「没有种子」这种**看着像结论、其实是没看见**的分支。
-     * 「量不到要红，不能悄悄跳过」在这个文件里已经记过好几次，这是同一类。
-     */
-    const railTabs = await page.$$eval(".project-assistant__tabs button", (els) => els.map((e) => ({
-      label: e.textContent.trim().replace(/\d+$/, ""),
-      on: e.getAttribute("aria-pressed") === "true",
-    }))).catch(() => []);
-    if (railTabs.length) {
-      check("右栏是三页签，默认落在 AI 助手", railTabs.length === 3 && railTabs[0].on,
-        railTabs.map((t) => `${t.label}${t.on ? "(当前)" : ""}`).join("/"));
-      await page.click('.project-assistant__tabs button:has-text("项目素材")');
-      await page.waitForTimeout(200);
-    }
+    /** Stage 6：项目右栏是统一协作区；素材、报告与最近会话都按需展开。 */
 
     const proj = await page.evaluate(() => {
       const ws = document.querySelector(".project-workspace");
@@ -478,31 +462,15 @@ try {
         flow: document.querySelectorAll(".project-flow, .project-flow li").length,
         // 顶栏那颗 pill 是三档之一（判据在 `projectPhase` 一处）
         phase: pill ? pill.textContent.trim() : "",
-        /**
-         * ⚠️ **右栏是二选一，不能钉死其中一种。**
-         * 「待发布」那一档右栏换成发布准备（`ProjectReleaseRail`），这是对的行为；
-         * 只断言其中一种的话，库里第一条恰好走到那一档时测试当场变红而代码没问题——
-         * 「写死外部状态的断言等于没有断言」在这个文件里已经栽过三次。
-         */
-        rail: document.querySelector(".project-rail .pmat") ? "素材"
-          : document.querySelector(".project-publish") ? "发布准备"
-          // 三页签的壳在、但素材那一档还没渲染出来：这是**没看见**，不是「右栏换了一种」
-          : document.querySelector(".project-assistant") ? "" : "",
-        /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目素材那一栏必须叫别的 */
+        rail: !!document.querySelector(".project-assistant .assistant-pane--project-rail"),
+        context: !!document.querySelector(".project-assistant__context-trigger"),
+        history: !!document.querySelector('.project-assistant button[aria-label="最近会话"]'),
+        quietComposer: !document.querySelector(".project-assistant .assistant-composer__model, .project-assistant .assistant-composer__access, .project-assistant .assistant-context-style"),
+        permanentCommands: document.querySelectorAll(".project-assistant .assistant-command-menu").length,
+        /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目协作区不得复用 */
         clash: document.querySelectorAll(".project-rail .prefs").length,
         /* 「待诊断」那一档撤了：不许在这一页任何地方长回来 */
         ghost: ws.textContent.includes("诊断"),
-        /**
-         * 种子块：**这一篇是从哪句话来的**。
-         * ⚠️ **二选一，不能钉死其中一种**——库里第一条恰好不是种子长出来的时候，
-         * 钉死「必须有」当场变红而代码没问题。要量的是：**有种子就有那句话，
-         * 没种子就整块不画**（不是画一个写着「无来源」的空壳）。
-         */
-        seed: document.querySelector(".pseed") ? (document.querySelector(".pseed__take")?.textContent.trim().length || 0) : -1,
-        /* 「找相关素材」那颗：只在素材那一档出现（发布准备那一档换了整个右栏） */
-        find: document.querySelectorAll(".pmat__find-btn").length,
-        /* 挂上的候选**不能**混在已挂的列表里——两者语义不同 */
-        cands: document.querySelectorAll(".pmat__list .pmat__cands").length,
       };
     });
     if (proj) {
@@ -520,20 +488,12 @@ try {
       check("七段流程线撤干净了", proj.flow === 0, `还剩 ${proj.flow} 个节点`);
       check("顶栏那颗 pill 是三档之一", ["在写", "写完了", "发出去了", "已搁置", "需处理"].includes(proj.phase), proj.phase || "(没有 pill)");
       check("「诊断」在这一页一个字都没有", !proj.ghost, proj.ghost ? "正文里还写着「诊断」" : "");
-      check("右栏要么是素材，要么是发布准备", !!proj.rail, proj.rail || "两种都不是");
-      check("项目素材那一栏没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
-      /**
-       * ⚠️ **二选一：有种子就得看得见那句话，没种子就整块不画。**
-       * `-1` = 没画（没有种子），`>0` = 画了而且真有字。**`0` 必须红**——
-       * 那是「画了一个空壳」，比不画更糟：屏幕上多了一块什么都不说的东西。
-       */
-      check("有种子就摆出那句话，没有就整块不画", proj.seed === -1 || proj.seed > 0,
-        proj.seed === -1 ? "这个项目不是种子长出来的" : `${proj.seed} 字`);
-      // 素材那一档才有「找相关素材」；发布准备那一档整个右栏都换掉了，没有它是对的。
-      // ⚠️ 它现在是标题行右上角一枚图标（原来是铺满整栏的按钮，和下面那列素材抢重量）
-      check("素材栏上有「找相关素材」", proj.rail !== "素材" || proj.find === 1, `${proj.find} 颗`);
-      // ⚠️ 候选和已挂上的必须分开画：混在一起你会以为它们已经算进「已用 N 条」了
-      check("AI 候选没混进已挂上的那份清单", proj.cands === 0, `${proj.cands} 处混在里面`);
+      check("右栏使用统一项目协作区", proj.rail, proj.rail ? "协作" : "未找到");
+      check("项目上下文按需打开", proj.context, proj.context ? "当前稿件与已用素材" : "未找到入口");
+      check("项目最近会话使用轻量入口", proj.history, proj.history ? "最近会话" : "未找到入口");
+      check("项目 Composer 不常驻模型、权限或风格", proj.quietComposer, proj.quietComposer ? "保持极简" : "出现低频配置");
+      check("@Expert 与 /Skill 菜单默认不常驻", proj.permanentCommands === 0, `${proj.permanentCommands} 个菜单`);
+      check("项目协作区没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
 
       /**
        * ⚠️ **两种右栏都要钉得住，而且都要能自己滚。**
@@ -3607,12 +3567,10 @@ try {
     await page.waitForSelector(".reader .prose", { timeout: 10000 });
     await page.click('.rail-tabs button:has-text("AI 助手")');
     await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
-    check("书架阅读区复用统一助手", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
+    check("书架阅读区复用统一助手", !!(await page.$(".rail .assistant-composer")) && !(await page.$(".chat-permission-mode")));
+    check("书架阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__model")) && !(await page.$(".rail .assistant-composer__access")));
     const readingEmpty = await page.textContent(".rail .assistant-empty");
     check("阅读区助手使用阅读语境空态", readingEmpty.includes("想从这份文档看清什么") && readingEmpty.includes("不会修改原文") && !readingEmpty.includes("项目"), readingEmpty.replace(/\s+/g, " ").slice(0, 100));
-    await page.click(".rail .assistant-composer__access");
-    check("书架的阅读区有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
-    await page.keyboard.press("Escape");
     await page.click('.reader-overlay__bar button[aria-label="关闭"]');
     await page.waitForSelector(".chapter-row", { timeout: 8000 });
     await (await page.$$(".chapter-row"))[1].click();
@@ -4811,13 +4769,10 @@ try {
   await page.waitForSelector(".rail", { timeout: 15000 });
   await page.click('.rail-tabs button:has-text("AI 助手")');
   await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
-  check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer__model")) && !!(await page.$(".rail .assistant-composer__access")) && !(await page.$(".chat-permission-mode")));
-  await page.click('.rail .assistant-pane__context button[aria-label="新对话"]');
+  check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer")) && !(await page.$(".chat-permission-mode")));
+  check("内容阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__model")) && !(await page.$(".rail .assistant-composer__access")));
+  await page.locator('.rail:visible button[aria-label="新对话"]').click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
-  await page.click(".rail .assistant-composer__access");
-  check("对话有三种权限模式", (await page.$$(".rail .assistant-permission-menu > button")).length === 3);
-  check("新对话默认日常模式", (await page.textContent(".rail .assistant-composer__access")).includes("日常"));
-  await page.keyboard.press("Escape");
   await page.evaluate(() => {
     const paragraph = document.querySelector(".reader .prose p");
     const range = document.createRange();
@@ -4845,23 +4800,10 @@ try {
   check("对话无乱码", !reply.includes("�"), reply.slice(0, 30));
   check("回复标着 Pi 运行时", (await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
   check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button:has-text("复制")')));
-  await page.click(".rail .assistant-composer__access");
   check("阅读区有选区但无 revision 落点时不显示改选区动作", !(await page.$('.rail .assistant-message--assistant button:has-text("按建议改选区")')));
-  await page.click('.rail .assistant-permission-menu > button:has-text("创作")');
-  await page.waitForFunction(() => document.querySelector(".rail .assistant-composer__access")?.textContent.includes("创作"));
-  check("对话可切到创作模式", (await page.textContent(".rail .assistant-composer__access")).includes("创作"));
-  page.once("dialog", async (dialog) => {
-    check("切入开发模式会警告", dialog.message().includes("项目代码") && dialog.message().includes("命令"), dialog.message());
-    await dialog.accept();
-  });
-  await page.click(".rail .assistant-composer__access");
-  await page.click('.rail .assistant-permission-menu > button:has-text("开发")');
-  await page.waitForFunction(() => document.querySelector(".rail .assistant-composer__access")?.textContent.includes("开发"));
-  check("确认后可切到开发模式", (await page.textContent(".rail .assistant-composer__access")).includes("开发"));
-  await page.click('.rail .assistant-pane__context button[aria-label="新对话"]');
+  await page.locator('.rail:visible button[aria-label="新对话"]').click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   check("能重开一轮对话", !!(await page.$(".rail .assistant-empty")));
-  check("新对话重新回到日常模式", (await page.textContent(".rail .assistant-composer__access")).includes("日常"));
   await shot("chat", false);
 
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });

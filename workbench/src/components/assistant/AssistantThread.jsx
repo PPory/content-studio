@@ -43,7 +43,7 @@ function EmptyAssistant({ onPrompt, scope }) {
     : reading
       ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
       : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
-  return <div className="assistant-empty">
+  return <div className="assistant-empty" data-scope={scope}>
     <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
     <h3>{heading}</h3>
     <p>{description}</p>
@@ -71,6 +71,7 @@ export function AssistantThread({
   target,
   currentVersion,
   onPrompt,
+  onPrefill,
   onRegenerate,
   onEdit,
   onApplyAction,
@@ -81,9 +82,9 @@ export function AssistantThread({
   const latestUserId = [...messages].reverse().find((item) => item.role === "user")?.id;
   const latestAssistantId = [...messages].reverse().find((item) => item.role === "assistant" && item.text)?.id;
   return <div className="assistant-thread">
-    {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={onPrompt} scope={scope} /> : null}
+    {!messages.length && !busy && !loading ? <EmptyAssistant onPrompt={scope === "project" ? onPrefill : onPrompt} scope={scope} /> : null}
     {loading ? <Working label="正在打开对话" /> : null}
-    {messages.map((item) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
+    {messages.map((item, index) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} showIdentity={scope !== "project" || !messages.slice(0, index).some((entry) => entry.role === "assistant")} />{(item.actionIds || []).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
     {busy && !messages.some((item) => item.pending && item.text) ? <Working label={showRuntime ? "Pi 正在处理" : "AI 正在处理"} detail={activity} startedAt={turnStartedAt} /> : null}
     {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={onRetry}>重试</button></div> : null}
     <div ref={endRef} />

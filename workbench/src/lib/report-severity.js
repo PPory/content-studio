@@ -10,11 +10,15 @@ const STATUS_TO_SEVERITY = Object.freeze({
   unsupported: "risk",
   warn: "suggested",
   overstated: "suggested",
-  pass: "optional",
-  verified: "optional",
+  optional: "optional",
+
+
 });
 
+const POSITIVE_STATUSES = new Set(["pass", "verified", "supported"]);
+
 export function reportSeverity(kind, status = "") {
+  if (POSITIVE_STATUSES.has(String(status || "").toLowerCase())) return null;
   if (kind === "material-research") return REPORT_SEVERITIES.suggested;
   return REPORT_SEVERITIES[STATUS_TO_SEVERITY[String(status || "").toLowerCase()]] || REPORT_SEVERITIES.suggested;
 }

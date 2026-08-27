@@ -44,7 +44,7 @@ export function CandidateCard({ candidate, persistenceError, onText, onRegenerat
   };
   return <section className="text-revision-review candidate-card" data-status={candidate.status} aria-label={`${candidate.label}候选`} aria-live="polite" onKeyDown={shortcut}>
     <header>
-      <span><b>{candidate.label}</b><small>{candidate.target?.kind === "insertion" ? "正文暂未写入" : "原文暂未替换"}</small></span>
+      <span><b>{candidate.label}</b></span>
       <span>{candidate.generations?.length ? `第 ${candidate.generations.length} 版` : STATUS_LABEL[candidate.status]} · {summary.label}</span>
     </header>
     {candidate.status === "stale" ? <p className="candidate-card__stale"><IconAlertTriangle aria-hidden="true" />正文已在候选生成后变化。请重新生成，避免覆盖新内容。</p> : null}

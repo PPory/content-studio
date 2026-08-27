@@ -131,3 +131,18 @@
 @media (max-width: 700px) {
   .candidate-grounding__group { grid-template-columns: 1fr; gap: 4px; }
 }
+
+
+/* Candidate target size: short edits stay inline; sections and whole documents use focused review. */
+.md-candidate-focus { min-height: 520px; padding: var(--sp-6); background: var(--surface); }
+.md-candidate-focus > header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-5); padding-bottom: var(--sp-4); border-bottom: 1px solid var(--border); }
+.md-candidate-focus > header > div { display: grid; gap: 1px; }
+.md-candidate-focus > header small { color: var(--text-3); font-size: var(--fs-2xs); }
+.md-candidate-focus > header strong { font-size: var(--fs-base); }
+.md-candidate-focus > header button { min-height: 30px; border: 0; border-radius: var(--r-ctl); padding: 0 var(--sp-3); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.md-candidate-focus > header button:hover { background: var(--surface-2); color: var(--text-1); }
+.md-candidate-focus__original { margin-bottom: var(--sp-4); padding: var(--sp-3) var(--sp-5); border-left: 2px solid var(--border-strong); background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); }
+.md-candidate-focus__original small { color: var(--text-3); font-size: var(--fs-2xs); }
+.md-candidate-focus__original p { max-height: 96px; margin: var(--sp-2) 0 0; overflow-y: auto; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; white-space: pre-wrap; }
+.md-candidate-focus .candidate-card { margin: 0; box-shadow: none; }
+.md-candidate-focus .text-revision-review textarea { max-height: 260px; min-height: 120px; background: var(--surface); }

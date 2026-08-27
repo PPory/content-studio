@@ -22,7 +22,7 @@ import { EXPERT_KINDS, expertKindDisplayName, normalizeExpertKind } from "../src
 import { reportSeverity } from "../src/lib/report-severity.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../src/lib/assistant-policy.js";
 import { assistantReferenceDocument, assistantSummonDestination } from "../src/lib/assistant-summoner.js";
-import { AI_RESULT_KINDS, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
+import { AI_RESULT_KINDS, candidateReviewMode, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
 import { materialDraftGrounding, normalizeGrounding } from "../src/lib/ai/grounding.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
@@ -663,7 +663,8 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("三类专家检查只使用规范 kind", EXPERT_KINDS.map((item) => item.id).join("/") === "material-research/quality-review/fact-check");
   check("旧素材检查 kind 只保留兼容映射", normalizeExpertKind("material-audit") === "material-research");
   check("专家显示名来自唯一真源", expertKindDisplayName("material-audit") === "素材查缺" && expertKindDisplayName("quality-review") === "Xenho 品控九问" && expertKindDisplayName("fact-check") === "事实核查");
-  check("AI 报告统一为三档用户名称", [reportSeverity("quality-review", "fail"), reportSeverity("quality-review", "warn"), reportSeverity("quality-review", "pass")].map((item) => item.displayName).join("/") === "高风险/建议修改/可选优化");
+  check("AI finding 仍使用三档用户名称", [reportSeverity("quality-review", "fail"), reportSeverity("quality-review", "warn"), reportSeverity("quality-review", "optional")].map((item) => item.displayName).join("/") === "高风险/建议修改/可选优化");
+  check("正面报告结果不伪装成可选优化", reportSeverity("quality-review", "pass") === null && reportSeverity("fact-check", "verified") === null);
 
   const readonlyReading = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: false, selection: { text: "选区" } } });
   const editableVault = resolveAssistantPolicy({ scope: "reading", target: { kind: "vault-document", editable: true, selection: { text: "选区" } } });
@@ -687,7 +688,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const readingRail = await fs.readFile(new URL("../src/components/SideRail.jsx", import.meta.url), "utf8");
   const expertPanel = await fs.readFile(new URL("../src/components/ExpertTaskPanel.jsx", import.meta.url), "utf8");
   const knowledgeDialog = await fs.readFile(new URL("../src/components/KnowledgeCardDialog.jsx", import.meta.url), "utf8");
-  check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global" surface="rail" target=/.test(globalDock) && /scope="project" surface="rail" target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
+  check("四个 Assistant 调用点都显式声明 scope、surface 与 target", /scope="global"[\s\S]*surface="page"[\s\S]*target=/.test(assistantPage) && /scope="global" surface="rail" target=/.test(globalDock) && /scope="project"[\s\S]*surface="rail"[\s\S]*target=/.test(projectRail) && /scope="reading"[\s\S]*surface="rail"[\s\S]*target=/.test(readingRail));
   check("Assistant Core 不再接受 standalone 或 docked 能力布尔", !/AssistantPane\(\{[^\n]*(standalone|docked)/.test(assistantPane) && !/<AssistantPane[^>]*(standalone|docked)/.test(`${assistantPage}\n${globalDock}\n${projectRail}\n${readingRail}`));
   check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
@@ -710,6 +711,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Candidate ready 与 stale 由正文版本统一推导", readyCandidate.status === "ready" && staleCandidate.status === "stale");
   check("gate rejected 直接进入 failed", rejectedCandidate.status === "failed" && rejectedCandidate.error?.message === "个人经历缺少服务端证据");
   check("Candidate 变更摘要可比较", JSON.stringify(changeSummary("原文", "新正文")) === JSON.stringify({ added: 2, removed: 1, label: "+2 / −1" }));
+  check("短候选内联、大候选专注审阅", candidateReviewMode({ kind: "selection" }) === "inline" && candidateReviewMode({ kind: "paragraph" }) === "inline" && candidateReviewMode({ kind: "section" }) === "focused" && candidateReviewMode({ kind: "whole-document" }) === "focused");
   const materialGrounding = materialDraftGrounding([{ id: "m1", title: "真实案例" }, { id: "m2", title: "待核验数据" }], { skipped: [{ id: "m2", title: "待核验数据", reason: "待核验" }] });
   check("CreationDialog 素材证据回执进入统一 Grounding", materialGrounding.used[0].id === "m1" && materialGrounding.skipped[0].nextStep.id === "verify");
   check("Action 同时支持 applied 与 rejected 正式状态", transitionActionResult({ id: "a1", type: "create_content" }, "applied").status === "applied" && transitionActionResult({ id: "a1", type: "create_content" }, "rejected").status === "rejected" && createAiResult({ kind: "action", type: "create_content" }).status === "proposed");
