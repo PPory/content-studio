@@ -82,7 +82,9 @@ test("BACKUP_TABLES 里父表都排在子表前面", () => {
   // 加表时如果忘了往 `deps` 里加一行，上面那个循环会安静地跳过它——
   // 而"被跳过的断言和不存在的断言是同一回事"。所以再钉一条：清单里每一张表
   // 要么在 deps 里（有父表，位置被检查过），要么明确是无依赖的根表。
-  const rootTables = new Set(["inbox", "topics", "tags", "comments", "task_log", "settings"]);
+  // external_documents 的 entity_id 故意不是外键：provider 映射要能在内容迁移期间独立保存，
+  // 实际写入端点仍会先确认稿件存在。
+  const rootTables = new Set(["inbox", "topics", "tags", "comments", "task_log", "settings", "external_documents"]);
   for (const table of BACKUP_TABLES) {
     assert.ok(
       table in deps || rootTables.has(table),

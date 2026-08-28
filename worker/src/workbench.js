@@ -57,6 +57,7 @@ import {
   parseMaterialLibraryQuery,
 } from "./lib/material-library.js";
 import { claimAgentTask, finishAgentTask, getAgentTask, heartbeatAgentTask } from "./lib/agent-tasks.js";
+import { getExternalDocument, upsertExternalDocument } from "./lib/external-documents.js";
 
 /**
  * id 合法性。**两种格式都要认**：从 Notion 迁过来的行是 32–36 位 UUID，
@@ -408,6 +409,33 @@ export async function handleWorkbench(request, env, ctx, url) {
     if (agentTaskMatch && request.method === "GET") {
       const task = await getAgentTask(env, agentTaskMatch[1]);
       return task ? json({ ok: true, task }) : json({ ok: false, error: "任务不存在" }, 404);
+    }
+
+    // 外部正文只保存映射与同步摘要，正文仍由对应 provider 负责。
+    const externalDocumentMatch = path.match(/^external-documents\/(draft)\/([0-9A-Za-z-]{20,40})$/);
+    if (externalDocumentMatch && request.method === "GET") {
+      return json({
+        ok: true,
+        document: await getExternalDocument(
+          env,
+          url.searchParams.get("provider") || "feishu",
+          externalDocumentMatch[1],
+          externalDocumentMatch[2]
+        ),
+      });
+    }
+    if (externalDocumentMatch && request.method === "POST") {
+      const row = await getRow(env, "drafts", externalDocumentMatch[2]);
+      if (!row) return json({ ok: false, error: "稿件不存在" }, 404);
+      return json({
+        ok: true,
+        document: await upsertExternalDocument(
+          env,
+          externalDocumentMatch[1],
+          externalDocumentMatch[2],
+          await request.json()
+        ),
+      });
     }
 
     if (path === "update" && request.method === "POST") return await updateFields(env, await request.json());

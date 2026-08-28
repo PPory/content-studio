@@ -72,6 +72,12 @@ export const NAV = [
         desc: "灵感 / 素材 / 选题 / 稿件四个库都在 Worker 的 D1 里，工作台一律经 /wb/* 取。没配时「创作」页是空的。",
         checks: ["worker"],
       },
+      {
+        key: "feishu",
+        kind: "env",
+        label: "飞书文档",
+        desc: "工作台和飞书编辑同一篇正文；默认写入个人知识库，也可以指定专用知识空间或父节点。",
+      },
     ],
   },
   {
@@ -200,6 +206,21 @@ export const SETTINGS = [
     secret: true,
     hint: "自己设一串长密码，这里和 Worker 那边要一致。",
     why: "同一串要在两边：填在这里，并在 worker/ 目录里跑一次 npx wrangler secret put WORKBENCH_KEY。它和 Telegram 那个 secret 是分开的，可以单独轮换。",
+  },
+
+  {
+    key: "FEISHU_WIKI_SPACE",
+    group: "feishu",
+    label: "飞书知识空间",
+    placeholder: "my_library 或知识空间 ID",
+    hint: "留空使用个人知识库；建立专用工作台知识库后填它的 space ID。",
+  },
+  {
+    key: "FEISHU_WIKI_NODE",
+    group: "feishu",
+    label: "飞书父节点",
+    placeholder: "知识库页面 URL 或 wiki token",
+    hint: "可选。填写后，新同步的文档都建在这个节点下面，并优先于知识空间设置。",
   },
 
   {

@@ -24,6 +24,7 @@ import { revisionRoutes } from "./routes/revisions.mjs";
 import { writingProfileRoutes } from "./routes/writing-profile.mjs";
 import { expertRunRoutes } from "./routes/expert-runs.mjs";
 import { assistantRoutes } from "./routes/assistant.mjs";
+import { feishuRoutes } from "./routes/feishu.mjs";
 
 const EXTENSION_ALIASES = {
   "/api/extension/intake": "/api/pipe/intake",
@@ -90,6 +91,7 @@ const ROUTES = [
   ...writingProfileRoutes,
   ...expertRunRoutes,
   ...assistantRoutes,
+  ...feishuRoutes,
   ...revisionRoutes,
   ...insightsRoutes,
 ];
