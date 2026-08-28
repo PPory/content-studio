@@ -15,7 +15,9 @@
     "shots": "node tests/shots.mjs",
     "app:icon": "node scripts/make-icon.mjs",
     "app:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
-    "app:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1"
+    "app:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1",
+    "migrate:supabase-documents": "node scripts/migrate-vault-documents-to-supabase.mjs",
+    "sync:feishu-documents": "node scripts/bootstrap-feishu-documents.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

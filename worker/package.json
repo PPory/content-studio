@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
+    "migrate:supabase": "node scripts/migrate-d1-to-supabase.mjs",
     "tail": "wrangler tail",
     "test": "node --test"
   },
