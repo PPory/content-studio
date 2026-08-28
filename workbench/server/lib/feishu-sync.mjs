@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const MAX_OUTPUT = 4 * 1024 * 1024;
 const TIMEOUT_MS = 180_000;
@@ -37,9 +39,27 @@ export function parseLarkCliJson(stdout) {
   return result.data && typeof result.data === "object" ? result.data : result;
 }
 
+export function resolveLarkCliInvocation(args, {
+  platform = process.platform,
+  pathValue = process.env.PATH || "",
+  nodePath = process.execPath,
+  existsSync = fs.existsSync,
+} = {}) {
+  if (platform !== "win32") return { command: "lark-cli", args };
+  const join = path.win32.join;
+  for (const rawDir of String(pathValue).split(";")) {
+    const dir = rawDir.trim().replace(/^"(.*)"$/, "$1");
+    if (!dir) continue;
+    const script = join(dir, "node_modules", "@larksuite", "cli", "scripts", "run.js");
+    if (existsSync(script)) return { command: nodePath, args: [script, ...args] };
+  }
+  return { command: "lark-cli", args };
+}
+
 export function runLarkCli(args, { timeoutMs = TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn("lark-cli", args, {
+    const invocation = resolveLarkCliInvocation(args);
+    const child = spawn(invocation.command, invocation.args, {
       windowsHide: true,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],

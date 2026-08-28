@@ -4,6 +4,7 @@ import {
   documentFingerprint,
   hasProtectedFeishuBlocks,
   parseLarkCliJson,
+  resolveLarkCliInvocation,
 } from "../server/lib/feishu-sync.mjs";
 
 const local = documentFingerprint("标题", "正文\r\n第二行");
@@ -22,5 +23,19 @@ assert.throws(() => parseLarkCliJson('{"ok":false,"error":{"message":"denied"}}'
 assert.equal(hasProtectedFeishuBlocks("普通正文\n## 小节"), false);
 assert.equal(hasProtectedFeishuBlocks("<image token=\"img_123\"/>"), true);
 assert.equal(hasProtectedFeishuBlocks("<bitable token=\"tbl_123\"/>"), true);
+
+const cliScript = "C:\\Users\\Lenovo\\bin\\node_modules\\@larksuite\\cli\\scripts\\run.js";
+const invocation = resolveLarkCliInvocation(["docs", "+fetch"], {
+  platform: "win32",
+  pathValue: "C:\\Tools;C:\\Users\\Lenovo\\bin",
+  nodePath: "C:\\Program Files\\node.exe",
+  existsSync: (candidate) => candidate === cliScript,
+});
+assert.equal(invocation.command, "C:\\Program Files\\node.exe");
+assert.deepEqual(invocation.args, [cliScript, "docs", "+fetch"]);
+assert.deepEqual(
+  resolveLarkCliInvocation(["docs"], { platform: "linux" }),
+  { command: "lark-cli", args: ["docs"] }
+);
 
 console.log("飞书同步纯逻辑通过");
