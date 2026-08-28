@@ -73,6 +73,12 @@ export const NAV = [
         checks: ["worker"],
       },
       {
+        key: "supabase",
+        kind: "env",
+        label: "云端存储",
+        desc: "稿件插图进入私有 Supabase Storage；临时链接只在同步到飞书时生成，不写进正文。",
+      },
+      {
         key: "feishu",
         kind: "env",
         label: "飞书文档",
@@ -206,6 +212,23 @@ export const SETTINGS = [
     secret: true,
     hint: "自己设一串长密码，这里和 Worker 那边要一致。",
     why: "同一串要在两边：填在这里，并在 worker/ 目录里跑一次 npx wrangler secret put WORKBENCH_KEY。它和 Telegram 那个 secret 是分开的，可以单独轮换。",
+  },
+
+  {
+    key: "SUPABASE_URL",
+    group: "supabase",
+    label: "Supabase 项目地址",
+    placeholder: "https://<project-ref>.supabase.co",
+    hint: "当前项目填写 https://ynplhqqmljbhwbghslmf.supabase.co。",
+  },
+  {
+    key: "SUPABASE_SECRET_KEY",
+    group: "supabase",
+    label: "Supabase 服务端密钥",
+    secret: true,
+    placeholder: "sb_secret_…",
+    hint: "只保存在这台电脑的 .env；不要发到聊天、提交到 Git 或放进浏览器。",
+    why: "私有图片上传、读取和临时链接都由本机服务代办。前端拿不到这把密钥，Supabase 的公开访问仍然关闭。",
   },
 
   {

@@ -1,13 +1,27 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { json, readJsonBody } from "../lib/http.mjs";
 import { callWorker } from "../lib/worker.mjs";
+import { safeJoin, vaultRoot } from "../lib/vault.mjs";
 import {
+  canRebuildFeishuImages,
   createFeishuDocument,
   decideDocumentSync,
   documentFingerprint,
+  feishuImageTokens,
   fetchFeishuDocument,
   hasProtectedFeishuBlocks,
+  isDifferentFeishuTarget,
   overwriteFeishuDocument,
+  replaceMarkdownImages,
 } from "../lib/feishu-sync.mjs";
+import {
+  createMediaSignedUrl,
+  mediaAssetById,
+  mediaIdFromReference,
+  replaceExternalDocumentAssetMappings,
+  uploadMediaAsset,
+} from "../lib/supabase-media.mjs";
 
 function workerError(result, fallback) {
   const error = new Error(result.data?.error || fallback);
@@ -63,6 +77,44 @@ function targetOf(env) {
   return { wikiNode, wikiSpace, id: wikiNode || wikiSpace };
 }
 
+function decodeImageSource(value) {
+  try {
+    return decodeURIComponent(String(value || "").trim());
+  } catch {
+    throw Object.assign(new Error("正文里的图片路径编码不正确"), { status: 400 });
+  }
+}
+
+async function prepareMarkdownForFeishu(env, markdown) {
+  return replaceMarkdownImages(markdown, async (reference) => {
+    const source = decodeImageSource(reference.source);
+    if (/^https:\/\//i.test(source)) return { url: source, asset: null };
+    if (/^(?:data|http):/i.test(source)) {
+      throw Object.assign(new Error("飞书同步只接受 HTTPS 或工作台受管图片"), { status: 400 });
+    }
+    const assetId = mediaIdFromReference(source);
+    let asset = assetId ? await mediaAssetById(env, assetId) : null;
+    if (assetId && !asset) throw Object.assign(new Error(`找不到图片资产 ${assetId}`), { status: 404 });
+    if (!asset) {
+      let bytes;
+      try {
+        bytes = await fs.readFile(safeJoin(vaultRoot(env), source));
+      } catch {
+        throw Object.assign(new Error(`找不到正文图片：${source}`), {
+          status: 404,
+          hint: "请确认 Obsidian 中的原图仍在，或删除这条失效图片引用",
+        });
+      }
+      asset = await uploadMediaAsset(env, {
+        bytes,
+        originalName: path.basename(source) || reference.alt || "image",
+        source: "vault-migration",
+      });
+    }
+    return { url: await createMediaSignedUrl(env, asset), asset };
+  });
+}
+
 async function inspect(env, id) {
   const [draft, binding] = await Promise.all([draftOf(env, id), bindingOf(env, id)]);
   if (!binding) return { draft, binding: null, remote: null, decision: { action: "create", localChanged: true, remoteChanged: false } };
@@ -78,6 +130,7 @@ async function inspect(env, id) {
 async function pushDraft(env, res, id) {
   const state = await inspect(env, id);
   const target = targetOf(env);
+  const targetChanged = isDifferentFeishuTarget(state.binding, target.id);
   if (["conflict", "pull-preview"].includes(state.decision.action)) {
     return json(res, {
       ok: false,
@@ -88,40 +141,59 @@ async function pushDraft(env, res, id) {
       ...state.decision,
     }, 409);
   }
-  if (state.decision.action === "none") {
+  if (state.decision.action === "none" && !targetChanged) {
     return json(res, { ok: true, action: "none", document: state.binding, message: "两端内容没有变化" });
   }
-  if (state.decision.action === "push" && hasProtectedFeishuBlocks(state.remote.markdown)) {
+  const canRebuildImages = canRebuildFeishuImages(state.binding, state.draft.markdown);
+  if (!targetChanged && state.decision.action === "push" && hasProtectedFeishuBlocks(state.remote.markdown, { allowImages: canRebuildImages })) {
     return json(res, {
       ok: false,
-      error: "飞书文档里包含图片、附件或其他不能安全重建的内容",
-      hint: "请先在飞书保留这些内容并手动合并正文；本次没有覆盖飞书文档",
+      error: "飞书文档里包含附件、画板或其他不能安全重建的内容",
+      hint: "图片可以从 Supabase 重建；其他复杂内容请先在飞书手动合并，本次没有覆盖文档",
       protectedBlocks: true,
       documentUrl: state.binding.externalUrl,
     }, 409);
   }
 
+  const prepared = await prepareMarkdownForFeishu(env, state.draft.markdown);
+  const effectiveAction = targetChanged ? "create" : state.decision.action;
   let targetDocument;
-  if (state.decision.action === "create") {
+  if (effectiveAction === "create") {
     targetDocument = await createFeishuDocument({
       title: state.draft.title,
-      markdown: state.draft.markdown,
+      markdown: prepared.markdown,
       wikiNode: target.wikiNode,
       wikiSpace: target.wikiSpace,
     });
   } else {
-    await overwriteFeishuDocument(state.binding.externalId, state.draft);
+    await overwriteFeishuDocument(state.binding.externalId, {
+      title: state.draft.title,
+      markdown: prepared.markdown,
+    });
     targetDocument = { id: state.binding.externalId, url: state.binding.externalUrl };
   }
 
   const fetched = await fetchFeishuDocument(targetDocument.id);
   const remote = { ...fetched, url: targetDocument.url || state.binding?.externalUrl || "" };
   const binding = await saveBinding(env, state.draft, remote, target.id, "local");
+  let mediaWarning = "";
+  try {
+    await replaceExternalDocumentAssetMappings(env, {
+      entityId: state.draft.id,
+      externalDocumentId: remote.id,
+      images: prepared.images,
+      tokens: feishuImageTokens(remote.markdown),
+    });
+  } catch (error) {
+    mediaWarning = `正文已同步，但图片映射记录失败：${error.message}`;
+  }
   return json(res, {
     ok: true,
-    action: state.decision.action,
+    action: effectiveAction,
     document: binding,
-    message: state.decision.action === "create" ? "已创建飞书文档" : "已更新飞书文档",
+    message: targetChanged ? "已在指定知识库重新创建并改绑飞书文档" : effectiveAction === "create" ? "已创建飞书文档" : "已更新飞书文档",
+    ...(targetChanged ? { previousDocumentUrl: state.binding.externalUrl } : {}),
+    ...(mediaWarning ? { warning: mediaWarning } : {}),
   });
 }
 

@@ -5,7 +5,9 @@ import path from "node:path";
 
 const MAX_OUTPUT = 4 * 1024 * 1024;
 const TIMEOUT_MS = 180_000;
-const PROTECTED_BLOCK_PATTERN = /<(?:image|file|whiteboard|bitable|sheet|add-ons|reference-synced|source-synced|task)\b/i;
+const IMAGE_BLOCK_PATTERN = /<image\b/i;
+const PROTECTED_BLOCK_PATTERN = /<(?:file|whiteboard|bitable|sheet|add-ons|reference-synced|source-synced|task)\b/i;
+const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
 
 const textOf = (value) => String(value ?? "").replace(/\r\n/g, "\n");
 
@@ -13,8 +15,57 @@ export function documentFingerprint(title, markdown) {
   return crypto.createHash("sha256").update(`${textOf(title).trim()}\n\0${textOf(markdown)}`, "utf8").digest("hex");
 }
 
-export function hasProtectedFeishuBlocks(markdown) {
-  return PROTECTED_BLOCK_PATTERN.test(textOf(markdown));
+export function hasProtectedFeishuBlocks(markdown, { allowImages = false } = {}) {
+  const value = textOf(markdown);
+  return PROTECTED_BLOCK_PATTERN.test(value) || (!allowImages && IMAGE_BLOCK_PATTERN.test(value));
+}
+
+export function canRebuildFeishuImages(binding, localMarkdown) {
+  return binding?.lastSource === "local" && !IMAGE_BLOCK_PATTERN.test(textOf(localMarkdown));
+}
+
+export function isDifferentFeishuTarget(binding, targetId) {
+  return Boolean(binding && targetId && binding.containerId !== targetId);
+}
+
+export function markdownImageReferences(markdown) {
+  return [...textOf(markdown).matchAll(MARKDOWN_IMAGE_PATTERN)].map((match) => ({
+    alt: match[1],
+    source: match[2],
+    start: match.index,
+    end: match.index + match[0].length,
+    raw: match[0],
+  }));
+}
+
+const escapeAttribute = (value) => String(value ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/"/g, "&quot;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;");
+
+export async function replaceMarkdownImages(markdown, resolveImage) {
+  const value = textOf(markdown);
+  const references = markdownImageReferences(value);
+  if (!references.length) return { markdown: value, images: [] };
+  const resolved = [];
+  for (let index = 0; index < references.length; index += 1) {
+    resolved.push(await resolveImage(references[index], index));
+  }
+  let cursor = 0;
+  let output = "";
+  references.forEach((reference, index) => {
+    const item = resolved[index];
+    output += value.slice(cursor, reference.start);
+    output += `<image url="${escapeAttribute(item.url)}" alt="${escapeAttribute(reference.alt)}"/>`;
+    cursor = reference.end;
+  });
+  output += value.slice(cursor);
+  return { markdown: output, images: resolved };
+}
+
+export function feishuImageTokens(markdown) {
+  return [...textOf(markdown).matchAll(/<image\b[^>]*\btoken="([^"]+)"[^>]*\/?\s*>/gi)].map((match) => match[1]);
 }
 
 export function decideDocumentSync(binding, localFingerprint, remoteFingerprint) {
