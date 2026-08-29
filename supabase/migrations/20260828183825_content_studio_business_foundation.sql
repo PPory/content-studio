@@ -175,7 +175,8 @@ create table public.seeds (
 create index seeds_status_idx on public.seeds (workspace_id, status, updated_at);
 create index seeds_draft_idx on public.seeds (workspace_id, draft_id);
 
--- Local long-form content, excluding the bookshelf. Obsidian becomes archive.
+-- Application-owned long-form documents. Rows must be created by a workbench
+-- business endpoint with a stable source key; vault files are never an import source.
 create table public.content_documents (
   id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id) on delete cascade,
   kind text not null check (kind in ('insight','knowledge','plan','webnote','review','monthly_review')),

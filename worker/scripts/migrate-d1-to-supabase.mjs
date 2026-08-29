@@ -6,6 +6,8 @@
 // 用法（在 worker/）：
 //   node scripts/migrate-d1-to-supabase.mjs --env-file ../workbench/.env
 //   node scripts/migrate-d1-to-supabase.mjs --env-file ../workbench/.env --apply
+//   node scripts/migrate-d1-to-supabase.mjs --env-file ../workbench/.env --apply --allow-extra
+//   node scripts/migrate-d1-to-supabase.mjs --env-file ../workbench/.env --apply --archive-extra
 
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -36,10 +38,12 @@ const TABLES = [
 ];
 
 function parseArgs(argv) {
-  const args = { apply: false, envFile: "", snapshot: "" };
+  const args = { apply: false, allowExtra: false, archiveExtra: false, envFile: "", snapshot: "" };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--apply") args.apply = true;
+    else if (arg === "--allow-extra") args.allowExtra = true;
+    else if (arg === "--archive-extra") args.archiveExtra = true;
     else if (arg === "--env-file") args.envFile = argv[++index] || "";
     else if (arg === "--snapshot") args.snapshot = argv[++index] || "";
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -191,29 +195,59 @@ async function applySnapshot(config, snapshot) {
   }
 }
 
+async function archiveExtraProjectRows(config, snapshot) {
+  const archived = {};
+  for (const table of TABLES.filter(({ name }) => name === "topics" || name === "drafts")) {
+    const query = new URLSearchParams({
+      workspace_id: `eq.${config.workspaceId}`,
+      deleted_at: "is.null",
+      select: "id",
+    });
+    const response = await supabaseRequest(config, `/rest/v1/${table.name}?${query}`, {
+      headers: { accept: "application/json", range: "0-9999" },
+    });
+    const actualRows = await response.json();
+    const expectedIds = new Set((snapshot.tables[table.name] || []).map((row) => row.id));
+    const staleRows = actualRows.filter((row) => !expectedIds.has(row.id));
+    for (const row of staleRows) {
+      const filters = new URLSearchParams({
+        workspace_id: `eq.${config.workspaceId}`,
+        id: `eq.${row.id}`,
+      });
+      await supabaseRequest(config, `/rest/v1/${table.name}?${filters}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", prefer: "return=minimal" },
+        body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+      });
+    }
+    if (staleRows.length) archived[table.name] = staleRows.length;
+  }
+  return archived;
+}
+
 function sameImportedValue(expected, actual) {
   if (expected === actual) return true;
   if (typeof expected === "number" && typeof actual === "number") return Number(expected) === Number(actual);
   return false;
 }
 
-async function verifySnapshot(config, snapshot) {
+async function verifySnapshot(config, snapshot, { allowExtra = false } = {}) {
+  const extras = {};
   for (const table of TABLES) {
     const query = new URLSearchParams({
       workspace_id: `eq.${config.workspaceId}`,
       select: "*",
     });
+    if (table.name === "external_documents") query.set("remote_missing_at", "is.null");
     const response = await supabaseRequest(config, `/rest/v1/${table.name}?${query}`, {
       headers: { accept: "application/json", range: "0-9999" },
     });
     const actualRows = await response.json();
     const expectedRows = snapshot.tables[table.name] || [];
-    if (actualRows.length !== expectedRows.length) {
-      throw new Error(`${table.name} 行数不一致：D1 ${expectedRows.length} / Supabase ${actualRows.length}`);
-    }
     const keys = table.conflict.split(",");
     const rowKey = (row) => keys.map((key) => JSON.stringify(row[key])).join("|");
     const actualByKey = new Map(actualRows.map((row) => [rowKey(row), row]));
+    const expectedKeys = new Set(expectedRows.map(rowKey));
     for (const expected of expectedRows) {
       const actual = actualByKey.get(rowKey(expected));
       if (!actual) throw new Error(`${table.name} 缺少主键 ${rowKey(expected)}`);
@@ -223,7 +257,17 @@ async function verifySnapshot(config, snapshot) {
         }
       }
     }
+    const extraCount = actualRows.filter((row) => {
+      if (expectedKeys.has(rowKey(row))) return false;
+      if ((table.name === "topics" || table.name === "drafts") && row.deleted_at) return false;
+      return true;
+    }).length;
+    if (extraCount) extras[table.name] = extraCount;
+    if (extraCount && !allowExtra) {
+      throw new Error(`${table.name} 比当前 D1 多 ${extraCount} 行；未自动删除，请确认来源后再清理`);
+    }
   }
+  return extras;
 }
 
 function printSummary(snapshot, mode) {
@@ -236,9 +280,10 @@ function printSummary(snapshot, mode) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("node scripts/migrate-d1-to-supabase.mjs [--env-file <path>] [--snapshot <path>] [--apply]");
+    console.log("node scripts/migrate-d1-to-supabase.mjs [--env-file <path>] [--snapshot <path>] [--apply] [--allow-extra] [--archive-extra]");
     return;
   }
+  if (args.archiveExtra && !args.apply) throw new Error("--archive-extra 必须与 --apply 一起使用");
   const config = await configOf(args);
   const snapshot = await readSnapshot(config);
   printSummary(snapshot, "D1 只读快照检查完成");
@@ -252,9 +297,17 @@ async function main() {
     return;
   }
   await applySnapshot(config, snapshot);
-  await verifySnapshot(config, snapshot);
+  const archived = args.archiveExtra ? await archiveExtraProjectRows(config, snapshot) : {};
+  const extras = await verifySnapshot(config, snapshot, { allowExtra: args.allowExtra || args.archiveExtra });
   printSummary(snapshot, "Supabase 影子导入完成");
-  console.log("  逐表行数、主键和导入字段已回读核对一致");
+  console.log("  当前 D1 的每一行、主键和导入字段已回读核对一致");
+  if (Object.keys(archived).length) {
+    console.log(`  已可恢复停用旧快照：${Object.entries(archived).map(([table, count]) => `${table} ${count}`).join(" / ")}`);
+  }
+  if (Object.keys(extras).length) {
+    console.log(`  Supabase 旧快照残留：${Object.entries(extras).map(([table, count]) => `${table} ${count}`).join(" / ")}`);
+    console.log("  这些记录未自动删除");
+  }
 }
 
 main().catch((error) => {
