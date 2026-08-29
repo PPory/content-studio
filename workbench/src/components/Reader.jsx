@@ -46,7 +46,7 @@ export const ACTIONS = [
   { key: "展开", label: "展开", hint: "顺着这段多讲一点", icon: IconArrowsDiagonal, group: 2 },
   { key: "反驳", label: "反驳", hint: "站在对立面挑毛病", icon: IconScale, group: 2 },
   { key: "translate", label: "翻译", hint: "翻成中文（DeepL）", icon: IconLanguage, group: 2 },
-  { key: "chat", label: "去对话", hint: "带着这段去问 Claude，它能翻你整个 vault", icon: IconMessageCircle, group: 2 },
+  { key: "chat", label: "去对话", hint: "带着这段去问 AI，它能检索当前本地工作区", icon: IconMessageCircle, group: 2 },
   { key: "选题", label: "选题", hint: "把这段变成能发的标题（4A 四个角度）", icon: IconWand, group: 3 },
   { key: "intake", label: "存素材", hint: "存成素材卡，进内容流水线", icon: IconArchive, group: 3 },
 ];

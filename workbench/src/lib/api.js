@@ -30,51 +30,52 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 
 export const api = {
   config: () => req("/api/config"),
-  status: () => req("/api/pipe/status"),
-  projects: (stage = "") => req(`/api/pipe/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
-  project: (id) => req(`/api/pipe/projects/${encodeURIComponent(id)}`),
-  transitionProject: (id, action, input = {}) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
+  status: () => req("/api/workspace/status"),
+  projects: (stage = "") => req(`/api/workspace/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
+  project: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}`),
+  transitionProject: (id, action, input = {}) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
   /**
    * 给项目挂上 / 摘掉素材。
    * ⚠️ **只有点过「用这条」的才走这儿**——AI 挑出来的候选不自动挂，
    * `topic_materials` 的语义是「这篇真的用了它」，见 worker 那侧的注释。
    */
   /**
-   * 删掉一个内容项目。⚠️ **真删，而且会连级删掉它底下所有稿子**——
+   * 删掉一个内容项目。⚠️ **移入本地回收站，并保留所属稿件**——
    * 界面上必须点两下并且把这件事说出来。
    */
-  removeProject: (id) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/delete`, {}),
-  updateProjectMaterials: (id, body) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/materials`, body),
-  createProjectVariant: (id, platform) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants`, { platform }),
-  removeProjectVariant: (id, draftId) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),
-  saveProjectRelease: (id, draftId, release) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/releases/${encodeURIComponent(draftId)}`, release),
-  saveProjectReview: (id, review) => postJson(`/api/pipe/projects/${encodeURIComponent(id)}/review`, review),
+  removeProject: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/trash`, {}),
+  updateProjectMaterials: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/materials`, body),
+  createProjectVariant: (id, platform) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/variants`, { platform }),
+  removeProjectVariant: (id, draftId) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),
+  saveProjectDraft: (draftId, body) => postJson(`/api/workspace/drafts/${encodeURIComponent(draftId)}/save`, body),
+  saveProjectRelease: (id, draftId, release) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/releases/${encodeURIComponent(draftId)}`, release),
+  saveProjectReview: (id, review) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/review`, review),
   materialWorkspace: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value != null));
-    return req(`/api/pipe/materials${qs.toString() ? `?${qs}` : ""}`);
+    return req(`/api/workspace/materials${qs.toString() ? `?${qs}` : ""}`);
   },
   list: (view, params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
-    return req(`/api/pipe/list/${view}${qs.toString() ? `?${qs}` : ""}`);
+    return req(`/api/workspace/items/${view}${qs.toString() ? `?${qs}` : ""}`);
   },
   searchLibrary: (view, q, state = "") =>
-    req(`/api/pipe/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
-  page: (id, view = "") => req(`/api/pipe/page/${id}${view ? `?view=${encodeURIComponent(view)}` : ""}`),
-  intake: (body) => postJson("/api/pipe/intake", body),
+    req(`/api/workspace/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
+  page: (id, view = "") => req(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(id)}`),
+  intake: (body) => postJson("/api/workspace/intake", body),
   // 种子。⚠️ `seeds()` 的响应里带 `reactions`——**反应清单的真源在 Worker**，
   // 前端不写死那七条（`sources.js` 那几处 `states` 抄了一份，对不上就是 400）。
-  seeds: (status = "") => req(`/api/pipe/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
-  createSeed: (body) => postJson("/api/pipe/seeds", body),
-  updateSeed: (id, patch) => postJson(`/api/pipe/seeds/${encodeURIComponent(id)}`, patch),
-  removeSeed: (id) => postJson(`/api/pipe/seeds/${encodeURIComponent(id)}/delete`, {}),
+  seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  createSeed: (body) => postJson("/api/workspace/seeds", body),
+  updateSeed: (id, patch) => postJson(`/api/workspace/seeds/${encodeURIComponent(id)}`, patch),
+  removeSeed: (id) => postJson(`/api/workspace/seeds/${encodeURIComponent(id)}/trash`, {}),
   retryCollectionSnapshot: (id) => postJson(`/api/pipe/collections/${encodeURIComponent(id)}/snapshot`, {}),
   previewCollectionOrganize: (ids) => postJson("/api/pipe/collections/organize/preview", { ids }),
   applyCollectionOrganize: (items) => postJson("/api/pipe/collections/organize/apply", { items }),
   previewKnowledgeCard: (body) => postJson("/api/ai/knowledge-card", body),
   saveKnowledgeCard: (card) => postJson("/api/vault/knowledge-card", card),
   knowledgeCardLinks: (refs) => postJson("/api/vault/knowledge-card/links", { refs }),
-  comment: (pageId, text) => postJson("/api/pipe/comment", { pageId, text }),
-  comments: (pageId) => req(`/api/pipe/comments/${pageId}`),
+  comment: (pageId, text) => postJson(`/api/workspace/annotations/${encodeURIComponent(pageId)}`, { text }),
+  comments: (pageId) => req(`/api/workspace/annotations/${encodeURIComponent(pageId)}`),
   revisions: (scope) => req(`/api/revisions?scope=${encodeURIComponent(scope)}`),
   saveRevision: (scope, item) => postJson("/api/revisions", { scope, item }),
   moveRevisions: (from, to) => postJson("/api/revisions/move", { from, to }),
@@ -90,7 +91,8 @@ export const api = {
 
   vaultTree: (dir = "") => req(`/api/vault/tree?dir=${encodeURIComponent(dir)}`),
   // 洞察报告清单。不用 vaultTree：卡片要摘要、覆盖周期、字数，那些只有读文件才有
-  vaultInsights: () => req("/api/vault/insights"),
+  workspaceInsights: () => req("/api/workspace/insights"),
+  workspaceInsight: (id) => req(`/api/workspace/insights/${encodeURIComponent(id)}`),
 
   // 洞察跑批。ready 回答「现在能不能跑、缺什么、上周挂了什么账」——
   // 这才是按钮真正省掉的事：以前要翻三个目录才能确认。
@@ -100,43 +102,43 @@ export const api = {
   insightRunCancel: () => postJson("/api/insights/run/cancel", {}),
   vaultFile: (path) => req(`/api/vault/file?path=${encodeURIComponent(path)}`),
   vaultDoc: (path, notePath = "") =>
-    req(`/api/vault/doc?path=${encodeURIComponent(path)}&notePath=${encodeURIComponent(notePath)}`),
+    req(`/api/workspace/doc?path=${encodeURIComponent(path)}&notePath=${encodeURIComponent(notePath)}`),
   // 改正文。stamp 是打开时拿到的版本号——这些 md 同时在 Obsidian 里开着，
   // 对不上就 409，不硬覆盖。frontmatter 由服务端原样保留，前端只管正文
-  saveVaultDoc: (path, content, stamp = "") => postJson("/api/vault/doc", { path, content, stamp }),
-  vaultNote: (body) => postJson("/api/vault/note", body),
+  saveVaultDoc: (path, content, stamp = "") => postJson("/api/workspace/doc", { path, content, stamp }),
+  vaultNote: (body) => postJson("/api/workspace/note", body),
   // 改一条 / 删一条批注。带 stamp 做乐观锁：文件在 Obsidian 里被动过就 409，不硬覆盖
-  editNote: (path, index, stamp, body) => postJson("/api/vault/note/edit", { path, index, stamp, body }),
-  removeNote: (path, index, stamp) => postJson("/api/vault/note/edit", { path, index, stamp, remove: true }),
-  books: () => req("/api/vault/books"),
+  editNote: (path, index, stamp, body) => postJson("/api/workspace/note/edit", { path, index, stamp, body }),
+  removeNote: (path, index, stamp) => postJson("/api/workspace/note/edit", { path, index, stamp, remove: true }),
+  books: () => req("/api/workspace/books"),
   // 资料（自己攒的，可改）/ 藏书（别人写的，只读）。写进 book.md 的 frontmatter
-  setBookKind: (dir, kind) => postJson("/api/vault/books/kind", { dir, kind }),
-  createBook: (name, content = "") => postJson("/api/vault/books", { name, content }),
+  setBookKind: (dir, kind) => postJson("/api/workspace/books/kind", { dir, kind }),
+  createBook: (name, content = "") => postJson("/api/workspace/books", { name, content }),
 
   // 导入书：整个文件原样 POST 过去，解析在服务端做。
   // 不在浏览器里解 epub/pdf——那要往前端包里塞两个解析器，而本机就有 Node。
   importBook: (file, name = "") =>
-    req(`/api/vault/books/import?filename=${encodeURIComponent(file.name)}&name=${encodeURIComponent(name)}`, {
+    req(`/api/workspace/books/import?filename=${encodeURIComponent(file.name)}&name=${encodeURIComponent(name)}`, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: file,
     }),
 
   // 下架 = 整个目录移进 vault 的 .trash/，和在 Obsidian 里删它是同一个地方
-  trashBook: (dir) => postJson("/api/vault/books/trash", { dir }),
-  restoreBook: (from, to) => postJson("/api/vault/books/restore", { from, to }),
+  trashBook: (dir) => postJson("/api/workspace/books/trash", { dir }),
+  restoreBook: (from, to) => postJson("/api/workspace/books/restore", { from, to }),
   // 在一本书里全文搜：拆成几十章之后，「那句话在哪一章」是刚需
   searchBook: (dir, q) =>
-    req(`/api/vault/books/search?dir=${encodeURIComponent(dir)}&q=${encodeURIComponent(q)}`),
+    req(`/api/workspace/books/search?dir=${encodeURIComponent(dir)}&q=${encodeURIComponent(q)}`),
 
   // 一本书里的全部标记（高亮 + 批注），按章排。聚合规则在 server/lib/marks.mjs
-  bookMarks: (dir) => req(`/api/vault/book-marks?dir=${encodeURIComponent(dir)}`),
+  bookMarks: (dir) => req(`/api/workspace/book-marks?dir=${encodeURIComponent(dir)}`),
 
-  highlights: (path) => req(`/api/vault/highlights?path=${encodeURIComponent(path)}`),
-  markHighlight: (path, add, remove) => postJson("/api/vault/highlights", { path, add, remove }),
+  highlights: (path) => req(`/api/workspace/highlights?path=${encodeURIComponent(path)}`),
+  markHighlight: (path, add, remove) => postJson("/api/workspace/highlights", { path, add, remove }),
   // 换封面：整块二进制原样传过去，和导入书籍走同一条路
   setCover: (dir, file) =>
-    req(`/api/vault/books/cover?dir=${encodeURIComponent(dir)}&ext=${encodeURIComponent(extOf(file.name))}`, {
+    req(`/api/workspace/books/cover?dir=${encodeURIComponent(dir)}&ext=${encodeURIComponent(extOf(file.name))}`, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: file,
@@ -149,16 +151,16 @@ export const api = {
    * 和换封面走同一条二进制路子：不引 multipart 解析器，后缀和文件名走 query。
    */
   uploadMedia: (file) =>
-    req(`/api/vault/media?ext=${encodeURIComponent(extOf(file.name))}&name=${encodeURIComponent(String(file.name || "media").replace(/\.[^.]+$/, ""))}`, {
+    req(`/api/workspace/assets/images?name=${encodeURIComponent(file.name || "image.bin")}`, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: file,
     }),
 
   // vault 里的图片（封面、正文插图）的地址。图片走 <img src>，不经过 req()
-  imageUrl: (path) => `/api/vault/image?path=${encodeURIComponent(path)}`,
+  imageUrl: (path) => String(path || "").startsWith("asset://") ? `/api/workspace/assets/${encodeURIComponent(String(path).slice(8))}` : "",
   // 视频不能走 imageUrl：那个端点的白名单只有图片
-  mediaUrl: (path) => `/api/vault/media-file?path=${encodeURIComponent(path)}`,
+  mediaUrl: (path) => String(path || "").startsWith("asset://") ? `/api/workspace/assets/${encodeURIComponent(String(path).slice(8))}` : "",
 
   // 两个 tab 各刷各的：热搜按分钟变、AI 精选按天变，合成一个请求就只能迁就快的那个
   /**
@@ -177,19 +179,19 @@ export const api = {
     const q = [refresh && "refresh=1", all && "all=1"].filter(Boolean).join("&");
     return req(`/api/hot/ai${q ? `?${q}` : ""}`);
   },
-  updateFields: (view, pageId, fields) => postJson("/api/pipe/update", { view, pageId, fields }),
-  saveContent: (view, pageId, markdown) => postJson("/api/pipe/content", { view, pageId, markdown }),
-  publishDraft: (body) => postJson("/api/posts/publish", body),
-  // 删除是**真删除**：库已从 Notion 换成 D1，没有废纸篓那一层了。界面上要照实说。
+  updateFields: (view, pageId, fields) => postJson(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(pageId)}/update`, { fields }),
+  saveContent: (view, pageId, markdown) => postJson(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(pageId)}/update`, { markdown }),
+  publishDraft: (body) => postJson("/api/workspace/publications", body),
+  // 删除会写入本地回收站，不移除正文和关系。界面上要照实说。
   // 响应里的 `archive` 是本地路由补的：vault 里那份归档移进 `.trash/` 的结果，
   // 四种状态见 `sources.js` 的 `summarizeArchiveTrash`。**Worker 不回这个字段。**
-  removePage: (view, pageId) => postJson("/api/pipe/delete", { view, pageId }),
-  draftsOf: (topicId) => req(`/api/pipe/drafts-of/${topicId}`),
-  metrics: () => req("/api/metrics"),
-  saveMetric: (body) => postJson("/api/metrics", body),
+  removePage: (view, pageId) => postJson(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(pageId)}/trash`, {}),
+  draftsOf: (topicId) => req(`/api/workspace/drafts-of/${topicId}`),
+  metrics: () => req("/api/workspace/account-metrics"),
+  saveMetric: (body) => postJson("/api/workspace/account-metrics", body),
 
-  posts: () => req("/api/posts"),
-  savePost: (body) => postJson("/api/posts", body),
+  posts: () => req("/api/workspace/publications"),
+  savePost: (body) => postJson("/api/workspace/external-publications", body),
   // 导入分两步：`dry` 只解析、只回报「我是怎么读这份文件的」，不写盘。
   // 解析器只能靠列名认字段，认错了不会报错——所以必须让人先看一眼再点确认。
   importPosts: (file, platform, { dry = false } = {}) =>
@@ -205,7 +207,7 @@ export const api = {
   runArchive: () => postJson("/api/archive/run", {}),
 
   // 全局检索：一个入口搜遍 vault、流水线四库和已发布作品
-  search: (q, limit) => req(`/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`),
+  search: (q, limit) => req(`/api/workspace/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`),
   // 这些热点后来怎么样了（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）。
   // 一屏几十条链接，走 POST 是为了带 body，不是因为有副作用
   traceHot: (links) => postJson("/api/hot/trace", { links }),

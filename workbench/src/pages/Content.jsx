@@ -78,7 +78,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   };
 
   /**
-   * 删掉一个项目。**真删，而且连级删掉它底下所有稿子**（`drafts.topic_id` 是 CASCADE）。
+   * 删掉一个项目。**移入本地回收站，并保留所属稿件**（`drafts.topic_id` 是 CASCADE）。
    *
    * ⚠️ **回执要说清删掉了几篇**，不能只说「已删除」——你以为删的是一个壳，
    * 而它可能带走了三篇写过的稿。

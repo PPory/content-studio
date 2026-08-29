@@ -17,7 +17,7 @@ const post = (path, body) => jsonRequest(path, {
 });
 
 export const creationApi = {
-  create: (body) => post("/api/pipe/create", body),
+  create: (body) => post("/api/workspace/projects", body),
   /**
    * 关键词搜不到时的第二条路：按意思挑。
    * **整件事在 Worker 那侧做**（库和 LLM 代理都在那儿），这里只把「想找什么」送过去。
@@ -52,8 +52,5 @@ export const creationApi = {
   audiences: () => jsonRequest("/api/audiences"),
   // 记不下来不该让主动作跟着失败，所以调用方一律 catch 掉
   rememberAudience: (value) => post("/api/audiences", { value }),
-  async saveDraft(id, title, markdown) {
-    await post("/api/pipe/update", { view: "drafts", pageId: id, fields: { title } });
-    return post("/api/pipe/content", { view: "drafts", pageId: id, markdown });
-  },
+  saveDraft: (id, title, markdown) => post(`/api/workspace/drafts/${encodeURIComponent(id)}/save`, { title, body: markdown }),
 };

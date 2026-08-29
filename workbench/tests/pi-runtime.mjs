@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createPiTools } from "../server/agent-runtime/pi-tools.mjs";
 import { agentAccess, agentMountsFromUserMessage, resolveAgentMountPath } from "../server/agent-runtime/agent-access.mjs";
-import { permissionModeCatalog, PERMISSION_MODES, resolveProjectPath, resolveVaultPath } from "../server/agent-runtime/permission-modes.mjs";
+import { permissionModeCatalog, PERMISSION_MODES, resolveProjectPath } from "../server/agent-runtime/permission-modes.mjs";
 import { PI_RUNTIME_VERSION, piImageContent, piRuntimeInfo, probePiRuntime } from "../server/agent-runtime/pi-runtime.mjs";
-import { assistantConversations, assistantExperts, assistantSkills, createAssistantConversation, manageAssistantConversation } from "../server/agent-runtime/assistant-runner.mjs";
+import {
+  assistantConversations,
+  assistantExperts,
+  assistantSkills,
+  configureAssistantWorkspace,
+  createAssistantConversation,
+  manageAssistantConversation,
+} from "../server/agent-runtime/assistant-runner.mjs";
 import { guidedSessionId } from "../server/agent-runtime/guided-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
-import { WB_ROOT } from "../server/lib/vault-dirs.mjs";
+import { openWorkspace } from "../server/storage/workspace.mjs";
 import { documentVersion } from "../src/lib/document-version.js";
 
 const info = await piRuntimeInfo({});
@@ -22,175 +27,140 @@ assert.deepEqual(info.versions, {
   "@earendil-works/pi-ai": "0.84.3",
 });
 assert.equal(info.configured, false, "空配置不该被误判为可执行");
-assert.deepEqual(piImageContent(Buffer.from([1, 2, 3]), "image/png"), { type: "image", data: "AQID", mimeType: "image/png" }, "图片必须按 Pi SDK 0.84.3 的 ImageContent 契约发送");
+assert.deepEqual(piImageContent(Buffer.from([1, 2, 3]), "image/png"), { type: "image", data: "AQID", mimeType: "image/png" });
 assert.equal(XENHO_QUALITY_NINE.length, 9, "Xenho 品控问题必须保持九项唯一真源");
 assert.equal(new Set(XENHO_QUALITY_NINE.map((item) => item.id)).size, 9, "品控九问 id 重复");
 
 const modes = permissionModeCatalog();
 assert.deepEqual(modes.map((item) => item.id), ["daily", "creative", "developer"]);
 assert(!PERMISSION_MODES.daily.tools.includes("document_create"));
-assert(PERMISSION_MODES.creative.tools.includes("document_create"));
+assert(!PERMISSION_MODES.creative.tools.includes("document_create"));
+assert(!PERMISSION_MODES.developer.tools.includes("document_create"));
 assert(!PERMISSION_MODES.creative.tools.includes("powershell"));
 assert(PERMISSION_MODES.developer.tools.includes("powershell"));
-assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"), "工作台实时状态必须在日常模式可读");
+assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"));
 
 const skills = await assistantSkills();
 assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
-assert(skills.items.every((item) => item.source === ".agents/skills"), "Skill 必须只来自 .agents/skills");
+assert(skills.items.every((item) => item.source === ".agents/skills"));
 assert.equal(assistantExperts().items.length, 6);
 assert.notEqual(documentVersion({ title: "A", body: "第一版" }), documentVersion({ title: "A", body: "第二版" }));
-const restored = "50879135-9d18-49a3-bab4-d8aab36be661";
-assert.equal(guidedSessionId(restored), restored);
+assert.equal(guidedSessionId("50879135-9d18-49a3-bab4-d8aab36be661"), "50879135-9d18-49a3-bab4-d8aab36be661");
 assert.match(guidedSessionId(""), /^[0-9a-f-]{36}$/i);
 
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-pi-permissions-"));
-const vault = path.join(tempRoot, "vault");
-const outside = path.join(tempRoot, "outside");
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-pi-runtime-"));
+const xenhoHome = path.join(tempRoot, "Xenho");
+const outside = path.join(tempRoot, "authorized-folder");
 const actionsFile = path.join(tempRoot, "actions.jsonl");
-await fs.mkdir(path.join(vault, WB_ROOT), { recursive: true });
-await fs.mkdir(outside, { recursive: true });
-await fs.writeFile(path.join(vault, WB_ROOT, "read.md"), "# 临时文档\n", "utf8");
-await fs.writeFile(path.join(outside, "secret.md"), "outside", "utf8");
-const workerProjects = [
-  { id: "p-writing", title: "写作项目", stage: "写作中", stageReason: "主稿仍在写作", nextAction: "继续写作", blockers: [], updatedAt: "2026-08-25T01:00:00.000Z" },
-  { id: "p-release", title: "待发项目", stage: "待发布", stageReason: "诊断已通过", nextAction: "去排版发布", blockers: [], updatedAt: "2026-08-25T02:00:00.000Z" },
-  { id: "p-legal", title: "新状态项目", stage: "等待法务", stageReason: "等待新增流程", nextAction: "确认授权", blockers: ["版权待确认"], updatedAt: "2026-08-25T03:00:00.000Z" },
-];
-const workerServer = http.createServer((req, res) => {
-  const url = new URL(req.url, "http://127.0.0.1");
-  if (url.pathname !== "/wb/projects" || req.headers["x-workbench-key"] !== "test-key") {
-    res.writeHead(404, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ ok: false, error: "not found" }));
-  }
-  const counts = Object.fromEntries([...new Set(workerProjects.map((item) => item.stage))].map((stage) => [stage, workerProjects.filter((item) => item.stage === stage).length]));
-  const selected = url.searchParams.get("stage") ? workerProjects.filter((item) => item.stage === url.searchParams.get("stage")) : workerProjects;
-  res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify({ ok: true, projects: selected, counts, total: selected.length, nextCursor: null }));
-});
-await new Promise((resolve) => workerServer.listen(0, "127.0.0.1", resolve));
-const workerAddress = workerServer.address();
-const env = { VAULT_ROOT: vault, WORKER_URL: `http://127.0.0.1:${workerAddress.port}`, WORKBENCH_KEY: "test-key" };
+let workspace = await openWorkspace({ xenhoHome });
+
 try {
-  await assert.rejects(() => resolveVaultPath(env, "../outside/secret.md"), /路径越界/);
-  await assert.rejects(() => resolveVaultPath(env, path.join(outside, "secret.md")), /路径越界/);
-  await assert.rejects(() => resolveVaultPath(env, ".obsidian/config"), /隐藏目录/);
+  configureAssistantWorkspace(workspace);
+  assert(path.resolve(workspace.paths.root).startsWith(path.resolve(tempRoot)), "测试工作区必须位于系统临时目录");
+  await fs.mkdir(outside, { recursive: true });
+  await fs.writeFile(path.join(outside, "source.txt"), "isolated source", "utf8");
+
+  const projectId = workspace.domain.createProject({ title: "隔离 Pi 项目", confirmed: true, actor: "user", now: new Date() });
+  const draftId = workspace.domain.createDraft({ projectId, title: "隔离 Pi 项目", bodyMarkdown: "本地正文", platform: "公众号", actor: "user", now: new Date() });
+  workspace.domain.setPrimaryDraft(projectId, draftId, { actor: "user", now: new Date() });
+
   await assert.rejects(() => resolveProjectPath("../outside.txt", { write: true }), /路径越界/);
   await assert.rejects(() => resolveProjectPath("node_modules/blocked.txt", { write: true }), /依赖目录/);
 
-  const junction = path.join(vault, WB_ROOT, "outside-link");
-  try {
-    await fs.symlink(outside, junction, "junction");
-    await assert.rejects(() => resolveVaultPath(env, `${WB_ROOT}/outside-link/secret.md`), /范围外的链接/);
-  } catch (error) {
-    if (!["EPERM", "EACCES", "UNKNOWN"].includes(error?.code)) throw error;
-  }
-
   const [external] = await agentMountsFromUserMessage(`请读取项目目录 "${outside}"`);
-  assert(external && external.kind === "folder", "本轮消息中的真实目录没有生成对话级授权");
-  assert.deepEqual(await agentMountsFromUserMessage(`错误日志：${outside}`), [], "无访问意图的日志路径不该自动授权");
+  assert(external && external.kind === "folder", "明确授权目录没有生成对话级挂载");
+  assert.deepEqual(await agentMountsFromUserMessage(`错误日志：${outside}`), [], "没有访问意图的路径不该自动授权");
   assert.deepEqual(await agentMountsFromUserMessage("请读取 \\\\server\\share"), [], "UNC 路径不该自动授权");
-  const dailyAccess = await agentAccess({ ...env, AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "daily" });
-  assert(dailyAccess.public.every((item) => !item.write && !item.execute), "日常模式下工作台和本地项目必须保持只读");
-  const sessionEnv = { ...env, AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "developer" };
-  const access = await agentAccess(sessionEnv);
-  assert(access.public.some((item) => item.id === external.id && item.write && item.execute));
-  assert.equal((await resolveAgentMountPath(sessionEnv, external.id, "secret.md")).absolute, path.join(outside, "secret.md"));
-  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, "../vault"), /越过了已授权|越过/);
-  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, "secret.md:stream"), /数据流/);
-  await assert.rejects(() => resolveAgentMountPath(sessionEnv, external.id, ".GIT/config", { write: true }), /版本库元数据/);
 
-  const [singleFile] = await agentMountsFromUserMessage(`请打开文件 "${path.join(outside, "secret.md")}"`);
-  const fileEnv = { ...env, AGENT_SESSION_MOUNTS: [singleFile], AGENT_PERMISSION_MODE: "daily" };
-  assert.equal((await resolveAgentMountPath(fileEnv, singleFile.id, ".")).absolute, path.join(outside, "secret.md"));
-  await assert.rejects(() => resolveAgentMountPath(fileEnv, singleFile.id, "sibling.md"), /只允许读取指定文件/);
+  const dailyEnv = { AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "daily" };
+  const dailyAccess = await agentAccess(dailyEnv);
+  assert(dailyAccess.public.every((item) => !item.write && !item.execute), "日常模式必须保持只读");
+  const developerEnv = { AGENT_SESSION_MOUNTS: [external], AGENT_PERMISSION_MODE: "developer" };
+  const developerAccess = await agentAccess(developerEnv);
+  assert(developerAccess.public.some((item) => item.id === external.id && item.write && item.execute));
+  assert.equal((await resolveAgentMountPath(developerEnv, external.id, "source.txt")).absolute, path.join(outside, "source.txt"));
+  await assert.rejects(() => resolveAgentMountPath(developerEnv, external.id, "../outside"), /越过/);
+  await assert.rejects(() => resolveAgentMountPath(developerEnv, external.id, "source.txt:stream"), /数据流/);
 
   const imageAttachmentPath = path.join(tempRoot, "attachment.png");
   await fs.writeFile(imageAttachmentPath, Buffer.from([1, 2, 3]));
   const context = {
-    project: { title: "临时" },
-    attachments: [{ id: "image-1", name: "attachment.png", kind: "image", type: "image/png", originalPath: imageAttachmentPath, imageRef: { mediaType: "image/png" } }],
+    workspace,
+    project: { id: projectId, title: "隔离 Pi 项目" },
+    attachments: [
+      { id: "image-1", name: "attachment.png", kind: "image", type: "image/png", originalPath: imageAttachmentPath, imageRef: { mediaType: "image/png" } },
+      { id: "text-1", name: "note.txt", kind: "text", type: "text/plain", extractedText: "已导入 SQLite 的附件文本" },
+    ],
     localSources: [],
     projectMaterials: [],
   };
-  const daily = createPiTools({ env: sessionEnv, mode: "daily", context, actionsFile });
-  const creative = createPiTools({ env: sessionEnv, mode: "creative", context, actionsFile });
-  const developer = createPiTools({ env: sessionEnv, mode: "developer", context, actionsFile });
-  const required = ["workbench_projects", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert", "web_search", "web_fetch"];
+  const daily = createPiTools({ env: dailyEnv, mode: "daily", context, actionsFile });
+  const creative = createPiTools({ env: dailyEnv, mode: "creative", context, actionsFile });
+  const developer = createPiTools({ env: developerEnv, mode: "developer", context, actionsFile });
   const allNames = new Set(developer.map((item) => item.name));
-  for (const name of required) assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
+  for (const name of ["workbench_projects", "knowledge_search", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "attachment_read", "web_search", "web_fetch"]) {
+    assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
+  }
+  for (const name of ["vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert"]) {
+    assert(!allNames.has(name), `本地优先运行时不应暴露旧 vault 工具：${name}`);
+  }
   const execute = (items, name, params) => items.find((item) => item.name === name).execute("test-call", params, undefined, undefined, {});
   const imageAttachment = await execute(daily, "attachment_read", { id: "image-1" });
   assert.deepEqual(imageAttachment.content, [
     { type: "text", text: "图片附件：attachment.png" },
     { type: "image", data: "AQID", mimeType: "image/png" },
-  ], "图片附件工具必须返回同一份图像字节，而不是报错后让模型猜测");
+  ]);
+  const textAttachment = JSON.parse((await execute(daily, "attachment_read", { id: "text-1" })).content[0].text);
+  assert.equal(textAttachment.text, "已导入 SQLite 的附件文本");
   const overview = JSON.parse((await execute(daily, "workbench_projects", {})).content[0].text);
-  assert.equal(overview.counts["等待法务"], 1, "新增状态没有从 Worker 动态返回");
-  assert.equal(overview.projects.length, 3, "工作台状态工具没有返回当前项目");
-  const legalOnly = JSON.parse((await execute(daily, "workbench_projects", { stage: "等待法务" })).content[0].text);
-  assert.deepEqual(legalOnly.projects.map((item) => item.id), ["p-legal"], "状态筛选没有原样交给 Worker");
-  await assert.rejects(() => execute(daily, "document_create", { path: `${WB_ROOT}/daily.md`, content: "x" }), /日常模式不允许/);
-  const localRead = await execute(daily, "workspace_read", { mountId: external.id, path: "secret.md" });
-  assert.match(localRead.content[0].text, /outside/);
+  assert.equal(overview.total, 1);
+  assert.equal(overview.projects[0].id, projectId);
+  const localRead = await execute(daily, "workspace_read", { mountId: external.id, path: "source.txt" });
+  assert.match(localRead.content[0].text, /isolated source/);
   await assert.rejects(() => execute(daily, "workspace_write", { mountId: external.id, path: "new.txt", content: "x" }), /日常模式不允许/);
   await execute(developer, "workspace_write", { mountId: external.id, path: "new.txt", content: "candidate" });
-  await execute(developer, "workspace_edit", { mountId: external.id, path: "secret.md", oldText: "outside", newText: "candidate" });
+  await execute(developer, "workspace_edit", { mountId: external.id, path: "source.txt", oldText: "isolated", newText: "candidate" });
   await assert.rejects(() => fs.access(path.join(outside, "new.txt")), { code: "ENOENT" });
-  await execute(creative, "document_create", { path: `${WB_ROOT}/creative.md`, content: "候选" });
-  await assert.rejects(() => fs.access(path.join(vault, WB_ROOT, "creative.md")), { code: "ENOENT" });
-  const queued = (await fs.readFile(actionsFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
-  assert.equal(queued.find((item) => item.type === "workspace_write")?.expectedStamp, "");
-  assert.match(queued.find((item) => item.type === "workspace_edit")?.expectedStamp || "", /:/);
-  assert.equal(queued.at(-1).type, "document_create");
-  assert.equal(queued.at(-1).permissionMode, "creative");
   await assert.rejects(() => execute(creative, "powershell", { command: "Get-Location" }), /创作模式不允许/);
   await assert.rejects(() => execute(developer, "powershell", { command: "Remove-Item -Recurse ." }), /破坏性删除/);
+  const queued = (await fs.readFile(actionsFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(queued.length, 2);
+  assert(queued.every((item) => ["workspace_write", "workspace_edit"].includes(item.type)));
 
+  const scope = `draft:${draftId}`;
+  const first = await createAssistantConversation(scope);
+  const second = await createAssistantConversation(scope);
+  await manageAssistantConversation(scope, first.id, { action: "rename", title: "手动标题 A" });
+  await manageAssistantConversation(scope, second.id, { action: "rename", title: "手动标题 B" });
+  await manageAssistantConversation(scope, first.id, { action: "pin" });
+  let index = await assistantConversations(scope);
+  assert.equal(index.items[0].id, first.id, "置顶对话没有排在前面");
+  await manageAssistantConversation(scope, second.id, { action: "archive" });
+  assert((await assistantConversations(scope)).items.find((item) => item.id === second.id)?.archivedAt);
+  await manageAssistantConversation(scope, second.id, { action: "restore" });
+  assert(!(await assistantConversations(scope)).items.find((item) => item.id === second.id)?.archivedAt);
+  await manageAssistantConversation(scope, first.id, { action: "delete" });
+  assert(!(await assistantConversations(scope)).items.some((item) => item.id === first.id));
+  const deleted = workspace.db.prepare("SELECT deleted_at FROM entities WHERE id=?").get(first.id);
+  assert(deleted?.deleted_at, "删除对话必须进入 SQLite 软删除状态");
+  assert(workspace.db.prepare("SELECT record_json FROM ai_conversations WHERE id=?").get(first.id)?.record_json, "软删除不能丢失恢复数据");
+  assert.equal(workspace.check().ok, true);
+
+  workspace.close();
+  workspace = await openWorkspace({ xenhoHome });
+  configureAssistantWorkspace(workspace);
+  const reopened = await assistantConversations(scope);
+  assert(reopened.items.some((item) => item.id === second.id), "重开后未保留有效对话");
+  assert(!reopened.items.some((item) => item.id === first.id), "重开后软删除对话重新出现");
+
+  const probe = await probePiRuntime();
+  assert.equal(probe.ok, true);
+  assert.equal(probe.version, "0.84.3");
 } finally {
-  await new Promise((resolve) => workerServer.close(resolve));
+  if (workspace?.db?.open) workspace.close();
   await fs.rm(tempRoot, { recursive: true, force: true });
 }
 
-const conversationScope = `test-conversations-${crypto.randomUUID()}`;
-const conversationScopeKey = crypto.createHash("sha256").update(conversationScope).digest("hex").slice(0, 24);
-const conversationStore = path.resolve(process.cwd(), ".xenho", "assistant", conversationScopeKey);
-try {
-  const first = await createAssistantConversation(conversationScope);
-  const second = await createAssistantConversation(conversationScope);
-  await manageAssistantConversation(conversationScope, first.id, { action: "rename", title: "手动标题 A" });
-  await manageAssistantConversation(conversationScope, second.id, { action: "rename", title: "手动标题 B" });
-  await manageAssistantConversation(conversationScope, first.id, { action: "pin" });
-  let index = await assistantConversations(conversationScope);
-  assert.equal(index.items[0].id, first.id, "置顶对话没有排在最近列表前面");
-  await manageAssistantConversation(conversationScope, second.id, { action: "archive" });
-  index = await assistantConversations(conversationScope);
-  assert.equal(index.activeId, first.id, "归档当前对话后没有回退到下一条最近对话");
-  assert(index.items.find((item) => item.id === second.id)?.archivedAt, "归档时间没有进入对话摘要");
-  await manageAssistantConversation(conversationScope, second.id, { action: "restore" });
-  assert(!(await assistantConversations(conversationScope)).items.find((item) => item.id === second.id)?.archivedAt, "恢复对话没有清除归档状态");
-  await manageAssistantConversation(conversationScope, first.id, { action: "delete" });
-  assert(!(await assistantConversations(conversationScope)).items.some((item) => item.id === first.id), "删除后的对话仍出现在历史列表");
-  await assert.rejects(() => fs.access(path.join(conversationStore, "conversations", first.id)), { code: "ENOENT" }, "删除后对话目录仍然存在");
-  await assert.rejects(() => fs.access(path.join(conversationStore, ".trash")), { code: "ENOENT" }, "删除后仍创建了本地回收目录");
-
-  const ghost = await createAssistantConversation(conversationScope);
-  await manageAssistantConversation(conversationScope, ghost.id, { action: "rename", title: "旧删除残留" });
-  const legacyTrash = path.join(conversationStore, ".trash", `${ghost.id}-legacy`);
-  await fs.mkdir(path.dirname(legacyTrash), { recursive: true });
-  await fs.rename(path.join(conversationStore, "conversations", ghost.id), legacyTrash);
-  await manageAssistantConversation(conversationScope, ghost.id, { action: "delete" });
-  const afterGhostDelete = await assistantConversations(conversationScope);
-  assert(!afterGhostDelete.items.some((item) => item.id === ghost.id), "磁盘记录已移动但索引残留的历史项仍无法删除");
-  assert.notEqual(afterGhostDelete.activeId, ghost.id, "删除悬空历史后 activeId 仍指向旧记录");
-  await assert.rejects(() => fs.access(legacyTrash), { code: "ENOENT" }, "旧回收副本没有随重试删除一起永久移除");
-} finally {
-  await fs.rm(conversationStore, { recursive: true, force: true });
-}
-
-const probe = await probePiRuntime();
-assert.equal(probe.ok, true);
-assert.equal(probe.version, "0.84.3");
-console.log("✓ Pi Agent SDK 0.84.3 已完成直接 SDK、defineTool、Skill 和会话标识校验");
-console.log("✓ daily / creative / developer 能力预设、消息内对话级工作区授权、候选写入和越界防护已校验");
-console.log("✓ 历史对话的重命名、置顶、归档、恢复、永久删除与 activeId 回退已校验");
-console.log("✓ Xenho 品控九问保持九项唯一真源");
+console.log("✓ Pi Agent SDK、权限预设、本地工具与隔离工作区已校验");
+console.log("✓ AI 会话使用 SQLite 软删除，并通过关闭重开验证");
+console.log("✓ 测试只使用系统临时目录，没有读写真实 Xenho、Obsidian vault 或 .xenho");

@@ -1,8 +1,9 @@
 const API = "http://127.0.0.1:5180";
 const PRODUCT = "content-studio";
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
 const CONNECTION_KEY = "workbenchConnection";
 const PENDING_KEY = "pendingCollectionIntakesV1";
+const FAILED_KEY = "failedCollectionIntakesV1";
 const PENDING_ALARM = "xenho-pending-collection-sync";
 const ALLOWED_ACTIONS = new Set(["annotate", "ask", "chat", "topic"]);
 const INTAKE_TARGETS = new Set(["collection", "material", "inbox"]);
@@ -12,6 +13,12 @@ let connectionRequest = null;
 let queueRequest = Promise.resolve();
 
 class WorkbenchUnavailableError extends Error {}
+class WorkbenchRequestError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function initialize() {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -84,7 +91,7 @@ async function connect(force = false) {
       throw new Error("检测到旧版工作台，请启动 content-studio 中的 Xenho OS");
     }
     if (data.capabilities?.collectionsV1 !== true) {
-      throw new Error("工作台尚未完成 Inbox 迁移，请先迁移并部署 Worker");
+      throw new Error("工作台尚未完成本地 Inbox 迁移，请先升级并重启工作台");
     }
     const { pairToken, ...status } = data;
     const connection = { pairToken, status };
@@ -123,6 +130,7 @@ async function api(path, { method = "GET", body, signal } = {}, canRetry = true)
 
 function intakeBody(context, target) {
   return {
+    clientRequestId: context.captureId,
     target,
     cmd: "",
     content: target === "collection" ? context.context || context.selection : context.selection,
@@ -139,7 +147,7 @@ async function postIntake(body) {
     body,
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || !data?.ok) throw new Error(data?.error || `保存失败（HTTP ${response.status}）`);
+  if (!response.ok || !data?.ok) throw new WorkbenchRequestError(data?.error || `保存失败（HTTP ${response.status}）`, response.status);
   return data;
 }
 
@@ -177,19 +185,28 @@ async function flushPendingCollections() {
     const queue = await pendingCollections();
     if (!queue.length) return { synced: 0, pending: 0 };
     const remaining = [];
+    const stored = await chrome.storage.local.get(FAILED_KEY);
+    const failed = Array.isArray(stored[FAILED_KEY]) ? stored[FAILED_KEY] : [];
     let synced = 0;
+    let rejected = 0;
     for (let index = 0; index < queue.length; index += 1) {
       const item = queue[index];
       try {
         await postIntake(item.body);
         synced += 1;
       } catch (error) {
+        const permanent = error instanceof WorkbenchRequestError && error.status >= 400 && error.status < 500 && ![408, 409, 429].includes(error.status);
+        if (permanent) {
+          failed.push({ ...item, failedAt: new Date().toISOString(), status: error.status, lastError: error.message || "同步失败" });
+          rejected += 1;
+          continue;
+        }
         remaining.push({ ...item, lastError: error.message || "同步失败" }, ...queue.slice(index + 1));
         break;
       }
     }
-    await chrome.storage.local.set({ [PENDING_KEY]: remaining });
-    return { synced, pending: remaining.length };
+    await chrome.storage.local.set({ [PENDING_KEY]: remaining, [FAILED_KEY]: failed.slice(-MAX_PENDING) });
+    return { synced, rejected, pending: remaining.length, failed: failed.length };
   });
 }
 

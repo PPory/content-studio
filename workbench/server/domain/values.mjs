@@ -18,6 +18,12 @@ export const CAPTURE_STATUS = Object.freeze({
 });
 
 export const SEED_STATUS = Object.freeze({ KEEPING: "keeping", WRITTEN: "written", DROPPED: "dropped" });
+export const SEED_REACTION_GROUPS = Object.freeze([
+  Object.freeze({ label: "对着一个观点", items: Object.freeze(["同意，而且我有个例子", "不同意，因为…", "这个说法有个前提没说出来", "说得对，但只在某种情况下成立", "我以前也这么以为，后来发现…"]) }),
+  Object.freeze({ label: "对着一件事 / 一个发布", items: Object.freeze(["我试了，说说体感", "这件事真正的影响是…", "和之前 / 别家比，变的是…"]) }),
+  Object.freeze({ label: "都能用", items: Object.freeze(["这让我想起另一件事", "这解释了我一直没想明白的"]) }),
+]);
+export const SEED_REACTIONS = Object.freeze(SEED_REACTION_GROUPS.flatMap((group) => group.items));
 export const PROJECT_STATUS = Object.freeze({ ACTIVE: "active", GENERATING: "generating", PARKED: "parked" });
 export const DRAFT_WORKFLOW = Object.freeze({ WRITING: "写作中", READY: "待发布", PUBLISHED: "已发布", ABANDONED: "已弃用" });
 export const PUBLICATION_STATUS = Object.freeze({ UNPUBLISHED: "未发布", PUBLISHED: "已发布" });

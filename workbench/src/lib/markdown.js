@@ -72,7 +72,7 @@ const ALLOWED_ATTR = [
  * 安全性没有放松：`javascript:` / `vbscript:` / `data:text/html` 都以 `协议:` 开头，
  * 被前瞻挡在外面（`[a-z0-9+.-]*` 跨不过 `/`，所以 `a/b:c.jpg` 这种也算相对路径，正确）。
  */
-export const SAFE_URI = /^(?:https?:|mailto:|tel:|ftp:|#|\/|\.{1,2}\/|data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon);base64,|(?![a-z0-9+.-]*:))/i;
+export const SAFE_URI = /^(?:https?:|mailto:|tel:|ftp:|asset:|#|\/|\.{1,2}\/|data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon);base64,|(?![a-z0-9+.-]*:))/i;
 
 let hooked = false;
 function installHooks() {
@@ -218,7 +218,7 @@ export function renderMarkdown(text, { baseDir = "" } = {}) {
    */
   html = html.replace(
     /<img([^>]*?)src="(?!https?:|data:|\/)([^"]+)"/g,
-    (_, pre, src) => `<img${pre}src="${api.imageUrl(baseDir ? `${baseDir}/${decodeMarkdownPath(src)}` : decodeMarkdownPath(src))}"`
+    (_, pre, src) => { const decoded = decodeMarkdownPath(src); return `<img${pre}src="${api.imageUrl(decoded.startsWith("asset://") ? decoded : baseDir ? `${baseDir}/${decoded}` : decoded)}"`; }
   );
   return markGlyphImages(html);
 }

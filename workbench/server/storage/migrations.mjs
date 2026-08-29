@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 const foundationSql = fs.readFileSync(new URL("./migrations/0001-foundation.sql", import.meta.url), "utf8");
 const domainSql = fs.readFileSync(new URL("./migrations/0002-domain.sql", import.meta.url), "utf8");
+const localClientsSql = fs.readFileSync(new URL("./migrations/0003-local-clients.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -16,6 +17,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "domain",
     sql: domainSql,
     checksum: crypto.createHash("sha256").update(domainSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 3,
+    name: "local-clients",
+    sql: localClientsSql,
+    checksum: crypto.createHash("sha256").update(localClientsSql).digest("hex"),
   }),
 ]);
 

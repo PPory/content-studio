@@ -5,7 +5,7 @@
 // 而标记是**跨书**的——「我最近在想什么」根本不按书分。书详情那一栏仍然留着，
 // 但它回答的是另一个问题（「这一本里我留下了什么」），两者不重复。
 //
-// 数据来自 `GET /api/vault/recent-marks`，聚合规则在 `server/lib/marks.mjs`。
+// 数据来自 `GET /api/workspace/recent-marks`，聚合规则在 `server/lib/marks.mjs`。
 
 import { useEffect, useState } from "react";
 import { ErrorNote, Loading } from "../../components/ui.jsx";
@@ -17,7 +17,7 @@ export function RecentMarks({ onOpen, limit = 3 }) {
 
   useEffect(() => {
     let alive = true;
-    fetch(`/api/vault/recent-marks?limit=${limit}`)
+    fetch(`/api/workspace/recent-marks?limit=${limit}`)
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;

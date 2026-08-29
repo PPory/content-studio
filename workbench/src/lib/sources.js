@@ -174,7 +174,7 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
      * 删除**两件事，可恢复性正好相反**，所以回执必须两件都说到
      * （`summarizeArchiveTrash` 负责后半句）：
      *
-     * 1. D1 那一行**真删除，删了就没了**。Notion 时代这里是 archived:true——进废纸篓、
+     * 1. 本地条目进入回收站，正文和关系仍保留。Notion 时代这里是 archived:true——进废纸篓、
      *    30 天可恢复，所以按钮上写的是「移到 Notion 废纸篓」；换成 D1 之后那一层没了，
      *    关联表靠 ON DELETE CASCADE 一起清掉。
      * 2. vault 里那份归档**移进 `.trash/`，能捞回来**。由本地的
@@ -185,7 +185,7 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
      * 会让人放心地删掉找不回来的东西。
      */
     remove: removable ? (item) => api.removePage(key, item.key) : undefined,
-    removeLabel: "永久删除",
+    removeLabel: "移入回收站",
 
     /**
      * 流水线源**不支持高亮**。高亮是「划在一份文件上的记号」，靠原文文本锚定，
@@ -548,7 +548,7 @@ export function summarizeDraftReconcile(result = {}) {
 /**
  * 归档清理结果 → 回执上的**第二句**（`archive` 字段由本地 `/api/pipe/delete` 补上）。
  *
- * **删除是两件事**：D1 那一行永久删除（不可恢复），vault 里那份归档移进 `.trash/`
+ * **删除是两件事**：D1 那一行移入回收站（不可恢复），vault 里那份归档移进 `.trash/`
  *（可恢复）。回执必须把两件都说到——只说前半句，用户会以为 Obsidian 里还留着一份；
  * 只说后半句，又会以为整件事都能捞回来。
  *
@@ -603,7 +603,7 @@ export const SHELF = {
   label: "书架",
   eyebrow: "shelf",
   eyebrowCn: "读过和在读的",
-  sub: "读书笔记与批注，正文和批注都在 Obsidian 里",
+  sub: "图书、阅读进度和批注都保存在当前本地工作区",
   emptyHint: "书架还是空的",
   states: [],
   kind: "vault",
@@ -686,16 +686,16 @@ export const SHELF = {
   },
   edit: {
     target: "VAULT",
-    save: "保存到 vault",
+    save: "保存到本地工作区",
     // 说清两件用户看不见但会中招的事：这就是 Obsidian 里那个文件；高亮锚的是原文文本
-    hint: "直接写回这份 md，Obsidian 里立刻就是新的；改过的句子上原有的高亮会对不上",
+    hint: "保存后当前本地工作区立即更新；改过的句子上原有的高亮可能对不上",
   },
 
   // 批注能不能就地改/删，取决于这个源的批注是不是 vault 里的一份 Markdown。
   // 流水线源的批注是库里的一行，Worker 侧只开了写和读两个端点，所以那边不给这两个口子。
   notePath: (item) => item.raw.notePath || "",
 
-  annotateLabel: "批注追加到 notes.md，Obsidian 里能直接搜到",
+  annotateLabel: "批注保存到当前本地工作区，可在全局搜索中找到",
   sourceOf: (item) => `《${item.title}》`,
   // 高亮跟着**这一章**走（不同章各有各的记号），文件名挨着正文放
   highlightPath: (item) => (item.raw.docPath || item.raw.bookPath || "").replace(/\.md$/i, ".highlights.md"),
@@ -710,10 +710,10 @@ export const INSIGHTS = {
   label: "洞察",
   eyebrow: "insights",
   eyebrowCn: "按需生成的研究报告",
-  sub: "按需生成的社媒风向研究报告",
+  sub: "依据当前本地素材生成的内容洞察",
   emptyHint: "还没有洞察报告",
   states: [],
-  kind: "vault",
+  kind: "workspace",
 
   /**
    * 走 `/api/vault/insights` 而不是通用的 vaultTree。
@@ -725,14 +725,14 @@ export const INSIGHTS = {
    * （落 `<同名>.notes.md`），列表里会凭空多出一张卡。
    */
   async list() {
-    const r = await api.vaultInsights().catch(() => null);
+    const r = await api.workspaceInsights().catch(() => null);
     // `dir` 即使在目录还不存在时也要带出去：空态那段引导要照实说报告会落在哪。
     if (!r?.exists) return { exists: false, items: [], dir: r?.dir || "" };
     return {
       exists: true,
       dir: r.dir,
       items: r.reports.map((f) => ({
-        key: f.path,
+        key: f.id,
         title: f.title,
         // 顶栏面包屑要短。不给的话它会一路退到 `sub`，于是那儿显示的是
         // 「覆盖 2026-08-05 — 2026-08-12」一整条日期区间——面包屑是「我在哪」，不是元信息。
@@ -756,7 +756,7 @@ export const INSIGHTS = {
   },
 
   async load(item) {
-    const r = await api.vaultDoc(item.key, item.key.replace(/\.md$/i, ".notes.md"));
+    const r = await api.workspaceInsight(item.raw.id);
     // 报告第一行永远是 `# <周次> 个人情报周报`，而阅读区自己已经画了一个大标题
     // （文件名「2026-W33-社媒洞察」）。两个说同一件事的标题连着出现，第一屏就废掉一半。
     // 不能复用书架那个 `stripLeadingTitle`：它按**文字相等**判断，而这两个标题
@@ -770,18 +770,14 @@ export const INSIGHTS = {
   },
 
   async annotate(item, { quote, body }) {
-    const r = await api.vaultNote({
-      path: item.key.replace(/\.md$/i, ".notes.md"),
-      quote,
-      body,
-      source: `[[${item.key}]]`,
-    });
-    return { notes: r.notes };
+    await api.comment(item.raw.id, [quote ? `> ${quote}` : "", body].filter(Boolean).join("\n\n"));
+    const r = await api.comments(item.raw.id);
+    return { notes: (r.comments || []).map((note) => note.text).join("\n\n---\n\n") };
   },
 
-  annotateLabel: "批注写进同名的 .notes.md（报告重跑不会覆盖它）",
+  annotateLabel: "批注保存在当前本地工作区（报告重跑不会覆盖）",
   sourceOf: (item) => item.title,
-  highlightPath: (item) => item.key.replace(/\.md$/i, ".highlights.md"),
+  highlightPath: () => "",
 };
 
 // 流水线四段的顺序 = tab 的顺序 = 东西流动的方向。别乱改。

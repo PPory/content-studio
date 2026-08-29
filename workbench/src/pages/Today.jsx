@@ -13,7 +13,7 @@ import { IconArrowRight, IconPlus } from "../components/icons.jsx";
 import { ProjectCard } from "../components/ProjectCard.jsx";
 
 export function Today({ config, status, statusError, statusLoading, onRetryStatus, onGo, onChanged, onSettings }) {
-  const workerReady = config?.worker?.configured;
+  const workerReady = true;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 

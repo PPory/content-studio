@@ -123,7 +123,7 @@ export function ShelfActions({ onDone, variant = "tile" }) {
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="书名（之后在 Obsidian 里慢慢填）"
+        placeholder="书名（之后可以继续在本地工作区补充）"
         onKeyDown={(e) => {
           if (e.key === "Enter") createEmpty();
           if (e.key === "Escape") setMode("");

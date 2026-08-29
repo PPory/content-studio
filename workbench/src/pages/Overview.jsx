@@ -67,7 +67,7 @@ const AUTO_ICONS = {
 const TOP_N = 3;
 
 export function Overview({ config, status, statusError, statusLoading, onRetryStatus, onGo, onIntake, onSettings }) {
-  const workerReady = config?.worker?.configured;
+  const workerReady = true;
   /**
    * 每一档**最该先做的那几条**（列表最前面的 `TOP_N` 条）。
    *
@@ -91,7 +91,7 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
   }, [workerReady, status?.ts]);
   // **只数等你动手的**。把 Worker 正在跑的活也算进「待处理」，会让人以为自己欠着事。
   const pending = TODO_CARDS.reduce((n, c) => n + (status?.counts?.[c.key] ?? 0), 0);
-  const plan = usePlan(config?.vault?.configured);
+  const plan = usePlan(true);
   // 「新建」和侧栏常驻的「入库」不是一回事：入库是**存一条素材**（已经有的东西），
   // 新建是**开一篇新的**（还不存在的东西）。同一个动作两个入口才该合并，这是两个动作。
 
@@ -565,55 +565,22 @@ function ResumePanel({ icon: Icon, title, children, loading, empty, action, href
  * 跳出工作台的外链，同一个工具两个入口两种行为）。只有「打开 Obsidian」在别处没有，
  * 它就该待在 vault 路径旁边。
  */
-function SystemRow({ config, workerReady, onIntake, onSettings }) {
-  const vault = config?.vault;
-  // 这两条原来是死胡同：告诉你「去 .env 里填 VAULT_ROOT」，然后就没有然后了。
-  // **只报告问题不引导行动，是这个项目明确要避免的反馈方式**——所以那句话本身就是入口。
-  if (vault?.configured && !vault.exists) {
-    return (
-      <Note tone="danger" title="vault 路径不存在">
-        <code>{vault.root}</code> 打不开。
-        <FixButton onSettings={onSettings}>去设置里改路径</FixButton>
-      </Note>
-    );
-  }
-  if (!vault?.configured) {
-    return (
-      <Note title="还没配置 vault">
-        书架、洞察、批注和全局检索都要它。
-        <FixButton onSettings={onSettings}>去设置里填 vault 路径</FixButton>
-      </Note>
-    );
-  }
-
+function SystemRow({ workerReady, onIntake }) {
   return (
     <div className="sysrow">
-      <span className="sysrow__path mono" title={vault.root}>
-        {vault.root}
+      <span className="sysrow__path mono" title="当前单工作区">
+        当前本地工作区 · SQLite
       </span>
       <span className="sysrow__acts">
         <button className="sysrow__btn" onClick={onIntake}>
           存一条素材
         </button>
-        {vault.name ? (
-          <a className="sysrow__btn" href={`obsidian://open?vault=${encodeURIComponent(vault.name)}`}>
-            <IconFolder size={14} stroke={1.7} aria-hidden="true" />
-            打开 Obsidian
-          </a>
-        ) : null}
         {workerReady ? <ArchiveButton /> : null}
-        {/* 备份和 vault 路径待在一起：它们回答的是同一类问题——「我的东西放在哪、
-            出事了怎么办」。做成侧栏一项的话，一个几周才点一次的东西会全程占着一屏。 */}
         <BackupButton />
-        {/* 这儿原来还有四个「灵感库 / 素材库 / 选题库 / 稿件库」的外链，指向 Notion。
-            库迁到 D1 之后它们**整排撤掉了**：点开看到的是一份不再更新的旧数据，
-            而它长得跟真的一模一样——**一个通往过期数据的链接比没有链接更糟**。
-            这四个库现在就在左边「创作」页里，本来也不需要跳出去。 */}
       </span>
     </div>
   );
 }
-
 /**
  * 备份入口。抽屉挂在按钮自己身上而不是页面顶层：这一屏只有它需要，
  * 提到 `Overview` 里就要多一个只为它存在的 state。
@@ -625,7 +592,7 @@ function BackupButton() {
       <button
         className="sysrow__btn"
         onClick={() => setOpen(true)}
-        title="导出一份可以带走的备份，或从备份 / 自动快照恢复"
+        title="阶段 5 完成后启用本地工作区备份与恢复"
       >
         <IconDatabase size={14} stroke={1.7} aria-hidden="true" />
         备份与恢复
@@ -656,8 +623,8 @@ function ArchiveButton() {
 
   const done = state
     ? state.total === 0
-      ? "稿件库里还没有「已发布」的稿子"
-      : `新导出 ${state.written.length} 篇，跳过 ${state.skipped} 篇`
+      ? "当前本地工作区还没有已发布记录"
+      : state.message || `已核对 ${state.total} 篇发布记录`
     : "";
 
   return (
@@ -666,13 +633,13 @@ function ArchiveButton() {
         className="sysrow__btn"
         onClick={run}
         disabled={busy}
-        title="把稿件库里「已发布」的稿子单向导出到 归档/发布作品/，只增不改，已导过的会跳过"
+        title="核对已发布内容是否都已记录在当前本地工作区"
       >
         <IconArchive size={14} stroke={1.7} aria-hidden="true" />
-        {busy ? "导出中…" : "归档已发布"}
+        {busy ? "核对中…" : "核对发布记录"}
       </button>
       {done ? <span className="sysrow__done">{done}</span> : null}
-      {error ? <span className="sysrow__done">归档失败：{error.message}</span> : null}
+      {error ? <span className="sysrow__done">核对失败：{error.message}</span> : null}
     </>
   );
 }

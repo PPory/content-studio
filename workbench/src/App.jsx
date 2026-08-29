@@ -702,7 +702,7 @@ export function App() {
             <Seeds onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
           ) : route.view === "content" ? (
             <Content
-              workerReady={config?.worker?.configured}
+              workerReady={true}
               onGo={go}
               onChanged={refreshStatus}
               onSettings={() => setSettings(true)}
@@ -768,7 +768,7 @@ export function App() {
       />
       </div>
 
-      <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />
+      <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName="" />
 
       <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={loadConfig} />
 

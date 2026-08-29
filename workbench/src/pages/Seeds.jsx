@@ -201,10 +201,10 @@ export function Seeds({ onGo, onChanged }) {
                     放回「攒着」
                   </button>
                 )}
-                {/* ⚠️ 删除是**真删**，没有废纸篓（Worker 那侧同一条）。
+                {/* ⚠️ 删除进入本地回收站，可恢复（Worker 那侧同一条）。
                     所以这颗只在「不写了」那一档出现——攒着的那些只该被标记，不该被误删 */}
                 {seed.status === "不写了" ? (
-                  <button className="icon-btn seed__del" disabled={busy} title="永久删除，删了就没了" onClick={() => remove(seed.id)}>
+                  <button className="icon-btn seed__del" disabled={busy} title="移入本地回收站，可恢复" onClick={() => remove(seed.id)}>
                     <IconTrash size={14} stroke={1.7} aria-hidden="true" />
                   </button>
                 ) : null}

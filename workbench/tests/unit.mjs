@@ -430,6 +430,7 @@ try {
   check("vbscript: 仍然挡掉", !SAFE_URI.test("vbscript:msgbox(1)"));
   check("data:text/html 仍然挡掉", !SAFE_URI.test("data:text/html,<b>x</b>"));
   check("data:image 照旧放行", SAFE_URI.test("data:image/png;base64,iVBOR"));
+  check("本地资源协议放行", SAFE_URI.test("asset://01ABCDEF"));
 }
 
 /**
@@ -756,7 +757,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Stage 9 已移除 Project Rail callback 适配和 Composer 死入口", /ProjectAssistantRail\(\{[^\n]*target/.test(projectRail) && !/selection, onInsert, onRevision/.test(projectRail) && !/assistant-pane--docked/.test(assistantPane) && !/onOpenExperts|onOpenSkills/.test(assistantComposer));
   check("Candidate 动作只读取统一 policy", /capabilities=\{policy\.capabilities\}/.test(assistantThread) && /capabilities\.insertCandidate/.test(assistantMessage) && /capabilities\.reviseSelection/.test(assistantMessage) && !/typeof onRevision|!!onInsert|canInsert|canRevise/.test(`${assistantThread}\n${assistantMessage}`));
   check("阅读区只读 target 即使有选区也不显示 Candidate", /kind: "vault-document", editable: false, selection: assistantSelection/.test(readingRail));
-  check("存知识卡在确认前说明格式和落点", /Markdown 知识卡/.test(knowledgeDialog) && /99 - 个人工作台 \/ 06 - 知识卡片/.test(knowledgeDialog));
+  check("存知识卡在确认前说明格式和本地落点", /Markdown 知识卡/.test(knowledgeDialog) && /当前本地工作区 \/ 知识卡片/.test(knowledgeDialog));
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertReport) && !/阻塞发布|blocking/.test(expertReport));
   check("编辑器内联 AI 只读取 scope + target policy", /resolveAssistantPolicy/.test(inlineMarkdownEditor) && /capabilities\.writeAtCursor/.test(inlineMarkdownEditor) && /function beginRevision[\s\S]{0,220}capabilities\.reviseSelection/.test(inlineMarkdownEditor));
   check("内联 AI 定位不再使用页面固定阈值", /inlineAnchorOf/.test(inlineMarkdownEditor) && /view\.scrollDOM\.getBoundingClientRect/.test(inlineMarkdownEditor) && !/coords\.top >|window\.innerWidth - 18/.test(inlineMarkdownEditor));
@@ -853,6 +854,7 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("整行图片的匹配允许目标里有空格", /const IMAGE_LINE = \/\^!/.test(livePreviewSource) && !/\[\^\)\s\]\+/.test(livePreviewSource));
   const markdownSource = await fs.readFile(new URL("../src/lib/markdown.js", import.meta.url), "utf8");
   check("渲染前救回老正文里的裸空格图片路径", /function encodeImagePaths/.test(markdownSource) && /decodeMarkdownPath\(src\)/.test(markdownSource));
+  check("asset 图片不拼接书籍目录", /decoded\.startsWith\("asset:\/\/"\) \? decoded/.test(markdownSource));
   const stylesSource = await fs.readFile(new URL("../src/styles.css", import.meta.url), "utf8");
   check("转圈用的 class 名在 CSS 里真的定义了", /\.spin, \.spinning \{ animation: spin/.test(stylesSource));
 
@@ -965,7 +967,7 @@ check("同一个种子给同一句", startingLine({ seed: "fixed" }) === startin
   // 它必须仍在 states 里：从 states 删掉的话，成稿失败的选题会从看板和筛选条上一起消失
   check("「搁置」仍在状态清单里", src.TOPICS.states.includes("搁置"), src.TOPICS.states.join("/"));
   check("四个流水线库都能删", ["inbox", "materials", "topics", "drafts"].every((k) => typeof src.SOURCES[k].remove === "function"));
-  check("收件箱支持两次确认后永久删除", typeof src.COLLECTIONS.remove === "function" && src.COLLECTIONS.removeLabel === "永久删除");
+  check("收件箱支持确认后移入可恢复回收站", typeof src.COLLECTIONS.remove === "function" && src.COLLECTIONS.removeLabel === "移入回收站");
   // 平台名和 content-pipeline 的 draft.js 逐字一致，对不上 Worker 会静默跳过那个平台
   check("平台名单和流水线一致", src.PLATFORMS.join("/") === "公众号/X/小红书/视频号/YouTube", src.PLATFORMS.join("/"));
 

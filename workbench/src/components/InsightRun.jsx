@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { IconRadar2, IconX } from "./icons.jsx";
 
-const SOURCE_CN = { reddit: "Reddit", x: "X", aihot: "AI 日报" };
+const SOURCE_CN = { workspace: "当前本地工作区", reddit: "Reddit", x: "X", aihot: "AI 日报" };
 
 /** 轮询跑批状态。`onDone` 只在「由跑着变成跑完」的那一刻触发一次。 */
 export function useInsightRun(onDone) {
@@ -108,16 +108,16 @@ export function InsightRunButton({ run, onStarted }) {
         className="btn btn-primary"
         onClick={running ? undefined : openPanel}
         disabled={running}
-        title={running ? "正在跑，进度见下方" : "跑一次洞察"}
+        title={running ? "正在生成，进度见下方" : "依据本地素材生成洞察"}
       >
         <IconRadar2 aria-hidden="true" stroke={2} />
-        {running ? `跑洞察中 ${run.percent}%` : "跑一次洞察"}
+        {running ? `生成洞察中 ${run.percent}%` : "生成洞察"}
       </button>
 
       {open ? (
-        <div className="run-panel" role="dialog" aria-label="跑一次洞察">
+        <div className="run-panel" role="dialog" aria-label="生成本地洞察">
           <div className="run-panel__head">
-            <b>跑一次洞察</b>
+            <b>生成本地洞察</b>
             <button className="icon-btn" onClick={() => setOpen(false)} aria-label="关闭">
               <IconX aria-hidden="true" stroke={2} />
             </button>
@@ -140,7 +140,7 @@ export function InsightRunButton({ run, onStarted }) {
                   <li key={m.source} className={m.bytes ? "is-ok" : "is-missing"}>
                     {m.bytes ? "✓" : "✗"} {SOURCE_CN[m.source] || m.source}
                     <span className="run-panel__dim">
-                      {m.bytes ? ` ${Math.round(m.bytes / 1024)} KB` : " 未抓取"}
+                      {m.source === "workspace" ? ` ${ready.materialCount || 0} 条素材` : m.bytes ? ` ${Math.round(m.bytes / 1024)} KB` : " 未抓取"}
                     </span>
                   </li>
                 ))}
@@ -152,7 +152,7 @@ export function InsightRunButton({ run, onStarted }) {
                   <b>约 270 credits</b>（Bright Data）。材料齐的周次点这里不花钱。
                 </p>
               ) : (
-                <p className="page-sub">材料齐全，本次不抓取。联网核实仍会用到 Brave / Firecrawl。</p>
+                <p className="page-sub">只读取当前 SQLite 工作区，不访问旧 vault、Downloads 或云端业务库。</p>
               )}
 
               {/* 说「上周」是错的：挂账是扫所有周次收上来的，隔了几周没跑的也在里面。
@@ -178,7 +178,7 @@ export function InsightRunButton({ run, onStarted }) {
 
               <div className="run-panel__actions">
                 <button className="btn btn-primary" onClick={start} disabled={busy}>
-                  {busy ? "正在启动…" : ready.willFetch ? "抓取并开始分析" : "开始分析"}
+                  {busy ? "正在生成…" : ready.willFetch ? "抓取并开始分析" : "生成本地洞察"}
                 </button>
                 <button className="btn" onClick={() => setOpen(false)}>
                   先不跑
@@ -186,8 +186,8 @@ export function InsightRunButton({ run, onStarted }) {
               </div>
 
               <p className="run-panel__note">
-                后台跑，几十分钟量级。<b>关掉面板、关掉浏览器都不影响它</b>，回来在这一页看进度。
-                要人扫码的站内深取不在自动流程里，需要的话它会记成一条挂账。
+                生成结果会保存在当前本地工作区。
+                如果需要联网补证据，请在生成后另行发起明确的只读核查。
               </p>
             </>
           ) : null}
@@ -222,8 +222,8 @@ export function InsightRunProgress({ run, onCancel }) {
       {failed && run.error ? <p className="run-progress__err">{run.error}</p> : null}
       {running ? (
         <p className="run-progress__note">
-          进度按工件落盘算，不按时间走——<b>不动就是真的卡在那一步</b>，完整日志在{" "}
-          <code>tmp/insight-run.log</code>
+          任务状态保存在当前本地工作区；刷新页面后仍可读取。{" "}
+          <code>SQLite workspace</code>
         </p>
       ) : null}
     </div>

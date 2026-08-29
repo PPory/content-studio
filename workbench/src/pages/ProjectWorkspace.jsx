@@ -306,7 +306,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
       // 只有用户真的关掉页面才会触发；取消浏览器提示不会误删。
       if (!blankTemporary) return;
       clearTemporaryProject(projectId);
-      fetch(`/api/pipe/projects/${encodeURIComponent(projectId)}/delete`, {
+      fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/trash`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -327,13 +327,10 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
     try {
       let result;
       if (releaseEditable) {
-        result = await api.saveProjectRelease(projectId, draft.id, releasePayload(form));
+        result = await api.saveProjectRelease(projectId, draft.id, { ...releasePayload(form), expectedVersion: draft.version });
       } else {
-        if (form.title !== (draft.title || "")) await api.updateFields("drafts", draft.id, { title: form.title.trim() || project.title });
-        if (form.body !== (draft.body || "")) await api.saveContent("drafts", draft.id, form.body);
-        result = await api.project(projectId);
-      }
-      acceptProject(result.project, draft.id);
+        result = await api.saveProjectDraft(draft.id, { title: form.title.trim() || project.title, body: form.body, expectedVersion: draft.version });
+      }      acceptProject(result.project, draft.id);
       setSaved(true);
       promoteTemporaryProject();
       onChanged?.();
@@ -345,6 +342,12 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!draft || !dirty || busy || !draftEditable) return undefined;
+    const timer = window.setTimeout(() => { void saveDraft(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [draft?.id, draftEditable, dirty, form.title, form.body]);
 
   async function transition(action, input = {}) {
     if (busy) return;
@@ -593,7 +596,7 @@ ${(form.body || "").slice(0, 3000)}`);
         </div>
         <div className="project-bar__end">
           {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
-          {saved && !dirty ? <span className="project-saved"><IconCheck aria-hidden="true" />已保存</span> : null}
+          {dirty ? <span className="project-saved" role="status">{busy ? "保存中…" : "待保存"}</span> : saved ? <span className="project-saved" role="status"><IconCheck aria-hidden="true" />已保存</span> : null}
           {/**
             * ⚠️ **「退回写作修改」搬到顶栏了。**
             * 它是这一页唯一的后退键，而且只在稿子锁住的那一档出现——那时候正文是只读的，
@@ -728,6 +731,7 @@ ${(form.body || "").slice(0, 3000)}`);
             reviewingCandidate={candidateReviewFocused}
             scopeId={draft?.id || projectId}
             document={{
+              id: project.id,
               title: form.title,
               body: form.body,
               platform: draft?.platform || project.platform,

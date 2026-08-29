@@ -40,7 +40,7 @@ export function workbenchApi(env) {
       });
 
       // 放在最前面：/api/* 和 /tools/* 由我们接管，其余交回 Vite
-      server.middlewares.use(createApi(env));
+      server.middlewares.use(createApi(env, { workspace: server.xenhoWorkspace }));
       // 公众号排版工具静态托管。放在 Vite 之前，否则会被它的 SPA 回退吃掉
       server.middlewares.use(serveTypeset(env));
       // 当桌面应用用的那次：关掉窗口就把这个进程也收掉（终端 npm run dev 不受影响）

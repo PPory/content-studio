@@ -4,18 +4,14 @@ import net from "node:net";
 import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { parseNotes } from "../lib/notes.mjs";
+import { listProjects, projectDto } from "../workspace/workspace-view.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
-import { callWorker } from "../lib/worker.mjs";
-import { searchAll } from "../lib/search.mjs";
 import { fetchBoards } from "../lib/sixty.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
 import { agentAccess, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
-import { listDir } from "../lib/vault.mjs";
 import {
   assertModeTool,
   resolveProjectPath,
-  resolveVaultPath,
 } from "./permission-modes.mjs";
 
 const text = (value, details = {}) => ({
@@ -77,11 +73,6 @@ async function safeWebUrl(input) {
   const records = await dns.lookup(hostname, { all: true });
   if (!records.length || records.some((item) => isPrivateIp(item.address))) throw Object.assign(new Error("不允许访问本机或局域网地址"), { status: 400 });
   return url;
-}
-
-function ensureMarkdownPath(value) {
-  const relative = clean(value, 1_000).replaceAll("\\", "/");
-  return relative.toLowerCase().endsWith(".md") ? relative : `${relative}.md`;
 }
 
 function validatePowerShell(command) {
@@ -171,67 +162,37 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text(context.project || context.document || {});
   }));
 
-  tools.push(tool("workbench_projects", "读取工作台内容状态", "实时读取工作台内容项目的权威聚合状态、数量、阻塞原因与下一步。每次直接查询 Worker，不从知识搜索或当前文档猜测。", Type.Object({
+  tools.push(tool("workbench_projects", "读取工作台内容状态", "实时读取当前 SQLite 工作区的项目阶段、数量、阻塞原因与下一步。只读。", Type.Object({
     stage: Type.Optional(Type.String({ maxLength: 80 })),
   }), async ({ stage = "" }) => {
     allowed("workbench_projects");
+    if (!context.workspace?.db?.open) throw new Error("本地工作区尚未就绪");
     const selectedStage = clean(stage, 80);
-    const search = new URLSearchParams({ pageSize: "100" });
-    if (selectedStage) search.set("stage", selectedStage);
-    const response = await callWorker(env, "projects", { search: search.toString() });
-    if (response.status >= 400 || response.data?.ok === false) {
-      const error = new Error(response.data?.error || `工作台内容状态读取失败（HTTP ${response.status}）`);
-      if (response.data?.hint) error.hint = response.data.hint;
-      throw error;
-    }
-    const projects = (response.data?.projects || []).map((item) => ({
-      id: item.id,
-      title: item.title,
-      stage: item.stage,
-      stageReason: item.stageReason,
-      nextAction: item.nextAction,
-      blockers: item.blockers || [],
-      updatedAt: item.updatedAt,
-    }));
-    return text({
-      source: "Worker /wb/projects",
-      fetchedAt: new Date().toISOString(),
-      stage: selectedStage || null,
-      total: Number(response.data?.total) || 0,
-      counts: response.data?.counts || {},
-      projects,
-      truncated: Boolean(response.data?.nextCursor),
-    });
+    const result = listProjects(context.workspace, { stage: selectedStage });
+    return text({ source:"SQLite workspace",fetchedAt:new Date().toISOString(),stage:selectedStage||null,total:result.total,counts:result.counts,projects:result.projects.map((item)=>({id:item.id,title:item.title,stage:item.stage,stageReason:item.stageReason,nextAction:item.nextAction,blockers:item.blockers||[],updatedAt:item.updatedAt})),truncated:false });
   }));
-
-  tools.push(tool("material_evidence", "读取项目素材", "读取项目明确关联的素材与来源字段。只读。", Type.Object({}), async () => {
+  tools.push(tool("material_evidence", "读取项目素材", "读取当前 SQLite 项目明确关联的素材与来源字段。只读。", Type.Object({}), async () => {
     allowed("material_evidence");
-    const materials = (context.projectMaterials || []).slice(0, 40).map((item) => ({
-      id: clean(item.id, 160), title: clean(item.title || "未命名素材", 300),
-      content: clean(item.content || item.note || item.summary, 2_000),
-      source: clean(item.source || item.sourceUrl || item.url, 2_000),
-      verification: clean(item.verification || item.verificationStatus, 100),
+    const live = context.workspace?.db?.open && context.project?.id ? projectDto(context.workspace, context.project.id) : null;
+    const materials = (live?.materials || context.projectMaterials || []).slice(0, 40).map((item) => ({
+      id: clean(item.id, 160), title: clean(item.title || "未命名素材", 300), content: clean(item.content || item.note || item.summary, 2_000), source: clean(item.source || item.sourceUrl || item.url, 2_000), verification: clean(item.verification || item.verificationStatus, 100),
     }));
-    return text({ total: materials.length, materials });
+    return text({ source:"SQLite workspace",total:materials.length,materials });
   }));
-
-  tools.push(tool("publication_metrics", "读取发布数据", "读取当前项目记录的发布和复盘数据。只读，不推测缺失值。", Type.Object({}), async () => {
+  tools.push(tool("publication_metrics", "读取发布数据", "读取当前 SQLite 项目记录的发布和复盘数据。只读，不推测缺失值。", Type.Object({}), async () => {
     allowed("publication_metrics");
-    return text({ publication: context.project?.publication || null, review: context.project?.review || null });
+    const live = context.workspace?.db?.open && context.project?.id ? projectDto(context.workspace, context.project.id) : null;
+    return text({ source:"SQLite workspace",publication:live?.publication||context.project?.publication||null,review:live?.review||context.project?.review||null });
   }));
-
-  tools.push(tool("knowledge_search", "检索本地知识", "实时检索工作台知识索引和已授权工作区，不依赖预载快照。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }, signal) => {
+  tools.push(tool("knowledge_search", "检索本地知识", "实时检索 SQLite 工作区中的正文、素材、图书、附件文本和历史会话，并补充本轮明确授权的本地文件。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }, signal) => {
     allowed("knowledge_search");
     const needle = clean(query, 300);
-    const indexed = await searchAll(env, needle, { limit: 12 }).catch(() => ({ results: [] }));
-    const files = await workspaceFiles(env, "", needle, signal, 8).catch(() => []);
-    const sources = [
-      ...(indexed.results || []).map(compactSource),
-      ...files.map((item) => compactSource({ id: `${item.mountId}:${item.path}`, type: "本地文件", title: path.basename(item.path), source: item.mount, snippet: item.excerpt, path: `${item.mountId}:${item.path}` })),
-    ].slice(0, 16);
-    return text({ query: needle, total: sources.length, sources });
+    if (!context.workspace?.db?.open) throw new Error("本地工作区尚未就绪");
+    const indexed = context.workspace.repository.search(needle,{limit:16}).map((item)=>compactSource({id:item.id,type:item.type,title:item.title,source:"SQLite workspace",snippet:item.body,path:item.id}));
+    const files = await workspaceFiles(env,"",needle,signal,8).catch(()=>[]);
+    const sources=[...indexed,...files.map((item)=>compactSource({id:`${item.mountId}:${item.path}`,type:"本地文件",title:path.basename(item.path),source:item.mount,snippet:item.excerpt,path:`${item.mountId}:${item.path}`}))].slice(0,20);
+    return text({query:needle,total:sources.length,sources});
   }));
-
   tools.push(tool("workspace_list", "查看已授权工作区", "列出 Agent 当前可访问的工作台与本轮对话明确指定的本地项目或文件。", Type.Object({
     mountId: Type.Optional(Type.String({ maxLength: 80 })),
     path: Type.Optional(Type.String({ maxLength: 1_000 })),
@@ -302,9 +263,9 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
         details: { id: item.id, name: item.name, kind: "image", bytes: data.length },
       };
     }
-    const content = await fs.readFile(item.textPath, { encoding: "utf8", signal });
-    return text({ id: item.id, name: item.name, text: content.slice(0, 120_000), truncated: content.length > 120_000 });
-  }));
+    assertNotAborted(signal);
+    const content = String(item.extractedText || "");
+    return text({ id: item.id, name: item.name, text: content.slice(0, 120_000), truncated: content.length > 120_000 });  }));
 
   tools.push(tool("skill_read", "读取技能说明", "读取本项目八个 Skill 的 SKILL.md 或其引用文件。只读。", Type.Object({ path: Type.String({ maxLength: 500 }) }), async ({ path: requested }, signal) => {
     allowed("skill_read");
@@ -312,52 +273,6 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     if (!resolved.relative.startsWith(".agents/skills/")) throw Object.assign(new Error("只能读取项目 Skill 文件"), { status: 403 });
     const content = await fs.readFile(resolved.absolute, { encoding: "utf8", signal });
     return text(content.slice(0, 80_000), { path: resolved.relative, truncated: content.length > 80_000 });
-  }));
-
-  tools.push(tool("vault_list", "列出知识库目录", "列出知识库中的目录和 Markdown 文件。只读，路径必须是 vault 相对路径。", Type.Object({ path: Type.Optional(Type.String({ maxLength: 1_000 })) }), async ({ path: requested = "." }) => {
-    allowed("vault_list");
-    const resolved = await resolveVaultPath(env, requested || ".");
-    return text({ path: resolved.relative, items: await listDir(resolved.root, resolved.relative) });
-  }));
-
-  tools.push(tool("vault_read", "读取知识库文档", "读取知识库中的 Markdown 文件。只读，路径必须是 vault 相对路径。", Type.Object({ path: Type.String({ maxLength: 1_000 }) }), async ({ path: requested }, signal) => {
-    allowed("vault_read");
-    const resolved = await resolveVaultPath(env, requested, { markdownOnly: true });
-    const content = await fs.readFile(resolved.absolute, { encoding: "utf8", signal });
-    const stamp = await fs.stat(resolved.absolute).then((item) => String(Math.round(item.mtimeMs)));
-    return text({ path: resolved.relative, stamp, content: content.slice(0, 120_000), truncated: content.length > 120_000 }, { path: resolved.relative, stamp });
-  }));
-
-  tools.push(tool("annotation_list", "读取批注", "读取指定批注 Markdown 文件并返回结构化批注。只读。", Type.Object({ path: Type.String({ maxLength: 1_000 }) }), async ({ path: requested }, signal) => {
-    allowed("annotation_list");
-    const resolved = await resolveVaultPath(env, requested, { markdownOnly: true });
-    const content = await fs.readFile(resolved.absolute, { encoding: "utf8", signal }).catch((error) => error?.code === "ENOENT" ? "" : Promise.reject(error));
-    return text({ path: resolved.relative, annotations: parseNotes(content) });
-  }));
-
-  tools.push(tool("document_create", "准备新建文档", "在个人工作台目录准备新建 Markdown 文档候选，确认后才写入。", Type.Object({ path: Type.String({ maxLength: 1_000 }), content: Type.String({ maxLength: 200_000 }) }), async ({ path: requested, content }) => {
-    allowed("document_create");
-    const resolved = await resolveVaultPath(env, ensureMarkdownPath(requested), { write: true, markdownOnly: true });
-    try { await fs.access(resolved.absolute); throw Object.assign(new Error("目标文档已经存在"), { status: 409 }); } catch (error) { if (error?.code !== "ENOENT") throw error; }
-    return appendAction(actionsFile, { type: "document_create", path: resolved.relative, content: clean(content, 200_000), permissionMode: mode });
-  }));
-
-  tools.push(tool("document_update", "准备更新文档", "准备受控更新个人工作台中的 Markdown 文档。需要当前版本号并经用户确认。", Type.Object({ path: Type.String({ maxLength: 1_000 }), content: Type.String({ maxLength: 200_000 }), stamp: Type.String({ maxLength: 100 }) }), async ({ path: requested, content, stamp }) => {
-    allowed("document_update");
-    const resolved = await resolveVaultPath(env, ensureMarkdownPath(requested), { write: true, markdownOnly: true });
-    return appendAction(actionsFile, { type: "document_update", path: resolved.relative, content: clean(content, 200_000), stamp: clean(stamp, 100), permissionMode: mode });
-  }));
-
-  tools.push(tool("annotation_append", "准备追加批注", "准备向个人工作台中的批注文件追加一条批注，确认后才写入。", Type.Object({ path: Type.String({ maxLength: 1_000 }), body: Type.String({ maxLength: 8_000 }), quote: Type.Optional(Type.String({ maxLength: 4_000 })), source: Type.Optional(Type.String({ maxLength: 2_000 })) }), async ({ path: requested, body, quote = "", source = "" }) => {
-    allowed("annotation_append");
-    const resolved = await resolveVaultPath(env, ensureMarkdownPath(requested), { write: true, markdownOnly: true });
-    return appendAction(actionsFile, { type: "annotation_append", path: resolved.relative, body: clean(body, 8_000), quote: clean(quote, 4_000), source: clean(source, 2_000), permissionMode: mode });
-  }));
-
-  tools.push(tool("reference_insert", "准备插入引用", "准备把带来源的引用插入个人工作台 Markdown 文档，确认后才写入。", Type.Object({ path: Type.String({ maxLength: 1_000 }), text: Type.String({ maxLength: 20_000 }), source: Type.String({ maxLength: 2_000 }), stamp: Type.String({ maxLength: 100 }) }), async ({ path: requested, text: quoteText, source, stamp }) => {
-    allowed("reference_insert");
-    const resolved = await resolveVaultPath(env, ensureMarkdownPath(requested), { write: true, markdownOnly: true });
-    return appendAction(actionsFile, { type: "reference_insert", path: resolved.relative, text: clean(quoteText, 20_000), source: clean(source, 2_000), stamp: clean(stamp, 100), permissionMode: mode });
   }));
 
   tools.push(tool("project_file_read", "读取项目文件", "开发模式下读取工作台项目内文件。只读。", Type.Object({ path: Type.String({ maxLength: 1_000 }) }), async ({ path: requested }, signal) => {

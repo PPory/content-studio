@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { WB_ROOT } from "../lib/vault-dirs.mjs";
 
 export const DEFAULT_PERMISSION_MODE = "daily";
 
@@ -16,9 +15,6 @@ const COMMON_TOOLS = [
   "hotspot_search",
   "attachment_read",
   "skill_read",
-  "vault_list",
-  "vault_read",
-  "annotation_list",
   "web_search",
   "web_fetch",
   "propose_content_create",
@@ -37,16 +33,10 @@ export const PERMISSION_MODES = Object.freeze({
   creative: Object.freeze({
     id: "creative",
     label: "创作",
-    description: "在日常能力上，增加个人工作台目录内的新建与受控编辑候选。",
+    description: "在日常能力上，增加工作台内容候选；正式写入仍由应用接口执行。",
     warning: "所有写入仍需你在动作卡中确认。",
     capabilities: Object.freeze(["read", "search", "network", "propose", "workspace-write"]),
-    tools: Object.freeze([
-      ...COMMON_TOOLS,
-      "document_create",
-      "document_update",
-      "annotation_append",
-      "reference_insert",
-    ]),
+    tools: Object.freeze(COMMON_TOOLS),
   }),
   developer: Object.freeze({
     id: "developer",
@@ -56,10 +46,6 @@ export const PERMISSION_MODES = Object.freeze({
     capabilities: Object.freeze(["read", "search", "network", "propose", "workspace-write", "project-write", "execute"]),
     tools: Object.freeze([
       ...COMMON_TOOLS,
-      "document_create",
-      "document_update",
-      "annotation_append",
-      "reference_insert",
       "project_file_read",
       "workspace_write",
       "workspace_edit",
@@ -134,24 +120,6 @@ async function assertNoSymlinkEscape(root, candidate) {
   const realParent = await nearestExistingParent(candidate);
   const relative = path.relative(realRoot, realParent);
   if (relative.startsWith("..") || path.isAbsolute(relative)) badPath("路径经过了工作台范围外的链接，拒绝访问");
-}
-
-export async function resolveVaultPath(env, relativePath, { write = false, markdownOnly = false } = {}) {
-  const configured = String(env.VAULT_ROOT || "").trim();
-  if (!configured) throw Object.assign(new Error("未配置知识库目录"), { status: 400 });
-  const root = path.resolve(configured);
-  const relative = normalizeRelative(relativePath);
-  const candidate = path.resolve(root, relative);
-  const inside = path.relative(root, candidate);
-  if (inside.startsWith("..") || path.isAbsolute(inside)) badPath();
-  await assertNoSymlinkEscape(root, candidate);
-  if (write && !(relative === WB_ROOT || relative.startsWith(`${WB_ROOT}/`))) {
-    badPath("创作写入只能位于个人工作台目录内");
-  }
-  if (markdownOnly && path.extname(candidate).toLowerCase() !== ".md") {
-    badPath("创作工具只允许处理 Markdown 文件");
-  }
-  return { root, relative, absolute: candidate };
 }
 
 export async function resolveProjectPath(relativePath, { write = false, allowSkills = false } = {}) {

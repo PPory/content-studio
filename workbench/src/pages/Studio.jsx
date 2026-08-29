@@ -412,7 +412,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         onChanged?.({ sourceKey, item, result });
       }
       setToast({
-        text: `《${item.title}》已永久删除${reconcileText}`,
+        text: `《${item.title}》已移入回收站${reconcileText}`,
         detail: summarizeArchiveTrash(result?.archive),
       });
     },

@@ -413,7 +413,7 @@ function NoteItem({ note, onEdit, onDelete }) {
   return (
     <article className="note-item">
       <header className="note-item__head">
-        <time className="note-item__time">{note.stamp}</time>
+        <time className="note-item__time">{note.at || note.stamp}</time>
         {mode === "" ? (
           <span className="note-item__acts">
             <button className="icon-btn" title="改这条批注" aria-label="改这条批注"

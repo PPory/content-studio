@@ -12,7 +12,7 @@ const FIELDS = [
   ["questions", "反例或待验证问题"],
   ["personalUnderstanding", "我的理解"],
 ];
-const KNOWLEDGE_CARD_DESTINATION = "vault / 99 - 个人工作台 / 06 - 知识卡片";
+const KNOWLEDGE_CARD_DESTINATION = "当前本地工作区 / 知识卡片";
 
 
 export function KnowledgeCardDialog({ open, onClose, messages, source }) {

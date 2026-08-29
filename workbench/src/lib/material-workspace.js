@@ -213,7 +213,7 @@ export const MATERIAL_WORKSPACE = {
   annotate: (item, payload) => dispatch(item, "annotate", payload),
   save: (item, payload) => dispatch(item, "save", payload),
   remove: (item) => dispatch(item, "remove"),
-  removeLabel: "永久删除",
+  removeLabel: "移入回收站",
   highlightPath: () => "",
   sourceOf(item) {
     const source = SOURCES[item?.raw?.sourceKey];

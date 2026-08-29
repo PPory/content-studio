@@ -2,7 +2,12 @@
 
 import crypto from "node:crypto";
 import { json, fail, matchRoute } from "./lib/http.mjs";
-import { pipeRoutes } from "./routes/pipe.mjs";
+import { workspaceRoutes } from "./routes/workspace.mjs";
+import { localBookRoutes } from "./routes/books-local.mjs";
+import { localContentRoutes } from "./routes/local-content.mjs";
+import { localAiRoutes } from "./routes/local-ai.mjs";
+import { localCompatRoutes } from "./routes/local-compat-v2.mjs";
+import { localExpertRoutes } from "./routes/expert-local.mjs";
 import { vaultRoutes } from "./routes/vault.mjs";
 import { configRoutes } from "./routes/config.mjs";
 import { settingsRoutes } from "./routes/settings.mjs";
@@ -14,7 +19,8 @@ import { postsRoutes } from "./routes/posts.mjs";
 import { archiveRoutes } from "./routes/archive.mjs";
 import { agentRoutes } from "./routes/agent.mjs";
 import { translateRoutes } from "./routes/translate.mjs";
-import { extensionRoutes } from "./routes/extension.mjs";
+import { extensionRoutes } from "./routes/extension-local.mjs";
+import { configureAssistantWorkspace } from "./agent-runtime/assistant-runner.mjs";
 import { backupRoutes } from "./routes/backup.mjs";
 import { searchRoutes } from "./routes/search.mjs";
 import { insightsRoutes } from "./routes/insights.mjs";
@@ -28,9 +34,9 @@ import { feishuRoutes } from "./routes/feishu.mjs";
 import { mediaRoutes } from "./routes/media.mjs";
 
 const EXTENSION_ALIASES = {
-  "/api/extension/intake": "/api/pipe/intake",
-  "/api/extension/ask": "/api/ai/explain",
-  "/api/extension/chat": "/api/agent/chat",
+  "/api/extension/intake": "/api/workspace/intake",
+  "/api/extension/ask": "/api/extension/local-ask",
+  "/api/extension/chat": "/api/extension/local-chat",
 };
 
 /**
@@ -65,9 +71,9 @@ function originAllowed(origin, host) {
 }
 
 export function requestAllowed(req) {
-  if (SAFE_METHODS.has(req.method)) return true;
   const host = String(req.headers.host || "");
-  if (host && !LOOPBACK_HOST.test(host)) return false;
+  if (!host || !LOOPBACK_HOST.test(host)) return false;
+  if (SAFE_METHODS.has(req.method)) return true;
   return originAllowed(String(req.headers.origin || ""), host);
 }
 
@@ -75,7 +81,12 @@ const ROUTES = [
   ...configRoutes,
   ...settingsRoutes,
   ...promptsRoutes,
-  ...pipeRoutes,
+  ...workspaceRoutes,
+  ...localBookRoutes,
+  ...localContentRoutes,
+  ...localAiRoutes,
+  ...localCompatRoutes,
+  ...localExpertRoutes,
   ...vaultRoutes,
   ...aiRoutes,
   ...hotRoutes,
@@ -98,10 +109,11 @@ const ROUTES = [
   ...insightsRoutes,
 ];
 
-export function createApi(env) {
+export function createApi(env, { workspace = null } = {}) {
   // 每次工作台启动生成一次配对令牌。网页拿不到带自定义请求头的响应，扩展拿到后只存在
   // chrome.storage.session；工作台重启时自动重新配对，不把任何长期密钥塞进扩展源码。
   const extensionToken = crypto.randomBytes(24).toString("base64url");
+  let extensionOrigin = "";
   return async function apiMiddleware(req, res, next) {
     if (!req.url?.startsWith("/api/")) return next();
 
@@ -121,10 +133,13 @@ export function createApi(env) {
     if (url.pathname.startsWith("/api/extension/")) {
       const marker = String(req.headers["x-xenho-extension"] || "");
       const origin = String(req.headers.origin || "");
-      if (marker !== "1" || (origin && !origin.startsWith("chrome-extension://"))) {
+      if (marker !== "1" || !origin.startsWith("chrome-extension://")) {
         return json(res, { ok: false, error: "只接受 Xenho 浏览器扩展请求" }, 403);
       }
-      if (url.pathname !== "/api/extension/status" && req.headers["x-xenho-token"] !== extensionToken) {
+      if (url.pathname === "/api/extension/status") {
+        if (extensionOrigin && origin !== extensionOrigin) return json(res, { ok: false, error: "工作台已与另一个扩展实例配对，请重启工作台后重试" }, 403);
+        extensionOrigin ||= origin;
+      } else if (origin !== extensionOrigin || req.headers["x-xenho-token"] !== extensionToken) {
         return json(res, { ok: false, error: "扩展配对已失效，请重试" }, 401);
       }
       const alias = EXTENSION_ALIASES[url.pathname];
@@ -134,11 +149,14 @@ export function createApi(env) {
         url = mapped;
       }
     }
+    if (url.pathname.startsWith("/api/assistant/") || url.pathname.startsWith("/api/agent/") || url.pathname.startsWith("/api/ai/") || url.pathname.startsWith("/api/pipe/writing-") || url.pathname === "/api/pipe/text-revision" || url.pathname.startsWith("/api/extension/local-")) {
+      configureAssistantWorkspace(await workspace);
+    }
     const hit = matchRoute(ROUTES, req.method, url.pathname);
     if (!hit) return json(res, { ok: false, error: `未知端点 ${req.method} ${url.pathname}` }, 404);
 
     try {
-      await hit.route.handler({ env, req, res, url, params: hit.params, extensionToken });
+      await hit.route.handler({ env, req, res, url, params: hit.params, extensionToken, workspace });
     } catch (e) {
       // 兜底：任何未捕获异常都回成统一契约，别让前端收到一坨 HTML 错误页
       console.error(`[api] ${req.method} ${url.pathname} failed:`, e);

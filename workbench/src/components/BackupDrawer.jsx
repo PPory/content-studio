@@ -113,6 +113,11 @@ export function BackupDrawer({ open, onClose }) {
           </Note>
         ) : null}
 
+        {status?.ready === false ? (
+          <Note title="阶段 5 启用完整备份与恢复">
+            当前旧备份接口已停用，不会读取或覆盖仓库文件、旧 vault 或真实工作区。完成本地工作区导出、导入预览和恢复验收后，这里才会开放。
+          </Note>
+        ) : null}
         {/* 1. 现在有什么 ---------------------------------------------------- */}
         <div className="field">
           <label>工作台数据</label>
@@ -123,8 +128,7 @@ export function BackupDrawer({ open, onClose }) {
             {!status ? <div className="field-hint">读取中…</div> : null}
           </div>
           <div className="field-hint">
-            每次改动之前工作台会自动留一份快照，保留 {status?.keepDays ?? 30} 天（最近 5 份永远保留）。
-            快照只在这台机器上——硬盘挂了就一起没，所以还要定期导出一份带走。
+            {status?.ready === false ? "阶段 5 完成前不会读取旧快照或执行恢复。" : `每次改动前自动留快照，保留 ${status?.keepDays ?? 30} 天。`}
           </div>
         </div>
 
@@ -132,14 +136,13 @@ export function BackupDrawer({ open, onClose }) {
         <div className="field">
           <label>导出</label>
           <div className="bk-acts">
-            <button className="btn btn-primary" onClick={onExport} disabled={!!busy}>
+            <button className="btn btn-primary" onClick={onExport} disabled={!!busy || status?.ready === false}>
               <IconDownload aria-hidden="true" stroke={1.8} />
               {busy === "export" ? "打包中…" : "导出备份（.zip）"}
             </button>
           </div>
           <div className="field-hint">
-            包含上面这几份数据，加上阅读进度、书签、阅读设置和排版草稿，还有一份写给「不看代码的人」的恢复说明。
-            <b> 不包含</b> Obsidian 正文（太大，用你自己的文件级备份；包里只记路径）、源代码（在 git 里）和 .env 里的密钥。
+            阶段 5 会在完成导出包、导入预览、冲突处理和完整恢复验收后开放。模型密钥不会进入备份。
           </div>
         </div>
 
@@ -154,7 +157,7 @@ export function BackupDrawer({ open, onClose }) {
               hidden
               onChange={(e) => onPick(e.target.files?.[0])}
             />
-            <button className="btn" onClick={() => fileRef.current?.click()} disabled={!!busy}>
+            <button className="btn" onClick={() => fileRef.current?.click()} disabled={!!busy || status?.ready === false}>
               <IconUpload aria-hidden="true" stroke={1.8} />
               {file ? file.name : "选择备份文件…"}
             </button>

@@ -5,21 +5,24 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
-import { readBookMarks } from "../lib/marks.mjs";
-import { searchAll } from "../lib/search.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
-import { callWorker } from "../lib/worker.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
 import { agentMountsFromUserMessage, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
-import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath, resolveVaultPath } from "./permission-modes.mjs";
-import { appendNote, fileStamp, listBooks, readFile as readVaultFile, vaultRoot, writeVaultFile } from "../lib/vault.mjs";
-import { atomicWrite } from "../lib/safe-write.mjs";
+import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath } from "./permission-modes.mjs";
 
-const ROOT = path.resolve(process.cwd(), ".xenho", "assistant");
-const execFileAsync = promisify(execFile);
-const MODEL_CACHE_FILE = path.join(ROOT, "models.json");
-const active = new Map();
+let assistantWorkspace = null;
+export function configureAssistantWorkspace(workspace) {
+  if (!workspace?.db?.open) throw new Error("本地工作区尚未就绪");
+  assistantWorkspace = workspace;
+}
+function currentWorkspace() {
+  if (!assistantWorkspace?.db?.open) throw new Error("本地工作区尚未就绪");
+  return assistantWorkspace;
+}
+const runtimeRoot = () => path.join(currentWorkspace().paths.stagingDir, "assistant-runtime");
+const modelCacheFile = () => path.join(runtimeRoot(), "models.json");
+const execFileAsync = promisify(execFile);const active = new Map();
 const indexWrites = new Map();
 const providerDispatcher = new EnvHttpProxyAgent();
 const clean = (value, max = 80_000) => String(value || "").trim().slice(0, max);
@@ -27,10 +30,8 @@ const boundedText = (value, max = 200_000) => String(value ?? "").slice(0, max);
 const now = () => new Date().toISOString();
 const assistantModelUsable = (id) => !/(?:^|[-_.])(image|imagine|video|audio|tts|speech|whisper|transcri(?:be|ption)|embedding|rerank|moderation|realtime)(?:$|[-_.])/i.test(String(id || ""));
 const scopeKey = (scopeId) => crypto.createHash("sha256").update(clean(scopeId, 240) || "global").digest("hex").slice(0, 24);
-const scopeDir = (scopeId) => path.join(ROOT, scopeKey(scopeId));
-const indexFile = (scopeId) => path.join(scopeDir(scopeId), "index.json");
+const scopeDir = (scopeId) => path.join(runtimeRoot(), scopeKey(scopeId));
 const conversationDir = (scopeId, conversationId) => path.join(scopeDir(scopeId), "conversations", conversationId);
-const conversationFile = (scopeId, conversationId) => path.join(conversationDir(scopeId, conversationId), "conversation.json");
 const activeKey = (scopeId, conversationId) => `${clean(scopeId, 240)}:${conversationId}`;
 
 async function queueIndexUpdate(scopeId, task) {
@@ -86,94 +87,93 @@ function sortConversationSummaries(items) {
   });
 }
 
+function normalizeConversationRecord(scopeId, id, data = {}) {
+  return {
+    ...data,
+    id,
+    scopeId: clean(scopeId, 240),
+    title: clean(data.title, 120) || "新对话",
+    model: clean(data.model, 240),
+    piSessionId: clean(data.piSessionId, 160),
+    piSessionFile: clean(data.piSessionFile, 2_000),
+    permissionMode: normalizePermissionMode(data.permissionMode),
+    titleMode: data.titleMode === "manual" ? "manual" : "auto",
+    pinnedAt: clean(data.pinnedAt, 80),
+    archivedAt: clean(data.archivedAt, 80),
+    pathGrants: Array.isArray(data.pathGrants) ? data.pathGrants.slice(-12) : [],
+    createdAt: data.createdAt || now(),
+    updatedAt: data.updatedAt || data.createdAt || now(),
+    messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
+    attachments: Array.isArray(data.attachments) ? data.attachments.slice(-40) : [],
+    actions: Array.isArray(data.actions) ? data.actions.slice(-40) : [],
+    activeTurn: data.activeTurn && typeof data.activeTurn === "object" ? data.activeTurn : null,
+    lastTurn: data.lastTurn && typeof data.lastTurn === "object" ? data.lastTurn : null,
+    replayHistory: Boolean(data.replayHistory),
+  };
+}
+
+function assistantActiveKey(scopeId) {
+  return `assistant_active_${scopeKey(scopeId)}`;
+}
+
 async function readIndex(scopeId) {
-  try {
-    const data = JSON.parse(await fs.readFile(indexFile(scopeId), "utf8"));
-    return {
-      scopeId: clean(scopeId, 240),
-      activeId: safeConversationId(data.activeId),
-      items: Array.isArray(data.items) ? data.items.filter((item) => safeConversationId(item.id)) : [],
-    };
-  } catch {
-    return { scopeId: clean(scopeId, 240), activeId: "", items: [] };
-  }
+  const workspace = currentWorkspace();
+  const scope = clean(scopeId, 240);
+  const rows = workspace.db.prepare(`SELECT c.id,c.record_json FROM ai_conversations c
+    JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.scope_id=? ORDER BY e.updated_at DESC LIMIT 100`).all(scope);
+  const items = sortConversationSummaries(rows.map((row) => {
+    try { return summaryOf(normalizeConversationRecord(scope, row.id, JSON.parse(row.record_json))); }
+    catch { return null; }
+  }).filter(Boolean));
+  const wanted = safeConversationId(workspace.repository.getSetting(assistantActiveKey(scope), ""));
+  return { scopeId: scope, activeId: items.some((item) => item.id === wanted && !item.archivedAt) ? wanted : (items.find((item) => !item.archivedAt)?.id || ""), items };
 }
 
 async function writeIndex(scopeId, index) {
-  const file = indexFile(scopeId);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const data = { scopeId: clean(scopeId, 240), activeId: index.activeId, items: index.items.slice(0, 100) };
-  await atomicWrite(file, JSON.stringify(data, null, 2), { verify: (text) => JSON.parse(text) });
+  const data = { scopeId: clean(scopeId, 240), activeId: safeConversationId(index.activeId), items: (index.items || []).slice(0, 100) };
+  currentWorkspace().repository.setSetting(assistantActiveKey(scopeId), data.activeId);
   return data;
 }
 
 async function readConversationRecord(scopeId, conversationId) {
   const id = safeConversationId(conversationId);
   if (!id) return null;
-  try {
-    const data = JSON.parse(await fs.readFile(conversationFile(scopeId, id), "utf8"));
-    return {
-      ...data,
-      id,
-      scopeId: clean(scopeId, 240),
-      title: clean(data.title, 120) || "新对话",
-      model: clean(data.model, 240),
-      piSessionId: clean(data.piSessionId, 160),
-      piSessionFile: clean(data.piSessionFile, 2_000),
-      permissionMode: normalizePermissionMode(data.permissionMode),
-      titleMode: data.titleMode === "manual" ? "manual" : "auto",
-      pinnedAt: clean(data.pinnedAt, 80),
-      archivedAt: clean(data.archivedAt, 80),
-      pathGrants: Array.isArray(data.pathGrants) ? data.pathGrants.slice(-12) : [],
-      createdAt: data.createdAt || now(),
-      updatedAt: data.updatedAt || data.createdAt || now(),
-      messages: Array.isArray(data.messages) ? data.messages.slice(-120) : [],
-      attachments: Array.isArray(data.attachments) ? data.attachments.slice(-40) : [],
-      actions: Array.isArray(data.actions) ? data.actions.slice(-40) : [],
-      activeTurn: data.activeTurn && typeof data.activeTurn === "object" ? data.activeTurn : null,
-      lastTurn: data.lastTurn && typeof data.lastTurn === "object" ? data.lastTurn : null,
-      replayHistory: Boolean(data.replayHistory),
-    };
-  } catch {
-    return null;
-  }
+  const row = currentWorkspace().db.prepare(`SELECT c.record_json FROM ai_conversations c
+    JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.id=? AND c.scope_id=?`).get(id, clean(scopeId, 240));
+  if (!row) return null;
+  try { return normalizeConversationRecord(scopeId, id, JSON.parse(row.record_json)); }
+  catch { throw new Error("AI 会话记录已损坏，拒绝覆盖"); }
 }
 
 async function writeConversationRecord(scopeId, record, options = {}) {
-  const file = conversationFile(scopeId, record.id);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const data = {
+  const workspace = currentWorkspace();
+  const scope = clean(scopeId, 240);
+  const data = normalizeConversationRecord(scope, record.id, {
     ...record,
-    id: record.id,
-    scopeId: clean(scopeId, 240),
-    title: clean(record.title, 120) || "新对话",
-    model: clean(record.model, 240),
-    piSessionId: clean(record.piSessionId, 160),
-    piSessionFile: clean(record.piSessionFile, 2_000),
-    permissionMode: normalizePermissionMode(record.permissionMode),
-    titleMode: record.titleMode === "manual" ? "manual" : "auto",
-    pinnedAt: clean(record.pinnedAt, 80),
-    archivedAt: clean(record.archivedAt, 80),
-    pathGrants: Array.isArray(record.pathGrants) ? record.pathGrants.slice(-12) : [],
-    createdAt: record.createdAt || now(),
     updatedAt: options.touch === false ? (record.updatedAt || record.createdAt || now()) : now(),
-    messages: (record.messages || []).slice(-120),
-    attachments: (record.attachments || []).slice(-40),
-    actions: (record.actions || []).slice(-40),
-    activeTurn: record.activeTurn || null,
-    lastTurn: record.lastTurn || null,
-    replayHistory: Boolean(record.replayHistory),
-  };
-  await atomicWrite(file, JSON.stringify(data, null, 2), { verify: (text) => JSON.parse(text) });
-  await queueIndexUpdate(scopeId, async () => {
-    const index = await readIndex(scopeId);
+  });
+  const existing = workspace.repository.getEntity(data.id, { includeDeleted: true });
+  const scopeType = scope.startsWith("reader:") ? "reading" : scope.startsWith("project:") ? "project" : "global";
+  const searchable = data.messages.map((message) => `${message.role === "assistant" ? "助手" : "用户"}：${clean(message.text, 20_000)}`).join("\n\n");
+  workspace.repository.transaction(() => {
+    if (!existing) workspace.repository.createEntity({ id: data.id, type: "ai_conversation", now: new Date(data.createdAt) });
+    else if (existing.deletedAt) throw new Error("AI 会话已在回收站中");
+    workspace.db.prepare(`INSERT INTO ai_conversations(id,title,scope_type,scope_id,model,record_json,permission_mode,title_mode,pinned_at,archived_at,active_turn_json,last_turn_json,session_metadata_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,model=excluded.model,record_json=excluded.record_json,
+      permission_mode=excluded.permission_mode,title_mode=excluded.title_mode,pinned_at=excluded.pinned_at,archived_at=excluded.archived_at,
+      active_turn_json=excluded.active_turn_json,last_turn_json=excluded.last_turn_json,session_metadata_json=excluded.session_metadata_json`)
+      .run(data.id,data.title,scopeType,scope,data.model,JSON.stringify(data),data.permissionMode,data.titleMode,data.pinnedAt||null,data.archivedAt||null,JSON.stringify(data.activeTurn),JSON.stringify(data.lastTurn),JSON.stringify({piSessionId:data.piSessionId,piSessionFile:data.piSessionFile,pathGrants:data.pathGrants,replayHistory:data.replayHistory}));
+    workspace.repository.setEntityText(data.id, { title: data.title, body: searchable, now: new Date(data.updatedAt) });
+    if (existing) workspace.domain.touch(data.id, new Date(data.updatedAt));
+  });
+  await queueIndexUpdate(scope, async () => {
+    const index = await readIndex(scope);
     const summary = summaryOf(data);
-    const items = sortConversationSummaries([summary, ...index.items.filter((item) => item.id !== record.id)]);
-    await writeIndex(scopeId, { ...index, activeId: options.activate === false || data.archivedAt ? index.activeId : record.id, items });
+    const items = sortConversationSummaries([summary, ...index.items.filter((item) => item.id !== data.id)]);
+    await writeIndex(scope, { ...index, activeId: options.activate === false || data.archivedAt ? index.activeId : data.id, items });
   });
   return data;
 }
-
 export async function createAssistantConversation(scopeId, options = {}) {
   const id = newConversationId();
   return writeConversationRecord(scopeId, {
@@ -258,26 +258,6 @@ async function ensureConversation(scopeId, conversationId = "", options = {}) {
     const record = await readConversationRecord(scopeId, index.activeId);
     if (record && !record.archivedAt) return record;
   }
-  if (!options.forceNew) {
-    try {
-      const legacy = JSON.parse(await fs.readFile(path.join(scopeDir(scopeId), "conversation.json"), "utf8"));
-      if (Array.isArray(legacy.messages) && legacy.messages.length) {
-        const firstUser = legacy.messages.find((message) => message.role === "user")?.text;
-        return writeConversationRecord(scopeId, {
-          ...legacy,
-          id: newConversationId(),
-          title: titleFrom(firstUser || "历史对话"),
-          model: clean(options.model, 240),
-          createdAt: legacy.messages[0]?.createdAt || now(),
-          piSessionId: crypto.randomUUID(),
-          piSessionFile: "",
-          permissionMode: DEFAULT_PERMISSION_MODE,
-          messages: legacy.messages,
-          attachments: [],
-        });
-      }
-    } catch {}
-  }
   return createAssistantConversation(scopeId, options);
 }
 
@@ -307,7 +287,7 @@ export async function assistantModels(env, extraIds = [], options = {}) {
   const remembered = [...new Set([configured, ...extraIds].map((item) => clean(item, 240)).filter(Boolean))];
   let cached = [];
   try {
-    const data = JSON.parse(await fs.readFile(MODEL_CACHE_FILE, "utf8"));
+    const data = JSON.parse(await fs.readFile(modelCacheFile(), "utf8"));
     cached = Array.isArray(data.items) ? data.items.map((item) => ({ id: clean(item.id, 240), name: clean(item.name, 240) || clean(item.id, 240), ownedBy: clean(item.ownedBy, 120) })).filter((item) => item.id && assistantModelUsable(item.id)) : [];
   } catch {}
   const withRemembered = (items) => {
@@ -344,8 +324,8 @@ export async function assistantModels(env, extraIds = [], options = {}) {
       return id ? [id, { id, name: clean(item?.name, 240) || id, ownedBy: clean(item?.owned_by || item?.provider, 120) }] : null;
     }).filter(Boolean)).values()].filter((item) => assistantModelUsable(item.id));
     const complete = withRemembered(items);
-    await fs.mkdir(ROOT, { recursive: true });
-    await fs.writeFile(MODEL_CACHE_FILE, JSON.stringify({ updatedAt: now(), items: complete }, null, 2), "utf8").catch(() => {});
+    await fs.mkdir(runtimeRoot(), { recursive: true });
+    await fs.writeFile(modelCacheFile(), JSON.stringify({ updatedAt: now(), items: complete }, null, 2), "utf8").catch(() => {});
     return { items: complete, configured, source: "provider" };
   } catch (error) {
     return { items: withRemembered(cached), configured, source: cached.length ? "cache" : "settings", warning: cached.length ? "模型服务本次没有返回目录，已显示上次成功获取的可用模型" : `模型目录暂时不可用：${error.message}` };
@@ -353,21 +333,11 @@ export async function assistantModels(env, extraIds = [], options = {}) {
 }
 
 export async function assistantModelCatalog(env) {
-  const ids = [];
-  try {
-    const scopes = await fs.readdir(ROOT, { withFileTypes: true });
-    for (const scope of scopes.filter((item) => item.isDirectory()).slice(0, 80)) {
-      try {
-        const data = JSON.parse(await fs.readFile(path.join(ROOT, scope.name, "index.json"), "utf8"));
-        for (const item of data.items || []) if (item.model) ids.push(item.model);
-      } catch {}
-    }
-  } catch {}
-  // 打开助手先把已配置模型和本机缓存交给前端；远端模型目录在后台刷新。
-  // 否则 provider 慢十秒，输入框就会一直写着“选择模型”，看起来像不能开始对话。
-  return assistantModels(env, ids, { refresh: false });
+  const ids = currentWorkspace().db.prepare("SELECT DISTINCT model FROM ai_conversations WHERE model <> '' ORDER BY model").all().map((item) => item.model);
+  const initial = await assistantModels(env, ids, { refresh: false });
+  void assistantModels(env, ids, { refresh: true }).catch(() => {});
+  return { ...initial, items: initial.items || [] };
 }
-
 export async function assistantSkills() {
   let projectRoot = process.cwd();
   while (true) {
@@ -447,32 +417,18 @@ export function assistantRetrievalRequested(input = {}) {
   return workspaceNoun && lookupCue;
 }
 
-async function matchingBookSources(env, input, queries) {
+async function matchingBookSources(_env, input, queries) {
   const message = clean(input.message, 8_000);
   if (!queries.length || !/(书|书架|笔记|批注|高亮|标注|阅读进度|读到)/i.test(message)) return [];
-  try {
-    const root = vaultRoot(env);
-    const books = await listBooks(root) || [];
-    const needles = [...queries, message].map((item) => clean(item, 200).toLowerCase()).filter(Boolean);
-    const matched = books.filter((book) => needles.some((needle) => needle.includes(book.name.toLowerCase()) || book.name.toLowerCase().includes(needle))).slice(0, 6);
-    return Promise.all(matched.map(async (book) => {
-      const marks = await readBookMarks(root, book.dir);
-      return {
-        id: `book:${book.dir}`,
-        type: "book",
-        typeLabel: "书架",
-        title: book.name,
-        source: [book.author, book.status].filter(Boolean).join(" · ") || "书架",
-        state: book.status,
-        snippet: `共 ${book.chapterCount || 1} 章；${marks.notes} 条批注，${marks.highlights} 条高亮；批注文件：${book.notePath}`,
-        path: book.notePath,
-      };
-    }));
-  } catch {
-    return [];
-  }
-}
-async function localContext(env, input, record) {
+  const workspace = currentWorkspace();
+  const needles = [...queries, message].map((item) => clean(item, 200).toLowerCase()).filter(Boolean);
+  const rows = workspace.db.prepare(`SELECT b.*,e.updated_at FROM books b JOIN entities e ON e.id=b.id AND e.deleted_at IS NULL ORDER BY e.updated_at DESC`).all();
+  return rows.filter((book) => needles.some((needle) => needle.includes(book.title.toLowerCase()) || book.title.toLowerCase().includes(needle))).slice(0, 6).map((book) => {
+    const counts = workspace.db.prepare(`SELECT SUM(CASE WHEN mark_kind='note' THEN 1 ELSE 0 END) AS notes,SUM(CASE WHEN mark_kind='highlight' THEN 1 ELSE 0 END) AS highlights FROM book_marks m JOIN entities e ON e.id=m.id AND e.deleted_at IS NULL WHERE m.book_id=?`).get(book.id);
+    const chapters = workspace.db.prepare("SELECT COUNT(*) AS count FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=?").get(book.id).count;
+    return { id:`book:${book.id}`,type:"book",typeLabel:"书架",title:book.title,source:[book.author,book.reading_status].filter(Boolean).join(" · ")||"书架",state:book.reading_status,snippet:`共 ${chapters||1} 章；${counts.notes||0} 条批注，${counts.highlights||0} 条高亮`,path:`book:${book.id}` };
+  });
+}async function localContext(env, input, record) {
   const asksForSources = assistantRetrievalRequested(input);
   const queries = asksForSources ? assistantSearchQueries(input) : [];
   const sources = [];
@@ -481,27 +437,28 @@ async function localContext(env, input, record) {
     seen.add(item.id);
     sources.push(item);
   }
+  const workspace = currentWorkspace();
   for (const query of queries) {
-    const result = await searchAll(env, query, { limit: 8 });
-    for (const item of result.results || []) {
+    for (const item of workspace.repository.search(query, { limit: 8 })) {
       if (seen.has(item.id)) continue;
       seen.add(item.id);
-      sources.push({ ...item, matchedQuery: query });
+      sources.push({ id:item.id,type:item.type,typeLabel:"本地工作区",title:item.title,snippet:clean(item.body,1_500),path:item.id,matchedQuery:query });
       if (sources.length >= 28) break;
     }
     if (sources.length >= 28) break;
-  }
-  for (const [index, item] of (input.materials || []).slice(0, 16).entries()) {
+  }  for (const [index, item] of (input.materials || []).slice(0, 16).entries()) {
     const id = `project-material:${item.id || index}`;
     if (seen.has(id)) continue;
     sources.unshift({ id, typeLabel: "项目素材", title: clean(item.title || "未命名素材", 200), snippet: clean(item.content || item.note || item.summary, 1_000), url: clean(item.sourceUrl || item.url, 1_000), source: "当前内容项目" });
   }
-  return {
+  const result = {
     queries,
     localSources: sources.slice(0, 40),
     retrievalMode: asksForSources ? "按需检索" : "未检索",
     attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
+      id: clean(input.document?.id, 160),
+      workspaceId: workspace.manifest.workspaceId,
       title: clean(input.document?.title, 300),
       body: clean(input.document?.body, 60_000),
       platform: clean(input.document?.platform, 80),
@@ -512,6 +469,8 @@ async function localContext(env, input, record) {
     },
     projectMaterials: (input.materials || []).slice(0, 40),
   };
+  Object.defineProperty(result, 'workspace', { value: workspace, enumerable: false });
+  return result;
 }
 
 function retrievalPrompt(context) {
@@ -556,8 +515,8 @@ function contentPrompt(input, context, model) {
 function generalPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的独立 AI 助手中进行通用对话。这不是一篇待写文章，也没有默认写作任务。请直接理解并回答用户此刻的问题。",
-    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。用户询问工作台当前有哪些内容、各阶段数量、写作中或待发布项目、阻塞原因和下一步时，必须调用 workbench_projects，以它实时返回的 stage/counts 为准；不要从当前空文档、知识搜索结果或固定状态清单推断。需要用户本地知识时调用 knowledge_search；需要读取本地项目时先用 workspace_list 查看授权范围，再用 workspace_search/workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。图片已作为视觉内容随本轮消息发送，需要再次查看时也可调用 attachment_read；如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。",
-    "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮工作台检索、vault_list、vault_read 或 annotation_list 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
+    "你可以处理一般问答、分析、规划、研究、内容创作和文件阅读。用户询问工作台当前有哪些内容、各阶段数量、写作中或待发布项目、阻塞原因和下一步时，必须调用 workbench_projects，以它实时返回的 stage/counts 为准；不要从当前空文档、知识搜索结果或固定状态清单推断。需要用户本地知识和工作台内容时调用 knowledge_search；读取本轮明确授权的外部项目文件时再用 workspace_list、workspace_search 或 workspace_read；需要热点时调用 hotspot_search；需要新近公开信息时调用 web_search，并用 web_fetch 阅读关键来源；需要读取用户上传文件时调用 attachment_read。图片已作为视觉内容随本轮消息发送，需要再次查看时也可调用 attachment_read；如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。",
+    "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮 SQLite 工作区检索 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
     runtimeModelInstruction(model),
@@ -617,26 +576,17 @@ export async function manageAssistantConversation(scopeId, conversationId, input
   assertConversationIdle(active, activeKey(scopeId, id));
 
   if (action === "delete") {
-    const source = conversationDir(scopeId, id);
-    await fs.rm(source, { recursive: true, force: true });
-    const trash = path.join(scopeDir(scopeId), ".trash");
-    try {
-      const entries = await fs.readdir(trash, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name.startsWith(`${id}-`)) await fs.rm(path.join(trash, entry.name), { recursive: true, force: true });
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-    }
+    const record = await readConversationRecord(scopeId, id);
+    if (!record) throw Object.assign(new Error("对话不存在"), { status: 404 });
+    currentWorkspace().domain.softDeleteEntity(id, { actor: "user", now: new Date() });
     await queueIndexUpdate(scopeId, async () => {
       const index = await readIndex(scopeId);
       const items = index.items.filter((item) => item.id !== id);
       const activeId = index.activeId === id ? (items.find((item) => !item.archivedAt)?.id || "") : index.activeId;
       await writeIndex(scopeId, { ...index, activeId, items });
     });
-    return { deletedId: id, conversations: await assistantConversations(scopeId) };
+    return { deletedId: id, recoverable: true, conversations: await assistantConversations(scopeId) };
   }
-
   const record = await readConversationRecord(scopeId, id);
   if (!record) throw Object.assign(new Error("对话不存在"), { status: 404 });
 
@@ -875,30 +825,24 @@ function imageInfo(name, bytes) {
 }
 
 export async function saveAssistantAttachment(scopeId, conversationId, fileName, bytes) {
+  const workspace = currentWorkspace();
   const record = await ensureConversation(scopeId, conversationId, { forceNew: !conversationId });
   if (!bytes?.length) throw Object.assign(new Error("没有收到文件内容"), { status: 400 });
   const name = safeUploadName(fileName);
   const image = imageInfo(name, bytes);
-  const text = image ? "" : await extractAttachment(name, bytes);
-  const id = `file-${crypto.randomUUID().replaceAll("-", "")}`;
-  const dir = path.join(conversationDir(scopeId, record.id), "attachments", id);
-  await fs.mkdir(dir, { recursive: true });
-  const originalPath = path.join(dir, name);
-  const textPath = path.join(dir, "content.txt");
-  await fs.writeFile(originalPath, bytes);
-  if (!image) await fs.writeFile(textPath, text.slice(0, 1_000_000), "utf8");
-  const attachmentId = image ? `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` : "";
+  const extractedText = image ? "" : (await extractAttachment(name, bytes)).slice(0, 1_000_000);
+  const asset = await workspace.assets.importBuffer({ bytes, type: image ? "image" : "attachment", originalName: name, mimeType: image?.mediaType || "application/octet-stream", now: new Date() });
+  const originalPath = await workspace.assets.resolveStoredFile(asset);
+  const id = `file-${asset.id}`;
+  const attachmentId = image ? `sha256:${asset.sha256}` : "";
   const imageRef = image ? { attachmentId, mediaType: image.mediaType, bytes: bytes.length, width: image.width, height: image.height, name } : null;
-  const item = { id, name, type: image?.mediaType || path.extname(name).slice(1) || "text", kind: image ? "image" : "text", bytes: bytes.length, characters: Math.min(text.length, 1_000_000), originalPath, ...(!image ? { textPath } : {}), ...(image ? { imageRef } : {}), createdAt: now() };
-  record.attachments = [...record.attachments, item];
-  if (image) {
-    const images = Object.fromEntries(record.attachments.filter((entry) => entry.kind === "image").map((entry) => [entry.imageRef.attachmentId, { ...entry.imageRef, path: entry.originalPath }]));
-    await fs.writeFile(path.join(conversationDir(scopeId, record.id), "images.json"), JSON.stringify(images, null, 2), "utf8");
-  }
+  const item = { id, assetId:asset.id, name, type:image?.mediaType||path.extname(name).slice(1)||"text",kind:image?"image":"text",bytes:bytes.length,characters:extractedText.length,originalPath,...(!image?{extractedText}:{}),...(image?{imageRef}:{}),createdAt:now() };
+  workspace.db.prepare(`INSERT INTO conversation_assets(conversation_id,asset_id,display_name,extracted_text,created_at) VALUES (?,?,?,?,?)
+    ON CONFLICT(conversation_id,asset_id) DO UPDATE SET display_name=excluded.display_name,extracted_text=excluded.extracted_text`).run(record.id,asset.id,name,extractedText,item.createdAt);
+  record.attachments = [...record.attachments.filter((entry)=>entry.assetId!==asset.id),item];
   const saved = await writeConversationRecord(scopeId, record);
-  return { conversationId: saved.id, attachment: { id, name, type: item.type, kind: item.kind, bytes: item.bytes, characters: item.characters, createdAt: item.createdAt } };
+  return { conversationId:saved.id,attachment:{id,name,type:item.type,kind:item.kind,bytes:item.bytes,characters:item.characters,createdAt:item.createdAt} };
 }
-
 export async function rewindAssistantConversation(scopeId, conversationId) {
   const record = await ensureConversation(scopeId, conversationId);
   const key = activeKey(scopeId, record.id);
@@ -926,29 +870,13 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
   if (action.status !== "pending") throw Object.assign(new Error("这项操作已经失效"), { status: 409 });
   let result;
   if (action.type === "create_content") {
-    const response = await callWorker(env, "create", { method: "POST", body: { kind: "draft", mode: "blank", title: action.title, platform: action.platform, audience: action.audience, viewpoint: action.viewpoint, body: action.body, materialIds: [] } });
-    if (response.status >= 400 || response.data?.ok === false) throw Object.assign(new Error(response.data?.error || "工作台没有完成新建内容"), { status: response.status || 500, hint: response.data?.hint });
-    result = { projectId: response.data?.project?.id || response.data?.topic?.id || "", title: response.data?.topic?.title || action.title };
-  } else if (["document_create", "document_update", "annotation_append", "reference_insert"].includes(action.type)) {
-    if (!['creative', 'developer'].includes(action.permissionMode) || !['creative', 'developer'].includes(record.permissionMode)) throw Object.assign(new Error("这项写入没有创作权限"), { status: 403 });
-    const resolved = await resolveVaultPath(env, action.path, { write: true, markdownOnly: true });
-    if (action.type === "document_create") {
-      try { await fs.access(resolved.absolute); throw Object.assign(new Error("目标文档已经存在"), { status: 409 }); } catch (error) { if (error?.code !== "ENOENT") throw error; }
-      await writeVaultFile(resolved.root, resolved.relative, boundedText(action.content, 200_000));
-    } else if (action.type === "annotation_append") {
-      await appendNote(resolved.root, resolved.relative, { body: clean(action.body, 8_000), quote: clean(action.quote, 4_000), source: clean(action.source, 2_000), quoteLimit: 4_000 });
-    } else {
-      const currentStamp = await fileStamp(resolved.root, resolved.relative);
-      if (!action.stamp || action.stamp !== currentStamp) throw Object.assign(new Error("文档已在别处变化，拒绝覆盖"), { status: 409, hint: "重新读取文档后再准备这项修改。" });
-      if (action.type === "document_update") await writeVaultFile(resolved.root, resolved.relative, boundedText(action.content, 200_000));
-      else {
-        const before = await readVaultFile(resolved.root, resolved.relative);
-        const addition = `\n\n> ${clean(action.text, 20_000).replace(/\s*\n+\s*/g, "\n> ")}\n\n来源: ${clean(action.source, 2_000)}\n`;
-        await writeVaultFile(resolved.root, resolved.relative, `${before.replace(/\s*$/, "")}${addition}`);
-      }
-    }
-    result = { path: resolved.relative, stamp: await fileStamp(resolved.root, resolved.relative) };
-  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
+    const workspace = currentWorkspace(); const stamp = new Date();
+    const projectId = workspace.domain.createProject({title:action.title,viewpoint:action.viewpoint,audience:action.audience,primaryPlatform:action.platform,confirmed:true,actor:"user",now:stamp});
+    const draftId = workspace.domain.createDraft({projectId,title:action.title,bodyMarkdown:action.body,platform:action.platform,actor:"user",now:stamp});
+    workspace.domain.setPrimaryDraft(projectId,draftId,{actor:"user",now:stamp});
+    result = {projectId,draftId,title:action.title};
+  } else if (["document_create","document_update","annotation_append","reference_insert"].includes(action.type)) {
+    throw Object.assign(new Error("这项旧 vault 操作已停用，不会写入 Obsidian；请在本地书架或内容项目中重新发起"),{status:409});  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
     if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
     if (action.type === "workspace_powershell") {
       const resolved = await resolveAgentMountPath(runtimeEnv, action.mountId, ".", { execute: true });

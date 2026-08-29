@@ -245,7 +245,7 @@ export function Shelf({ onIntake, state = "" }) {
       setBook(null);
       // 回执上带撤销：点错一下的成本应该是再点一下，不是打开 Obsidian 翻废纸篓
       setToast({
-        text: `《${b.name}》已下架，移到了 vault 的 .trash/`,
+        text: `《${b.name}》已下架，已移入当前本地工作区回收站`,
         undo: async () => {
           await api.restoreBook(moved.from, moved.to);
           setToast(null);
@@ -435,7 +435,7 @@ export function Shelf({ onIntake, state = "" }) {
           <PageHeader
             title="书架"
             count={list ? `${books.length} 本` : ""}
-            desc="导入 Markdown / EPUB / PDF，拆成章节读；划词能批注、能问 AI、能摘成素材。正文和批注都在 Obsidian 里。"
+            desc="导入 Markdown / EPUB / PDF，拆成章节读；划词能批注、能问 AI、能摘成素材。正文和批注都在当前本地工作区。"
             /**
              * ⚠️ **页头右上角只有搜索框。**
              * 它筛的就是标题旁边那「16 本」，语义正好。加书的两颗按钮**搬去了墙尾那个
@@ -457,7 +457,7 @@ export function Shelf({ onIntake, state = "" }) {
               <Note title="书架目录还没建">
                 <p style={{ margin: "6px 0" }}>
                   <IconBooks aria-hidden="true" size={15} stroke={1.7} style={{ verticalAlign: "-3px", marginRight: 6 }} />
-                  书架是 vault 里的 <code>{list.shelfDir || "书架"}/</code>，一本书一个子目录。
+                  书架保存在当前本地工作区，一本书对应一份可检索的本地记录。
                   导入一本书会自动把它建出来。
                 </p>
                 {/* 这一刻墙还不存在，`＋` 格无处可放，所以用按钮形态 */}

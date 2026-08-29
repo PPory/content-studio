@@ -86,7 +86,7 @@ export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
             *
             * ⚠️ **点两下，而且第二下的按钮上要写清删的是什么。**
             * 这一下会**连级删掉这个项目底下所有稿子**（`drafts.topic_id` 是 CASCADE），
-            * 而且**真删、没有废纸篓**。写「确定吗」是没用的——要写「删掉这一篇」。
+            * 而且**软删除、可从本地回收站恢复**。写「确定吗」是没用的——要写「删掉这一篇」。
             */}
           {onRemove ? (
             asking ? (
@@ -94,7 +94,7 @@ export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
                 className="ptable__del is-armed"
                 onClick={() => { setConfirming(""); onRemove(p); }}
                 disabled={removing === p.id}
-                title="连同它底下的稿子一起永久删除，删了就没了"
+                title="连同它底下的稿子一起移入本地回收站，可恢复"
               >
                 {removing === p.id ? <IconLoader2 size={13} className="spin" aria-hidden="true" /> : null}
                 删掉整篇

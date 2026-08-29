@@ -84,20 +84,21 @@ export class WorkspaceDomain {
       .run(createUlid(), eventType, entityId || null, json(detail), isoNow(now));
   }
 
-  createCapture({ id = createUlid(), kind = "thought", title = "", bodyMarkdown = "", sourceUrl = "", reaction = "", now, ...auth } = {}) {
+  createCapture({ id = createUlid(), kind = "thought", bucket = "inbox", title = "", bodyMarkdown = "", sourceUrl = "", reaction = "", now, ...auth } = {}) {
     const canonicalTitle = clean(title);
     const body = normalizeStoredText(bodyMarkdown);
     const canonicalReaction = normalizeStoredText(reaction);
-    const payload = { kind, title: canonicalTitle, bodyMarkdown: body, sourceUrl, reaction: canonicalReaction };
+    const payload = { kind, bucket, title: canonicalTitle, bodyMarkdown: body, sourceUrl, reaction: canonicalReaction };
     const authorization = this.authorizeMutation("capture.create", null, payload, auth);
     if (authorization.replay) return authorization.result?.id;
     const allowedKinds = new Set(["article", "video", "thought", "excerpt", "web"]);
     if (!allowedKinds.has(kind)) throw new TypeError("收集类型不合法");
+    if (!["inbox", "collection"].includes(bucket)) throw new TypeError("收集分区不合法");
     if (auth.actor === "ai") assertGroundedGeneratedText(payload, this.groundingMaterials(null));
     return this.repository.transaction(() => {
       this.repository.createEntity({ id, type: "capture", now });
-      this.db.prepare("INSERT INTO captures(id, capture_kind, title, body_markdown, source_url, reaction) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(id, kind, canonicalTitle, body, clean(sourceUrl), canonicalReaction);
+      this.db.prepare("INSERT INTO captures(id, capture_kind, capture_bucket, title, body_markdown, source_url, reaction) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(id, kind, bucket, canonicalTitle, body, clean(sourceUrl), canonicalReaction);
       this.repository.setEntityText(id, { title: canonicalTitle, body, now });
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
       this.audit("capture.created", id, { kind }, now);
@@ -264,6 +265,22 @@ export class WorkspaceDomain {
     });
   }
 
+  unlinkMaterial(projectId, materialId, { now, ...auth } = {}) {
+    const payload = { materialId, action: "remove" };
+    const authorization = this.authorizeMutation("project.materials.update", projectId, payload, auth);
+    if (authorization.replay) return authorization.result?.linked === false;
+    return this.repository.transaction(() => {
+      this.entity(projectId, "project");
+      this.entity(materialId, "material");
+      const removed = this.db.prepare("DELETE FROM project_materials WHERE project_id = ? AND material_id = ?").run(projectId, materialId).changes > 0;
+      if (removed) {
+        this.touch(projectId, now);
+        this.audit("project.material_unlinked", projectId, { materialId }, now);
+      }
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { linked: false }, now });
+      return removed;
+    });
+  }
   setPrimaryDraft(projectId, draftId, { now, ...auth } = {}) {
     const payload = { draftId };
     const authorization = this.authorizeMutation("project.primary.set", projectId, payload, auth);
@@ -389,6 +406,12 @@ export class WorkspaceDomain {
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: draftId }, now });
       this.audit("draft.updated", draftId, { generated: generatedContent }, now);
       return draftId;
+    });
+  }
+  saveDraftRelease(draftId, { title = "", bodyMarkdown = "", summary = "", coverUrl = "", coverText = "", coverNote = "", keywords = [], interactionGoal = "", now, ...auth } = {}) {
+    return this.repository.transaction(() => {
+      this.updateDraft(draftId, { title, bodyMarkdown, reason: "release edit", now, ...auth });
+      return this.upsertReleasePackage(draftId, { summary, coverUrl, coverText, coverNote, keywords, interactionGoal, now, ...auth });
     });
   }
   upsertReleasePackage(draftId, { id = createUlid(), summary = "", coverUrl = "", coverText = "", coverNote = "", keywords = [], interactionGoal = "", now, ...auth } = {}) {

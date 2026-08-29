@@ -76,7 +76,7 @@ export function BookCard({ book, tick, onOpen, onResume, onTrash, onCover }) {
               type="button"
               className="book-card__del-go"
               disabled={busy}
-              title={`《${book.name}》的正文和你写的批注一起移到 vault 的 .trash/，在 Obsidian 的废纸篓里能找回来`}
+              title={`《${book.name}》的正文和批注一起移入当前本地工作区回收站，可恢复`}
               onClick={async () => {
                 setBusy(true);
                 try {

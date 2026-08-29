@@ -266,7 +266,7 @@ export function BookDetail({ book, entries, onBack, onOpen, onTrash, onKind, onI
                         }
                       }}
                     >
-                      {busy ? "处理中…" : "移到 vault 的废纸篓"}
+                      {busy ? "处理中…" : "移到本地回收站"}
                     </button>
                     <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
                   </>
