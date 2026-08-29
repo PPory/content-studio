@@ -5,13 +5,40 @@
 // `npm run build` 只用来验证前端能编译过。
 
 import { createApi } from "./api.mjs";
+import { createDefaultJobHandlers } from "./jobs/default-job-handlers.mjs";
+import { startWorkspaceRuntime } from "./jobs/workspace-runtime.mjs";
 import { installAutoExit } from "./lib/auto-exit.mjs";
 import { serveTypeset } from "./routes/tools.mjs";
+import { openWorkspace } from "./storage/workspace.mjs";
+
+export async function startLocalWorkspaceRuntime(env = {}) {
+  const workspace = await openWorkspace({ xenhoHome: env.XENHO_HOME || undefined });
+  try {
+    const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace) });
+    return { workspace, runtime };
+  } catch (error) {
+    workspace.close();
+    throw error;
+  }
+}
 
 export function workbenchApi(env) {
   return {
     name: "creator-workbench-api",
     configureServer(server) {
+      const localRuntime = startLocalWorkspaceRuntime(env).catch((error) => {
+        server.config.logger.error(`本地工作区启动失败：${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      });
+      server.xenhoWorkspace = localRuntime.then((state) => state?.workspace || null);
+      server.httpServer?.once("close", () => {
+        void localRuntime.then(async (state) => {
+          if (!state) return;
+          await state.runtime.stop();
+          state.workspace.close();
+        });
+      });
+
       // 放在最前面：/api/* 和 /tools/* 由我们接管，其余交回 Vite
       server.middlewares.use(createApi(env));
       // 公众号排版工具静态托管。放在 Vite 之前，否则会被它的 SPA 回退吃掉

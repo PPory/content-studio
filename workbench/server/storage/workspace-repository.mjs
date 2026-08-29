@@ -79,7 +79,7 @@ export class WorkspaceRepository {
 
   getEntity(id, { includeDeleted = false } = {}) {
     const row = this.db.prepare(`
-      SELECT id, entity_type AS type, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
+      SELECT id, entity_type AS type, version, created_at AS createdAt, updated_at AS updatedAt, deleted_at AS deletedAt
       FROM entities WHERE id = ? ${includeDeleted ? "" : "AND deleted_at IS NULL"}
     `).get(cleanId(id));
     return row || null;
@@ -87,12 +87,12 @@ export class WorkspaceRepository {
 
   softDeleteEntity(id, { now } = {}) {
     const stamp = isoNow(now);
-    return this.db.prepare("UPDATE entities SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+    return this.db.prepare("UPDATE entities SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND deleted_at IS NULL")
       .run(stamp, stamp, cleanId(id)).changes === 1;
   }
 
   restoreEntity(id, { now } = {}) {
-    return this.db.prepare("UPDATE entities SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
+    return this.db.prepare("UPDATE entities SET deleted_at = NULL, updated_at = ?, version = version + 1 WHERE id = ? AND deleted_at IS NOT NULL")
       .run(isoNow(now), cleanId(id)).changes === 1;
   }
 

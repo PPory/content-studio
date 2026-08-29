@@ -6,6 +6,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { createUlid, isUlid } from "../server/storage/ids.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
+import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
 import { configureWorkspaceDatabase, migrateWorkspaceDatabase } from "../server/storage/sqlite.mjs";
 import { defaultXenhoHome, resolveWorkspacePaths } from "../server/storage/workspace-paths.mjs";
 
@@ -45,7 +46,7 @@ try {
   ].map((item) => fs.stat(item)))).every((stat) => stat.isDirectory()));
   check("外键已启用", workspace.db.pragma("foreign_keys", { simple: true }) === 1);
   check("数据库使用 WAL", workspace.db.pragma("journal_mode", { simple: true }) === "wal");
-  check("首次 migration 已记录", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === 1);
+  check("首次 migration 已记录", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === WORKSPACE_SCHEMA_VERSION);
   check("workspace.json 与数据库 ID 一致", workspace.repository.getMetadata("workspace_id") === workspace.manifest.workspaceId);
 
   const preservedId = "legacy-uuid-1234";
@@ -100,7 +101,7 @@ try {
   workspace.close();
   workspace = await openWorkspace({ xenhoHome });
   check("关闭重开后仍读取同一工作区", workspace.manifest.workspaceId === workspaceId && workspace.repository.getEntity(preservedId)?.id === preservedId);
-  check("重复打开 migration 幂等", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === 1);
+  check("重复打开 migration 幂等", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === WORKSPACE_SCHEMA_VERSION);
   workspace.close();
   workspace = null;
 
