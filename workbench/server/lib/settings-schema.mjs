@@ -333,6 +333,15 @@ export const SETTINGS = [
   },
 
   {
+    key: "XENHO_HOME",
+    group: "paths",
+    label: "Xenho 本地工作区",
+    placeholder: "D:/Documents/Xenho",
+    hint: "SQLite、资源、备份与导出共用的根目录。留空使用系统文档目录下的 Xenho。",
+    why: "这里只指定唯一现役工作区的总根目录；运行数据在 Workspace，恢复点在 Backups，可迁移文件在 Exports。测试必须显式改到系统临时目录，不能复用这条真实路径。",
+    effective: (env) => (env.XENHO_HOME || "").trim() || path.join(os.homedir(), "Documents", "Xenho"),
+  },
+  {
     key: "DOWNLOADS_DIR",
     group: "paths",
     label: "下载目录",
