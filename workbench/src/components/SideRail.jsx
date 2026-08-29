@@ -109,6 +109,7 @@ export function SideRail({
   assistantDocument,
   assistantSelection,
   assistantPrompt,
+  assistantHandoff,
   noteItems,
   onEditNote,
   onDeleteNote,
@@ -160,6 +161,7 @@ export function SideRail({
           scopeId={assistantScopeId || `reader:${knowledgeSource?.ref || "document"}`}
           document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
           promptRequest={assistantPrompt}
+          handoffRequest={assistantHandoff}
         />
       ) : (
         <MarksPanel

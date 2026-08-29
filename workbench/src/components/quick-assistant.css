@@ -1,88 +1,66 @@
+/**
+ * 全局 AI 助手：**`.app__body` 里的第三列**，和侧栏、正文并排。
+ *
+ * ⚠️ **上一版是 `position: fixed` 的浮层，撤了。** 三个问题：
+ * 1. 520px 的卡片压在正文上，遮住的正好是用户想一边看一边问的那块内容；
+ * 2. 它有自己的边框 + 圆角 + 大投影，压在本来就浮着的面板上，看着像另一个应用贴上来的；
+ * 3. 浮层要自己管高度、定位和外部点击关闭，而这些在一列布局里全都不存在。
+ *
+ * 现在它就是外壳的一部分：打开时正文让出宽度，两边都完整可见（飞书文档的做法）。
+ *
+ * **不做宽度动画。** 宽度变化会让 `main` 每一帧重排，而正文里有长表格和图表——
+ * 掉帧比「没有滑入效果」难受得多。宽度瞬间到位，只让内容淡入。
+ */
 .quick-assistant {
-  position: fixed;
-  z-index: 80;
-  top: calc(var(--topbar-h) + var(--sp-3));
-  right: var(--sp-4);
+  flex: none;
+  width: min(420px, 38vw);
+  min-width: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  width: min(520px, calc(100vw - var(--sp-8)));
-  height: min(680px, calc(100vh - var(--topbar-h) - var(--sp-6)));
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
+  grid-template-rows: minmax(0, 1fr);
+  border-left: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, .16);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-4px) scale(.98);
-  transform-origin: calc(100% - 42px) top;
-  transition: opacity 140ms ease-out, transform 140ms ease-out;
+  animation: quick-assistant-in 140ms var(--ease) both;
 }
 
-.quick-assistant[data-open="true"] {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
-  transition-duration: 180ms;
-}
-
-.quick-assistant__header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-height: 48px;
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
+@keyframes quick-assistant-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .quick-assistant__mark {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: var(--r-ctl);
-  background: var(--surface-2);
-  color: var(--text-1);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.quick-assistant__mark svg { width: 15px; height: 15px; }
-.quick-assistant__header > div { display: grid; min-width: 0; line-height: 1.25; }
-.quick-assistant__header strong { color: var(--text-1); font-size: var(--fs-sm); }
-.quick-assistant__header small { color: var(--text-3); font-size: var(--fs-2xs); }
-.quick-assistant__header > button,
-.quick-assistant__context > button {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  flex: none;
-  border: 0;
-  border-radius: var(--r-ctl);
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-}
-.quick-assistant__header > button:hover,
-.quick-assistant__context > button:hover { background: var(--surface-2); color: var(--text-1); }
-.quick-assistant__header > button svg,
-.quick-assistant__context > button svg { width: 14px; height: 14px; }
+.quick-assistant__mark svg { width: 14px; height: 14px; }
+.quick-assistant__title { flex: none; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
 
-.quick-assistant__context {
-  display: flex;
-  align-items: center;
-  min-height: 52px;
-  padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
+/* 「这轮带了什么」收成 header 里的一颗芯片。
+   ⚠️ 上一版它是独立的一条 52px 两行块（「当前位置：热点」/「未附带页面内容」），
+   还铺了一层 --surface-2 底——一条纯粹的状态说明，视觉重量却接近一个功能区。
+   它报告事实，只有「移除」一个动作，占不到一整条的位置。 */
+.quick-assistant__chip {
+  min-width: 0; display: inline-flex; align-items: center; gap: var(--sp-2);
+  height: 24px; padding: 0 3px 0 var(--sp-4); border-radius: var(--r-pill);
   background: var(--surface-2);
 }
-
-.quick-assistant__context > span { display: grid; min-width: 0; gap: 2px; }
-.quick-assistant__context b,
-.quick-assistant__context small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.quick-assistant__context b { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
-.quick-assistant__context small { color: var(--text-3); font-size: var(--fs-2xs); }
+.quick-assistant__chip[data-detached="true"] { background: transparent; padding-inline: 0; }
+.quick-assistant__chip b,
+.quick-assistant__chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-assistant__chip b { flex: none; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
+.quick-assistant__chip small { min-width: 0; color: var(--text-3); font-size: var(--fs-2xs); }
+.quick-assistant__chip > button {
+  display: grid; place-items: center; width: 18px; height: 18px; flex: none;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.quick-assistant__chip > button:hover { background: var(--border); color: var(--text-1); }
+.quick-assistant__chip > button svg { width: 11px; height: 11px; }
 .quick-assistant__body { min-height: 0; overflow: hidden; }
 
 .quick-assistant .assistant-pane {
@@ -91,16 +69,39 @@
   height: 100%;
   min-height: 0;
 }
+.quick-assistant__body { min-height: 0; }
 
 .quick-assistant .assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 1fr; }
 .quick-assistant .assistant-pane__dialog { height: 100%; }
-.quick-assistant .assistant-pane__context { min-height: 38px; padding: var(--sp-2) var(--sp-4); }
+.quick-assistant .assistant-pane { --asst-gutter: var(--sp-5); --asst-turn-gap: var(--sp-6); --asst-head-h: 36px; }
+/* 浮层唯一的 header：左边是 `headerLead`（身份 + 上下文芯片），右边是窗口级动作。 */
+.quick-assistant .assistant-pane__context { min-height: 44px; padding: 0 var(--sp-3) 0 var(--sp-4); }
+.quick-assistant .assistant-context-actions--lead { flex: 1 1 auto; min-width: 0; gap: var(--sp-3); }
+.quick-assistant .assistant-context-actions { gap: var(--sp-1); }
 .quick-assistant .assistant-pane__context > div:first-child { min-width: auto; }
-.quick-assistant .assistant-thread { padding: var(--sp-5) var(--sp-5) var(--sp-3); }
+.quick-assistant .assistant-context-actions button { border-color: transparent; }
+.quick-assistant .assistant-context-actions button:hover,
+.quick-assistant .assistant-context-actions button[aria-pressed="true"] { border-color: var(--border); }
+/* 有对话时「存为知识卡」在 520px 里只留图标，把宽度让给上下文芯片 */
+.quick-assistant .assistant-context-actions button > span { display: none; }
+
+.quick-assistant .assistant-thread { padding-top: var(--sp-6); }
 .quick-assistant .assistant-message { max-width: none; }
-.quick-assistant .assistant-empty { padding: var(--sp-6) 0; }
-.quick-assistant .assistant-empty h3 { font-size: var(--fs-xl); }
-.quick-assistant .assistant-empty__actions { width: 100%; grid-template-columns: 1fr; }
+/* ⚠️ 浮层里的 pane 也带 `--standalone`（它和完整页是同一个 global 会话），
+   所以会吃到完整页那套「三列、图标压在标题上方」的入口卡。
+   520px 的单列里那套是错的：图标独占一行，一张卡就 140px 高，三张顶到天花板。
+   这里改回**图标在左的横排**，和右栏用同一种卡。 */
+.quick-assistant .assistant-empty { padding-bottom: var(--sp-5); }
+.quick-assistant .assistant-empty h3 { font-size: var(--fs-lg); }
+.quick-assistant .assistant-empty__mark { width: 36px; height: 36px; }
+.quick-assistant .assistant-empty__mark svg { width: 16px; height: 16px; }
+.quick-assistant .assistant-empty__actions { width: 100%; grid-template-columns: 1fr; gap: var(--sp-2); margin-top: var(--sp-6); }
+.quick-assistant .assistant-empty__actions button {
+  grid-template-columns: 26px minmax(0, 1fr); align-content: center; gap: var(--sp-4);
+  min-height: 0; padding: var(--sp-4) var(--sp-5);
+}
+.quick-assistant .assistant-empty__actions button > svg { width: 26px; height: 26px; padding: 6px; }
+.quick-assistant .assistant-empty__actions button b { font-size: var(--fs-sm); }
 
 .quick-assistant .assistant-history {
   position: absolute;
@@ -112,33 +113,31 @@
   box-shadow: var(--shadow-lg);
 }
 
-.quick-assistant .assistant-composer {
-  margin: 0 var(--sp-4) var(--sp-4);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
-}
+.quick-assistant .assistant-composer { margin-bottom: var(--sp-4); }
 
-.quick-assistant .assistant-composer textarea { min-height: 64px; max-height: 160px; }
+.quick-assistant .assistant-composer textarea { min-height: 56px; max-height: 160px; }
 .quick-assistant .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
 .quick-assistant .assistant-composer > footer > div { gap: var(--sp-2); }
-.quick-assistant .assistant-composer__command,
-.quick-assistant .assistant-composer__continue {
+.quick-assistant .assistant-composer__command {
   border-color: transparent;
   background: transparent;
   color: var(--text-3);
+  padding-inline: var(--sp-3);
+  font-weight: 600;
 }
 .quick-assistant .assistant-composer__command:hover,
-.quick-assistant .assistant-composer__command[aria-expanded="true"],
-.quick-assistant .assistant-composer__continue:hover { background: var(--surface-2); color: var(--text-1); }
-.quick-assistant .assistant-composer__command { padding-inline: var(--sp-3); font-weight: 600; }
-.quick-assistant .assistant-composer__continue { padding-inline: var(--sp-2); font-size: var(--fs-xs); font-weight: 500; white-space: nowrap; }
+.quick-assistant .assistant-composer__command[aria-expanded="true"] { background: var(--surface-2); color: var(--text-1); }
 
-@media (max-width: 620px) {
-  .quick-assistant { right: var(--sp-2); width: calc(100vw - var(--sp-4)); }
-  .quick-assistant .assistant-composer__continue { max-width: 128px; overflow: hidden; text-overflow: ellipsis; }
+/* 窄屏放不下三列，这一列退回覆盖正文——但仍然是贴边的一整条，不是圆角卡片 */
+@media (max-width: 1100px) {
+  .quick-assistant {
+    position: absolute; z-index: 60; inset: 0 0 0 auto;
+    width: min(420px, 100%);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, .10);
+  }
+  .app__body { position: relative; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quick-assistant,
-  .quick-assistant[data-open="true"] { transform: none; transition-property: opacity; }
+  .quick-assistant { animation: none; }
 }

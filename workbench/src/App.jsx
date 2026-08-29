@@ -24,7 +24,7 @@ import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
 import { QuickAssistant } from "./components/QuickAssistant.jsx";
-import { summonAssistant } from "./lib/assistant-summoner.js";
+import { assistantSummonDestination, summonAssistant } from "./lib/assistant-summoner.js";
 
 /**
  * 状态读失败后的退避重试间隔。**三档就够**：代理抖一下是秒级的，30 秒还不通
@@ -209,6 +209,13 @@ export function App() {
   const [quickAssistantOpen, setQuickAssistantOpen] = useState(false);
   const [globalConversationId, setGlobalConversationId] = useState("");
   /**
+   * ⚠️ **侧栏有自己的会话，不和 `#/assistant` 那一页共用。**
+   * 共用那一版的问题：在别的页面顺手问一句，回到 AI 助手页时那句话已经躺在里面了，
+   * 而这两处的用法根本不同——侧栏是「手头这件事顺便问一下」，整页是「坐下来想一件事」。
+   * 侧栏每次打开都是一段新对话；要把它带进整页，走「⤢ 在完整工作区继续」那一颗。
+   */
+  const [railConversationId, setRailConversationId] = useState("");
+  /**
    * 哪一栏的二级项是展开的。
    *
    * ⚠️ **点「内容」「发现」只展开，不跳页。** 上一版点一下就直接落到那一栏的第一页
@@ -249,9 +256,25 @@ export function App() {
     });
   }, []);
 
+  /**
+   * ⚠️ **一屏只能有一个 AI 侧栏。**
+   * 全局侧栏开着的时候切到项目页或阅读页，那两个页面自带协作右栏——
+   * 于是同一屏并排出现两个「AI 助手」，各自一段对话、各自一个输入框，
+   * 用户得先分辨该对哪一个说话。判据不在这儿另写一份：
+   * `assistantSummonDestination` 已经决定了「这一页的 AI 归谁管」，
+   * 不归 `quick` 管的页面就把全局侧栏收起来。
+   */
+  useEffect(() => {
+    if (!quickAssistantOpen) return;
+    if (assistantSummonDestination({ routeView: route.view }) !== "quick") setQuickAssistantOpen(false);
+  }, [quickAssistantOpen, route.view]);
+
   const summon = useCallback(() => summonAssistant({
     routeView: route.view,
-    onQuick: () => setQuickAssistantOpen((value) => !value),
+    onQuick: () => setQuickAssistantOpen((value) => {
+      if (!value) setRailConversationId("");
+      return !value;
+    }),
   }), [route.view]);
 
   useEffect(() => {
@@ -731,15 +754,19 @@ export function App() {
           ) : null}
         </div>
       </main>
-      </div>
+      {/* ⚠️ **AI 助手是 `.app__body` 里的第三列，不是浮在页面上的层。**
+          做过浮层版：520px 的卡片压在正文上，遮住的正好是用户想一边看一边问的那块内容，
+          而且它有自己的边框、阴影和圆角，看着像另一个应用贴上来的。
+          现在它和侧栏、正文一样是外壳的一部分——打开时正文让出宽度，两边都完整可见。 */}
       <QuickAssistant
         open={quickAssistantOpen}
         context={assistantPageContext(route)}
-        conversationId={globalConversationId}
-        onConversationChange={setGlobalConversationId}
+        conversationId={railConversationId}
+        onConversationChange={setRailConversationId}
         onClose={() => setQuickAssistantOpen(false)}
-        onContinue={() => { setQuickAssistantOpen(false); go("assistant"); }}
+        onContinue={() => { setGlobalConversationId(railConversationId); setQuickAssistantOpen(false); go("assistant"); }}
       />
+      </div>
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName={config?.vault?.name} />
 

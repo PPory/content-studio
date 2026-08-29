@@ -44,6 +44,8 @@ page.on("console", (message) => {
 let nudges = 0;
 const requests = [];
 const revisionRequests = [];
+// 正文里那次问答「搬」进右栏的请求。**搬**不是重问，所以它不该同时出现在 assistantRequests 里。
+const assistantAdopted = [];
 const expertStarts = [];
 const assistantRequests = [];
 let assistantMessages = [];
@@ -170,6 +172,13 @@ await page.route("**/api/pipe/text-revision", async (route) => {
   const body = route.request().postDataJSON();
   revisionRequests.push(body);
   const rejected = body.instruction?.includes("真实性拒绝");
+  /**
+   * 自由指令回来的东西**确实是这段字的改动版**时，结果该落进正文画 diff，不是停在卡片里。
+   * 这条判据看的是回来的东西（`looksLikeEdit`），不是用户怎么唤起的。
+   */
+  if (body.instruction?.includes("润色优化")) {
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mode: body.mode, kind: "改写", text: `${body.selected}，再说透一点。`, grounding: { used: [], skipped: [], unverified: [], gate: "passed" } }) });
+  }
   const text = rejected ? "这段不应进入可采纳状态。" : revisionRequests.length === 1
     ? "第一版候选：把最重要的判断说清楚，再删掉不服务于这个判断的句子。"
     : "第二版候选：先说清最重要的判断，再删掉无关句子。";
@@ -239,6 +248,17 @@ await page.route("**/api/assistant/**", async (route) => {
     if (body.action === "delete") assistantConversationItems = assistantConversationItems.filter((item) => item.id !== body.conversationId);
     const conversation = assistantConversationItems.find((item) => item.id === body.conversationId);
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: conversation ? { ...conversation, messages: assistantMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } : undefined, conversations: { items: assistantConversationItems }, deletedId: body.action === "delete" ? body.conversationId : undefined }) });
+  }
+  if (url.pathname.endsWith("/adopt")) {
+    const adoptBody = request.postDataJSON();
+    assistantAdopted.push(adoptBody);
+    // ⚠️ **不动 `assistantMessages`。** 搬过去的是**另一段**对话，混进当前这段会让
+    // 后面那些「第一条助手消息是什么」的断言读到别人的消息。
+    const adoptedMessages = [
+      { id: "user-adopt", role: "user", text: adoptBody.prompt, createdAt: new Date().toISOString(), origin: "editor" },
+      { id: "assistant-adopt", role: "assistant", text: adoptBody.answer, createdAt: new Date().toISOString(), engine: "Pi Agent SDK", origin: "editor" },
+    ];
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "chat-adopted", title: "改写这一段", messages: adoptedMessages, actions: [], attachments: [], permissionMode: "daily", model: "test-model" } }) });
   }
   if (url.pathname.endsWith("/new")) {
     assistantMessages = [];
@@ -321,8 +341,23 @@ async function moveCursorNearViewportBottom(editorSelector) {
   await page.waitForTimeout(120);
 }
 
+/**
+ * 编辑器里**真正的正文**。
+ *
+ * ⚠️ 不能直接读 `.cm-line` 的 textContent：行里现在挂着两类不属于文档的 widget——
+ * diff 的新增文字（`.cm-diff-ins`，采纳前正文一个字节都没改）和光标行的灰字提示
+ * （`.cm-line-affordance`）。把它们算进来的话，「候选生成前后正文没变」这条断言
+ * 会在功能完全正确的时候失败。
+ */
 function editorValue(selector) {
-  return page.$eval(selector, (content) => Array.from(content.children).filter((line) => line.classList.contains("cm-line")).map((line) => line.textContent).join("\n"));
+  return page.$eval(selector, (content) => Array.from(content.children)
+    .filter((line) => line.classList.contains("cm-line"))
+    .map((line) => {
+      const copy = line.cloneNode(true);
+      copy.querySelectorAll(".cm-diff-ins, .cm-line-affordance").forEach((node) => node.remove());
+      return copy.textContent;
+    })
+    .join("\n"));
 }
 
 const stage6Materials = Array.from({ length: 10 }, (_, index) => ({
@@ -375,7 +410,10 @@ try {
     assert(!(await page.$(".project-assistant__tabs")), "Stage 6 项目协作区仍保留旧三页签");
     assert((await page.textContent(".assistant-pane--project-rail .assistant-pane__context")).includes("协作"), "项目协作区没有轻量 Header");
     assert(!(await page.$(".project-draft .writing-assist__trigger")) && !(await page.$('.project-draft .writing-tool-btn:has-text("检查")')), "项目编辑器仍保留重复的 AI 协作或检查入口");
-    assert(!(await page.$(".project-assistant .assistant-composer__access")) && !(await page.$(".project-assistant .assistant-composer__model")) && !(await page.$(".project-assistant .assistant-composer__style")), "Project Composer 仍常驻显示模型、权限或风格");
+    // 模型现在每个输入框都有：在哪儿写字，就在哪儿决定用哪个模型发出去。
+    // 保持安静的是**权限和风格**——会话级设置，只在完整工作区设一次。
+    assert(await page.$(".project-assistant .assistant-composer__model"), "项目协作栏的输入框不能选模型");
+    assert(!(await page.$(".project-assistant .assistant-composer__access")) && !(await page.$(".project-assistant .assistant-composer__style")), "Project Composer 仍常驻显示权限或风格");
     assert(!(await page.$('.project-assistant .assistant-composer footer button:has-text("专家")')) && !(await page.$('.project-assistant .assistant-composer footer button:has-text("Skill")')), "Project Composer 仍常驻显示 Expert 或 Skill");
     await page.setViewportSize({ width: 1366, height: 768 });
     const originalTitle = await page.inputValue(".project-draft__title");
@@ -399,17 +437,17 @@ try {
     await page.keyboard.press("Control+Home");
     for (let index = 0; index < 8; index += 1) await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     const projectTopLayout = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 顶部光标菜单");
     assert(projectTopLayout.placement === "below", `Project 顶部光标菜单没有向下翻转：${JSON.stringify(projectTopLayout)}`);
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-top.png"), fullPage: false });
     await page.keyboard.press("Escape");
-    await page.waitForSelector(".cursor-writing-menu", { state: "detached" });
+    await page.waitForSelector(".inline-ai-prompt", { state: "detached" });
     assert(await page.evaluate(() => document.activeElement?.classList.contains("cm-content")), "Project 光标菜单 Esc 后没有恢复编辑器焦点");
 
     await page.keyboard.press("Control+Home");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     await assertInlineMenuInside(".project-draft .cm-scroller", "Project 左侧光标菜单");
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-left.png"), fullPage: false });
     await page.keyboard.press("Escape");
@@ -417,14 +455,14 @@ try {
     await page.keyboard.press("Control+Home");
     await page.keyboard.press("End");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     await assertInlineMenuInside(".project-draft .cm-scroller", "Project 右侧光标菜单");
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-right.png"), fullPage: false });
     await page.keyboard.press("Escape");
 
     await moveCursorNearViewportBottom(".project-draft");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     const projectBottomLayout = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 底部光标菜单");
     assert(projectBottomLayout.placement === "above", `Project 底部光标菜单没有向上翻转：${JSON.stringify(projectBottomLayout)}`);
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-cursor-bottom.png"), fullPage: false });
@@ -434,7 +472,7 @@ try {
     await page.keyboard.press("Control+Home");
     for (let index = 0; index < 20; index += 1) await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     const middleBeforeScroll = await assertInlineMenuInside(".project-draft .cm-scroller", "Project 滚动前的光标菜单");
     await page.$eval(".main", (item) => { item.scrollTop += 48; });
     await page.waitForTimeout(180);
@@ -449,7 +487,7 @@ try {
       item.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", altKey: true, isComposing: true, keyCode: 229 }));
     });
     await page.waitForTimeout(100);
-    assert(!(await page.$(".cursor-writing-menu")), "Project 中文输入法 composition 期间误触发 Alt+Enter 菜单");
+    assert(!(await page.$(".inline-ai-prompt")), "Project 中文输入法 composition 期间误触发 Alt+Enter 菜单");
     await page.$eval(".project-draft .cm-content", (item) => item.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "中" })));
 
     await page.keyboard.press("Control+Home");
@@ -457,18 +495,27 @@ try {
     await page.waitForSelector(".text-revision-menu");
     await assertInlineMenuInside(".project-draft .cm-scroller", "Project 左边界长选区菜单");
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-selection-left.png"), fullPage: false });
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
+    // 方向键在**三段之间连续走**：格式那排走完接着走 AI 技能，不用先跳出面板再进来
+    const projectMenuOrder = await page.$$eval(".selection-menu [data-inline-ai-action=true]", (items) => items.map((item) => item.getAttribute("aria-label") || item.textContent.trim()));
+    assert(projectMenuOrder[0] === "加粗" && projectMenuOrder.includes("纠错") && !projectMenuOrder.includes("标题级别"),
+      `选区面板没有把格式和 AI 技能排进同一条焦点链，或块类型下拉又回来了：${projectMenuOrder.join("/")}`);
+    // 面板打开时**没有元素抢焦点**（选区还在，用户可能只是想继续调选区），
+    // 所以第一次 ArrowRight 才落到第 0 项——走到第 N 项要按 N+1 次
+    const correctIndex = projectMenuOrder.indexOf("纠错");
+    for (let index = 0; index <= correctIndex; index += 1) await page.keyboard.press("ArrowRight");
     const projectKeyboardAction = await page.evaluate(() => document.activeElement?.textContent?.trim());
-    assert(projectKeyboardAction === "纠错", `Project 方向键没有选择第二个菜单动作：${projectKeyboardAction}`);
+    assert(projectKeyboardAction === "纠错", `Project 方向键没有走到 AI 技能那一段：${projectKeyboardAction}`);
     const beforeKeyboardCandidate = await editorValue(".project-draft .cm-content");
     await page.keyboard.press("Enter");
-    await page.waitForSelector(".project-draft .candidate-card textarea");
+    await page.waitForSelector(".project-draft .revision-bar");
     assert((await editorValue(".project-draft .cm-content")).replace(/\n/g, "") === beforeKeyboardCandidate.replace(/\n/g, ""), "Project Enter 执行 Candidate 前修改了正文");
+    // diff 就画在正文原位置：删掉的字带删除线，新增的字是零宽 widget
+    assert(await page.$(".project-draft .cm-diff-ins, .project-draft .cm-diff-del"), "候选没有在正文原位置画出 diff");
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-project-candidate.png"), fullPage: false });
-    await page.focus(".project-draft .candidate-card textarea");
+    // 焦点此刻在正文里（人正在读那段 diff），快捷键必须在这儿就能用
+    await page.focus(".project-draft .cm-content");
     await page.keyboard.press("Control+Backspace");
-    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
+    await page.waitForSelector(".project-draft .revision-bar", { state: "detached" });
 
     await page.focus(".project-draft .cm-content");
     await page.keyboard.press("Control+Home");
@@ -476,7 +523,7 @@ try {
     await page.waitForSelector(".text-revision-menu");
     await page.keyboard.press("Escape");
     await page.waitForSelector(".text-revision-menu", { state: "detached" });
-    assert(await page.evaluate(() => document.activeElement?.classList.contains("cm-content") && Boolean(document.querySelector(".cm-selectionBackground"))), "Project 选区菜单 Esc 后没有恢复原选区与编辑器焦点");
+    assert(await page.evaluate(() => document.activeElement?.classList.contains("cm-content") && !window.getSelection().isCollapsed), "Project 选区菜单 Esc 后没有恢复原选区与编辑器焦点");
     await page.keyboard.press("ArrowLeft");
     for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
     await page.waitForSelector(".text-revision-menu");
@@ -487,7 +534,7 @@ try {
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+Home");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
+    await page.waitForSelector(".inline-ai-prompt");
     await assertInlineMenuInside(".project-draft .cm-scroller", "1180 Project 光标菜单");
     await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1180-project-cursor-menu.png"), fullPage: false });
     await page.keyboard.press("Escape");
@@ -505,42 +552,184 @@ try {
     await page.keyboard.press("Control+End");
     const projectCursorBefore = await editorValue(".project-draft .cm-content");
     await page.keyboard.press("Alt+Enter");
-    await page.waitForSelector(".cursor-writing-menu");
-    const projectCursorActions = await page.$$eval(".cursor-writing-menu [data-inline-ai-action=true]", (items) => items.map((item) => item.textContent.trim()));
-    assert(projectCursorActions.join("/") === "想一想/续写/按要求写", `Project 光标动作命名不准确：${projectCursorActions.join("/")}`);
+    await page.waitForSelector(".inline-ai-prompt");
+    /**
+     * 输入条**只有一条输入框**（Notion 按空格之后就是这样）。
+     * 不用打字就能起的那两件事住在 `/` 菜单的「建议」组里，不在这儿排成一排按钮。
+     */
+    assert(await page.evaluate(() => document.activeElement === document.querySelector('.inline-ai-prompt input[aria-label="让 AI 写什么"]')),
+      "行内 AI 输入条没有把焦点放在输入框上");
+    assert(!(await page.$(".inline-ai-prompt [data-inline-ai-action=true]")), "行内 AI 输入条又挂上了预设按钮排");
     assert(!(await page.$(".project-draft .writing-assist__trigger")), "Project 编辑器仍有常驻 AI 按钮");
     await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-cursor-menu.png"), fullPage: false });
-    await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
-    await page.waitForSelector(".cursor-writing-menu__result");
+    await page.keyboard.press("Escape");
+    // 「想一想」从 `/` 的建议组进来
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("/");
+    await page.waitForSelector(".block-insert-menu");
+    /**
+     * **生成新内容和回答问题进「回答卡」，不进 diff。**
+     *
+     * 它们没有「原文」可比——用户要的是一段新的字或一个答案。硬塞进 diff 的结果是
+     * 答案顶掉原文：选中一段问「这段在讲什么」会变成一次改写。卡片里正文一个字不动。
+     */
+    await page.click('.block-insert-menu__group > button:has-text("想一想")');
+    await page.waitForSelector(".project-draft .ai-answer");
+    assert(!(await page.$(".project-draft .revision-bar")), "想一想不该产生候选 diff");
     assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "想一想不应修改正文");
     assert(requests.at(-1)?.mode === "nudge" && requests.at(-1)?.cursor === projectCursorBefore.length, "Project 光标位置没有交给想一想");
-    await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("续写")');
-    await page.waitForSelector(".project-draft .candidate-card textarea");
-    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "Project 续写在采纳前修改了正文");
+    await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-answer-card.png"), fullPage: false });
+    // 卡片上没有「替换所选内容」——这次不是从选区来的
+    await page.waitForSelector(".project-draft .ai-answer__actions");
+    const cursorAnswerActions = await page.$$eval(".project-draft .ai-answer__actions button", (items) => items.map((item) => item.getAttribute("aria-label")));
+    assert(cursorAnswerActions.join("/") === "重试/在下面插入/对话", `光标处回答卡的动作不是三颗图标：${cursorAnswerActions.join("/")}`);
+    // **点别处 = 看完了**：卡片直接关掉，正文一个字不动
+    await page.click(".project-draft .cm-content", { position: { x: 40, y: 8 } });
+    await page.waitForSelector(".project-draft .ai-answer", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "点别处关掉回答卡后正文发生了变化");
+
+    // 「在下面插入」→ 续写底纹，点别处即落定
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("/");
+    await page.waitForSelector(".block-insert-menu");
+    await page.click('.block-insert-menu__group > button:has-text("续写这一段")');
+    await page.waitForSelector(".project-draft .ai-answer");
+    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "回答卡在插入前修改了正文");
     await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-inline-candidate.png"), fullPage: false });
-    await page.focus(".project-draft .candidate-card textarea");
-    await page.keyboard.press("Control+Backspace");
-    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
-    assert((await editorValue(".project-draft .cm-content")) === projectCursorBefore, "Project 光标 Candidate 弃用后改变正文");
+    await page.click('.project-draft .ai-answer__actions button[aria-label="在下面插入"]');
+    await page.waitForSelector(".project-draft .ai-answer", { state: "detached" });
+    await page.waitForSelector(".project-draft .cm-ai-draft");
+    assert((await editorValue(".project-draft .cm-content")) !== projectCursorBefore, "在下面插入没有把内容写进正文");
+    await page.keyboard.press("Control+Z");
+    await page.waitForFunction((before) => {
+      const lines = [...document.querySelectorAll(".project-draft .cm-content > .cm-line")];
+      const text = lines.map((line) => { const copy = line.cloneNode(true); copy.querySelectorAll(".cm-diff-ins, .cm-line-affordance").forEach((n) => n.remove()); return copy.textContent; }).join("\n");
+      return text === before;
+    }, projectCursorBefore);
     await page.focus(".project-draft .cm-content");
     await page.keyboard.press("Control+End");
     await page.keyboard.press("Alt+Enter");
-    await page.click('.cursor-writing-menu [data-inline-ai-action=true]:has-text("按要求写")');
-    await page.fill('.cursor-writing-menu input[aria-label="光标生成要求"]', "写一个克制的过渡段");
+    await page.fill('.inline-ai-prompt input[aria-label="让 AI 写什么"]', "写一个克制的过渡段");
     const requestsBeforeComposition = requests.length;
-    await page.$eval('.cursor-writing-menu input[aria-label="光标生成要求"]', (item) => {
+    await page.$eval('.inline-ai-prompt input[aria-label="让 AI 写什么"]', (item) => {
       item.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "段" }));
       item.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", isComposing: true, keyCode: 229 }));
     });
     await page.waitForTimeout(100);
-    assert(requests.length === requestsBeforeComposition && await page.$(".cursor-writing-menu"), "Project 自定义输入 composition 期间误提交");
-    await page.$eval('.cursor-writing-menu input[aria-label="光标生成要求"]', (item) => item.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "段" })));
+    assert(requests.length === requestsBeforeComposition && await page.$(".inline-ai-prompt"), "Project 自定义输入 composition 期间误提交");
+    await page.$eval('.inline-ai-prompt input[aria-label="让 AI 写什么"]', (item) => item.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "段" })));
     await page.keyboard.press("Enter");
-    await page.waitForSelector(".project-draft .candidate-card textarea");
-    assert(requests.at(-1)?.mode === "paragraph" && requests.at(-1)?.expert?.includes("本次生成要求：写一个克制的过渡段"), "按要求写没有沿用原能力与 Candidate 流程");
-    await page.focus(".project-draft .candidate-card textarea");
-    await page.keyboard.press("Control+Backspace");
-    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
+    await page.waitForSelector(".project-draft .ai-answer");
+    assert(requests.at(-1)?.mode === "paragraph" && requests.at(-1)?.expert?.includes("本次生成要求：写一个克制的过渡段"), "自由指令没有沿用原有生成能力");
+    await page.click(".project-draft .cm-content", { position: { x: 40, y: 8 } });
+    await page.waitForSelector(".project-draft .ai-answer", { state: "detached" });
+
+    /**
+     * L1 入口：空行灰字 → 空格 → 行内 AI；`/` → 块菜单。
+     * 这两条是这一轮的核心——功能一直都在，只是以前只有 `Alt+Enter` 知道怎么进来。
+     */
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".project-draft .cm-line-affordance__hint");
+    assert((await page.textContent(".project-draft .cm-line-affordance__hint")).includes("空格"), "空行没有写出内联 AI 的入口");
+    /**
+     * ⚠️ **行首 `+` 对齐第一行，不是对齐整段的中线。**
+     * `.cm-line` 的一「行」是整个逻辑段落（开了自动换行）：两行的段落里，
+     * `top: 50%` 会把 `+` 卡在两行之间。
+     *
+     * ⚠️ **空行的光标压回字的高度，而这一行的总高度不能变**——变了就会在光标
+     * 移进移出空行时上下抖。原生光标高度是行框画的，CSS 管不到，只能压行高、
+     * 用 padding 把高度补回来。
+     */
+    const affordanceGeometry = await page.evaluate(() => {
+      const cm = document.querySelector(".project-draft .cm-content");
+      const lines = [...cm.querySelectorAll(".cm-line")];
+      const wrapped = lines.find((line) => line.getClientRects().length > 1 && !line.querySelector(".cm-line-affordance"));
+      const emptyLine = document.querySelector(".project-draft .cm-empty-caret-line");
+      const plainSingle = lines.find((line) => line.textContent.trim() && line.getClientRects().length === 1);
+      const hint = document.querySelector(".project-draft .cm-line-affordance__hint");
+      const add = document.querySelector(".project-draft .cm-line-affordance__add");
+      const style = getComputedStyle(cm);
+      return {
+        emptyHeight: emptyLine?.getBoundingClientRect().height ?? 0,
+        plainHeight: plainSingle?.getBoundingClientRect().height ?? 0,
+        emptyLineHeight: emptyLine ? parseFloat(getComputedStyle(emptyLine).lineHeight) : 0,
+        baseLineHeight: parseFloat(style.lineHeight),
+        fontSize: parseFloat(style.fontSize),
+        addCenter: add ? add.getBoundingClientRect().top + add.getBoundingClientRect().height / 2 : 0,
+        hintCenter: hint ? hint.getBoundingClientRect().top + hint.getBoundingClientRect().height / 2 : 0,
+        addWidth: add?.getBoundingClientRect().width ?? 0,
+        wrappedRectCount: wrapped ? wrapped.getClientRects().length : 0,
+      };
+    });
+    assert(Math.abs(affordanceGeometry.emptyHeight - affordanceGeometry.plainHeight) <= 1,
+      `压了空行行高之后这一行的总高度变了，光标进出会抖：${JSON.stringify(affordanceGeometry)}`);
+    assert(affordanceGeometry.emptyLineHeight < affordanceGeometry.baseLineHeight
+      && affordanceGeometry.emptyLineHeight <= affordanceGeometry.fontSize * 1.3,
+      `空行的行高没有压到字的高度，光标仍然比字高：${JSON.stringify(affordanceGeometry)}`);
+    assert(Math.abs(affordanceGeometry.addCenter - affordanceGeometry.hintCenter) <= 2,
+      `行首 + 和这一行的字没有对齐：${JSON.stringify(affordanceGeometry)}`);
+    assert(affordanceGeometry.addWidth >= 20, `行首 + 比正文小一圈：${affordanceGeometry.addWidth}`);
+    const beforeSpace = await editorValue(".project-draft .cm-content");
+    await page.keyboard.press(" ");
+    await page.waitForSelector(".inline-ai-prompt");
+    assert((await editorValue(".project-draft .cm-content")) === beforeSpace, "空格劫持成 AI 之后仍然插入了空格");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".inline-ai-prompt", { state: "detached" });
+    // 有字的行上空格仍然是空格
+    await page.keyboard.type("已经写了字");
+    await page.keyboard.press(" ");
+    await page.waitForTimeout(80);
+    assert(!(await page.$(".inline-ai-prompt")), "有字的行上空格误触发了 AI");
+    assert((await editorValue(".project-draft .cm-content")).endsWith("已经写了字 "), "有字的行上空格没有正常插入");
+    // `/` 开块菜单，继续打字即过滤，选中后斜杠和过滤词一起被吃掉
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("/");
+    await page.waitForSelector(".block-insert-menu");
+    const blockGroups = await page.$$eval(".block-insert-menu__group > small", (items) => items.map((item) => item.textContent.trim()));
+    assert(blockGroups.join("/") === "建议/基本区块/媒体", `块菜单分组不对：${blockGroups.join("/")}`);
+    await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "project-block-menu.png"), fullPage: false });
+    await page.keyboard.type("标题");
+    await page.waitForFunction(() => document.querySelectorAll(".block-insert-menu__group > button").length === 3);
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(".block-insert-menu", { state: "detached" });
+    assert((await editorValue(".project-draft .cm-content")).endsWith("# "), `选中标题 1 后没有吃掉 /标题：${await editorValue(".project-draft .cm-content")}`);
+    /**
+     * ⚠️ 光标必须落在记号**后面**。落在前面的话接着打的字会跑到 `#` 前，整行不再是标题——
+     * 这是用真实打字验的，不看 DOM offset：行里还挂着 `+` 那个 widget，
+     * `anchorOffset` 数的是渲染节点里的位置，不是文档里的位置。
+     */
+    await page.keyboard.type("标题内容");
+    assert((await editorValue(".project-draft .cm-content")).endsWith("# 标题内容"), `选完标题后打的字没有落在记号后面：${JSON.stringify(await editorValue(".project-draft .cm-content"))}`);
+
+    /**
+     * ⚠️ **采纳之后 `/` 还要能用。** 用户实际的动线是「生成 → 采纳 → 接着在下一行按 /」，
+     * 而这一步最容易坏在 `inlineLayerReady`——只要 `textRevisionField.active` 没清干净，
+     * 它就一直返回 false，现象是斜杠打进了正文但菜单不出来。
+     */
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText("收藏处理的是焦虑，不是信息。");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("/");
+    await page.waitForSelector(".block-insert-menu");
+    await page.click('.block-insert-menu__group > button:has-text("续写这一段")');
+    await page.waitForSelector(".project-draft .ai-answer");
+    await page.click('.project-draft .ai-answer__actions button[aria-label="在下面插入"]');
+    await page.waitForSelector(".project-draft .ai-answer", { state: "detached" });
+    await page.focus(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("/");
+    await page.waitForSelector(".block-insert-menu", { timeout: 4000 });
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText("收藏处理的是焦虑，不是信息。");
     await page.click(".project-draft .cm-content");
     await page.keyboard.press("Control+Home");
     for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
@@ -550,13 +739,21 @@ try {
     await page.waitForSelector(".text-revision-menu", { state: "detached" });
 
     const beforeSuggestionRequests = assistantRequests.length;
-    await page.click(".assistant-empty[data-scope='project'] .assistant-empty__actions button:first-child");
+    // 入口卡现在在输入器**下面**（空态时输入器居中，卡片是它的兜底），
+    // 所以不再是 .assistant-empty 的后代，而是 dialog 的直接子元素。
+    await page.click(".assistant-empty__actions[data-scope='project'] button:first-child");
     assert((await page.inputValue(".project-assistant .assistant-composer textarea")).length > 8, "空态建议没有填入 Composer");
     assert(assistantRequests.length === beforeSuggestionRequests, "空态建议被自动发送");
     await page.fill(".project-assistant .assistant-composer textarea", "@");
     const experts = await page.$$eval(".project-assistant .assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
     assert(experts.join("/") === "写作教练/素材顾问/审稿顾问/事实核查", `专家菜单不完整：${experts.join("/")}`);
-    await page.keyboard.press("Escape");
+    // 同一个菜单现在有两种结果：不带报告的专家插一段提及，检查类专家直接起任务。
+    // 菜单里必须写清楚是哪种，否则只能点一次才知道。
+    const runHints = await page.$$eval(".project-assistant .assistant-command-menu [role=menuitem]", (items) => items.map((item) => `${item.querySelector("b").textContent.trim()}|${item.querySelector("small")?.textContent || ""}`));
+    assert(runHints.filter((item) => item.includes("跑一次并出报告")).length === 3, `检查类专家没有标出会起任务：${runHints.join(" / ")}`);
+    await page.locator('.project-assistant .assistant-command-menu [role=menuitem]:has-text("写作教练")').evaluate((item) => item.click());
+    assert((await page.inputValue(".project-assistant .assistant-composer textarea")).includes("@写作教练"), "普通专家没有插入提及");
+    await page.fill(".project-assistant .assistant-composer textarea", "");
     await page.fill(".project-assistant .assistant-composer textarea", "/");
     const skills = await page.$$eval(".project-assistant .assistant-command-menu [role=menuitem] b", (items) => items.map((item) => item.textContent.trim()));
     assert(skills.join("/") === "fact-check/idea-dialogue/interview-to-draft/material-extraction/material-gap/publish-review/topic-clustering/xenho-quality-nine", "Skill 菜单不完整：" + skills.join("/"));
@@ -608,28 +805,79 @@ try {
     await actionCards.nth(1).getByRole("button", { name: "确认写入" }).click();
     await page.waitForFunction(() => [...document.querySelectorAll(".project-assistant .assistant-action-card")].some((item) => item.textContent.includes("已执行")));
 
+    /**
+     * ⚠️ **右栏那颗「插入」在光标处就是插入，不是候选审阅。**
+     *
+     * 候选审阅回答的是「改成这样好不好」——它得有原文可比。光标处插入时原文是空串，
+     * 一条 250 字的回复于是被判成「章节」，弹出整屏「章节审阅」：
+     * 一次插入被当成一次全篇改造，而屏幕上根本没有第二个版本可比。
+     * 判据和 `looksLikeEdit` 是同一条：在改已有的字才审阅，产出新的字就插入。
+     */
     const beforeCandidate = await editorValue(".project-draft .cm-content");
-    await page.click('.project-assistant .assistant-message--assistant button:has-text("作为候选插入")');
-    await page.waitForSelector(".project-draft .candidate-card textarea");
-    assert((await editorValue(".project-draft .cm-content")) === beforeCandidate, "Assistant 候选在采纳前写进了正文");
-    assert(await page.$(".project-draft .cm-text-revision-host .candidate-card"), "短 Assistant 候选没有在正文原位置内联审阅");
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.click('.project-assistant .assistant-message--assistant button[aria-label="插入正文"]');
+    await page.waitForSelector(".project-draft .cm-ai-draft");
+    assert(!(await page.$(".md-candidate-focus")), "光标处插入弹出了整屏章节审阅");
+    const afterInsert = await editorValue(".project-draft .cm-content");
+    assert(afterInsert !== beforeCandidate && afterInsert.startsWith(beforeCandidate), "插入没有落到正文末尾");
+    // 动作条只有图标：一栏对话里这排字比要读的回复还抢眼
+    const messageActions = await page.$$eval(".project-assistant .assistant-message--assistant footer button", (items) => items.map((item) => item.textContent.trim()));
+    assert(messageActions.every((label) => label === ""), `回复动作条又挂上了文字：${messageActions.join("/")}`);
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-inline-candidate.png"), fullPage: false });
-    assert(((await page.textContent(".project-draft .candidate-card")).match(/采纳前不会写入正文/g) || []).length === 1, "Candidate 重复提示原文未改变");
-    await page.focus(".project-draft .candidate-card textarea");
-    await page.keyboard.press("Control+Backspace");
-    await page.waitForSelector(".project-draft .candidate-card", { state: "detached" });
-    assert((await editorValue(".project-draft .cm-content")) === beforeCandidate, "Candidate 键盘弃用改变了正文");
+    // 插进来的字带底纹（和续写、回答卡「在下面插入」同一条路），撤销走 Ctrl+Z
+    assert((await page.textContent(".project-draft .cm-ai-draft")).length > 0, "插进来的字没有带上 AI 底纹");
+    await page.click(".project-draft .cm-content");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.press("Control+Z");
+    await page.waitForFunction((expected) => (document.querySelector(".project-draft .cm-content")?.textContent || "").length <= expected, beforeCandidate.length + 8);
 
+    /**
+     * ⚠️ **「这一轮 AI 读到什么」住在输入框里，不在顶上那条 header 里。**
+     * 你正要打字的地方，才是需要知道它读什么的时刻。
+     */
+    assert(await page.$(".project-assistant .assistant-composer .project-assistant__context-trigger"), "上下文入口没有跟着输入框走");
+    /**
+     * ⚠️ **芯片写这一篇的名字，不是写「当前稿件」。**
+     * 分类名对任何一篇都成立，看了等于没看；这颗芯片要回答的是「AI 读的是哪一篇」。
+     * 「暂无素材」也撤了——素材清单在面板里就有，这儿写它只是每次都在提醒你少干了件事。
+     */
+    const contextChipText = (await page.textContent(".project-assistant__context-trigger")).trim();
+    const draftTitle = (await page.inputValue(".project-draft__title")).trim();
+    assert(draftTitle && contextChipText.includes(draftTitle.slice(0, 8)), `上下文芯片没有写这一篇的标题：${JSON.stringify({ contextChipText, draftTitle })}`);
+    assert(!contextChipText.includes("当前稿件") && !/素材/.test(contextChipText), `上下文芯片还留着分类名或素材计数：${contextChipText}`);
+    assert(!(await page.$(".project-assistant .assistant-pane__context .project-assistant__context-trigger")), "header 里还留着一份上下文入口");
     await page.click(".project-assistant__context-trigger");
     await page.waitForSelector(".project-context-panel");
+    // 面板必须向上开：触发器在最底下的输入框上，向下开等于开到视口外面
+    const contextPanelBox = await page.locator(".project-context-panel").boundingBox();
+    const composerBox = await page.locator(".project-assistant .assistant-composer").boundingBox();
+    assert(contextPanelBox.y + contextPanelBox.height <= composerBox.y + 2, `上下文面板没有向上展开：${JSON.stringify({ contextPanelBox, composerBox })}`);
     const contextText = await page.textContent(".project-context-panel");
-    assert(contextText.includes("当前主稿") && contextText.includes("项目检查"), "上下文面板没有说明当前稿件和按需检查");
+    assert(contextText.includes("当前主稿"), "上下文面板没有说明当前带上了什么");
+    // 「项目检查」搬去输入框的 `@` 了：这块面板只回答「这一轮 AI 读到什么」，
+    // 不再把最低频的执行按钮摆在最显眼的地方。
+    assert(!contextText.includes("项目检查") && !(await page.$(".project-context-panel__reports")), "上下文面板又长回项目检查");
     assert(!contextText.includes("已核验"), "上下文面板仍在每条素材重复显示已核验文字");
     assert((await page.$$(".project-context-material")).length === 10 && contextText.includes("待核验"), "10 条素材 Context 没有完整滚动列表或待核验状态");
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-context-10.png"), fullPage: false });
-    await page.click('.project-context-panel__reports button:has-text("Xenho 品控九问")');
-    await page.waitForFunction(() => [...document.querySelectorAll(".project-context-panel__reports button")].some((item) => item.textContent.includes("Xenho 品控九问") && item.textContent.includes("查看最近报告")), null, { timeout: 10000 });
-    await page.click('.project-context-panel__reports button:has-text("Xenho 品控九问")');
+    // 点空白就收起。**每一个点开的浮层都要遵守这条**——否则用户得记住哪个能点外面关、
+    // 哪个必须回去点原来那颗按钮，记不住的结果是每次都先试一下。
+    await page.click(".project-assistant .assistant-composer textarea");
+    await page.waitForSelector(".project-context-panel", { state: "detached" });
+    /**
+     * 检查现在和别的专家同一个入口：`@审稿顾问`。
+     * 选中它不是插一段提及而是**直接起任务**，所以那半截 `@…` 必须自己消失——
+     * 留在输入框里的话，下一句话会莫名其妙带上一个没人再用的提及。
+     */
+    await page.fill(".project-assistant .assistant-composer textarea", "@审稿");
+    await page.locator('.project-assistant .assistant-command-menu [role=menuitem]:has-text("审稿顾问")').evaluate((item) => item.click());
+    assert((await page.inputValue(".project-assistant .assistant-composer textarea")) === "", "起检查任务后输入框里还留着半截 @ 命令");
+    // 状态芯片**只在有话说的时候出现**：跑着的时候报进度，报告好了给入口，看过就没了。
+    await page.waitForSelector('.project-assistant__run-chip[data-state="running"]');
+    await page.waitForSelector('.project-assistant__run-chip[data-state="ready"]', { timeout: 10000 });
+    await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-run-chip.png"), fullPage: false });
+    await page.click('.project-assistant__run-chip[data-state="ready"]');
     await page.waitForSelector(".project-report-review");
     assert(!(await page.locator(".project-assistant").isVisible()) && !(await page.locator(".project-draft").isVisible()), "报告审阅仍同时显示正文、报告和完整协作右栏");
     const reportText = await page.textContent(".project-report-review");
@@ -654,22 +902,45 @@ try {
     await linkedBody.click();
     assert(await firstFinding.getAttribute("data-current") === "true", "点击正文位置没有反向定位 finding");
     await firstFinding.getByRole("button", { name: "生成候选" }).click();
-    await page.waitForSelector(".project-draft .candidate-card");
+    await page.waitForSelector(".project-draft .revision-bar");
     assert(await page.$(".project-assistant:not([data-reviewing])"), "退出报告后项目会话没有恢复");
     assert((await page.textContent(".project-assistant .assistant-thread")).includes("真实场景"), "退出报告后原会话内容丢失");
-    await page.click('.project-draft .candidate-card .text-revision-review__decide button:has-text("弃用")');
+    await page.click('.project-draft .revision-bar .revision-bar__actions button[aria-label="弃用"]');
 
-    await page.click('.project-assistant .assistant-history-toggle[aria-label="最近会话"]');
-    await page.waitForSelector(".project-assistant-history");
-    const historyBefore = await page.textContent(".project-assistant-history");
-    assert(historyBefore.includes("当前会话") && historyBefore.includes("最近对话"), "轻量项目历史缺少当前会话或最近会话");
-    await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-history.png"), fullPage: false });
-    await page.click(".project-assistant-history header button");
-    await page.waitForSelector(".project-assistant .assistant-empty[data-scope='project']");
-    await page.click('.project-assistant .assistant-history-toggle[aria-label="最近会话"]');
-    assert((await page.textContent(".project-assistant-history")).includes("最近对话"), "新对话后旧会话从最近列表消失");
-    await page.locator(".project-assistant-history nav button").first().click();
-    await page.waitForSelector(".project-assistant .assistant-message--assistant");
+    /**
+     * ⚠️ **收起之后那片区域必须留一个标记。**
+     * 这一列收起就是整列消失，消失之后那儿什么都没有——想让它回来只能抬头去顶栏。
+     * 浮标让「收起」和「展开」成为同一处的两个状态。栏开着时它不该出现。
+     */
+    assert(!(await page.$(".assistant-orb")), "协作栏开着的时候也画了浮标");
+    await page.click('.project-assistant button[aria-label="收起协作区"]');
+    await page.waitForSelector(".assistant-orb");
+    assert(!(await page.locator(".project-assistant .assistant-composer").isVisible()), "收起之后协作栏还在");
+    const orbBox = await page.locator(".assistant-orb").boundingBox();
+    const viewport = page.viewportSize();
+    assert(orbBox.x + orbBox.width > viewport.width - 120 && orbBox.y + orbBox.height > viewport.height - 120,
+      `浮标没有停在右下角这一列消失的地方：${JSON.stringify(orbBox)}`);
+    /**
+     * 说明**指到才出现**。常驻的话这行字一直浮在正文右下角——它是给第一次见到这个
+     * 圆圈的人看的，之后每一屏正文都要绕开它。键盘聚焦也算「指到」。
+     */
+    const orbLabel = async () => page.evaluate(() => Number(getComputedStyle(document.querySelector(".assistant-orb__label")).opacity));
+    assert(await orbLabel() === 0, "浮标说明常驻在正文上");
+    await page.hover(".assistant-orb__button");
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector(".assistant-orb__label")).opacity) === 1);
+    await page.mouse.move(10, 10);
+    await page.focus(".assistant-orb__button");
+    await page.waitForFunction(() => Number(getComputedStyle(document.querySelector(".assistant-orb__label")).opacity) === 1);
+    await page.click(".assistant-orb__button");
+    await page.waitForSelector(".assistant-orb", { state: "detached" });
+    await page.waitForFunction(() => document.activeElement === document.querySelector(".project-assistant .assistant-composer textarea"));
+
+    /**
+     * ⚠️ **侧栏里没有历史入口**，所以这里也没有「翻回上一段」这条路可测。
+     * 这一栏是「现在这段对话」的地方；旧会话不该由一个 420px 的抽屉来翻。
+     * 钉住的是「它没有长回来」，判据在 smoke 的 Stage 6。
+     */
+    assert(!(await page.$('.project-assistant [aria-label="最近会话"]')), "侧栏又长出历史对话入口");
     await page.setViewportSize({ width: 1180, height: 768 });
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1180-project-assistant-overlay.png"), fullPage: false });
     await page.setViewportSize({ width: 1366, height: 768 });
@@ -685,13 +956,22 @@ try {
     await page.keyboard.press("Control+End");
     await page.keyboard.press("Control+Shift+Home");
     await page.waitForSelector(".text-revision-menu");
-    await page.locator('.text-revision-menu__actions button:has-text("纠错")').evaluate((item) => item.click());
-    await page.waitForSelector(".md-candidate-focus .candidate-card textarea");
+    await page.locator('.selection-menu__skills button:has-text("纠错")').evaluate((item) => item.click());
+    await page.waitForSelector(".md-candidate-focus .candidate-card .revision-diff");
     assert(/章节审阅|全文审阅/.test(await page.textContent(".md-candidate-focus")) && (await page.textContent(".md-candidate-focus")).includes("弃用并结束审阅"), "大章节或全文 Candidate 没有进入专注审阅或退出文案不清楚");
-    assert(!(await page.$(".cm-text-revision-host .candidate-card")), "大章节 Candidate 仍被压在正文内联位置");
+    // 专注审阅是**单栏 diff**：不再上面压一块原文、下面一个装新文本的框
+    assert(!(await page.$(".md-candidate-focus textarea")) && !(await page.$(".md-candidate-focus__original")), "专注审阅仍在并排展示原文与候选文本框");
+    /**
+     * ⚠️ **专注审阅不吃「点别处即采纳」。** 那一屏整个就是候选，点进去读和滚动都是审阅动作；
+     * 而全文替换按产品硬约束必须明确确认——「移开注意力」在这儿不构成同意。
+     */
+    await page.click(".md-candidate-focus .revision-diff", { position: { x: 20, y: 10 } });
+    await page.waitForTimeout(150);
+    assert(await page.$(".md-candidate-focus .revision-bar"), "专注审阅被点别处静默采纳了");
+    assert(!(await page.$(".cm-text-revision-host .revision-bar")), "大章节 Candidate 仍被压在正文内联位置");
     assert(!(await page.locator(".project-assistant").isVisible()), "大章节或全文 Candidate 专注审阅时没有折叠协作右栏");
     await page.screenshot({ path: path.join(STAGE6_SHOT_DIR, "1366-project-focused-candidate.png"), fullPage: false });
-    await page.click('.md-candidate-focus .text-revision-review__decide button:has-text("弃用")');
+    await page.click('.md-candidate-focus .revision-bar__actions button[aria-label="弃用"]');
     await page.waitForFunction(() => !document.querySelector(".project-assistant")?.dataset.reviewing);
     await page.waitForTimeout(120);
     const railAfterFocusedReview = await page.$eval(".project-assistant .assistant-thread", (thread) => ({ scrollTop: thread.scrollTop, messages: [...thread.querySelectorAll(".assistant-message__markdown, .assistant-message__user > p")].map((item) => item.textContent) }));
@@ -702,7 +982,7 @@ try {
     console.log("✓ 空态建议只填入 Composer，@Expert 与 /Skill 只由输入字符触发");
     console.log("✓ 短 Candidate 在正文内联审阅，采纳前不修改正文");
     console.log("✓ Report 正面结果进入值得保留，finding 与正文可双向定位");
-    console.log("✓ 项目新对话保留最近会话，报告审阅退出后恢复原对话");
+    console.log("✓ 检查由 @专家 起任务，报告审阅退出后恢复原对话");
   }
   // 用户日常改稿走的是稿件库覆盖层，不是上面的新建弹层；这里必须单独守住入口。
   const legacyRevisionStart = revisionRequests.length;
@@ -731,33 +1011,54 @@ try {
   for (let index = 0; index < 12; index += 1) await page.keyboard.press("ArrowRight");
   const existingBefore = await editorValue(".ws-edit .cm-content");
   await page.keyboard.press("Alt+Enter");
-  await page.waitForSelector(".cursor-writing-menu");
-  const firstCursorActionFocused = await page.evaluate(() => document.activeElement === document.querySelector(".cursor-writing-menu .text-revision-menu__actions button"));
-  assert(firstCursorActionFocused, "Reading 光标菜单打开后没有把键盘焦点交给首个动作");
+  await page.waitForSelector(".inline-ai-prompt");
+  const promptInputFocused = await page.evaluate(() => document.activeElement === document.querySelector('.inline-ai-prompt input[aria-label="让 AI 写什么"]'));
+  assert(promptInputFocused, "Reading 行内 AI 输入条打开后没有把键盘焦点交给输入框");
+  assert(!(await page.$(".inline-ai-prompt [data-inline-ai-action=true]")), "Reading 行内 AI 输入条又挂上了预设按钮排");
   await assertInlineMenuInside(".ws-edit .cm-scroller", "Reading 标题附近光标菜单");
   await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-cursor-menu.png"), fullPage: false });
   await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-cursor-title.png"), fullPage: false });
-  await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("想一想")');
-  await page.waitForFunction(() => document.querySelector(".cursor-writing-menu__result")?.textContent.includes("读者最可能反对"));
+  await page.keyboard.press("Escape");
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 12; index += 1) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("/");
+  await page.waitForSelector(".block-insert-menu");
+  await page.click('.block-insert-menu__group > button:has-text("想一想")');
+  await page.waitForFunction(() => document.querySelector(".ws-edit .ai-answer p")?.textContent.includes("读者最可能反对"));
   const existingNudge = requests.filter((item) => item.mode === "nudge").at(-1);
+  // ⚠️ 生成用的是**真实光标位置**，不是卡片挂靠的行尾——两者混成一个值时「想一想」会按行尾提问
   assert(existingNudge?.cursor === 12 && existingNudge.cursor < existingNudge.content.length, "Reading 想一想仍然按文末而不是当前光标请求");
   assert((await editorValue(".ws-edit .cm-content")) === existingBefore, "Reading 想一想修改了正文");
   await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-edit-mode.png"), fullPage: false });
-  await page.click('.cursor-writing-menu .text-revision-menu__actions button:has-text("续写")');
-  await page.waitForSelector(".ws-edit .candidate-card textarea");
-  assert(!(await editorValue(".ws-edit .cm-content")).includes(paragraph), "Reading 光标生成在采纳前写入了候选正文");
+  await page.click(".ws-edit .cm-content", { position: { x: 40, y: 8 } });
+  await page.waitForSelector(".ws-edit .ai-answer", { state: "detached" });
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 12; index += 1) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("/");
+  await page.waitForSelector(".block-insert-menu");
+  await page.click('.block-insert-menu__group > button:has-text("续写这一段")');
+  await page.waitForSelector(".ws-edit .ai-answer");
+  assert(!(await editorValue(".ws-edit .cm-content")).includes(paragraph), "Reading 回答卡在插入前写入了正文");
   await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-inline-candidate.png"), fullPage: false });
   await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-candidate.png"), fullPage: false });
-  await page.focus(".ws-edit .candidate-card textarea");
-  await page.keyboard.press("Control+Enter");
-  await page.waitForSelector(".ws-edit .candidate-card", { state: "detached" });
+  /**
+   * 「在下面插入」插在**这一块下面**，不是插在光标那个字符位置上。
+   * 名字就是这么写的，Notion 也是这个语义——生成出来的是一个新段落，
+   * 塞进句子中间只会把原来那句话劈成两半。
+   */
+  await page.click('.ws-edit .ai-answer__actions button[aria-label="在下面插入"]');
+  await page.waitForSelector(".ws-edit .ai-answer", { state: "detached" });
   const existingAfter = await editorValue(".ws-edit .cm-content");
-  assert(existingAfter === existingBefore.slice(0, 12) + paragraph + existingBefore.slice(12), "Reading 光标 Candidate 没有在采纳后精确插入");
+  const firstLineBefore = existingBefore.split("\n")[0];
+  assert(existingAfter.startsWith(firstLineBefore) && existingAfter.includes(paragraph), "Reading 在下面插入没有把生成内容放到这一块下面");
+  assert(existingAfter.indexOf(paragraph) >= firstLineBefore.length, "Reading 在下面插入把内容塞进了句子中间");
   const editorFocusRestored = await page.evaluate(() => document.activeElement?.classList.contains("cm-content"));
-  assert(editorFocusRestored, "Reading Candidate 采纳后没有把焦点还给正文");
+  assert(editorFocusRestored, "Reading 插入后没有把焦点还给正文");
   await moveCursorNearViewportBottom(".ws-edit");
   await page.keyboard.press("Alt+Enter");
-  await page.waitForSelector(".cursor-writing-menu");
+  await page.waitForSelector(".inline-ai-prompt");
   const readingBottomLayout = await assertInlineMenuInside(".ws-edit .cm-scroller", "Reading 视口底部光标菜单");
   assert(readingBottomLayout.placement === "above", `Reading 底部光标菜单没有向上翻转：${JSON.stringify(readingBottomLayout)}`);
   await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-cursor-bottom.png"), fullPage: false });
@@ -767,16 +1068,67 @@ try {
   await page.waitForTimeout(120);
   const readingDocumentBeforeRevision = await editorValue(".ws-edit .cm-content");
 
-  // 正式改稿：选区 → 自定义润色 → 对比 → 重写 → 编辑候选 → 采纳。
+  /**
+   * ⚠️ **选区上的自由指令不默认成改写。** 那句话可能是「翻译成英文」，也可能是
+   * 「这段在讲什么」——我们无从判断它是不是一次改写，默认成改写就会用答案顶掉原文。
+   * 它就是**一条回复**：读完点别处就算，要放进文章才点「在下面插入」。
+   */
   await page.click(".ws-edit .cm-content");
   await page.keyboard.press("Control+Home");
   for (let index = 0; index < 12; index += 1) await page.keyboard.press("Shift+ArrowRight");
   await page.waitForSelector(".text-revision-menu");
-  await page.click('.text-revision-menu__actions button:has-text("润色")');
-  await page.fill('.text-revision-menu__command input[aria-label="润色要求"]', "更克制");
-  await page.click('.text-revision-menu__command button[aria-label="开始润色"]');
-  await page.waitForSelector(".candidate-card textarea");
-  assert(revisionRequests[legacyRevisionStart]?.instruction === "更克制", "自定义润色要求没有发给 AI");
+  await page.fill('.selection-menu__command input[aria-label="改写要求"]', "更克制");
+  /**
+   * ⚠️ **焦点进了面板的输入框，那段被选中的字仍然要看得出来是被选中的。**
+   * 原生选区高亮只在拥有选区的元素有焦点时才画——点进这个输入框，正文里那片黄
+   * 当场消失，用户正要为那段字写指令，却看不到那段字。
+   */
+  const heldSelection = await page.evaluate(() => {
+    const node = document.querySelector(".ws-edit .cm-held-selection");
+    return {
+      focusInPanel: Boolean(document.activeElement?.closest(".selection-menu")),
+      text: node?.textContent || "",
+      wash: node ? getComputedStyle(node).backgroundColor : "",
+    };
+  });
+  assert(heldSelection.focusInPanel, "指令输入框没有拿到焦点，这条测的场景没发生");
+  assert(heldSelection.text.length > 0 && heldSelection.wash && heldSelection.wash !== "transparent" && heldSelection.wash !== "rgba(0, 0, 0, 0)",
+    `焦点离开正文后选中的那段字失去了底色：${JSON.stringify(heldSelection)}`);
+  await page.click('.selection-menu__command button[aria-label="开始改写"]');
+  await page.waitForSelector(".ws-edit .ai-answer");
+  assert(!(await page.$(".ws-edit .revision-bar")), "选区自由指令被默认当成了改写");
+  assert(await page.$(".ws-edit .cm-answer-source"), "回答卡没有标出它回答的是哪一段");
+  assert((await editorValue(".ws-edit .cm-content")) === readingDocumentBeforeRevision, "回答卡在用户决定前改了正文");
+  // 三颗图标：重试 / 在下面插入 / 对话。没有「丢弃」——点别处就是丢弃
+  await page.waitForSelector(".ws-edit .ai-answer__actions");
+  const answerActions = await page.$$eval(".ws-edit .ai-answer__actions button", (items) => items.map((item) => item.getAttribute("aria-label")));
+  assert(answerActions.join("/") === "重试/在下面插入/对话", `回答卡动作不是三颗图标：${answerActions.join("/")}`);
+  await page.screenshot({ path: path.join(STAGE7_SHOT_DIR, "reading-answer-card.png"), fullPage: false });
+  /**
+   * ⚠️ **「对话」是把刚发生的这一轮搬到右栏，不是重新问一遍。**
+   * 上一版把指令重新发过去，模型再答一次——用户刚读完的那段在右栏消失了，
+   * 换成同一个问题的第二个答案。搬过去的两条必须是真实发生过的那一问一答。
+   */
+  const chatTurnsBeforeDiscuss = assistantRequests.length;
+  await page.click('.ws-edit .ai-answer__actions button[aria-label="对话"]');
+  await page.waitForSelector(".ws-edit .ai-answer", { state: "detached" });
+  for (let index = 0; index < 60 && !assistantAdopted.length; index += 1) await page.waitForTimeout(50);
+  assert((await editorValue(".ws-edit .cm-content")) === readingDocumentBeforeRevision, "转到对话改了正文");
+  const adopted0 = assistantAdopted.at(-1);
+  assert(adopted0?.prompt?.includes("更克制") && adopted0.prompt.includes(">"), `搬进右栏的指令没带上他选中的原文：${JSON.stringify(adopted0)}`);
+  assert(adopted0?.answer?.trim(), "搬进右栏的只有问题，没有那段已经读完的答案");
+  assert(assistantRequests.length === chatTurnsBeforeDiscuss, "点「对话」又向模型问了一遍");
+  assert(revisionRequests[legacyRevisionStart]?.instruction === "更克制", "自由指令没有发给 AI");
+
+  /**
+   * 改写本身走**预设技能**：那才是「有原文可比」的那条路，就地出 diff。
+   */
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 12; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.waitForSelector(".text-revision-menu");
+  await page.click('.selection-menu__skills button:has-text("润色")');
+  await page.waitForSelector(".ws-edit .revision-bar");
   const groundingText = await page.textContent(".candidate-grounding");
   assert(groundingText.includes("已使用 1") && groundingText.includes("已跳过 2") && groundingText.includes("未经核验 1"), "Grounding used/skipped/unverified 没有默认显示");
   assert(groundingText.includes("去核验") && groundingText.includes("仍然使用"), "skipped 没有给出下一步");
@@ -789,80 +1141,149 @@ try {
   await page.keyboard.type("临时变化");
   await page.waitForFunction(() => document.querySelector(".ws-edit .cm-content")?.textContent.includes("临时变化"));
   await page.keyboard.press("Control+Home");
-  await page.waitForSelector('.candidate-card[data-status="stale"]');
-  assert(await page.locator('.candidate-card .text-revision-review__decide button:has-text("采纳")').isDisabled(), "stale Candidate 仍然可以采纳");
-  await page.click('.ws-edit .md-editor__bar button[aria-label="撤销"]');
+  await page.waitForSelector('.revision-bar[data-status="stale"]');
+  assert(await page.locator('.revision-bar__actions button[aria-label="采纳"]').isDisabled(), "stale Candidate 仍然可以采纳");
+  /**
+   * ⚠️ **stale 不能被「点别处」带走。**
+   *
+   * 「点别处即采纳」是默认路径，但正文已经在候选生成之后变过——这时候落地会覆盖新内容。
+   * 这条是硬闸不是手感：点别处只关掉注意力，候选留在原地等一个明确的决定。
+   */
+  await page.click(".ws-edit .ws-edit__title, .ws-edit .cm-content", { position: { x: 5, y: 5 } }).catch(() => page.click(".ws-edit .cm-content"));
+  await page.waitForTimeout(150);
+  assert(await page.$('.revision-bar[data-status="stale"]'), "stale Candidate 被点别处静默采纳了");
+  // 顶栏撤了，撤销走键盘（和所有编辑器一样）
+  await page.focus(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Z");
   await page.focus(".ws-edit .cm-content");
   await page.keyboard.press("Control+Home");
   await page.waitForTimeout(300);
-  const restoredStatus = await page.evaluate(() => document.querySelector(".candidate-card")?.dataset.status ?? "missing");
+  const restoredStatus = await page.evaluate(() => document.querySelector(".revision-bar")?.dataset.status ?? "missing");
   assert(["ready", "edited"].includes(restoredStatus), "正文撤销后 Candidate 状态未恢复：" + restoredStatus);
   const afterStaleUndo = await editorValue(".ws-edit .cm-content");
   assert(!afterStaleUndo.includes("临时变化"), "stale 测试撤销后仍残留正文变化：" + afterStaleUndo.slice(-40));
-  const compareStyle = await page.evaluate(() => ({
-    strike: getComputedStyle(document.querySelector(".cm-text-revision-original")).textDecorationLine,
-    wash: getComputedStyle(document.querySelector(".text-revision-review textarea")).backgroundColor,
-  }));
-  assert(compareStyle.strike.includes("line-through"), "对比状态的原文没有删除线");
-  assert(compareStyle.wash !== "transparent" && compareStyle.wash !== "rgba(0, 0, 0, 0)", "修订候选没有轻量底纹");
-  await page.fill('.text-revision-review__command input[aria-label="调整候选要求"]', "更克制、更直接");
-  await page.click('.text-revision-review__command button[aria-label="重新生成"]');
-  await page.waitForFunction(() => document.querySelector(".text-revision-review textarea")?.value.includes("第二版候选"));
-  assert(revisionRequests[legacyRevisionStart + 1]?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
-  await page.fill('.text-revision-review textarea[aria-label="AI 正文候选，可直接编辑"]', "这是用户调整后的最终候选。 ");
+  /**
+   * diff **就画在正文原位置**：删掉的字带删除线，新增的字是零宽 widget。
+   * 「没动的字不加任何装饰」是这一屏的关键——只有这样读到的才是「改完之后的文章」。
+   */
+  const compareStyle = await page.evaluate(() => {
+    const del = document.querySelector(".ws-edit .cm-diff-del");
+    const ins = document.querySelector(".ws-edit .cm-diff-ins");
+    return {
+      hasDel: Boolean(del),
+      hasIns: Boolean(ins),
+      strike: del ? getComputedStyle(del).textDecorationLine : "",
+      wash: ins ? getComputedStyle(ins).backgroundColor : "",
+      untouched: !document.querySelector(".ws-edit .cm-text-revision-original"),
+    };
+  });
+  assert(compareStyle.hasDel && compareStyle.strike.includes("line-through"), "被删掉的字没有删除线");
+  assert(compareStyle.hasIns && compareStyle.wash !== "transparent" && compareStyle.wash !== "rgba(0, 0, 0, 0)", "新增的字没有底色");
+  assert(compareStyle.untouched, "定稿之后仍在整段划掉，而不是逐字 diff");
+  assert(!(await page.$(".ws-edit .revision-bar textarea")), "决策栏又出现了可编辑候选文本框");
+  // 「调整要求重新生成」收在「重试」后面：十次审阅九次是直接决定
+  await page.click('.revision-bar__retry');
+  await page.fill('.revision-bar__command input[aria-label="调整候选要求"]', "更克制、更直接");
+  await page.click('.revision-bar__command button[aria-label="按当前要求重新生成"]');
+  await page.waitForFunction(() => document.querySelector(".ws-edit .cm-diff-ins")?.textContent.includes("第二版候选"));
+  assert(revisionRequests.at(-1)?.instruction === "更克制、更直接", "重新生成没有沿用调整后的要求");
   await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-review.png"), fullPage: false });
-  await page.click('.text-revision-review__decide button:has-text("采纳")');
-  await page.waitForSelector(".text-revision-review", { state: "detached" });
+  const secondCandidate = await page.textContent(".ws-edit .cm-diff-ins");
+  await page.click('.revision-bar__actions button[aria-label="采纳"]');
+  await page.waitForSelector(".revision-bar", { state: "detached" });
   const revisedAfter = await editorValue(".ws-edit .cm-content");
-  const expectedRevisionPrefix = `这是用户调整后的最终候选。${readingDocumentBeforeRevision.slice(12)}`.slice(0, 160);
-  assert(revisedAfter.startsWith(expectedRevisionPrefix), "采纳没有精确替换原选区前缀：" + JSON.stringify(revisedAfter.slice(0, 160)));
-  await page.click(".ws-edit .md-editor__ai-history");
-  await page.waitForSelector(".ai-draft-history");
-  const historyText = await page.textContent(".ai-draft-history");
-  assert(historyText.includes("已采纳") && historyText.includes(existingAfter.slice(0, 12)) && historyText.includes("这是用户调整后的最终候选。"), "修订历史没有同时保留原文和最终候选");
-  await page.screenshot({ path: path.join(ROOT, "tmp", "text-revision-history.png"), fullPage: false });
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+  assert(revisedAfter.startsWith(secondCandidate.slice(0, 8)), "采纳没有精确替换原选区前缀：" + JSON.stringify(revisedAfter.slice(0, 160)));
+  /**
+   * ⚠️ **AI 历史的界面撤了，但记录还在服务端——覆盖不能跟着界面一起丢。**
+   * 改成直接查落库的那几条：原文和最终候选都要在，状态要对。
+   */
+  const savedRevisions = [...revisionDocuments.values()].flat();
+  const adopted = savedRevisions.find((item) => item.status === "adopted");
+  assert(adopted, "采纳没有写进修订历史");
+  assert(adopted.original?.includes(existingAfter.slice(0, 8)) && adopted.candidate?.includes(secondCandidate.slice(0, 8)),
+    `修订历史没有同时保留原文和最终候选：${JSON.stringify({ original: adopted.original?.slice(0, 40), candidate: adopted.candidate?.slice(0, 40) })}`);
+  /**
+   * ⚠️ **自由指令回来的如果是「这段字的改动版」，就落进正文画 diff。**
+   *
+   * 上一版按「用户怎么唤起」判：预设技能算改字，自由指令一律算产新字。于是「选中一段，
+   * 输入『润色优化一下』」停在一张卡里——用户要看的是**文章变成什么样**，
+   * 而卡片给的是「另一段字，要不要插到下面去」，位置都不对。
+   */
+  const editLikeStart = revisionRequests.length;
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 10; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.waitForSelector(".text-revision-menu");
+  const editLikeOriginal = await page.evaluate(() => window.getSelection().toString());
+  await page.fill('.selection-menu__command input[aria-label="改写要求"]', "润色优化一下");
+  await page.click('.selection-menu__command button[aria-label="开始改写"]');
+  await page.waitForSelector(".ws-edit .revision-bar");
+  assert(!(await page.$(".ws-edit .ai-answer")), "像改写的自由指令结果还停在回答卡里");
+  assert(await page.$(".ws-edit .cm-diff-ins"), "落进正文之后没有画出逐字 diff");
+  assert(revisionRequests[editLikeStart]?.instruction === "润色优化一下", "自由指令没有原样发出去");
+  assert((await editorValue(".ws-edit .cm-content")).startsWith(editLikeOriginal), "还没决定就改了正文");
+  // 选区面板不能和结果叠在一起：选区还在不等于此刻要对选区动手
+  assert(!(await page.$(".text-revision-menu[data-kind=\"selection\"]")), "结果出来之后选区面板还开着");
+  await page.click('.revision-bar__actions button[aria-label="弃用"]');
+  await page.waitForSelector(".ws-edit .revision-bar", { state: "detached" });
+
   await page.click('.ws-edit__foot button:has-text("取消")');
 
-  // 编辑器卸载再打开，记录仍从持久层读回来。
+  // 编辑器卸载再打开，正文和记录都还在。
   await page.click('.doc-actions button:has-text("编辑")');
-  await page.waitForSelector(".ws-edit .md-editor__ai-history", { timeout: 8000 });
-  await page.click(".ws-edit .md-editor__ai-history");
-  await page.waitForSelector(".ai-draft-history");
-  assert((await page.textContent(".ai-draft-history")).includes("已采纳"), "重新打开稿件后修订历史没有恢复");
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+  await page.waitForSelector(".ws-edit .cm-content", { timeout: 8000 });
+
+  /**
+   * **点别处 = 采纳。** 默认结果就是「接受」：读完 diff 想接着写下一句时，
+   * 不该再要求一次点击去说「是」。`✓` 只是显式确认，`弃用` 才是要主动做的那个动作。
+   */
+  const beforeClickAway = await editorValue(".ws-edit .cm-content");
+  await page.click(".ws-edit .cm-content");
+  await page.keyboard.press("Control+Home");
+  for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
+  await page.click('.selection-menu__skills button:has-text("纠错")');
+  await page.waitForSelector(".ws-edit .revision-bar");
+  const clickAwayCandidate = await page.textContent(".ws-edit .cm-diff-ins");
+  await page.click(".ws-edit .cm-content", { position: { x: 30, y: 8 } });
+  await page.waitForSelector(".ws-edit .revision-bar", { state: "detached" });
+  const afterClickAway = await editorValue(".ws-edit .cm-content");
+  assert(afterClickAway !== beforeClickAway && afterClickAway.includes(clickAwayCandidate.slice(0, 6)),
+    `点正文别处没有采纳候选：${JSON.stringify({ before: beforeClickAway.slice(0, 60), after: afterClickAway.slice(0, 60) })}`);
+  assert([...revisionDocuments.values()].flat().some((item) => item.status === "adopted"), "点别处采纳没有进入持久修订历史");
 
   // 弃用只记录决定，不改变正文；结果同样进入持久历史。
   const beforeDiscard = await editorValue(".ws-edit .cm-content");
   await page.click(".ws-edit .cm-content");
   await page.keyboard.press("Control+Home");
   for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
-  await page.click('.text-revision-menu__actions button:has-text("纠错")');
-  await page.waitForSelector(".text-revision-review textarea");
-  await page.click('.text-revision-review__decide button:has-text("弃用")');
-  await page.waitForSelector(".text-revision-review", { state: "detached" });
+  await page.click('.selection-menu__skills button:has-text("纠错")');
+  await page.waitForSelector(".ws-edit .revision-bar");
+  await page.click('.revision-bar__actions button[aria-label="弃用"]');
+  await page.waitForSelector(".revision-bar", { state: "detached" });
   assert(await editorValue(".ws-edit .cm-content") === beforeDiscard, "弃用修订后正文发生了变化");
-  await page.click(".ws-edit .md-editor__ai-history");
-  await page.waitForSelector(".ai-draft-history");
-  assert((await page.textContent(".ai-draft-history")).includes("已弃用"), "弃用决定没有进入持久修订历史");
-  await page.click('.ai-draft-history button[aria-label="关闭 AI 历史"]');
+  assert([...revisionDocuments.values()].flat().some((item) => item.status === "discarded"), "弃用决定没有进入持久修订历史");
 
   const beforeRejected = await editorValue(".ws-edit .cm-content");
   await page.click(".ws-edit .cm-content");
   await page.keyboard.press("Control+Home");
   for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowRight");
-  await page.click('.text-revision-menu__actions button:has-text("改写")');
-  await page.fill('.text-revision-menu__command input[aria-label="改写要求"]', "触发真实性拒绝");
-  await page.click('.text-revision-menu__command button[aria-label="开始改写"]');
-  await page.waitForSelector('.candidate-card[data-status="failed"]');
-  assert((await page.textContent(".candidate-card")).includes("个人经历缺少服务端证据，候选未放行"), "gate rejected 没有显示服务端原因");
-  assert(await page.locator('.candidate-card .text-revision-review__decide button:has-text("采纳")').isDisabled(), "gate rejected Candidate 仍能采纳");
-  await page.click('.candidate-card .text-revision-review__decide button:has-text("弃用")');
-  assert((await editorValue(".ws-edit .cm-content")) === beforeRejected, "failed Candidate 弃用后改变了正文");
+  await page.waitForSelector(".text-revision-menu");
+  await page.fill('.selection-menu__command input[aria-label="改写要求"]', "触发真实性拒绝");
+  await page.click('.selection-menu__command button[aria-label="开始改写"]');
+  /**
+   * ⚠️ **服务端的真实性 gate 在回答卡上同样是硬闸。**
+   * 卡片是一条新的落地路径（插入 / 替换）；不看 `grounding.gate` 就等于给 gate 开后门。
+   */
+  await page.waitForSelector('.ws-edit .ai-answer[data-status="failed"]');
+  assert((await page.textContent(".ws-edit .ai-answer")).includes("个人经历缺少服务端证据，候选未放行"), "gate rejected 没有显示服务端原因");
+  assert(!(await page.$('.ws-edit .ai-answer__actions button[aria-label="在下面插入"]')), "gate rejected 的回答卡仍然能落地");
+  await page.click(".ws-edit .cm-content", { position: { x: 40, y: 8 } });
+  await page.waitForSelector(".ws-edit .ai-answer", { state: "detached" });
+  assert((await editorValue(".ws-edit .cm-content")) === beforeRejected, "gate rejected 的回答卡关掉后改变了正文");
   await page.click('.ws-edit__foot button:has-text("取消")');
   await page.keyboard.press("Alt+Enter");
   await page.waitForTimeout(100);
-  assert(!(await page.$(".cursor-writing-menu")) && !(await page.$(".text-revision-menu")), "Reading 只读模式仍出现正文修改动作");
+  assert(!(await page.$(".inline-ai-prompt")) && !(await page.$(".text-revision-menu")), "Reading 只读模式仍出现正文修改动作");
   await page.screenshot({ path: path.join(STAGE7_1_SHOT_DIR, "1366-reading-readonly.png"), fullPage: false });
 
   await page.evaluate(() => localStorage.removeItem("xenho-assistant-model"));
@@ -871,15 +1292,26 @@ try {
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
   assert(page.url().includes("#/assistant"), "左侧 AI 助手没有打开独立对话页");
   assert(!(await page.$(".assistant-pane--standalone .assistant-history")), "独立助手打开时历史对话栏没有默认收起");
-  assert((await page.$$(".assistant-pane--standalone .assistant-composer__left > button")).length === 2, "输入框左侧没有保持为附件与权限两个紧凑入口");
-  assert(await page.$(".assistant-pane--standalone .assistant-composer__right .assistant-composer__model"), "模型选择没有放在输入框右侧");
+  // 左：附件 + 权限（会话级）。右：模型 + 发送（发送级）。
+  // 模型是「这一条用哪个发出去」，属于发送动作的一部分，必须贴着发送键。
+  assert(await page.$(".assistant-pane--standalone .assistant-composer__left .assistant-composer__attach"), "输入框左侧没有附件入口");
+  assert(await page.$(".assistant-pane--standalone .assistant-composer__left .assistant-composer__access"), "输入框左侧没有权限入口");
+  assert(await page.$(".assistant-pane--standalone .assistant-composer__right .assistant-composer__model"), "模型选择没有贴着右下角的发送键");
+  // 权限菜单必须从**权限按钮**上方长出来，不是从整条输入器顶边长出来
+  await page.click(".assistant-pane--standalone .assistant-composer__access");
+  await page.waitForSelector(".assistant-pane--standalone .assistant-permission-menu");
+  const accessBox = await page.locator(".assistant-pane--standalone .assistant-composer__access").boundingBox();
+  const accessMenuBox = await page.locator(".assistant-pane--standalone .assistant-permission-menu").boundingBox();
+  assert(accessBox && accessMenuBox && Math.abs(accessMenuBox.x - accessBox.x) <= 2 && accessBox.y - (accessMenuBox.y + accessMenuBox.height) <= 12 && accessMenuBox.y + accessMenuBox.height <= accessBox.y, `权限菜单和权限按钮分了家：menu=${JSON.stringify(accessMenuBox)} button=${JSON.stringify(accessBox)}`);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".assistant-pane--standalone .assistant-permission-menu", { state: "detached" });
   assert((await page.textContent(".assistant-pane--standalone .assistant-composer__model")).includes("claude-sonnet-4-6"), "新对话没有默认使用 claude-sonnet-4-6");
   await page.click(".assistant-pane--standalone .assistant-composer__model");
   await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models");
   await page.click(".assistant-pane__context");
   await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models", { state: "detached" });
   await page.click(".assistant-pane--standalone .assistant-composer__model");
-  await page.click('.assistant-pane--standalone .assistant-command-menu--models > button:has-text("测试模型 2")');
+  await page.click('.assistant-pane--standalone .assistant-command-menu--models .assistant-model-group > button:has-text("测试模型 2")');
   assert(await page.evaluate(() => localStorage.getItem("xenho-assistant-model")) === "test-model-2", "用户选择的模型没有写入本地偏好");
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector(".assistant-page .assistant-pane--standalone");
@@ -888,9 +1320,10 @@ try {
   await page.waitForSelector(".assistant-pane--standalone .assistant-command-menu--models");
   const modelButtonBox = await page.locator(".assistant-pane--standalone .assistant-composer__model").boundingBox();
   const modelMenuBox = await page.locator(".assistant-pane--standalone .assistant-command-menu--models").boundingBox();
+  // 菜单要从自己的触发器上方长出来，不能从对面飞过来。
   assert(modelButtonBox && modelMenuBox && modelMenuBox.y + modelMenuBox.height <= modelButtonBox.y && Math.abs(modelMenuBox.x + modelMenuBox.width - modelButtonBox.x - modelButtonBox.width) <= 3, "模型面板没有从模型按钮上方向右对齐展开");
   assert(modelMenuBox.width <= 322, `模型面板仍然过宽：${modelMenuBox.width}`);
-  const modelRows = await page.$$eval(".assistant-pane--standalone .assistant-command-menu--models > button", (items) => items.map((item) => {
+  const modelRows = await page.$$eval(".assistant-pane--standalone .assistant-command-menu--models .assistant-model-group > button", (items) => items.map((item) => {
     const box = item.getBoundingClientRect();
     return { y: box.y, bottom: box.bottom, height: box.height };
   }));
@@ -917,10 +1350,14 @@ try {
   assert((await page.textContent(".assistant-history__menu")).includes("重命名") && (await page.textContent(".assistant-history__menu")).includes("置顶聊天") && (await page.textContent(".assistant-history__menu")).includes("归档") && (await page.textContent(".assistant-history__menu")).includes("删除"), "历史对话管理菜单不完整");
   await page.click(".assistant-history__menu > button.is-danger");
   await page.waitForSelector(".assistant-history__delete-confirm");
-  assert((await page.textContent(".assistant-history__delete-confirm")).includes("原始记录会移入本地回收目录"), "删除没有显示可见的二次确认");
-  await page.click('.assistant-history__delete-confirm button:has-text("确认删除")');
+  assert((await page.textContent(".assistant-history__delete-confirm")).includes("删除后无法恢复"), "删除没有显示永久删除警告");
+  await page.click('.assistant-history__delete-confirm button:has-text("永久删除")');
   await page.waitForSelector('.assistant-history__item:has-text("最近对话")', { state: "detached" });
   assert(!assistantConversationItems.some((item) => item.id === "chat-recent"), "确认删除后历史记录仍在列表中");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".assistant-page .assistant-pane--standalone");
+  await page.click(".assistant-history-toggle");
+  assert(!(await page.$('.assistant-history__item:has-text("最近对话")')), "刷新后已删除的历史记录重新出现");
   await page.click('.assistant-history__filters button:has-text("已归档")');
   assert((await page.textContent(".assistant-history")).includes("归档对话"), "已归档视图没有展示归档对话");
   await page.click(".assistant-history-toggle");
@@ -930,18 +1367,31 @@ try {
    * 而 `.main` 本身就是浮在应用底色上的面板，白框套白框。
    * 要钉的规矩没变（输入框永远在最底下、AI 跑起来时不许位移），换的只是参照物。
    */
-  const composerBefore = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
   const pageBox = await page.locator(".assistant-page").boundingBox();
-  const composerGap = pageBox && composerBefore ? pageBox.y + pageBox.height - composerBefore.y - composerBefore.height : -1;
-  assert(composerBefore && composerGap >= 10 && composerGap <= 28, `独立对话输入框没有贴着这一页的底部：gap=${composerGap}`);
+  /**
+   * 空态：**输入框在中间，入口卡在它下面。**
+   * 这一屏用户要做的第一件事是打字，输入框必须落在视线中心；
+   * 入口卡是「不知道说什么时的备选」，优先级低于直接开口，所以排在下面。
+   */
+  const emptyComposer = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
+  const startersBox = await page.locator(".assistant-pane--standalone .assistant-empty__actions").boundingBox();
+  const emptyGap = pageBox && emptyComposer ? pageBox.y + pageBox.height - emptyComposer.y - emptyComposer.height : -1;
+  assert(emptyGap > 80, `空态输入框仍然钉在页底，没有居中：gap=${emptyGap}`);
+  assert(startersBox && startersBox.y >= emptyComposer.y + emptyComposer.height - 1, "空态入口卡没有排在输入框下方");
+  assert(Math.abs(startersBox.x - emptyComposer.x) <= 1 && Math.abs(startersBox.width - emptyComposer.width) <= 1, "空态入口卡和输入框左右没有对齐");
   // ⚠️ 顺便钉住「没有第二层容器」：它回来一次就又是白框套白框
   assert(!(await page.$(".assistant-page__canvas")), "独立对话页又套回了一层画布容器");
   await page.fill('.assistant-pane--standalone textarea[placeholder*="问任何问题"]', "帮我找一个值得继续思考的问题");
   await page.click('.assistant-pane--standalone button[aria-label="发送"]');
   await page.waitForSelector(".assistant-pane--standalone .assistant-working");
+  // 发出去之后：入口卡收起，输入框回到页底并**在整轮生成期间不再位移**。
+  assert(!(await page.$(".assistant-pane--standalone .assistant-empty__actions")), "发送后空态入口卡没有收起");
   const composerDuring = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
-  assert(Math.abs(composerDuring.y - composerBefore.y) < 2, "AI 运行时输入框发生了位移");
+  const composerGap = pageBox.y + pageBox.height - composerDuring.y - composerDuring.height;
+  assert(composerGap >= 10 && composerGap <= 40, `发送后输入框没有回到这一页的底部：gap=${composerGap}`);
   await page.waitForFunction(() => document.querySelector(".assistant-pane--standalone .assistant-message--assistant")?.textContent.includes("0.2s"));
+  const composerAfter = await page.locator(".assistant-pane--standalone .assistant-composer").boundingBox();
+  assert(Math.abs(composerAfter.y - composerDuring.y) < 2, "AI 运行时输入框发生了位移");
   assert(await page.$('.assistant-pane--standalone .assistant-message--user button[aria-label="复制消息"]'), "用户消息没有直接复制操作");
   assert(await page.$('.assistant-pane--standalone .assistant-message--user button[aria-label="编辑并重新发送"]'), "最新用户消息没有编辑操作");
   const userBubbleBox = await page.locator(".assistant-pane--standalone .assistant-message__user > p").last().boundingBox();
@@ -950,14 +1400,14 @@ try {
   await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final.png"), fullPage: false });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.screenshot({ path: path.join(ROOT, "tmp", "assistant-standalone-final-1920.png"), fullPage: false });
-  assert(!(await page.$('.assistant-pane--standalone button:has-text("作为候选插入")')), "独立对话不应出现稿件插入操作");
-  console.log("✓ 左侧 AI 助手打开独立对话页，输入框始终贴底");
+  assert(!(await page.$('.assistant-pane--standalone button[aria-label="插入正文"]')), "独立对话不应出现稿件插入操作");
+  console.log("✓ 左侧 AI 助手打开独立对话页，空态输入框居中、发送后回到页底");
   assert(errors.length === 0, `浏览器报错：${errors.join(" | ")}`);
   console.log("✓ Project 与 Reading 共用选区和光标内联 AI，旧 WritingAssist 入口未回归");
-  console.log("✓ 想一想只返回建议，续写和按要求写统一进入 Candidate");
+  console.log("✓ 想一想和自由指令进回答卡，续写插入走底纹，预设技能才出 diff");
   console.log("✓ /Skill 可以选择已注册的 interview-to-draft Skill");
   console.log("✓ 两个编辑入口都有选区修订工具，采纳前正文保持不变");
-  console.log("✓ 局部修订支持自定义要求、重新生成、直接编辑、stale 检测和精确采纳");
+  console.log("✓ 局部修订在正文原位置画 diff，支持自定义要求、重试、stale 检测和精确采纳");
   console.log("✓ Grounding 展示 used/skipped/unverified，服务端拒绝会进入 failed");
   console.log("✓ 弃用修订不改变正文，并持久记录弃用决定");
   console.log("✓ 修订历史跨编辑器重开仍可回看原文与最终候选");

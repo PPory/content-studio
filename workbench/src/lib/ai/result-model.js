@@ -1,5 +1,6 @@
 import { documentVersion } from "../document-version.js";
 import { normalizeGrounding } from "./grounding.js";
+import { diffStats, diffTokens } from "../text-diff.js";
 
 export const AI_RESULT_KINDS = Object.freeze(["answer", "candidate", "report", "action"]);
 export const CANDIDATE_STATUSES = Object.freeze(["generating", "ready", "edited", "adopted", "discarded", "stale", "failed"]);
@@ -18,16 +19,14 @@ export function documentVersionOf(text) {
   return documentVersion({ body: clean(text) });
 }
 
+/**
+ * 变更规模。**走真的字级 diff**，不再只剥公共前后缀。
+ *
+ * 旧版把「中间换了三处措辞」算成一整段全删全增——数字虚高好几倍，而这个数字就写在
+ * 审阅栏的标题上。现在和正文里画出来的底色是同一份 diff，两处不会再对不上。
+ */
 export function changeSummary(original, text) {
-  const before = clean(original);
-  const after = clean(text);
-  let prefix = 0;
-  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1;
-  let suffix = 0;
-  while (suffix < before.length - prefix && suffix < after.length - prefix && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix += 1;
-  const removed = before.length - prefix - suffix;
-  const added = after.length - prefix - suffix;
-  return { added, removed, label: `+${added} / −${removed}` };
+  return diffStats(diffTokens(clean(original), clean(text)).parts);
 }
 
 export function candidateStatus({ status, grounding, documentVersion, currentDocumentVersion, edited = false }) {

@@ -61,6 +61,7 @@ export function Shelf({ onIntake, state = "" }) {
   const [outline, setOutline] = useState([]);
   const [quote, setQuote] = useState("");
   const [assistantPrompt, setAssistantPrompt] = useState(null);
+  const [assistantHandoff, setAssistantHandoff] = useState(null);
   const askAssistant = useCallback((text) => {
     setAssistantPrompt({ id: `reader-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`, text });
   }, []);
@@ -605,6 +606,9 @@ export function Shelf({ onIntake, state = "" }) {
             assistantDocument: { ...doc, path: reading?.entry?.path || "" },
             assistantSelection: quote ? { text: quote } : null,
             assistantPrompt,
+            assistantHandoff,
+            // 回答卡的「对话」：把那一问原样送进右栏助手真的跑一遍
+            onDiscuss: (payload) => setAssistantHandoff({ id: `discuss-${payload.id}`, prompt: payload.prompt, answer: payload.answer }),
             knowledgeSource: {
               kind: "document",
               ref: reading?.entry?.path || "",

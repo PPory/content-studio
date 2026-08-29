@@ -1,5 +1,6 @@
 import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import {
+  adoptAssistantExchange,
   assistantConversation,
   assistantConversations,
   assistantExperts,
@@ -133,6 +134,19 @@ export const assistantRoutes = [
     async handler({ req, res }) {
       const body = await readJsonBody(req);
       json(res, { ok: true, conversation: await createAssistantConversation(body.scopeId, { model: body.model, permissionMode: body.permissionMode }) });
+    },
+  },
+  {
+    // 编辑器里那次问答搬进右栏，成为一段新对话。**不重新生成。**
+    method: "POST",
+    path: "/api/assistant/adopt",
+    async handler({ req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, conversation: await adoptAssistantExchange(body.scopeId, body) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
     },
   },
   {

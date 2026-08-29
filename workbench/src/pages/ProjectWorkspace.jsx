@@ -5,6 +5,7 @@ import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
+import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
@@ -213,6 +214,8 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [coverOpen, setCoverOpen] = useState(false);
   const [insertRequest, setInsertRequest] = useState(null);
   const [revisionRequest, setRevisionRequest] = useState(null);
+  // 回答卡的「对话」：把那一问原样交给右栏助手真的跑一遍，不伪造对话历史
+  const [assistantHandoff, setAssistantHandoff] = useState(null);
   const [candidateReviewFocused, setCandidateReviewFocused] = useState(false);
   const [activeSelection, setActiveSelection] = useState(null);
   const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
@@ -642,15 +645,10 @@ ${(form.body || "").slice(0, 3000)}`);
               />
 
               {/**
-                * 每篇重复填写的简报撤掉了。这里只安静地回显长期设置，让人知道这一篇
-                * 正在写给谁、AI 协作会按什么风格说话；它不是一道开始写之前的表单。
+                * ⚠️ **正文上方不再回显「写给…／协作风格」那一行。**
+                * 那是长期设置，每篇都一样；它挂在正文正上方时，每次进来第一眼读到的
+                * 都是同一句已经知道的话，而这一屏第一眼该是标题和正文。
                 */}
-              {project.brief?.audience || writingProfile?.profile?.audience || writingProfile?.style ? (
-                <div className="project-writing-context" aria-label="本篇沿用的创作设置">
-                  {project.brief?.audience || writingProfile?.profile?.audience ? <span>写给 {project.brief?.audience || writingProfile.profile.audience}</span> : null}
-                  {writingProfile?.style ? <span>AI 协作风格 · {writingProfile.style.name}</span> : null}
-                </div>
-              ) : null}
               <MarkdownEditor
                 key={`${draft.id}:${draftEditable ? "edit" : "locked"}`}
                 value={form.body}
@@ -669,6 +667,10 @@ ${(form.body || "").slice(0, 3000)}`);
                 assistantTarget={{ kind: "draft", editable: draftEditable }}
                 inlineAiContext={{ profile: writingProfile, materials: project.materials || [] }}
                 onCandidateReviewModeChange={setCandidateReviewFocused}
+                onDiscuss={(payload) => {
+                  setAssistantHandoff({ id: `discuss-${payload.id}`, prompt: payload.prompt, answer: payload.answer });
+                  summonAssistant({ routeView: "project" });
+                }}
                 readOnly={!draftEditable}
               />
             </>
@@ -722,6 +724,7 @@ ${(form.body || "").slice(0, 3000)}`);
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <ProjectAssistantRail
+            handoffRequest={assistantHandoff}
             reviewingCandidate={candidateReviewFocused}
             scopeId={draft?.id || projectId}
             document={{

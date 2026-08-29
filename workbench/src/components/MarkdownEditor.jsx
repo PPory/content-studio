@@ -18,41 +18,40 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EditorState, StateEffect, StateField, Transaction } from "@codemirror/state";
-import { EditorView, keymap, drawSelection, Decoration } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab, undo, redo } from "@codemirror/commands";
+import { EditorView, keymap, Decoration } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
-import { renderMarkdown } from "../lib/markdown.js";
 import { creationApi } from "../lib/creation-api.js";
 import { resolveAssistantPolicy } from "../lib/assistant-policy.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
-import { clearTextRevision, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
+import { clearTextRevision, setTextRevisionDiff, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
+import { clearInlineAnswer, inlineAnswerExtension, inlineAnswerField, setInlineAnswer } from "../lib/editor-inline-answer.js";
+import { diffTokens, looksLikeEdit } from "../lib/text-diff.js";
+import { livePreview, mediaKind } from "../lib/editor-live-preview.js";
+import { clearHeldSelection, heldSelectionExtension, heldSelectionField, setHeldSelection } from "../lib/editor-held-selection.js";
+import { decodeMarkdownPath, encodeMarkdownPath } from "../lib/markdown-path.js";
+import { api } from "../lib/api.js";
 import { candidateReviewMode, candidateStatus, createCandidate, documentVersionOf } from "../lib/ai/result-model.js";
+import { normalizeGrounding } from "../lib/ai/grounding.js";
 import { inlineAiBoundary, intersectRects, rectOf } from "../lib/inline-ai-positioning.js";
 import {
-  IconArrowBackUp,
-  IconArrowForwardUp,
-  IconBold,
-  IconItalic,
-  IconStrikethrough,
-  IconQuote,
-  IconList,
-  IconListNumbers,
-  IconLink,
-  IconSeparator,
-  IconEye,
-  IconPencil,
-  IconHeading,
-  IconCheck,
-  IconHistory,
+  IconLoader2,
   IconSparkles,
   IconX,
 } from "./icons.jsx";
-import { Select } from "./ui.jsx";
-import { CandidateCard } from "./assistant/CandidateCard.jsx";
-import { CursorWritingMenu, SelectionRevisionMenu, revisionLabel } from "./TextRevision.jsx";
+import { AiAnswerCard, CandidateCard, RevisionDecisionBar } from "./assistant/CandidateCard.jsx";
+import { BlockInsertMenu, InlineAiPrompt, SelectionRevisionMenu, revisionLabel } from "./TextRevision.jsx";
+import {
+  BLOCK_MENU_EVENT,
+  blockMenuQuery,
+  lineAffordanceField,
+  setLineAffordance,
+  shouldOpenBlockMenuOnSlash,
+  shouldOpenInlineAiOnSpace,
+} from "../lib/editor-line-affordance.js";
 import "./ai-draft-review.css";
 
 /**
@@ -85,18 +84,27 @@ const cmTheme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": {
     fontFamily: "var(--font)",
-    lineHeight: "1.9",
+    /**
+     * 1.65 而不是原来的 1.9。
+     *
+     * 这是 Markdown **源码**，段落之间本来就隔着一个空行——1.9 的行高叠上那个空行等于
+     * 双倍行距，而**光标的高度是跟着行高画的**：1.9 × 16px 的光标在一行字旁边像一根竖条。
+     * 1.65 是「段内读着不挤、光标又不喧宾夺主」的那一档，和 Notion 正文一致。
+     */
+    lineHeight: "1.65",
     // 编辑器自己滚，不把整页撑长——顶上的工具栏要一直在
     overflow: "auto",
   },
-  ".cm-content": { padding: "20px 0 40vh", caretColor: "var(--text-1)" },
+  // 左边那 26px 是给行首 `+` 让的位置。**不能靠 margin 挪走正文**——
+  // 那会把选区高亮和 `.cm-flash` 的底色一起挪出去，看着像整段错位了 2px
+  ".cm-content": { padding: "20px 0 40vh 26px", caretColor: "var(--text-1)" },
   // 底部留大片空白：写到最后一行时，光标不该贴在窗口最下沿
-  ".cm-line": { padding: "0 2px" },
+  // `position: relative` 是行首 `+` 和空行灰字的定位父级，见 editor-line-affordance.js
+  // 上下 2px 让段落之间透气，而**不抬高行高**（行高会一起抬高光标）
+  ".cm-line": { padding: "2px 2px", position: "relative" },
   // 不画活动行底色：这里的一「行」是整个逻辑段落（开了换行），一整段被涂上暖色底
   // 看着像「这段被高亮了」，而不是「光标在这儿」——而暖色底在这套界面里已经有主人了。
-  ".cm-selectionBackground, ::selection": { backgroundColor: "var(--mark-yellow)" },
-  "&.cm-focused .cm-selectionBackground": { backgroundColor: "var(--mark-yellow)" },
-  ".cm-cursor": { borderLeftColor: "var(--text-1)", borderLeftWidth: "2px" },
+  "::selection": { backgroundColor: "var(--mark-yellow)" },
 });
 
 function editorVisibleBoundaryOf(view) {
@@ -203,7 +211,13 @@ function wrap(view, mark, markEnd = mark) {
   view.focus();
 }
 
-/** 给选中的每一行加前缀（`## `、`- `、`> `）。再点一次去掉——同一个按钮管开也管关 */
+/**
+ * 给选中的每一行加前缀（`## `、`- `、`> `）。再点一次去掉——同一个按钮管开也管关。
+ *
+ * ⚠️ **空行上必须显式把光标放到前缀后面。** 在行首插入时 CodeMirror 默认把光标留在
+ * 插入点**之前**（那是它对「在光标处插入」最保守的映射），结果是选完「标题 2」之后
+ * 屏幕上是 `|## `——光标在记号前面，接着打的字会跑到 `#` 前，整行不再是标题。
+ */
 function prefixLines(view, prefix, re) {
   const { from, to } = view.state.selection.main;
   const first = view.state.doc.lineAt(from);
@@ -211,12 +225,14 @@ function prefixLines(view, prefix, re) {
   const lines = [];
   for (let n = first.number; n <= last.number; n++) lines.push(view.state.doc.line(n));
   const all = lines.every((l) => re.test(l.text));
+  const caretOnEmptyLine = from === to && first.number === last.number && !first.text.trim();
   view.dispatch({
     changes: lines.map((l) => ({
       from: l.from,
       to: l.from + (l.text.match(re)?.[0].length || 0),
       insert: all ? "" : prefix,
     })),
+    ...(caretOnEmptyLine ? { selection: { anchor: first.from + (all ? 0 : prefix.length) } } : {}),
   });
   view.focus();
 }
@@ -225,8 +241,12 @@ function prefixLines(view, prefix, re) {
 function setHeading(view, level) {
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const cur = line.text.match(/^#{1,6}\s+/)?.[0] || "";
+  const marker = level ? "#".repeat(level) + " " : "";
+  const caretOnEmptyLine = view.state.selection.main.empty && !line.text.slice(cur.length).trim();
   view.dispatch({
-    changes: { from: line.from, to: line.from + cur.length, insert: level ? "#".repeat(level) + " " : "" },
+    changes: { from: line.from, to: line.from + cur.length, insert: marker },
+    // 同上：空行上换块类型之后光标要停在能接着打字的地方
+    ...(caretOnEmptyLine ? { selection: { anchor: line.from + marker.length } } : {}),
   });
   view.focus();
 }
@@ -237,7 +257,59 @@ function insertBlock(view, text) {
   view.focus();
 }
 
-const HEADINGS = ["正文", "标题 1", "标题 2", "标题 3"];
+
+/**
+ * 正文里的相对媒体路径 → 能取的地址。
+ *
+ * 外链原样返回；vault 相对路径按类型分流：图片走 `/api/vault/image`，
+ * 视频走 `/api/vault/media-file`（图片那条的白名单里没有视频，而白名单
+ * 正是那个端点最后一道防线，不能为了省一条路由把视频掺进去）。
+ */
+/**
+ * 正文里的相对路径 → 能取到文件的地址。
+ *
+ * ⚠️ **先解码再拼。** 正文里存的是编码过的合法 Markdown（`07%20-%20附件/…`），
+ * 而 `api.imageUrl` 自己会对整条路径做一次 `encodeURIComponent`——不解开就是双重编码，
+ * 服务端拿到的是字面量 `%2520`，找不到文件，图片静默变成 404。
+ */
+function resolveMediaUrl(src, base = "") {
+  const raw = decodeMarkdownPath(src);
+  if (!raw || /^(https?:)?\/\//.test(raw) || raw.startsWith("data:") || raw.startsWith("blob:")) return raw;
+  const rel = base ? `${base}/${raw}` : raw;
+  return mediaKind(raw) === "video" ? api.mediaUrl(rel) : api.imageUrl(rel);
+}
+
+/**
+ * 块菜单选中一条之后落地。**每一条都走上面那几个已有的记号命令**，没有第二套模型。
+ *
+ * `eat` 是 `/` 和它后面那几个过滤字符的区间：先把它们删掉再执行，否则「输入 `/标题` 选
+ * 标题 1」的结果是 `# /标题`。用 `+` 打开时没有这段文字，`eat` 为空。
+ */
+function applyBlockItem(view, id, eat) {
+  if (eat && eat.from < eat.to) {
+    view.dispatch({ changes: { from: eat.from, to: eat.to }, selection: { anchor: eat.from } });
+  }
+  const level = { text: 0, h1: 1, h2: 2, h3: 3 }[id];
+  if (level !== undefined) {
+    setHeading(view, level);
+    return;
+  }
+  if (id === "bullet") return prefixLines(view, "- ", /^[-*]\s/);
+  if (id === "ordered") return prefixLines(view, "1. ", /^\d+\.\s/);
+  if (id === "todo") return prefixLines(view, "- [ ] ", /^[-*]\s\[[ xX]\]\s/);
+  if (id === "quote") return prefixLines(view, "> ", /^>\s?/);
+  if (id === "divider") return insertBlock(view, "---");
+  if (id === "code") {
+    // 围栏中间空一行并把光标放进去——插完就能直接开始写，不用自己再敲一次回车
+    const { from } = view.state.selection.main;
+    const line = view.state.doc.lineAt(from);
+    const fence = "```\n\n```";
+    const at = line.text.trim() ? line.to : line.from;
+    const lead = line.text.trim() ? "\n\n" : "";
+    view.dispatch({ changes: { from: at, insert: `${lead}${fence}` }, selection: { anchor: at + lead.length + 4 } });
+    view.focus();
+  }
+}
 
 function candidateTargetKind({ original = "", candidate = "", document = "", preferred }) {
   if (preferred) return preferred;
@@ -317,6 +389,8 @@ export function MarkdownEditor({
   revisionScope = "", revisionTitle = "", revisionPlatform = "",
   assistantScope = "", assistantTarget = { kind: "none", editable: false }, inlineAiContext = {},
   onCandidateReviewModeChange,
+  onDiscuss,                       // 回答卡的「对话」：把这一问交给右侧 AI 助手继续聊
+  mediaBase = "",                  // 正文里相对图片/视频路径的基准目录（vault 相对路径）
   readOnly = false,
 }) {
   const host = useRef(null);
@@ -331,9 +405,7 @@ export function MarkdownEditor({
   onCursorChangeRef.current = onCursorChange;
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
-  const [preview, setPreview] = useState(false);
   const [aiDrafts, setAiDrafts] = useState([]);
-  const [aiHistoryOpen, setAiHistoryOpen] = useState(false);
   const [selectionMenu, setSelectionMenu] = useState(null);
   const selectionMenuRef = useRef(null);
   selectionMenuRef.current = selectionMenu;
@@ -341,12 +413,30 @@ export function MarkdownEditor({
   const [cursorMenu, setCursorMenu] = useState(null);
   const cursorMenuRef = useRef(null);
   cursorMenuRef.current = cursorMenu;
+  // `/` 打开时带 `slashFrom`（过滤词跟着正文走）；行首 `+` 打开时带 `ownFilter`（菜单自带输入框）
+  const [blockMenu, setBlockMenu] = useState(null);
+  const blockMenuRef = useRef(null);
+  blockMenuRef.current = blockMenu;
+  /**
+   * AI 回答卡：**生成新内容和回答问题的落点**，和改写用的 Candidate 是两条路。
+   * 卡片开着时正文一个字都没动，落地是显式的第二步（插入 / 替换）。
+   */
+  const [inlineAnswer, setInlineAnswer_] = useState(null);
+  const inlineAnswerRef = useRef(null);
+  inlineAnswerRef.current = inlineAnswer;
+  const answerAbort = useRef(null);
+  const [, setAnswerHostTick] = useState(0);
   const [activeRevision, setActiveRevision] = useState(null);
   const [, setRevisionHostTick] = useState(0);
   const activeRevisionRef = useRef(null);
   const revisionAbort = useRef(null);
   const cursorNudgeAbort = useRef(null);
   const imeComposingRef = useRef(false);
+  // 正文里相对媒体路径的基准目录（vault 相对路径）。编辑器不知道 vault 在哪，只转交。
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+  const mediaBaseRef = useRef(mediaBase);
+  mediaBaseRef.current = mediaBase;
   const revisionSaveTimer = useRef(0);
   const [revisionHistory, setRevisionHistory] = useState([]);
   const [revisionSaveError, setRevisionSaveError] = useState("");
@@ -358,8 +448,6 @@ export function MarkdownEditor({
   assistantTargetRef.current = assistantTarget;
   const inlineAiContextRef = useRef(inlineAiContext);
   inlineAiContextRef.current = inlineAiContext;
-  const previewRef = useRef(preview);
-  previewRef.current = preview;
 
   const setCurrentRevision = (next) => {
     activeRevisionRef.current = next;
@@ -402,16 +490,85 @@ export function MarkdownEditor({
     const key = `${nextSelection.from}:${nextSelection.to}`;
     if (dismissedSelectionRef.current === key) return null;
     const policy = inlinePolicyAt(nextSelection);
-    return policy?.capabilities.reviseSelection && !previewRef.current && !activeRevision ? nextSelection : null;
+    /**
+     * ⚠️ **回答卡在的时候不弹这个面板。**
+     * 卡片会把原来那段选区留在选中态（灰底标出「这张卡在说哪一段」），于是编辑器每来一次
+     * update，这里就按「有选区」把面板又弹出来一次——现象是卡片和面板叠在一起，
+     * 关掉一个另一个还在。选区还在不等于用户此刻要对选区动手。
+     */
+    if (inlineAnswerRef.current) return null;
+    return policy?.capabilities.reviseSelection && !activeRevision ? nextSelection : null;
+  }
+
+  /**
+   * 选区面板开着 → 那段字保持一个底色。
+   *
+   * 面板底下那条指令输入框是真的 `<input>`：点进去打字，正文失焦，
+   * **原生选区高亮当场消失**——用户正要为那段字写指令，却看不到那段字了。
+   * 这里挂的是文档装饰，和焦点无关。
+   */
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    const held = selectionMenu && selectionMenu.from < selectionMenu.to
+      ? { from: selectionMenu.from, to: selectionMenu.to }
+      : null;
+    const current = v.state.field(heldSelectionField, false)?.active || null;
+    if (!held && !current) return;
+    if (held && current && held.from === current.from && held.to === current.to) return;
+    v.dispatch({
+      effects: held ? setHeldSelection.of(held) : clearHeldSelection.of(null),
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }, [selectionMenu?.from, selectionMenu?.to, Boolean(selectionMenu)]);
+
+  /** 编辑器里按 Ctrl/⌘+Enter：有待审阅的候选就采纳它，没有就让默认行为过去。 */
+  function adoptFromKeyboard() {
+    const current = activeRevisionRef.current;
+    if (!current || ["generating", "failed", "stale"].includes(current.status) || !current.text.trim()) return false;
+    closeRevision("adopted");
+    return true;
+  }
+
+  function discardFromKeyboard() {
+    const current = activeRevisionRef.current;
+    if (!current || current.status === "generating") return false;
+    closeRevision("discarded");
+    return true;
+  }
+
+  function closeBlockMenu({ restoreFocus = true } = {}) {
+    setBlockMenu(null);
+    if (restoreFocus) restoreEditorFocus();
+  }
+
+  /** 内联层此刻能不能开：预览、专注审阅和正在对比的候选都会挡住它。 */
+  function inlineLayerReady(currentView) {
+    return !currentView.state.field(textRevisionField).active;
   }
 
   function openCursorWriting(currentView) {
     if (imeComposingRef.current || currentView.composing) return false;
     const anchor = cursorWritingAnchorOf(currentView);
     const policy = inlinePolicyAt(null);
-    if (!anchor || !policy?.capabilities.writeAtCursor || previewRef.current || currentView.state.field(textRevisionField).active) return false;
+    if (!anchor || !policy?.capabilities.writeAtCursor || !inlineLayerReady(currentView)) return false;
     setSelectionMenu(null);
+    setBlockMenu(null);
     setCursorMenu({ ...anchor, busy: false, error: null, result: null, mode: "" });
+    return true;
+  }
+
+  /**
+   * 块菜单。`slashFrom` 为数字时是 `/` 触发（过滤词跟着正文走，屏幕上只有一个插入点）；
+   * 为 null 时是行首 `+` 触发（没有正文可打，菜单自带输入框）。
+   */
+  function openBlockMenu(currentView, slashFrom = null) {
+    if (imeComposingRef.current || currentView.composing) return false;
+    const anchor = cursorWritingAnchorOf(currentView);
+    if (!anchor || !inlineLayerReady(currentView)) return false;
+    setSelectionMenu(null);
+    setCursorMenu(null);
+    setBlockMenu({ ...anchor, slashFrom, query: "", canWrite: Boolean(inlinePolicyAt(null)?.capabilities.writeAtCursor) });
     return true;
   }
   // 建一次就够。**value 不进依赖**——进了的话每敲一个字就重建整个编辑器，
@@ -424,15 +581,36 @@ export function MarkdownEditor({
         doc: value ?? "",
         extensions: [
           history(),
-          drawSelection(),
+          /**
+           * ⚠️ **不用 `drawSelection()`，用浏览器原生光标和原生选区。**
+           *
+           * `drawSelection` 画的 `.cm-cursor` 高度**等于整个行框**（行高 × 字号）；
+           * 而原生 caret 的高度是**字的高度**。前者在 1.65 行高下比字高出一截，
+           * 看着就是「光标很大」，而且和这个应用里其它所有输入框都不一样。
+           * 选区颜色由 `::selection` 管，效果一样。
+           */
           EditorView.lineWrapping,
           keymap.of([
             { key: "Alt-Enter", run: (currentView) => openCursorWriting(currentView) },
+            /**
+             * 采纳 / 弃用挂在**编辑器**上，不只挂在决策栏上。
+             *
+             * 候选生成完之后焦点还在正文里（这是对的——人正在读那段 diff），
+             * 而上一版的快捷键只在候选卡的 textarea 里生效。文案上写着 `Ctrl+Enter 采纳`，
+             * 实际按下去没反应，除非先点一下卡片。
+             */
+            { key: "Mod-Enter", run: () => adoptFromKeyboard() },
+            { key: "Mod-Backspace", run: () => discardFromKeyboard() },
             ...defaultKeymap,
             ...historyKeymap,
             indentWithTab,
           ]),
           markdown({ base: markdownLanguage }),
+          /**
+           * 实时预览：光标不在的行隐掉记号、图片就地渲染。
+           * 文档一个字节没变——见 `editor-live-preview.js` 开头那段。
+           */
+          livePreview({ resolveUrl: (src) => resolveMediaUrl(src, mediaBaseRef.current) }),
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
           syntaxHighlighting(mdHighlight),
@@ -440,6 +618,9 @@ export function MarkdownEditor({
           citationExtension,
           aiDraftExtension,
           textRevisionExtension,
+          inlineAnswerExtension,
+          heldSelectionExtension,
+          lineAffordanceField,
           flashField,
           // 点正文里被标注的那句 → 右侧面板高亮对应素材。反方向由 revealRequest 走。
           EditorView.domEventHandlers({
@@ -455,11 +636,71 @@ export function MarkdownEditor({
               const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
               onCiteClickRef.current?.(focusCitationAt(view, pos));
             },
+            /**
+             * 粘贴和拖放。**截图直接 Ctrl+V 进正文**是这类编辑器最常用的一条路，
+             * 走菜单选文件反而是备选。带文件时才拦，纯文本粘贴一律放行。
+             */
+            paste(event, currentView) {
+              const file = [...(event.clipboardData?.files || [])][0];
+              if (!file || !inlineLayerReady(currentView)) return false;
+              event.preventDefault();
+              insertMediaFile(file);
+              return true;
+            },
+            drop(event, currentView) {
+              const file = [...(event.dataTransfer?.files || [])][0];
+              if (!file || !inlineLayerReady(currentView)) return false;
+              event.preventDefault();
+              // 落在哪就插在哪，而不是插在原来的光标处
+              const pos = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (Number.isFinite(pos)) currentView.dispatch({ selection: { anchor: pos } });
+              insertMediaFile(file);
+              return true;
+            },
             compositionstart() {
               imeComposingRef.current = true;
             },
             compositionend() {
               imeComposingRef.current = false;
+            },
+            /**
+             * ⚠️ **`imeComposingRef` 会卡住。** 组合被点击、失焦或切走输入法打断时，
+             * `compositionend` 不一定发得出来，那个布尔值就永远是 true——**之后空格和
+             * `/` 全部失效**，现象是「斜杠打进了正文但菜单不出来」，而且怎么试都不好。
+             * 失焦时强制清一次，它只是个尽力而为的旁证。
+             */
+            blur() {
+              imeComposingRef.current = false;
+            },
+            /**
+             * 空格和 `/` 这两个**字符键**走 DOM 事件，不走 keymap。
+             *
+             * keymap 的 `run(view)` 拿不到原始事件，只能去读上面那个会卡住的 ref；
+             * 而这里能直接读 `event.isComposing` / `keyCode === 229`——那是**这一次按键
+             * 自己**的组合状态，不会被历史状态污染。中文输入里这两个键太常用，
+             * 判据必须是当下的事实。
+             */
+            keydown(event, currentView) {
+              if (event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+              if (!inlineLayerReady(currentView)) return false;
+              if (event.key === " ") {
+                const canWrite = Boolean(inlinePolicyAt(null)?.capabilities.writeAtCursor);
+                if (!shouldOpenInlineAiOnSpace(currentView.state, { composing: false, canWrite })) return false;
+                // 空格**不插入**——这一行仍然是空行，Esc 之后什么痕迹都不留
+                event.preventDefault();
+                return openCursorWriting(currentView);
+              }
+              if (event.key === "/") {
+                if (!shouldOpenBlockMenuOnSlash(currentView.state)) return false;
+                // 斜杠照常插进正文：关掉菜单后留在纸上的就是一个普通斜杠，
+                // 不会出现「按了个键什么都没有」
+                const at = currentView.state.selection.main.head;
+                event.preventDefault();
+                currentView.dispatch({ changes: { from: at, insert: "/" }, selection: { anchor: at + 1 } });
+                requestAnimationFrame(() => openBlockMenu(currentView, at));
+                return true;
+              }
+              return false;
             },
           }),
           EditorView.updateListener.of((u) => {
@@ -510,6 +751,30 @@ export function MarkdownEditor({
                   setCursorMenu(null);
                 }
               }
+              /**
+               * `/` 打开的块菜单：过滤词就是斜杠后面那几个字，跟着正文走。
+               * 一出现空白、换行，或光标退到斜杠前面，`blockMenuQuery` 返回 null——
+               * 那时候人显然是在写正文，菜单自己让开。
+               */
+              const openBlock = blockMenuRef.current;
+              if (openBlock && openBlock.slashFrom !== null && openBlock.slashFrom !== undefined) {
+                const query = blockMenuQuery(u.state, openBlock.slashFrom + 1);
+                const anchor = query === null ? null : cursorWritingAnchorOf(u.view);
+                if (query === null || !anchor || nextSelection || revisionNow.active) setBlockMenu(null);
+                else setBlockMenu((current) => current ? { ...current, ...anchor, query } : current);
+              } else if (openBlock && (nextSelection || revisionNow.active)) {
+                setBlockMenu(null);
+              }
+              /**
+               * **续写底纹点走就算落定。** 插入这个动作本身已经是一次确认，
+               * 上一版还要再点一颗 ✓ 才退底纹——同一件事收了两次确认。
+               * 光标离开这段底纹（去别处写字、点到别的段落）时自动确认。
+               */
+              const head = u.state.selection.main.head;
+              for (const item of u.state.field(aiDraftField).items) {
+                if (item.confirmed || item.removed) continue;
+                if (head < item.from || head > item.to) u.view.dispatch({ effects: confirmAiDraft.of(item.id) });
+              }
             }
           }),
         ],
@@ -539,6 +804,15 @@ export function MarkdownEditor({
       cancelAnimationFrame(refreshFrame);
       refreshFrame = requestAnimationFrame(refreshInlineMenus);
     };
+    // 行首那颗 `+`：widget 是原生 DOM，只能通过冒泡的自定义事件回到 React 这边
+    const openFromGutter = (event) => {
+      const pos = event.detail?.pos;
+      if (!Number.isFinite(pos)) return;
+      v.dispatch({ selection: { anchor: pos } });
+      v.focus();
+      requestAnimationFrame(() => openBlockMenu(v, null));
+    };
+    v.dom.addEventListener(BLOCK_MENU_EVENT, openFromGutter);
     const boundaryObserver = typeof ResizeObserver === "function" ? new ResizeObserver(scheduleInlineRefresh) : null;
     boundaryObserver?.observe(v.scrollDOM);
     v.scrollDOM.addEventListener("scroll", scheduleInlineRefresh, { passive: true });
@@ -547,6 +821,7 @@ export function MarkdownEditor({
     document.addEventListener("selectionchange", scheduleInlineRefresh);
     return () => {
       cancelAnimationFrame(refreshFrame);
+      v.dom.removeEventListener(BLOCK_MENU_EVENT, openFromGutter);
       boundaryObserver?.disconnect();
       v.scrollDOM.removeEventListener("scroll", scheduleInlineRefresh);
       window.removeEventListener("scroll", scheduleInlineRefresh, true);
@@ -557,6 +832,30 @@ export function MarkdownEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** 块菜单「建议」组交接过来的那一次执行。清掉标记再跑，保证只跑一次。 */
+  useEffect(() => {
+    if (!cursorMenu?.pendingRun) return;
+    const mode = cursorMenu.pendingRun;
+    setCursorMenu((menu) => menu ? { ...menu, pendingRun: null } : menu);
+    runCursorWriting(mode, "");
+    // 由一次性的 pendingRun 触发；其余状态通过 ref 读取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursorMenu?.pendingRun]);
+
+  /**
+   * 空行灰字要不要提「问 AI」，跟着这份文档的实际写作权限走。
+   *
+   * 只读的 Reading 文档看到的是「按 / 插入」，不会出现一个按下去什么都不发生的空格提示。
+   * 判据仍然只有 `resolveAssistantPolicy` 一处，编辑器不自己推测能力。
+   */
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    v.dispatch({ effects: setLineAffordance.of(Boolean(inlinePolicyAt(null)?.capabilities.writeAtCursor)) });
+    // 能力由 scope + target 决定，两者都在 ref 里同步；readOnly 会改变编辑器可写性。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assistantScope, assistantTarget?.kind, assistantTarget?.editable, readOnly]);
 
   // 外部把值换掉了（换了一篇文档 / 取消后重进）时同步进来。
   // 先比一次再 dispatch：不比的话，自己敲字触发的 onChange 会绕回来把光标顶到末尾。
@@ -610,6 +909,10 @@ export function MarkdownEditor({
     setSelectionMenu(null);
     setCursorMenu(null);
     if (view.current?.state.field(textRevisionField).active) view.current.dispatch({ effects: clearTextRevision.of(null) });
+    answerAbort.current?.abort();
+    answerAbort.current = null;
+    setInlineAnswer_(null);
+    if (view.current?.state.field(inlineAnswerField).active) view.current.dispatch({ effects: clearInlineAnswer.of(null) });
     setCurrentRevision(null);
     if (revisionScope) {
       creationApi.revisions(revisionScope)
@@ -624,6 +927,7 @@ export function MarkdownEditor({
   useEffect(() => () => {
     revisionAbort.current?.abort();
     cursorNudgeAbort.current?.abort();
+    answerAbort.current?.abort();
     clearTimeout(revisionSaveTimer.current);
   }, []);
 
@@ -639,7 +943,18 @@ export function MarkdownEditor({
     const lead = !exact && before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
     const tail = !exact && after && !after.startsWith("\n\n") ? (after.startsWith("\n") ? "\n" : "\n\n") : "";
     const insert = exact ? text : `${lead}${text}${tail}`;
-    if (insertRequest.resultKind === "candidate") {
+    /**
+     * ⚠️ **没有选区就不是「候选」，是「插入」。**
+     *
+     * 候选审阅回答的是「改成这样好不好」——它得有个原文可比。光标处插入时原文是空串，
+     * diff 全是新增，一条 250 字的回复于是被 `candidateTargetKind` 判成「章节」，
+     * 弹出整屏的「章节审阅」：一次插入被当成一次全篇改造，而屏幕上根本没有第二个版本可比。
+     *
+     * 这条判据和 `looksLikeEdit` 是同一条：**在改用户写下的字，还是在产出新的字。**
+     * 产出新的字就走续写底纹——插到光标处、带底纹、点别处即落定，
+     * 和空行上生成、回答卡「在下面插入」完全同一条路。
+     */
+    if (insertRequest.resultKind === "candidate" && from !== to) {
       const createdAt = new Date().toISOString();
       const documentVersion = documentVersionOf(v.state.doc.toString());
       const candidate = createCandidate({
@@ -666,22 +981,15 @@ export function MarkdownEditor({
       onInsertHandled?.(insertRequest.id);
       return;
     }
-    const effects = insertRequest.ai
-      ? [addAiDraft.of({ id: insertRequest.id, from, to: from + insert.length, original: text, label: insertRequest.kind || "AI 续写", createdAt: Date.now() })]
+    const effects = insertRequest.ai || insertRequest.resultKind === "candidate"
+      ? [addAiDraft.of({ id: insertRequest.id, from: from + lead.length, to: from + insert.length - tail.length, original: text, label: insertRequest.kind || "AI 续写", createdAt: Date.now() })]
       : undefined;
     v.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length - tail.length }, effects });
     v.focus();
     onInsertHandled?.(insertRequest.id);
   }, [insertRequest, onInsertHandled, activeRevision?.id]);
 
-  const html = useMemo(() => (preview ? renderMarkdown(value || "") : ""), [preview, value]);
   const cmd = (fn) => () => view.current && fn(view.current);
-  const headingOf = () => {
-    const v = view.current;
-    if (!v) return HEADINGS[0];
-    const line = v.state.doc.lineAt(v.state.selection.main.from);
-    return HEADINGS[(line.text.match(/^(#{1,3})\s+/)?.[1].length ?? 0)] || HEADINGS[0];
-  };
   const pendingAiDrafts = aiDrafts.filter((item) => !item.confirmed);
   const activeAiDraft = pendingAiDrafts.at(-1);
   const aiText = (item) => {
@@ -690,12 +998,6 @@ export function MarkdownEditor({
     return v.state.sliceDoc(item.from, item.to);
   };
   const activeAiChanged = activeAiDraft ? aiText(activeAiDraft) !== activeAiDraft.original : false;
-  const acceptAiDraft = () => {
-    if (!view.current || !activeAiDraft) return;
-    view.current.dispatch({ effects: confirmAiDraft.of(activeAiDraft.id) });
-    view.current.focus();
-  };
-
   function recordOf(revision, status = revision.status || "pending") {
     return {
       id: revision.id,
@@ -766,64 +1068,215 @@ export function MarkdownEditor({
     }
   }
 
-  async function runCursorWriting(mode, instruction = "") {
+  /**
+   * 生成新内容 / 回答问题 → **回答卡**，不是 diff。
+   *
+   * 三条路都进这里：空行输入条的自由指令、`/` 的「续写这一段 / 想一想」、
+   * 选区面板底部的自由指令。它们的共同点是**没有「原文」可比**——
+   * 用户要的是一段新的字或一个答案，而不是「把这段改成那段」。
+   *
+   * 上一版把它们全塞进 Candidate，于是「选中一段问它在讲什么」会变成一次改写，
+   * 答案直接顶掉了原文。这里正文一个字都不动，落地是显式的第二步。
+   */
+  /**
+   * ⚠️ **`cursor` 和 `at` 是两个东西，不能合并。**
+   * `cursor` 是真实光标位置——服务端靠它判断「从哪儿往下写」；
+   * `at` 是卡片这个块级 widget 挂在哪一行的末尾。合并之后「想一想」会按行尾提问，
+   * 而用户的光标可能停在这一行中间。
+   */
+  async function runInlineAnswer({ mode, instruction = "", cursor, at, selection = null, label }) {
     const v = view.current;
-    const anchor = cursorMenu;
-    const policy = inlinePolicyAt(null);
-    if (!v || !anchor || !policy?.capabilities.writeAtCursor || activeRevisionRef.current) return;
-    if (mode === "nudge") {
-      cursorNudgeAbort.current?.abort();
-      const controller = new AbortController();
-      cursorNudgeAbort.current = controller;
-      setCursorMenu((current) => current ? { ...current, mode, busy: true, error: null, result: null } : current);
-      try {
-        const prompts = inlineWritingPrompts(inlineAiContextRef.current);
-        const result = await creationApi.writingAssist({
-          mode: "nudge",
+    const policy = inlinePolicyAt(selection);
+    if (!v || !policy?.capabilities.writeAtCursor || activeRevisionRef.current) return;
+    answerAbort.current?.abort();
+    const controller = new AbortController();
+    answerAbort.current = controller;
+    const id = inlineAnswerRef.current?.id
+      || `answer-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
+    const caret = Number.isFinite(cursor) ? cursor : (selection ? selection.to : v.state.selection.main.head);
+    const anchorAt = Number.isFinite(at) ? at : v.state.doc.lineAt(caret).to;
+    const base = { id, mode, instruction, label, cursor: caret, at: anchorAt, selection, text: "", busy: true, error: null };
+    setSelectionMenu(null);
+    setCursorMenu(null);
+    setBlockMenu(null);
+    setInlineAnswer_(base);
+    v.dispatch({
+      effects: setInlineAnswer.of({ id, at: anchorAt, ...(selection ? { from: selection.from, to: selection.to } : {}) }),
+      annotations: Transaction.addToHistory.of(false),
+    });
+    requestAnimationFrame(() => setAnswerHostTick((tick) => tick + 1));
+
+    try {
+      const prompts = inlineWritingPrompts(inlineAiContextRef.current, instruction);
+      const doc = v.state.doc.toString();
+      // 选区上的自由指令仍然走 `text-revision` 那个服务端契约——**变的是呈现，不是业务规则**。
+      const result = selection
+        ? await creationApi.reviseText({
+          mode: "rewrite",
+          instruction,
+          selected: selection.text,
           title: revisionTitle,
-          content: v.state.doc.toString(),
-          cursor: anchor.from,
+          platform: revisionPlatform,
+          before: doc.slice(Math.max(0, selection.from - 4_000), selection.from),
+          after: doc.slice(selection.to, Math.min(doc.length, selection.to + 4_000)),
+        }, controller.signal)
+        : await creationApi.writingAssist({
+          mode,
+          title: revisionTitle,
+          content: doc,
+          cursor: caret,
           platform: revisionPlatform,
           materials: prompts.materials,
           expert: prompts.expert,
-          style: "",
+          style: mode === "nudge" ? "" : prompts.style,
         }, controller.signal);
-        setCursorMenu((current) => current ? { ...current, busy: false, error: null, result: { kind: result.kind, text: result.text } } : current);
-      } catch (error) {
-        if (!controller.signal.aborted && error.name !== "AbortError") setCursorMenu((current) => current ? { ...current, busy: false, error, result: null } : current);
-      } finally {
-        if (cursorNudgeAbort.current === controller) cursorNudgeAbort.current = null;
+      if (inlineAnswerRef.current?.id !== id) return;
+      /**
+       * ⚠️ **grounding 必须先归一化再进卡片。**
+       * 服务端回的是原始结构，`skipped[].nextStep`（「去核验」/「仍然使用」那颗按钮）
+       * 是 `normalizeGrounding` 补出来的。直接渲染原始对象会在读 `nextStep.label` 时抛异常，
+       * React 把整棵子树卸掉——现象是「卡片一闪就没了」，而且控制台之外看不出原因。
+       * 候选那条路一直是对的（`createCandidate` 内部会归一化），只有这条新路漏了。
+       */
+      const grounding = normalizeGrounding(result.grounding);
+      /**
+       * **结果如果是在改这段字，就落到正文里画 diff，而不是停在卡片里。**
+       *
+       * 选中一段输入「润色优化一下」，用户要的是**看到文章变成什么样**；停在卡片里
+       * 等于让他再点一次「插入」，而且插到下面去了——那不是他要的位置。
+       * 判据在 `looksLikeEdit`：看回来的东西保留了多少原文，不猜他那句话是什么意思。
+       *
+       * ⚠️ **gate 被拒时不走这条路。** diff 那条路点空白就是采纳，
+       * 而服务端拒了的内容一个字都不该有机会落进正文——留在卡片里，只剩重试和对话。
+       */
+      if (selection && grounding?.gate !== "rejected" && looksLikeEdit(selection.text, result.text)) {
+        landAnswerAsRevision({ selection, instruction, text: result.text, grounding });
+        return;
       }
+      setInlineAnswer_({ ...base, text: result.text, grounding, busy: false, error: null });
+      requestAnimationFrame(() => setAnswerHostTick((tick) => tick + 1));
+    } catch (error) {
+      if (controller.signal.aborted || error.name === "AbortError") return;
+      if (inlineAnswerRef.current?.id !== id) return;
+      setInlineAnswer_({ ...base, busy: false, error });
+    } finally {
+      if (answerAbort.current === controller) answerAbort.current = null;
+    }
+  }
+
+  /**
+   * 卡片 → 正文 diff。**同一次生成，换一种呈现，不重新请求。**
+   *
+   * 只有「选区上的自由指令」会走到这里：预设技能从一开始就走 diff，
+   * 空行上的生成没有原文可比。转过来之后它和预设技能产出的候选完全同构——
+   * 同一个 Candidate 状态机、同一条决策栏、同一套 Ctrl+Enter / 点空白采纳。
+   */
+  function landAnswerAsRevision({ selection, instruction, text, grounding }) {
+    const v = view.current;
+    if (!v) return;
+    setInlineAnswer_(null);
+    v.dispatch({ effects: clearInlineAnswer.of(null), annotations: Transaction.addToHistory.of(false) });
+    const from = Math.min(selection.from, v.state.doc.length);
+    const to = Math.min(selection.to, v.state.doc.length);
+    // 选区在生成期间被改动过就不落地：那时候 from/to 指的已经不是用户看到的那段字
+    if (v.state.sliceDoc(from, to) !== selection.text) {
+      setInlineAnswer_({ id: `answer-${Date.now().toString(36)}`, mode: "rewrite", instruction, label: "改写", cursor: to, at: v.state.doc.lineAt(to).to, selection, text, grounding, busy: false, error: null });
+      requestAnimationFrame(() => setAnswerHostTick((tick) => tick + 1));
       return;
     }
-
-    cursorNudgeAbort.current?.abort();
-    cursorNudgeAbort.current = null;
-    const id = `cursor-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
     const documentVersion = documentVersionOf(v.state.doc.toString());
+    const createdAt = new Date().toISOString();
+    const id = `revision-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
     const candidate = createCandidate({
       id,
-      source: "cursor-writing",
-      target: { kind: "insertion", from: anchor.from, to: anchor.to },
-      mode: "paragraph",
-      label: instruction ? "按要求生成" : "续写一段",
+      source: "selection-revision",
+      target: { kind: candidateTargetKind({ original: selection.text, candidate: text, document: v.state.doc.toString() }), from, to },
+      mode: "rewrite",
+      label: "改写",
       instruction,
-      original: "",
-      text: "",
-      generations: [],
-      from: anchor.from,
-      to: anchor.to,
+      original: selection.text,
+      text,
+      generations: [{ text, at: createdAt }],
+      grounding,
+      from,
+      to,
       documentVersion,
-      createdAt: new Date().toISOString(),
-      status: "generating",
+      createdAt,
+      status: "ready",
       error: null,
     }, documentVersion);
-    setCursorMenu(null);
+    setSelectionMenu(null);
     setCurrentRevision(candidate);
-    v.dispatch({ effects: startTextRevision.of({ id, from: candidate.from, to: candidate.to }), annotations: Transaction.addToHistory.of(false) });
-    requestAnimationFrame(() => v.focus());
-    generateCursorCandidate(candidate, instruction);
+    v.dispatch({ effects: startTextRevision.of({ id, from, to }), annotations: Transaction.addToHistory.of(false) });
+    persistRevision(candidate, "pending");
   }
+
+  /**
+   * 「对话」：**把刚发生的这一轮搬到右栏**，不重新问一遍。
+   *
+   * 用户已经读完这个答案了。点「对话」是想接着这段往下聊，不是想看同一个问题的第二个答案——
+   * 上一版把指令重新发过去，于是他刚读的那段在右栏消失了，换成另一段。
+   *
+   * 送出去的两条都真实发生过：他写的指令（连同选中的原文）和模型回的字。服务端把它们落成
+   * 一段新对话并打开 `replayHistory`，下一轮模型看得到这段前文——和「换权限模式后接着聊」
+   * 用的是同一套机制，不另起一条路。
+   */
+  function discussInlineAnswer() {
+    const answer = inlineAnswerRef.current;
+    if (!answer || !onDiscuss || !answer.text?.trim()) return;
+    const quoted = answer.selection?.text
+      ? answer.selection.text.split("\n").map((line) => `> ${line}`).join("\n")
+      : "";
+    const ask = answer.instruction
+      || (answer.mode === "nudge" ? "针对这一段，给我一个最值得继续想的问题。" : "接着这里往下写一段。");
+    onDiscuss({ id: answer.id, prompt: [ask, quoted].filter(Boolean).join("\n\n"), answer: answer.text });
+    closeInlineAnswer();
+  }
+
+  function closeInlineAnswer() {
+    answerAbort.current?.abort();
+    answerAbort.current = null;
+    setInlineAnswer_(null);
+    view.current?.dispatch({ effects: clearInlineAnswer.of(null), annotations: Transaction.addToHistory.of(false) });
+    restoreEditorFocus();
+  }
+
+  /** 「在下面插入」：走续写底纹，插入后点别处即落定（和 Notion 图 31→32 一致）。 */
+  function insertAnswerBelow() {
+    const answer = inlineAnswerRef.current;
+    const v = view.current;
+    if (!v || !answer?.text.trim()) return;
+    const at = Math.min(answer.at, v.state.doc.length);
+    const before = v.state.sliceDoc(0, at);
+    const lead = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+    const insert = `${lead}${answer.text.trim()}`;
+    setInlineAnswer_(null);
+    v.dispatch({
+      changes: { from: at, insert },
+      selection: { anchor: at + insert.length },
+      effects: [
+        clearInlineAnswer.of(null),
+        addAiDraft.of({ id: answer.id, from: at + lead.length, to: at + insert.length, original: answer.text.trim(), label: answer.label || "AI 生成", createdAt: Date.now() }),
+      ],
+    });
+    v.focus();
+  }
+
+  /** `/` 建议组和空行输入条的统一入口。全部产出回答卡。 */
+  function runCursorWriting(mode, instruction = "") {
+    const anchor = cursorMenuRef.current || cursorMenu;
+    const v = view.current;
+    if (!v) return;
+    const caret = anchor ? anchor.from : v.state.selection.main.head;
+    runInlineAnswer({
+      mode: mode === "nudge" ? "nudge" : "paragraph",
+      instruction,
+      cursor: caret,
+      at: v.state.doc.lineAt(caret).to,
+      label: mode === "nudge" ? "想一想" : instruction ? "按要求生成" : "续写一段",
+    });
+  }
+
   async function generateRevision(base, instruction = base.instruction || "") {
     const v = view.current;
     if (!v || !base) return;
@@ -883,9 +1336,23 @@ export function MarkdownEditor({
     generateRevision(base, instruction);
   }
 
+  /**
+   * 选区上的动作分两条路：
+   *
+   * - **预设技能**（润色 / 纠错 / 缩写 / 扩写）→ 就地 diff。用户按下去就知道会发生什么，
+   *   要判断的只是「改得好不好」，所以直接给「改完的样子」。
+   * - **自由指令** → 回答卡。那句话可能是「翻译成英文」，也可能是「这段在讲什么」——
+   *   我们无从判断它是不是一次改写，**默认成改写就会用答案顶掉用户的原文**。
+   *   卡片里正文一个字不动，是替换还是插入由用户说了算。
+   */
   function beginRevision(mode, instruction) {
     const v = view.current;
     if (!v || !selectionMenu || !inlinePolicyAt(selectionMenu)?.capabilities.reviseSelection) return;
+    if (mode === "rewrite") {
+      const selection = { from: selectionMenu.from, to: selectionMenu.to, text: selectionMenu.text };
+      runInlineAnswer({ mode: "rewrite", instruction, cursor: selection.to, at: v.state.doc.lineAt(selection.to).to, selection, label: "改写" });
+      return;
+    }
     const id = `revision-${Date.now().toString(36)}-${crypto.randomUUID?.().slice(0, 8) || Math.random().toString(36).slice(2, 10)}`;
     const revision = createCandidate({
       id,
@@ -950,13 +1417,6 @@ export function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revisionRequest?.id]);
 
-  function editRevisionCandidate(text) {
-    const current = activeRevisionRef.current;
-    const v = view.current;
-    if (!current || !v) return;
-    setCurrentRevision(createCandidate({ ...current, text, status: "edited" }, documentVersionOf(v.state.doc.toString())));
-  }
-
   function closeRevision(status) {
     const current = activeRevisionRef.current;
     const v = view.current;
@@ -999,14 +1459,44 @@ export function MarkdownEditor({
   const revisionHost = activeRevision && !focusedRevision && view.current
     ? view.current.dom.querySelector(`[data-revision-host="${activeRevision.id}"]`)
     : null;
-  const candidateCard = activeRevision ? <CandidateCard
-    candidate={activeRevision}
-    persistenceError={revisionSaveError}
-    onText={editRevisionCandidate}
-    onRegenerate={(instruction) => regenerateCandidate(activeRevisionRef.current, instruction)}
-    onAdopt={() => closeRevision("adopted")}
-    onDiscard={() => closeRevision("discarded")}
-    onGroundingAction={(item, nextStep) => {
+  const answerHost = inlineAnswer && view.current
+    ? view.current.dom.querySelector(`[data-answer-host="${inlineAnswer.id}"]`)
+    : null;
+  /**
+   * 候选定稿后才算 diff，**流式生成期间不算**。
+   *
+   * 生成中每几十毫秒就多几个字，逐字 diff 会跟着整段重排——读起来是花屏，算起来还白费。
+   * 这期间正文保持「整段划掉 + 下方生成中」，等文字停下来再一次性上色。
+   */
+  const revisionDiff = useMemo(
+    () => (activeRevision && activeRevision.status !== "generating"
+      ? diffTokens(activeRevision.original, activeRevision.text)
+      : { parts: [], degraded: false }),
+    [activeRevision?.id, activeRevision?.original, activeRevision?.text, activeRevision?.status],
+  );
+
+  // 算好的 diff 交给编辑器去画。原文一个字节都不动，新增靠零宽 widget 落位。
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !activeRevision) return;
+    if (v.state.field(textRevisionField).active?.id !== activeRevision.id) return;
+    v.dispatch({
+      effects: setTextRevisionDiff.of({ id: activeRevision.id, parts: revisionDiff.parts }),
+      annotations: Transaction.addToHistory.of(false),
+    });
+    requestAnimationFrame(() => setRevisionHostTick((tick) => tick + 1));
+    // 由候选 id 和算好的 diff 驱动；编辑器实例通过 ref 读取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRevision?.id, revisionDiff]);
+
+  const candidateDecisions = activeRevision ? {
+    candidate: activeRevision,
+    degraded: revisionDiff.degraded,
+    persistenceError: revisionSaveError,
+    onRegenerate: (instruction) => regenerateCandidate(activeRevisionRef.current, instruction),
+    onAdopt: () => closeRevision("adopted"),
+    onDiscard: () => closeRevision("discarded"),
+    onGroundingAction: (item, nextStep) => {
       if (nextStep.id === "verify") {
         window.location.hash = "#/materials/需核验";
         return;
@@ -1014,156 +1504,185 @@ export function MarkdownEditor({
       const current = activeRevisionRef.current;
       const instruction = [current?.instruction, `在服务端校验允许的前提下，仍然使用素材“${item.title}”。`].filter(Boolean).join("\n");
       regenerateCandidate(current, instruction);
-    }}
-  /> : null;
+    },
+  } : null;
+
+  /**
+   * 选区面板里的格式动作。**一律复用上面那三个已有的记号命令**，没有第二套模型：
+   * 按钮做的事和自己敲出来的完全一样。
+   */
+  const selectionFormat = {
+    bold: cmd((v) => wrap(v, "**")),
+    italic: cmd((v) => wrap(v, "*")),
+    strike: cmd((v) => wrap(v, "~~")),
+    code: cmd((v) => wrap(v, "`")),
+    link: cmd((v) => wrap(v, "[", "](url)")),
+    quote: cmd((v) => prefixLines(v, "> ", /^>\s?/)),
+    bullet: cmd((v) => prefixLines(v, "- ", /^[-*]\s/)),
+    ordered: cmd((v) => prefixLines(v, "1. ", /^\d+\.\s/)),
+  };
+
+  /**
+   * 插图片 / 视频。**文件落进 vault，正文里只留相对路径。**
+   *
+   * ⚠️ 上传成功之前正文一个字都不写：失败时留下一个指向不存在文件的
+   * `![](…)` 比什么都没有更糟——它看着像插成功了。
+   */
+  async function insertMediaFile(file) {
+    const v = view.current;
+    if (!v || !file) return;
+    const at = v.state.selection.main.head;
+    setMediaError("");
+    setMediaBusy(true);
+    try {
+      const result = await api.uploadMedia(file);
+      const rel = mediaBaseRef.current && result.path.startsWith(`${mediaBaseRef.current}/`)
+        ? result.path.slice(mediaBaseRef.current.length + 1)
+        : result.path;
+      const line = v.state.doc.lineAt(at);
+      const lead = line.text.trim() ? "\n\n" : "";
+      // 路径进正文前必须编码：vault 目录名带空格（`07 - 附件`），裸写出来不是合法 Markdown
+      const markdown = `${lead}![${file.name.replace(/\.[^.]+$/, "")}](${encodeMarkdownPath(rel)})`;
+      const insertAt = line.text.trim() ? line.to : line.from;
+      v.dispatch({ changes: { from: insertAt, insert: markdown }, selection: { anchor: insertAt + markdown.length } });
+      v.focus();
+    } catch (error) {
+      setMediaError(error.message || "没能插入这个文件");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  function pickMedia(kind) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = kind === "video" ? "video/mp4,video/webm,video/quicktime" : "image/png,image/jpeg,image/gif,image/webp,image/avif";
+    input.addEventListener("change", () => { if (input.files?.[0]) insertMediaFile(input.files[0]); });
+    input.click();
+  }
+
+  /** 块菜单选中一条。`ai:` 前缀的那几条转交给光标写作，其余是纯本地的记号命令。 */
+  function chooseBlockItem(item) {
+    const v = view.current;
+    const current = blockMenuRef.current;
+    if (!v || !current) return;
+    // `/` 和它后面那几个过滤字符要先吃掉，否则「输入 /标题 选标题 1」会得到 `# /标题`
+    const eat = current.slashFrom === null || current.slashFrom === undefined
+      ? null
+      : { from: current.slashFrom, to: Math.min(v.state.doc.length, current.slashFrom + 1 + (current.query || "").length) };
+    setBlockMenu(null);
+    if (item.id === "image" || item.id === "video") {
+      if (eat && eat.from < eat.to) v.dispatch({ changes: { from: eat.from, to: eat.to }, selection: { anchor: eat.from } });
+      pickMedia(item.id);
+      return;
+    }
+    if (item.id.startsWith("ai:")) {
+      if (eat && eat.from < eat.to) v.dispatch({ changes: { from: eat.from, to: eat.to }, selection: { anchor: eat.from } });
+      v.focus();
+      /**
+       * ⚠️ **不能在这里直接调 `runCursorWriting`**：它要的锚点在 `cursorMenu` 里，
+       * 而 `openCursorWriting` 刚 setState，这一轮还读不到。所以把「要跑什么」写进
+       * 菜单状态本身（`pendingRun`），由下面那个 effect 在状态真的落地之后执行一次。
+       */
+      const mode = item.id.slice(3);
+      requestAnimationFrame(() => {
+        if (!openCursorWriting(v)) return;
+        if (mode !== "write") setCursorMenu((menu) => menu ? { ...menu, pendingRun: mode } : menu);
+      });
+      return;
+    }
+    applyBlockItem(v, item.id, eat);
+    restoreEditorFocus();
+  }
 
   return (
-    <div className="md-editor" data-readonly={readOnly || undefined}>
-      <div className="md-editor__bar" role="toolbar" aria-label="排版工具">
-        <button className="icon-btn" onClick={cmd(undo)} title="撤销 Ctrl+Z" aria-label="撤销">
-          <IconArrowBackUp aria-hidden="true" stroke={1.7} />
-        </button>
-        <button className="icon-btn" onClick={cmd(redo)} title="重做 Ctrl+Shift+Z" aria-label="重做">
-          <IconArrowForwardUp aria-hidden="true" stroke={1.7} />
-        </button>
-        <span className="md-editor__sep" />
-        <Select
-          value={headingOf()}
-          options={HEADINGS}
-          onChange={(v) => cmd((view) => setHeading(view, HEADINGS.indexOf(v)))()}
-          renderIcon={() => <IconHeading size={15} stroke={1.8} aria-hidden="true" />}
-          ariaLabel="标题级别"
-          title="把光标所在这一行变成标题"
-        />
-        <span className="md-editor__sep" />
-        <button className="icon-btn" onClick={cmd((v) => wrap(v, "**"))} title="加粗 **文字**" aria-label="加粗">
-          <IconBold aria-hidden="true" stroke={1.9} />
-        </button>
-        <button className="icon-btn" onClick={cmd((v) => wrap(v, "*"))} title="斜体 *文字*" aria-label="斜体">
-          <IconItalic aria-hidden="true" stroke={1.7} />
-        </button>
-        <button className="icon-btn" onClick={cmd((v) => wrap(v, "~~"))} title="删除线 ~~文字~~" aria-label="删除线">
-          <IconStrikethrough aria-hidden="true" stroke={1.7} />
-        </button>
-        <span className="md-editor__sep" />
-        <button className="icon-btn" onClick={cmd((v) => prefixLines(v, "> ", /^>\s?/))} title="引用 > 文字" aria-label="引用">
-          <IconQuote aria-hidden="true" stroke={1.7} />
-        </button>
-        <button className="icon-btn" onClick={cmd((v) => prefixLines(v, "- ", /^[-*]\s/))} title="无序列表" aria-label="无序列表">
-          <IconList aria-hidden="true" stroke={1.7} />
-        </button>
-        <button className="icon-btn" onClick={cmd((v) => prefixLines(v, "1. ", /^\d+\.\s/))} title="有序列表" aria-label="有序列表">
-          <IconListNumbers aria-hidden="true" stroke={1.7} />
-        </button>
-        <span className="md-editor__sep" />
-        <button className="icon-btn" onClick={cmd((v) => wrap(v, "[", "](url)"))} title="链接 [文字](地址)" aria-label="链接">
-          <IconLink aria-hidden="true" stroke={1.7} />
-        </button>
-        <button className="icon-btn" onClick={cmd((v) => insertBlock(v, "---"))} title="分隔线" aria-label="分隔线">
-          <IconSeparator aria-hidden="true" stroke={1.7} />
-        </button>
-        {/* 预览挂最右边：它切的是整块区域，和左边那些「改一段文字」的按钮不是一类动作 */}
-        <button
-          className={`btn btn-sm md-editor__preview${preview ? " is-on" : ""}`}
-          onClick={() => { setSelectionMenu(null); closeCursorWriting({ restoreFocus: false }); setPreview((p) => !p); }}
-          aria-pressed={preview}
-          disabled={!!activeRevision}
-          title={activeRevision ? "先采纳或弃用正在对比的修订" : preview ? "回到编辑" : "看排版后的样子"}
-        >
-          {preview ? <IconPencil aria-hidden="true" stroke={1.7} /> : <IconEye aria-hidden="true" stroke={1.7} />}
-          {preview ? "编辑" : "预览"}
-        </button>
-        {aiDrafts.length || revisionHistory.length || revisionSaveError ? (
-          <button
-            className="icon-btn md-editor__ai-history"
-            data-open={aiHistoryOpen ? "true" : undefined}
-            onClick={() => setAiHistoryOpen((open) => !open)}
-            aria-expanded={aiHistoryOpen}
-            aria-label={`查看 AI 原稿与修订历史，共 ${aiDrafts.length + revisionHistory.length} 条`}
-            title={`查看 AI 原稿与修订历史（${aiDrafts.length + revisionHistory.length}）`}
-          >
-            <IconHistory aria-hidden="true" stroke={1.7} />
-          </button>
-        ) : null}
-        {toolbarExtra}
-      </div>
+    <div
+      className="md-editor"
+      data-readonly={readOnly || undefined}
+      /* 内联菜单占位时灰字让开：屏幕上同时出现「输入框」和「按空格问 AI」
+         会读成两件事，而它们本来就是同一件事的两个阶段 */
+      data-inline-open={cursorMenu || blockMenu ? "true" : undefined}
+    >
+      {/**
+        * 顶栏**只留对整篇的动作**。
+        *
+        * 加粗、标题、列表这些改的是「此刻选中的那段字」，它们的位置应该跟着选区走，
+        * 而不是钉在几百像素之外的顶栏上——上一版选中一段话想加粗要把视线甩到屏幕顶端，
+        * 想润色又要甩回选区旁边，同一个操作对象被拆到了两个面板。它们现在都在选区面板里。
+        */}
+      {/**
+        * ⚠️ **正文上方不留任何工具栏。**
+        *
+        * 撤销 / 重做走 `Ctrl+Z` / `Ctrl+Shift+Z`（和所有编辑器一样，不需要两颗按钮占一行）；
+        * 预览撤了——编辑态本身就是实时预览，一个「看排版后的样子」的开关等于承认平时看的不是；
+        * AI 历史也撤了（修订记录仍在服务端，只是界面上不再有回看入口）。
+        * `toolbarExtra` 留着：调用方偶尔要在正文顶上挂一颗轻量动作，它自己管样式。
+        */}
+      {toolbarExtra ? <div className="md-editor__bar">{toolbarExtra}</div> : null}
+      {/**
+        * 上传中 / 失败的反馈。**不做成 toast**：视线此刻在正文里那个插入点上，
+        * 而屏幕角落弹出来的东西要转头去找。失败时说清楚是哪一步没成，正文一个字没写。
+        */}
+      {mediaBusy || mediaError ? (
+        <div className={`md-editor__media${mediaError ? " is-bad" : ""}`} aria-live="polite">
+          {mediaBusy ? <><IconLoader2 className="spin" aria-hidden="true" />正在把文件放进知识库…</> : <>{mediaError}<button type="button" onClick={() => setMediaError("")}>知道了</button></>}
+        </div>
+      ) : null}
+      {/**
+        * 续写插进来之后的那条提示。**没有确认键**——光标离开这段底纹就算落定
+        * （见 updateListener 里那段）。插入本身已经是一次确认，再收一次等于同一件事问两遍。
+        */}
       {activeAiDraft ? (
         <div className="ai-draft-review" aria-live="polite">
           <IconSparkles aria-hidden="true" stroke={1.7} />
           <div className="ai-draft-review__copy">
-            <b>AI 续写待确认</b>
-            <span>{activeAiChanged ? "已经改过，可以采用" : "直接在底纹里修改"}{pendingAiDrafts.length > 1 ? ` · 共 ${pendingAiDrafts.length} 段` : ""}</span>
-          </div>
-          <div className="ai-draft-review__actions">
-            <button className="icon-btn" onClick={() => setAiHistoryOpen(true)} aria-label="回看 AI 插入时的原稿" title="回看 AI 插入时的原稿">
-              <IconHistory aria-hidden="true" stroke={1.7} />
-            </button>
-            <button className="icon-btn" data-primary="true" onClick={acceptAiDraft} aria-label="确认采用这段，移除底纹" title="确认采用这段，移除底纹">
-              <IconCheck aria-hidden="true" stroke={1.9} />
-            </button>
+            <b>AI 续写已插入</b>
+            <span>{activeAiChanged ? "已经改过" : "可以直接在底纹里改"} · 点别处即落定{pendingAiDrafts.length > 1 ? ` · 共 ${pendingAiDrafts.length} 段` : ""}</span>
           </div>
         </div>
-      ) : null}
-      {aiHistoryOpen && (aiDrafts.length || revisionHistory.length || revisionSaveError) ? (
-        <section className="ai-draft-history" aria-label="AI 原稿与修订历史">
-          <header className="ai-draft-history__head">
-            <span><IconHistory aria-hidden="true" stroke={1.7} />AI 原稿与修订历史</span>
-            <button className="icon-btn" onClick={() => setAiHistoryOpen(false)} aria-label="关闭 AI 历史" title="关闭">
-              <IconX aria-hidden="true" stroke={1.7} />
-            </button>
-          </header>
-          <div className="ai-draft-history__list">
-            {revisionSaveError ? <div className="ai-draft-history__error">修订历史暂时没有保存：{revisionSaveError}</div> : null}
-            {revisionHistory.map((item) => (
-              <article className="ai-draft-history__item text-revision-history__item" key={item.id}>
-                <div className="ai-draft-history__meta">
-                  <span>{item.label || revisionLabel(item.mode)}{item.instruction ? ` · ${item.instruction}` : ""}</span>
-                  <span>{{ adopted: "已采纳", discarded: "已弃用", pending: "未处理" }[item.status] || "未处理"}</span>
-                </div>
-                <small>原文</small>
-                <p className="text-revision-history__original">{item.original}</p>
-                {item.candidate ? <><small>候选</small><p className="text-revision-history__candidate">{item.candidate}</p></> : null}
-              </article>
-            ))}
-            {[...aiDrafts].reverse().map((item, index) => (
-              <article className="ai-draft-history__item" key={item.id}>
-                <div className="ai-draft-history__meta">
-                  <span>{item.label || "AI 续写"} · {aiDrafts.length - index}</span>
-                  <span>{item.removed ? "已删除" : item.confirmed ? "已采用" : "待确认"}{!item.removed && aiText(item) !== item.original ? " · 已修改" : ""}</span>
-                </div>
-                <p>{item.original}</p>
-              </article>
-            ))}
-          </div>
-        </section>
       ) : null}
       {focusedRevision ? <section className="md-candidate-focus" aria-label="专注审阅正文候选">
         <header><div><small>正文候选</small><strong>{activeRevision.target.kind === "whole-document" ? "全文审阅" : "章节审阅"}</strong></div><button type="button" onClick={() => closeRevision("discarded")} aria-label="弃用候选并结束审阅">弃用并结束审阅</button></header>
-        <div className="md-candidate-focus__original"><small>原文</small><p>{activeRevision.original}</p></div>
-        {candidateCard}
+        <CandidateCard {...candidateDecisions} />
       </section> : null}      {/* 编辑器**一直挂在 DOM 里**，预览只是盖上去。卸载再挂的话，撤销历史和滚动位置会丢 */}
-      <div className="md-editor__body" hidden={preview || focusedRevision}>
+      <div className="md-editor__body" hidden={focusedRevision || undefined}>
         <div ref={host} className="md-editor__cm" aria-label={ariaLabel} />
       </div>
-      {preview ? (
-        <div className="md-editor__body md-editor__preview-body">
-          <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
-        </div>
-      ) : null}
-      {cursorMenu && !preview && !focusedRevision ? createPortal(
-        <CursorWritingMenu anchor={cursorMenu} state={cursorMenu} onRun={runCursorWriting} onClose={closeCursorWriting} />,
+      {cursorMenu && !focusedRevision ? createPortal(
+        <InlineAiPrompt anchor={cursorMenu} onRun={runCursorWriting} onClose={closeCursorWriting} />,
         document.body
       ) : null}
-      {selectionMenu && !preview && !focusedRevision ? createPortal(
-        <SelectionRevisionMenu
-          selection={selectionMenu}
-          onRun={beginRevision}
-          onClose={closeSelectionRevision}
-
+      {blockMenu && !focusedRevision ? createPortal(
+        <BlockInsertMenu
+          anchor={blockMenu}
+          query={blockMenu.query}
+          ownFilter={blockMenu.slashFrom === null}
+          canWrite={blockMenu.canWrite}
+          onSelect={chooseBlockItem}
+          onClose={closeBlockMenu}
         />,
         document.body
       ) : null}
-      {activeRevision && revisionHost ? createPortal(candidateCard, revisionHost) : null}
+      {selectionMenu && !focusedRevision ? createPortal(
+        <SelectionRevisionMenu
+          selection={selectionMenu}
+          format={selectionFormat}
+          onRun={beginRevision}
+          onClose={closeSelectionRevision}
+        />,
+        document.body
+      ) : null}
+      {activeRevision && revisionHost ? createPortal(<RevisionDecisionBar {...candidateDecisions} />, revisionHost) : null}
+      {inlineAnswer && answerHost ? createPortal(
+        <AiAnswerCard
+          answer={inlineAnswer}
+          onInsert={insertAnswerBelow}
+          onRetry={() => runInlineAnswer({ mode: inlineAnswer.mode, instruction: inlineAnswer.instruction, cursor: inlineAnswer.cursor, at: inlineAnswer.at, selection: inlineAnswer.selection, label: inlineAnswer.label })}
+          onDiscuss={onDiscuss ? discussInlineAnswer : undefined}
+          onDismiss={closeInlineAnswer}
+        />,
+        answerHost
+      ) : null}
     </div>
   );
 }

@@ -896,15 +896,37 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 第 4 格并显示"三段已完成"，**进度条画的是流程走了多远，不是内容写了多少**。
  * 现在这一页只回答一句话：现在轮到谁、要做什么（三档 pill + 一句原因 + 一颗按钮）。
  */
+/* 右边不留内边距：AI 那一列要贴到 `.main` 的右边缘（见 project-assistant.css）。
+   原来那 20px 还给正文，靠 `.project-draft` 自己的右外边距补。 */
 .project-workspace__grid {
   display: grid; grid-template-columns: minmax(520px, 1fr) 336px;
-  align-items: start; gap: 18px; padding: 18px 20px 32px;
+  align-items: start; gap: 18px; padding: 18px 0 32px 20px;
 }
+.project-workspace__grid > .project-draft { margin-right: 2px; }
+.project-workspace__grid:has(> .project-assistant[data-collapsed="true"]) > .project-draft,
+.project-workspace__grid:has(> .project-report-review) > .project-draft { margin-right: 20px; }
 
 /* ---------- 中间：你动手的东西 ---------- */
+/**
+ * ⚠️ **正文有固定的列宽，居中；开合右栏只改这一列两边的留白，不改行长。**
+ *
+ * 上一版正文铺满整个网格列，收起右栏之后一行能排到 90 多个汉字——眼睛读完一行
+ * 回到下一行的行首要横扫大半个屏幕，这是长文最累的一种排法。而且开合右栏时
+ * **每一行都会重新断字**，正在读的那句话会跳到别的位置。
+ *
+ * 宽度和阅读页的 `.ws-edit`（860px）保持一致：从「读」切到「改」不该有落差感，
+ * 这也是选 CodeMirror 而不是富文本内核时定下的那条——两处用同一套排版参数。
+ */
 .project-draft {
   min-width: 0; padding: 26px clamp(24px, 3.2vw, 52px) 34px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.project-draft > .project-draft__label,
+.project-draft > .project-draft__title,
+.project-draft > .project-brief-line,
+.project-draft > .md-editor,
+.project-draft > .project-draft__foot {
+  width: 100%; max-width: 860px; margin-inline: auto;
 }
 .project-draft__label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: var(--text-3); font-size: var(--fs-xs); }
 .project-draft__label em { padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-style: normal; }
@@ -929,19 +951,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .project-brief-line dd { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
 /* 缺的那一项要看得出是缺的，不能一律写「—」——那样这一行看着只是留白 */
 .project-brief-line dd[data-empty] { color: var(--text-3); font-style: italic; }
-.project-writing-context {
-  display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap;
-  margin: -6px 0 14px; color: var(--text-3); font-size: var(--fs-xs);
-}
-.project-writing-context span + span::before { content: "·"; margin-right: 14px; color: var(--border-strong); }
-
 .project-draft .md-editor { min-height: 560px; background: var(--surface); }
-.md-editor[data-readonly] .md-editor__bar > :not(.md-editor__preview):not(.md-editor__ai-history) { display: none; }
-.md-editor[data-readonly] .md-editor__bar::before {
-  /* ⚠️ 「待发布」不再锁了，所以这句不能再说「先退回写作」——
-     剩下会只读的是已发布/待复盘/已搁置那几档，那儿没有「退回写作」这个动作 */
+/* ⚠️ 顶栏撤了，只读提示改挂在编辑器本体上。
+   「待发布」不再锁了，所以这句不能说「先退回写作」——
+   剩下会只读的是已发布/待复盘/已搁置那几档，那儿没有「退回写作」这个动作 */
+.md-editor[data-readonly]::before {
   content: "这一档不改正文";
-  margin-right: auto; color: var(--text-3); font-size: var(--fs-xs);
+  display: block; padding: 0 0 8px; color: var(--text-3); font-size: var(--fs-xs);
 }
 /* ⚠️ 空态里那个圆形序号「01」撤了：它不是第 1 步，这一页上也没有 02 */
 .project-draft__empty { max-width: 520px; margin: 12vh auto 0; text-align: center; }
@@ -1892,7 +1908,15 @@ svg[data-tone] { color: var(--tone); }
 }
 @keyframes pulse { 50% { opacity: 0.45; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-.spinning { animation: spin 900ms linear infinite; }
+/* ⚠️ **两个名字都要留。** JSX 里两种写法都有（`className="spin"` 10 处、
+   `"spinning"` 5 处），而之前只定义了 `.spinning`——于是**所有写 `spin` 的地方转不起来**，
+   包括 AI 回答卡的「正在生成…」。看着就是卡死了。少一个 class 名不会报错，
+   这类沉默失效只能靠「用的名字和定义的名字对上」来防。 */
+.spin, .spinning { animation: spin 900ms linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  /* 关掉动效的人仍然需要知道「它在转」——换成呼吸，不是直接静止 */
+  .spin, .spinning { animation: pulse 1.6s ease-in-out infinite; }
+}
 
 /* ---------- 入库抽屉 ---------- */
 
@@ -2628,20 +2652,30 @@ kbd {
   padding: 12px 12px 0 16px; border-bottom: 1px solid var(--border);
 }
 /* 阅读区与创作区复用同一个 AssistantPane；这里只适配 348px 侧栏密度。 */
-.rail > .assistant-pane { flex: 1 1 auto; height: auto; min-height: 0; }
-.rail .assistant-pane__context { padding: var(--sp-3) var(--sp-5); }
-.rail .assistant-thread { padding: var(--sp-6) var(--sp-5) var(--sp-3); }
-.rail .assistant-message { margin-bottom: var(--sp-6); }
-.rail .assistant-composer { margin: 0 var(--sp-5) var(--sp-5); }
-.rail .assistant-composer textarea { min-height: 48px; max-height: 132px; padding-bottom: var(--sp-2); }
+/* 阅读右栏和项目右栏同宽，就该吃同一组密度 token（真源在 project-assistant.css 顶上）。
+   ⚠️ 上一版这里和 `.project-assistant` 各写了一份一模一样的 padding，
+   于是两栏的空态、间距和输入器高度各自漂了一段——同宽容器长成两个样，
+   差的不是空间，是当初分别调的。 */
+.rail > .assistant-pane { flex: 1 1 auto; height: auto; min-height: 0; --asst-gutter: var(--sp-5); --asst-turn-gap: var(--sp-6); }
+.rail .assistant-composer textarea { min-height: 44px; max-height: 132px; padding: var(--sp-4) var(--sp-5) 0; }
 .rail .assistant-command-menu:not(.assistant-command-menu--models) { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
 .rail .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
 .rail .assistant-composer > footer > div { gap: var(--sp-2); }
 .rail .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }
 .rail .assistant-composer > footer > .assistant-composer__right { flex: none; }
-.rail .assistant-composer > footer > div > button { padding: 0 var(--sp-3); font-weight: 600; }
-.rail .assistant-empty { padding: var(--sp-8) var(--sp-3); }
-.rail .assistant-empty h3 { font-size: var(--fs-lg); }
+.rail .assistant-composer > footer > div > button,
+.rail .assistant-composer__access { padding: 0 var(--sp-3); font-weight: 600; }
+/* 与项目右栏保持同一档：32px 记号、fs-md 问句、带边框的入口卡 */
+.rail .assistant-empty { padding-bottom: var(--sp-5); }
+.rail .assistant-empty__mark { width: 32px; height: 32px; }
+.rail .assistant-empty__mark svg { width: 15px; height: 15px; }
+.rail .assistant-empty h3 { margin-top: var(--sp-5); font-size: var(--fs-md); }
+.rail .assistant-empty > p { font-size: var(--fs-xs); line-height: 1.6; }
+.rail .assistant-empty__actions { margin-top: var(--sp-5); gap: var(--sp-2); }
+.rail .assistant-empty__actions button { grid-template-columns: 24px minmax(0, 1fr); gap: var(--sp-4); padding: var(--sp-4); }
+.rail .assistant-empty__actions button > svg { width: 24px; height: 24px; padding: 5px; }
+.rail .assistant-empty__actions button b { font-size: var(--fs-sm); }
+.rail .assistant-empty__actions button small { font-size: var(--fs-xs); }
 .rail-collapse {
   flex: none; width: 26px; height: 26px; margin-bottom: 8px;
   border-color: transparent; color: var(--text-3);
@@ -2847,13 +2881,156 @@ kbd {
  */
 .md-editor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 /* 工具栏贴顶。它是唯一常驻的操作面，滚出去的话每次排版都要先滚回来 */
-.md-editor__bar {
-  flex: none; display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
-  padding: 6px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+/* ── 实时预览 ────────────────────────────────────────────────────
+ * 记号被 `Decoration.replace` 换成零宽之后，剩下的只有排版。
+ * 真源在 lib/editor-live-preview.js；这里只负责画。
+ */
+.cm-lp-strong { font-weight: 700; color: var(--emph); }
+.cm-lp-strike { text-decoration: line-through; color: var(--text-3); }
+.cm-lp-code {
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--text-2);
 }
-.md-editor__sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; flex: none; }
-.md-editor__preview { margin-left: auto; }
-.md-editor__preview.is-on { background: var(--sel-bg); color: var(--sel-fg); border-color: transparent; }
+/* 引用：`>` 隐掉之后靠这道竖线说话 */
+.cm-line.cm-lp-quote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 12px !important;
+  color: var(--text-2);
+  font-style: italic;
+}
+.cm-lp-bullet { display: inline-block; width: 1.4em; color: var(--text-3); }
+/* 分隔线：`/` 菜单插的 `---` 在这儿才真的变成一条线。
+   宽度铺满整行，颜色用 --border——它是分节，不是装饰 */
+.cm-lp-rule { display: inline-block; width: 100%; vertical-align: middle; border-top: 1px solid var(--border); }
+/* 图片和视频。**宽度封顶在正文列宽**，一张手机截图不该把编辑器撑出横向滚动 */
+.cm-lp-media { display: block; margin: 6px 0; }
+.cm-lp-media img, .cm-lp-media video { display: block; max-width: 100%; max-height: 60vh; border-radius: var(--r-md); }
+.cm-lp-media small { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-2xs); }
+/* 取不到的图退回显示原始那行 Markdown——碎图图标既不说明发生了什么，也没给下一步 */
+.cm-lp-media[data-broken] {
+  padding: 6px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-ctl);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+}
+
+.md-editor__bar { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 4px 8px; }
+/* 上传中 / 失败的反馈。**不做 toast**：视线此刻在正文里那个插入点上 */
+.md-editor__media {
+  flex: none;
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 0 8px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-2); font-size: var(--fs-xs);
+}
+.md-editor__media svg { width: 15px; height: 15px; color: var(--text-3); }
+.md-editor__media.is-bad { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.md-editor__media button { margin-left: auto; border: 0; border-radius: var(--r-ctl); padding: 3px 8px; background: var(--surface-2); color: var(--text-1); font: 500 11.5px/1 var(--font); cursor: pointer; }
+
+/* ── 光标那一行的两个提示 ────────────────────────────────────────
+ * 灰字（「按空格问 AI · 按 / 插入」）和左边的 `+`。**两个都绝对定位**：
+ * 灰字压在空行上不能占位，否则光标会被顶到它后面；`+` 落在 `.cm-content`
+ * 为它留出的那 26px 左边距里。真源见 lib/editor-line-affordance.js。
+ */
+/**
+ * ⚠️ **只占第一行的高度，不是整段的高度。**
+ *
+ * `.cm-line` 的一「行」是整个逻辑段落（开了自动换行），一段两行时它有两行那么高。
+ * 上一版写 `inset: 0 auto 0 0`，于是 `+` 的 `top: 50%` 算的是**整段的中线**——
+ * 两行的段落里它就卡在两行之间，三行的段落里卡在第二行上。
+ *
+ * `1lh` = 这一行真实的行高（空行被压到 1.2 了，见下面）。前面那条 `em` 是老浏览器兜底。
+ * `top` 要跳过 `.cm-line` 的 padding-top，否则整体偏高。
+ */
+.cm-line-affordance {
+  position: absolute; left: 0; right: auto; top: 2px;
+  height: 1.65em;
+  height: 1lh;
+  display: block; pointer-events: none;
+}
+/* 空行：行高压到贴着字，多出来的用 padding 补——总高度不变，光标变回字的高度。
+   真源和理由在 lib/editor-line-affordance.js 的 `cm-empty-caret-line` 那段注释。 */
+/* ⚠️ **`.cm-editor` 那一截不能省。** `.cm-line` 的 padding 是 CodeMirror 用
+   `EditorView.theme` 注进来的，选择器是 `.ͼx .cm-line`（两个类）——
+   只写 `.cm-empty-caret-line` 权重更低，padding 静默失效，行高压下去了高度却没补回来，
+   现象是光标移到空行时整段往上跳一下。 */
+.cm-editor .cm-line.cm-empty-caret-line {
+  line-height: 1.2;
+  padding-top: calc(2px + 0.225em);
+  padding-bottom: calc(2px + 0.225em);
+}
+.cm-empty-caret-line .cm-line-affordance { top: calc(2px + 0.225em); }
+/**
+ * ⚠️ **CodeMirror 在 widget 旁边塞的那个 `<img class="cm-widgetBuffer">` 会把行框撑高。**
+ *
+ * 它是个 15px 高的替换元素，默认按基线对齐——基线下面那点降部把行框从 18px 顶到 20px，
+ * 于是行高压下去了，光标还是比字高一截。`vertical-align: top` 让它整个待在行框顶部
+ * 以内，不再参与撑高。**只改这一行**：这个 buffer 是 CM 用来给光标定位的，
+ * 全局动它是在改编辑器的光标行为。
+ */
+.cm-empty-caret-line .cm-widgetBuffer { vertical-align: top; }
+.cm-line-affordance__add {
+  position: absolute;
+  left: -25px;
+  top: 50%;
+  transform: translateY(-50%);
+  /* 和正文一样大：它是行首的一个动作，比字小一圈时看着像个没对齐的小点 */
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  /* 比正文淡两档：它是「需要时才找得到」的东西，不该和字争注意力 */
+  color: color-mix(in srgb, var(--text-3) 62%, transparent);
+  font: 300 1.25em/1 var(--font);
+  cursor: pointer;
+  pointer-events: auto;
+  /* 平时**不显形**：一直挂着一颗 + 在每行左边会把正文的左边界搅乱。
+     出现的条件是「鼠标进了编辑器」——键盘用户看灰字那句就够了。 */
+  opacity: 0;
+  transition: opacity .12s ease-out, background-color .12s ease-out;
+}
+.md-editor__cm:hover .cm-line-affordance__add { opacity: 1; }
+.cm-line-affordance__add:hover { background: var(--surface-2); color: var(--text-2); }
+.cm-line-affordance__add:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+/**
+ * 空行提示。两条都踩过：
+ *
+ * - **必须在行框里垂直居中**（`inset: 0` + flex），不能 `top: 0`。贴顶的话它比光标和
+ *   正文都高出几像素，看着像挤在上一段屁股后面——现象就是「行距很紧」。
+ * - **和正文同字号**（`font-size: inherit`），只靠颜色退到背景里。缩小字号并不会让它
+ *   变得不显眼，只会让它变成另一种字，反而更抢眼。
+ */
+.cm-line-affordance__hint {
+  position: absolute;
+  /* ⚠️ **只钉上下和左，不要写 `inset: 0`。** 父元素 `.cm-line-affordance` 自己是
+     `right: auto` 的零宽盒（它的两个孩子都脱离了文档流），`inset: 0` 会把这行字
+     压成 0 宽——文字还在 DOM 里，但量出来是不可见的。 */
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--text-3) 58%, transparent);
+  user-select: none;
+}
+.md-editor[data-readonly] .cm-line-affordance { display: none; }
+/* 输入条或块菜单已经占住这一行时，灰字让开——两者同时在会读成两件事 */
+.md-editor[data-inline-open] .cm-line-affordance__hint { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-line-affordance__add { transition: none; }
+}
 /* 编辑区自己滚，不撑长整页——不然工具栏和动作条都会被顶走 */
 .md-editor__body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; }
 /* ⚠️ 这条不能省。`hidden` 属性是靠浏览器默认样式表的 `[hidden]{display:none}` 生效的，
@@ -2862,9 +3039,6 @@ kbd {
 .md-editor__body[hidden] { display: none; }
 .md-editor__cm { flex: 1 1 auto; min-width: 0; }
 .md-editor__cm .cm-editor { height: 100%; }
-.md-editor__preview-body { overflow: auto; padding-top: 12px; }
-/* 预览用的是阅读区那套 `.prose`，所以「预览」和真的读起来必然一致 */
-.md-editor__preview-body .prose { max-width: 100%; }
 
 /* 动作条固定在底部：按钮永远在同一个位置，长文才不用为了存一次先滚到底 */
 .ws-edit__foot {

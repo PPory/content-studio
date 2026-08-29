@@ -5,56 +5,45 @@ import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import { IconSparkles, IconX } from "./icons.jsx";
 import "./quick-assistant.css";
 
-const EXIT_MS = 140;
-
 export function QuickAssistant({ open, context, conversationId, onConversationChange, onClose, onContinue }) {
-  const [rendered, setRendered] = useState(open);
-  const [entered, setEntered] = useState(false);
   const [contextAttached, setContextAttached] = useState(true);
-  const dialogRef = useDialog(open, onClose, {
-    modal: false,
-    dismissOnPointerDownOutside: true,
-    outsideIgnore: "[data-assistant-summoner]",
-  });
-
-  useEffect(() => {
-    if (open) {
-      setRendered(true);
-      const frame = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(frame);
-    }
-    setEntered(false);
-    const timer = setTimeout(() => setRendered(false), EXIT_MS);
-    return () => clearTimeout(timer);
-  }, [open]);
+  /**
+   * ⚠️ **不再「点外面就关」。**
+   *
+   * 浮层时代那条是对的：一块盖在正文上的卡片，用户点它旁边就是想回到正文。
+   * 但它现在是并排的一列——**点正文正是它存在的意义**（一边看一边问），
+   * 关掉反而是最不该发生的事。关闭只走三个明确入口：× 、Esc、顶栏那颗召唤键。
+   *
+   * `modal: false` 也保留：这一列不给正文加 inert，两边都要能操作。
+   */
+  const dialogRef = useDialog(open, onClose, { modal: false });
 
   useEffect(() => setContextAttached(true), [context?.pageType, context?.object?.id]);
 
-  if (!open && !rendered) return null;
+  // 一列布局里没有「退出动画」这回事——它不是浮上来的，是让位出来的。
+  if (!open) return null;
   const attachedObject = contextAttached ? context?.object : null;
 
   return (
     <aside
       className="quick-assistant"
-      data-open={open && entered ? "true" : "false"}
+      data-open="true"
       ref={dialogRef}
-      role="dialog"
-      aria-modal="false"
-      aria-label="Quick Assistant"
+      role="complementary"
+      aria-label="AI 助手"
     >
-      <header className="quick-assistant__header">
-        <span className="quick-assistant__mark"><IconSparkles aria-hidden="true" /></span>
-        <div><strong>AI 助手</strong><small>快速提问</small></div>
-        <button type="button" onClick={onClose} title="关闭（Esc）" aria-label="关闭 Quick Assistant"><IconX aria-hidden="true" /></button>
-      </header>
-      <div className="quick-assistant__context">
-        {contextAttached ? (
-          <>
-            <span><b>当前位置：{context?.label || "工作台"}</b><small>{attachedObject ? `已附带对象：${attachedObject.title || attachedObject.id}` : "未附带页面内容"}</small></span>
-            <button type="button" onClick={() => setContextAttached(false)} aria-label="移除当前页面上下文" title="移除当前页面上下文"><IconX aria-hidden="true" /></button>
-          </>
-        ) : <span><b>未附带当前页面上下文</b><small>对话仍会继续保留</small></span>}
-      </div>
+      {/**
+        * ⚠️ **浮层没有自己的 header，只有 pane 那一条。**
+        *
+        * 上一版是三条共 124px：①标题 +「快速提问」副标题；②当前位置 + 是否附带；
+        * ③ pane 自己的操作行。合并到两条之后仍然不对——第二条只剩三颗图标
+        * 悬在一片空白上，既没有边界也没有底色，看着像忘了做完。
+        *
+        * 现在身份和「这轮带了什么」作为 `headerLead` 交给 pane，
+        * 和历史 / 新对话 / 展开 / 关闭排在同一行：**一条 header，一件事一个位置。**
+        * 「快速提问」副标题撤了（标题的同义反复）；「当前位置：」四个字也撤了
+        * （芯片摆在这个位置本身就是在说位置）。
+        */}
       <div className="quick-assistant__body">
         <AssistantPane
           scope="global"
@@ -66,6 +55,18 @@ export function QuickAssistant({ open, context, conversationId, onConversationCh
           onConversationChange={onConversationChange}
           draftStorageKey="workbench:quick-assistant-draft:v1"
           onContinue={onContinue}
+          onClose={onClose}
+          headerLead={<>
+            <span className="quick-assistant__mark"><IconSparkles aria-hidden="true" /></span>
+            <strong className="quick-assistant__title">AI 助手</strong>
+            {contextAttached ? (
+              <span className="quick-assistant__chip">
+                <b>{context?.label || "工作台"}</b>
+                <small>{attachedObject ? attachedObject.title || attachedObject.id : "未附带页面内容"}</small>
+                <button type="button" onClick={() => setContextAttached(false)} aria-label="移除当前页面上下文" title="移除当前页面上下文"><IconX aria-hidden="true" /></button>
+              </span>
+            ) : <span className="quick-assistant__chip" data-detached="true"><b>未附带页面上下文</b></span>}
+          </>}
         />
       </div>
     </aside>

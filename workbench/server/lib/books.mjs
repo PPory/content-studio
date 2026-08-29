@@ -507,18 +507,37 @@ const flat = (s) => s.replace(/\s+/g, " ").trim();
  * ⚠️ 前端 `Reader.jsx` 里有一份同样的处理，那是给库里的正文和历史文件兜底的
  * （LLM 写的中文同样会踩）。改这条规则时两边一起改。
  */
+/**
+ * ⚠️ **开标记后面不能跟空白，而这一条是硬伤不是洁癖。**
+ *
+ * 少了它，**列表记号会被当成强调的开头**：
+ *
+ *     *   **写作中：9 个**
+ *
+ * 里第一个 `*` 会跟 `**` 的前一半配成对，匹配到 `*   *`，中间全是空格 →
+ * 整段被替换成那几个空格。于是**记号连同一个星号一起消失**，剩下
+ * `   *写作中：9 个**`：这一行不再是列表项，星号原样印在正文里，
+ * 下面缩进的子项也跟着散架，一整块回复退回成一坨带星号的纯文本。
+ *
+ * CommonMark 本来就规定开标记后面跟空白不能开启强调，补上这条前瞻既修了 bug，
+ * 也更贴近真实解析（顺带让 `2 * 3 * 4` 这种乘号不再被误当强调）。
+ */
 export function fixEmphasis(text) {
-  return String(text || "").replace(/(\*{1,2})([^*\n]+?)\1/g, (whole, mark, inner) => {
-    const lead = inner.match(/^[\s\p{P}]+/u)?.[0] || "";
-    // 尾部要在**去掉头之后的那截**里找。直接在整段上各找一次的话，`**——**` 这种
-    // 全是标点的会让头和尾匹配到同一段字符，拼回去就变成 `————`（凭空多一份）。
-    const rest = inner.slice(lead.length);
-    if (!rest) return lead;
-    const trail = rest.match(/[\s\p{P}]+$/u)?.[0] || "";
-    const core = rest.slice(0, rest.length - trail.length);
-    // 整段都是标点就别强调了，去掉标记比留个空的强调更干净
-    return core ? `${lead}${mark}${core}${mark}${trail}` : `${lead}${trail}`;
-  });
+  // 代码里的星号是代码不是排版：围栏和行内代码原样跳过
+  return String(text || "")
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((seg, i) => i % 2 ? seg : seg.replace(/(\*{1,2})(?!\s)([^*\n]+?)\1/g, (whole, mark, inner) => {
+      const lead = inner.match(/^[\s\p{P}]+/u)?.[0] || "";
+      // 尾部在**去掉头之后的那截**里找：直接在整段上各找一次的话，`**——**` 这种
+      // 全是标点的会让头尾匹配到同一段字符，拼回去凭空多一份
+      const rest = inner.slice(lead.length);
+      if (!rest) return lead;
+      const trail = rest.match(/[\s\p{P}]+$/u)?.[0] || "";
+      const core = rest.slice(0, rest.length - trail.length);
+      // 整段都是标点就别强调了，去掉标记比留个空的强调更干净
+      return core ? `${lead}${mark}${core}${mark}${trail}` : `${lead}${trail}`;
+    }))
+    .join("");
 }
 
 /**

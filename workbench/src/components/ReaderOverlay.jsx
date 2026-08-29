@@ -97,6 +97,18 @@ export function ReaderOverlay({
       return next;
     });
   }, []);
+  /**
+   * 「对话」要能**自己把右栏打开并切到对话页签**。
+   *
+   * 这颗按钮长在正文里，而对话在右栏——右栏收着的时候点它，从用户角度看就是「没反应」。
+   * 反馈要引导到下一步：把那段问答搬过去的同时，让它出现在眼前。
+   * 右栏本来就开着时不动它，也不改用户记在 localStorage 里的习惯。
+   */
+  const discuss = useCallback((payload) => {
+    setRails((r) => r.right ? r : { ...r, right: true });
+    rail?.onMode?.("chat");
+    rail?.onDiscuss?.(payload);
+  }, [rail?.onMode, rail?.onDiscuss]);
   // 排版偏好只影响三个 CSS 变量，不进正文组件的 props——不然改一次字号就重渲染一次正文，
   // 浏览器选区会被抹掉（Reader.jsx 里那个踩过的坑）。
   const [prefs, setPrefs] = useState(loadPrefs);
@@ -303,6 +315,7 @@ export function ReaderOverlay({
           ) : doc ? (
             <>
               <DocView
+                onDiscuss={rail?.onDiscuss ? discuss : undefined}
                 source={source}
                 item={item}
                 doc={doc}
@@ -369,7 +382,7 @@ export function docPath(item) {
 
 // 正文：读模式 / 编辑模式。编辑是整篇 Markdown 改一遍再整体存回去——
 // 块级编辑要维护块 id 映射和并发，复杂度高一个量级，而这里的场景就是「改一遍稿子」。
-function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, actionsExtra, onCaptureExperience }) {
+function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, actionsExtra, onCaptureExperience, onDiscuss }) {
   const [copied, setCopied] = useState(false);
   /**
    * 真实性告警**默认收着**。它是「待确认项」不是「错误」：一篇 2000 字的稿子，
@@ -488,6 +501,8 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           assistantScope="reading"
           assistantTarget={{ kind: "vault-document", editable: true }}
           inlineAiContext={{ profile: writingProfile, materials: [] }}
+          onDiscuss={onDiscuss}
+          mediaBase={baseDir}
         />
         <ErrorNote error={error} what="保存" />
         {/* 动作条固定在底部，和右栏批注台那套是同一条规则：按钮永远在同一个位置，

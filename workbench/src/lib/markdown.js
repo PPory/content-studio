@@ -20,6 +20,7 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { api } from "./api.js";
+import { decodeMarkdownPath } from "./markdown-path.js";
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -149,17 +150,37 @@ export function unwrapWikilinks(text) {
  * `server/lib/books.mjs` 的 `fixEmphasis` 是同一份规则，改一处要改两处——
  * 那边是让落进 vault 的文件本身就正确（Obsidian 也要读）。
  */
+/**
+ * ⚠️ **开标记后面不能跟空白，而这一条是硬伤不是洁癖。**
+ *
+ * 少了它，**列表记号会被当成强调的开头**：
+ *
+ *     *   **写作中：9 个**
+ *
+ * 里第一个 `*` 会跟 `**` 的前一半配成对，匹配到 `*   *`，中间全是空格 →
+ * 整段被替换成那几个空格。于是**记号连同一个星号一起消失**，剩下
+ * `   *写作中：9 个**`：这一行不再是列表项，星号原样印在正文里，
+ * 下面缩进的子项也跟着散架，一整块回复退回成一坨带星号的纯文本。
+ *
+ * CommonMark 本来就规定开标记后面跟空白不能开启强调，补上这条前瞻既修了 bug，
+ * 也更贴近真实解析（顺带让 `2 * 3 * 4` 这种乘号不再被误当强调）。
+ */
 export function fixEmphasis(text) {
-  return String(text || "").replace(/(\*{1,2})([^*\n]+?)\1/g, (whole, mark, inner) => {
-    const lead = inner.match(/^[\s\p{P}]+/u)?.[0] || "";
-    // 尾部在**去掉头之后的那截**里找：直接在整段上各找一次的话，`**——**` 这种
-    // 全是标点的会让头尾匹配到同一段字符，拼回去凭空多一份
-    const rest = inner.slice(lead.length);
-    if (!rest) return lead;
-    const trail = rest.match(/[\s\p{P}]+$/u)?.[0] || "";
-    const core = rest.slice(0, rest.length - trail.length);
-    return core ? `${lead}${mark}${core}${mark}${trail}` : `${lead}${trail}`;
-  });
+  // 代码里的星号是代码不是排版：围栏和行内代码原样跳过
+  return String(text || "")
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((seg, i) => i % 2 ? seg : seg.replace(/(\*{1,2})(?!\s)([^*\n]+?)\1/g, (whole, mark, inner) => {
+      const lead = inner.match(/^[\s\p{P}]+/u)?.[0] || "";
+      // 尾部在**去掉头之后的那截**里找：直接在整段上各找一次的话，`**——**` 这种
+      // 全是标点的会让头尾匹配到同一段字符，拼回去凭空多一份
+      const rest = inner.slice(lead.length);
+      if (!rest) return lead;
+      const trail = rest.match(/[\s\p{P}]+$/u)?.[0] || "";
+      const core = rest.slice(0, rest.length - trail.length);
+      // 整段都是标点就别强调了，去掉标记比留个空的强调更干净
+      return core ? `${lead}${mark}${core}${mark}${trail}` : `${lead}${trail}`;
+    }))
+    .join("");
 }
 
 /**
@@ -170,15 +191,35 @@ export function fixEmphasis(text) {
  * `javascript:` 这类 src 干掉，改写只认「不是 http/data/绝对路径」的那些，
  * 顺序反过来的话等于在已经消毒过的串上再拼一次字符串。
  */
+/**
+ * 老正文里的裸空格图片路径救回来。
+ *
+ * `![](07 - 附件/x.jpg)` 在 CommonMark 里根本不是图片——`marked` 会原样吐出那行文字。
+ * 新插入的路径已经在写入时编码了（见 `markdown-path.js`），这一条只为**已经存在的正文**：
+ * vault 里的图早就这么写着了，让它们全变成一行链接文字是没法接受的。
+ *
+ * 判据收得很紧：只处理 `![...]( ... )` 里**不带引号标题、不带尖括号**的目标，
+ * 其余一律不碰——判不准时宁可不渲染，也不能改坏一段本来正确的 Markdown。
+ */
+function encodeImagePaths(text) {
+  return String(text).replace(/(!\[[^\]]*\]\()([^)<>"']*\s[^)<>"']*)(\))/g, (_, head, dest, tail) => `${head}${dest.trim().replace(/ /g, "%20")}${tail}`);
+}
+
 export function renderMarkdown(text, { baseDir = "" } = {}) {
-  const raw = marked.parse(fixEmphasis(unwrapWikilinks(text || "")));
+  const raw = marked.parse(fixEmphasis(unwrapWikilinks(encodeImagePaths(text || ""))));
   let html = sanitizeHtml(raw);
-  if (baseDir) {
-    html = html.replace(
-      /<img([^>]*?)src="(?!https?:|data:|\/)([^"]+)"/g,
-      (_, pre, src) => `<img${pre}src="${api.imageUrl(`${baseDir}/${src}`)}"`
-    );
-  }
+  /**
+   * ⚠️ **没有 `baseDir` 也要改写。** 稿件正文里插的图写的是 vault 根相对路径
+   * （`99 - 个人工作台/07 - 附件/…`），那本来就是图片接口要的形状；上一版只在有
+   * `baseDir` 时才改写，于是**稿件里的图在任何渲染视图里都是碎图**。
+   *
+   * ⚠️ **`src` 要先解码。** 正文里存的是编码过的合法 Markdown（`07%20-%20附件`），
+   * 而 `api.imageUrl` 自己会 `encodeURIComponent` 一次——不解开就是双重编码。
+   */
+  html = html.replace(
+    /<img([^>]*?)src="(?!https?:|data:|\/)([^"]+)"/g,
+    (_, pre, src) => `<img${pre}src="${api.imageUrl(baseDir ? `${baseDir}/${decodeMarkdownPath(src)}` : decodeMarkdownPath(src))}"`
+  );
   return markGlyphImages(html);
 }
 

@@ -170,7 +170,19 @@ try {
   assert(!(await assistantConversations(conversationScope)).items.find((item) => item.id === second.id)?.archivedAt, "恢复对话没有清除归档状态");
   await manageAssistantConversation(conversationScope, first.id, { action: "delete" });
   assert(!(await assistantConversations(conversationScope)).items.some((item) => item.id === first.id), "删除后的对话仍出现在历史列表");
-  assert((await fs.readdir(path.join(conversationStore, ".trash"))).some((name) => name.startsWith(first.id)), "删除没有进入本地回收目录");
+  await assert.rejects(() => fs.access(path.join(conversationStore, "conversations", first.id)), { code: "ENOENT" }, "删除后对话目录仍然存在");
+  await assert.rejects(() => fs.access(path.join(conversationStore, ".trash")), { code: "ENOENT" }, "删除后仍创建了本地回收目录");
+
+  const ghost = await createAssistantConversation(conversationScope);
+  await manageAssistantConversation(conversationScope, ghost.id, { action: "rename", title: "旧删除残留" });
+  const legacyTrash = path.join(conversationStore, ".trash", `${ghost.id}-legacy`);
+  await fs.mkdir(path.dirname(legacyTrash), { recursive: true });
+  await fs.rename(path.join(conversationStore, "conversations", ghost.id), legacyTrash);
+  await manageAssistantConversation(conversationScope, ghost.id, { action: "delete" });
+  const afterGhostDelete = await assistantConversations(conversationScope);
+  assert(!afterGhostDelete.items.some((item) => item.id === ghost.id), "磁盘记录已移动但索引残留的历史项仍无法删除");
+  assert.notEqual(afterGhostDelete.activeId, ghost.id, "删除悬空历史后 activeId 仍指向旧记录");
+  await assert.rejects(() => fs.access(legacyTrash), { code: "ENOENT" }, "旧回收副本没有随重试删除一起永久移除");
 } finally {
   await fs.rm(conversationStore, { recursive: true, force: true });
 }
@@ -180,5 +192,5 @@ assert.equal(probe.ok, true);
 assert.equal(probe.version, "0.84.3");
 console.log("✓ Pi Agent SDK 0.84.3 已完成直接 SDK、defineTool、Skill 和会话标识校验");
 console.log("✓ daily / creative / developer 能力预设、消息内对话级工作区授权、候选写入和越界防护已校验");
-console.log("✓ 历史对话的重命名、置顶、归档、恢复、删除与 activeId 回退已校验");
+console.log("✓ 历史对话的重命名、置顶、归档、恢复、永久删除与 activeId 回退已校验");
 console.log("✓ Xenho 品控九问保持九项唯一真源");

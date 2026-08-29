@@ -5,11 +5,10 @@ import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../../lib/assistant-
 import { EXPERT_KINDS } from "../../lib/expert-kinds.js";
 import { transitionActionResult } from "../../lib/ai/result-model.js";
 import { KnowledgeCardDialog } from "../KnowledgeCardDialog.jsx";
-import { IconArchive, IconHistory, IconLayoutSidebarRight, IconPlus } from "../icons.jsx";
+import { IconArchive, IconArrowsDiagonal, IconHistory, IconLayoutSidebarRight, IconPlus, IconX } from "../icons.jsx";
 import { AssistantComposer } from "./AssistantComposer.jsx";
 import { AssistantHistory } from "./AssistantHistory.jsx";
-import { ProjectAssistantHistory } from "./ProjectAssistantHistory.jsx";
-import { AssistantThread } from "./AssistantThread.jsx";
+import { AssistantStarters, AssistantThread } from "./AssistantThread.jsx";
 import "../project-assistant.css";
 
 
@@ -27,6 +26,16 @@ const EXPERTS = [
 ];
 
 const PROJECT_EXPERTS = new Set(["writing-coach", ...EXPERT_KINDS.map((item) => item.expertId)]);
+
+/**
+ * 三个「跑一次出报告」的专家：`@` 菜单里选中它们不是插一段提及，而是**直接起任务**。
+ *
+ * ⚠️ 这是「项目检查」搬家之后的唯一入口。原来它是上下文面板里的一组常驻按钮——
+ * 那块面板要回答的是「这一轮 AI 读到什么」，而检查是「去做一件新的事」，
+ * 两件事塞在一个抽屉里，结果最低频的动作占了最显眼的半屏。
+ * 现在它和其他专家共用 `@`：想让谁看，就 `@` 谁。
+ */
+const EXPERT_RUN_KIND = new Map(EXPERT_KINDS.map((item) => [item.expertId, item.id]));
 
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
 
@@ -83,7 +92,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, projectContext = null, onCollapse }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, projectContext = null, onExpertRun = null, onCollapse }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -144,6 +153,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const activeRequestRef = useRef(null);
   const conversationIdRef = useRef("");
   const promptRequestRef = useRef("");
+  const handoffRequestRef = useRef("");
   const enabledStyles = (profile?.styles || []).filter((item) => item.enabled);
   const style = enabledStyles.find((item) => item.id === styleId) || null;
   useEffect(() => {
@@ -199,7 +209,20 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     let cancelled = false;
     conversationIdRef.current = "";
     promptRequestRef.current = "";
-    const shouldResume = !historyEnabled || surface !== "page" || Boolean(initialConversationId);
+    handoffRequestRef.current = "";
+    /**
+     * ⚠️ **全局侧栏（overlay）不自动接上一段会话。**
+     *
+     * 上一版的判据是「不是完整页就续」，那是「侧栏和 `#/assistant` 共用一段对话」时代写的。
+     * 现在两处分开了：侧栏是「手头这件事顺便问一句」，整页是「坐下来想一件事」——
+     * 在别的页面顺手问的那句，不该在你打开 AI 助手页时已经躺在里面。
+     *
+     * - `rail`（项目 / 阅读）：**照旧续**。它绑着这篇稿件或这份文档，
+     *   切个页签回来就丢掉对话是另一种坏。
+     * - `page` / `overlay`：只有拿到明确的 `initialConversationId` 才续，
+     *   否则起一段新的。侧栏那段要带进整页，走「⤢ 在完整工作区继续」。
+     */
+    const shouldResume = surface === "rail" || !historyEnabled || Boolean(initialConversationId);
     setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(shouldResume);
     if (shouldResume) api.assistantConversation(scopeId, initialConversationId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     if (historyEnabled) api.assistantConversations(scopeId).then((result) => { if (!cancelled) setConversationItems(result.conversations?.items || []); }).catch(() => {});
@@ -379,17 +402,29 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   };
 
   function chooseExpert(item) {
-    insertCommand(`@${item.label} `);
+    const kind = onExpertRun ? EXPERT_RUN_KIND.get(item.id) : "";
+    if (!kind) { insertCommand(`@${item.label} `); return; }
+    // 检查类专家点下去就开跑，所以要把用户为了唤出菜单打的那半截 `@…` 抹掉——
+    // 留在输入框里的话，下一句话会莫名其妙带上一个没人再用的提及。
+    const range = commandRange;
+    if (range) setInput(`${input.slice(0, range.from)}${input.slice(range.to)}`);
+    setMenu(""); setMenuQuery(""); setCommandRange(null);
+    onExpertRun(kind);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function chooseSkill(item) {
     insertCommand(item.prompt || `/${item.label} `);
   }
 
-  const experts = (expertPresets.length ? expertPresets : EXPERTS).filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id));
+  const experts = (expertPresets.length ? expertPresets : EXPERTS)
+    .filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id))
+    // 会起任务的那几个要在菜单里说清楚「点下去会发生什么」——
+    // 同一个菜单里一半插字一半跑任务，不写出来的话只能靠点一次才知道。
+    .map((item) => onExpertRun && EXPERT_RUN_KIND.has(item.id) ? { ...item, hint: `${item.hint ? `${item.hint} · ` : ""}跑一次并出报告` } : item);
   const availableSkills = skills;
   const modelItems = model && !models.some((item) => item.id === model) ? [{ id: model, name: model, remembered: true }, ...models] : models;
-  const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.ownedBy || (item.remembered ? "最近使用" : "可用模型"), provider: item.ownedBy || "" }));
+  const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.remembered ? "最近使用" : "", provider: item.ownedBy || "" }));
   const filteredMenuItems = (menu === "models" ? menuItems : menuItems.filter((item) => !menuQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(menuQuery.toLowerCase()))).slice(0, 80);
 
   function openMenu(type) {
@@ -434,6 +469,8 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
   async function manageHistory(item, action, payload = {}) {
     if (!item?.id || historyPending || item.activeTurn?.status === "running") return;
+    const previousItems = action === "delete" ? conversationItems : null;
+    if (action === "delete") setConversationItems((current) => current.filter((candidate) => candidate.id !== item.id));
     setHistoryPending(`${item.id}:${action}`); setHistoryMenuId(""); setHistoryDeleteId(""); setError(null);
     try {
       const result = await api.manageAssistantConversation({ scopeId, conversationId: item.id, action, ...payload });
@@ -441,8 +478,13 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       if (result.conversation && item.id === conversationId) applyConversation(result.conversation);
       if (["archive", "delete"].includes(action) && item.id === conversationId) await newConversation();
       if (action === "restore") setHistoryView("recent");
-    } catch (next) { setError(next); }
-    finally { setHistoryPending(""); }
+    } catch (next) {
+      if (action === "delete") {
+        const refreshed = await api.assistantConversations(scopeId).catch(() => null);
+        setConversationItems(refreshed?.conversations?.items || previousItems || []);
+      }
+      setError(next);
+    } finally { setHistoryPending(""); }
   }
 
   function startRename(item) {
@@ -513,6 +555,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
   }
 
+  /**
+   * `promptRequest`：**一个新问题**，真的发出去跑一遍。
+   * 阅读里划词「问 AI」、整篇提问走这条——那些问题还没有答案。
+   */
   useEffect(() => {
     const requestId = String(promptRequest?.id || "");
     if (!requestId || loading || busy || promptRequestRef.current === requestId) return;
@@ -520,43 +566,157 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     send(promptRequest?.text || "");
   }, [promptRequest?.id, loading, busy]);
 
+  /**
+   * 正文里那次问答**搬**进来，成为一段可以接着聊的对话。
+   *
+   * ⚠️ **不是重新发一遍。** 上一版把用户那句指令交给 `send()`，模型于是再答一次——
+   * 用户刚在正文里读完的答案没了，屏幕上是同一个问题的第二个答案。他点「对话」的意思是
+   * 「把这段挪过来继续」，不是「换一个答案」。
+   *
+   * 落库由服务端做（`/api/assistant/adopt`），这里只把返回的对话装上：
+   * 这段问答必须真的进历史，否则切个页签回来就没了。
+   */
+  useEffect(() => {
+    const requestId = String(handoffRequest?.id || "");
+    if (!requestId || handoffRequestRef.current === requestId) return;
+    handoffRequestRef.current = requestId;
+    let cancelled = false;
+    api.adoptAssistantExchange({
+      scopeId,
+      prompt: handoffRequest.prompt || "",
+      answer: handoffRequest.answer || "",
+      model,
+      permissionMode,
+    }).then((result) => {
+      if (cancelled || !result.conversation) return;
+      applyConversation(result.conversation);
+      refreshHistory().catch(() => {});
+    }).catch((next) => { if (!cancelled) setError(next); });
+    return () => { cancelled = true; };
+    // 由一次性的 request id 触发；其余入参从当前状态读。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoffRequest?.id]);
+
   const visibleConversations = conversationItems.filter((item) => historyView === "archived" ? Boolean(item.archivedAt) : !item.archivedAt);
   const canArchive = !busy && messages.some((item) => item.role === "assistant" && item.text);
   const backgroundConversation = conversationItems.find((item) => item.activeTurn?.status === "running" && item.id !== conversationId);
   const pendingAttachments = attachments.filter((item) => !item.usedAt);
 
-  const dialog = <div className="assistant-pane__dialog">
-    <header className="assistant-pane__context">
+  /**
+   * 空态 = 还没有任何消息、没有在生成、也不在加载。
+   *
+   * ⚠️ **只有完整工作区页把输入器提到中间。** 侧栏（全局 / 项目 / 阅读）一律**贴底**——
+   * 侧栏是「一边看正文一边问」的地方，输入器的位置必须和正文里其它常驻控件一样稳定；
+   * 而且窄栏里居中省不下多少距离，却让「第一条消息发出去」时输入器整个往下跳一次。
+   */
+  const emptyState = !messages.length && !busy && !loading;
+  // ⚠️ 必须定义在 `starters` 之前：那儿要用它，const 没有提升，晚一行就是 TDZ 崩整页。
+  const prefill = (value) => { setInput(value); requestAnimationFrame(() => inputRef.current?.focus()); };
+  const centeredEmpty = emptyState && surface === "page";
+  /**
+   * 入口卡：
+   * - 完整页：在居中的输入器**下面**，作为「不知道说什么」的兜底。
+   * - 项目 / 阅读栏：在贴底输入器**上面**（跟着空态问候走）——它们是针对当前稿件/文档的
+   *   两条具体建议，值得留。
+   * - 全局侧栏：**不给**。那三张是通用入口，而侧栏本来就是顺手问一句的地方，
+   *   三张卡把一栏塞满，反而挡住了「直接开口」这条主路径。
+   */
+  const starters = emptyState && surface !== "overlay"
+    ? <AssistantStarters scope={scope} onPrompt={scope === "project" ? prefill : send} />
+    : null;
+
+  /**
+   * ⚠️ **阅读侧栏的这条 header 只在它有话说的时候才画。**
+   *
+   * 阅读页右栏本来就有一条页签（标记 / 衍生 / AI 助手 / 收起），下面再压一条
+   * 「当前全文 ………… ＋」——两条加起来 88px，而全局侧栏做完同样的事只用了 44px。
+   * 更要紧的是空态下这一条里**没有一个字是新信息**：「当前全文」是恒定值，
+   * 而「新对话」在一段还没开始的对话里点了等于没点。
+   * 有选区（「选中 N 字」是真变化）、有消息、或有后台任务时它才出现。
+   *
+   * 项目右栏不适用：它那条 header 承载着「当前稿件」上下文入口，一直有内容。
+   */
+  const railHeaderIdle = surface === "rail" && !projectRail
+    && !selection?.text && !messages.length && !backgroundConversation && !canArchive;
+
+  /**
+   * 「这一轮 AI 读到什么」——**放在输入框里**，见 `AssistantComposer` 里那段注释。
+   *
+   * 项目栏交出去的是一个可点的触发器加它的面板（`projectContext`）；
+   * 其它 surface 只有两颗不可点的事实芯片。两者落在同一个位置，
+   * 所以用户在任何一栏里找「它读的是什么」都是同一处。
+   */
+  const composerContext = projectRail
+    ? projectContext
+    : (policy.capabilities.documentContext || materials.length) ? <>
+        {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
+        {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
+      </> : null;
+
+  const dialog = <div className="assistant-pane__dialog" data-empty={centeredEmpty ? "true" : undefined}>
+    {railHeaderIdle ? null : <header className="assistant-pane__context">
       {projectRail ? <>
-        <strong>协作</strong>
+        {/* ⚠️ **项目右栏的头只有一条。**
+            上一版是两条：44px 的「协作」和 39px 的「当前稿件 · 已用素材 4」，
+            两条都是同一档灰细字，谁也没压过谁——占了 83px 却读不出主次。
+            现在它们是同一行的一个面包屑：「协作」是这块区域的名字（安静），
+            后半截是唯一可点的东西（当前上下文）。上下文面板改挂在这条 header 上，
+            所以它仍然铺满整栏宽度，不会缩成触发器那么窄。 */}
+        <div className="assistant-pane__crumb">
+          <strong>协作</strong>
+        </div>
         <div className="assistant-context-actions">
           {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /></button> : null}
-          <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="最近会话" aria-label="最近会话"><IconHistory aria-hidden="true" /></button>
           <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /></button>
           {onCollapse ? <button type="button" onClick={onCollapse} title="收起协作区" aria-label="收起协作区"><IconLayoutSidebarRight aria-hidden="true" /></button> : null}
         </div>
       </> : <>
-        <div>
-          {historyEnabled && presentation.history !== "none" ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" />{presentation.history === "sidebar" ? <span>历史对话</span> : null}</button> : null}
-          {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
-          {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
+        {/* ⚠️ **完整页上「新对话」跟「历史对话」并排，不甩到另一端。**
+            上一版是 `space-between` 的两端布局：左端一颗、右端一颗，中间一千像素全空——
+            两颗都是「管理这段对话」的同一件事，却被排成了对立的两组，
+            而那条横条因此必须一直有 58px 高才撑得住。
+            现在它们成一组待在左边，右边只留「这段对话产生了什么」（存为知识卡、后台任务）。 */}
+        <div className="assistant-context-actions assistant-context-actions--lead">
+          {/* 浮层把自己的身份和「这轮带了什么」交给这一条 header 渲染，
+              而不是在上面再叠一条自己的——两条 header 是上一版 Quick 最丑的地方：
+              下面那条只剩三颗图标悬在一片空白上，看着像忘了做完。 */}
+          {headerLead}
+          {/* 完整页宽，「历史对话 / 新对话」带文字排在左边当主入口；
+              浮层和右栏窄，它们退成右侧那排图标的一部分——
+              夹在上下文芯片和窗口按钮中间的话，三组东西挤成一条，谁属于谁读不出来。 */}
+          {surface === "page" && historyEnabled ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" /><span>历史对话</span></button> : null}
+          {surface === "page" ? <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /><span>新对话</span></button> : null}
         </div>
         <div className="assistant-context-actions">
           {policy.capabilities.writingStyle && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
           {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
           {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
-          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" />{globalScope ? <span>新对话</span> : null}</button>
+          {/* ⚠️ **侧栏里没有「历史对话」入口——全局侧栏和项目协作栏都没有。**
+              这一栏是「现在这段对话」的地方，翻旧会话是另一件事：完整 AI 工作区那边
+              有带搜索和时间分组的历史栏，比在 420px 里塞一个抽屉好用得多。
+              代价写在这儿：**项目 scope 的旧会话目前没有别的入口**（全局历史只列 global scope）。 */}
+          {surface !== "page" ? <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /></button> : null}
+          {/* 「去完整工作区」是**导航**，不是发送。上一版把它摆在发送键旁边，
+              一行文字按钮的横向重量压过了那颗 30px 的主操作——
+              浮层里唯一该抢眼的东西是发送。挪到头部和其它窗口控件一起。 */}
+          {/* 「窗口动作」单独成一组。⚠️ 不要靠 `:first-of-type` 之类的位置选择器去画分隔线——
+              那匹配的是「第一个 button」，而这一排前面还有存知识卡、历史、新对话，
+              线会画在完全不相干的地方，而且**看着只是没生效**，不会报错。 */}
+          {(surface === "overlay" && onContinue) || onClose ? <span className="assistant-context-window">
+            {surface === "overlay" && onContinue ? <button type="button" className="assistant-context-expand" onClick={onContinue} title="在完整 AI 工作区继续这段对话" aria-label="在完整 AI 工作区继续"><IconArrowsDiagonal aria-hidden="true" /></button> : null}
+            {onClose ? <button type="button" className="assistant-context-expand" onClick={onClose} title="关闭（Esc）" aria-label="关闭 AI 助手"><IconX aria-hidden="true" /></button> : null}
+          </span> : null}
         </div>
       </>}
-    </header>
-    {projectContext}
+    </header>}
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
       error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
-      policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onPrefill={(value) => { setInput(value); requestAnimationFrame(() => inputRef.current?.focus()); }} onRegenerate={() => rewind(false)}
+      policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onPrefill={prefill} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
+      starters={surface === "page" ? null : starters}
       endRef={endRef}
     />
 
@@ -572,16 +732,17 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       onMenuIndex={setMenuIndex} onChooseMenuItem={chooseMenuItem} onUploadFile={uploadFile}
       onTogglePermission={() => { setPermissionOpen((value) => !value); setMenu(""); }}
       onToggleModel={() => menu === "models" ? setMenu("") : openMenu("models")} onStop={stop}
-      onContinue={onContinue}
+      context={composerContext}
     />
+    {surface === "page" ? starters : null}
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} />
   </div>;
 
   return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
-    {historyEnabled && historyOpen ? projectRail ? <ProjectAssistantHistory conversationId={conversationId} conversationTitle={conversationTitle} items={conversationItems} onOpen={(id) => { openConversation(id); setHistoryOpen(false); }} onNew={() => { newConversation(); setHistoryOpen(false); }} /> : <AssistantHistory
+    {historyEnabled && historyOpen ? <AssistantHistory
       visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
       historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}
-      renameValue={renameValue} conversationId={conversationId} onNewConversation={newConversation}
+      renameValue={renameValue} conversationId={conversationId}
       onHistoryView={(value) => { setHistoryView(value); setHistoryMenuId(""); }}
       onOpenConversation={openConversation}
       onHistoryMenu={(id) => { setHistoryDeleteId(""); setHistoryMenuId((current) => current === id ? "" : id); }}

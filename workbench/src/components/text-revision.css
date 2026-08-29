@@ -28,95 +28,233 @@
 }
 .text-revision-menu__actions button:hover, .text-revision-menu__actions button[data-on="true"] { background: var(--surface-2); color: var(--text-1); }
 .text-revision-menu__actions button svg { width: 15px; height: 15px; }
-.text-revision-menu__actions .text-revision-menu__close { width: 30px; padding: 0; justify-content: center; color: var(--text-3); }
-.text-revision-menu__command { display: flex; gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
-.text-revision-menu__command input, .text-revision-review__command input {
+
+.text-revision-menu__divider { width: 1px; height: 16px; margin: 0 3px; background: var(--border); flex: none; }
+
+/* ── 选区面板：块类型 / 格式 / 技能 / 自由指令 ────────────────
+ * 顺序是从快到慢：块类型和格式纯本地零等待，技能一次点击出结果，自由指令要打字。
+ * 技能是**竖排列表加一个「技能」标题**，不是一排胶囊——横排会把它读成
+ * 「工具栏上的四颗按钮」，而这一组以后还会加东西。
+ */
+.selection-menu { width: min(288px, calc(100vw - 24px)); padding: 4px; border-radius: 10px; }
+.selection-menu__format { flex-wrap: wrap; padding: 0 1px; }
+.selection-menu__format > button { width: 30px; padding: 0; justify-content: center; }
+/* 竖排列表：一条一行，左对齐，和块菜单同一种行式 */
+.selection-menu__skills { margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--border); max-height: 168px; overflow-y: auto; }
+.selection-menu__skills > small { display: block; padding: 4px 8px 3px; color: var(--text-3); font-size: var(--fs-2xs); }
+.selection-menu__skills > button {
+  width: 100%;
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--text-1);
+  font: 500 12px/1 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.selection-menu__skills > button:hover { background: var(--surface-2); }
+.selection-menu__command { display: flex; align-items: center; gap: 6px; margin-top: 3px; padding: 3px 8px 2px; border-top: 1px solid var(--border); }
+.selection-menu__command input {
   min-width: 0;
   flex: 1;
-  border: 1px solid var(--border);
-  border-radius: var(--r-ctl);
-  background: var(--canvas);
+  height: 30px;
+  border: 0;
+  background: transparent;
   color: var(--text-1);
   font: 400 12px/1.4 var(--font);
   outline: none;
 }
-.text-revision-menu__command input { width: 380px; height: 32px; padding: 0 10px; }
-.text-revision-menu__command input:focus, .text-revision-review__command input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
-.text-revision-menu__command button { width: 32px; border: 0; border-radius: var(--r-ctl); background: var(--accent); color: var(--on-accent); cursor: pointer; }
-.text-revision-menu__command button svg { width: 15px; height: 15px; }
-
-.cursor-writing-menu {
-  min-width: min(360px, calc(100vw - 24px));
+.selection-menu__command input::placeholder { color: var(--text-3); }
+.selection-menu__command kbd {
+  flex: none;
+  color: var(--text-3);
+  font: 500 10px/1 var(--font);
 }
-.text-revision-menu__actions button:focus-visible,
-.cursor-writing-menu__result button:focus-visible {
+.selection-menu__command button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.selection-menu__command button svg { width: 14px; height: 14px; }
+
+/* ── 光标处的行内 AI 输入条 ────────────────────────────────────
+ */
+/**
+ * 它在视觉上**接替了当前这一行**，所以：铺满正文列、贴着行、边框极轻。
+ *
+ * 上一版是个 max-content 的浮动卡片，带 `--shadow-lg` 和一颗实心黑发送键——
+ * 那是「另一个应用贴上来了」的观感，而这里要的是「这一行现在变成了输入框」。
+ */
+.inline-ai-prompt {
+  padding: 0;
+  border-color: var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.inline-ai-prompt__field { display: flex; align-items: center; gap: 10px; padding: 0 10px 0 13px; }
+.inline-ai-prompt__field > svg { width: 17px; height: 17px; flex: none; color: var(--text-3); }
+.inline-ai-prompt__field input {
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  /* 和正文同字号：这是在写正文，不是在填一个设置项 */
+  font: 400 15px/1.5 var(--font);
+  outline: none;
+}
+.inline-ai-prompt__field input::placeholder { color: color-mix(in srgb, var(--text-3) 62%, transparent); }
+/* 圆形，默认淡；有内容才变实心——「能发了」用颜色说，不用 opacity 说 */
+.inline-ai-prompt__field button {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color .12s ease-out, color .12s ease-out;
+}
+.inline-ai-prompt__field button[data-ready] { background: var(--accent); color: var(--on-accent); }
+.inline-ai-prompt__field button svg { width: 15px; height: 15px; }
+
+.text-revision-menu__actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-.cursor-writing-menu__status,
-.cursor-writing-menu__error,
-.cursor-writing-menu__result {
-  margin-top: 4px;
-  padding: 8px 9px;
-  border-top: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-  line-height: 1.5;
+/* ── AI 回答卡 ──────────────────────────────────────────────────
+ * 生成新内容和回答问题的落点。它是正文里的一个**块**（把后面的字推下去），
+ * 不是浮层——这张卡要停留到用户做决定为止，浮着会盖住下一段。
+ *
+ * 提问所依据的那段选区留一个浅灰底：选区高亮失焦就淡了，
+ * 而卡还开着，不留记号的话读完答案想不起来它回答的是哪一段。
+ */
+.cm-answer-source { background: color-mix(in srgb, var(--text-3) 16%, transparent); border-radius: 2px; }
+/**
+ * 面板开着期间那段字的底色。**和原生选区同一个黄**——它就是那个选区，
+ * 换个颜色等于告诉用户「现在这是另一种状态了」，而其实什么都没变。
+ */
+.cm-held-selection { background: var(--mark-yellow); }
+/* ⚠️ 这期间关掉原生选区：两层同一个半透明黄叠起来会明显更深，
+   于是同一段字在「面板刚弹出」和「点进输入框后」是两种颜色 */
+.cm-selection-held ::selection { background: transparent; }
+.cm-inline-answer-host { margin: 8px 0 12px; }
+.ai-answer {
+  margin: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
-.cursor-writing-menu__status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.cursor-writing-menu__status svg {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
-}
-.cursor-writing-menu__error {
-  display: grid;
-  gap: 2px;
-  color: var(--danger);
-}
-.cursor-writing-menu__error small {
-  color: var(--text-3);
-}
-.cursor-writing-menu__result {
-  max-width: 360px;
-}
-.cursor-writing-menu__result small,
-.cursor-writing-menu__hint {
-  color: var(--text-3);
-}
-.cursor-writing-menu__result p {
-  margin: 3px 0 7px;
-  white-space: pre-wrap;
-}
-.cursor-writing-menu__result button {
+.ai-answer__body { display: flex; gap: 10px; padding: 12px 14px 10px; }
+.ai-answer__avatar { flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+.ai-answer__avatar svg { width: 17px; height: 17px; }
+.ai-answer__body p { margin: 0; min-width: 0; flex: 1; color: var(--text-1); font-size: var(--fs-md); line-height: 1.8; white-space: pre-wrap; }
+.ai-answer__error { min-width: 0; flex: 1; display: grid; gap: 2px; color: var(--danger); font-size: var(--fs-sm); }
+.ai-answer__error small { color: var(--text-3); }
+.ai-answer[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.ai-answer__gate { display: flex; gap: 6px; margin: 0 12px 8px 46px; padding: 8px 9px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); color: var(--danger); font-size: var(--fs-xs); line-height: 1.5; }
+.ai-answer__gate svg { width: 15px; height: 15px; flex: none; }
+.ai-answer__grounding { margin: 0 12px 8px 46px; }
+.ai-answer__actions { display: flex; justify-content: flex-end; gap: 2px; padding: 0 10px 8px; }
+/* 三颗图标键，靠右。这张卡的主体是那段要读的字，动作条不该和它抢 */
+.ai-answer__actions button {
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 0 7px;
-  border: 1px solid var(--border);
+  justify-content: center;
+  border: 0;
   border-radius: var(--r-ctl);
-  background: var(--surface);
-  color: var(--text-2);
+  background: transparent;
+  color: var(--text-3);
   cursor: pointer;
 }
-.cursor-writing-menu__result button:hover {
-  background: var(--surface-2);
+.ai-answer__actions button:hover { background: var(--surface-2); color: var(--text-1); }
+.ai-answer__actions button svg { width: 16px; height: 16px; }
+
+/* ── 块菜单（`/` 与行首 `+`）────────────────────────────────── */
+.block-insert-menu { width: min(300px, calc(100vw - 24px)); padding: 4px 4px 0; border-radius: 10px; }
+.block-insert-menu__list { max-height: min(340px, 46vh); overflow-y: auto; }
+/* 底部那条：显示正在筛什么 + 怎么关。和列表之间一道细线 */
+.block-insert-menu__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-2xs);
+}
+.block-insert-menu__foot input {
+  min-width: 0;
+  flex: 1;
+  height: 22px;
+  border: 0;
+  background: transparent;
   color: var(--text-1);
+  font: 400 12px/1.4 var(--font);
+  outline: none;
 }
-.cursor-writing-menu__result button svg {
-  width: 13px;
-  height: 13px;
+.block-insert-menu__typed { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); font-size: 12px; }
+.block-insert-menu__typed[data-empty] { color: var(--text-3); }
+.block-insert-menu__foot kbd {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font: 500 10px/1.5 var(--font);
 }
-.cursor-writing-menu__hint {
-  display: block;
-  padding: 4px 8px 2px;
-  font-size: 10.5px;
+.block-insert-menu__group + .block-insert-menu__group { margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--border); }
+.block-insert-menu__group > small { display: block; padding: 4px 8px 3px; color: var(--text-3); font-size: var(--fs-2xs); }
+.block-insert-menu__group > button {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--text-1);
+  font: 500 12px/1 var(--font);
+  text-align: left;
+  cursor: pointer;
 }
+/* 高亮跟着**键盘和鼠标同一个 active 下标**走，不用 :hover——
+   否则方向键走到第三条时鼠标底下那条也亮着，两条同时高亮读不出选的是哪条 */
+.block-insert-menu__group > button[data-active] { background: var(--surface-2); }
+.block-insert-menu__group > button svg { width: 16px; height: 16px; flex: none; color: var(--text-2); }
+.block-insert-menu__group > button span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-insert-menu__group > button em { flex: none; color: var(--text-3); font: 400 10.5px/1 var(--font-mono, var(--font)); font-style: normal; }
+.block-insert-menu__empty { margin: 0; padding: 12px 8px; color: var(--text-3); font-size: var(--fs-xs); text-align: center; }
+/* ── 正文原位置 diff ─────────────────────────────────────────────
+ * 删掉的字带删除线并退色，新增的字带底色。**没动的字一个装饰都不加**——
+ * 这一屏要读的是「改完之后的文章」，凡是没变的地方都该长得和平时一模一样。
+ *
+ * 生成中还没有 diff 时退回 `.cm-text-revision-original`（整段划掉）：那会儿
+ * 「改成什么」还没定，逐字上色会跟着流式输出每几十毫秒重排一次，读起来是花屏。
+ */
 .cm-text-revision-original {
   color: var(--text-3);
   text-decoration: line-through;
@@ -124,67 +262,134 @@
   text-decoration-thickness: 1px;
   background: color-mix(in srgb, var(--surface-2) 64%, transparent);
 }
-.cm-text-revision-host { margin: 6px 0 12px; }
-.text-revision-review {
-  margin: 0 4px;
-  padding: 8px 10px 8px;
-  border: 1px solid color-mix(in srgb, var(--ai-draft-line) 42%, var(--border));
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--ai-draft-wash) 56%, var(--surface));
-  color: var(--text-1);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .07);
+.cm-diff-del {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 52%, transparent);
+  text-decoration-thickness: 1px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
-.text-revision-review > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.text-revision-review > header span { display: inline-flex; align-items: baseline; gap: 6px; }
-.text-revision-review > header b { font-size: var(--fs-xs); }
-.text-revision-review > header small, .text-revision-review > header span:last-child, .text-revision-review__note { color: var(--text-3); font-size: var(--fs-2xs); }
-.text-revision-review textarea {
-  display: block;
-  width: 100%;
-  max-height: 230px;
-  resize: vertical;
+/* 新增的字在 CodeMirror 里是**零宽 widget**（采纳前正文一个字节都不改），
+   所以要自己声明字体和换行——widget 不继承 `.cm-line` 的排版。 */
+.cm-diff-ins {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ok) 46%, transparent);
+  color: var(--text-1);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+/* 专注审阅里的同一份 diff，单栏铺开读 */
+.revision-diff {
+  margin: 0;
+  max-height: 46vh;
   overflow-y: auto;
-  padding: 8px 8px;
-  border: 1px solid color-mix(in srgb, var(--ai-draft-line) 34%, var(--border));
-  border-radius: var(--r-ctl);
-  background: color-mix(in srgb, var(--ai-draft-wash) 82%, var(--surface));
   color: var(--text-1);
-  font: 400 14px/1.72 var(--font);
-  outline: none;
+  font-size: var(--fs-md);
+  line-height: 1.85;
+  white-space: pre-wrap;
 }
-.text-revision-review textarea:focus { border-color: var(--ai-draft-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ai-draft-line) 12%, transparent); }
-.text-revision-review > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-.text-revision-review__command { min-width: 0; flex: 1; display: flex; gap: 4px; }
-.text-revision-review__command input { height: 32px; padding: 0 8px; }
-.text-revision-review__command button { width: 32px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
-.text-revision-review__command button:disabled { opacity: .42; cursor: default; }
-.text-revision-review__command svg { width: 15px; height: 15px; }
-.text-revision-review__decide { flex: none; display: flex; gap: 6px; }
-.text-revision-review__decide button, .text-revision-review__error button { min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: 600 11.5px/1 var(--font); cursor: pointer; }
-.text-revision-review__decide button.is-primary { display: inline-flex; align-items: center; gap: 4px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.text-revision-review__decide button.is-primary svg { width: 14px; height: 14px; }
-.text-revision-review__decide button:disabled { opacity: .46; cursor: default; }
-.text-revision-review__loading { min-height: 72px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
-.text-revision-review__loading svg { width: 16px; height: 16px; color: var(--ai-draft-line); }
-.text-revision-review__error { display: grid; gap: 4px; padding: 8px; border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-xs); }
-.text-revision-review__error small { color: var(--text-3); }
-.text-revision-review__error button { justify-self: start; margin-top: 2px; }
-.text-revision-review__note { display: block; margin-top: 6px; text-align: right; }
-.text-revision-review__note.is-bad { color: var(--danger); }
+.revision-diff--whole { display: grid; gap: var(--sp-3); white-space: normal; }
+.revision-diff__whole small { display: block; margin-bottom: 2px; color: var(--text-3); font-size: var(--fs-2xs); }
+.revision-diff__whole p { margin: 0; max-height: 22vh; overflow-y: auto; padding: var(--sp-2) var(--sp-3); border-left: 2px solid var(--border-strong); color: var(--text-2); line-height: 1.8; white-space: pre-wrap; }
+.revision-diff__whole p.is-new { border-left-color: color-mix(in srgb, var(--ok) 60%, transparent); color: var(--text-1); }
+
+.cm-text-revision-host { margin: 6px 0 12px; }
+
+/* ── 决策栏 ──────────────────────────────────────────────────────
+ * 贴在 diff 正下方的一条窄栏，只回答三个问题：改了多大 / 凭什么 / 要不要。
+ * **没有 textarea**：审阅读的是改完的样子，手改等采纳之后在正文里改（正文本来就是编辑器）。
+ */
+/**
+ * **白底，不是薄荷绿。**
+ *
+ * 上一版整条栏铺 `--ai-draft-wash`，而正文里被改动的那几行**也**是这个绿——
+ * 一屏上出现两块同色的面，读不出「哪块是文章、哪块是控件」。绿留给正文里的改动
+ * （`.cm-diff-ins` / 续写底纹），这条栏退成一张普通的白卡片。
+ */
+.revision-bar {
+  margin: 2px 4px 0;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-1);
+  box-shadow: var(--shadow-sm);
+}
+.revision-bar[data-attention], .revision-bar[data-status="stale"] { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.revision-bar[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.revision-bar__row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.revision-bar__label { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); }
+.revision-bar__label svg { width: 15px; height: 15px; color: var(--ai-draft-line); }
+.revision-bar__stat { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-2xs); }
+.revision-bar__evidence,
+.revision-bar__retry {
+  flex: none;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px/1 var(--font);
+  cursor: pointer;
+}
+.revision-bar__evidence svg, .revision-bar__retry svg { width: 14px; height: 14px; }
+.revision-bar__evidence svg:last-child { width: 12px; height: 12px; transition: transform .14s ease-out; }
+.revision-bar__evidence[data-open] svg:last-child { transform: rotate(180deg); }
+.revision-bar[data-attention] .revision-bar__evidence { color: var(--warn); }
+.revision-bar__actions { flex: none; display: flex; align-items: center; gap: 4px; }
+.revision-bar__retry:hover:not(:disabled), .revision-bar__evidence:hover { background: var(--surface-2); color: var(--text-1); }
+.revision-bar__retry[data-on] { background: var(--surface-2); color: var(--text-1); }
+/* 圆形决定键（Notion 的 ↺ / ✓）。默认结果已经是采纳，这两颗只是「改主意」和「确认」 */
+.revision-bar__decide {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.revision-bar__decide svg { width: 15px; height: 15px; }
+.revision-bar__decide:hover:not(:disabled) { background: var(--surface-2); color: var(--text-1); }
+.revision-bar__decide.is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.revision-bar__decide.is-primary:hover:not(:disabled) { background: var(--accent-strong); color: var(--on-accent); }
+.revision-bar__retry:disabled, .revision-bar__decide:disabled { opacity: .46; cursor: default; }
+.revision-bar__note { display: flex; align-items: flex-start; gap: 6px; margin: 7px 0 0; padding: 7px 8px; border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
+.revision-bar__note svg { width: 15px; height: 15px; flex: none; }
+.revision-bar__note span { display: grid; gap: 1px; min-width: 0; }
+.revision-bar__note small { color: var(--text-3); }
+.revision-bar__note.is-warn svg { color: var(--warn); }
+.revision-bar__note.is-bad, .revision-bar__note.is-bad svg { color: var(--danger); }
+.revision-bar__command { display: flex; gap: 4px; margin-top: 7px; }
+.revision-bar__command input { min-width: 0; flex: 1; height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--canvas); color: var(--text-1); font: 400 12px/1.4 var(--font); outline: none; }
+.revision-bar__command input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
+.revision-bar__command button { flex: none; width: 32px; border: 0; border-radius: var(--r-ctl); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.revision-bar__command button:disabled { opacity: .46; cursor: default; }
+.revision-bar__command button svg { width: 15px; height: 15px; }
+.revision-bar .candidate-grounding { margin-top: 7px; }
+.revision-bar__foot { display: block; margin-top: 6px; text-align: right; color: var(--text-3); font-size: var(--fs-2xs); }
+.revision-bar__foot.is-bad { color: var(--danger); }
+
+.candidate-card { display: grid; gap: var(--sp-4); }
+.candidate-card__loading { min-height: 96px; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
+.candidate-card__loading svg { width: 16px; height: 16px; color: var(--ai-draft-line); }
 
 @media (max-width: 700px) {
   .text-revision-menu__actions button span { display: none; }
   .text-revision-menu__actions button { width: 32px; justify-content: center; padding: 0; }
-  .text-revision-menu__command input { width: calc(100vw - 88px); }
-  .text-revision-review > footer { align-items: stretch; flex-direction: column; }
-  .text-revision-review__decide { justify-content: flex-end; }
+  .revision-bar__row { flex-wrap: wrap; }
+  .revision-bar__actions { margin-left: auto; }
 }
-
-
-.candidate-card[data-status="stale"] { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); }
-.candidate-card[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
-.candidate-card__stale { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 7px; padding: 7px 8px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--warning) 9%, var(--surface)); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
-.candidate-card__stale svg { width: 15px; height: 15px; flex: none; color: var(--warning); }
 .candidate-grounding { display: grid; gap: 7px; margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); font-size: var(--fs-xs); }
 .candidate-grounding > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .candidate-grounding > header span { color: var(--text-3); font-size: var(--fs-2xs); }
@@ -213,8 +418,7 @@
 .md-candidate-focus > header strong { font-size: var(--fs-base); }
 .md-candidate-focus > header button { min-height: 30px; border: 0; border-radius: var(--r-ctl); padding: 0 var(--sp-3); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .md-candidate-focus > header button:hover { background: var(--surface-2); color: var(--text-1); }
-.md-candidate-focus__original { margin-bottom: var(--sp-4); padding: var(--sp-3) var(--sp-5); border-left: 2px solid var(--border-strong); background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); }
-.md-candidate-focus__original small { color: var(--text-3); font-size: var(--fs-2xs); }
-.md-candidate-focus__original p { max-height: 96px; margin: var(--sp-2) 0 0; overflow-y: auto; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; white-space: pre-wrap; }
-.md-candidate-focus .candidate-card { margin: 0; box-shadow: none; }
-.md-candidate-focus .text-revision-review textarea { max-height: 260px; min-height: 120px; background: var(--surface); }
+/* 专注审阅里不再单独摆一块「原文」：删掉的字已经带着删除线画在同一段 diff 里，
+   上面再压一块原文等于同一段读两遍，而这一屏本来就是为了少读一遍才存在的。 */
+.md-candidate-focus .candidate-card { margin: 0; }
+.md-candidate-focus .revision-bar { margin: 0; }

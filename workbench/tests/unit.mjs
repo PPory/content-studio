@@ -25,6 +25,9 @@ import { assistantReferenceDocument, assistantSummonDestination } from "../src/l
 import { inlineAiBoundary, placeInlineAiMenu } from "../src/lib/inline-ai-positioning.js";
 import { AI_RESULT_KINDS, candidateReviewMode, changeSummary, createAiResult, createCandidate, documentVersionOf, transitionActionResult } from "../src/lib/ai/result-model.js";
 import { normalizeGrounding } from "../src/lib/ai/grounding.js";
+import { DIFF_BUDGET, EDIT_SIMILARITY, diffStats, diffTokens, looksLikeEdit, tokenize } from "../src/lib/text-diff.js";
+import { decodeMarkdownPath, encodeMarkdownPath } from "../src/lib/markdown-path.js";
+import { CONVERSATION_BUCKETS, conversationBucket, conversationStamp, groupConversationsByTime } from "../src/lib/conversation-groups.js";
 import { parseNotes, applyNoteEdit } from "../server/lib/notes.mjs";
 import { parseEpub, parsePdf, safeName as bookName, SUPPORTED } from "../server/lib/books.mjs";
 import { parseCsv, decodeText } from "../server/lib/sheet.mjs";
@@ -464,6 +467,15 @@ try {
   // 标点被挪到强调外面，而不是被吃掉——排版上它本来就属于句子不属于那个词
   check("标点挪到外面而不是丢掉", fixEmphasis("**杠杆，**也就是") === "**杠杆**，也就是", fixEmphasis("**杠杆，**也就是"));
   check("整段都是标点时去掉标记", fixEmphasis("**——**") === "——", fixEmphasis("**——**"));
+  // 钉一次真事故：模型回复里的 `*   ` 列表记号被当成强调开头，`*   *` 整段被换成空格，
+  // 记号连同一个星号一起消失，整块结构化回复退回成带星号的纯文本。
+  {
+    const src = "*   **写作中：9 个**\n    *   《甲》\n    *   《乙》";
+    check("列表记号不被当成强调开头", fixEmphasis(src) === src, fixEmphasis(src));
+    const html = marked.parse(fixEmphasis(src));
+    check("嵌套列表仍然渲染成列表", /<ul>[\s\S]*<ul>/.test(html) && !html.includes("*"), html);
+  }
+  check("代码里的星号原样保留", fixEmphasis("算式 `a * b * c` 不动") === "算式 `a * b * c` 不动", fixEmphasis("算式 `a * b * c` 不动"));
 }
 
 // ---- 哪些 .md 算「章节」 ----
@@ -705,6 +717,26 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("surface 配置与 capability policy 分离", Object.keys(ASSISTANT_SURFACES).join("/") === "page/overlay/rail");
   check("scope policy 统一提供会话键", resolveAssistantPolicy({ scope: "global" }).session() === "global:assistant" && resolveAssistantPolicy({ scope: "project" }).session("draft-1") === "project:draft-1" && resolveAssistantPolicy({ scope: "reading" }).session("shelf", "doc-1") === "reading:shelf:doc-1");
 
+  // 历史会话分段：判据只在 conversation-groups.js 一处，渲染层不再自己算时间。
+  const groupNow = Date.parse("2026-08-27T12:00:00Z");
+  const groupItems = [
+    { id: "old", updatedAt: "2026-05-01T12:00:00Z" },
+    { id: "today", updatedAt: "2026-08-27T09:00:00Z" },
+    { id: "pinned", pinnedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-05-01T12:00:00Z" },
+    { id: "yesterday", updatedAt: "2026-08-26T09:00:00Z" },
+    { id: "week", updatedAt: "2026-08-23T09:00:00Z" },
+    { id: "broken", updatedAt: "" },
+  ];
+  const grouped = groupConversationsByTime(groupItems, groupNow);
+  check("会话分段按固定顺序，且只保留有内容的段", grouped.map(([name]) => name).join("/") === "置顶/今天/昨天/最近 7 天/更早");
+  check("置顶不跟着时间沉下去", grouped[0][1].map((item) => item.id).join() === "pinned");
+  check("时间读不出来的会话归到更早，不丢条", groupConversationsByTime(groupItems, groupNow).reduce((total, [, list]) => total + list.length, 0) === groupItems.length && conversationBucket({ updatedAt: "" }, groupNow) === "更早");
+  check("段名清单是唯一真源", CONVERSATION_BUCKETS.join("/") === "置顶/今天/昨天/最近 7 天/最近 30 天/更早");
+  // 时间戳格式跟着段走：今天段里再写一遍月/日，会和段名对不上（8/26 的会话标在「今天」段里）
+  check("今天与昨天显示时分，其他段显示日期", /^\d{2}:\d{2}$/.test(conversationStamp({ updatedAt: "2026-08-27T09:00:00Z" }, "今天", groupNow)) && /^\d{2}:\d{2}$/.test(conversationStamp({ updatedAt: "2026-08-26T09:00:00Z" }, "昨天", groupNow)) && !/:/.test(conversationStamp({ updatedAt: "2026-08-23T09:00:00Z" }, "最近 7 天", groupNow)));
+  check("跨年的会话把年份补上", conversationStamp({ updatedAt: "2025-11-02T09:00:00Z" }, "更早", groupNow).includes("2025"));
+  check("时间读不出来就不画时间戳", conversationStamp({ updatedAt: "" }, "更早", groupNow) === "");
+
   const assistantPane = await fs.readFile(new URL("../src/components/assistant/AssistantPane.jsx", import.meta.url), "utf8");
   const assistantComposer = await fs.readFile(new URL("../src/components/assistant/AssistantComposer.jsx", import.meta.url), "utf8");
   const assistantThread = await fs.readFile(new URL("../src/components/assistant/AssistantThread.jsx", import.meta.url), "utf8");
@@ -728,9 +760,40 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("报告界面不再展示发布阻塞文案", /reportSeverity\(kind, status\)/.test(expertReport) && !/阻塞发布|blocking/.test(expertReport));
   check("编辑器内联 AI 只读取 scope + target policy", /resolveAssistantPolicy/.test(inlineMarkdownEditor) && /capabilities\.writeAtCursor/.test(inlineMarkdownEditor) && /function beginRevision[\s\S]{0,220}capabilities\.reviseSelection/.test(inlineMarkdownEditor));
   check("内联 AI 定位不再使用页面固定阈值", /inlineAnchorOf/.test(inlineMarkdownEditor) && /view\.scrollDOM\.getBoundingClientRect/.test(inlineMarkdownEditor) && !/coords\.top >|window\.innerWidth - 18/.test(inlineMarkdownEditor));
-  check("光标菜单使用准确动作名并保留输入法保护", /想一想/.test(textRevision) && /续写/.test(textRevision) && /按要求写/.test(textRevision) && /isCompositionEvent/.test(textRevision));
+  check("行内 AI 输入条保留快捷方式与输入法保护", /想一想/.test(textRevision) && /续写这一段/.test(textRevision) && /让 AI 写/.test(textRevision) && /isCompositionEvent/.test(textRevision));
+  check("选区面板同时给格式、AI 技能和自由指令", ["selection-menu__format", "selection-menu__skills", "selection-menu__command", "使用 AI 编辑"].every((mark) => textRevision.includes(mark)));
+  check("正文上方不留工具栏，排版跟着选区走", inlineMarkdownEditor.includes("const selectionFormat = {")
+    && !inlineMarkdownEditor.includes('role="toolbar" aria-label="文档操作"')
+    && !inlineMarkdownEditor.includes('role="toolbar" aria-label="排版工具"'));
+  check("编辑态本身就是实时预览，没有预览开关", !inlineMarkdownEditor.includes("setPreview") && !inlineMarkdownEditor.includes("md-editor__preview"));
   check("Project 与 Reading 显式传入相同内联能力边界", /assistantScope="project"[\s\S]*assistantTarget=\{\{ kind: "draft", editable: draftEditable \}\}/.test(projectWorkspace) && /assistantScope="reading"[\s\S]*assistantTarget=\{\{ kind: "vault-document", editable: true \}\}/.test(readerOverlay));
-  check("Project 与 Reading 只保留共用内联 AI", /export function CursorWritingMenu/.test(textRevision) && !/<WritingAssist/.test(`${projectWorkspace}\n${readerOverlay}`));
+  check("Project 与 Reading 只保留共用内联 AI", /export function InlineAiPrompt/.test(textRevision) && !/<WritingAssist/.test(`${projectWorkspace}\n${readerOverlay}`));
+
+  /**
+   * 光标层的三条判据用**真的编辑器状态**跑，不用正则看源码。
+   *
+   * 空格是中文输入里最常按的键，`/` 出现在每一个 URL 和日期里——这两条判据写错的代价
+   * 是「打字打不下去」，而正则断言只能证明代码里有这么一行，证明不了它判得对。
+   */
+  const affordance = await import("../src/lib/editor-line-affordance.js");
+  const { EditorState: CmState } = await import("@codemirror/state");
+  const at = (doc, head) => CmState.create({ doc, selection: { anchor: head } });
+  const emptyLine = at("上一段结束。\n\n", 8);
+  check("空行上的空格唤起 AI", affordance.shouldOpenInlineAiOnSpace(emptyLine, {}));
+  check("有字的行上空格仍然是空格", !affordance.shouldOpenInlineAiOnSpace(at("已经写了字", 5), {}));
+  check("输入法组合中不劫持空格", !affordance.shouldOpenInlineAiOnSpace(emptyLine, { composing: true }));
+  check("只读文档不劫持空格", !affordance.shouldOpenInlineAiOnSpace(emptyLine, { canWrite: false }));
+  check("有选区时不劫持空格", !affordance.shouldOpenInlineAiOnSpace(CmState.create({ doc: "一二三四", selection: { anchor: 0, head: 3 } }), {}));
+  check("斜杠在行首、空白和中文标点后都开菜单", affordance.shouldOpenBlockMenuOnSlash(at("", 0))
+    && affordance.shouldOpenBlockMenuOnSlash(at("写到一半 ", 5))
+    && affordance.shouldOpenBlockMenuOnSlash(at("一句话结束。", 6))
+    && affordance.shouldOpenBlockMenuOnSlash(at("中文字后面", 5)));
+  check("斜杠在 URL、日期和 and/or 里不开菜单", !affordance.shouldOpenBlockMenuOnSlash(at("https:/", 7))
+    && !affordance.shouldOpenBlockMenuOnSlash(at("2026/08", 7))
+    && !affordance.shouldOpenBlockMenuOnSlash(at("and", 3)));
+  check("块菜单过滤词跟着正文走，遇到空白就撤", affordance.blockMenuQuery(at("/标题", 3), 1) === "标题"
+    && affordance.blockMenuQuery(at("/标题 后面", 6), 1) === null
+    && affordance.blockMenuQuery(at("/", 1), 1) === "");
 
   const grounding = normalizeGrounding({
     used: [{ id: "m1", title: "真实案例" }],
@@ -748,6 +811,65 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   check("Candidate ready 与 stale 由正文版本统一推导", readyCandidate.status === "ready" && staleCandidate.status === "stale");
   check("gate rejected 直接进入 failed", rejectedCandidate.status === "failed" && rejectedCandidate.error?.message === "个人经历缺少服务端证据");
   check("Candidate 变更摘要可比较", JSON.stringify(changeSummary("原文", "新正文")) === JSON.stringify({ added: 2, removed: 1, label: "+2 / −1" }));
+
+  /**
+   * 字级 diff：审阅栏上的数字和正文里画出来的底色必须是同一份结果，
+   * 而**拼回去要一个字节不差**——这些区间要拿去在 CodeMirror 上定位装饰。
+   */
+  const roundTrip = (before, after) => {
+    const { parts, degraded } = diffTokens(before, after);
+    return {
+      degraded,
+      parts,
+      back: parts.filter((part) => part.type !== "ins").map((part) => part.text).join(""),
+      forward: parts.filter((part) => part.type !== "del").map((part) => part.text).join(""),
+    };
+  };
+  const zhEdit = roundTrip("遇到关键结论，要求给出依据。", "遇到关键结论时，要求给出依据和计算过程。");
+  check("字级 diff 只标出真正改动的字", zhEdit.parts.filter((part) => part.type === "del").length === 0 && zhEdit.parts.filter((part) => part.type === "ins").map((part) => part.text).join("/") === "时/和计算过程");
+  check("中文修订可无损拼回两个版本", zhEdit.back === "遇到关键结论，要求给出依据。" && zhEdit.forward === "遇到关键结论时，要求给出依据和计算过程。");
+  const enEdit = roundTrip("use AI as an amplifier", "use AI as a capability amplifier");
+  check("西文按词切，未改的词不参与 diff", enEdit.back === "use AI as an amplifier" && enEdit.forward === "use AI as a capability amplifier" && enEdit.parts.some((part) => part.type === "same" && part.text.includes("amplifier")));
+  check("空串两侧退化成纯增或纯删", roundTrip("", "全新一段").parts.every((part) => part.type === "ins") && roundTrip("整段删掉", "").parts.every((part) => part.type === "del"));
+  check("完全相同的正文没有变更区间", roundTrip("一样的", "一样的").parts.every((part) => part.type === "same"));
+  /**
+   * 「这次是在改用户写下的字，还是产出了新的字」——这条判据决定结果画成正文里的 diff
+   * 还是一张回答卡。按**回来的东西**判，不按用户怎么唤起的判。
+   */
+  check("润色类结果判成「在改这段字」", looksLikeEdit("遇到关键结论，要求给出依据。", "遇到关键结论时，要求给出依据和计算过程。"));
+  check("翻译类结果判成「产出新的字」", !looksLikeEdit("我们把复杂性留在后端。", "We keep the complexity in the backend."));
+  check("回答问题判成「产出新的字」", !looksLikeEdit("AI 最好的位置，不是坐在你的位置上替你交卷。", "这一段在讲人和工具的分工：作者认为 AI 应该做的是放大判断力，而不是代替作者本人做决定。"));
+  check("空结果不当成改写", !looksLikeEdit("原文还在", "") && !looksLikeEdit("", "新的") && EDIT_SIMILARITY === 0.5);
+
+  /**
+   * 媒体路径。**写进正文时就得是合法 Markdown**——vault 目录名带空格（`07 - 附件`），
+   * 裸写出来 `marked`、别的编辑器和发布后的渲染全都解析不出图片。
+   */
+  const vaultMedia = "99 - 个人工作台/07 - 附件/2026-08/a b(1).jpg";
+  check("带空格括号的 vault 路径编码后可往返", encodeMarkdownPath(vaultMedia) === "99%20-%20个人工作台/07%20-%20附件/2026-08/a%20b%281%29.jpg" && decodeMarkdownPath(encodeMarkdownPath(vaultMedia)) === vaultMedia);
+  check("中文原样保留，不为机器可读牺牲人可读", !/%[0-9A-F]{2}/.test(encodeMarkdownPath("附件/图.jpg").replace(/[^%0-9A-F]/g, "")) || encodeMarkdownPath("附件/图.jpg") === "附件/图.jpg");
+  check("解不开的百分号不抛异常", decodeMarkdownPath("07%-附件/x.jpg") === "07%-附件/x.jpg");
+  const livePreviewSource = await fs.readFile(new URL("../src/lib/editor-live-preview.js", import.meta.url), "utf8");
+  check("整行图片的匹配允许目标里有空格", /const IMAGE_LINE = \/\^!/.test(livePreviewSource) && !/\[\^\)\s\]\+/.test(livePreviewSource));
+  const markdownSource = await fs.readFile(new URL("../src/lib/markdown.js", import.meta.url), "utf8");
+  check("渲染前救回老正文里的裸空格图片路径", /function encodeImagePaths/.test(markdownSource) && /decodeMarkdownPath\(src\)/.test(markdownSource));
+  const stylesSource = await fs.readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  check("转圈用的 class 名在 CSS 里真的定义了", /\.spin, \.spinning \{ animation: spin/.test(stylesSource));
+
+  check("CJK 按单字、拉丁按词、emoji 不拆代理对", JSON.stringify(tokenize("Hi 你好，world2 🎉")) === JSON.stringify(["Hi", " ", "你", "好", "，", "world2", " ", "🎉"]));
+
+  /**
+   * 插入媒体的落点。**目录名是约定，改它等于把已有正文里的相对路径全指歪**，
+   * 所以钉在这儿：`DIRS.media` 在工作台根下，按年月分子目录由路由拼。
+   */
+  const vaultRouteSource = await fs.readFile(new URL("../server/routes/vault.mjs", import.meta.url), "utf8");
+  check("插入的媒体落在工作台的附件目录", DIRS.media === `${WB_ROOT}/07 - 附件` && DIRS.media.startsWith(WB_ROOT));
+  check("视频不混进图片端点的白名单", vaultRouteSource.includes("const VIDEO_TYPES") && /\/api\/vault\/media-file/.test(vaultRouteSource)
+    && !/IMAGE_TYPES = \{[\s\S]{0,400}mp4/.test(vaultRouteSource));
+  check("上传成功前不往正文写路径", /await api\.uploadMedia\(file\)[\s\S]{0,600}v\.dispatch\(\{ changes/.test(inlineMarkdownEditor)
+    && /catch \(error\) \{[\s\S]{0,120}setMediaError/.test(inlineMarkdownEditor));  const oversized = roundTrip("甲".repeat(2_200) + "尾", "乙".repeat(2_200) + "尾");
+  check("超预算时退化成整段替换而不是卡住", oversized.degraded && oversized.parts.filter((part) => part.type !== "same").length === 2 && DIFF_BUDGET === 4_000_000);
+  check("变更统计按字符数而不是 token 数", diffStats(roundTrip("旧的说法", "全新的另一种说法").parts).label === changeSummary("旧的说法", "全新的另一种说法").label);
   check("短候选内联、大候选专注审阅", candidateReviewMode({ kind: "selection" }) === "inline" && candidateReviewMode({ kind: "paragraph" }) === "inline" && candidateReviewMode({ kind: "section" }) === "focused" && candidateReviewMode({ kind: "whole-document" }) === "focused");
   check("Action 同时支持 applied 与 rejected 正式状态", transitionActionResult({ id: "a1", type: "create_content" }, "applied").status === "applied" && transitionActionResult({ id: "a1", type: "create_content" }, "rejected").status === "rejected" && createAiResult({ kind: "action", type: "create_content" }).status === "proposed");
   check("Report 纳入统一 AiResult 概念", createAiResult({ kind: "report", findings: [{ id: "f1" }] }).findings.length === 1);
@@ -757,6 +879,32 @@ check("工作台不再往 localStorage 里存正文", !existsSync(new URL("../sr
   const actionCard = await fs.readFile(new URL("../src/components/assistant/ActionCard.jsx", import.meta.url), "utf8");
   const creationDialog = await fs.readFile(new URL("../src/components/CreationDialog.jsx", import.meta.url), "utf8");
   check("选区修订与 Assistant 插入共用 CandidateCard", /<CandidateCard/.test(markdownEditor) && /resultKind === "candidate"/.test(markdownEditor) && !/RevisionReviewCard/.test(markdownEditor));
+  /**
+   * **光标处插入不是候选审阅。** 候选回答的是「改成这样好不好」，得有原文可比；
+   * 光标处插入的原文是空串，一条 250 字的回复会被判成「章节」并弹出整屏审阅。
+   */
+  check("右栏插入在光标处走底纹，不走候选审阅", /resultKind === "candidate" && from !== to/.test(markdownEditor)
+    && /insertRequest\.ai \|\| insertRequest\.resultKind === "candidate"[\s\S]{0,160}addAiDraft\.of/.test(markdownEditor));
+  const textRevisionSource = await fs.readFile(new URL("../src/components/TextRevision.jsx", import.meta.url), "utf8");
+  check("选区面板不再有块类型下拉", !/selection-menu__heading/.test(textRevisionSource) && !/HEADING_LEVELS/.test(textRevisionSource));
+  const assistantMessageSource = await fs.readFile(new URL("../src/components/assistant/AssistantMessage.jsx", import.meta.url), "utf8");
+  // 「按钮上没有文字」由浏览器测试量渲染结果（writing-assist 那条 messageActions），
+  // 源码里只钉住每颗都有 aria-label——图标按钮少了它对读屏就是一颗无名按钮
+  const composerSource = await fs.readFile(new URL("../src/components/assistant/AssistantComposer.jsx", import.meta.url), "utf8");
+  check("「这一轮读到什么」只有输入框里一处", /assistant-composer__context/.test(composerSource)
+    && !/assistant-context-chip/.test(assistantPane.slice(assistantPane.indexOf("assistant-pane__context"), assistantPane.indexOf("<AssistantThread"))));
+  /**
+   * 浮标不是第二个 AI 入口：顶栏那颗键和 Ctrl+I 一个都没动。
+   * 它只在「本屏有 AI 栏、而它收着」时出现，走的还是同一个 `focusAssistant`。
+   */
+  const railSource = await fs.readFile(new URL("../src/components/ProjectAssistantRail.jsx", import.meta.url), "utf8");
+  check("上下文芯片写这一篇的标题，不写分类名", /document\?\.title\?\.trim\(\) \|\| "未命名稿件"/.test(railSource)
+    && !/>当前稿件</.test(railSource) && !/已用素材 \$\{/.test(railSource));
+  check("浮标只在协作栏收起时出现，且挂在 aside 外面", /<\/aside>[\s\S]{0,400}collapsed && !reviewOpen \? <AssistantOrb/.test(railSource)
+    && /onOpen=\{focusAssistant\}/.test(railSource));
+
+  check("图标动作条每颗都有无障碍名字", ["插入正文", "按建议改选区", "重新生成"].every((name) => assistantMessageSource.includes(`aria-label="${name}"`)));
+  check("稿件正文有固定列宽并居中", /\.project-draft > \.md-editor,?[\s\S]{0,200}max-width: 860px; margin-inline: auto/.test(stylesSource));
   check("Candidate 键盘采纳与弃用有统一实现", /event\.key === "Enter"/.test(candidateCard) && /event\.key === "Backspace"/.test(candidateCard) && /aria-keyshortcuts/.test(candidateCard));
   check("Grounding 默认直接展示而非折叠", /grounding\.skipped\.map/.test(candidateCard) && /grounding\.unverified\.map/.test(candidateCard) && !/<details/.test(candidateCard));
   check("ActionCard 同时提供确认和拒绝", /onApply/.test(actionCard) && /onReject/.test(actionCard) && /已拒绝/.test(actionCard));

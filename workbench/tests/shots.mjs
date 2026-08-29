@@ -338,7 +338,7 @@ const shots = [
     await page.waitForSelector(".project-draft .cm-content", { timeout: 25000 }).catch(() => {});
     await page.click(".project-draft .cm-content").catch(() => {});
     await page.keyboard.press("Alt+Enter").catch(() => {});
-    await page.waitForSelector(".cursor-writing-menu", { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector(".inline-ai-prompt", { timeout: 8000 }).catch(() => {});
   }],
   ["project-release", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     projectDetailShot = PROJECT_SHOT_RELEASE;
@@ -549,11 +549,17 @@ const shots = [
     await page.keyboard.press("Control+i");
     await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
     if (await page.inputValue(".quick-assistant .assistant-composer textarea") !== draft) throw new Error("Quick Assistant draft was lost after Escape");
+    /**
+     * ⚠️ **点正文不再关闭 AI 助手——这是新契约，不是漏掉的一条。**
+     * 它从浮层改成了和正文并排的一列，而**点正文正是它存在的意义**（一边看一边问）。
+     * 关闭只走三个明确入口：×、Esc、顶栏召唤键。
+     */
     await page.mouse.click(320, 240);
-    await page.waitForSelector('.quick-assistant[data-open="true"]', { state: "detached", timeout: 8000 }).catch(async () => page.waitForSelector('.quick-assistant[data-open="true"]', { state: "hidden", timeout: 8000 }));
-    await page.keyboard.press("Control+i");
-    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
-    if (await page.inputValue(".quick-assistant .assistant-composer textarea") !== draft) throw new Error("Quick Assistant draft was lost after outside click");
+    await page.waitForTimeout(300);
+    if (!(await page.$('.quick-assistant[data-open="true"]'))) throw new Error("点正文把并排的 AI 助手关掉了");
+    if (await page.inputValue(".quick-assistant .assistant-composer textarea") !== draft) throw new Error("点正文后未发送草稿丢失");
+    // 正文这一列必须还能操作：并排布局不给背景加 inert
+    if (await page.evaluate(() => document.querySelector(".main")?.inert === true)) throw new Error("并排的 AI 助手把正文 inert 掉了");
     await page.fill(".quick-assistant .assistant-composer textarea", "");
   }],
   ["quick-data", "/#/review-performance/总览", ".metric-page, .review-data, .note-title", async () => {
@@ -562,20 +568,32 @@ const shots = [
     await page.waitForSelector('.quick-assistant[data-open="true"]', { timeout: 8000 });
   }],
   ["quick-two-turn", "/#/hot", ".board, .empty, .note-title", async () => {
+    /**
+     * ⚠️ **这一张现在验的是「侧栏不继承整页那段对话」。**
+     * fixture 里明明有一段两轮的全局会话（`quickConversationRequests` 那条路由会返回它），
+     * 而侧栏打开时必须是空的——它是「手头这件事顺便问一句」的地方，
+     * 不该把你在 AI 助手页想到一半的对话摊在这儿。要带过去走「⤢ 在完整工作区继续」。
+     */
     quickAssistantFixture = "two-turn";
     await page.keyboard.press("Control+i");
-    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-message--assistant', { timeout: 8000 });
-    await page.click(".quick-assistant .assistant-composer__continue");
+    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-composer textarea:focus', { timeout: 8000 });
+    await page.waitForTimeout(500);
+    if (await page.locator(".quick-assistant .assistant-message").count()) throw new Error("侧栏继承了 AI 助手页的对话");
+    if (await page.locator(".quick-assistant .assistant-empty__actions").count()) throw new Error("全局侧栏不应出现入口卡");
+    // 侧栏的输入框一律贴底：不做完整页那种「空态居中」
+    const railBox = await page.locator(".quick-assistant").boundingBox();
+    const composerBox = await page.locator(".quick-assistant .assistant-composer").boundingBox();
+    const gap = railBox.y + railBox.height - composerBox.y - composerBox.height;
+    if (!(gap >= 0 && gap <= 32)) throw new Error(`侧栏输入框没有贴底：gap=${gap}`);
+    await page.click(".quick-assistant .assistant-context-expand");
     await page.waitForURL("**/#/assistant", { timeout: 8000 });
-    await page.waitForSelector(".assistant-page .assistant-message--assistant", { timeout: 8000 });
-    if (!quickConversationRequests.includes("shot-global-conversation")) throw new Error("Full Assistant did not continue the Quick conversationId");
     await page.keyboard.press("Control+i");
     await page.waitForSelector(".assistant-page .assistant-composer textarea:focus", { timeout: 8000 });
-    if (await page.locator('.quick-assistant[data-open="true"]').count()) throw new Error("Full Assistant summon opened Quick Assistant");
+    if (await page.locator('.quick-assistant[data-open="true"]').count()) throw new Error("Full Assistant summon opened the docked rail");
     await page.goto("http://127.0.0.1:" + PORT + "/#/hot", { waitUntil: "networkidle" });
     await page.waitForSelector(".board, .empty, .note-title", { timeout: 60000 });
     await page.keyboard.press("Control+i");
-    await page.waitForSelector('.quick-assistant[data-open="true"] .assistant-message--assistant', { timeout: 8000 });
+    await page.waitForSelector('.quick-assistant[data-open="true"]', { timeout: 8000 });
   }],
   ["summon-project", "/#/content", ".ptable__row, .act-card, .project-setup", async () => {
     quickAssistantFixture = "";

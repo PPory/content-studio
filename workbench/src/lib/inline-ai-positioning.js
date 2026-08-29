@@ -41,6 +41,13 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * `stretch` 让浮层**横向铺满正文列**，而不是贴着光标居中。
+ *
+ * 行内 AI 输入条要的是这个：它在视觉上接替了当前这一行，所以左右边必须和正文对齐——
+ * 一个跟着光标横向漂移、宽度随内容变的框，读起来是「浮在旁边的东西」，
+ * 而不是「这一行现在变成了一个输入框」。
+ */
 export function placeInlineAiMenu({
   anchorRect,
   boundaryRect,
@@ -48,6 +55,7 @@ export function placeInlineAiMenu({
   preferredPlacement = "above",
   padding = DEFAULT_PADDING,
   gap = DEFAULT_GAP,
+  stretch = false,
 }) {
   const anchor = rectOf(anchorRect);
   const boundary = rectOf(boundaryRect);
@@ -66,7 +74,9 @@ export function placeInlineAiMenu({
       ? (preferredPlacement === "below" ? "above" : "below")
       : (spaceBelow >= spaceAbove ? "below" : "above");
   const idealTop = placement === "above" ? anchor.top - gap - height : anchor.bottom + gap;
-  const left = clamp(anchor.left + anchor.width / 2 - width / 2, boundary.left + padding, boundary.right - padding - width);
+  const left = stretch
+    ? boundary.left + padding
+    : clamp(anchor.left + anchor.width / 2 - width / 2, boundary.left + padding, boundary.right - padding - width);
   const top = clamp(idealTop, boundary.top + padding, boundary.bottom - padding - height);
 
   return {
@@ -75,5 +85,6 @@ export function placeInlineAiMenu({
     placement,
     maxWidth: usableWidth,
     maxHeight: usableHeight,
+    width: stretch ? usableWidth : undefined,
   };
 }

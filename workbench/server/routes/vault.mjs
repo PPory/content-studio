@@ -28,7 +28,7 @@ import {
   BOOK_KINDS,
 } from "../lib/vault.mjs";
 import { DIRS, bookOfPath } from "../lib/vault-dirs.mjs";
-import { importBook, SUPPORTED } from "../lib/books.mjs";
+import { importBook, safeName, SUPPORTED } from "../lib/books.mjs";
 import { parseNotes, applyNoteEdit } from "../lib/notes.mjs";
 import { readBookMarks, readRecentMarks } from "../lib/marks.mjs";
 import { knowledgeCardLinks, saveKnowledgeCard } from "../lib/knowledge-cards.mjs";
@@ -36,6 +36,7 @@ import { knowledgeCardLinks, saveKnowledgeCard } from "../lib/knowledge-cards.mj
 // 目录名的单一真源在 vault-dirs.mjs，这里不再抄第二份。
 const SHELF_DIR = DIRS.shelf;
 const INSIGHT_DIR = DIRS.insight;
+const MEDIA_DIR = DIRS.media;
 // 书的 frontmatter（作者/状态/标签）**没有写入端点**：那些字段在 Obsidian 里直接就能改，
 // 而工作台这边给的入口挨着「打开这本书」，一次误触改的是 vault 里的文件。
 // 唯一的例外是「类型」（资料 / 藏书），见下面的 books/kind——它决定正文能不能改，
@@ -43,6 +44,18 @@ const INSIGHT_DIR = DIRS.insight;
 
 // 图片只放行这几种。**白名单，不是黑名单**——这个端点会把 vault 里任意路径的文件
 // 原样吐出来，靠后缀限制住「能被读走什么」是最后一道防线（第一道是 safeJoin）。
+/**
+ * 正文里能插的**视频**类型。和 `IMAGE_TYPES` 分开列：那张表同时是
+ * `/api/vault/image` 的读取白名单，把视频混进去等于让那个端点也能吐视频，
+ * 而它设的 `cache-control` 和响应方式都是按图片来的。
+ */
+const VIDEO_TYPES = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+};
+
 const IMAGE_TYPES = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -314,6 +327,34 @@ export const vaultRoutes = [
     }),
   },
   {
+    /**
+     * 正文里插图片 / 视频 / GIF。**文件落进 vault，正文里只留相对路径。**
+     *
+     * 为什么落 vault 而不是跟着稿件走云端：这些是你自己的素材，Obsidian 那边也该看得见、
+     * 也该能自己整理。**代价要说清楚**——只存本地的图，稿件发布到平台时取不到，
+     * 发布链路要单独处理一次（当前还没有）。
+     *
+     * 路径按年月分子目录：一个目录几万个文件时 Obsidian 的索引会很慢。
+     * 文件名带一段随机后缀，避免同名截图互相覆盖。
+     */
+    method: "POST",
+    path: "/api/vault/media",
+    handler: guard(async ({ env, req, res, url }) => {
+      const root = vaultRoot(env);
+      const ext = (url.searchParams.get("ext") || "").toLowerCase();
+      const type = IMAGE_TYPES[ext] || VIDEO_TYPES[ext];
+      if (!type) return fail(res, `只能插入 ${[...Object.keys(IMAGE_TYPES), ...Object.keys(VIDEO_TYPES)].join(" / ")}`, { status: 400 });
+      const bytes = await readRawBody(req, 64_000_000);
+      if (!bytes.length) return fail(res, "文件是空的", { status: 400 });
+      const stamp = new Date();
+      const month = `${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, "0")}`;
+      const stem = safeName(url.searchParams.get("name") || "media");
+      const unique = `${stem}-${stamp.getTime().toString(36)}${ext}`;
+      const rel = await writeVaultFile(root, `${MEDIA_DIR}/${month}/${unique}`, bytes);
+      json(res, { ok: true, path: rel, kind: VIDEO_TYPES[ext] ? "video" : "image" });
+    }),
+  },
+  {
     // 封面和正文插图。图片是二进制，走不了 { ok, ... } 那套 JSON 契约，
     // 所以这条路由自己处理错误：失败回 404 空响应，<img> 自己会走 onerror。
     method: "GET",
@@ -325,6 +366,49 @@ export const vaultRoutes = [
         if (!type) return res.writeHead(404).end();
         const buf = await fs.readFile(safeJoin(vaultRoot(env), rel));
         res.writeHead(200, { "content-type": type, "cache-control": "private, max-age=3600" });
+        res.end(buf);
+      } catch {
+        res.writeHead(404).end();
+      }
+    },
+  },
+  {
+    /**
+     * 正文里插入的视频。**和 `/api/vault/image` 分开**：那条的白名单只有图片，
+     * 而它把 vault 里任意路径的文件原样吐出来——白名单就是最后一道防线，不能掺。
+     * 视频要支持 Range 请求，否则浏览器只能整段下完才播。
+     */
+    method: "GET",
+    path: "/api/vault/media-file",
+    handler: async ({ env, req, res, url }) => {
+      try {
+        const rel = url.searchParams.get("path") || "";
+        const ext = path.extname(rel).toLowerCase();
+        const type = VIDEO_TYPES[ext] || IMAGE_TYPES[ext];
+        if (!type) return res.writeHead(404).end();
+        const abs = safeJoin(vaultRoot(env), rel);
+        const stat = await fs.stat(abs);
+        const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+        if (range && VIDEO_TYPES[ext]) {
+          const start = range[1] ? Number(range[1]) : 0;
+          const end = range[2] ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
+          if (start >= stat.size || end < start) {
+            return res.writeHead(416, { "content-range": `bytes */${stat.size}` }).end();
+          }
+          const handle = await fs.open(abs, "r");
+          const buf = Buffer.alloc(end - start + 1);
+          await handle.read(buf, 0, buf.length, start);
+          await handle.close();
+          res.writeHead(206, {
+            "content-type": type,
+            "content-length": buf.length,
+            "content-range": `bytes ${start}-${end}/${stat.size}`,
+            "accept-ranges": "bytes",
+          });
+          return res.end(buf);
+        }
+        const buf = await fs.readFile(abs);
+        res.writeHead(200, { "content-type": type, "content-length": buf.length, "accept-ranges": "bytes", "cache-control": "private, max-age=3600" });
         res.end(buf);
       } catch {
         res.writeHead(404).end();

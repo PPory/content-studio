@@ -36,10 +36,18 @@ export const ASSISTANT_SCOPES = Object.freeze({
   }),
 });
 
+/**
+ * surface 只描述**呈现方式**，不影响能力（见文件开头那条不变式）。
+ *
+ * ⚠️ **这里不再记宽度。** 原来每个 surface 都带一个 `width`（520 / 336 / "column"），
+ * 而**没有任何地方读它**——真正决定宽度的一直是 CSS。于是它成了一份安静的假数：
+ * 侧栏从浮层的 520px 改成 420px 之后，这里还写着 520，谁也不会发现，
+ * 而下一个来读代码的人会拿它当真。宽度的唯一真源是 `quick-assistant.css` / `--asst-measure`。
+ */
 export const ASSISTANT_SURFACES = Object.freeze({
-  page: Object.freeze({ history: "sidebar", width: "column", dismiss: "route" }),
-  overlay: Object.freeze({ history: "button", width: 520, dismiss: "escape" }),
-  rail: Object.freeze({ history: "button", width: 336, dismiss: "collapse" }),
+  page: Object.freeze({ history: "sidebar", dismiss: "route" }),
+  overlay: Object.freeze({ history: "button", dismiss: "escape" }),
+  rail: Object.freeze({ history: "button", dismiss: "collapse" }),
 });
 
 /**

@@ -439,7 +439,7 @@ try {
        而跳过去的输出和「这一段通过了」长得一模一样。这个坑这一轮已经踩到第三次。 */
     await page.waitForSelector(".project-workspace, .project-workspace-load .note-danger", { timeout: 25000 }).catch(() => {});
 
-    /** Stage 6：项目右栏是统一协作区；素材、报告与最近会话都按需展开。 */
+    /** Stage 6：项目右栏是统一协作区；上下文按需展开，历史与检查都不常驻。 */
 
     const proj = await page.evaluate(() => {
       const ws = document.querySelector(".project-workspace");
@@ -464,8 +464,14 @@ try {
         phase: pill ? pill.textContent.trim() : "",
         rail: !!document.querySelector(".project-assistant .assistant-pane--project-rail"),
         context: !!document.querySelector(".project-assistant__context-trigger"),
+        /* ⚠️ **侧栏里没有历史入口**——这一栏是「现在这段对话」的地方。
+           连同「项目检查」那一组按钮一起撤掉：检查改从输入框的 `@` 调用。 */
         history: !!document.querySelector('.project-assistant button[aria-label="最近会话"]'),
-        quietComposer: !document.querySelector(".project-assistant .assistant-composer__model, .project-assistant .assistant-composer__access, .project-assistant .assistant-context-style"),
+        reports: !!document.querySelector(".project-context-panel__reports"),
+        /* 模型现在每个输入框都有（在哪儿写字就在哪儿决定用哪个发出去）；
+           安静的是**权限和风格**这类会话级设置，它们只在完整工作区设。 */
+        railModel: !!document.querySelector(".project-assistant .assistant-composer__model"),
+        quietComposer: !document.querySelector(".project-assistant .assistant-composer__access, .project-assistant .assistant-context-style"),
         permanentCommands: document.querySelectorAll(".project-assistant .assistant-command-menu").length,
         /* ⚠️ 撞名检查：`.prefs` 是阅读设置面板的，项目协作区不得复用 */
         clash: document.querySelectorAll(".project-rail .prefs").length,
@@ -489,9 +495,11 @@ try {
       check("顶栏那颗 pill 是三档之一", ["在写", "写完了", "发出去了", "已搁置", "需处理"].includes(proj.phase), proj.phase || "(没有 pill)");
       check("「诊断」在这一页一个字都没有", !proj.ghost, proj.ghost ? "正文里还写着「诊断」" : "");
       check("右栏使用统一项目协作区", proj.rail, proj.rail ? "协作" : "未找到");
-      check("项目上下文按需打开", proj.context, proj.context ? "当前稿件与已用素材" : "未找到入口");
-      check("项目最近会话使用轻量入口", proj.history, proj.history ? "最近会话" : "未找到入口");
-      check("项目 Composer 不常驻模型、权限或风格", proj.quietComposer, proj.quietComposer ? "保持极简" : "出现低频配置");
+      check("项目上下文按需打开", proj.context, proj.context ? "输入框上的稿件标题芯片" : "未找到入口");
+      check("侧栏不带历史对话入口", !proj.history, proj.history ? "又长回来了" : "");
+      check("上下文面板不再常驻项目检查", !proj.reports, proj.reports ? "项目检查又回到面板里" : "");
+      check("项目 Composer 不常驻权限或风格", proj.quietComposer, proj.quietComposer ? "保持极简" : "出现低频配置");
+      check("项目 Composer 也能选模型", proj.railModel);
       check("@Expert 与 /Skill 菜单默认不常驻", proj.permanentCommands === 0, `${proj.permanentCommands} 个菜单`);
       check("项目协作区没占用阅读设置的类名", proj.clash === 0, `${proj.clash} 处 .prefs`);
 
@@ -1220,7 +1228,17 @@ try {
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
       const navs = await page.$$eval(".set-nav__item", (els) => els.map((e) => e.innerText.trim()));
       check("左栏分六组", groups.join("/") === "创作/连接/能力/模型/提示词/其他", groups.join("/"));
-      check("左栏十项", navs.length === 10, navs.join("/"));
+      /**
+       * ⚠️ **数量对不上时要说清「多了谁 / 少了谁」。**
+       * 上一版只断言 `length === 10`，于是 `01b50f7` 加了「飞书文档」之后，
+       * 报出来的只有一句「左栏十项 ✗」和一串名字，得自己去数。
+       * 真源是 `server/lib/settings-schema.mjs` 的 `NAV`：加一项就在这儿补一项。
+       */
+      const navExpected = ["我的创作", "知识库", "流水线", "飞书文档", "可选能力", "AI 助手", "本机路径", "各环节模型", "工作台", "流水线", "数据保留"];
+      const navMissing = navExpected.filter((label) => !navs.includes(label));
+      const navExtra = navs.filter((label) => !navExpected.includes(label));
+      check("左栏十一项", navs.length === navExpected.length && !navMissing.length && !navExtra.length,
+        navMissing.length || navExtra.length ? `少了 ${navMissing.join("/") || "无"}，多了 ${navExtra.join("/") || "无"}` : navs.join("/"));
       await page.waitForSelector(".writing-profile-settings", { timeout: 8000 });
       const profilePane = await page.evaluate(() => ({
         fields: document.querySelectorAll(".writing-profile-settings .profile-field").length,
@@ -2300,20 +2318,21 @@ try {
         `正文 ${cmSizes.body} / 标题 ${cmSizes.big || "没找到"}`
       );
       /**
-       * 预览必须**盖掉**编辑器，不是接在它下面。
-       * 踩过一次：`.md-editor__body` 上写了 `display:flex`，而 `hidden` 属性靠的是浏览器
-       * 默认样式表里的 `[hidden]{display:none}`——作者样式一定压过它，于是同一份内容
-       * 在一屏里出现两遍（上面是源码、下面是渲染稿）。
+       * ⚠️ **「预览」这个开关撤了：编辑态本身就是实时预览。**
+       * 光标不在的行隐掉 `#`、`**` 这些记号，图片就地渲染成图；光标落上去记号显回来。
+       * 一个「看排版后的样子」的按钮，等于承认平时看的不是那个样子。
+       * 这里改成验那件真正要成立的事：**记号被隐掉了，而文档一个字节没变。**
        */
-      await page.click(".md-editor__preview");
-      await page.waitForSelector(".md-editor__preview-body .prose", { timeout: 5000 });
-      const cmHidden = await page.evaluate(() => {
-        const el = document.querySelector(".md-editor__cm");
-        return !el || el.getBoundingClientRect().height === 0;
+      const livePreview = await page.evaluate(() => {
+        const lines = [...document.querySelectorAll(".md-editor .cm-content > .cm-line")];
+        const heading = lines.find((line) => /^#{1,6}\s/.test(line.textContent));
+        const hidden = lines.some((line) => line.querySelector(".cm-lp-strong, .cm-lp-code, .cm-lp-bullet, .cm-lp-media"));
+        return { rawHeadingVisible: Boolean(heading), decorated: hidden, lines: lines.length };
       });
-      check("预览态下编辑器是藏起来的，不是排在下面", cmHidden);
-      await page.click(".md-editor__preview");
-      await page.waitForSelector(".md-editor .cm-content", { timeout: 5000 });
+      check("编辑态就是实时预览：记号被隐掉，不再有预览开关",
+        !livePreview.rawHeadingVisible || livePreview.decorated,
+        JSON.stringify(livePreview));
+      check("没有「预览」按钮了", !(await page.$(".md-editor__preview")));
       await page.click('.ws-edit__foot button:has-text("取消")');
       await page.waitForSelector(".reader .prose", { timeout: 6000 });
 
@@ -2929,7 +2948,31 @@ try {
     // 这里成立是因为测试书很短；真正的落盘校验在下面读文件那两条上。
     const cmText = () => page.evaluate(() => document.querySelector(".cm-content")?.innerText || "");
     const draft0 = await cmText();
-    check("编辑器带出的是原文不是渲染稿", draft0.includes("# ") && draft0.includes("深度工作"), draft0.slice(0, 30).replace(/\n/g, "⏎"));
+    /**
+     * ⚠️ **实时预览之后，光标不在的行看不到 `#`**（记号被 `Decoration.replace` 隐掉了），
+     * 而 `innerText` 还会把行首那颗 `+` 和空行灰字一起算进来。
+     * 所以这条改成验它真正关心的两件事：**这是个可编辑的源码编辑器**（不是只读渲染稿），
+     * 且**光标落到标题行时记号显回来**（记号一直在文档里，只是被藏了）。
+     * 真正的落盘校验在下面读文件那两条上。
+     */
+    check("编辑器带出的是可编辑正文，不是只读渲染稿",
+      draft0.includes("深度工作") && await page.evaluate(() => document.querySelector(".md-editor .cm-content")?.isContentEditable === true),
+      draft0.slice(0, 30).replace(/\n/g, "⏎"));
+    const headingLine = await page.evaluate(() => {
+      const content = document.querySelector(".md-editor .cm-content");
+      const body = parseFloat(getComputedStyle(content).fontSize);
+      const line = [...content.querySelectorAll(":scope > .cm-line")].find((item) => {
+        const span = item.querySelector("span");
+        return span && parseFloat(getComputedStyle(span).fontSize) > body * 1.1;
+      });
+      if (!line) return false;
+      line.querySelector("span").click();
+      return true;
+    });
+    if (headingLine) await page.waitForTimeout(120);
+    check("光标落到标题行，隐掉的记号显回来",
+      !headingLine || (await cmText()).includes("# "),
+      headingLine ? (await cmText()).slice(0, 24).replace(/\n/g, "⏎") : "这份文档里没有标题行");
     check("编辑器说清写回的是 vault", (await page.textContent(".ws-edit .eyebrow")).includes("VAULT"), await page.textContent(".ws-edit .eyebrow"));
     // 文件名就是标题，而文件名同时是阅读进度、高亮伴生文件和 Obsidian 双链的锚点。
     // 给一个改了却不生效的输入框比不给更糟
@@ -3279,7 +3322,8 @@ try {
     await page.click('.rail-tabs button:has-text("AI 助手")');
     await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
     check("书架阅读区复用统一助手", !!(await page.$(".rail .assistant-composer")) && !(await page.$(".chat-permission-mode")));
-    check("书架阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__model")) && !(await page.$(".rail .assistant-composer__access")));
+    check("书架阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__access")));
+    check("书架阅读区输入框也能选模型", !!(await page.$(".rail .assistant-composer__model")));
     const readingEmpty = await page.textContent(".rail .assistant-empty");
     check("阅读区助手使用阅读语境空态", readingEmpty.includes("想从这份文档看清什么") && readingEmpty.includes("不会修改原文") && !readingEmpty.includes("项目"), readingEmpty.replace(/\s+/g, " ").slice(0, 100));
     await page.click('.reader-overlay__bar button[aria-label="关闭"]');
@@ -4128,14 +4172,22 @@ try {
     const writesBefore = fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "";
     check("预览阶段不写盘", (fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "") === writesBefore);
     await page.click('.preview .btn-primary');
-    await page.waitForTimeout(900);
     /**
      * ⚠️ **确认之后要当场验一次写盘。**
      * 这儿原来一条断言都没有，代价是下面 9c 那条「同一篇再导一次算更新不算新增」红的时候
      * **完全看不出是哪个环节坏了**：是幂等判断错了，还是上一步压根没写进去？
      * 两个毛病差着十万八千里，而输出长得一模一样。
+     *
+     * ⚠️ **等的是「文件里出现了那一行」，不是「过了 900ms」。**
+     * 上一版睡固定时长：机器忙一点、这一次导入慢一点，写盘就落在这一觉之后，
+     * 于是这条**偶发地**红——而它报出来的是「那一下没写盘」，看着像业务坏了。
+     * 一条会随机红的断言比没有这条更糟：它会训练人忽略红色。
      */
-    const wroteAfterImport = fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "";
+    const readPosts = () => fs.existsSync(postsCsv) ? fs.readFileSync(postsCsv, "utf8") : "";
+    for (let waited = 0; waited < 8_000 && !readPosts().includes("冒烟测试甲"); waited += 100) {
+      await page.waitForTimeout(100);
+    }
+    const wroteAfterImport = readPosts();
     check("点了确认真的写进去了", wroteAfterImport.includes("冒烟测试甲"),
       wroteAfterImport === writesBefore ? "文件一个字节都没变——那一下没写盘" : "写了，但没有「冒烟测试甲」那一行");
 
@@ -4481,7 +4533,8 @@ try {
   await page.click('.rail-tabs button:has-text("AI 助手")');
   await page.waitForSelector(".rail .assistant-pane", { timeout: 5000 });
   check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer")) && !(await page.$(".chat-permission-mode")));
-  check("内容阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__model")) && !(await page.$(".rail .assistant-composer__access")));
+  check("内容阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__access")));
+  check("内容阅读区输入框也能选模型", !!(await page.$(".rail .assistant-composer__model")));
   await page.locator('.rail:visible button[aria-label="新对话"]').click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   await page.evaluate(() => {
@@ -4510,8 +4563,9 @@ try {
   check("agent 对话有回复", reply.trim().length > 0, reply.trim().slice(0, 40));
   check("对话无乱码", !reply.includes("�"), reply.slice(0, 30));
   check("Reading Assistant 不显示 Pi 运行时", !(await page.textContent(".rail .assistant-message--assistant > small")).includes("Pi"));
-  check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button:has-text("复制")')));
-  check("阅读区有选区但无 revision 落点时不显示改选区动作", !(await page.$('.rail .assistant-message--assistant button:has-text("按建议改选区")')));
+  // 动作条只有图标（说明在 tooltip 和 aria-label 里），所以按名字找，不按可见文字找
+  check("回复保留统一复制操作", !!(await page.$('.rail .assistant-message--assistant footer button[aria-label*="复制"]')));
+  check("阅读区有选区但无 revision 落点时不显示改选区动作", !(await page.$('.rail .assistant-message--assistant button[aria-label="按建议改选区"]')));
   await page.locator('.rail:visible button[aria-label="新对话"]').click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   check("能重开一轮对话", !!(await page.$(".rail .assistant-empty")));

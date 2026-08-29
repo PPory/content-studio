@@ -25,11 +25,9 @@
 .ai-draft-review__copy b { color: var(--text-1); font-weight: 650; }
 .ai-draft-review__copy span { margin-left: 6px; color: var(--text-3); }
 .ai-draft-review__actions { flex: none; display: flex; gap: 4px; }
-.ai-draft-review .icon-btn, .md-editor__ai-history { width: 28px; height: 28px; }
+.ai-draft-review .icon-btn { width: 28px; height: 28px; }
 .ai-draft-review .icon-btn[data-primary="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .ai-draft-review .icon-btn[data-primary="true"]:hover { background: var(--accent-strong); color: var(--on-accent); }
-.md-editor__ai-history[data-open="true"] { background: var(--surface-2); border-color: var(--ai-draft-line); color: var(--ai-draft-line); }
-.md-editor__ai-history[data-open="true"]:hover { border-color: var(--ai-draft-line); color: var(--ai-draft-line); }
 
 .ai-draft-history {
   position: absolute;

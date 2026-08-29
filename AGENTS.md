@@ -214,6 +214,20 @@ Pi Agent 可以：
 
 不要因为自己写一个组件更快，就重新实现已有能力。
 
+## 设计 Skill 装在哪
+
+`emil-ui`、`coss`、`reui` 三个开发期设计 Skill 住在 **`.claude/skills/`**。
+
+- **不要放进 `.agents/skills/`。** 那个目录会被 Workbench runtime 扫描并作为产品
+  Runtime Skill 暴露给用户的 `/` 菜单——开发工具混进产品里。
+- **也不要因此把它们删掉。** 删了下一次 UI 工作就没有判断依据，只能凭模型记忆瞎猜
+  组件名和 props，而本文件多处明令禁止这么做。
+- `.claude/skills/` 两边都满足：Claude Code 读得到，产品运行时读不到。
+  ReUI MCP 配置同理留在仓库根 `.mcp.json`。
+
+（2026-08-27 有一次清理按「不是产品 Skill」把它们连同 `.mcp.json` 移进了
+`.tidy-trash/`。判断成立，落点错了——现在按上面这条放置，不要再整体移除。）
+
 ---
 
 # Emil UI — 设计判断层

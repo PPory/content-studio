@@ -144,8 +144,21 @@ export const api = {
   // 划词翻译。key 在服务端，前端只管发文字
   translate: (text, target) => postJson("/api/translate", { text, target }),
 
+  /**
+   * 正文里插图片 / 视频 / GIF。**文件落进 vault，正文里只留相对路径。**
+   * 和换封面走同一条二进制路子：不引 multipart 解析器，后缀和文件名走 query。
+   */
+  uploadMedia: (file) =>
+    req(`/api/vault/media?ext=${encodeURIComponent(extOf(file.name))}&name=${encodeURIComponent(String(file.name || "media").replace(/\.[^.]+$/, ""))}`, {
+      method: "POST",
+      headers: { "content-type": "application/octet-stream" },
+      body: file,
+    }),
+
   // vault 里的图片（封面、正文插图）的地址。图片走 <img src>，不经过 req()
   imageUrl: (path) => `/api/vault/image?path=${encodeURIComponent(path)}`,
+  // 视频不能走 imageUrl：那个端点的白名单只有图片
+  mediaUrl: (path) => `/api/vault/media-file?path=${encodeURIComponent(path)}`,
 
   // 两个 tab 各刷各的：热搜按分钟变、AI 精选按天变，合成一个请求就只能迁就快的那个
   /**
@@ -280,6 +293,8 @@ export const api = {
   cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
   rewindAssistant: (scopeId, conversationId) => postJson("/api/assistant/rewind", { scopeId, conversationId }),
   applyAssistantAction: (scopeId, conversationId, actionId) => postJson("/api/assistant/action", { scopeId, conversationId, actionId }),
+  // 正文里那次问答搬进右栏（不重新生成），返回带着这一轮的新对话
+  adoptAssistantExchange: (body) => postJson("/api/assistant/adopt", body),
   newAssistantConversation: (scopeId, model = "", permissionMode = "daily") => postJson("/api/assistant/new", { scopeId, model, permissionMode }),
   uploadAssistantAttachment: (scope, conversationId, file) => req(`/api/assistant/attachment?scope=${encodeURIComponent(scope)}&conversationId=${encodeURIComponent(conversationId)}&filename=${encodeURIComponent(file.name)}`, {
     method: "POST",

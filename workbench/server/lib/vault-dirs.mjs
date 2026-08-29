@@ -24,6 +24,8 @@ export const DIRS = {
   plan: `${WB_ROOT}/05 - 计划`,
   knowledge: `${WB_ROOT}/06 - 知识卡片`,
   hot: `${WB_ROOT}/09 - 热点`,
+  // 正文里插入的图片 / 视频 / GIF。按年月分子目录，一个目录几万个文件时 Obsidian 会很慢。
+  media: `${WB_ROOT}/07 - 附件`,
 };
 
 // 「05 - 计划」是你手写的每日任务清单，一天一个 `YYYY-MM-DD.md`。它排在 01–04 那一组里，

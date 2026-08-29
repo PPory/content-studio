@@ -197,6 +197,56 @@ export async function createAssistantConversation(scopeId, options = {}) {
   });
 }
 
+/**
+ * 把正文里已经发生过的一次问答**搬进**右栏，成为一段可以接着聊的对话。
+ *
+ * 编辑器里的「对话」按钮走这里。上一版是把用户那句指令重新发一遍，让模型**再答一次**——
+ * 用户看到的是同一个问题两个答案，而他刚读完的那个消失了。他要的是「把这段挪过去继续聊」，
+ * 不是「再问一遍」。
+ *
+ * ⚠️ **这不是伪造对话记录。** 存进去的两条消息就是刚刚真实发生的那一轮：
+ * 用户写的指令、模型回的字，两者都由 `assistantMessage.origin` 标出来自编辑器。
+ * 只是这段对话发生在另一个界面上，现在换个地方接着往下走。
+ *
+ * `replayHistory: true` 是关键：新对话有自己的 Pi session，它并不知道这一轮。
+ * 打开这个开关之后，下一轮会把上面这段作为前文回放进去——和「换权限模式」「重新生成」
+ * 之后接着聊用的是同一套机制，不另起一条路。
+ */
+export async function adoptAssistantExchange(scopeId, input = {}) {
+  const scope = clean(scopeId, 240);
+  const prompt = clean(input.prompt, 8_000);
+  const answer = clean(input.answer, 20_000);
+  if (!scope) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
+  if (!prompt || !answer) {
+    throw Object.assign(new Error("这次问答还没有可以带进对话的内容"), { status: 400, hint: "等生成完成之后再点「对话」。" });
+  }
+  const at = now();
+  const stamp = Date.now().toString(36);
+  const model = clean(input.model, 240);
+  return writeConversationRecord(scope, {
+    id: newConversationId(),
+    title: titleFrom(prompt),
+    titleMode: "auto",
+    model,
+    piSessionId: crypto.randomUUID(),
+    piSessionFile: "",
+    permissionMode: normalizePermissionMode(input.permissionMode),
+    pinnedAt: "",
+    archivedAt: "",
+    pathGrants: [],
+    createdAt: at,
+    messages: [
+      { id: `user-${stamp}`, role: "user", text: prompt, createdAt: at, origin: "editor" },
+      { id: `assistant-${stamp}`, role: "assistant", text: answer, createdAt: at, engine: "Pi Agent SDK", model, origin: "editor" },
+    ],
+    attachments: [],
+    actions: [],
+    activeTurn: null,
+    lastTurn: null,
+    replayHistory: true,
+  });
+}
+
 async function ensureConversation(scopeId, conversationId = "", options = {}) {
   const requested = safeConversationId(conversationId);
   if (requested) {
@@ -564,15 +614,20 @@ export async function manageAssistantConversation(scopeId, conversationId, input
   if (!id || !["rename", "pin", "unpin", "archive", "restore", "delete"].includes(action)) {
     throw Object.assign(new Error("未知的对话管理操作"), { status: 400 });
   }
-  const record = await readConversationRecord(scopeId, id);
-  if (!record) throw Object.assign(new Error("对话不存在"), { status: 404 });
   assertConversationIdle(active, activeKey(scopeId, id));
 
   if (action === "delete") {
     const source = conversationDir(scopeId, id);
+    await fs.rm(source, { recursive: true, force: true });
     const trash = path.join(scopeDir(scopeId), ".trash");
-    await fs.mkdir(trash, { recursive: true });
-    await fs.rename(source, path.join(trash, `${id}-${Date.now()}`));
+    try {
+      const entries = await fs.readdir(trash, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith(`${id}-`)) await fs.rm(path.join(trash, entry.name), { recursive: true, force: true });
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
     await queueIndexUpdate(scopeId, async () => {
       const index = await readIndex(scopeId);
       const items = index.items.filter((item) => item.id !== id);
@@ -581,6 +636,9 @@ export async function manageAssistantConversation(scopeId, conversationId, input
     });
     return { deletedId: id, conversations: await assistantConversations(scopeId) };
   }
+
+  const record = await readConversationRecord(scopeId, id);
+  if (!record) throw Object.assign(new Error("对话不存在"), { status: 404 });
 
   if (action === "rename") {
     const title = clean(input.title, 120);
