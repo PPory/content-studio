@@ -4,8 +4,10 @@ import {
   decideDocumentSync,
   documentFingerprint,
   feishuImageTokens,
+  formatFeishuDraftTitle,
   hasProtectedFeishuBlocks,
   isDifferentFeishuTarget,
+  localDraftTitle,
   markdownImageReferences,
   parseLarkCliJson,
   replaceMarkdownImages,
@@ -15,6 +17,13 @@ import { mediaIdFromReference, mediaReference, sniffImageType } from "../server/
 
 const local = documentFingerprint("标题", "正文\r\n第二行");
 assert.equal(local, documentFingerprint("标题", "正文\n第二行"), "换行差异不应制造冲突");
+assert.equal(formatFeishuDraftTitle("正文标题", "公众号"), "[公众号] 正文标题");
+assert.equal(formatFeishuDraftTitle("[公众号] 正文标题", "公众号"), "[公众号] 正文标题");
+assert.equal(formatFeishuDraftTitle("正文标题", ""), "正文标题");
+assert.equal(localDraftTitle("[X] 正文标题", "X"), "正文标题");
+assert.equal(localDraftTitle("[X] 正文标题", "X", "正文标题"), "正文标题");
+assert.equal(localDraftTitle("编辑者改过的标题", "X"), "编辑者改过的标题");
+assert.equal(localDraftTitle("[公众号] 正文标题", "X"), "[公众号] 正文标题");
 
 const binding = { contentHash: "old-local", remoteHash: "old-remote" };
 assert.equal(decideDocumentSync(null, local, "remote").action, "create");

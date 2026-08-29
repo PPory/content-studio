@@ -15,6 +15,23 @@ export function documentFingerprint(title, markdown) {
   return crypto.createHash("sha256").update(`${textOf(title).trim()}\n\0${textOf(markdown)}`, "utf8").digest("hex");
 }
 
+export function formatFeishuDraftTitle(title, platform) {
+  const cleanTitle = textOf(title).trim() || "未命名";
+  const cleanPlatform = textOf(platform).trim();
+  const prefix = cleanPlatform ? `[${cleanPlatform}] ` : "";
+  return prefix && !cleanTitle.startsWith(prefix) ? `${prefix}${cleanTitle}` : cleanTitle;
+}
+
+export function localDraftTitle(remoteTitle, platform, currentTitle = "") {
+  const cleanTitle = textOf(remoteTitle).trim() || "未命名";
+  const cleanPlatform = textOf(platform).trim();
+  const current = textOf(currentTitle).trim();
+  if (current && cleanTitle === formatFeishuDraftTitle(current, cleanPlatform)) return current;
+  if (!cleanPlatform) return cleanTitle;
+  const prefix = `[${cleanPlatform}] `;
+  return cleanTitle.startsWith(prefix) ? cleanTitle.slice(prefix.length).trim() || "未命名" : cleanTitle;
+}
+
 export function hasProtectedFeishuBlocks(markdown, { allowImages = false } = {}) {
   const value = textOf(markdown);
   return PROTECTED_BLOCK_PATTERN.test(value) || (!allowImages && IMAGE_BLOCK_PATTERN.test(value));

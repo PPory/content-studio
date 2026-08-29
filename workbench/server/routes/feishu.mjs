@@ -10,8 +10,10 @@ import {
   documentFingerprint,
   feishuImageTokens,
   fetchFeishuDocument,
+  formatFeishuDraftTitle,
   hasProtectedFeishuBlocks,
   isDifferentFeishuTarget,
+  localDraftTitle,
   overwriteFeishuDocument,
   replaceMarkdownImages,
 } from "../lib/feishu-sync.mjs";
@@ -41,6 +43,7 @@ async function draftOf(env, id) {
   return {
     id,
     title: String(data.meta?.title || "未命名"),
+    platform: String(data.meta?.platform || ""),
     markdown: String(data.text || ""),
   };
 }
@@ -117,14 +120,18 @@ async function prepareMarkdownForFeishu(env, markdown) {
 
 async function inspect(env, id) {
   const [draft, binding] = await Promise.all([draftOf(env, id), bindingOf(env, id)]);
-  if (!binding) return { draft, binding: null, remote: null, decision: { action: "create", localChanged: true, remoteChanged: false } };
+  const expectedRemoteTitle = formatFeishuDraftTitle(draft.title, draft.platform);
+  if (!binding) return { draft, binding: null, remote: null, expectedRemoteTitle, titleNeedsNormalization: false, decision: { action: "create", localChanged: true, remoteChanged: false } };
   const remote = await fetchFeishuDocument(binding.externalId);
   const decision = decideDocumentSync(
     binding,
     documentFingerprint(draft.title, draft.markdown),
     documentFingerprint(remote.title, remote.markdown)
   );
-  return { draft, binding, remote, decision };
+  const titleNeedsNormalization = decision.action === "none"
+    && remote.title === draft.title
+    && remote.title !== expectedRemoteTitle;
+  return { draft, binding, remote, expectedRemoteTitle, titleNeedsNormalization, decision };
 }
 
 async function pushDraft(env, res, id) {
@@ -141,11 +148,12 @@ async function pushDraft(env, res, id) {
       ...state.decision,
     }, 409);
   }
-  if (state.decision.action === "none" && !targetChanged) {
+  const effectiveAction = targetChanged ? "create" : state.titleNeedsNormalization ? "push" : state.decision.action;
+  if (effectiveAction === "none") {
     return json(res, { ok: true, action: "none", document: state.binding, message: "两端内容没有变化" });
   }
   const canRebuildImages = canRebuildFeishuImages(state.binding, state.draft.markdown);
-  if (!targetChanged && state.decision.action === "push" && hasProtectedFeishuBlocks(state.remote.markdown, { allowImages: canRebuildImages })) {
+  if (!targetChanged && effectiveAction === "push" && hasProtectedFeishuBlocks(state.remote.markdown, { allowImages: canRebuildImages })) {
     return json(res, {
       ok: false,
       error: "飞书文档里包含附件、画板或其他不能安全重建的内容",
@@ -156,18 +164,17 @@ async function pushDraft(env, res, id) {
   }
 
   const prepared = await prepareMarkdownForFeishu(env, state.draft.markdown);
-  const effectiveAction = targetChanged ? "create" : state.decision.action;
   let targetDocument;
   if (effectiveAction === "create") {
     targetDocument = await createFeishuDocument({
-      title: state.draft.title,
+      title: state.expectedRemoteTitle,
       markdown: prepared.markdown,
       wikiNode: target.wikiNode,
       wikiSpace: target.wikiSpace,
     });
   } else {
     await overwriteFeishuDocument(state.binding.externalId, {
-      title: state.draft.title,
+      title: state.expectedRemoteTitle,
       markdown: prepared.markdown,
     });
     targetDocument = { id: state.binding.externalId, url: state.binding.externalUrl };
@@ -213,16 +220,18 @@ async function pullDraft(env, req, res, id) {
     }, 409);
   }
 
+  const pulledTitle = localDraftTitle(state.remote.title, state.draft.platform, state.draft.title);
+
   await workerJson(env, "update", {
     method: "POST",
-    body: { view: "drafts", pageId: id, fields: { title: state.remote.title } },
+    body: { view: "drafts", pageId: id, fields: { title: pulledTitle } },
   }, "更新工作台标题失败");
   await workerJson(env, "content", {
     method: "POST",
     body: { view: "drafts", pageId: id, markdown: state.remote.markdown },
   }, "更新工作台正文失败");
 
-  const applied = { id, title: state.remote.title, markdown: state.remote.markdown };
+  const applied = { id, title: pulledTitle, markdown: state.remote.markdown };
   const remote = { ...state.remote, url: state.binding.externalUrl };
   const binding = await saveBinding(env, applied, remote, state.binding.containerId, "remote");
   return json(res, { ok: true, action: "pull", document: binding, message: "已把飞书版本同步回工作台" });
