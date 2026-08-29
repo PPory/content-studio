@@ -14,11 +14,16 @@ import { runDraftForTopic, runDraftPageById, formatDraftResult } from "./tasks/d
 import { runSynthesize } from "./tasks/synthesize.js";
 import { runTriagePageById } from "./tasks/triage.js";
 import { runVaultBackfill } from "./tasks/backfill.js";
+import { isLegacyReadOnly } from "./lib/legacy-read-only.js";
 
 const JOB_LABELS = { tweet: "/推 生成", draft: "成稿", "draft-page": "成稿", synthesize: "整理", "triage-page": "初筛", "vault-backfill": "vault 补写" };
 
 export class JobWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
+    if (isLegacyReadOnly(this.env)) {
+      console.log("legacy workspace workflow skipped: migration read-only");
+      return;
+    }
     const job = event.payload; // { kind, to: {channel, chatId}, ...参数 }
     try {
       await step.do(`job-${job.kind}`, { retries: { limit: 0, delay: "5 seconds" }, timeout: "20 minutes" }, async () => {

@@ -48,6 +48,8 @@
   "observability": { "enabled": true },
 
   "vars": {
+    // 本地优先迁移切换时才设为 "1"：保留读取，冻结 webhook、定时任务和 Workflow 写入。
+    "MIGRATION_READ_ONLY": "0",
     // 任何 OpenAI 兼容的服务都行（DeepSeek、智谱、月之暗面、自建代理…）。
     // 提示词是照 thinking 类模型调的，换成别的模型产出质量会有差异。
     "LLM_BASE_URL": "https://api.deepseek.com/v1",

@@ -10,6 +10,7 @@ import { handleWorkbench } from "./workbench.js";
 import { enqueuePipelineJobs } from "./pipeline-jobs.js";
 import { runBackup } from "./tasks/backup.js";
 import { notify, target, LARK } from "./lib/notify.js";
+import { isLegacyReadOnly, legacyReadOnlyAllows, legacyReadOnlyResponse } from "./lib/legacy-read-only.js";
 
 // 长任务 Workflow（/推 /成稿 /整理 的异步执行器），wrangler 要求从入口模块导出
 export { JobWorkflow } from "./jobs.js";
@@ -17,6 +18,7 @@ export { JobWorkflow } from "./jobs.js";
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (isLegacyReadOnly(env) && !legacyReadOnlyAllows(request, url)) return legacyReadOnlyResponse();
     // 手动触发任务（补跑/调试用）：GET /run/<task>?key=<TELEGRAM_WEBHOOK_SECRET>
     const runMatch = url.pathname.match(/^\/run\/(triage|synthesize|draft|backfill|backup)$/);
     if (runMatch) {
@@ -56,6 +58,10 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    if (isLegacyReadOnly(env)) {
+      console.log("legacy workspace scheduled writes skipped: migration read-only");
+      return;
+    }
     const t = new Date(event.scheduledTime);
     const kinds = ["triage", "draft", "backfill"];
     if (t.getUTCHours() === 6 && t.getUTCMinutes() === 0) kinds.unshift("synthesize");

@@ -55,7 +55,7 @@ export class AssetStore {
     return fileReal;
   }
 
-  async importBuffer({ bytes, type, originalName = "", mimeType = "application/octet-stream", now } = {}) {
+  async importBuffer({ id = createUlid(), bytes, type, originalName = "", mimeType = "application/octet-stream", now } = {}) {
     const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes || []);
     const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
     const existing = this.db.prepare(`
@@ -77,12 +77,13 @@ export class AssetStore {
     const relativePath = path.relative(this.paths.workspaceDir, file).split(path.sep).join("/");
     const alreadyPresent = await exists(file);
     if (!alreadyPresent) await atomicWrite(file, buffer);
-    const id = createUlid();
+    const assetId = String(id || "").trim();
+    if (!assetId || assetId.length > 160 || /[\u0000-\u001f]/.test(assetId)) throw new TypeError("资源 ID 无效");
     try {
       this.db.prepare(`
         INSERT INTO assets(id, sha256, asset_type, relative_path, original_name, mime_type, byte_size, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, sha256, type, relativePath, path.basename(String(originalName || "")), String(mimeType || "application/octet-stream"), buffer.length, isoNow(now));
+      `).run(assetId, sha256, type, relativePath, path.basename(String(originalName || "")), String(mimeType || "application/octet-stream"), buffer.length, isoNow(now));
     } catch (error) {
       const winner = this.db.prepare(`
         SELECT id, sha256, asset_type AS type, relative_path AS relativePath,
@@ -96,7 +97,7 @@ export class AssetStore {
       if (!alreadyPresent) await fs.rm(file, { force: true }).catch(() => {});
       throw error;
     }
-    return { id, sha256, type, relativePath, originalName: path.basename(String(originalName || "")), mimeType, byteSize: buffer.length, deletedAt: null, uri: `asset://${id}`, deduplicated: false };
+    return { id: assetId, sha256, type, relativePath, originalName: path.basename(String(originalName || "")), mimeType, byteSize: buffer.length, deletedAt: null, uri: `asset://${assetId}`, deduplicated: false };
   }
 
   resolveRelative(relativePath) {

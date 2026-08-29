@@ -10,9 +10,10 @@ import { startWorkspaceRuntime } from "./jobs/workspace-runtime.mjs";
 import { installAutoExit } from "./lib/auto-exit.mjs";
 import { serveTypeset } from "./routes/tools.mjs";
 import { openWorkspace } from "./storage/workspace.mjs";
+import { runtimeXenhoHome } from "./storage/workspace-paths.mjs";
 
 export async function startLocalWorkspaceRuntime(env = {}) {
-  const workspace = await openWorkspace({ xenhoHome: env.XENHO_HOME || undefined });
+  const workspace = await openWorkspace({ xenhoHome: runtimeXenhoHome(env) });
   try {
     const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace) });
     return { workspace, runtime };

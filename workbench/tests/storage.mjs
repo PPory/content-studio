@@ -8,7 +8,7 @@ import { createUlid, isUlid } from "../server/storage/ids.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
 import { configureWorkspaceDatabase, migrateWorkspaceDatabase } from "../server/storage/sqlite.mjs";
-import { defaultXenhoHome, resolveWorkspacePaths } from "../server/storage/workspace-paths.mjs";
+import { defaultXenhoHome, resolveWorkspacePaths, runtimeXenhoHome } from "../server/storage/workspace-paths.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-storage-"));
 let workspace;
@@ -26,6 +26,9 @@ function check(name, pass, detail = "") {
 try {
   const fakeHome = path.join(root, "home");
   check("默认工作区位于文档目录下的 Xenho", defaultXenhoHome({ homeDir: fakeHome }) === path.join(fakeHome, "Documents", "Xenho"));
+  const redirectedDocuments = path.join(root, "redirected-documents");
+  check("Windows 文档目录重定向后使用系统真实路径", defaultXenhoHome({ documentsDir: redirectedDocuments, platform: "win32" }) === path.join(redirectedDocuments, "Xenho"));
+  check("进程级临时工作区覆盖 .env 工作区", runtimeXenhoHome({ XENHO_HOME: "D:\\real" }, { XENHO_HOME: "C:\\temp\\isolated" }) === "C:\\temp\\isolated");
   assert.throws(() => resolveWorkspacePaths({ xenhoHome: "relative/path" }), /绝对路径/);
   assert.throws(() => resolveWorkspacePaths({ xenhoHome: path.parse(root).root }), /磁盘根目录/);
 

@@ -6,6 +6,8 @@ export default defineConfig(({ mode }) => {
   // 第三个参数传 "" 才会读到不带 VITE_ 前缀的变量。这些变量只在 Node 侧用（插件里），
   // 绝不能进 define/import.meta.env——里面有 Worker key 和 LLM key，进前端就是泄露。
   const env = loadEnv(mode, process.cwd(), "");
+  // 持久化测试通过进程变量指定系统临时工作区；它必须高于本机 .env 的真实工作区。
+  if (process.env.XENHO_HOME) env.XENHO_HOME = process.env.XENHO_HOME;
   // 快照保留天数是唯一一个搬进 process.env 的变量：它被 `posts.mjs` 这类库函数用到，
   // 而那些函数没有（也不该有）env 参数。**只搬这一个**——密钥一律留在 env 对象里，
   // 经插件传给路由，别顺手把整份 env 铺进 process.env。
