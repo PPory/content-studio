@@ -9,7 +9,7 @@
 // 章节就是它的全部内容。给它画一个空的「我的标记」大栏 + 一条挤在旁边的章节，
 // 是把版面让给了一句「这里什么都没有」。**版面跟着内容走，不跟着页面名字走。**
 //
-// 数据来自 `GET /api/vault/book-marks`，聚合规则（高亮怎么按章分、批注怎么反查
+// 数据来自 `GET /api/workspace/book-marks`，聚合规则（高亮怎么按章分、批注怎么反查
 // 属于哪一章、定位不到的怎么办）全在 `server/lib/marks.mjs`。这里一条都不重算。
 
 import { IconChevronRight } from "../../components/icons.jsx";

@@ -78,23 +78,18 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   };
 
   /**
-   * 删掉一个项目。**移入本地回收站，并保留所属稿件**（`drafts.topic_id` 是 CASCADE）。
+   * 删掉一个项目会移入本地回收站，并带上所属稿件。
    *
    * ⚠️ **回执要说清删掉了几篇**，不能只说「已删除」——你以为删的是一个壳，
    * 而它可能带走了三篇写过的稿。
-   * ⚠️ **归档没清掉要单独说**：D1 那行已经没了，这时报错的话你会再点一次、
-   * 然后收到「not found」，于是以为没删掉。归档清不掉只是 vault 里多一个孤儿文件。
    */
   const remove = useCallback(async (p) => {
     if (removing) return;
     setRemoving(p.id);
     try {
       const r = await api.removeProject(p.id);
-      const failed = (r.archives || []).filter((a) => a.status === "failed");
       setToast({
-        text: r.deleted
-          ? `已删除，连同 ${r.deleted} 篇稿子${failed.length ? `；${failed.length} 份归档没清掉，去 Obsidian 里手动删` : ""}`
-          : "已删除",
+        text: r.deleted ? `已移入回收站，连同 ${r.deleted} 篇稿子` : "已移入回收站",
       });
       onChanged?.();
       await load();

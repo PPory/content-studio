@@ -2,25 +2,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
-import { ErrorNote, Loading, MenuButton, PageHeader } from "../components/ui.jsx";
-import { AUTO_CARDS } from "../lib/views.js";
+import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
 import { TodayStats } from "./today/TodayStats.jsx";
 import { TodayChart } from "./today/TodayChart.jsx";
 import { RecentPosts } from "./today/RecentPosts.jsx";
-import { IconArrowRight, IconPlus } from "../components/icons.jsx";
+import { IconArrowRight } from "../components/icons.jsx";
 // ⚠️ **从 `components/` 引，不是从 `./Content.jsx`。** 页面 import 另一个页面
 // 是这个项目明令禁止的——现状原来是破的，这一轮顺手修了。
 import { ProjectCard } from "../components/ProjectCard.jsx";
 
-export function Today({ config, status, statusError, statusLoading, onRetryStatus, onGo, onChanged, onSettings }) {
-  const workerReady = true;
+export function Today({ status, statusError, statusLoading, onRetryStatus, onGo, onChanged }) {
+  const localReady = true;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    if (!workerReady) return;
     api.projects().then((data) => { setResult(data); setError(null); }).catch(setError);
-  }, [workerReady]);
+  }, []);
   useEffect(load, [load, status?.ts]);
 
   const projects = useMemo(() => projectsFrom(result), [result]);
@@ -53,22 +51,14 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
               * 而内容页 / 素材工作台 / 旧总览各有逐行相同的一份——
               * 改一条起点的走法要改四处，漏掉一处不报错。
               */}
-            {workerReady ? <NewContentButton onGo={onGo} onChanged={onChanged} /> : null}
+            <NewContentButton onGo={onGo} onChanged={onChanged} />
           </>
         }
       />
 
-      {!workerReady ? (
-        <div className="project-setup">
-          <strong>先连接内容流水线</strong>
-          <p>连接后，这里会把最值得继续的一篇直接放到你面前。</p>
-          <button className="btn" onClick={onSettings}>打开设置</button>
-        </div>
-      ) : null}
-
-      <ErrorNote error={statusError} what="读取流水线状态" onRetry={onRetryStatus} />
-      {workerReady && error ? <ErrorNote error={error} what="读取今日内容" onRetry={load} /> : null}
-      {workerReady && !result && !error ? <Loading rows={3} /> : null}
+      <ErrorNote error={statusError} what="读取本地工作区状态" onRetry={onRetryStatus} />
+      {error ? <ErrorNote error={error} what="读取今日内容" onRetry={load} /> : null}
+      {!result && !error ? <Loading rows={3} /> : null}
 
       {/**
         * ⚠️ **KPI 那一排在最上面，早于「先做这一件」。**
@@ -76,7 +66,7 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
         * 状态在前、动作在后，是因为同一件事该不该做，取决于它前面那几个数。
         * 四个数分属四条不同的链（产出 / 待办 / 库存 / 反馈），见 `TodayStats`。
         */}
-      {workerReady ? <TodayStats pending={pending} topStage={actions[0]?.stage || ""} onGo={onGo} /> : null}
+      {localReady ? <TodayStats pending={pending} topStage={actions[0]?.stage || ""} onGo={onGo} /> : null}
 
       {result ? (
         <section className="today-focus">
@@ -143,20 +133,11 @@ export function Today({ config, status, statusError, statusLoading, onRetryStatu
       <RecentPosts onGo={onGo} />
 
       {status ? (
-        <section className="today-background" aria-label="后台流水线状态">
-          <span>后台</span>
-          {/**
-            * ⚠️ **这三条从 `views.js` 的 `AUTO_CARDS` 来，不再抄第二份。**
-            * 原来是三行硬编码，跳转目标和那份常量**逐字相同**——
-            * 而这个项目的事故清一色是「同一件事写在两个地方」：
-            * 以后往 `AUTO_CARDS` 里加一档，这儿会安静地少一个，谁也不报错。
-            */}
-          {AUTO_CARDS.map((card) => (
-            <button key={card.key} onClick={() => onGo(card.view, card.state)}>
-              {card.label} <b>{status.counts?.[card.key] ?? 0}</b>
-            </button>
-          ))}
-          {statusLoading ? <small>刷新中…</small> : <small>这些由流水线自己处理</small>}
+        <section className="today-background" aria-label="本地工作区状态">
+          <span>本地工作区</span>
+          <button onClick={() => onGo("content")}>内容项目 <b>{status.counts?.projects ?? 0}</b></button>
+          <button onClick={() => onGo("materials")}>素材 <b>{status.counts?.materials ?? 0}</b></button>
+          {statusLoading ? <small>刷新中…</small> : <small>SQLite 已连接</small>}
         </section>
       ) : null}
 

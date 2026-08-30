@@ -12,8 +12,8 @@
 // 每一块独立取数、独立失败：Worker 慢或 AI HOT 挂掉都只让那一块自己安静下去，
 // 不能拖着整页转圈，更不能白屏。
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { AUTO_CARDS, TODO_CARDS } from "../lib/views.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { TODO_CARDS } from "../lib/views.js";
 import { SOURCES } from "../lib/sources.js";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, Note, PageHeader, SectionHead, relTime , MenuButton} from "../components/ui.jsx";
@@ -26,16 +26,12 @@ import {
   IconArchive,
   IconArrowRight,
   IconBook2,
-  IconCategory,
   IconCircleDashed,
   IconFileText,
-  IconFilter,
   IconFolder,
   IconHistory,
-  IconPencil,
   IconSparkles,
   IconDatabase,
-  IconSettings,
   IconCheck,
   IconPlus,
   IconTrash,
@@ -51,12 +47,6 @@ import { setOpenTarget } from "../lib/open-target.js";
  * 认不出的回落到虚线圈（`views.js` 加一档而这里忘了配时，宁可给个通用的，
  * 也不要一行有图标一行没有）。
  */
-const AUTO_ICONS = {
-  待初筛: IconFilter,
-  待整理: IconCategory,
-  选题撰写中: IconPencil,
-};
-
 /**
  * 一张待办卡里最多列几条。
  *
@@ -117,19 +107,13 @@ export function Overview({ config, status, statusError, statusLoading, onRetrySt
         }
       />
 
-      {!workerReady && <SetupGuide onSettings={onSettings} />}
-
-      {/* 流水线状态排在最前面，但**只占一行**：位置靠前是为了每次打开一眼扫到（它是唯一
-          能看出流水线卡住了的地方），只占一行是为了不跟你自己的清单抢主位——
-          **「显眼」和「安静」是两件事，位置管前者，视觉重量管后者。** */}
-      {workerReady && status ? <PipeFlow status={status} onGo={onGo} /> : null}
       {workerReady && status ? <CollectionReminder collections={status.collections} onGo={onGo} /> : null}
 
       <DayPlan plan={plan} />
 
       {workerReady && (
         <>
-          <ErrorNote error={statusError} what="读取流水线状态" onRetry={onRetryStatus} />
+          <ErrorNote error={statusError} what="读取本地工作区状态" onRetry={onRetryStatus} />
           {statusLoading && !status ? (
             <Loading rows={2} />
           ) : status ? (
@@ -199,38 +183,6 @@ function CollectionReminder({ collections, onGo }) {
  * **0 的时候节点是空心的**——它们的 0 是正常态，给正常态加视觉重量，等于每天都在提醒你
  * 一件不用做的事。堆了东西才变成实心黑点，那时它才该抢你一眼。
  */
-function PipeFlow({ status, onGo }) {
-  return (
-    <div className="pipe-flow">
-      {/* **不写「流水线在跑」这个标题**：三个节点名（待初筛 / 待整理 / 撰写中）加上
-          它们串成一条线，已经把「这是一条流水线」说完了。标题在这儿是句多余的话，
-          而它占的是整行最左边、最值钱的位置。 */}
-      <div className="pipe-flow__track">
-        {AUTO_CARDS.map((c, i) => {
-          const n = status.counts?.[c.key] ?? 0;
-          return (
-            <Fragment key={c.key}>
-              {/* 连接线是节点之间的**兄弟元素**，不是节点的 ::before——用伪元素的话
-                  第一个节点前面会多出半截线，还得再写一条规则去掉它 */}
-              {i ? <span className="pipe-flow__line" aria-hidden="true" /> : null}
-              <button
-                className="pipe-flow__node"
-                data-busy={!!n}
-                title={c.hint}
-                aria-label={`${c.label} ${n} 条`}
-                onClick={() => onGo(c.view, c.state)}
-              >
-                <span className="pipe-flow__dot">{n}</span>
-                <span className="pipe-flow__name">{c.label}</span>
-              </button>
-            </Fragment>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /**
  * 「等你动手」的一档：**数量 + 最该先做的那几条 + 逐条加进清单**。
  *
@@ -602,8 +554,7 @@ function BackupButton() {
   );
 }
 
-// 稿件库「已发布」→ vault Markdown。单向、只增不改：
-// 已导出的文件绝不覆盖，你在 Obsidian 里给归档稿加过的批注不会被重跑冲掉。
+// 核对当前工作区中的发布事实，不创建第二份归档状态。
 function ArchiveButton() {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -641,37 +592,5 @@ function ArchiveButton() {
       {done ? <span className="sysrow__done">{done}</span> : null}
       {error ? <span className="sysrow__done">核对失败：{error.message}</span> : null}
     </>
-  );
-}
-
-function SetupGuide({ onSettings }) {
-  return (
-    <Note title="还没连上流水线 Worker，先做两步">
-      <ol style={{ margin: "8px 0 0", paddingLeft: 20 }}>
-        <li>
-          在 <code>worker/</code> 目录执行 <code>npx wrangler secret put WORKBENCH_KEY</code>，随便设一串长密码，然后{" "}
-          <code>npx wrangler deploy</code>
-        </li>
-        <li>把同一串密码和 Worker 地址填进设置面板的「流水线」那一段</li>
-      </ol>
-      <FixButton onSettings={onSettings}>去设置里填</FixButton>
-    </Note>
-  );
-}
-
-/**
- * 「去设置」。**空态引导必须能点**——「在 .env 里填 X」这句话本身要是个入口，
- * 否则用户读完这句话之后的下一步是去开编辑器，而这一步机器完全可以替他走。
- *
- * 拿不到 `onSettings` 时**不画**（比如以后有人把 Overview 用在别处），
- * 而不是画一个点了没反应的按钮。
- */
-function FixButton({ onSettings, children }) {
-  if (!onSettings) return null;
-  return (
-    <button className="sysrow__btn" onClick={onSettings} style={{ marginTop: 8 }}>
-      <IconSettings size={14} stroke={1.7} aria-hidden="true" />
-      {children}
-    </button>
   );
 }

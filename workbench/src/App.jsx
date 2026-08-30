@@ -196,7 +196,6 @@ export function App() {
   const acceptedHash = useRef(window.location.hash || "#/today");
   const navigationGuard = useRef(null);
   const bypassNavigationGuard = useRef(false);
-  const [config, setConfig] = useState(null);
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -314,29 +313,9 @@ export function App() {
     };
   }, []);
 
-  // 设置面板改完 VAULT_ROOT / WORKER_URL 之后要重新拉一遍：整页的空态引导都看它
-  const loadConfig = useCallback(() => {
-    api.config().then(setConfig).catch(() => setConfig(null));
-  }, []);
-
-  useEffect(() => {
-    loadConfig();
-  }, [loadConfig]);
-
-  /**
-   * 拉一次流水线状态，失败了自己退着重试。
-   *
-   * 为什么必须重试：这台机器访问 workers.dev 要过代理，而代理会抖——切节点、刚开机
-   * 还没连上，都是几百毫秒到几秒的事。原来这里只在挂载时取一次、失败就定死，
-   * 代价是一次抖动换来整页红框 + 侧栏「流水线不可达」+「取不到稿件库」，
-   * 一直挂到你手动刷新浏览器。**而那时候它其实早就通了。**
-   *
-   * 重试期间**不报错、也不停止 loading**：一次网络抖动不该让用户看见任何东西，
-   * 界面上继续是骨架屏（它确实还在读）。三次都没成才是真出事了，那时才亮红框。
-   */
+  // 本机刚启动或刚保存 .env 时服务可能短暂重启，状态读取做有限重试。
   const runStatus = useCallback(
     (attempt = 0) => {
-      if (!config?.worker?.configured) return;
       clearTimeout(retryTimer.current);
       setStatusLoading(true);
       setStatusError(null);
@@ -360,7 +339,7 @@ export function App() {
           retryTimer.current = setTimeout(() => runStatus(attempt + 1), delay);
         });
     },
-    [config]
+    []
   );
 
   // 手动触发的刷新（入库完、设置改完）一律从头数：上一轮退到第三档了，
@@ -700,7 +679,6 @@ export function App() {
               <ViewSlots.Provider value={slots}>
               {route.view === "today" ? (
                 <Today
-                  config={config}
                   status={status}
                   statusError={statusError}
                   statusLoading={statusLoading}
@@ -740,7 +718,6 @@ export function App() {
                 />
               ) : route.view === "overview" ? (
                 <Overview
-                  config={config}
                   status={status}
                   statusError={statusError}
                   statusLoading={statusLoading}
@@ -785,9 +762,9 @@ export function App() {
         </div>
       </div>
 
-      <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName="" />
+      <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} />
 
-      <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={loadConfig} />
+      <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={refreshStatus} />
 
       <IntakeDrawer
         open={!!intake}

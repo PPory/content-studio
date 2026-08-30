@@ -37,12 +37,6 @@ export async function agentAccess(env = {}) {
   const projectRoot = await findProjectRoot();
   const developer = env.AGENT_PERMISSION_MODE === "developer";
   const mounts = [{ id: "workbench", label: "Xenho OS 工作台", root: projectRoot, kind: "workbench", builtin: true, write: developer, execute: developer }];
-  const vault = clean(env.VAULT_ROOT);
-  if (vault) {
-    try {
-      mounts.push({ id: "vault", label: "本地知识库", root: await fs.realpath(path.resolve(vault)), kind: "vault", builtin: true, write: false, execute: false });
-    } catch {}
-  }
   for (const item of Array.isArray(env.AGENT_SESSION_MOUNTS) ? env.AGENT_SESSION_MOUNTS : []) {
     try {
       const root = await fs.realpath(path.resolve(clean(item.root)));

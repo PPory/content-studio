@@ -1,62 +1,64 @@
-// npm run check —— 不开浏览器就能回答「现在配到哪一步了、还差什么」。
-// 每条检查失败时都要给出具体的下一步命令，而不只是 FAIL。
-
 import fs from "node:fs";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { loadEnv } from "vite";
-import { safeJoin, listDir } from "../server/lib/vault.mjs";
-import { proxyFetch } from "../server/lib/fetch.mjs";
+import { resolveWorkspacePaths } from "../server/storage/workspace-paths.mjs";
 
-const env = loadEnv("development", process.cwd(), "");
+const loaded = loadEnv("development", process.cwd(), "");
+const env = { ...loaded, XENHO_HOME: process.env.XENHO_HOME || loaded.XENHO_HOME };
 const results = [];
 
-function ok(name, detail) { results.push({ level: "ok", name, detail }); }
-function warn(name, detail) { results.push({ level: "warn", name, detail }); }
-function bad(name, detail) { results.push({ level: "bad", name, detail }); }
+const add = (level, name, detail) => results.push({ level, name, detail });
+const ok = (name, detail) => add("ok", name, detail);
+const warn = (name, detail) => add("warn", name, detail);
+const bad = (name, detail) => add("bad", name, detail);
 
-// 1. vault
-const root = (env.VAULT_ROOT || "").trim();
-if (!root) {
-  bad("vault 路径", "在 .env 里填 VAULT_ROOT");
-} else if (!fs.existsSync(root)) {
-  bad("vault 路径", `${root} 不存在，检查 .env 里的 VAULT_ROOT`);
-} else {
-  const abs = path.resolve(root);
-  const items = await listDir(abs, "");
-  ok("vault 路径", `${abs}（顶层 ${items.length} 项，vault 名 ${path.basename(abs)}）`);
+let paths = null;
+try {
+  paths = resolveWorkspacePaths({ env });
+  const root = path.parse(paths.root).root;
+  if (paths.root === root) bad("工作区路径", "不能把磁盘根目录作为 Xenho 工作区");
+  else ok("工作区路径", paths.root);
+} catch (error) {
+  bad("工作区路径", error.message);
 }
 
-// 2. 目录穿越必须被挡住。这条挂了就是任意文件读取漏洞，不是「不方便」。
-if (root && fs.existsSync(root)) {
-  const attacks = ["../../../Windows/win.ini", "C:/Windows/win.ini", "..\\..\\secret.md"];
-  const escaped = attacks.filter((a) => {
-    try { safeJoin(path.resolve(root), a); return true; } catch { return false; }
+if (paths) {
+  const protectedPaths = [paths.databaseFile, paths.assetsDir, paths.backupsDir, paths.exportsDir];
+  const escaped = protectedPaths.filter((target) => {
+    const relative = path.relative(paths.root, target);
+    return relative.startsWith("..") || path.isAbsolute(relative);
   });
-  if (escaped.length) bad("路径越界防护", `这些路径没被拦住：${escaped.join(", ")}`);
-  else ok("路径越界防护", `${attacks.length} 个越界样例全部拦下`);
-}
+  if (escaped.length) bad("路径边界", `发现越界路径：${escaped.join("、")}`);
+  else ok("路径边界", "SQLite、资源、备份和导出均位于 Xenho 根目录内");
 
-// 3. Worker
-const workerUrl = (env.WORKER_URL || "").trim().replace(/\/+$/, "");
-const key = (env.WORKBENCH_KEY || "").trim();
-if (!workerUrl || !key) {
-  warn("流水线连接", "未配置 WORKER_URL / WORKBENCH_KEY，工作台会显示引导页。配好前四个库的数据看不到");
-} else {
-  try {
-    const res = await proxyFetch(`${workerUrl}/wb/ping`, { headers: { "X-Workbench-Key": key } });
-    const data = await res.json().catch(() => null);
-    if (data?.ok) ok("流水线连接", `${workerUrl} 可达`);
-    else if (res.status === 403) bad("流水线连接", "密钥不匹配：.env 里的 WORKBENCH_KEY 和 wrangler secret 得是同一串");
-    else if (res.status === 503) bad("流水线连接", "Worker 没配 WORKBENCH_KEY，跑 npx wrangler secret put WORKBENCH_KEY");
-    else bad("流水线连接", `HTTP ${res.status}${data?.error ? `：${data.error}` : "，可能是还没部署带 /wb 端点的版本"}`);
-  } catch (e) {
-    bad("流水线连接", `连不上：${e.message}`);
+  if (!fs.existsSync(paths.root)) {
+    warn("工作区状态", "目录尚不存在；首次启动会创建");
+  } else if (!fs.existsSync(paths.databaseFile)) {
+    warn("工作区状态", "根目录存在，SQLite 尚未初始化；启动工作台后会创建");
+  } else {
+    try {
+      const db = new Database(paths.databaseFile, { readonly: true, fileMustExist: true });
+      const integrity = db.pragma("integrity_check", { simple: true });
+      const foreign = db.pragma("foreign_key_check");
+      db.close();
+      if (integrity !== "ok") bad("SQLite 完整性", String(integrity));
+      else if (foreign.length) bad("SQLite 外键", `发现 ${foreign.length} 条异常`);
+      else ok("SQLite 完整性", "integrity_check 与 foreign_key_check 通过");
+    } catch (error) {
+      bad("SQLite 完整性", error.message);
+    }
   }
 }
 
+const model = ["AGENT_LLM_BASE_URL", "AGENT_LLM_MODEL", "AGENT_LLM_API_KEY"].filter((key) => String(env[key] || "").trim());
+if (model.length === 0) warn("本机 AI", "未配置模型；其余本地功能可正常使用");
+else if (model.length < 3) bad("本机 AI", "模型地址、模型 ID 和密钥必须一起填写");
+else ok("本机 AI", "模型配置完整，密钥未输出");
+
 const icon = { ok: "✓", warn: "!", bad: "✗" };
 console.log("");
-for (const r of results) console.log(` ${icon[r.level]} ${r.name.padEnd(12, "　")} ${r.detail}`);
+for (const item of results) console.log(` ${icon[item.level]} ${item.name.padEnd(12, "　")} ${item.detail}`);
 console.log("");
 
-if (results.some((r) => r.level === "bad")) process.exit(1);
+if (results.some((item) => item.level === "bad")) process.exit(1);

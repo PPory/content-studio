@@ -8,3 +8,7 @@ desktop.ini
 
 # tidy-project 隔离区：移进来的东西没有删，等确认后再清
 .tidy-trash/
+
+# 退役远端实现仅保留本机缓存，不再纳入仓库
+worker/
+supabase/

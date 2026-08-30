@@ -1,5 +1,4 @@
-// 统一入库抽屉。工作台各处的「存素材」最终都开这个，走 /api/pipe/intake，
-// 和 Telegram 的 /金句 /素材 命令是同一份存储逻辑（Worker 侧 lib/store.js）。
+// 统一入库抽屉。工作台各处的「存素材」最终都写入当前 SQLite 工作区。
 
 import { useEffect, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";

@@ -6,32 +6,16 @@ import { workspaceRoutes } from "./routes/workspace.mjs";
 import { localBookRoutes } from "./routes/books-local.mjs";
 import { localContentRoutes } from "./routes/local-content.mjs";
 import { localAiRoutes } from "./routes/local-ai.mjs";
-import { localCompatRoutes } from "./routes/local-compat-v2.mjs";
+import { localSupportRoutes } from "./routes/local-support.mjs";
 import { localExpertRoutes } from "./routes/expert-local.mjs";
-import { vaultRoutes } from "./routes/vault.mjs";
-import { configRoutes } from "./routes/config.mjs";
 import { settingsRoutes } from "./routes/settings.mjs";
 import { promptsRoutes } from "./routes/prompts.mjs";
-import { aiRoutes } from "./routes/ai.mjs";
 import { hotRoutes } from "./routes/hot.mjs";
-import { metricsRoutes } from "./routes/metrics.mjs";
-import { postsRoutes } from "./routes/posts.mjs";
-import { archiveRoutes } from "./routes/archive.mjs";
-import { agentRoutes } from "./routes/agent.mjs";
 import { translateRoutes } from "./routes/translate.mjs";
 import { extensionRoutes } from "./routes/extension-local.mjs";
 import { configureAssistantWorkspace } from "./agent-runtime/assistant-runner.mjs";
 import { backupRoutes } from "./routes/backup.mjs";
-import { searchRoutes } from "./routes/search.mjs";
-import { insightsRoutes } from "./routes/insights.mjs";
-import { planRoutes } from "./routes/plan.mjs";
-import { audienceRoutes } from "./routes/audiences.mjs";
-import { revisionRoutes } from "./routes/revisions.mjs";
-import { writingProfileRoutes } from "./routes/writing-profile.mjs";
-import { expertRunRoutes } from "./routes/expert-runs.mjs";
 import { assistantRoutes } from "./routes/assistant.mjs";
-import { feishuRoutes } from "./routes/feishu.mjs";
-import { mediaRoutes } from "./routes/media.mjs";
 
 const EXTENSION_ALIASES = {
   "/api/extension/intake": "/api/workspace/intake",
@@ -42,7 +26,7 @@ const EXTENSION_ALIASES = {
 /**
  * 「地址是本机」不等于「请求来自工作台」。
  *
- * 这个 dev server 上挂着 vault 的读写口、D1 流水线写入口和本机 CLI 通道，而**任何
+ * 这个 dev server 上挂着本地工作区写入口和本机 AI 通道，而**任何
  * 网页**都能往 `http://127.0.0.1:5180/api/...` 发跨站 POST——浏览器会照发不误，
  * 只是不让那个页面读到响应。对「删一本书」「改一篇稿」这种写操作来说，读不到响应
  * 一点都不重要，写进去了就已经完成了。
@@ -78,35 +62,19 @@ export function requestAllowed(req) {
 }
 
 const ROUTES = [
-  ...configRoutes,
   ...settingsRoutes,
   ...promptsRoutes,
   ...workspaceRoutes,
   ...localBookRoutes,
   ...localContentRoutes,
   ...localAiRoutes,
-  ...localCompatRoutes,
+  ...localSupportRoutes,
   ...localExpertRoutes,
-  ...vaultRoutes,
-  ...aiRoutes,
   ...hotRoutes,
-  ...metricsRoutes,
-  ...postsRoutes,
-  ...archiveRoutes,
-  ...agentRoutes,
   ...translateRoutes,
   ...extensionRoutes,
   ...backupRoutes,
-  ...searchRoutes,
-  ...planRoutes,
-  ...audienceRoutes,
-  ...writingProfileRoutes,
-  ...expertRunRoutes,
   ...assistantRoutes,
-  ...mediaRoutes,
-  ...feishuRoutes,
-  ...revisionRoutes,
-  ...insightsRoutes,
 ];
 
 export function createApi(env, { workspace = null } = {}) {
@@ -149,7 +117,7 @@ export function createApi(env, { workspace = null } = {}) {
         url = mapped;
       }
     }
-    if (url.pathname.startsWith("/api/assistant/") || url.pathname.startsWith("/api/agent/") || url.pathname.startsWith("/api/ai/") || url.pathname.startsWith("/api/pipe/writing-") || url.pathname === "/api/pipe/text-revision" || url.pathname.startsWith("/api/extension/local-")) {
+    if (url.pathname.startsWith("/api/assistant/") || url.pathname.startsWith("/api/agent/") || url.pathname.startsWith("/api/workspace/ai/") || url.pathname.startsWith("/api/extension/local-")) {
       configureAssistantWorkspace(await workspace);
     }
     const hit = matchRoute(ROUTES, req.method, url.pathname);

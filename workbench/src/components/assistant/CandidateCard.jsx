@@ -16,7 +16,8 @@
 import { useEffect, useRef, useState } from "react";
 import { changeSummary } from "../../lib/ai/result-model.js";
 import { diffTokens } from "../../lib/text-diff.js";
-import { IconAlertTriangle, IconArrowBackUp, IconCheck, IconChevronDown, IconLoader2, IconMessageCircle, IconRefresh, IconRowInsertBottom, IconSend, IconShieldCheck, IconSparkles } from "../icons.jsx";
+import { IconAlertTriangle, IconArrowBackUp, IconCheck, IconChevronDown, IconMessageCircle, IconRefresh, IconRowInsertBottom, IconSend, IconShieldCheck, IconSparkles } from "../icons.jsx";
+import { DraftingMark } from "./loaders.jsx";
 import "../text-revision.css";
 
 /** 证据里有没有需要用户看一眼的东西。有的话回执默认展开，而且整条要变色。 */
@@ -104,7 +105,7 @@ function AiAnswerCardBody({ cardRef, answer, rejected, canLand, onInsert, onRetr
   return <section ref={cardRef} className="ai-answer" data-status={answer.busy ? "busy" : (answer.error || rejected) ? "failed" : "ready"} aria-label="AI 回答" aria-live="polite">
     <div className="ai-answer__body">
       <span className="ai-answer__avatar" aria-hidden="true">
-        {answer.busy ? <IconLoader2 className="spin" /> : <IconSparkles stroke={1.6} />}
+        {answer.busy ? <DraftingMark size={16} /> : <IconSparkles stroke={1.6} />}
       </span>
       {answer.error
         ? <div className="ai-answer__error"><b>{answer.error.message}</b>{answer.error.hint ? <small>{answer.error.hint}</small> : null}</div>
@@ -212,7 +213,7 @@ export function RevisionDecisionBar({ candidate, degraded = false, persistenceEr
   >
     <div className="revision-bar__row">
       <span className="revision-bar__label">
-        {candidate.status === "generating" ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconSparkles aria-hidden="true" stroke={1.7} />}
+        {candidate.status === "generating" ? <DraftingMark size={16} /> : <IconSparkles aria-hidden="true" stroke={1.7} />}
         <b>{candidate.label}</b>
       </span>
       <span className="revision-bar__stat">
@@ -287,7 +288,7 @@ export function CandidateCard({ candidate, persistenceError, onRegenerate, onAdo
     : diffTokens(candidate.original, candidate.text);
   return <section className="candidate-card" data-status={candidate.status} aria-label={candidate.label.endsWith("候选") ? candidate.label : `${candidate.label}候选`}>
     {candidate.status === "generating"
-      ? <div className="candidate-card__loading"><IconLoader2 className="spin" aria-hidden="true" /><span>正在保持原意，生成可比较的新版本…</span></div>
+      ? <div className="candidate-card__loading"><DraftingMark size={16} /><span>正在保持原意，生成可比较的新版本…</span></div>
       : <RevisionDiff parts={parts} degraded={degraded} ariaLabel="正文候选对照" />}
     <RevisionDecisionBar
       candidate={candidate}

@@ -39,13 +39,17 @@ export function workbenchApi(env) {
         return null;
       });
       server.xenhoWorkspace = localRuntime.then((state) => state?.workspace || null);
+      let closePromise = null;
+      const closeLocalRuntime = () => closePromise ||= localRuntime.then(async (state) => {
+        if (!state) return;
+        await state.runtime.stop();
+        await state.automaticBackup;
+        state.workspace.close();
+      });
+      // 浏览器和扩展验收在删除临时工作区前等待 SQLite/WAL 句柄真正释放。
+      server.xenhoClose = closeLocalRuntime;
       server.httpServer?.once("close", () => {
-        void localRuntime.then(async (state) => {
-          if (!state) return;
-          await state.runtime.stop();
-          await state.automaticBackup;
-          state.workspace.close();
-        });
+        void closeLocalRuntime();
       });
 
       // 放在最前面：/api/* 和 /tools/* 由我们接管，其余交回 Vite

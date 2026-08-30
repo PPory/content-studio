@@ -279,7 +279,7 @@ export function DayPlan({ plan }) {
                 <IconPlus size={15} stroke={1.9} aria-hidden="true" />
                 <span>
                   <b>{dayLabel}还没列清单</b>
-                  <em>点这儿加一条。它就是 Obsidian 里那份 Markdown，手机上列也一样。</em>
+                  <em>点这儿加一条。清单会保存在当前本地工作区。</em>
                 </span>
               </button>
             ) : null

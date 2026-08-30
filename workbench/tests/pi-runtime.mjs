@@ -14,7 +14,6 @@ import {
   createAssistantConversation,
   manageAssistantConversation,
 } from "../server/agent-runtime/assistant-runner.mjs";
-import { guidedSessionId } from "../server/agent-runtime/guided-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { documentVersion } from "../src/lib/document-version.js";
@@ -45,8 +44,6 @@ assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "ide
 assert(skills.items.every((item) => item.source === ".agents/skills"));
 assert.equal(assistantExperts().items.length, 6);
 assert.notEqual(documentVersion({ title: "A", body: "第一版" }), documentVersion({ title: "A", body: "第二版" }));
-assert.equal(guidedSessionId("50879135-9d18-49a3-bab4-d8aab36be661"), "50879135-9d18-49a3-bab4-d8aab36be661");
-assert.match(guidedSessionId(""), /^[0-9a-f-]{36}$/i);
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-pi-runtime-"));
 const xenhoHome = path.join(tempRoot, "Xenho");
@@ -163,4 +160,4 @@ try {
 
 console.log("✓ Pi Agent SDK、权限预设、本地工具与隔离工作区已校验");
 console.log("✓ AI 会话使用 SQLite 软删除，并通过关闭重开验证");
-console.log("✓ 测试只使用系统临时目录，没有读写真实 Xenho、Obsidian vault 或 .xenho");
+console.log("✓ 测试只使用系统临时目录，没有读写真实个人工作区或历史存储");

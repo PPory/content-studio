@@ -42,7 +42,7 @@ import {
 const ACTIONS = [
   { key: "解释", label: "解释", hint: "这段在说什么", icon: IconBulb, group: 1 },
   { key: "translate", label: "翻译", hint: "翻成中文（DeepL）——热点里英文原文占一半", icon: IconLanguage, group: 1 },
-  { key: "intake", label: "存素材", hint: "存成素材卡，进内容流水线", icon: IconArchive, group: 2 },
+  { key: "intake", label: "存素材", hint: "存成可复用的素材卡", icon: IconArchive, group: 2 },
   { key: "copy", label: "复制", hint: "拷进剪贴板", icon: IconCopy, group: 2 },
 ];
 

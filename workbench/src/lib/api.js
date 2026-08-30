@@ -1,4 +1,4 @@
-// 前端只跟本地 API 说话，永远不直连 Worker / 数据库 / LLM。
+// 前端只跟本机 API 说话，不直接读取 SQLite，也不把模型密钥放进浏览器。
 // 统一契约：失败一律抛 Error，并把服务端给的 hint 挂在 err.hint 上供界面显示。
 
 async function req(path, options) {
@@ -29,7 +29,6 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
-  config: () => req("/api/config"),
   status: () => req("/api/workspace/status"),
   projects: (stage = "") => req(`/api/workspace/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
   project: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}`),
@@ -62,35 +61,30 @@ export const api = {
     req(`/api/workspace/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
   page: (id, view = "") => req(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(id)}`),
   intake: (body) => postJson("/api/workspace/intake", body),
-  // 种子。⚠️ `seeds()` 的响应里带 `reactions`——**反应清单的真源在 Worker**，
-  // 前端不写死那七条（`sources.js` 那几处 `states` 抄了一份，对不上就是 400）。
+  // 种子响应携带领域层的反应清单，前端不复制业务规则。
   seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   createSeed: (body) => postJson("/api/workspace/seeds", body),
   updateSeed: (id, patch) => postJson(`/api/workspace/seeds/${encodeURIComponent(id)}`, patch),
   removeSeed: (id) => postJson(`/api/workspace/seeds/${encodeURIComponent(id)}/trash`, {}),
-  retryCollectionSnapshot: (id) => postJson(`/api/pipe/collections/${encodeURIComponent(id)}/snapshot`, {}),
-  previewCollectionOrganize: (ids) => postJson("/api/pipe/collections/organize/preview", { ids }),
-  applyCollectionOrganize: (items) => postJson("/api/pipe/collections/organize/apply", { items }),
-  previewKnowledgeCard: (body) => postJson("/api/ai/knowledge-card", body),
-  saveKnowledgeCard: (card) => postJson("/api/vault/knowledge-card", card),
-  knowledgeCardLinks: (refs) => postJson("/api/vault/knowledge-card/links", { refs }),
+  retryCollectionSnapshot: (id) => postJson(`/api/workspace/collections/${encodeURIComponent(id)}/snapshot`, {}),
+  previewCollectionOrganize: (ids) => postJson("/api/workspace/collections/organize/preview", { ids }),
+  applyCollectionOrganize: (items) => postJson("/api/workspace/collections/organize/apply", { items }),
+  previewKnowledgeCard: (body) => postJson("/api/workspace/ai/knowledge-card", body),
+  saveKnowledgeCard: (card) => postJson("/api/workspace/knowledge-cards", card),
+  knowledgeCardLinks: (refs) => postJson("/api/workspace/knowledge-cards/links", { refs }),
   comment: (pageId, text) => postJson(`/api/workspace/annotations/${encodeURIComponent(pageId)}`, { text }),
   comments: (pageId) => req(`/api/workspace/annotations/${encodeURIComponent(pageId)}`),
   revisions: (scope) => req(`/api/revisions?scope=${encodeURIComponent(scope)}`),
   saveRevision: (scope, item) => postJson("/api/revisions", { scope, item }),
   moveRevisions: (from, to) => postJson("/api/revisions/move", { from, to }),
 
-  // 每日计划。**只传日期串不传路径**，路径由服务端从 `05 - 计划/` 派生。
-  // 打钩和删除带 stamp（文件 mtime）做乐观锁：它们按**行号**改写，而这份 md 同时可能
-  // 在 Obsidian 里开着，对不上就 409。**「加一条」不带**——追加不依赖旧状态，
-  // 给它上锁的结果是最无害的操作反而第一个被拦（见 server/lib/plan.mjs）
+  // 每日计划只传日期和动作；服务端用版本号避免覆盖并发更新。
   plan: (date = "") => req(`/api/plan${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   addTask: (date, text) => postJson("/api/plan", { date, action: "add", text }),
   toggleTask: (date, stamp, index, done) => postJson("/api/plan", { date, stamp, action: "toggle", index, done }),
   removeTask: (date, stamp, index) => postJson("/api/plan", { date, stamp, action: "remove", index }),
 
-  vaultTree: (dir = "") => req(`/api/vault/tree?dir=${encodeURIComponent(dir)}`),
-  // 洞察报告清单。不用 vaultTree：卡片要摘要、覆盖周期、字数，那些只有读文件才有
+  // 洞察报告清单直接读取当前 SQLite 工作区。
   workspaceInsights: () => req("/api/workspace/insights"),
   workspaceInsight: (id) => req(`/api/workspace/insights/${encodeURIComponent(id)}`),
 
@@ -100,14 +94,12 @@ export const api = {
   insightRunStatus: () => req("/api/insights/run"),
   insightRunStart: (week = "") => postJson("/api/insights/run", { week }),
   insightRunCancel: () => postJson("/api/insights/run/cancel", {}),
-  vaultFile: (path) => req(`/api/vault/file?path=${encodeURIComponent(path)}`),
-  vaultDoc: (path, notePath = "") =>
+  workspaceDoc: (path, notePath = "") =>
     req(`/api/workspace/doc?path=${encodeURIComponent(path)}&notePath=${encodeURIComponent(notePath)}`),
-  // 改正文。stamp 是打开时拿到的版本号——这些 md 同时在 Obsidian 里开着，
-  // 对不上就 409，不硬覆盖。frontmatter 由服务端原样保留，前端只管正文
-  saveVaultDoc: (path, content, stamp = "") => postJson("/api/workspace/doc", { path, content, stamp }),
-  vaultNote: (body) => postJson("/api/workspace/note", body),
-  // 改一条 / 删一条批注。带 stamp 做乐观锁：文件在 Obsidian 里被动过就 409，不硬覆盖
+  // 改正文。stamp 是打开时拿到的版本号，对不上就 409，不硬覆盖。
+  saveWorkspaceDoc: (path, content, stamp = "") => postJson("/api/workspace/doc", { path, content, stamp }),
+  workspaceNote: (body) => postJson("/api/workspace/note", body),
+  // 改一条 / 删一条批注。带 stamp 做乐观锁，防止覆盖并发修改。
   editNote: (path, index, stamp, body) => postJson("/api/workspace/note/edit", { path, index, stamp, body }),
   removeNote: (path, index, stamp) => postJson("/api/workspace/note/edit", { path, index, stamp, remove: true }),
   books: () => req("/api/workspace/books"),
@@ -124,7 +116,7 @@ export const api = {
       body: file,
     }),
 
-  // 下架 = 整个目录移进 vault 的 .trash/，和在 Obsidian 里删它是同一个地方
+  // 下架进入当前工作区回收站，可由恢复入口找回。
   trashBook: (dir) => postJson("/api/workspace/books/trash", { dir }),
   restoreBook: (from, to) => postJson("/api/workspace/books/restore", { from, to }),
   // 在一本书里全文搜：拆成几十章之后，「那句话在哪一章」是刚需
@@ -147,7 +139,7 @@ export const api = {
   translate: (text, target) => postJson("/api/translate", { text, target }),
 
   /**
-   * 正文里插图片 / 视频 / GIF。**文件落进 vault，正文里只留相对路径。**
+   * 正文里插图片 / 视频 / GIF。文件进入当前工作区资产库，正文只保留 asset URI。
    * 和换封面走同一条二进制路子：不引 multipart 解析器，后缀和文件名走 query。
    */
   uploadMedia: (file) =>
@@ -157,19 +149,16 @@ export const api = {
       body: file,
     }),
 
-  // vault 里的图片（封面、正文插图）的地址。图片走 <img src>，不经过 req()
+  // 当前工作区里的图片地址。图片走 <img src>，不经过 req()。
   imageUrl: (path) => String(path || "").startsWith("asset://") ? `/api/workspace/assets/${encodeURIComponent(String(path).slice(8))}` : "",
   // 视频不能走 imageUrl：那个端点的白名单只有图片
   mediaUrl: (path) => String(path || "").startsWith("asset://") ? `/api/workspace/assets/${encodeURIComponent(String(path).slice(8))}` : "",
 
   // 两个 tab 各刷各的：热搜按分钟变、AI 精选按天变，合成一个请求就只能迁就快的那个
-  /**
-   * 「选种」那一屏的三段。
-   * ⚠️ **两条 Worker 端点都只读，一行都不往库里写**——候选变成种子必须经过你补一句 take。
-   */
+  // 候选只读；变成种子仍必须由用户补一句并明确确认。
   ideaCandidates: (refresh) => req(`/api/insights/candidates${refresh ? "?refresh=1" : ""}`),
-  ideaAngles: (body) => postJson("/api/pipe/ideas/angles", body),
-  ideaMaterials: (body) => postJson("/api/pipe/ideas/materials", body),
+  ideaAngles: (body) => postJson("/api/workspace/ideas/angles", body),
+  ideaMaterials: (body) => postJson("/api/workspace/ideas/materials", body),
   hotBoards: (refresh) => req(`/api/hot/boards${refresh ? "?refresh=1" : ""}`),
   // 把一条热点的原文抓下来读成 Markdown，在工作台里看完，不用先跳出去
   readArticle: (url) => req(`/api/hot/read?url=${encodeURIComponent(url)}`),
@@ -183,8 +172,6 @@ export const api = {
   saveContent: (view, pageId, markdown) => postJson(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(pageId)}/update`, { markdown }),
   publishDraft: (body) => postJson("/api/workspace/publications", body),
   // 删除会写入本地回收站，不移除正文和关系。界面上要照实说。
-  // 响应里的 `archive` 是本地路由补的：vault 里那份归档移进 `.trash/` 的结果，
-  // 四种状态见 `sources.js` 的 `summarizeArchiveTrash`。**Worker 不回这个字段。**
   removePage: (view, pageId) => postJson(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(pageId)}/trash`, {}),
   draftsOf: (topicId) => req(`/api/workspace/drafts-of/${topicId}`),
   metrics: () => req("/api/workspace/account-metrics"),
@@ -196,17 +183,12 @@ export const api = {
   // 解析器只能靠列名认字段，认错了不会报错——所以必须让人先看一眼再点确认。
   importPosts: (file, platform, { dry = false } = {}) =>
     req(
-      `/api/posts/import?filename=${encodeURIComponent(file.name)}&platform=${encodeURIComponent(platform)}${dry ? "&dry=1" : ""}`,
+      `/api/workspace/external-publications/import?filename=${encodeURIComponent(file.name)}&platform=${encodeURIComponent(platform)}${dry ? "&dry=1" : ""}`,
       { method: "POST", headers: { "content-type": "application/octet-stream" }, body: file }
     ),
-  // 下载文件夹里还没导进来的导出文件。能推断的不让用户填：文件在哪、哪个最新、
-  // 哪个是刚下的，机器全知道——不该让人再去文件对话框里翻一遍
-  postsInbox: () => req("/api/posts/inbox"),
-  importInbox: (id, platform, { dry = false } = {}) =>
-    postJson(`/api/posts/inbox/import${dry ? "?dry=1" : ""}`, { id, platform }),
-  runArchive: () => postJson("/api/archive/run", {}),
+  runArchive: () => postJson("/api/workspace/publications/reconcile", {}),
 
-  // 全局检索：一个入口搜遍 vault、流水线四库和已发布作品
+  // 全局检索：一个入口搜遍当前工作区。
   search: (q, limit) => req(`/api/workspace/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`),
   // 这些热点后来怎么样了（未处理 → 已收藏 → 已形成选题 → 已成稿 → 已发布）。
   // 一屏几十条链接，走 POST 是为了带 body，不是因为有副作用
@@ -304,20 +286,8 @@ export const api = {
     body: file,
   }),
 
-  // 提示词分两组端点，**因为它们生效的方式不同**：工作台自己的改完立刻生效；
-  // 流水线那些打包进 Worker，改完要 npx wrangler deploy。合成一组的话，
-  // 前端就得靠一个字段去分辨「这次要不要提醒部署」，而漏掉那个提醒不会报错
-  // 各环节用哪个模型。真源在 Worker 的 D1 里，本地只转发（`server/routes/pipe.mjs`）
-  models: () => req("/api/pipe/models"),
-  saveModels: (values) => postJson("/api/pipe/models", { values }),
   prompts: () => req("/api/prompts"),
   savePrompts: (values) => postJson("/api/prompts", values),
-  // 列表回的每一项带 id（相对路径的哈希）。**后面读写只认 id 不认路径**——
-  // 路径当参数等于开了个任意文件写入的口子
-  pipelinePrompts: () => req("/api/prompts/pipeline"),
-  pipelinePrompt: (id) => req(`/api/prompts/pipeline/${encodeURIComponent(id)}`),
-  savePipelinePrompt: (id, text, stamp) =>
-    postJson(`/api/prompts/pipeline/${encodeURIComponent(id)}`, { text, stamp }),
 };
 
 /**
@@ -425,7 +395,7 @@ export function agentStream({ signal, onChunk, onSession, ...body }) {
 }
 
 /**
- * 划词 AI：按纯文本响应读取；当前 Worker 会先完成真实性校验再返回，通常只有一块。
+ * 划词 AI：按纯文本响应读取；本地服务完成真实性校验后返回。
  * 不走上面的 req()——那个会把纯文本响应当 JSON 解析。
  * 返回一个 abort 函数：用户关掉面板就该停下，别让请求在后台继续烧 token。
  */

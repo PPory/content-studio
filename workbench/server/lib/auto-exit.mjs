@@ -21,11 +21,7 @@
 //     标签页就把服务带走，是在制造一个比原问题更烦的新问题。
 //  2. **连过一次才武装**。服务刚起来时客户端数天然是 0，不设这条的话它会在浏览器
 //     还没打开之前就把自己关掉（`launch.ps1 -NoBrowser` 那条路更是必然踩中）。
-//  3. **有活在跑就不退**。洞察周报 spawn 的是一个要跑几分钟的 `claude` 子进程，
-//     它不跟着某个请求走。关窗就把它杀掉的话，用户回来只会看到一次没有任何解释的失败。
-//     对话通道不用管——那个子进程绑在请求上，`res.on("close")` 已经会杀它。
-
-import { isInsightRunActive } from "./insight-run.mjs";
+//  3. 对话请求自行监听连接关闭并中止，不让后台子进程在窗口关闭后继续运行。
 
 // 刷新一次的重连是毫秒级的，4 秒足够把「刷新」和「关窗」分开；
 // 再长的话，关窗后进程还赖在那儿的时间就开始能被感知了。
@@ -50,13 +46,8 @@ export function installAutoExit(server, log = (m) => console.log(m)) {
 
   const quit = async () => {
     timer = null;
-    // 到点了再确认一次：这中间可能有人连回来，也可能刚起了一轮洞察
+    // 到点了再确认一次：这中间可能有人连回来
     if (server.ws.clients.size > 0) return;
-    if (isInsightRunActive()) {
-      log("[auto-exit] 洞察周报还在跑，先不退；跑完再看");
-      timer = setTimeout(quit, GRACE_MS);
-      return;
-    }
     log("[auto-exit] 窗口已关闭，退出 dev server");
     // 先让 Vite 自己收尾（关 ws、关 http、跑插件的 close 钩子），卡住就硬退——
     // 用户已经看不到这个进程了，不能让它以「正在优雅关闭」的名义继续留着。

@@ -110,9 +110,9 @@ try {
   const staleTask = await call(base, "/api/plan", { method: "POST", body: { date: today, action: "remove", index: 0, stamp: addedTask.value.stamp } });
   check("每日计划使用 SQLite 版本锁", toggledTask.value.tasks[0].done === true && staleTask.response.status === 409);
 
-  const cardPreview = await call(base, "/api/ai/knowledge-card", { method: "POST", body: { source: { title: "本地知识", selection: "这是可核对的原文证据。" }, messages: [{ role: "assistant", content: "结论候选" }] } });
-  const savedCard = await call(base, "/api/vault/knowledge-card", { method: "POST", body: cardPreview.value.card });
-  check("知识卡预览和确认保存不再写 vault", savedCard.value.card.path.startsWith("workspace:knowledge-card:") && workspace.repository.search("结论候选", { limit: 10 }).some((item) => item.id === savedCard.value.card.id));
+  const cardPreview = await call(base, "/api/workspace/ai/knowledge-card", { method: "POST", body: { source: { title: "本地知识", selection: "这是可核对的原文证据。" }, messages: [{ role: "assistant", content: "结论候选" }] } });
+  const savedCard = await call(base, "/api/workspace/knowledge-cards", { method: "POST", body: cardPreview.value.card });
+  check("知识卡预览和确认保存进入当前工作区", savedCard.value.card.path.startsWith("workspace:knowledge-card:") && workspace.repository.search("结论候选", { limit: 10 }).some((item) => item.id === savedCard.value.card.id));
   const localMaterial = await call(base, "/api/workspace/intake", { method: "POST", body: { target: "material", title: "本地洞察素材", content: "只依据隔离 SQLite 生成报告。", cmd: "核心观点" } });
   assert.equal(localMaterial.response.status, 200);
   const beforeUpdateVersion = workspace.repository.getEntity(localMaterial.value.id).version;
@@ -123,16 +123,14 @@ try {
   assert.equal(insightRun.response.status, 200, JSON.stringify(insightRun.value));
   const insights = await call(base, "/api/workspace/insights");
   const insight = await call(base, `/api/workspace/insights/${insightRun.value.report.id}`);
-  check("洞察只依据本地素材生成并写入 SQLite", insightReady.value.localOnly === true && insightRun.value.run.status === "done" && insights.value.reports.length === 1 && insight.value.content.includes("没有读取旧 vault"));
-  const inbox = await call(base, "/api/posts/inbox");
-  check("发布导入不主动扫描真实 Downloads", inbox.value.disabled === true && inbox.value.files.length === 0);
+  check("洞察只依据本地素材生成并写入 SQLite", insightReady.value.localOnly === true && insightRun.value.run.status === "done" && insights.value.reports.length === 1 && insight.value.content.includes("当前本地工作区"));
   const csv = Buffer.from("发布时间,标题,链接,阅读量\n2026-08-28,隔离导入,https://example.com/post,123\n", "utf8");
-  const dryImport = await call(base, "/api/posts/import?filename=posts.csv&platform=小红书&dry=1", { method: "POST", body: csv, headers: { "content-type": "application/octet-stream" } });
+  const dryImport = await call(base, "/api/workspace/external-publications/import?filename=posts.csv&platform=小红书&dry=1", { method: "POST", body: csv, headers: { "content-type": "application/octet-stream" } });
   assert.equal(dryImport.response.status, 200, JSON.stringify(dryImport.value));
   assert.equal(workspace.db.prepare("SELECT COUNT(*) AS count FROM external_publication_records").get().count, 0);
-  const committedImport = await call(base, "/api/posts/import?filename=posts.csv&platform=小红书", { method: "POST", body: csv, headers: { "content-type": "application/octet-stream" } });
+  const committedImport = await call(base, "/api/workspace/external-publications/import?filename=posts.csv&platform=小红书", { method: "POST", body: csv, headers: { "content-type": "application/octet-stream" } });
   check("发布文件先预览再写入本地发布记录", dryImport.value.dry === true && committedImport.value.added === 1 && workspace.db.prepare("SELECT COUNT(*) AS count FROM external_publication_records").get().count === 1);
-  const archive = await call(base, "/api/archive/run", { method: "POST", body: {} });
+  const archive = await call(base, "/api/workspace/publications/reconcile", { method: "POST", body: {} });
   const backupStatus = await call(base, "/api/backup/status");
   const portableBackup = await call(base, "/api/backup/export", { method: "POST", body: { kind: "portable" } });
   const backupPreview = await call(base, "/api/backup/restore?dry=1", {
@@ -145,7 +143,7 @@ try {
     body: portableBackup.value,
     headers: { "content-type": "application/octet-stream" },
   });
-  check("旧归档变为本地核对且阶段 5 备份只操作隔离工作区", archive.value.localOnly === true && backupStatus.value.ready === true && portableBackup.response.status === 200 && backupPreview.value.dry === true && rejectedRestore.response.status === 409);
+  check("发布记录核对和阶段 5 备份只操作隔离工作区", archive.value.localOnly === true && backupStatus.value.ready === true && portableBackup.response.status === 200 && backupPreview.value.dry === true && rejectedRestore.response.status === 409);
   const expertStarted = await call(base, "/api/expert-runs", { method: "POST", body: { kind: "quality-review", scopeId: `project:${projectId}`, document: { id: draftId, title: "隔离测试稿", body: "这是一段需要检查的正文。", platform: "公众号", audience: "测试读者" } } });
   assert.equal(expertStarted.response.status, 202, JSON.stringify(expertStarted.value));
   let expertState = expertStarted.value.run;

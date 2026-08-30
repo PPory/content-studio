@@ -683,7 +683,9 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(runtimeEnv, input, record);
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
-    emit({ type: "status", stage: "上下文已就绪，正在启动 Pi" });
+    // ⚠️ 阶段文案里不写「Pi」：这几句直接画在等待那一屏上，
+    // 用户在这一刻要认的是「进行到哪一步了」，不是「用的哪个运行时」。
+    emit({ type: "status", stage: "上下文已就绪，正在启动" });
   } catch (error) {
     active.delete(key);
     throw error;
@@ -699,7 +701,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const turnInput = { ...input, message: message || attachmentOnlyInstruction, ...(replayHistory ? { replayHistory } : {}) };
     const prompt = standalone ? generalPrompt(turnInput, context, record.model) : contentPrompt(turnInput, context, record.model);
 
-    emit({ type: "status", stage: "已交给 Pi 模型，正在等待首个响应" });
+    emit({ type: "status", stage: "正在等待首个响应" });
     const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.AGENT_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
     let timeout;
     if (runState.cancelled) throw Object.assign(new Error("本轮已停止"), { code: "ASSISTANT_CANCELLED" });
@@ -876,7 +878,7 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     workspace.domain.setPrimaryDraft(projectId,draftId,{actor:"user",now:stamp});
     result = {projectId,draftId,title:action.title};
   } else if (["document_create","document_update","annotation_append","reference_insert"].includes(action.type)) {
-    throw Object.assign(new Error("这项旧 vault 操作已停用，不会写入 Obsidian；请在本地书架或内容项目中重新发起"),{status:409});  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
+    throw Object.assign(new Error("这项旧文件写入操作已停用；请在本地书架或内容项目中重新发起"),{status:409});  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
     if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });
     if (action.type === "workspace_powershell") {
       const resolved = await resolveAgentMountPath(runtimeEnv, action.mountId, ".", { execute: true });

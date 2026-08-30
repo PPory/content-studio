@@ -141,6 +141,7 @@ try {
   check("隔离工作区数据库完整性通过", workspace.check().ok);
 } finally {
   await server.close();
+  await server.xenhoClose?.();
   await fs.rm(tempRoot, { recursive: true, force: true });
 }
 

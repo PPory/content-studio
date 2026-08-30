@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { WaitingMark } from "./loaders.jsx";
 import { IconDatabase, IconFileText, IconSearch, IconShieldCheck, IconSparkles } from "../icons.jsx";
 import { ActionCard } from "./ActionCard.jsx";
 import { AssistantMessage } from "./AssistantMessage.jsx";
@@ -32,7 +33,13 @@ export function dedupeConsecutiveActionIds(actionIds = [], actions = []) {
   return visible;
 }
 
-export function Working({ label = "Pi 正在处理", detail = "", startedAt = "" }) {
+/**
+ * ⚠️ **文案里不出现「Pi」。**
+ * 「Pi 正在处理 / 已交给 Pi 模型」把**运行时的实现名**摆在了整屏最显眼的位置，
+ * 而用户在这一刻要认的只有一件事：它还在跑、跑了多久。
+ * 谁在跑是设置里的事，不是每次等待都要复述一遍的事。
+ */
+export function Working({ label = "正在思考", detail = "", startedAt = "" }) {
   const [seconds, setSeconds] = useState(() => elapsedSeconds(startedAt));
   useEffect(() => {
     setSeconds(elapsedSeconds(startedAt));
@@ -45,7 +52,7 @@ export function Working({ label = "Pi 正在处理", detail = "", startedAt = ""
    * 秒数在跳、阶段在换、微光在扫——三样都动的话读不出哪个是主信息；
    * 秒数是**唯一一个精确的数**，它必须是静止可读的那一个。
    */
-  return <div className="assistant-working"><span className="assistant-orbit" aria-hidden="true"><i /></span><div><b>{label}</b><small><ThinkingLine text={stage} sizer="正在等待模型返回" /> · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
+  return <div className="assistant-working"><span className="assistant-working__mark" aria-hidden="true"><WaitingMark size={24} /></span><div><b>{label}</b><small><ThinkingLine text={stage} sizer="正在等待模型返回" /> · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
 }
 
 /**
@@ -88,9 +95,30 @@ export function AssistantStarters({ onPrompt, scope }) {
   </div>;
 }
 
+/**
+ * 按当前时段打招呼。
+ *
+ * ⚠️ **问候语是这一屏唯一一句「对着你说」的话，所以它得知道现在几点。**
+ * 固定文案（原来是「今天想一起想清什么？」）在凌晨两点读起来是错的——
+ * 不是错在语法，是错在它证明了没人在听。时段是这个界面**唯一免费拿得到**的
+ * 个人化信息，用掉它的成本是零。
+ *
+ * ⚠️ **只分五档，不做更细。** 再细就要开始猜「你是不是熬夜了」——
+ * 那已经是在替用户下判断，而问候语没资格干这个。
+ */
+export function greetingFor(hour) {
+  if (hour >= 5 && hour < 11) return "早上好";
+  if (hour >= 11 && hour < 13) return "中午好";
+  if (hour >= 13 && hour < 18) return "下午好";
+  if (hour >= 18 && hour < 23) return "晚上好";
+  return "夜深了";
+}
+
 function EmptyAssistant({ scope }) {
   const reading = scope === "reading";
-  const heading = scope === "global" ? "今天想一起想清什么？" : reading ? "想从这份文档看清什么？" : "这篇内容，下一步做什么？";
+  const heading = scope === "global"
+    ? `${greetingFor(new Date().getHours())}，准备做点什么？`
+    : reading ? "想从这份文档看清什么？" : "这篇内容，下一步做什么？";
   /**
    * ⚠️ **全局这一档没有注脚。**
    *
@@ -102,8 +130,13 @@ function EmptyAssistant({ scope }) {
   const description = reading
     ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
     : scope === "global" ? "" : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
+  /**
+   * ⚠️ **不画那枚圆圈里的 ✦。**
+   * 它是纯装饰：这一页叫「AI 助手」、侧栏那一项也是同一枚 ✦、问候语就在它下面——
+   * 它没有回答任何一个屏幕上还没答过的问题，只是把问候语往下推了 60px。
+   * 这套设计的原则是「动画/装饰说不清目的就不加」，静态装饰同理。
+   */
   return <div className="assistant-empty" data-scope={scope}>
-    <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
     <h3>{heading}</h3>
     {description ? <p>{description}</p> : null}
   </div>;
@@ -140,8 +173,8 @@ export function AssistantThread({
         完整页的那三张由 AssistantPane 摆在输入器下面。 */}
     {!messages.length && !busy && !loading ? <><EmptyAssistant scope={scope} />{starters}</> : null}
     {loading ? <Working label="正在打开对话" /> : null}
-    {messages.map((item, index) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} showIdentity={scope !== "project" || !messages.slice(0, index).some((entry) => entry.role === "assistant")} />{dedupeConsecutiveActionIds(item.actionIds, actions).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
-    {busy && !messages.some((item) => item.pending && item.text) ? <Working label={showRuntime ? "Pi 正在处理" : "AI 正在处理"} detail={activity} startedAt={turnStartedAt} /> : null}
+    {messages.map((item) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} />{dedupeConsecutiveActionIds(item.actionIds, actions).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} />)}</div>)}
+    {busy && !messages.some((item) => item.pending && item.text) ? <Working detail={activity} startedAt={turnStartedAt} /> : null}
     {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={onRetry}>重试</button></div> : null}
     <div ref={endRef} className="assistant-thread__end" aria-hidden="true" />
   </div>;

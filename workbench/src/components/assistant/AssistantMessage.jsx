@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
-import { IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconWand } from "../icons.jsx";
+import { RunningMark } from "./loaders.jsx";
+import { IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconWand } from "../icons.jsx";
 
 /**
  * 复制按钮：**点完必须看得见它成功了。**
@@ -21,7 +22,7 @@ function useCopied(ms = 1_400) {
   }];
 }
 
-export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], capabilities, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "", showRuntime = true, showIdentity = true }) {
+export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], capabilities, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "", showRuntime = true }) {
   const [copied, copy] = useCopied();
   const [userCopied, copyUser] = useCopied();
   const assistant = item.role === "assistant";
@@ -31,11 +32,21 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
-    {/* 身份行：**先说是谁，再说用了什么跑的。**
-        原来这行第一个词是「Pi Agent SDK」——把运行时实现摆在整条回复最显眼的位置，
-        而用户在这一刻要认的是「这段是 AI 说的」。模型和耗时退到行尾的灰字，
-        并且只在完整全局页出现（`showRuntime`）：项目和阅读栏不暴露运行时。 */}
-    {assistant && (showIdentity || working) ? <small>{showIdentity ? <><span className="assistant-message__avatar"><IconSparkles aria-hidden="true" /></span><b>AI 助手</b>{showRuntime && (item.model || item.durationMs) ? <em className="assistant-message__runtime">{[item.model, item.durationMs ? `${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""].filter(Boolean).join(" · ")}</em> : null}</> : null}{working ? <span className="assistant-message__live"><i />{activity || "正在生成回答"}</span> : null}</small> : null}
+    {/**
+      * 身份行。**「✦ AI 助手」那个标签删掉了。**
+      *
+      * 一栏对话里它每条回复重复一次，而它说的事**屏幕上已经说过了**：
+      * 你的话是靠右的灰气泡，它的话是靠左的全宽正文——排版本身就是身份。
+      * 一个一屏出现十次、每次都不带新信息的标签，是纯粹的行噪音。
+      * （这条以前的注释写着「助手那条要标模型和耗时，标签必须留」——
+      * 前半句成立，后半句不成立：要标的是模型，不是「AI 助手」四个字。）
+      *
+      * ⚠️ **模型和耗时留着，但改成指上去才现形。** 它是回执：
+      * 平时不该占版面，而「这条是哪个模型答的、花了多久」在比较两次回答时
+      * 是唯一能回答问题的信息，删掉就再也找不回来了。
+      * 生成中那条 `__live` **一直可见**——它是状态，不是回执。
+      */}
+    {assistant && working ? <small><span className="assistant-message__live"><RunningMark size={14} />{activity || "正在生成回答"}</span></small> : null}
     {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user">{sentAttachments.length ? <div className="assistant-message__attachments">{sentAttachments.map((attachment) => <span key={attachment.id}>{attachment.kind === "image" ? (attachment.previewUrl ? <img src={attachment.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{attachment.name}</span></span>)}</div> : null}{item.text ? <p>{item.text}</p> : null}{item.text ? <footer className="assistant-message__user-actions"><button type="button" data-copied={userCopied ? "true" : undefined} onClick={() => copyUser(item.text)} title={userCopied ? "已复制" : "复制消息"} aria-label={userCopied ? "已复制" : "复制消息"}>{userCopied ? <IconCheck aria-hidden="true" /> : <IconCopy aria-hidden="true" />}</button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer> : null}</div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {/**
@@ -51,6 +62,19 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
       {capabilities.insertCandidate ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插到光标处，带底纹，点别处即落定"} aria-label="插入正文"><IconPlus aria-hidden="true" /></button> : null}
       {capabilities.reviseSelection ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议改写选中的文字"} aria-label="按建议改选区"><IconWand aria-hidden="true" /></button> : null}
       {latestAssistant ? <button onClick={onRegenerate} title="用相同问题重新生成" aria-label="重新生成"><IconRefresh aria-hidden="true" /></button> : null}
+      {/**
+        * 模型和耗时。**排在按钮后面，指到才现形。**
+        *
+        * 它原来在回复上方、和一枚 ✦ 加「AI 助手」排一行：那四个字每条回复重复一次，
+        * 而排版本身已经说清了谁在说话；回执被那个标签带着常驻在最显眼的位置，
+        * 它却是「事后想核对时才用得上」的东西。
+        *
+        * ⚠️ **必须排在按钮后面。** 放前面的那一版即使 `opacity: 0` 也照样占宽度，
+        * 于是复制和重新生成两颗被推到了一段回复的**正中间**——
+        * 屏幕上是「按钮位置怎么跑了」，而按钮自己一行没改。
+        * 透明的东西不占位置，只有当它在末尾时才成立。
+        */}
+      {showRuntime && (item.model || item.durationMs) ? <em className="assistant-message__runtime">{[item.model, item.durationMs ? `${(item.durationMs / 1000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s` : ""].filter(Boolean).join(" · ")}</em> : null}
     </footer> : null}
   </article>;
 });

@@ -1,6 +1,25 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { normalizeWebUrl } from "../lib/web-notes.mjs";
 import { createUlid } from "../storage/ids.mjs";
+
+const TRACKING_KEYS = new Set(["fbclid", "gclid", "dclid", "msclkid", "spm", "ref_src"]);
+
+function normalizeWebUrl(input) {
+  const raw = String(input || "").trim();
+  if (!raw || raw.length > 4096) throw Object.assign(new Error("网页地址无效"), { status: 400 });
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw Object.assign(new Error("网页地址无效"), { status: 400 });
+  }
+  if (!/^https?:$/.test(url.protocol)) throw Object.assign(new Error("只支持 http / https 网页"), { status: 400 });
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    if (key.toLowerCase().startsWith("utm_") || TRACKING_KEYS.has(key.toLowerCase())) url.searchParams.delete(key);
+  }
+  url.searchParams.sort();
+  return url.toString().slice(0, 2048);
+}
 
 async function ready(source) {
   const workspace = await source;

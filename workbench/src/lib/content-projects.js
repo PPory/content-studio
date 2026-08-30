@@ -8,7 +8,7 @@ export const PROJECT_STAGES = ["策划中", "生成中", "写作中", "待发布
 
 export const PROJECT_STAGE_META = {
   策划中: { index: "01", label: "策划", hint: "把想法变成一个可写的任务" },
-  生成中: { index: "02", label: "生成", hint: "流水线正在建立主稿" },
+  生成中: { index: "02", label: "生成", hint: "本地任务正在建立主稿" },
   写作中: { index: "03", label: "写作", hint: "完成、修改并核对主稿" },
   待发布: { index: "04", label: "发布", hint: "排版、发布并记录链接" },
   待复盘: { index: "05", label: "复盘", hint: "补齐数据，留下下一篇的判断" },

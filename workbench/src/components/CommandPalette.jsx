@@ -54,7 +54,7 @@ const TYPE_ICONS = {
 
 const DEBOUNCE = 180; // 中文输入法一个词要敲好几下，太短会把没打完的拼音也搜一遍
 
-export function CommandPalette({ open, onClose, onGo, vaultName }) {
+export function CommandPalette({ open, onClose, onGo }) {
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -156,12 +156,10 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
    * 打开一条结果。**目标是「那一条」，不是「那一条所在的那一页」**——
    * 搜到之后还要自己在列表里再找一遍的话，检索就只做了一半。
    *
-   * 三条去处，按「这东西在工作台里有没有落点」分：
- *  - 有页面也有条目（灵感库/素材库/选题库/稿件库/洞察）→ 跳过去 **并且直接打开正文**
+   * 两条去处，按结果类型分：
+   *  - 有页面也有条目（灵感库/素材库/选题库/稿件库/洞察）→ 跳过去 **并且直接打开正文**
    *    （`setOpenTarget` 放一张一次性的交接条，目标页列表加载完就消费掉）
    *  - 有页面但按整体定位（书、已发布作品）→ 跳过去，那一页自己会落到位
-   *  - **工作台里压根没有它的页面**（归档、网页批注）→ 用 `obsidian://` 在 Obsidian
-   *    里打开那个文件。这比画一行点了没反应的结果强，也比硬造一个只读页诚实。
    */
   const run = useCallback(
     (row) => {
@@ -185,18 +183,9 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
         onClose();
         return;
       }
-      if (go.vaultPath && vaultName) {
-        window.open(
-          `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(go.vaultPath.replace(/\.md$/i, ""))}`,
-          "_blank",
-          "noopener,noreferrer"
-        );
-        onClose();
-        return;
-      }
       if (row.url) window.open(row.url, "_blank", "noopener,noreferrer");
     },
-    [onGo, onClose, q, vaultName]
+    [onGo, onClose, q]
   );
 
   useEffect(() => {
@@ -298,9 +287,6 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
                       </span>
                       <span className="cmdk__side">
                         {row.state ? <span className="tag tag--state" data-tone={stateTone(row.state)}>{row.state}</span> : null}
-                        {/* 只有「会在 Obsidian 里打开」需要提前说：那是离开工作台的动作，
-                            其余的都留在工作台里，说了反而是噪音 */}
-                        {row.go?.vaultPath ? <span className="cmdk__type">在 Obsidian 打开</span> : null}
                         <span className="cmdk__type">{row.typeLabel}</span>
                       </span>
                     </button>

@@ -1,4 +1,4 @@
-const CANDIDATE_TARGET_KINDS = new Set(["draft", "vault-document"]);
+const CANDIDATE_TARGET_KINDS = new Set(["draft", "workspace-document"]);
 
 export const ASSISTANT_SCOPES = Object.freeze({
   global: Object.freeze({

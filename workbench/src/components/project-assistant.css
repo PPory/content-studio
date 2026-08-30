@@ -223,13 +223,26 @@
   display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3);
   color: var(--text-3); font-size: var(--fs-xs);
 }
-.assistant-message > small > b { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
-/* 模型和耗时：**行尾、更淡、只在完整页出现。** 它是回执不是标题 */
+/**
+ * 模型和耗时。**它现在挂在动作条上，而且指上去才现形。**
+ *
+ * ⚠️ 它是**回执**，不是标题：常驻在回复最上面那一版，等于让「事后核对才用得上的东西」
+ * 天天占着整段最显眼的位置。指上去现形和旁边那几颗动作按钮同一个节奏，
+ * 而且它**一直占着位置**（只变透明度，不 `display: none`），所以指上去版面不跳。
+ */
 .assistant-message__runtime {
-  margin-left: auto; overflow: hidden; max-width: 45%;
+  /* ⚠️ **`margin-left` 不是 `margin-right`**：它排在按钮**后面**。
+     排前面的那一版即使透明也占宽度，把复制和重新生成推到了整段回复的正中间。 */
+  display: inline-flex; align-items: center; align-self: center;
+  margin-left: var(--sp-3); overflow: hidden; max-width: 40%;
+  opacity: 0; transition: opacity 0.12s var(--ease);
   color: var(--text-3); font-size: var(--fs-2xs); font-style: normal;
   font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap;
 }
+.assistant-turn:hover .assistant-message__runtime,
+.assistant-turn:focus-within .assistant-message__runtime { opacity: 1; }
+/* 触摸屏没有 hover，那儿一律显示——否则这条信息在手机上永远拿不到 */
+@media (hover: none) { .assistant-message__runtime { opacity: 1; } }
 .assistant-message > p { margin: 0; white-space: pre-wrap; line-height: 1.65; }
 /**
  * 你说的那句：**实心黑气泡、靠右**。
@@ -289,24 +302,12 @@
 /* 流式阶段的原文。**字号行高必须和 `__markdown` 一致**——两者是同一段话的
    前后两帧，差一档的话每条回复收尾时整块字都会跳一下。 */
 .assistant-message__stream { margin: 0; white-space: pre-wrap; font-size: var(--fs-md); line-height: 1.75; }
-/* 助手头像：**安静的浅底圆点，不是实心黑。**
-   这一屏的实心黑名额已经用掉两个（自己的气泡、发送键），
-   而头像一屏会出现五到十次——它是身份标记，不是落点，抢不得。 */
-.assistant-message__avatar {
-  display: inline-grid; place-items: center; width: 20px; height: 20px; flex: none;
-  border: 1px solid var(--border); border-radius: 50%;
-  background: var(--surface); color: var(--text-1);
-}
-.assistant-message__avatar svg { width: 11px; height: 11px; }
 .assistant-message__live {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   color: var(--text-3);
 }
-.assistant-message__live i {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: currentColor;
-  animation: assistant-live-pulse 1.1s ease-in-out infinite;
-}
+/* （原来这里是个自绘的脉冲圆点；现在由 `RunningMark`（`signal`）画。
+   `assistant-live-pulse` 那组 keyframes 别的地方还在用，留着。） */
 @keyframes assistant-live-pulse {
   0%, 100% { opacity: 0.28; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1); }
@@ -450,7 +451,10 @@
    问候、输入器、入口卡是一组一起居中，不是三块各自找位置。 */
 .assistant-empty {
   display: grid; justify-items: center;
-  padding: 0 0 var(--sp-6);
+  /* ⚠️ **底部这段留白就是「问候在上、输入框在下」那条距离。**
+     整组是居中的，所以把这里撑开，上下两头会**同时**往外走——
+     问候语往上、输入器往下，正是要的效果，不需要给两边各写一套位移。 */
+  padding: 0 0 var(--sp-7);
   text-align: center;
 }
 /* 侧栏：输入器贴底，所以空态那一组要**沉到消息区底部**去紧贴它。
@@ -459,14 +463,10 @@
 .assistant-pane--overlay .assistant-thread { display: flex; flex-direction: column; }
 .assistant-pane:not(.assistant-pane--standalone) .assistant-thread > .assistant-empty,
 .assistant-pane--overlay .assistant-thread > .assistant-empty { margin-top: auto; }
-.assistant-empty__mark {
-  display: grid; place-items: center; width: 44px; height: 44px;
-  border: 1px solid var(--border); border-radius: 50%;
-  background: var(--surface); box-shadow: var(--shadow-sm);
-}
-.assistant-empty__mark svg { width: 19px; height: 19px; color: var(--text-1); }
+/* （`.assistant-empty__mark` 那枚圆圈 ✦ 撤了：这一页叫「AI 助手」、侧栏那一项
+   也是同一枚 ✦、问候语就在它下面——它没回答任何一个屏幕上还没答过的问题。） */
 .assistant-empty h3 {
-  margin: var(--sp-6) 0 var(--sp-3);
+  margin: 0 0 var(--sp-3);
   font-family: var(--font-display); font-size: var(--fs-xl); letter-spacing: -0.03em;
 }
 .assistant-empty p { max-width: 380px; margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.7; }
@@ -572,17 +572,11 @@
   .t-think-text { animation: none; }
   .t-think-text::before { display: none; }
 }
-.assistant-orbit {
-  position: relative; flex: none; width: 24px; height: 24px;
-  border: 1.5px solid var(--border-strong); border-top-color: var(--text-1); border-radius: 50%;
-  animation: assistant-orbit 0.8s linear infinite;
-}
-.assistant-orbit i {
-  position: absolute; left: 50%; top: -2.5px; width: 5px; height: 5px;
-  border-radius: 50%; background: var(--text-1); transform: translateX(-50%);
-  box-shadow: 0 0 0 2px var(--surface);
-}
-@keyframes assistant-orbit { to { transform: rotate(360deg); } }
+/* 思考态那颗记号：现在由 `generative-loaders` 的 `InlineLoader variant="orbit"` 画，
+   这里只负责给它一个不塌陷的位置和继承下去的颜色。
+   ⚠️ 原来是自绘的 `@keyframes assistant-orbit`，连同下面 reduced-motion 里给它减速的
+   那一条一起撤了——库自己处理 `prefers-reduced-motion`，两边都减会变成一顿一顿的。 */
+.assistant-working__mark { display: grid; place-items: center; flex: none; color: var(--text-2); }
 
 /* 失败：走全局的告警语义色，不再自带一套砖红 */
 .assistant-error {
@@ -748,7 +742,6 @@
      上一版 30px / 16px 图标在 15px 字阶下整颗缩成一个灰点。 */
   flex: none; width: 34px; height: 34px;
   cursor: pointer;
-  background: var(--accent); color: var(--on-accent);
   transition: background 0.12s var(--ease), color 0.12s var(--ease), transform 0.08s var(--ease);
 }
 /**
@@ -777,6 +770,16 @@
   display: grid; place-items: center;
   width: 34px; height: 34px; padding: 0;
   border: 0; border-radius: var(--r-md);
+  /* ⚠️ **底色和字色也在这条上，不能留在 `.assistant-send`。**
+     容器规则里写着 `background: var(--surface)`（白），(0,1,3) 压过 (0,1,0)——
+     于是「有内容 → 翻成实心黑」这一档**从来没生效过**：打了字，那颗键还是白的，
+     在白色输入器上直接消失。空态反而看得见，因为 `.assistant-send:disabled`
+     是 (0,2,0)、赢得了。**同一颗按钮的三个状态分散在两种特异度上，
+     结果就是最重要的那一档静悄悄地丢了。** */
+  background: var(--accent); color: var(--on-accent);
+}
+.assistant-composer > footer > div > button.assistant-send:disabled {
+  background: var(--send-idle); color: var(--text-2); cursor: default;
 }
 .assistant-send:not(:disabled):active { transform: scale(0.94); }
 /**
@@ -789,8 +792,8 @@
    整颗读成一块糊掉的圆——「看得见」这条要求管的是那个回车符号，不只是那个圆。 */
 .assistant-send:disabled { background: var(--send-idle); color: var(--text-2); cursor: default; }
 .assistant-send svg { width: 20px; height: 20px; flex: none; }
-.assistant-send--stop { background: var(--surface-2); color: var(--text-1); }
-.assistant-send--stop:hover { background: var(--border); }
+.assistant-composer > footer > div > button.assistant-send--stop { background: var(--surface-2); color: var(--text-1); }
+.assistant-composer > footer > div > button.assistant-send--stop:hover { background: var(--border); }
 .assistant-send--stop svg { width: 12px; height: 12px; }
 
 /**
@@ -992,6 +995,16 @@
 .assistant-pane--standalone .assistant-empty__actions button b { font-size: var(--fs-sm); }
 .assistant-pane--standalone .assistant-empty__actions button small { font-size: var(--fs-xs); line-height: 1.5; }
 .assistant-pane--standalone .assistant-empty h3 { font-size: var(--fs-2xl); }
+/**
+ * ⚠️ **完整页这一档要 64px，不是 28px。**
+ *
+ * 上一版加到 28px（连同 h3 自己的下边距一共 48px）——**在 720px 宽、上下几百像素
+ * 空白的一屏里，48px 根本读不出「拉开了」**，用户直接说没看到变化。
+ * 留白要被感知，得和它周围的尺度成比例：这一屏的元素本身就有 34px 的按钮、
+ * 105px 的输入器，48px 只相当于半个输入器。
+ * 64px 之后问候语明显地成了「上面那一句」，而不是贴着输入框的一行标签。
+ */
+.assistant-pane--standalone .assistant-empty { padding-bottom: 64px; }
 .assistant-pane--standalone .assistant-composer { margin-bottom: var(--sp-7); }
 .assistant-pane--standalone .assistant-composer textarea { min-height: 56px; max-height: 200px; }
 .assistant-pane--standalone .assistant-command-menu:not(.assistant-command-menu--models) { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
@@ -1052,7 +1065,11 @@
 .assistant-head-menu-wrap { position: relative; display: flex; }
 .assistant-head-menu {
   position: absolute; z-index: 40; right: 0; top: calc(100% + 6px);
-  min-width: 168px; padding: var(--sp-2);
+  /* ⚠️ **不设 `min-width`，让框贴着内容。**
+     上一版是 `min-width: 168px`，而单独一条「存为知识卡」只要 120px 出头——
+     于是框右边空出四十来像素的死区，读起来就是「字没和框对齐」。
+     一个只有一两项的菜单没有理由被撑成固定宽度；多项时最宽的那条自然定宽。 */
+  padding: var(--sp-2);
   border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); box-shadow: var(--shadow-lg);
 }
@@ -1216,7 +1233,7 @@
 .assistant-history__open b svg { width: 12px; height: 12px; flex: none; color: var(--text-3); }
 .assistant-history__open small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-history__open small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
-.assistant-history__running { display: inline-block; width: 6px; height: 6px; }
+.assistant-history__running { display: inline-grid; place-items: center; flex: none; color: var(--text-3); }
 /**
  * ⚠️ **时间在标题**下面**一行，不再绝对定位到右端。**
  *
@@ -1425,8 +1442,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .assistant-orbit { animation-duration: 1.8s; }
-  .assistant-message__live i { animation-duration: 2.2s; }
   .assistant-thread { scroll-behavior: auto; }
 }
 

@@ -29,11 +29,9 @@ import "@fontsource/source-sans-3/400.css";
 import "@fontsource/source-sans-3/500.css";
 import "@fontsource/source-sans-3/600.css";
 import { App } from "./App.jsx";
-import { runMigrations } from "./lib/migrate.js";
 import "./styles.css";
 
 // **在 render 之前**：挂载之后再改 localStorage 的话，第一帧读到的是旧数据，
 // 屏幕上会先闪一次「还没有阅读记录」。
-runMigrations();
 
 createRoot(document.getElementById("root")).render(<App />);

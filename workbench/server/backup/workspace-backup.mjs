@@ -204,7 +204,7 @@ ${manifest.kind === "full"
 不包含：
 - .env、API key、token、secret 或其他本机密钥。
 - Backups 和 Exports 目录，避免备份递归套娃。
-- 旧 Obsidian vault、飞书、Supabase、D1 或 Worker 的远程副本。
+- 任何不属于当前工作区目录的外部数据或远程副本。
 
 恢复规则：
 1. 先预览数量、表哈希、资源与冲突。

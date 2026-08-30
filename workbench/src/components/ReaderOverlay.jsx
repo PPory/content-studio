@@ -476,7 +476,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
   if (editing) {
     // 编辑器上的字**全由源来说**。写死一个库名的话，书架改的明明是 vault 里的一份 md，
     // 界面却一路说着「保存到流水线」——那是句假话，而且会让人以为书被同步进库里了。
-    const ed = source.edit || { target: "流水线", save: "保存", hint: "" };
+    const ed = source.edit || { target: "工作区", save: "保存", hint: "" };
     return (
       <div className="ws-edit">
         <span className="eyebrow">EDITING · 写回 {ed.target}</span>
@@ -484,7 +484,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
             高亮伴生文件和 Obsidian 双链的锚点，不是「顺手改一下」的东西。
             所以那儿只读地显示一行，不给一个改了却不生效的输入框。 */}
         {doc.editTitle === false ? (
-          <div className="edit-title edit-title--fixed" title="文件名就是标题，要改名去 Obsidian">
+          <div className="edit-title edit-title--fixed" title="标题由书籍记录管理，请回到书架修改">
             {title}
           </div>
         ) : (
@@ -499,7 +499,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
           revisionTitle={title}
           revisionPlatform={doc.meta?.平台 || doc.meta?.适配平台 || item.raw?.platform || ""}
           assistantScope="reading"
-          assistantTarget={{ kind: "vault-document", editable: true }}
+          assistantTarget={{ kind: "workspace-document", editable: true }}
           inlineAiContext={{ profile: writingProfile, materials: [] }}
           onDiscuss={onDiscuss}
           mediaBase={baseDir}
@@ -536,7 +536,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
             options={source.states}
             disabled={busy}
             onChange={changeStatus}
-            title="改状态会直接写回流水线"
+            title="改状态会立即保存到当前工作区"
             ariaLabel="改状态"
           />
         ) : null}

@@ -1,4 +1,4 @@
-// 把一本书变成 vault 里的一个目录。
+// 把一本书解析成可导入当前工作区的目录结构。
 //
 // 磁盘布局（**这是唯一的真源，工作台自己不留副本**）：
 //
@@ -9,9 +9,7 @@
 //     images/00001.jpeg  正文插图（epub 带的）
 //     notes.md           批注（appendNote 写，与本文件无关）
 //
-// 为什么章节是**平铺的 md 文件**而不是一个大文件加锚点：这套东西的另一个读者是
-// Obsidian，一章一个文件在那边才是能双链、能搜、能单独打标签的粒度。而且 30 万字
-// 的书塞进一个文件，浏览器里每次渲染都要重排整本。
+// 章节平铺成 Markdown 文件，便于检索、逐章阅读和可移植导出；超长单文件也无需整本重排。
 //
 // 解析全部在服务端做：epub 是 zip、pdf 要跑 pdfjs，浏览器里做等于把两个解析器
 // 打进前端包，而这台机器上本来就有 Node。
@@ -19,7 +17,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
-import { safeJoin } from "./vault.mjs";
+import { safeJoin } from "./safe-path.mjs";
 
 // 单文件书的上限。超过这个字数还没拆出章节，就按页/按长度硬拆——
 // 十几万字灌进一个 Markdown，阅读区每次渲染都要重排整本。
@@ -84,14 +82,14 @@ export async function importBook(root, shelfDir, { fileName = "", bytes, name = 
       const file = `${num} ${chTitle}.md`;
       const body = chapters[i].text.trim();
       // 正文自己第一行就是同名标题的话，别再写一遍：现在转换器会还原原书的标题层级，
-      // 章名常常已经在正文里了。写两遍的话 Obsidian 里看到的就是重复的一行。
+      // 章名常常已经在正文里了，写两遍会重复显示。
       const head = sameAsTitle(body.split("\n")[0], chTitle) ? "" : `# ${chTitle}\n\n`;
       await fs.writeFile(safeJoin(root, `${dir}/${file}`), `${head}${body}\n`, "utf8");
       written.push({ file, title: chTitle, order: i + 1, chars: chapters[i].text.length });
     }
   }
 
-  // 插图：原样落进 images/，正文里是相对路径 ![](images/xxx)，Obsidian 也认
+  // 插图原样落进 images/，正文只保存可移植的相对路径。
   for (const img of parsed.images || []) {
     const abs = safeJoin(root, `${dir}/${img.name}`);
     await fs.mkdir(path.dirname(abs), { recursive: true });

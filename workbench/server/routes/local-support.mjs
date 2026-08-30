@@ -17,7 +17,7 @@ function guard(handler) {
     try {
       await handler({ ...context, workspace: await ready(context.workspace) });
     } catch (error) {
-      fail(context.res, error.message || "本地兼容操作失败", { status: error.status || 400, hint: error.hint });
+      fail(context.res, error.message || "本地工作区操作失败", { status: error.status || 400, hint: error.hint });
     }
   };
 }
@@ -72,7 +72,7 @@ function generateInsight(workspace, week) {
   const body = [
     `# ${title}`,
     "",
-    "这份报告只依据当前本地工作区的素材生成，没有读取旧 vault、Downloads 或云端业务库。",
+    "这份报告只依据当前本地工作区已保存的素材生成。",
     "",
     ...materials.flatMap((item, index) => [
       `## ${index + 1}. ${item.title}`,
@@ -149,15 +149,13 @@ function importPreview(workspace, parsed, { dry, platform }) {
   };
 }
 
-export const localCompatRoutes = [
+export const localSupportRoutes = [
   { method: "GET", path: "/api/workspace/insights", handler: guard(async ({ workspace, res }) => json(res, { ok: true, exists: true, dir: "SQLite workspace", reports: insightRows(workspace).map(insightDto) })) },
   { method: "GET", path: "/api/workspace/insights/:id", handler: guard(async ({ workspace, res, params }) => { const row=insightRows(workspace).find((item)=>item.id===params.id); if(!row) throw Object.assign(new Error("洞察报告不存在"),{status:404}); json(res,{ok:true,id:row.id,title:row.title,content:row.body,stamp:String(workspace.repository.getEntity(row.id).version),notes:"",noteItems:[],meta:{id:row.id,editedAt:row.updatedAt}}); }) },
   { method: "GET", path: "/api/insights/ready", handler: guard(async ({ workspace, res, url }) => { const week=url.searchParams.get("week")||isoWeek(); const count=workspace.db.prepare("SELECT COUNT(*) AS count FROM materials m JOIN entities e ON e.id=m.id AND e.deleted_at IS NULL").get().count; json(res,{ok:true,week,reportExists:insightRows(workspace).some((item)=>item.locator===`insight:${week}`),materialCount:count,materials:[{source:"workspace",bytes:count}],willFetch:false,missing:[],pending:[],localOnly:true}); }) },
   { method: "GET", path: "/api/insights/run", handler: guard(async ({ workspace, res }) => json(res,{ok:true,run:currentInsightRun(workspace)})) },
   { method: "POST", path: "/api/insights/run", handler: guard(async ({ workspace, req, res }) => { let body={}; try{const chunks=[];for await(const chunk of req)chunks.push(chunk);body=chunks.length?JSON.parse(Buffer.concat(chunks).toString("utf8")):{};}catch{} const week=clean(body.week,20)||isoWeek(); if(!/^\d{4}-W\d{2}$/.test(week)) throw new Error("洞察周次格式不正确"); const started=iso(); saveInsightRun(workspace,{id:`insight-${week}`,week,status:"running",stageLabel:"整理本地素材",percent:20,startedAt:started}); const report=generateInsight(workspace,week); const run=saveInsightRun(workspace,{id:`insight-${week}`,week,status:"done",stageLabel:"已生成本地洞察",percent:100,startedAt:started,finishedAt:iso(),reportId:report.id}); json(res,{ok:true,run,report}); }) },
   { method: "POST", path: "/api/insights/run/cancel", handler: guard(async ({ workspace, res }) => { const current=currentInsightRun(workspace); const run=current?.status==="running"?saveInsightRun(workspace,{...current,status:"cancelled",stageLabel:"已中止",finishedAt:iso()}):current; json(res,{ok:true,run}); }) },
-  { method: "POST", path: "/api/posts/import", handler: guard(async ({ workspace, req, res, url }) => { const filename=url.searchParams.get("filename")||""; const platform=clean(url.searchParams.get("platform")||guessPlatform(filename),80); if(!platform) throw new Error("请先选择这份数据所属的平台"); const bytes=await readRawBody(req,40_000_000); if(!bytes.length) throw new Error("文件是空的"); const parsed=parseExport(bytes,{filename,platform,today:today()}); if(!parsed.rows.length) throw Object.assign(new Error("这份文件里没有能用的行"),{hint:`读到的表头是：${parsed.headers.slice(0,8).join(" / ")||"（空）"}`}); json(res,importPreview(workspace,parsed,{dry:url.searchParams.get("dry")==="1",platform})); }) },
-  { method: "GET", path: "/api/posts/inbox", handler: guard(async ({ res }) => json(res,{ok:true,files:[],dirs:[],disabled:true,reason:"本地优先模式不主动扫描真实 Downloads；请手动选择要导入的文件。"})) },
-  { method: "POST", path: "/api/posts/inbox/import", handler: guard(async ({ res }) => fail(res,"本地优先模式不读取 Downloads 中的文件",{status:410,hint:"请在页面中手动选择导出文件；导入前仍会先显示预览。"})) },
-  { method: "POST", path: "/api/archive/run", handler: guard(async ({ workspace, res }) => { const total=workspace.db.prepare("SELECT COUNT(*) AS count FROM publication_records p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL").get().count; json(res,{ok:true,localOnly:true,total,written:[],skipped:total,message:"发布记录已经保存在当前本地工作区，无需再导出到旧 vault。"}); }) },
+  { method: "POST", path: "/api/workspace/external-publications/import", handler: guard(async ({ workspace, req, res, url }) => { const filename=url.searchParams.get("filename")||""; const platform=clean(url.searchParams.get("platform")||guessPlatform(filename),80); if(!platform) throw new Error("请先选择这份数据所属的平台"); const bytes=await readRawBody(req,40_000_000); if(!bytes.length) throw new Error("文件是空的"); const parsed=parseExport(bytes,{filename,platform,today:today()}); if(!parsed.rows.length) throw Object.assign(new Error("这份文件里没有能用的行"),{hint:`读到的表头是：${parsed.headers.slice(0,8).join(" / ")||"（空）"}`}); json(res,importPreview(workspace,parsed,{dry:url.searchParams.get("dry")==="1",platform})); }) },
+  { method: "POST", path: "/api/workspace/publications/reconcile", handler: guard(async ({ workspace, res }) => { const total=workspace.db.prepare("SELECT COUNT(*) AS count FROM publication_records p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL").get().count; json(res,{ok:true,localOnly:true,total,written:[],skipped:total,message:"发布记录已经保存在当前本地工作区，无需额外归档。"}); }) },
 ];

@@ -68,7 +68,7 @@ export const PLATFORMS = ["公众号", "X", "小红书", "视频号", "YouTube"]
  * 整个失效——状态被直接写回库里，Worker 五分钟内就领走选题、按三个平台跑了三遍 LLM。
  * 这类漏字段不会报错，只会安静地少一个功能。
  */
-function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true, editTarget = "流水线" }) {
+function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stateTabs, facet, pendingKey, askPlatformsOn, quietStates = [], defaultState = "", mapItem, emptyHint, board = true, editable = true, removable = true, editTarget = "工作区" }) {
   return {
     key,
     label,
@@ -177,8 +177,7 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
      * 1. 本地条目进入回收站，正文和关系仍保留。Notion 时代这里是 archived:true——进废纸篓、
      *    30 天可恢复，所以按钮上写的是「移到 Notion 废纸篓」；换成 D1 之后那一层没了，
      *    关联表靠 ON DELETE CASCADE 一起清掉。
-     * 2. vault 里那份归档**移进 `.trash/`，能捞回来**。由本地的
-     *    `/api/pipe/delete` 做，不是 Worker——它够不着你本机。
+     * 2. 当前工作区使用软删除和审计保留恢复能力。
      *
      * **按钮上的字只说第 1 件。** 要点两下的那个动作，写的必须是最不可逆的那部分；
      * 「归档能捞回来」是好消息，放回执里说。一个承诺「可恢复」的按钮，
@@ -197,7 +196,7 @@ function pipelineSource({ key, label, eyebrow, eyebrowCn, sub, states = [], stat
 
     // ⚠️ 同样是换库之后成了假话的一句：批注现在写进流水线自己的 comments 表，
     // 没有第二个客户端能看到它。`annotateLabel` 的职责就是如实说明东西落在哪。
-    annotateLabel: "批注存进流水线，只在这个工作台里看得到",
+    annotateLabel: "批注保存在当前工作区，只在这个应用中显示",
     sourceOf: (item) => item.raw.link || item.title,
   };
 }
@@ -512,7 +511,7 @@ export function summarizeDraftReconcile(result = {}) {
       ready: false,
       topicIds,
       topics,
-      text: "父选题尚未校正：流水线 Worker 未确认 reconcile 结果",
+      text: "父选题尚未校正：当前工作区没有可确认的核对结果",
     };
   }
   if (!topicIds.length && !topics.length) {
@@ -545,36 +544,7 @@ export function summarizeDraftReconcile(result = {}) {
   };
 }
 
-/**
- * 归档清理结果 → 回执上的**第二句**（`archive` 字段由本地 `/api/pipe/delete` 补上）。
- *
- * **删除是两件事**：D1 那一行移入回收站（不可恢复），vault 里那份归档移进 `.trash/`
- *（可恢复）。回执必须把两件都说到——只说前半句，用户会以为 Obsidian 里还留着一份；
- * 只说后半句，又会以为整件事都能捞回来。
- *
- * ⚠️ **回的是独立一句，不是拿分号接在主句屁股后面。** 接成一句的结果是一条
- * 六十多字、在回执条里折成两行的长句，两件可恢复性相反的事糊在一起，
- * 读的人得自己找断点。`Toast` 的 `detail` 槽会把它排成一行淡色小字。
- *
- * ⚠️ **`none` 回空串，不回「没有归档」。** 绝大多数条目本来就没归档过
- * （`vault_path` 为空），每次删都附一句「没有归档要清理」是**每个都说的话，
- * 等于没说**——和信源芯片上不写「已刷新」是同一条。
- *
- * ⚠️ **`failed` 必须带下一步。** 这是唯一一种「屏幕上不说就永远没人知道」的情况：
- * 孤儿文件会一直攒着，而下次你数 Obsidian 里的文件时又对不上了。
- */
-export function summarizeArchiveTrash(archive) {
-  const status = archive?.status;
-  if (status === "trashed") return "Obsidian 里的归档已移进 .trash，能捞回来";
-  if (status === "missing") return "Obsidian 里那份归档早就不在了";
-  if (status === "failed") {
-    return `Obsidian 里的归档没能清掉（${archive.error}），${archive.hint || "去 Obsidian 里手动删掉"}`;
-  }
-  // none，以及旧 Worker 不回 vaultPath 时的 undefined，都保持安静
-  return "";
-}
-
-// ---- vault 里的两个源 ------------------------------------------------------
+// ---- 阅读与洞察源 ----------------------------------------------------------
 
 /**
  * 正文开头那句和标题一模一样的话，去掉。
@@ -606,7 +576,7 @@ export const SHELF = {
   sub: "图书、阅读进度和批注都保存在当前本地工作区",
   emptyHint: "书架还是空的",
   states: [],
-  kind: "vault",
+  kind: "workspace",
 
   async list() {
     const r = await api.books();
@@ -635,7 +605,7 @@ export const SHELF = {
    * 拆成 59 个 notes 文件之后，回头再想找那句话根本无从找起。
    */
   async load(item) {
-    const r = await api.vaultDoc(item.raw.docPath || item.raw.bookPath, item.raw.notePath);
+    const r = await api.workspaceDoc(item.raw.docPath || item.raw.bookPath, item.raw.notePath);
     return {
       title: item.title,
       // 章节文件的第一行就是 `# 章名`，阅读区上面又画了一遍标题——不去掉就是同一句话连着出现两次
@@ -670,7 +640,7 @@ export const SHELF = {
   },
 
   async annotate(item, { quote, body }) {
-    const r = await api.vaultNote({ path: item.raw.notePath, quote, body, source: `[[${item.raw.bookPath}]]` });
+    const r = await api.workspaceNote({ path: item.raw.notePath, quote, body, source: `[[${item.raw.bookPath}]]` });
     return { notes: r.notes, noteItems: r.noteItems || [] };
   },
 
@@ -682,10 +652,10 @@ export const SHELF = {
    * 只传正文：frontmatter 由服务端原样接回去，前端碰都不碰。
    */
   async save(item, { markdown, stamp }) {
-    return api.saveVaultDoc(item.raw.docPath || item.raw.bookPath, markdown, stamp);
+    return api.saveWorkspaceDoc(item.raw.docPath || item.raw.bookPath, markdown, stamp);
   },
   edit: {
-    target: "VAULT",
+    target: "工作区",
     save: "保存到本地工作区",
     // 说清两件用户看不见但会中招的事：这就是 Obsidian 里那个文件；高亮锚的是原文文本
     hint: "保存后当前本地工作区立即更新；改过的句子上原有的高亮可能对不上",
@@ -716,7 +686,7 @@ export const INSIGHTS = {
   kind: "workspace",
 
   /**
-   * 走 `/api/vault/insights` 而不是通用的 vaultTree。
+   * 走专用的工作区洞察端点，而不是通用搜索结果。
    *
    * tree 只回文件名，于是卡片上除了标题什么都没有——**一张只有标题的卡和一行列表没区别，
    * 卡片墙就白做了**。摘要、覆盖周期、字数、洞察卡张数都要读文件才有，所以那一步放服务端。

@@ -157,7 +157,7 @@ export function SideRail({
         <AssistantPane
           scope="reading"
           surface="rail"
-          target={{ kind: "vault-document", editable: false, selection: assistantSelection }}
+          target={{ kind: "workspace-document", editable: false, selection: assistantSelection }}
           scopeId={assistantScopeId || `reader:${knowledgeSource?.ref || "document"}`}
           document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
           promptRequest={assistantPrompt}
@@ -209,7 +209,7 @@ export function SideRail({
  */
 const RAIL_ACTIONS = [
   { key: "note", label: "存为笔记", icon: IconNotes, hint: "只把选中的这段写进 notes.md", group: 1 },
-  { key: "intake", label: "存素材", icon: IconArchive, hint: "存成素材卡，离开这本书进流水线", group: 1 },
+  { key: "intake", label: "存素材", icon: IconArchive, hint: "存成可在其他内容项目复用的素材卡", group: 1 },
   // 选题在这儿**不算套娃**：解释/展开/反驳是「再理解一遍」，套在自己的输出上确实是套娃；
   // 而选题是「把这段变成能发的东西」，是另一种变换。AI 答出来的话里最常有的就是
   // 能直接成稿的那一两句，只能整条存走的话，那一句就得手动复制出去。
@@ -369,7 +369,7 @@ function MarksPanel({ notes, noteItems, onEditNote, onDeleteNote, highlights, on
           <>
             <Md text={notes} />
             {onEditNote ? (
-              <span className="rail-foot__note">这份 notes.md 不是工作台写的格式，改它请去 Obsidian</span>
+              <span className="rail-foot__note">这份旧格式批注暂不支持就地编辑</span>
             ) : null}
           </>
         ) : (
@@ -564,7 +564,7 @@ function AiPanel({ ai, onSave, onStop, onRun, saveLabel }) {
           在正文里选中一段话，工具条上点灯泡（解释）、箭头（展开）、天平（反驳）、A 字（翻译）
           或魔杖（选题，把这段变成能发的标题）。
           <span className="rail-empty__hint">
-            要问它整篇文档、或者要它翻你以前写过的东西，用旁边的「AI 助手」——那条通道能读你整个 vault。
+            要问它整篇文档、或者检索当前工作区的既有内容，请使用旁边的「AI 助手」。
           </span>
         </div>
       </Panel>

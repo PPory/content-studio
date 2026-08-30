@@ -145,7 +145,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
   const allowed = (name) => assertModeTool(mode, name);
   const tools = [];
 
-  tools.push(tool("propose_content_create", "准备新内容候选", "准备工作台新建内容候选。只生成待确认动作，不直接写入 Worker 或正文。", Type.Object({
+  tools.push(tool("propose_content_create", "准备新内容候选", "准备工作台新建内容候选。只生成待确认动作，不直接改写正式正文。", Type.Object({
     title: Type.String({ maxLength: 200 }),
     platform: Type.String({ maxLength: 40 }),
     audience: Type.Optional(Type.String({ maxLength: 500 })),
@@ -209,7 +209,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ mountId, path: resolved.relative, items: entries.filter((item) => !SEARCH_SKIP.has(item.name)).slice(0, 300).map((item) => ({ name: item.name, type: item.isDirectory() ? "directory" : item.isFile() ? "file" : "other" })) });
   }));
 
-  tools.push(tool("workspace_search", "搜索已授权工作区", "按文件名和正文搜索工作台、Obsidian 或用户授权的本地项目。只读。", Type.Object({
+  tools.push(tool("workspace_search", "搜索已授权工作区", "按文件名和正文搜索当前工作区或用户明确授权的本地项目。只读。", Type.Object({
     query: Type.String({ maxLength: 300 }),
     mountId: Type.Optional(Type.String({ maxLength: 80 })),
     maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),

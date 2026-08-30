@@ -31,8 +31,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
-import { ModelSettings } from "./SettingsModels.jsx";
-import { LocalPrompts, PipelinePrompts } from "./SettingsPrompts.jsx";
+import { LocalPrompts } from "./SettingsPrompts.jsx";
 import { SettingsWritingProfile } from "./SettingsWritingProfile.jsx";
 import {
   IconAlertCircle,
@@ -61,7 +60,7 @@ const SEVERITY = { bad: 3, warn: 2, off: 1, ok: 0 };
  * 四次（三条说明各一次 + 保存按钮的显示条件一次），加一段自带保存的就要改四处，
  * 而漏掉哪一处都不报错——只是屏幕上少一句话，或者多一颗管不着这一段的保存按钮。
  */
-const SELF_SAVING = new Set(["models", "writing-profile", "prompts-worker"]);
+const SELF_SAVING = new Set(["writing-profile"]);
 
 /**
  * 等 dev server 重启回来。写 `.env` 会让 Vite 重启（它把 env 文件当配置依赖看着）。
@@ -72,7 +71,7 @@ async function waitForServer(timeoutMs = 15000) {
   await new Promise((r) => setTimeout(r, 400));
   while (Date.now() < until) {
     try {
-      await api.config();
+      await api.status();
       return true;
     } catch {
       await new Promise((r) => setTimeout(r, 500));
@@ -198,11 +197,10 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
       );
     }
     if (item.kind === "writing-profile") return <SettingsWritingProfile onSaved={onSaved} />;
-    if (item.kind === "models") return <ModelSettings />;
     if (item.kind === "prompts-local") {
       return <LocalPrompts data={promptData} draft={pDraft} onChange={setPrompt} guard={promptData?.guard} />;
     }
-    return <PipelinePrompts />;
+    return null;
   }
 
   const dirty = Object.keys(draft).length + Object.keys(pDraft).length + cleared.length;

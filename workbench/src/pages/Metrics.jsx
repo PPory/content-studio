@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { TrendChart, platformColor } from "../components/TrendChart.jsx";
 import { DailyLines } from "../components/DailyLines.jsx";
-import { ErrorNote, Note, Loading, Select, Empty, relTime, FilterHeader, ViewTabs, SearchBox } from "../components/ui.jsx";
+import { ErrorNote, Note, Loading, Select, Empty, FilterHeader, ViewTabs, SearchBox } from "../components/ui.jsx";
 import {
   IconChartBar,
   IconChevronLeft,
@@ -26,8 +26,6 @@ import {
   IconCloudUpload,
   IconDatabase,
   IconExternalLink,
-  IconRefresh,
-  IconSettings,
 } from "../components/icons.jsx";
 import {
   dailyPublish, detailRows, docMatch, extraColumns, fmtExtra, fmtMonth, fmtNum, fmtWeek, inMonth, inWeek,
@@ -161,17 +159,13 @@ const GUIDES = [
   { platform: "视频号", where: "视频号助手 → 数据中心 → 内容数据（导不了就手动录）" },
 ];
 
-function FirstRun({ onDone, onSettings }) {
-  const [error, setError] = useState(null);
+function FirstRun({ onDone }) {
   return (
     <>
       <Note title="还没有任何内容数据">
         这一页的每个数字都来自「一条内容一行」。先去平台后台点一下导出——数据是平台给你的，
-        我们只是换个地方看，工作台不碰任何平台接口，也不会替你登录。下载完直接回这儿，它会自己找到那份文件。
+        我们只是换个地方看，工作台不碰任何平台接口，也不会替你登录。下载后在下面明确选择文件，确认预览再导入。
       </Note>
-      {/* 第一次打开时这块最有用：多半你刚下完文件，它已经在下面等着了 */}
-      <Inbox onDone={onDone} onError={setError} onSettings={onSettings} />
-      <ErrorNote error={error} what="导入" />
       <Importer onDone={onDone} />
       <div className="guide-grid">
         {GUIDES.map((g) => (
@@ -464,7 +458,6 @@ function DetailTab({ rows, month }) {
 /* ---------- 数据来源 ------------------------------------------------------ */
 
 function SourcesTab({ posts, metrics, onPosts, onMetrics, onReload, onSettings }) {
-  const [inboxError, setInboxError] = useState(null);
   const rows = posts.rows;
   const perPlatform = platformsIn(rows).map((p) => {
     const mine = rows.filter((r) => r.platform === p);
@@ -480,10 +473,6 @@ function SourcesTab({ posts, metrics, onPosts, onMetrics, onReload, onSettings }
 
   return (
     <>
-      {/* 自动发现排在手动拖拽**前面**：多数时候你刚从后台下完文件，
-          这一块就已经等在那儿了，根本用不着往下走 */}
-      <Inbox onDone={onReload} onError={setInboxError} onSettings={onSettings} />
-      <ErrorNote error={inboxError} what="导入" />
       <Importer onDone={onReload} />
 
       {perPlatform.length > 0 && (
@@ -550,101 +539,6 @@ function SourcesTab({ posts, metrics, onPosts, onMetrics, onReload, onSettings }
  * 刚下的那个」。而这三步机器全知道答案。**卡片上直接写清导进来会发生什么**
  * （新增几条、更新几条），点之前就知道会不会白点——多数时候答案是「已经导过了」。
  */
-function Inbox({ onDone, onError, onSettings }) {
-  const [data, setData] = useState(null);
-  const [busy, setBusy] = useState("");
-
-  // ⚠️ **要 `return` 那个 promise**：下面 `take()` 得等它，否则「导入中」会提前收掉
-  const scan = useCallback(
-    () => api.postsInbox().then(setData).catch(() => setData({ files: [], dirs: [] })),
-    []
-  );
-  useEffect(() => { scan(); }, [scan]);
-
-  async function take(f, platform) {
-    setBusy(f.id);
-    try {
-      await api.importInbox(f.id, platform);
-      onDone();
-      /**
-       * ⚠️ **重扫必须 `await`。** 不等的话 `finally` 立刻把「导入中…」收掉，
-       * 而 `data` 还是导入前那一份——于是有那么一段时间，界面上写着
-       * **「导入 2 条到小红书」而这 2 条已经导进去了**，点下去是重复导入一次。
-       * 「界面和数据安静地分叉」在这个项目里出过好几次，每次都是没等那一步。
-       */
-      await scan();
-    } catch (e) {
-      onError(e);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  if (!data?.files?.length) return null;
-
-  return (
-    <section className="panel-block">
-      <div className="panel-head">
-        <div className="panel-head__main">
-          <span className="eyebrow">下载文件夹里翻到的</span>
-          <h2>这几份还没导进来</h2>
-        </div>
-        <button className="btn btn-sm" onClick={scan}>
-          <IconRefresh aria-hidden="true" stroke={1.7} />
-          重新扫描
-        </button>
-      </div>
-
-      <div className="inbox">
-        {data.files.map((f) => (
-          <div key={f.id} className="inbox__row">
-            <div className="inbox__main">
-              <strong title={`${f.dir}\\${f.name}`}>{f.name}</strong>
-              <span>
-                {relTime(f.mtime)} · {f.rows} 条
-                {f.added != null ? ` · 新增 ${f.added} / 更新 ${f.updated}` : ""}
-                {f.warnings.length ? ` · ${f.warnings[0]}` : ""}
-              </span>
-            </div>
-            {/* 认出平台的直接给一个按钮；认不出的**不猜**，让人点一下选——
-                猜错了整批数据会挂到别的平台名下，而那是安静的错 */}
-            {f.platform ? (
-              <button
-                className={f.added === 0 ? "btn btn-sm" : "btn btn-primary btn-sm"}
-                disabled={!!busy}
-                onClick={() => take(f, f.platform)}
-              >
-                {busy === f.id ? "导入中…" : f.added === 0 ? `已导过 · 更新 ${f.updated} 条` : `导入 ${f.added} 条到${f.platform}`}
-              </button>
-            ) : (
-              <Select
-                value="选平台"
-                options={PLATFORM_OPTIONS}
-                onChange={(p) => take(f, p)}
-                ariaLabel="这份文件是哪个平台的"
-                renderIcon={(p) => <span className="dot" style={{ background: platformColor(p, false) }} />}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-      {/* 「改 .env 的 DOWNLOADS_DIR」原来是句死胡同：读完之后下一步是去开编辑器，
-          而那一步机器完全可以替你走。拿不到 onSettings 时退回原来那句话 */}
-      <p className="panel-note">
-        只看这两个地方，只认 .xlsx / .xls / .csv：{data.dirs.join("　|　")}。
-        {onSettings ? (
-          <button className="sysrow__btn" onClick={onSettings} style={{ marginLeft: 8 }}>
-            <IconSettings size={14} stroke={1.7} aria-hidden="true" />
-            换个下载目录
-          </button>
-        ) : (
-          <> 改 .env 的 DOWNLOADS_DIR 可以换第一个。</>
-        )}
-      </p>
-    </section>
-  );
-}
-
 const PLATFORM_OPTIONS = ["小红书", "公众号", "抖音", "视频号", "X", "B站", "YouTube"];
 
 function Importer({ onDone }) {

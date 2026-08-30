@@ -148,8 +148,6 @@ const TOOL_LABELS = {
   publication_metrics: "正在读取发布与复盘数据",
   attachment_read: "正在读取附件",
   skill_read: "正在读取 Skill 说明",
-  vault_list: "正在浏览知识库目录",
-  vault_read: "正在读取知识库文档",
   annotation_list: "正在读取批注",
   document_create: "正在准备新建文档候选",
   document_update: "正在准备文档更新候选",

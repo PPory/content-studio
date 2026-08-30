@@ -226,7 +226,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const running = conversation?.activeTurn?.status === "running";
     if (running) {
       setBusy(true);
-      setActivity(conversation.activeTurn.stage || "Pi 正在处理");
+      setActivity(conversation.activeTurn.stage || "正在处理");
       setTurnStartedAt(conversation.activeTurn.startedAt || "");
     } else if (!activeRequestRef.current) {
       setBusy(false);
@@ -807,7 +807,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
               它是「这段对话结束之后要不要留点什么」——**一段对话里最多用一次**，
               而它带字的按钮一直摆在页头上，和每天都点的「新对话」抢同一排位置。
               侧栏和项目栏窄，那儿仍然是直接一颗图标钮：再套一层菜单是多一次点击。 */}
-          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
+          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="预览知识卡；确认后保存到当前本地工作区"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
           {/* ⚠️ **侧栏里没有「历史对话」入口——全局侧栏和项目协作栏都没有。**
               这一栏是「现在这段对话」的地方，翻旧会话是另一件事：完整 AI 工作区那边
               有带搜索和时间分组的历史栏，比在 420px 里塞一个抽屉好用得多。
@@ -846,7 +846,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
                     type="button"
                     role="menuitem"
                     onClick={() => { setMoreOpen(false); setCardOpen(true); }}
-                    title="预览 Markdown 后确认，保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"
+                    title="预览后确认，保存到当前本地工作区"
                   >
                     <IconArchive aria-hidden="true" />
                     存为知识卡

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IconDots, IconPin, IconTrash } from "@tabler/icons-react";
 import { IconArchive, IconPencil, IconSearch, IconX } from "../icons.jsx";
+import { RunningMark } from "./loaders.jsx";
 import { conversationStamp, groupConversationsByTime } from "../../lib/conversation-groups.js";
 import { useClearDissolve } from "../../lib/use-clear-dissolve.js";
 import "../clear-dissolve.css";
@@ -50,7 +51,7 @@ export function AssistantHistory({
       {renameId === item.id ? <form className="assistant-history__rename" onSubmit={(event) => { event.preventDefault(); onSubmitRename(item); }}><input data-rename-id={item.id} value={renameValue} onChange={(event) => onRenameValue(event.target.value)} onBlur={onCancelRename} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancelRename(); } }} aria-label="新的对话名称" /></form> : <button className="assistant-history__open" type="button" aria-current={item.id === conversationId ? "page" : undefined} onClick={() => onOpenConversation(item.id)}>{/* ⚠️ **不再挂一行预览。** 标题就是从首条消息生成的，预览也是首条消息——
     一屏会话每条都把同一句话写两遍，行高翻倍、信息量不变，
     而扫一列会话时真正在扫的是标题。第二行只留给**真信息**：这条还在后台跑。 */}
-<b><span>{item.title}</span>{item.pinnedAt ? <IconPin aria-label="已置顶" /> : null}</b>{item.activeTurn?.status === "running" ? <small><i className="assistant-history__running" />{item.activeTurn.stage || "后台运行中"}</small> : null}<time>{conversationStamp(item, bucket)}</time></button>}
+<b><span>{item.title}</span>{item.pinnedAt ? <IconPin aria-label="已置顶" /> : null}</b>{item.activeTurn?.status === "running" ? <small><span className="assistant-history__running"><RunningMark size={12} /></span>{item.activeTurn.stage || "后台运行中"}</small> : null}<time>{conversationStamp(item, bucket)}</time></button>}
       <button className="assistant-history__more" type="button" onClick={() => onHistoryMenu(item.id)} aria-expanded={historyMenuId === item.id} aria-label={`管理对话：${item.title}`}><IconDots aria-hidden="true" /></button>
       {historyMenuId === item.id ? <div className="assistant-history__menu" role="menu">
         {historyDeleteId === item.id ? <div className="assistant-history__delete-confirm" role="alert"><p>永久删除“{item.title || "这段对话"}”？<small>正文、附件和 Pi 会话记录都会移除，删除后无法恢复。</small></p><div><button type="button" className="is-danger" onClick={() => onManageHistory(item, "delete")} disabled={Boolean(historyPending)}>永久删除</button><button type="button" onClick={() => onHistoryDelete("")} disabled={Boolean(historyPending)}>取消</button></div></div> : <>

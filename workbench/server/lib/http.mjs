@@ -51,7 +51,7 @@ export async function readRawBody(req, limitBytes = 120_000_000) {
   return Buffer.concat(chunks);
 }
 
-// 极简路由匹配：支持 /api/pipe/page/:id 这种命名段。
+// 极简路由匹配：支持 /api/workspace/projects/:id 这种命名段。
 // 没引路由库是因为总共十来条路由，一个 40 行的匹配器比一个依赖更好维护。
 export function matchRoute(routes, method, pathname) {
   for (const route of routes) {

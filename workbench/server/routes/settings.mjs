@@ -7,7 +7,7 @@
 //
 // ⚠️ **写入时空字符串对密钥 = 不改，不是清空。** 面板里的密钥输入框永远是空的
 // （因为读不回来），所以「用户没动它」和「用户想清空它」在请求体里长得一模一样。
-// 按「清空」处理的话，改一下 VAULT_ROOT 就会把 DEEPL_API_KEY 洗掉——
+// 按「清空」处理的话，改一下 XENHO_HOME 就会把 DEEPL_API_KEY 洗掉——
 // **不报错、不白屏**，只是翻译从此不工作。清空必须走显式的 `clear` 数组。
 
 import { json, fail, readJsonBody } from "../lib/http.mjs";
@@ -72,7 +72,7 @@ export const settingsRoutes = [
       const clear = Array.isArray(body?.clear) ? body.clear : [];
       const changes = {};
 
-      // **白名单，不是黑名单**（和 Worker 侧 /wb/update 的 EDITABLE 同一条规矩）：
+      // **白名单，不是黑名单**：
       // 放开任意变量意味着一个笔误就能往 .env 里写进一个谁也不认识的键。
       for (const [key, raw] of Object.entries(values)) {
         if (!WRITABLE.has(key)) continue;
@@ -110,11 +110,8 @@ export const settingsRoutes = [
        * 所以响应里带 `restarting`，由面板等服务回来再刷新（见 SettingsDrawer 的 `waitForServer`）。
        *
        * 下面两行仍然要做：重启是异步的，在它真正发生之前进来的请求得读到新值；
-       * 而 `SNAPSHOT_KEEP_DAYS` 是唯一一个被搬进 `process.env` 的变量
-       *（`safe-write.mjs` 读的是那儿），漏了它这一项就要等重启才生效。
        */
       Object.assign(env, changes);
-      if ("SNAPSHOT_KEEP_DAYS" in changes) process.env.SNAPSHOT_KEEP_DAYS = changes.SNAPSHOT_KEEP_DAYS;
 
       json(res, {
         ok: true,

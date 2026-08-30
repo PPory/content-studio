@@ -14,7 +14,7 @@
 // 书架不走这里——它有自己的三层动线（见 pages/Shelf.jsx）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SOURCES, PIPELINE, summarizeDraftReconcile, summarizeArchiveTrash } from "../lib/sources.js";
+import { SOURCES, PIPELINE, summarizeDraftReconcile } from "../lib/sources.js";
 import { MATERIAL_WORKSPACE } from "../lib/material-workspace.js";
 import { api } from "../lib/api.js";
 import { contextOf } from "../lib/reading.js";
@@ -413,7 +413,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
       }
       setToast({
         text: `《${item.title}》已移入回收站${reconcileText}`,
-        detail: summarizeArchiveTrash(result?.archive),
+        detail: "",
       });
     },
     [source, sourceKey, active, closeItem, onChanged]

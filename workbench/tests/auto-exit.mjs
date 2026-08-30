@@ -12,7 +12,9 @@
  */
 
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,10 +63,11 @@ function check(name, pass, detail = "") {
 }
 
 async function main() {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-auto-exit-"));
   const child = spawn(process.execPath, [SELF, "--serve"], {
     cwd: ROOT,
     // 只有启动器起的那次才装 auto-exit，所以测试必须自己把这面旗举起来
-    env: { ...process.env, WB_LAUNCHER: "1" },
+    env: { ...process.env, WB_LAUNCHER: "1", XENHO_HOME: path.join(tempRoot, "Xenho") },
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
   });
@@ -98,6 +101,7 @@ async function main() {
     check("测试跑完", false, e.message);
   } finally {
     if (alive) child.kill();
+    await fs.rm(tempRoot, { recursive: true, force: true });
   }
 
   const bad = checks.filter((c) => !c.pass);

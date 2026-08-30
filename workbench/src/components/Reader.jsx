@@ -67,7 +67,7 @@ const Prose = memo(function Prose({ html, plain, innerRef }) {
  * （`![](images/00001.jpeg)`，epub 导进来就是这么写的）才能显示出来。
  *
  * 为什么正文里存相对路径而不是直接存 API 地址：vault 的另一个读者是 Obsidian，
- * 相对路径两边都认；写死 `/api/vault/image?path=…` 的话，Obsidian 里就是一堆坏图。
+ * Markdown 外链保持可移植，当前工作区的 asset URI 只在渲染时转换成本地读取地址。
  */
 export function Reader({
   title,
