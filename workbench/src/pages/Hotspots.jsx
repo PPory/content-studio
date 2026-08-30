@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Empty, Loading, Note, FilterHeader, Toast, relTime } from "../components/ui.jsx";
+import { ErrorNote, Empty, Loading, Note, FilterHeader, ViewTabs, Toast, relTime } from "../components/ui.jsx";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import {
@@ -148,20 +148,7 @@ export function Hotspots({ onIntake }) {
         title="近期热点"
         desc="刷新、看原文、收进灵感库。这一页不做分析，也不会替你写。"
         chips={
-          <div className="pill-tabs" role="tablist">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                role="tab"
-                aria-selected={tab === t.key}
-                className="pill-tab"
-                onClick={() => setTab(t.key)}
-              >
-                <t.icon aria-hidden="true" stroke={1.7} />
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <ViewTabs items={TABS} value={tab} onChange={setTab} label="看哪个视角" />
         }
       />
 

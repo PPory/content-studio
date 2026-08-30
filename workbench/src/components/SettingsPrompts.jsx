@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { MarkdownEditor } from "./MarkdownEditor.jsx";
 import { ErrorNote, Note } from "./ui.jsx";
-import { IconAlertTriangle, IconCheck, IconCopy, IconHistory, IconLoader2, IconShieldCheck } from "./icons.jsx";
+import { IconAlertTriangle, IconArrowBackUp, IconCheck, IconCopy, IconHistory, IconLoader2, IconShieldCheck } from "./icons.jsx";
 
 /* ---------- 工作台自己的（改完立刻生效） ---------- */
 
@@ -272,6 +272,14 @@ export function PipelinePrompts() {
                  * 而且要部署才生效——和「改 .env」不是同一件事，共用一个按钮的话，
                  * 按钮上就没法把话说准。
                  */}
+        {/* ⚠️ **是「撤销改动」不是「恢复默认」**：这几项没有出厂默认值，
+            能「恢复」的只有「我改之前是什么样」。见 SettingsOverlay 里同名那颗。 */}
+                {dirty ? (
+                  <button className="btn btn-sm" onClick={() => setDrafts((d) => { const next = { ...d }; delete next[activeId]; return next; })} disabled={!!busy} title="把这个文件改的放回保存前的样子（别的文件不动）">
+                    <IconArrowBackUp size={14} stroke={1.8} aria-hidden="true" />
+                    撤销改动
+                  </button>
+                ) : null}
                 <button className="btn btn-sm btn-primary" onClick={save} disabled={!dirty || !!busy}>
                   {busy === "save" ? "写入中…" : dirty ? "保存到 worker/" : "没有改动"}
                 </button>

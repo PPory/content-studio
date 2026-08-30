@@ -27,10 +27,19 @@
    那句「一个不绑定某篇文章的思考空间…」也撤了：空态里那两行说的是同一件事，
    而空态那两行是真的在回答「现在该干嘛」。
    -------------------------------------------------------------------------- */
+/**
+ * ⚠️ **这一页是白底，不是工作区那档浅灰。**
+ *
+ * 「框架白 · 工作区浅灰」那条针对的是**扫一列条目**的页面；而这一页是读和写的地方，
+ * 和阅读区同类。更要紧的是它直接决定了自己的消息看不看得见：
+ * 气泡用 `--surface-2`，而那个值**就等于** `--sunken`——浅灰气泡压在浅灰底上
+ * 是同一个颜色，屏幕上就是「一句话浮在空气里」，量都不用量。
+ * 底翻成白之后，那一层灰才成立。
+ */
 .assistant-page {
   height: 100%; min-height: 0;
   display: flex; flex-direction: column;
-  background: var(--sunken);
+  background: var(--surface);
 }
 .assistant-page > .assistant-pane { flex: 1 1 auto; min-height: 0; }
 
@@ -50,8 +59,12 @@
   --asst-measure: 100%;        /* 对话列宽：窄容器铺满，完整页收成可读宽度 */
   --asst-gutter: var(--sp-5);  /* 左右沟：消息和输入器共用，保证两者左右对齐 */
   --asst-turn-gap: var(--sp-6);/* 轮次间距：分组靠它，不靠分隔线 */
-  --asst-head-h: 44px;
+  /* ⚠️ 和外壳页头（`--view-head-h`）同高：AI 侧栏就在面板里，
+     两条 header 差 4px 的话，那条线看着像没对齐的两截。 */
+  --asst-head-h: var(--view-head-h, 40px);
 
+  /* `position: relative` 是给历史抽屉和它那层遮罩当定位父级的（见下面） */
+  position: relative;
   min-height: 0; height: 100%;
   display: grid; grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
@@ -87,6 +100,17 @@
    给中间那一组的首尾各一个 `auto`：头留在原处，只有这一组在剩余空间里居中。 */
 .assistant-pane__dialog[data-empty="true"] > .assistant-thread { flex: 0 0 auto; overflow: visible; margin-top: auto; }
 .assistant-pane__dialog[data-empty="true"] > .assistant-empty__actions { margin-bottom: auto; }
+/**
+ * ⚠️ **整组要偏上，不是正中。**
+ *
+ * 两个 auto 外边距把剩余空间**均分**，所以这一组严格落在正中——而正中偏低：
+ * 视线进这一屏是从上往下的，问候语出现在半屏以下时，上面那一大片白读起来是
+ * 「还没加载完」。给底下那一头加一段固定的 padding，两个 auto 就在**剩下的**
+ * 空间里均分，整组因此上移约它的一半。用 vh 是为了在矮窗口里自动让步。
+ */
+.assistant-pane--standalone .assistant-pane__dialog[data-empty="true"] > .assistant-empty__actions {
+  padding-bottom: clamp(0px, 14vh, 140px);
+}
 
 /* 顶上一条：这次对话读的是什么 · 另开一轮。**独立页也只有这一条**，不再有页头。
    ⚠️ `position: relative` 是给项目右栏的上下文面板当定位父级用的——
@@ -109,13 +133,6 @@
   max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--fs-base); font-weight: 600;
 }
-.assistant-history-toggle {
-  display: inline-flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 var(--sp-3); flex: none;
-  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer;
-}
-.assistant-history-toggle:hover,
-.assistant-history-toggle[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); }
-.assistant-history-toggle svg { width: 15px; height: 15px; }
 .assistant-context-style { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-context-style select { max-width: 140px; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-xs); outline: 0; }
 .assistant-context-actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); overflow: visible !important; }
@@ -178,7 +195,8 @@
   min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   padding: var(--sp-7) var(--asst-gutter) var(--sp-4);
   scroll-behavior: smooth;
-  background: var(--sunken);
+  /* 跟着容器走：完整页是白的，侧栏/项目栏仍然是浅灰的 */
+  background: inherit;
 }
 /* 每一轮（消息 + 它带出来的 Action 卡）是一个块，块与块之间靠间距分组。
    ⚠️ **不要再给助手消息加 `border-bottom`。** 上一版每条回复底下一道横线，
@@ -221,20 +239,53 @@
  */
 .assistant-message--user { display: flex; justify-content: flex-end; }
 .assistant-message__user { display: grid; justify-items: end; max-width: min(560px, 84%); }
+/**
+ * ⚠️ **自己发的那条是浅灰底，不是实心黑。**
+ *
+ * 设计系统里「实心黑的几处例外」原来列着「自己发的聊天气泡」，改掉了，理由是**数量**：
+ * 主操作一屏只有一颗，而自己的消息一屏会出现五到十条。十块纯黑顺着右边排下来，
+ * 比左边那些真正要读的回答重得多——一屏最重的东西成了「我刚才说过什么」，
+ * 而那是这屏上你**最不需要再读一遍**的内容。
+ *
+ * 灰底仍然把「这条是我说的」说清楚了（靠右 + 有底 + 圆角缺口朝右下），
+ * 只是不再抢。
+ */
 .assistant-message__user > p {
+  /* ⚠️ **`margin: 0` 不能省。** 这是个裸 `<p>`，不写的话它带着浏览器默认的
+     `margin: 1em 0`——气泡上下各凭空多出一行的高度，而下面那排复制/重发因此
+     离气泡 23px 远，读起来像「下一条消息的开头」而不是这一条的动作。
+     字阶上调之后这个默认值跟着变大，问题也跟着更明显。 */
+  margin: 0;
   max-width: 100%;
   padding: var(--sp-5) var(--sp-6);
   border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
-  background: var(--accent); color: var(--on-accent);
+  background: var(--surface-2); color: var(--text-1);
   font-size: var(--fs-base);
 }
-.assistant-message__user-actions { display: flex; justify-content: flex-end; gap: var(--sp-1); margin-top: var(--sp-2); }
+/**
+ * ⚠️ **操作图标指到才出现。**
+ * 常驻那一版（0.7 透明度）的问题是：一屏十条消息就有二十个小图标顺着右边排下来，
+ * 而它们一天用不了一次。复制和重发是**想起来才用**的动作，不是要一直看见的信息。
+ * ⚠️ `:focus-within` 不能省：键盘 Tab 过来时得看得见，否则等于键盘用不了。
+ */
+.assistant-message__user-actions {
+  /* ⚠️ **贴着气泡，不是隔一行。** 隔开的话它读起来像「下一条消息的开头」，
+     而它是**这一条**的动作——离得远，指向就断了。 */
+  display: flex; justify-content: flex-end; gap: var(--sp-1); margin-top: 2px;
+  opacity: 0; transition: opacity 0.12s var(--ease);
+}
+.assistant-message:hover .assistant-message__user-actions,
+.assistant-message__user-actions:focus-within { opacity: 1; }
 .assistant-message__user-actions > button {
   display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
-  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); opacity: 0.7; cursor: pointer;
+  border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer;
 }
-.assistant-message__user-actions > button:hover { background: var(--surface-2); color: var(--text-1); opacity: 1; }
+.assistant-message__user-actions > button:hover { background: var(--surface-2); color: var(--text-1); }
 .assistant-message__user-actions svg { width: 13px; height: 13px; }
+/* 手指设备上没有 hover，那就一直画着——否则这两个动作在触屏上彻底没有入口 */
+@media (hover: none) {
+  .assistant-message__user-actions { opacity: 1; }
+}
 /* 流式阶段的原文。**字号行高必须和 `__markdown` 一致**——两者是同一段话的
    前后两帧，差一档的话每条回复收尾时整块字都会跳一下。 */
 .assistant-message__stream { margin: 0; white-space: pre-wrap; font-size: var(--fs-md); line-height: 1.75; }
@@ -458,6 +509,69 @@
 .assistant-working b { font-size: var(--fs-base); font-weight: 600; }
 .assistant-working small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-working em { color: var(--text-3); font-size: var(--fs-2xs); font-style: normal; }
+/* 秒数不能被换行的阶段挤走 */
+.assistant-working small { display: flex; align-items: baseline; gap: var(--sp-1); min-width: 0; }
+.assistant-working .t-think { min-width: 0; max-width: 100%; }
+.assistant-working .t-think-sizer { overflow: hidden; text-overflow: ellipsis; }
+
+/* --------------------------------------------------------------------------
+   思考态：微光 + 换行（transitions.dev / Thinking states）
+   --------------------------------------------------------------------------
+   ⚠️ **只用在「等模型返回」这一处**，不要拿去装点别的等待。
+   它存在的理由是那段时间**用户什么都做不了、也不知道要多久**——一行静止的字
+   在十几秒之后和「卡死了」长得一模一样。别处的等待都有别的信号（进度、条数、
+   骨架屏），再加一道微光就只是闪。 */
+.t-think { position: relative; display: inline-block; text-align: left; }
+/* 定宽：给最长的那句。没有它的话换阶段时右边的秒数会被推一下 */
+.t-think-sizer { display: block; visibility: hidden; white-space: nowrap; }
+/**
+ * ⚠️ **`inset: 0` 铺满盒子（不是 `inset: 0 auto 0 0` 让它按内容撑）。**
+ * 按内容撑的话，一旦真实文案比定宽那行长，它就从右边溢出去、压在后面的秒数上——
+ * 那就是「思考态文字重叠」。铺满 + `text-overflow` 之后，最坏情况是省略号，不是叠字。
+ * 自己的 `overflow: hidden` 不影响 `filter: blur()`（filter 作用在渲染结果上，
+ * overflow 裁的是子内容），所以进出场那一下的模糊照旧。
+ */
+.t-think-text {
+  position: absolute; inset: 0;
+  display: block; color: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: t-think-in var(--think-swap) var(--think-ease) var(--think-gap) both;
+}
+/* 微光只扫字形（`background-clip: text`），不扫它后面的底 */
+.t-think-text::before {
+  content: attr(data-text);
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(90deg,
+    transparent 0%, transparent 40%,
+    var(--think-highlight) 50%,
+    transparent 60%, transparent 100%);
+  background-size: 400% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: t-think-shimmer var(--think-shimmer) linear infinite;
+}
+/* 旧的那一行浮在同一格上往上走，两半才是同时动的 */
+.t-think-text--out { animation: t-think-out var(--think-swap) var(--think-ease) both; }
+.t-think-text--out::before { display: none; }
+@keyframes t-think-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+@keyframes t-think-in {
+  from { transform: translateY(var(--think-distance)); filter: blur(var(--think-blur)); opacity: 0; }
+  to { transform: translateY(0); filter: blur(0); opacity: 1; }
+}
+@keyframes t-think-out {
+  from { transform: translateY(0); filter: blur(0); opacity: 1; }
+  to { transform: translateY(calc(var(--think-distance) * -1)); filter: blur(var(--think-blur)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-think-text { animation: none; }
+  .t-think-text::before { display: none; }
+}
 .assistant-orbit {
   position: relative; flex: none; width: 24px; height: 24px;
   border: 1.5px solid var(--border-strong); border-top-color: var(--text-1); border-radius: 50%;
@@ -500,18 +614,40 @@
   position: relative; z-index: 3;
   width: min(var(--asst-measure), calc(100% - var(--asst-gutter) * 2));
   margin: 0 auto var(--sp-5);
-  border: 1px solid var(--border-strong); border-radius: var(--r-lg);
+  /* ⚠️ **圆角比别处大一档。** 这是一屏上最大的那个输入区，`--r-lg`（14px）套在
+     一个 100+px 高的盒子上会显得方；参考的那几个对话框都是 20px 上下。 */
+  border: 1px solid var(--border); border-radius: 20px;
   background: var(--surface);
-  box-shadow: var(--shadow);
-  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+  /* ⚠️ **不画投影。** 这张卡待在这一屏最久，投影会让它一直往前跳一层；
+     它靠圆角和一圈淡边框就已经和背景分开了。 */
+  box-shadow: none;
+  transition: border-color 0.14s var(--ease);
 }
-/* 焦点：**一圈能看见的环**，不是把边框调深一档。
-   上一版 focus 只把 `--border-strong` 换成 `--text-3`，两者在浅底上差不到一档灰，
-   键盘用户按 Tab 走到这儿时看不出焦点落在哪。 */
-.assistant-composer:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent), var(--shadow);
-}
+/**
+ * 焦点：**这张卡浮起来一档**，不是给它描一圈黑边。
+ *
+ * ⚠️ **这里来回过三次，三次都记下来。**
+ *   1. 只把 `--border-strong` 换成 `--text-3` —— 两者在浅底上差不到一档灰，
+ *      键盘用户按 Tab 走到这儿看不出焦点落在哪。
+ *   2. 换成 `border-color: var(--accent)` + 一圈环 —— 焦点是看得见了，
+ *      但 `--accent` 是近黑：**一点进输入框，整张卡就被一圈黑边框住**，
+ *      而这张卡是这一屏待得最久的东西，等于长时间盯着一个最重的形状。
+ *   3. 现在：边框只往下走一档（`--border-strong`），**变化交给投影**——
+ *      从 `--shadow` 长到 `--shadow-lg` 再加一圈很淡的环。读起来是「这张卡抬起来了」，
+ *      和它平时就是一张浮着的卡是同一套语言，而不是临时套上去的另一个形状。
+ *
+ * 投影的变化幅度是够得着的（`--shadow` 8px/6% → `--shadow-lg` 24px/9% + 3px 环），
+ * 不是「差不到一档灰」那种。
+ */
+/**
+ * ⚠️ **焦点只把边框往下走一档，别的什么都不变。**
+ * 这地方来回过四次：①一档灰（看不出焦点）②黑边框 + 环（一点进去整张卡被黑框住）
+ * ③边框一档 + 投影长一档（卡会「跳」一下，而它是这屏待得最久的东西）④现在。
+ * 一档灰确实不显眼，但**这个输入框有比边框强得多的焦点反馈**：
+ * 光标在里面闪、打字立刻出字。真正需要靠边框认焦点的是那些「看不出选中了什么」的控件，
+ * 不是一个正在打字的输入框。
+ */
+.assistant-composer:focus-within { border-color: var(--border-strong); }
 /* 上下文行：贴着输入框上沿，左边距和正文对齐——它说的是「下面这句话会读到什么」，
    缩进对不上就读成了另一块东西 */
 .assistant-composer__context {
@@ -607,22 +743,83 @@
  *   生成中 → 实心方块的停止键（× 在这一屏已经是「关闭」的意思，不能复用）。
  */
 .assistant-send {
-  flex: none; display: grid; place-items: center; width: 30px; height: 30px;
-  border: 0; border-radius: 50%; cursor: pointer;
+  /* ⚠️ **34px，不是 30px。** 它和左边那排控件（＋、权限、模型）是同一行里
+     唯一一颗圆的，也是唯一一颗要被反复点的——比邻居大一圈才读得出主次。
+     上一版 30px / 16px 图标在 15px 字阶下整颗缩成一个灰点。 */
+  flex: none; width: 34px; height: 34px;
+  cursor: pointer;
   background: var(--accent); color: var(--on-accent);
   transition: background 0.12s var(--ease), color 0.12s var(--ease), transform 0.08s var(--ease);
 }
+/**
+ * ⚠️ **几何必须写全路径，短选择器在这一行是赢不了的。**
+ *
+ * `.assistant-composer > footer > div > button` 的特异度是 (0,1,3)，
+ * 而 `.assistant-send` 只有 (0,1,0)——类数相同就比元素数，短的那条**全线落败**。
+ * 它一次吃掉四条：`height: 26px`、`padding: 0 10px`、`border-radius: 999px`、
+ * `border: 1px`。后果在屏幕上是一颗 **34×26 的扁椭圆，回车符还偏右 4px**：
+ *   - 高度被压成 26（我写的 34 只在宽度上生效）→ 圆变扁椭圆；
+ *   - `display` 也被抢成 `inline-flex`，我写的 `place-items: center` 随之失效，
+ *     图标于是靠着左内边距排，而不是居中；
+ *   - 左右各 10px 的 padding 把 34px 的钮挤到只剩 14px 内容。
+ * 而 CSS 里 `height: 34px` / `padding: 0` 都明明白白写着，`getMatchedStylesForNode`
+ * 也报 34px——**得看 `getComputedStyle` 才现形**。
+ *
+ * 这是 `.assistant-composer` / `.assistant-context-actions` 这类
+ * 「容器为常规成员定的规则默默套到特例成员身上」的**第六次**。
+ * 规则：往这两个容器里放非常规控件时，几何一律写到和容器规则同样长的路径上。
+ *
+ * ⚠️ **形状是圆角矩形，不是圆。** 圆的那一版在这一行里是唯一一个正圆
+ *（左边的 ＋、权限、模型全是 pill 或方角），一颗孤立的正圆读着像个头像或状态点；
+ * `--r-md`（10px）和输入器那圈 20px 圆角是同一族，收在一起才像一套。
+ */
+.assistant-composer > footer > div > button.assistant-send {
+  display: grid; place-items: center;
+  width: 34px; height: 34px; padding: 0;
+  border: 0; border-radius: var(--r-md);
+}
 .assistant-send:not(:disabled):active { transform: scale(0.94); }
-/* ⚠️ 空态用 `--border-strong`，不用 `--surface-2`，也不用 `--border`。三个理由：
-   1. `--surface-2`（#f4f4f5）压在白色输入器上几乎看不出边界——那等于没解决「看不见」；
-   2. 项目右栏里用户气泡就是 `--surface-2`，同色的话「我说的话」和「一颗关掉的按钮」长得一样；
-   3. `--border` 在**暗色**下是 #26262c，压在 #151518 的输入器上同样看不见——
-      挑值必须两个主题一起看，只在浅色下试是这条规则最常见的翻车方式。 */
-.assistant-send:disabled { background: var(--border-strong); color: var(--text-3); cursor: default; }
-.assistant-send svg { width: 15px; height: 15px; }
+/**
+ * 空态（没东西可发）的底色走 `--send-idle`，**亮暗各一个值**（定义见 `styles.css`）。
+ * ⚠️ 上一版两个主题共用 `--border-strong`：暗色下够，浅色下那颗灰球太重——
+ * 一颗**关着**的按钮不该看着像个实心块。而直接换成浅值又会在暗色下消失，
+ * 所以只能分开给。这一颗为「只在浅色下试」栽过一次，别再合并回去。
+ */
+/* ⚠️ 空态的**字色**也要跟着调。`--text-3` 压在 `--send-idle` 上是浅灰对浅灰，
+   整颗读成一块糊掉的圆——「看得见」这条要求管的是那个回车符号，不只是那个圆。 */
+.assistant-send:disabled { background: var(--send-idle); color: var(--text-2); cursor: default; }
+.assistant-send svg { width: 20px; height: 20px; flex: none; }
 .assistant-send--stop { background: var(--surface-2); color: var(--text-1); }
 .assistant-send--stop:hover { background: var(--border); }
 .assistant-send--stop svg { width: 12px; height: 12px; }
+
+/**
+ * 「跳到底部」。一颗浮在输入框正上方的圆钮，翻上去之后才出现（判据见 `AssistantPane`）。
+ *
+ * ⚠️ **这一层 `height: 0`。** 按钮是绝对定位挂在它上面的，所以它出现和消失都
+ * **不会把输入框顶动一下**——正在打字时输入框自己往下跳，是最惹人烦的那类抖动。
+ *
+ * ⚠️ **不画成实心。** 它盖在正文最后几行上面，实心色块会把那几行整段挖掉一块；
+ * 白底 + 一圈边框 + 一点投影既读得出「浮着」，又还能看见它盖住的是什么。
+ */
+.assistant-jump { position: relative; height: 0; display: grid; place-items: center; }
+.assistant-jump button {
+  position: absolute; bottom: var(--sp-3); z-index: 1;
+  display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  /* ⚠️ **边框和投影都要比常规重一档。** 这颗是白的、压在白底的正文上，
+     用 `--border` + `--shadow-sm` 那一版在屏幕上只剩一个孤零零的箭头穿过一行字——
+     圆和字混在一起，读不出「这是浮在上面的一颗按钮」。
+     它是这一屏唯一一个**盖在内容上**的控件，得自己把自己和背景分开。 */
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface); color: var(--text-2);
+  box-shadow: var(--shadow); cursor: pointer;
+  animation: assistant-jump-in 0.16s var(--ease) both;
+  transition: color 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.assistant-jump button:hover { color: var(--text-1); border-color: var(--border-strong); }
+.assistant-jump svg { width: 17px; height: 17px; }
+@keyframes assistant-jump-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .assistant-jump button { animation: none; } }
 
 .assistant-attachments {
   display: flex; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5) 0; overflow-x: auto;
@@ -759,7 +956,9 @@
    独立页的密度：一栏可读宽度居中，输入器跟着居中
    -------------------------------------------------------------------------- */
 .assistant-pane--standalone {
-  --asst-measure: 768px;
+  /* 768 → 720：Circle 的 agent 页是 `max-w-2xl`（672px）。
+     中文行长比西文更吃宽度，所以取中间那一档，不照抄 672。 */
+  --asst-measure: 720px;
   --asst-gutter: clamp(var(--sp-5), 4vw, 40px);
   --asst-turn-gap: var(--sp-8);
 }
@@ -769,25 +968,202 @@
 .assistant-pane--standalone .assistant-pane__context { padding-inline: var(--asst-gutter); }
 .assistant-pane--standalone .assistant-pane__context > div:first-child { gap: var(--sp-2); }
 .assistant-pane--standalone .assistant-thread { padding-top: var(--sp-8); }
+/**
+ * ⚠️ **入口卡比输入框窄，而且比它轻。**
+ *
+ * 上一版和输入框**等宽等重**（同样的 720px、同样的白底描边、104px 高）。
+ * 屏幕上的结果是两块一样分量的东西上下叠着，而它们的地位差得远：
+ * 输入框是这一屏要你做的事，三张卡只是「你也可以从这儿起头」。
+ * 等宽等重就是把「可选项」画成了「必答题」。
+ *
+ * 现在窄一档（92%）、矮一档（min-height 去掉）、字小一档，让它读起来像是
+ * 挂在输入框下面的三条建议，而不是另一组主控件。
+ */
 .assistant-pane--standalone .assistant-empty__actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-4);
+  gap: var(--sp-3);
+  width: min(calc(var(--asst-measure) * 0.92), calc(100% - var(--asst-gutter) * 2));
 }
 .assistant-pane--standalone .assistant-empty__actions button {
-  grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--sp-4);
-  min-height: 104px; padding: var(--sp-5) var(--sp-6);
+  grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4);
 }
+.assistant-pane--standalone .assistant-empty__actions button > svg { width: 26px; height: 26px; padding: 6px; }
+.assistant-pane--standalone .assistant-empty__actions button b { font-size: var(--fs-sm); }
+.assistant-pane--standalone .assistant-empty__actions button small { font-size: var(--fs-xs); line-height: 1.5; }
 .assistant-pane--standalone .assistant-empty h3 { font-size: var(--fs-2xl); }
 .assistant-pane--standalone .assistant-composer { margin-bottom: var(--sp-7); }
 .assistant-pane--standalone .assistant-composer textarea { min-height: 56px; max-height: 200px; }
 .assistant-pane--standalone .assistant-command-menu:not(.assistant-command-menu--models) { right: auto; width: min(420px, calc(100% - var(--sp-8))); }
 
-/* 独立助手才有历史列。它与消息区同高，不另套卡片；收起后对话重新占满。 */
-.assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 248px minmax(0, 1fr); }
+/**
+ * ⚠️ **页头里的会话动作是无框的。** 它们和外壳自己的图标钮（`.rail-icon`，AI 键）
+ * 并排站在同一条页头上——一边有框一边没框的话，读起来像两组不相干的按钮，
+ * 而它们其实是同一条栏上的同一类东西。带字的那两颗（存为知识卡、后台任务）保留边框：
+ * 有字就有形状，不需要框去把它圈出来。
+ */
+.view-head .assistant-context-actions button:not(:has(span)) {
+  border-color: transparent; background: transparent;
+}
+.view-head .assistant-context-actions button:not(:has(span)):hover {
+  border-color: transparent; background: var(--surface-2); color: var(--text-1);
+}
+
+/* --------------------------------------------------------------------------
+   会话入口：**标题即入口**
+   -------------------------------------------------------------------------- */
+/**
+ * ⚠️ **常驻的 248px 历史列撤了，别加回来。**
+ *
+ * 它的问题不是做得不好，是**常驻**：翻旧会话是偶尔一次的动作，而那一列在你
+ * 不翻的时候（绝大多数时候）白占八分之一屏宽，把本来就要收窄到 720px 的对话列
+ * 又往边上挤了一截。而打开它的那颗按钮上写着「历史对话」，页头左边又写着
+ * 当前对话的标题——**同一件事（你在哪段对话里）分在两处**。
+ *
+ * 照 ln-dev7/circle 的 agent 页：页头左边就是「当前对话标题 ⌄」，点开是这块浮层。
+ * 浮层里的东西一样不少（搜索 / 最近·已归档 / 分组 / 重命名·置顶·归档·删除）。
+ */
+/* 页头正中：这一段叫什么 + 一枚改名的笔 */
+.assistant-title-wrap { position: relative; min-width: 0; display: flex; align-items: center; gap: var(--sp-1); }
+.assistant-title {
+  display: inline-flex; align-items: center; min-width: 0;
+  height: 28px; border: 0; background: transparent;
+  color: var(--text-1); font: inherit; font-size: var(--fs-base); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.assistant-title--static { cursor: default; }
+/* 页头上那一排图标钮：`≡`（历史）和 `⋯`（更多）。和外壳的 `.rail-icon` 同一个尺寸，
+   但它属于这一页、不属于外壳，所以不共用那个类——共用的话别的页也会跟着变。 */
+.assistant-head-icon {
+  display: grid; place-items: center; width: 28px; height: 28px; flex: none;
+  padding: 0; border: 0; border-radius: var(--r-ctl);
+  background: transparent; color: var(--text-3); cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.assistant-head-icon:hover,
+.assistant-head-icon[aria-expanded="true"] { background: var(--surface-2); color: var(--text-1); }
+.assistant-head-icon svg { width: 16px; height: 16px; }
+
+/**
+ * 页头右端那颗 `⋯` 拉开的一小列。**图标 + 一个短词，一行一件事。**
+ * ⚠️ 说明放 `title`，不画在行里：菜单是「有哪几件事」，不是「每件事的说明书」——
+ * 把一句四十字的说明当成行文案的那一版，屏幕上只剩那句话，短词反而没了。
+ */
+.assistant-head-menu-wrap { position: relative; display: flex; }
+.assistant-head-menu {
+  position: absolute; z-index: 40; right: 0; top: calc(100% + 6px);
+  min-width: 168px; padding: var(--sp-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+/**
+ * ⚠️ **这几条要压过 `.assistant-context-actions button` 那一串，所以写全路径。**
+ *
+ * 这是同一个坑的**第四次**：`.assistant-context-actions` 上挂着
+ * `button:not(:has(span)) { width: 28px; padding: 0 }`（给只有图标的按钮用的），
+ * 而它是**后代**选择器——菜单长在那个容器里，于是菜单项被压成 28px 宽的方块，
+ * 「存为知识卡」五个字整个溢出到框外。屏幕上就是「菜单排版莫名其妙地坏了」，
+ * 而没有任何一行代码报错。
+ *
+ * **规则：往 `.assistant-context-actions` 里放任何不是「一颗图标钮」的东西之前，
+ * 先想清楚那条后代选择器会怎么套上去。** 前三次分别是：模型菜单分组、
+ * 权限按钮的定位父级、标题下拉里的「最近 / 已归档」两颗 tab。
+ */
+.assistant-context-actions .assistant-head-menu button,
+.assistant-head-menu button {
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--sp-3);
+  width: 100%; height: 34px; padding: 0 var(--sp-3);
+  border: 0; border-radius: var(--r-ctl); background: transparent;
+  color: var(--text-2); font: inherit; font-size: var(--fs-base); white-space: nowrap; cursor: pointer;
+}
+.assistant-context-actions .assistant-head-menu button:hover,
+.assistant-head-menu button:hover { background: var(--surface-2); color: var(--text-1); }
+.assistant-head-menu svg { width: 16px; height: 16px; flex: none; }
+/**
+ * 标题旁边那颗笔：**平时不画，指到标题这一组才现形。**
+ * 常驻的话页头上就是「标题 ⌄ ✎」三个记号并排，而其中两个（下拉、改名）
+ * 一天用不了一次——它们会一直和真正要读的那个东西（当前对话叫什么）抢位置。
+ * ⚠️ `:focus-within` 不能省：键盘 Tab 过来时它得看得见，否则等于键盘用不了。
+ */
+.assistant-title-rename {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
+  padding: 0; border: 0; border-radius: var(--r-ctl);
+  background: transparent; color: var(--text-3); cursor: pointer;
+  opacity: 0; transition: opacity 0.12s var(--ease), background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.assistant-title-wrap:hover .assistant-title-rename,
+.assistant-title-wrap:focus-within .assistant-title-rename { opacity: 1; }
+/* 手指设备没有 hover，一直画着——否则触屏上改名彻底没有入口 */
+@media (hover: none) { .assistant-title-rename { opacity: 1; } }
+.assistant-title-rename:hover { background: var(--surface-2); color: var(--text-1); }
+.assistant-title-rename svg { width: 13px; height: 13px; }
+/* 改名时就地变成输入框，宽度和标题那一档对齐——换成一个更宽的框会让整条页头跳一下 */
+.assistant-title-edit { display: flex; min-width: 0; }
+.assistant-title-edit input {
+  width: min(320px, 40vw); text-align: center; height: 28px; padding: 0 var(--sp-3);
+  border: 1px solid var(--accent); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-1);
+  font: inherit; font-size: var(--fs-base); font-weight: 600; outline: 0;
+}
+/**
+ * 抽屉 + 遮罩。
+ *
+ * ⚠️ **遮罩是功能不是装饰。** 上一版是挂在标题下的浮层，点外面就关——
+ * 慢慢往下翻的时候手一滑点到正文，整块就没了，得重新开、重新滚。
+ * 盖住正文之后就没有「误点正文」这回事，同时它自己说清了「这是临时的一层」。
+ *
+ * ⚠️ **两者都通顶**：它们 portal 进外壳的 `.app__frame-overlay`（`lib/view-slots.js`
+ * 的第四个插槽），所以从窗口最上沿起、把页头一起盖住。
+ * 上一版只盖到页头以下，屏幕上是上亮下暗的一截，读成了「这块渲染坏了」。
+ * 开关不会因此丢：抽屉自己右上角有一颗收起钮。
+ */
+.assistant-history-scrim {
+  position: absolute; inset: 0; z-index: 30;
+  /* 和全站覆盖层同一个 token（`--scrim-bg`），暗色下它自己会翻。
+     暗色遮罩的余量很小，那一段的算术写在 `styles.css` 定义处。 */
+  background: var(--scrim-bg);
+  /* ⚠️ **0.14s 太快，快到读不出「有东西滑进来了」。**
+     这一下要解释的是「正文被盖住了、这是临时的一层」，而 140ms 在屏幕上就是
+     「啪」地换了一帧——用户说的「直接弹出来」就是这个。0.26s 是能看清
+     那块面板从左边推进来、又不至于等它的一档。遮罩比抽屉略快收尾，
+     免得抽屉都停住了背景还在压暗。 */
+  animation: assistant-scrim-in 0.26s var(--ease) both;
+}
+.assistant-history-drawer {
+  position: absolute; z-index: 31; left: 0; top: 0; bottom: 0;
+  width: min(288px, 76vw);
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+  animation: assistant-drawer-in 0.3s var(--ease) both;
+}
+/**
+ * 抽屉的头和页头等高。**收起钮靠右**——参考里就在右上角。
+ * ⚠️ 上一版把它压在页头那颗 `≡` 的正上方（「屏幕上就是同一颗按钮」）。
+ * 想法成立，但抽屉推开之后视线是从左边那一列标题**往右**走的，
+ * 收起它的动作该在那条路的终点；左上角那个位置留给这一列自己的名字。
+ */
+.assistant-history-drawer__head {
+  flex: none; display: flex; align-items: center; justify-content: flex-end;
+  height: 56px; padding: 8px var(--sp-4) 0;
+}
+.assistant-history-drawer__head .assistant-head-icon { width: 34px; height: 34px; }
+.assistant-history-drawer__head .assistant-head-icon svg { width: 19px; height: 19px; }
+
+@keyframes assistant-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+/* ⚠️ **进场是「推进来」不是「淡出来」**：位移在说「它从屏幕外面来的、还会回去」，
+   纯淡入说不了这件事。整幅 -100% 配 0.3s 走完，比 0.18s 那一版看得清得多。 */
+@keyframes assistant-drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+/* ⚠️ 位移只在**进场**：它在解释「这块从哪儿来」。而进来之后每一次重渲染都跟着滑一下
+   就是纯噪音——`both` 让它停在终态，不是循环。 */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-history-scrim,
+  .assistant-history-drawer { animation: none; }
+}
 .assistant-history {
-  min-width: 0; min-height: 0; overflow: hidden;
+  min-width: 0; min-height: 0; height: 100%; overflow: hidden;
   display: grid; grid-template-rows: auto auto minmax(0, 1fr);
-  border-right: 1px solid var(--border); background: var(--surface);
+  background: var(--surface);
 }
 /* 顶上这一行现在是搜索，不是标题——名字在打开它的那颗按钮上已经写过一次了 */
 .assistant-history > header { display: flex; align-items: center; padding: var(--sp-4) var(--sp-4) var(--sp-2); }
@@ -833,7 +1209,7 @@
 /* 一条会话现在是单行：标题 + 右侧日期。预览撤了（和标题重复），行高从 ~56px 降到 34px，
    同样高度的侧栏里能一眼扫到的会话数翻了一倍——这才是历史列表的用处。 */
 .assistant-history__open { position: relative; display: grid; gap: var(--sp-1); width: 100%; min-width: 0; min-height: 34px; align-content: center; border: 0; border-radius: inherit; padding: var(--sp-2) 34px var(--sp-2) var(--sp-4); background: transparent; color: var(--text-2); text-align: left; cursor: pointer; }
-.assistant-history__open b { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding-right: 34px; font-size: var(--fs-sm); font-weight: 500; }
+.assistant-history__open b { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; font-size: var(--fs-sm); font-weight: 500; }
 .assistant-history__item[data-current="true"] .assistant-history__open b { color: var(--text-1); font-weight: 600; }
 .assistant-history__open b span,
 .assistant-history__open small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -841,10 +1217,17 @@
 .assistant-history__open small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-history__open small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
 .assistant-history__running { display: inline-block; width: 6px; height: 6px; }
-.assistant-history__open time { position: absolute; right: var(--sp-4); top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+/**
+ * ⚠️ **时间在标题**下面**一行，不再绝对定位到右端。**
+ *
+ * 右端那一版有个说不通的地方：`⋯` 也在右端，所以**指上去的时候时间就消失了**
+ * （下面那两条 `opacity: 0` 就是为它写的）——一条信息只在你不看它的时候存在。
+ * 挪到第二行之后两者各占一边，谁也不用给谁让位，也和参考一致。
+ * 代价是每条从 34px 长到约 50px，一屏少几条；换来的是时间**一直**在。
+ */
+.assistant-history__open time { display: block; color: var(--text-3); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
 /* hover 出「更多」时日期让位——两者都钉在右侧，同时出现会叠字 */
-.assistant-history__item:hover .assistant-history__open time,
-.assistant-history__item:has(.assistant-history__more[aria-expanded="true"]) .assistant-history__open time { opacity: 0; }
+/* （时间挪到第二行之后，「指上去就让位」这条不需要了——它和 `⋯` 不再抢同一块地方。） */
 .assistant-history__more { position: absolute; z-index: 2; right: var(--sp-1); top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer; opacity: 0; }
 .assistant-history__item:hover .assistant-history__more,
 .assistant-history__more[aria-expanded="true"] { opacity: 1; }
@@ -891,7 +1274,7 @@
  *
  * 现在和全局侧栏、阅读侧栏同一种形态：只有一道 `border-left`，顶到上边、落到下边。
  * 用负 margin 抵掉 `.project-workspace__grid` 的上下内边距——
- * 这个技法本文件外的 `.main__inner > .page-bar` 已经用过一次，理由相同：
+ * 这个技法本文件外的 `.view-head` 已经用过一次，理由相同：
  * 要让某一块铺到容器边缘，而容器的内边距是给它的兄弟准备的。
  */
 .project-assistant {
@@ -901,7 +1284,7 @@
   background: var(--surface);
   margin: -18px 0 -32px;
   position: sticky; top: 0;
-  height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - var(--project-block-h));
+  height: calc(100vh - var(--shell-chrome-h) - var(--project-bar-h) - var(--project-block-h));
 }
 
 /* 页签：**一条轻底分段控件**，和页内 tab 是同一个记号，不再是一整条 wash 色带 */
@@ -1031,13 +1414,12 @@
   .project-assistant[hidden] { display: none; }
 
 .project-assistant { position: relative; top: 0; height: min(680px, calc(100vh - 120px)); }
-  .assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 200px minmax(0, 1fr); }
 }
 
 @media (max-width: 680px) {
   .assistant-pane--standalone .assistant-empty__actions { grid-template-columns: 1fr; }
-  .assistant-pane--standalone:has(.assistant-history) { grid-template-columns: 1fr; }
-  .assistant-pane--standalone .assistant-history { display: none; }
+  /* 窄屏抽屉跟着容器收，但**不藏**：藏掉等于这台机器上再也翻不到旧会话 */
+  .assistant-history-drawer { width: min(260px, 82vw); }
   .assistant-context-note { display: none; }
   .assistant-composer__model { max-width: 150px; }
 }
@@ -1314,7 +1696,7 @@
 .project-assistant[data-reviewing="true"] { position: absolute; visibility: hidden; pointer-events: none; }
 .project-workspace__grid:has(> .project-assistant[data-reviewing="true"]) { grid-template-columns: minmax(0, 1fr); }
 
-.project-report-review { grid-column: 1 / -1; min-width: 0; height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - var(--project-block-h) - 28px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.project-report-review { grid-column: 1 / -1; min-width: 0; height: calc(100vh - var(--shell-chrome-h) - var(--project-bar-h) - var(--project-block-h) - 28px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
 .project-workspace__grid:has(> .project-report-review) > .project-draft { display: none; }
 .project-report-review > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-5); min-height: 54px; padding: var(--sp-3) var(--sp-5); border-bottom: 1px solid var(--border); }
 .project-report-review > header > div { min-width: 0; display: grid; gap: 1px; }
@@ -1368,7 +1750,7 @@
 @media (max-width: 1180px) {
   .project-workspace__grid { grid-template-columns: minmax(0, 1fr); }
   .project-assistant:not([hidden]) {
-    position: fixed; z-index: 45; top: calc(var(--topbar-h) + var(--project-bar-h) + var(--sp-4)); right: var(--sp-4); bottom: var(--sp-4);
+    position: fixed; z-index: 45; top: calc(var(--shell-chrome-h) + var(--project-bar-h) + var(--sp-4)); right: var(--sp-4); bottom: var(--sp-4);
     width: min(336px, calc(100vw - var(--sp-8))); height: auto; max-height: none; box-shadow: var(--shadow-lg);
   }
   .project-workspace__grid:has(> .project-assistant[data-collapsed="true"]) { grid-template-columns: minmax(0, 1fr); }

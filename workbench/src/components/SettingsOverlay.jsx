@@ -5,9 +5,19 @@
  * 全是说明文字，字段反而藏在里面。左栏一分之后右边一次只画一段；而且**左栏每项能挂一枚
  * 状态记号**，不用逐段翻就知道哪一段出了事——这才是左导航在这儿真正的价值。
  *
- * ⚠️ **切段不能丢改动。** `draft` 挂在这一层，左栏切的只是「右边画哪一段」。
- * 丢了的话「改 A → 去 B 改一下 → A 白改了」，而且不报错、看不出来。
- * 底下那条动作条常驻，数字是**跨段总数**。
+ * ⚠️ **切段不能丢改动。** `.env` 字段和工作台提示词的 `draft` 挂在这一层，
+ * 左栏切的只是「右边画哪一段」。丢了的话「改 A → 去 B 改一下 → A 白改了」，
+ * 而且不报错、看不出来。底下那条动作条常驻，数字是**跨段总数**。
+ *
+ * ⚠️ **自带状态的那三段（模型 / 我的创作 / 流水线提示词）靠「访问过就留着」保命。**
+ * 它们各自 fetch、各自存草稿，`draft` 那条规矩管不到；上一版是条件渲染，
+ * 切走就卸载——粘了一半的模型名、刚弹出来的校验错误、改到一半的提示词全没了，
+ * 回来还要再等一次「读取中…」。现在**访问过的段一直留在 DOM 里**，只是用 `hidden`
+ * 藏起来（`hidden` 同时管住了三件事：不显示、Tab 走不进去、读屏读不到——
+ * 只写 `opacity: 0` 的话它还在 Tab 序列里，那正是 `use-dialog.js` 一直在防的那类问题）。
+ *
+ * **没访问过的段仍然惰性**：它们一挂载就会去打接口（模型清单、写作画像、提示词目录），
+ * 一进设置就全量预热等于每次开面板都白打三四个请求。
  *
  * ⚠️ **密钥输入框永远是空的**（服务端根本不回值，连掩码都不回）。所以「用户没动它」
  * 和「用户想清空它」在提交时长得一模一样——判据在服务端：**留空 = 不改**，
@@ -26,6 +36,7 @@ import { LocalPrompts, PipelinePrompts } from "./SettingsPrompts.jsx";
 import { SettingsWritingProfile } from "./SettingsWritingProfile.jsx";
 import {
   IconAlertCircle,
+  IconArrowBackUp,
   IconCircleCheck,
   IconCircleDashed,
   IconCircleX,
@@ -42,6 +53,15 @@ import {
 const CHECK_ICONS = { ok: IconCircleCheck, warn: IconAlertCircle, bad: IconCircleX, off: IconCircleDashed };
 // 左栏那枚记号取这一段里**最坏**的一条。off 不参与「坏」的排序：可选能力没配是正常态
 const SEVERITY = { bad: 3, warn: 2, off: 1, ok: 0 };
+
+/**
+ * **自己带保存按钮的那几段**：它们写的不是本机 `.env`，所以不跟着底部那条动作条走。
+ *
+ * ⚠️ **收成一个常量，别再散着写三遍 `kind === "..."`。** 这个判断原来在页脚出现了
+ * 四次（三条说明各一次 + 保存按钮的显示条件一次），加一段自带保存的就要改四处，
+ * 而漏掉哪一处都不报错——只是屏幕上少一句话，或者多一颗管不着这一段的保存按钮。
+ */
+const SELF_SAVING = new Set(["models", "writing-profile", "prompts-worker"]);
 
 /**
  * 等 dev server 重启回来。写 `.env` 会让 Vite 重启（它把 env 文件当配置依赖看着）。
@@ -74,6 +94,12 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(null);
+  /**
+   * 访问过哪几段。**只增不减**（在这一次打开期间），用来决定哪些面板留在 DOM 里。
+   * 每次重新打开面板会清空——不清的话，上次翻过的段会在打开的瞬间一起挂载、
+   * 一起打接口，而这一次你可能只是来改一个路径。
+   */
+  const [visited, setVisited] = useState([]);
   const boxRef = useDialog(open, onClose);
 
   const load = useCallback(
@@ -105,6 +131,7 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
     setError(null);
     setSaved(null);
     setConfirm(false);
+    setVisited([]);
     load();
     // 打开就自动检一遍：这个面板的用处就是**不用你问**就告诉你哪儿不对
     verify();
@@ -113,11 +140,6 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
   const items = useMemo(() => (data?.nav || []).flatMap((g) => g.items), [data]);
   const current = items.find((i) => i.key === active) || items[0];
   const fieldsOf = useCallback((key) => (data?.fields || []).filter((f) => f.group === key), [data]);
-  // 这一段里已经被某个字段认领的自检，段尾不再重复画一遍
-  const boundChecks = useMemo(
-    () => new Set(fieldsOf(current?.key).map((f) => f.check).filter(Boolean)),
-    [fieldsOf, current]
-  );
   const checkById = useMemo(() => Object.fromEntries((checks || []).map((c) => [c.id, c])), [checks]);
 
   // 左栏那枚记号：这一段自检里最坏的一条。没有自检的段不画（不画一个恒为绿的假勾）
@@ -130,7 +152,58 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
     [checkById]
   );
 
+  /**
+   * 记下这一段被访问过。
+   * ⚠️ **跟着 `current?.key` 走而不是 `active`**：数据还没回来时 `items` 是空的、
+   * `current` 是 undefined，而 `active` 已经有值了——按 `active` 记的话会把一个
+   * 还没有对应面板的 key 记进去，然后渲染出一个空壳。
+   */
+  useEffect(() => {
+    if (!open || !current?.key) return;
+    setVisited((v) => (v.includes(current.key) ? v : [...v, current.key]));
+  }, [open, current?.key]);
+
   if (!open) return null;
+
+  /**
+   * 画一段的正文。**按传进来的 `item` 画，不看 `current`**——这一层现在会把访问过的
+   * 每一段都画出来（只藏不卸），拿 `current` 的话所有段画的都是同一份内容。
+   */
+  function renderPane(item) {
+    if (item.kind === "env") {
+      const bound = new Set(fieldsOf(item.key).map((f) => f.check).filter(Boolean));
+      return (
+        <>
+          {fieldsOf(item.key).map((f) => (
+            <Field
+              key={f.key}
+              field={f}
+              draft={draft[f.key]}
+              cleared={cleared.includes(f.key)}
+              onChange={(v) => setField(f.key, v)}
+              onToggleClear={() => toggleClear(f.key)}
+              check={f.check ? checkById[f.check] : null}
+              checking={checking}
+            />
+          ))}
+          {/* 段尾只剩**没有字段可挂**的那几条（对话引擎压根没有输入框；
+              Worker 和 Firecrawl 各自跨两个字段）。有字段的都收进标题旁边那枚点了——
+              三条「已配」并排堆在段尾时，每一条说的话都等于没说。 */}
+          {(item.checks || [])
+            .filter((id) => !bound.has(id))
+            .map((id) => (
+              <CheckRow key={id} check={checkById[id]} loading={checking} />
+            ))}
+        </>
+      );
+    }
+    if (item.kind === "writing-profile") return <SettingsWritingProfile onSaved={onSaved} />;
+    if (item.kind === "models") return <ModelSettings />;
+    if (item.kind === "prompts-local") {
+      return <LocalPrompts data={promptData} draft={pDraft} onChange={setPrompt} guard={promptData?.guard} />;
+    }
+    return <PipelinePrompts />;
+  }
 
   const dirty = Object.keys(draft).length + Object.keys(pDraft).length + cleared.length;
 
@@ -149,6 +222,37 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
   const toggleClear = (key) => {
     touch();
     setCleared((c) => (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]));
+  };
+
+  /**
+   * 这一段有没有改动 / 把这一段的改动撤掉。
+   *
+   * ⚠️ **是「撤销改动」不是「恢复默认」。** 抄的那个 macOS 应用每段都有一颗
+   * `Restore Defaults`，但它那些是字号、语言这类**有默认值**的偏好；
+   * 我们这几段大半是 API key 和路径——**一把密钥没有「默认值」**，
+   * 唯一能「恢复」的动作是清空，而那是破坏性的，已经有每个字段自己的「清除」管着。
+   * 真正有用、而且每一段都定义得清楚的是：把我刚才改的放回去。
+   *
+   * ⚠️ **按段算，不按全局算。** 底下那颗保存是跨段的（数字是总数），
+   * 而这一颗只管眼前这一段——两者算同一个范围的话，「撤销」会把你在别的段
+   * 改好的东西一起吞掉，而屏幕上看不出来。
+   */
+  const paneKeys = (item) => (item?.kind === "env" ? fieldsOf(item.key).map((f) => f.key) : []);
+  const paneDirty = (item) => {
+    if (!item) return 0;
+    if (item.kind === "prompts-local") return Object.keys(pDraft).length;
+    const keys = paneKeys(item);
+    return keys.filter((k) => k in draft).length + keys.filter((k) => cleared.includes(k)).length;
+  };
+  const revertPane = (item) => {
+    touch();
+    if (item.kind === "prompts-local") {
+      setPDraft({});
+      return;
+    }
+    const keys = new Set(paneKeys(item));
+    setDraft((d) => Object.fromEntries(Object.entries(d).filter(([k]) => !keys.has(k))));
+    setCleared((c) => c.filter((k) => !keys.has(k)));
   };
 
   async function save() {
@@ -189,6 +293,10 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
       setSaving(false);
     }
   }
+
+  // 这一段自己带保存按钮吗（写的不是本机 .env）。判断收在 `SELF_SAVING` 一处，
+  // 页脚那两处都问它——原来是同一串 `kind === "..."` 抄了四遍
+  const selfSaving = SELF_SAVING.has(current?.kind);
 
   const envPath = data?.envPath || "";
   const envShort = envPath.split(/[\\/]/).slice(-2).join("/") || ".env";
@@ -249,47 +357,70 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
           ) : !current ? null : (
             <>
               <div className="set-pane__head">
-                <h3 className="set-pane__title">{current.label}</h3>
+                <div className="set-pane__heading">
+                  <h3 className="set-pane__title">{current.label}</h3>
+                  {/**
+                    * ⚠️ **只在这一段真有改动时才画。** 一颗永远在那儿、大半时候点了
+                    * 没反应的「撤销」，和一个灰着的按钮一样：它占着位置却不回答任何问题。
+                    */}
+                  {paneDirty(current) ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm set-pane__revert"
+                      onClick={() => revertPane(current)}
+                      title="把这一段改的放回保存前的样子（不影响别的段）"
+                    >
+                      <IconArrowBackUp aria-hidden="true" stroke={1.8} />
+                      撤销这一段（{paneDirty(current)}）
+                    </button>
+                  ) : null}
+                </div>
                 <p className="field-hint">{current.desc}</p>
+                {/**
+                  * 「存到哪、什么时候生效」。⚠️ **它必须紧挨着它说的那件事。**
+                  * 上一版这句话是页脚里三个硬编码的 `<span>`：只覆盖 12 段里的 3 段，
+                  * 而且离面板抬头隔着大半屏——读到「已保存」的人不会低头去页脚
+                  * 找「其实还要部署一次」。真源在 `settings-schema.mjs` 的 `applies`。
+                  */}
+                {current.applies ? (
+                  <p className="set-pane__applies">
+                    <IconAlertCircle size={13} stroke={1.8} aria-hidden="true" />
+                    {current.applies}
+                  </p>
+                ) : null}
               </div>
 
               <ErrorNote error={error} what="设置" />
               {saved ? <SavedNote saved={saved} /> : null}
-
-              {current.kind === "env" ? (
-                <>
-                  {fieldsOf(current.key).map((f) => (
-                    <Field
-                      key={f.key}
-                      field={f}
-                      draft={draft[f.key]}
-                      cleared={cleared.includes(f.key)}
-                      onChange={(v) => setField(f.key, v)}
-                      onToggleClear={() => toggleClear(f.key)}
-                      check={f.check ? checkById[f.check] : null}
-                      checking={checking}
-                    />
-                  ))}
-                  {/* 段尾只剩**没有字段可挂**的那几条（对话引擎压根没有输入框；
-                      Worker 和 Firecrawl 各自跨两个字段）。有字段的都收进标题旁边那枚点了——
-                      三条「已配」并排堆在段尾时，每一条说的话都等于没说。 */}
-                  {(current.checks || [])
-                    .filter((id) => !boundChecks.has(id))
-                    .map((id) => (
-                      <CheckRow key={id} check={checkById[id]} loading={checking} />
-                    ))}
-                </>
-              ) : current.kind === "writing-profile" ? (
-                <SettingsWritingProfile onSaved={onSaved} />
-              ) : current.kind === "models" ? (
-                <ModelSettings />
-              ) : current.kind === "prompts-local" ? (
-                <LocalPrompts data={promptData} draft={pDraft} onChange={setPrompt} guard={promptData?.guard} />
-              ) : (
-                <PipelinePrompts />
-              )}
             </>
           )}
+
+          {/**
+            * ⚠️ **访问过的段全留在 DOM 里，只把不当前的那些 `hidden` 掉。**
+            *
+            * 用 `hidden` 而不是 `display: none` 的 class，也不是 `opacity: 0`：
+            * 这一个属性同时管住「不显示 + Tab 走不进去 + 读屏读不到」三件事，
+            * 而 `opacity: 0` 只管住第一件——藏起来的那几段的输入框仍然在 Tab 序列里，
+            * 那正是 `use-dialog.js` 一直在防的那类问题（看不见但按得到）。
+            *
+            * 没访问过的段**不在这个数组里**，所以仍然是惰性的：它们一挂载就会去打接口
+            *（模型清单、写作画像、提示词目录），一进设置就全量预热等于每次白打三四个请求。
+            *
+            * ⚠️ **代价写在这儿：`.set-pane` 底下从此可能有同名元素的多份拷贝。**
+            * 任何 `document.querySelector(".set-pane .xxx")` 都可能命中一个**藏起来的**那份——
+            * 拿到的元素是真的、也确实在 DOM 里，只是永远不可见。冒烟测试已经栽过一次
+            *（等一个明明画着的元素，超时 20 秒中断整轮）。要按选择器找东西的话，
+            * 一律带上 `.set-pane__slot:not([hidden])`。
+            */}
+          {data
+            ? items
+                .filter((it) => visited.includes(it.key))
+                .map((it) => (
+                  <div key={it.key} className="set-pane__slot" hidden={it.key !== current?.key}>
+                    {renderPane(it)}
+                  </div>
+                ))
+            : null}
         </div>
       </div>
 
@@ -301,24 +432,15 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
           {checking ? "检查中…" : "重新检查"}
         </button>
 
-        {current?.kind === "models" ? (
+        {/**
+          * ⚠️ **这三段原来在这儿各挂一句「它写的是哪儿、什么时候生效」，撤了。**
+          * 那句话搬进了面板抬头（`applies`，真源在 `settings-schema.mjs`）：
+          * 它描述的是上面那一段，读的人不会低头来页脚找。
+          * 页脚只留**这条动作条自己的事**——你在别的段还欠着几项没保存。
+          */}
+        {selfSaving ? (
           <span className="field-hint set-overlay__note">
-            这一段在上面单独保存——它写的是 Worker 的库，不是本机 .env。
-            {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
-          </span>
-        ) : null}
-
-        {current?.kind === "writing-profile" ? (
-          <span className="field-hint set-overlay__note">
-            这一段在上面单独保存。它只影响之后新建的内容，不会重写已有项目。
-            {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
-          </span>
-        ) : null}
-
-        {current?.kind === "prompts-worker" ? (
-          <span className="field-hint set-overlay__note">
-            这一段在上面单独保存——它写的是 worker/ 的文件，而且要部署一次才生效。
-            {dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
+            这一段在上面单独保存。{dirty ? `另有 ${dirty} 项设置改动没保存。` : ""}
           </span>
         ) : null}
 
@@ -330,7 +452,7 @@ export function SettingsOverlay({ open, onClose, onSaved }) {
          * 「没有改动」了（管的是当前那个 .md），底下再来一个一模一样的灰按钮，
          * 两个长得一样、管的却是两回事——看图才发现的。
          */}
-        {(current?.kind === "prompts-worker" || current?.kind === "models" || current?.kind === "writing-profile") && !dirty ? null : confirm ? (
+        {selfSaving && !dirty ? null : confirm ? (
           <>
             <button className="btn" onClick={() => setConfirm(false)} disabled={saving}>
               取消

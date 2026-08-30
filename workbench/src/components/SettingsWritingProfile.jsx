@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
-import { IconCheck, IconLoader2 } from "./icons.jsx";
+import { IconArrowBackUp, IconCheck, IconLoader2 } from "./icons.jsx";
 
 export function SettingsWritingProfile({ onSaved }) {
   const [data, setData] = useState(null);
@@ -221,6 +221,14 @@ export function SettingsWritingProfile({ onSaved }) {
 
       <div className="profile-save">
         {saved ? <span><IconCheck aria-hidden="true" />已保存，下一篇开始生效</span> : <span />}
+        {/* ⚠️ **是「撤销改动」不是「恢复默认」**：这几项没有出厂默认值，
+            能「恢复」的只有「我改之前是什么样」。见 SettingsOverlay 里同名那颗。 */}
+        {dirty ? (
+          <button className="btn" onClick={() => { setSaved(false); setForm({ audience: data.audience || "", platform: data.platform || "公众号", styleId: data.styleId || "" }); }} disabled={busy} title="把这一段改的放回保存前的样子">
+            <IconArrowBackUp size={14} stroke={1.8} aria-hidden="true" />
+            撤销改动
+          </button>
+        ) : null}
         <button className="btn btn-primary" onClick={save} disabled={!dirty || busy}>
           {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{dirty ? "保存我的创作" : "已经是最新"}
         </button>

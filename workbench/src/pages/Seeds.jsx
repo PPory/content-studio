@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { FilterHeader, StatePill, ErrorNote, Loading, Empty, relTime } from "../components/ui.jsx";
+import { FilterHeader, ViewTabs, StatePill, ErrorNote, Loading, Empty, relTime } from "../components/ui.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import { startWriting } from "../lib/start-writing.js";
 import { IconArrowUpRight, IconBulb, IconLoader2, IconPencil, IconPlus, IconTrash } from "../components/icons.jsx";
@@ -114,13 +114,12 @@ export function Seeds({ onGo, onChanged }) {
         title="选题"
         desc="这里放的是你已经有一句判断的候选。决定今天写哪一条，再进入创作。"
         chips={
-          <div className="chips chips-sm" aria-label="按状态筛选">
-            {["攒着", "写了", "不写了"].map((s) => (
-              <button key={s} className="chip" aria-pressed={status === s} onClick={() => setStatus(s)}>
-                {s} {counts[s] ?? 0}
-              </button>
-            ))}
-          </div>
+          <ViewTabs
+            items={["攒着", "写了", "不写了"].map((s) => ({ key: s, label: s, count: counts[s] ?? 0 }))}
+            value={status}
+            onChange={setStatus}
+            label="按状态筛选"
+          />
         }
         action={
           /**

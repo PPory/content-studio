@@ -14,9 +14,15 @@
 import { useCallback, useRef } from "react";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
+import { useViewSlots } from "../lib/view-slots.js";
 
 export function Assistant({ conversationId, onConversationChange }) {
   const pageRef = useRef(null);
+  /**
+   * ⚠️ **这一页不画自己的 header，它把左右两段交给外壳的页头。**
+   * 各画一条的话屏幕上就是两条 40px 的横栏叠着——上一版顶栏时代的老毛病换了个位置。
+   */
+  const slots = useViewSlots();
   const focusAssistant = useCallback(() => pageRef.current?.querySelector(".assistant-composer textarea")?.focus({ preventScroll: true }), []);
   useAssistantSummonTarget("global-page", focusAssistant);
   return (
@@ -30,6 +36,7 @@ export function Assistant({ conversationId, onConversationChange }) {
         initialConversationId={conversationId}
         onConversationChange={onConversationChange}
         draftStorageKey="workbench:quick-assistant-draft:v1"
+        headerSlots={slots}
       />
     </section>
   );

@@ -246,6 +246,21 @@ export async function fetchModels({ limit = 20 } = {}) {
       // 每格都是「小字标签 + 值」两段，标签要剥掉：`评测73.8%` 里我们只要 73.8%
       const valueOf = (cls) => cell(cls)?.querySelector("strong")?.textContent?.trim() || "";
       const money = [...(cell("lb-pricing")?.querySelectorAll("strong") || [])].map((e) => e.textContent.trim());
+      /**
+       * ⚠️ **共识分取 `<strong>` 里的数，不是整格的 `textContent`。**
+       *
+       * 对方在这一格里加了「证据可信度」的说明之后，`textContent` 会把
+       * 「89.7证据可信度可信度高已有至少 6 类独立证据…」**整段**吞回来。
+       * 而前端那一列只有 68px 宽：一段话在里面逐字换行，一行撑到七百多像素高、
+       * 文字溢出整张表——**而没有任何地方报错**，它只是「数据长这样」。
+       * 其余几格早就是走 `valueOf()`（取 strong）的，这一格是漏的那个。
+       *
+       * 兜底再抓一次数字：对方哪天把 `<strong>` 也去掉时，宁可拿到「89.7」，
+       * 也不要拿回一整段话。两条都落空就留空，`items` 那道过滤会把这行丢掉。
+       */
+      const scoreCell = cell("lb-score");
+      const score = valueOf("lb-score")
+        || (scoreCell?.textContent?.match(/\d+(?:\.\d+)?/)?.[0] || "");
       const href = row.getAttribute("href") || "";
       const logoBox = cell("lb-brand-logo");
       return {
@@ -263,7 +278,7 @@ export async function fetchModels({ limit = 20 } = {}) {
         completeness: valueOf("lb-completeness"),
         inPrice: money[0] || "",
         outPrice: money[1] || "",
-        score: cell("lb-score")?.textContent?.trim() || "",
+        score,
         link: href ? (href.startsWith("http") ? href : `${ORIGIN}${href}`) : "",
       };
     });

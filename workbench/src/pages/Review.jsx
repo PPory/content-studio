@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, FilterHeader, Empty } from "../components/ui.jsx";
+import { ErrorNote, Loading, FilterHeader, ViewTabs, Empty } from "../components/ui.jsx";
 import { platformColor } from "../components/TrendChart.jsx";
 import { fmtNum, metricLabel, METRIC_KEYS } from "../lib/posts.js";
 import { IconArrowRight, IconCheck, IconChartBar, IconLink } from "../components/icons.jsx";
@@ -79,13 +79,12 @@ export function Review({ onGo }) {
         title="复盘"
         desc="一篇一篇地留下判断和下一步，数字只是依据，不是结论。"
         chips={
-          <div className="chips chips-sm" aria-label="按状态筛选">
-            {LANES.map((l) => (
-              <button key={l.key} className="chip" aria-pressed={lane === l.key} onClick={() => setLane(l.key)}>
-                {l.label} {counts[l.key] ?? 0}
-              </button>
-            ))}
-          </div>
+          <ViewTabs
+            items={LANES.map((l) => ({ key: l.key, label: l.label, count: counts[l.key] ?? 0 }))}
+            value={lane}
+            onChange={setLane}
+            label="按状态筛选"
+          />
         }
       />
 

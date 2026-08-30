@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../../lib/api.js";
 import { documentVersion } from "../../lib/document-version.js";
 import { ASSISTANT_SURFACES, resolveAssistantPolicy } from "../../lib/assistant-policy.js";
 import { EXPERT_KINDS } from "../../lib/expert-kinds.js";
+import { useDialog } from "../../lib/use-dialog.js";
 import { transitionActionResult } from "../../lib/ai/result-model.js";
 import { KnowledgeCardDialog } from "../KnowledgeCardDialog.jsx";
-import { IconArchive, IconArrowsDiagonal, IconHistory, IconLayoutSidebarRight, IconPlus, IconX } from "../icons.jsx";
+import { IconArchive, IconArrowDown, IconArrowsDiagonal, IconChatList, IconDots, IconEdit, IconLayoutSidebarRight, IconPencil, IconX } from "../icons.jsx";
 import { AssistantComposer } from "./AssistantComposer.jsx";
 import { AssistantHistory } from "./AssistantHistory.jsx";
 import { AssistantStarters, AssistantThread } from "./AssistantThread.jsx";
@@ -92,7 +94,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, projectContext = null, onExpertRun = null, onCollapse }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onExpertRun = null, onCollapse }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -124,10 +126,41 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [conversationItems, setConversationItems] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  /**
+   * 抽屉的键盘规矩走 `use-dialog.js` 那一份（Esc、焦点进出、焦点归还）。
+   *
+   * ⚠️ **`modal: false`，尽管它有遮罩。** `modal: true` 会给背景整块加 `inert`，
+   * 而背景里包含**页头**——那上面正是唯一那颗关它的按钮（标题）。
+   * 挡住点击这件事由遮罩自己做（它铺在正文上、并且自己带 onClick 关闭），
+   * 页头留在遮罩外面，照旧能点。
+   * `outsideIgnore` 排掉标题自己：不排的话「点标题关闭」会先被外部点击关一次、
+   * 再被 onClick 开一次，屏幕上看着是点不灭。
+   */
+  const historyRef = useDialog(historyOpen, () => setHistoryOpen(false), {
+    modal: false,
+    dismissOnPointerDownOutside: true,
+    /**
+     * ⚠️ **这里要排掉的是「开它的那颗按钮」，不是标题。**
+     * 开关从标题换成 `≡` 的时候这一行漏改了，后果是**点 `≡` 关不掉抽屉**：
+     * 外部点击先把它关掉，紧接着 onClick 又把它打开，屏幕上就是「点了没反应」。
+     * 抽屉通顶之后它自己也带了一颗收起钮，两颗都要排掉。
+     */
+    outsideIgnore: ".assistant-head-icon",
+  });
   const [historyView, setHistoryView] = useState("recent");
   const [historyMenuId, setHistoryMenuId] = useState("");
   const [historyDeleteId, setHistoryDeleteId] = useState("");
   const [renameId, setRenameId] = useState("");
+  // 页头上那一颗笔（改当前这段的名字）。和浮层里逐条重命名共用 `renameValue`——
+  // 两处不可能同时开着，各存一份只会多一个要同步的状态
+  const [titleEditing, setTitleEditing] = useState(false);
+  // 页头右端那颗 `⋯`。规矩走 `use-dialog.js`（Esc、点外面、焦点归还）
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useDialog(moreOpen, () => setMoreOpen(false), {
+    modal: false,
+    dismissOnPointerDownOutside: true,
+    outsideIgnore: ".assistant-head-menu-wrap",
+  });
   const [renameValue, setRenameValue] = useState("");
   const [historyPending, setHistoryPending] = useState("");
   const [models, setModels] = useState([]);
@@ -223,7 +256,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
      *   否则起一段新的。侧栏那段要带进整页，走「⤢ 在完整工作区继续」。
      */
     const shouldResume = surface === "rail" || !historyEnabled || Boolean(initialConversationId);
-    setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(shouldResume);
+    setMessages([]); setActions([]); setAttachments([]); setConversationId(""); setConversationTitle("新对话"); setError(null); setUploadError(""); setLoading(shouldResume); setTitleEditing(false);
     if (shouldResume) api.assistantConversation(scopeId, initialConversationId).then((result) => { if (!cancelled) applyConversation(result.conversation); }).catch((next) => { if (!cancelled) setError(next); }).finally(() => { if (!cancelled) setLoading(false); });
     if (historyEnabled) api.assistantConversations(scopeId).then((result) => { if (!cancelled) setConversationItems(result.conversations?.items || []); }).catch(() => {});
     api.assistantModels().then((result) => {
@@ -276,10 +309,35 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     window.document.addEventListener("keydown", key, true);
     return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key, true); };
   }, [permissionOpen, menu, historyMenuId, historyDeleteId, renameId]);
-  function scrollThreadToEnd() {
+  /**
+   * ⚠️ **别把这个函数直接当回调传出去。** 它现在收一个参数，而
+   * `requestAnimationFrame(scrollThreadToEnd)` 会把**时间戳**塞进 `behavior`——
+   * 浏览器直接抛 `'13760' is not a valid enum value of type ScrollBehavior`，
+   * 而抛出的地方是流式输出的每一帧。下面那处已经包成箭头函数了。
+   */
+  function scrollThreadToEnd(behavior = "instant") {
     const thread = endRef.current?.closest(".assistant-thread");
-    if (thread) thread.scrollTo({ top: thread.scrollHeight, behavior: "instant" });
+    if (thread) thread.scrollTo({ top: thread.scrollHeight, behavior });
   }
+
+  /**
+   * 「跳到底部」。**只在你真的翻上去了才出现**——一颗常驻的按钮在你本来就在底部时
+   * 是纯噪音，而它压在输入框正上方，那是这一屏最贵的一块地方。
+   *
+   * ⚠️ **判据是「离底还有多远」，不是「有没有滚动过」。** 一轮回答正在流式写入时，
+   * 内容每几十毫秒长一次，`scrollTop` 一直在变而人并没有动——按「滚动过」算的话
+   * 它会在生成过程中不停闪。留 120px 的余量：那大约是一行半，
+   * 差这么点还弹一颗按钮出来，只会让人以为自己漏看了什么。
+   */
+  const [awayFromEnd, setAwayFromEnd] = useState(false);
+  useEffect(() => {
+    const thread = endRef.current?.closest(".assistant-thread");
+    if (!thread) return;
+    const read = () => setAwayFromEnd(thread.scrollHeight - thread.scrollTop - thread.clientHeight > 120);
+    read();
+    thread.addEventListener("scroll", read, { passive: true });
+    return () => thread.removeEventListener("scroll", read);
+  }, [messages.length, loading]);
 
   useLayoutEffect(() => {
     cancelAnimationFrame(scrollFrameRef.current);
@@ -292,7 +350,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const text = current.text; current.text = ""; current.timer = 0;
     setMessages((items) => items.map((item) => item.id === streamingId ? { ...item, text: (item.text || "") + text } : item));
     cancelAnimationFrame(scrollFrameRef.current);
-    scrollFrameRef.current = requestAnimationFrame(scrollThreadToEnd);
+    scrollFrameRef.current = requestAnimationFrame(() => scrollThreadToEnd());
   }
 
   function queueStream(streamingId, text) {
@@ -350,6 +408,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     streamRef.current = { id: "", text: "", timer: 0 };
     conversationIdRef.current = "";
     onConversationChange?.("");
+    setTitleEditing(false);
     setConversationId(""); setConversationTitle("新对话"); setPermissionMode("daily"); setMessages([]); setActions([]); setAttachments([]); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
     refreshHistory().catch(() => {});
     inputRef.current?.focus();
@@ -490,6 +549,17 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   function startRename(item) {
     setHistoryMenuId(""); setRenameId(item.id); setRenameValue(item.title || "新对话");
     requestAnimationFrame(() => window.document.querySelector(`[data-rename-id="${item.id}"]`)?.focus());
+  }
+
+  /**
+   * 页头那颗笔的提交。**空标题 = 放弃**，不是「把名字清空」——
+   * 一段没有名字的对话在历史列里是一行空白，比原来的名字糟得多。
+   */
+  async function submitTitle() {
+    const title = renameValue.trim();
+    setTitleEditing(false);
+    if (!conversationId || !title || title === conversationTitle) return;
+    await manageHistory({ id: conversationId }, "rename", { title });
   }
 
   async function submitRename(item) {
@@ -653,9 +723,26 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </> : null;
 
+  /**
+   * ⚠️ **完整页上这一条 header 就是外壳的页头，不是它下面的第二条。**
+   *
+   * 上一版两条并排：外壳画「AI助手 ✦」，pane 自己再画「新对话 ⌄ …… ＋」——
+   * 两条 40px 的横栏叠在一起，中间那道线把一件事切成了两半。
+   * 给了插槽（`headerSlots`）就把左右两段 portal 进页头：
+   * 页名 + 对话标题读成一条面包屑「AI助手 / 帮我梳理这周的选题」。
+   * 没给插槽的（浮层、项目栏、阅读栏）照旧就地画自己那一条。
+   */
+  const headerParts = (lead, end, center = null) => headerSlots
+    ? <>
+        {headerSlots.lead ? createPortal(lead, headerSlots.lead) : null}
+        {center && headerSlots.center ? createPortal(center, headerSlots.center) : null}
+        {headerSlots.end ? createPortal(end, headerSlots.end) : null}
+      </>
+    : <header className="assistant-pane__context">{lead}{center}{end}</header>;
+
   const dialog = <div className="assistant-pane__dialog" data-empty={centeredEmpty ? "true" : undefined}>
-    {railHeaderIdle ? null : <header className="assistant-pane__context">
-      {projectRail ? <>
+    {railHeaderIdle ? null : (projectRail ? <header className="assistant-pane__context">
+      <>
         {/* ⚠️ **项目右栏的头只有一条。**
             上一版是两条：44px 的「协作」和 39px 的「当前稿件 · 已用素材 4」，
             两条都是同一档灰细字，谁也没压过谁——占了 83px 却读不出主次。
@@ -667,35 +754,107 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
         </div>
         <div className="assistant-context-actions">
           {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /></button> : null}
-          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /></button>
+          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconEdit aria-hidden="true" /></button>
           {onCollapse ? <button type="button" onClick={onCollapse} title="收起协作区" aria-label="收起协作区"><IconLayoutSidebarRight aria-hidden="true" /></button> : null}
         </div>
-      </> : <>
-        {/* ⚠️ **完整页上「新对话」跟「历史对话」并排，不甩到另一端。**
-            上一版是 `space-between` 的两端布局：左端一颗、右端一颗，中间一千像素全空——
-            两颗都是「管理这段对话」的同一件事，却被排成了对立的两组，
-            而那条横条因此必须一直有 58px 高才撑得住。
-            现在它们成一组待在左边，右边只留「这段对话产生了什么」（存为知识卡、后台任务）。 */}
-        <div className="assistant-context-actions assistant-context-actions--lead">
-          {/* 浮层把自己的身份和「这轮带了什么」交给这一条 header 渲染，
-              而不是在上面再叠一条自己的——两条 header 是上一版 Quick 最丑的地方：
-              下面那条只剩三颗图标悬在一片空白上，看着像忘了做完。 */}
-          {headerLead}
-          {/* 完整页宽，「历史对话 / 新对话」带文字排在左边当主入口；
-              浮层和右栏窄，它们退成右侧那排图标的一部分——
-              夹在上下文芯片和窗口按钮中间的话，三组东西挤成一条，谁属于谁读不出来。 */}
-          {surface === "page" && historyEnabled ? <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen((value) => !value)} aria-pressed={historyOpen} title="历史对话"><IconHistory aria-hidden="true" /><span>历史对话</span></button> : null}
-          {surface === "page" ? <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /><span>新对话</span></button> : null}
-        </div>
+      </>
+    </header> : headerParts(<>
+        {/**
+          * ⚠️ **完整页的左段就是「当前对话标题 ⌄」，历史对话是它拉开的那块浮层。**
+          *
+          * 上一版是一颗写着「历史对话」的按钮 + 一条常驻 248px 的左栏。两个问题：
+          * 那颗按钮和标题说的是同一件事（你在哪段对话里），却分成两处；
+          * 而那条栏在你**不翻旧会话**的时候（也就是绝大多数时候）白占八分之一屏宽。
+          *
+          * 照 Circle 的 agent 页：标题即入口。点开是搜索 + 最近/已归档 + 会话列表，
+          * 每条仍然带重命名 / 置顶 / 归档 / 删除——**一个功能都没丢**，只是不再常驻。
+          * 右边那颗 `+` 留在动作组里（见下面 `surface !== "page"` 那条的改动）。
+          */}
+        {/* 浮层把自己的身份和「这轮带了什么」交给这一条 header 渲染，
+            而不是在上面再叠一条自己的——两条 header 是上一版 Quick 最丑的地方：
+            下面那条只剩三颗图标悬在一片空白上，看着像忘了做完。 */}
+        {headerLead ? <div className="assistant-context-actions assistant-context-actions--lead">{headerLead}</div> : null}
+        {/**
+          * 左端只有一颗 `≡`：**开合历史抽屉**。
+          *
+          * ⚠️ **它和标题都不套在 `.assistant-context-actions` 里。**
+          * 那个类上挂着一条 `button:not(:has(span)) { width: 28px }`（给只有图标的按钮用的），
+          * 而它是**后代**选择器——套进去会把里面的东西按图标钮的尺寸压一遍。
+          * 这两样本来也不是「动作」：一个是入口，一个是位置。
+          *
+          * ⚠️ **标题从这儿搬到正中去了**（`center` 插槽）。它当过一阵子「点开是历史」的触发器，
+          * 而那让一个东西干了两件事：既是「你在哪一段对话」，又是「去别的对话」。
+          * 拆开之后各自只说一件事——`≡` 说「换一段」，正中的标题说「这一段叫什么」。
+          */}
+        {surface === "page" && historyEnabled ? (
+          <button
+            type="button"
+            className="assistant-head-icon"
+            aria-expanded={historyOpen}
+            aria-haspopup="dialog"
+            onClick={() => setHistoryOpen((value) => !value)}
+            title="历史对话"
+            aria-label="历史对话"
+          >
+            <IconChatList aria-hidden="true" />
+          </button>
+        ) : null}
+      </>, <>
         <div className="assistant-context-actions">
           {policy.capabilities.writingStyle && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
           {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
-          {canArchive ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
+          {/* ⚠️ **完整页上「存为知识卡」收进右端那颗 `⋯`。**
+              它是「这段对话结束之后要不要留点什么」——**一段对话里最多用一次**，
+              而它带字的按钮一直摆在页头上，和每天都点的「新对话」抢同一排位置。
+              侧栏和项目栏窄，那儿仍然是直接一颗图标钮：再套一层菜单是多一次点击。 */}
+          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="预览 Markdown 知识卡；确认后保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
           {/* ⚠️ **侧栏里没有「历史对话」入口——全局侧栏和项目协作栏都没有。**
               这一栏是「现在这段对话」的地方，翻旧会话是另一件事：完整 AI 工作区那边
               有带搜索和时间分组的历史栏，比在 420px 里塞一个抽屉好用得多。
               代价写在这儿：**项目 scope 的旧会话目前没有别的入口**（全局历史只列 global scope）。 */}
-          {surface !== "page" ? <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconPlus aria-hidden="true" /></button> : null}
+          {/* ⚠️ **三个 surface 是同一颗图标钮。** 完整页上它以前是带字的「＋新对话」，
+              和左边那颗「历史对话」并排——而标题接管入口之后，那两个字只是把
+              「开一段新的」说得更长了一点。
+              ⚠️ **记号是 compose（带加号的笔）不是光秃秃的 `+`。** 一个孤立的加号
+              在输入框那一带已经有主人了（加附件）；同一屏两个 `+` 管两件事，
+              用户得先试一下才知道哪个是哪个。 */}
+          <button type="button" onClick={newConversation} title="保留当前记录并新建对话" aria-label="新对话"><IconEdit aria-hidden="true" /></button>
+          {/**
+            * ⚠️ **不用 `ui.jsx` 的 `MenuButton`。** 那一个是给「新建内容」那类菜单做的：
+            * 每一行都强制画一枚右端的 `+`（「这会新建一个东西」），而且它读的是
+            * `item.title` / `item.hint` 两段。塞一个「存为知识卡」进去的结果是
+            * **屏幕上只剩那句长长的 hint，右边还挂着一个莫名其妙的 `+`**——
+            * 一个存东西的动作被画成了新建。
+            * 这儿要的是「图标 + 一个短词」的一列，自己画十行就够。
+            */}
+          {surface === "page" && canArchive ? (
+            <div className="assistant-head-menu-wrap">
+              <button
+                type="button"
+                className="assistant-head-icon"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                onClick={() => setMoreOpen((value) => !value)}
+                title="更多"
+                aria-label="更多"
+              >
+                <IconDots aria-hidden="true" />
+              </button>
+              {moreOpen ? (
+                <div className="assistant-head-menu" role="menu" ref={moreRef}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setMoreOpen(false); setCardOpen(true); }}
+                    title="预览 Markdown 后确认，保存到 vault / 99 - 个人工作台 / 06 - 知识卡片"
+                  >
+                    <IconArchive aria-hidden="true" />
+                    存为知识卡
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {/* 「去完整工作区」是**导航**，不是发送。上一版把它摆在发送键旁边，
               一行文字按钮的横向重量压过了那颗 30px 的主操作——
               浮层里唯一该抢眼的东西是发送。挪到头部和其它窗口控件一起。 */}
@@ -707,8 +866,46 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
             {onClose ? <button type="button" className="assistant-context-expand" onClick={onClose} title="关闭（Esc）" aria-label="关闭 AI 助手"><IconX aria-hidden="true" /></button> : null}
           </span> : null}
         </div>
-      </>}
-    </header>}
+      </>, surface === "page" ? <div className="assistant-title-wrap">
+        {/**
+          * 正中：**这一段叫什么**，点旁边那枚笔就地改。
+          * ⚠️ **不弹面板。** 参考的那个应用点笔是弹一个「重命名」对话框——
+          * 一个只有一个输入框的对话框，为了改一行字要开一层、关一层。
+          * 名字就写在这儿，改它的地方就该在原地。
+          * ⚠️ 没落库之前不画笔（`conversationId` 为空）：那时标题是占位的「新对话」，
+          * 改了没有东西可存。
+          */}
+        {titleEditing ? (
+          <form
+            className="assistant-title-edit"
+            onSubmit={(event) => { event.preventDefault(); submitTitle(); }}
+          >
+            <input
+              autoFocus
+              value={renameValue}
+              aria-label="给这段对话改名"
+              onChange={(event) => setRenameValue(event.target.value)}
+              onBlur={submitTitle}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setTitleEditing(false); }
+              }}
+            />
+          </form>
+        ) : <>
+          <span className="assistant-title assistant-title--static">{conversationTitle || "新对话"}</span>
+          {conversationId ? (
+            <button
+              type="button"
+              className="assistant-title-rename"
+              onClick={() => { setRenameValue(conversationTitle || ""); setTitleEditing(true); }}
+              title="给这段对话改名"
+              aria-label="给这段对话改名"
+            >
+              <IconPencil aria-hidden="true" />
+            </button>
+          ) : null}
+        </>}
+      </div> : null))}
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
@@ -719,6 +916,19 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       starters={surface === "page" ? null : starters}
       endRef={endRef}
     />
+
+    {/**
+      * ⚠️ **它自己不占高度**（`.assistant-jump` 那一层是 `height: 0`），
+      * 所以出现和消失都不会把输入框往下顶一下——被顶一下的输入框正是
+      * 「我打字的地方怎么自己动了」那类最惹人烦的抖动。
+      */}
+    {awayFromEnd && messages.length ? (
+      <div className="assistant-jump">
+        <button type="button" onClick={() => scrollThreadToEnd("smooth")} title="回到最新一条" aria-label="回到最新一条">
+          <IconArrowDown aria-hidden="true" />
+        </button>
+      </div>
+    ) : null}
 
     <AssistantComposer
       pendingAttachments={pendingAttachments} busy={busy} uploadError={uploadError} inputRef={inputRef}
@@ -739,17 +949,63 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   </div>;
 
   return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
-    {historyEnabled && historyOpen ? <AssistantHistory
-      visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
-      historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}
-      renameValue={renameValue} conversationId={conversationId}
-      onHistoryView={(value) => { setHistoryView(value); setHistoryMenuId(""); }}
-      onOpenConversation={openConversation}
-      onHistoryMenu={(id) => { setHistoryDeleteId(""); setHistoryMenuId((current) => current === id ? "" : id); }}
-      onHistoryDelete={setHistoryDeleteId} onRenameValue={setRenameValue}
-      onCancelRename={() => setRenameId("")} onSubmitRename={submitRename}
-      onStartRename={startRename} onManageHistory={manageHistory}
-    /> : null}
+    {/**
+      * 历史对话：**一条压着对话滑进来的抽屉**，不是常驻的一列。
+      *
+      * ⚠️ **这块地方来回过三次，三次的理由都记下来，别再绕回去。**
+      *   1. 常驻 248px 的一列 —— 翻旧会话是偶尔一次的动作，那一列在你不翻的时候
+      *      （绝大多数时候）白占八分之一屏宽。
+      *   2. 挂在标题下的浮层 —— 宽度够了，但它**点外面就关**：慢慢往下翻的时候
+      *      手一滑点到正文，整块就没了，得重新开、重新滚。
+      *   3. 现在：抽屉 + 遮罩。**遮罩不是装饰，它是那条「稳得住」的实现**——
+      *      正文被盖住，也就没有「误点正文把它关掉」这回事；同时它自己说清了
+      *      「这是临时盖上来的一层，翻完就走」。
+      *
+      * ⚠️ **通顶：抽屉和遮罩都从窗口最上沿起，页头也一起盖住。**
+      * 上一版只盖到页头以下（理由是「页头上有唯一那颗关它的按钮」），
+      * 落地一看是**上面一截亮、下面一大块暗**——没读成「临时盖上来的一层」，
+      * 读成了「这块渲染坏了」。改法不是把遮罩缩回去，是让抽屉自己补一颗收起钮。
+      * 它靠 `lib/view-slots.js` 的 `overlay` 插槽 portal 到外壳那一层：
+      * 这块 DOM 自己所在的 `.main` 顶已经在页头**以下**了，怎么定位都够不到页头。
+      */}
+    {historyEnabled && historyOpen && surface === "page" && headerSlots?.overlay ? createPortal(<>
+      <div className="assistant-history-scrim" onClick={() => setHistoryOpen(false)} aria-hidden="true" />
+      <aside className="assistant-history-drawer" ref={historyRef} aria-label="历史对话">
+        {/**
+          * ⚠️ **抽屉自己带一颗收起钮，落在抽屉的右上角。**
+          *
+          * 上一版把它放在左边、和页头那颗 `≡` 严格重合，理由是「屏幕上就是同一颗按钮」。
+          * 参考（genspark 的任务列表）放在右边，试下来右边更对：抽屉推开之后，
+          * 视线是从左边那一列标题**往右**走的，收起它的动作也该在那条路的终点；
+          * 左上角那个位置已经被「任务列表 / 历史对话」这个标题占着了。
+          * 抽屉是通顶的，会把页头那颗盖住——没有这一颗的话，开它的按钮在开着的时候
+          * 就消失了，只能靠点遮罩或 Esc 关。两颗在屏幕上是同一个位置、同一个记号，
+          * 用起来就是「同一颗按钮，点一下开、再点一下关」。
+          */}
+        <div className="assistant-history-drawer__head">
+          <button
+            type="button"
+            className="assistant-head-icon"
+            onClick={() => setHistoryOpen(false)}
+            title="收起历史对话"
+            aria-label="收起历史对话"
+          >
+            <IconChatList aria-hidden="true" />
+          </button>
+        </div>
+        <AssistantHistory
+          visibleConversations={visibleConversations} historyView={historyView} historyMenuId={historyMenuId}
+          historyDeleteId={historyDeleteId} historyPending={historyPending} renameId={renameId}
+          renameValue={renameValue} conversationId={conversationId}
+          onHistoryView={(value) => { setHistoryView(value); setHistoryMenuId(""); }}
+          onOpenConversation={(id) => { openConversation(id); setHistoryOpen(false); }}
+          onHistoryMenu={(id) => { setHistoryDeleteId(""); setHistoryMenuId((current) => current === id ? "" : id); }}
+          onHistoryDelete={setHistoryDeleteId} onRenameValue={setRenameValue}
+          onCancelRename={() => setRenameId("")} onSubmitRename={submitRename}
+          onStartRename={startRename} onManageHistory={manageHistory}
+        />
+      </aside>
+    </>, headerSlots.overlay) : null}
     {dialog}
   </div>;
 }

@@ -1,0 +1,46 @@
+/**
+ * 清空搜索框时那一下消散的样式层（transitions.dev / *Input clear with dissolve*）。
+ *
+ * 这里**只有静止态和层次关系**：位移、透明度、模糊和那一叠 `radial-gradient`
+ * 全由 `lib/use-clear-dissolve.js` 逐帧写进 style。原因写在那个文件顶上——
+ * 流光的包络按每个词各自的位置算，写不成一条 `@keyframes`。
+ *
+ * 挂 `.t-clear` 的那一层必须自己是定位父级并且裁掉溢出（下面这条给了），
+ * 宽高、内边距、边框、圆角、底色仍然归各自的搜索框管。
+ */
+.t-clear { position: relative; overflow: hidden; }
+
+/* 镜像 + 假 placeholder：只在那一下里存在，JS 建 JS 删。
+   `inset` 不写死——它们的位置是量真 input 量出来的（搜索框前面有图标）。 */
+.t-clear-mirror,
+.t-clear-placeholder {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 2;
+}
+.t-clear-placeholder { color: var(--text-3); opacity: 0; }
+
+/**
+ * 流光层。⚠️ **`mix-blend-mode` 亮暗两套**：JS 写进去的是黑色的
+ * `radial-gradient`，`multiply` 在浅底上把那一块压暗；同样的值放到深色底上
+ * 什么都看不见。暗色下换 `screen`，同一组 alpha 变成提亮。
+ */
+.t-clear-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  mix-blend-mode: multiply;
+}
+@media (prefers-color-scheme: dark) {
+  .t-clear-glow { mix-blend-mode: screen; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-clear-glow { opacity: 0 !important; }
+}

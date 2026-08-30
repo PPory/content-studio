@@ -2,6 +2,10 @@
 // 只报告问题（「连接失败」）而不给下一步，是这个项目明确要避免的反馈方式。
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useViewSlots } from "../lib/view-slots.js";
+import { useClearDissolve } from "../lib/use-clear-dissolve.js";
+import "./clear-dissolve.css";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -245,8 +249,16 @@ export function Meter({ value, label = "进度" }) {
  * 一个框里有字、旁边没有任何清除的记号，人不会去猜快捷键。
  */
 export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel }) {
+  /**
+   * 清空时字**升起来散掉**（transitions.dev / Input clear with dissolve）。
+   * 理由写在 `lib/use-clear-dissolve.js` 顶上：这一颗 `×` 会同时换掉整屏内容，
+   * 瞬时清空的话「是我干的」和「所以结果变了」挤在同一帧，看着像页面自己刷新了。
+   * ⚠️ **Esc 那条路也走同一个函数**——两条路一个走动效一个不走的话，
+   * 同一个动作会有两种手感，而用户不会知道自己刚才按的是哪一条。
+   */
+  const { wrapRef, clear } = useClearDissolve(() => onChange(""));
   return (
-    <label className="search-box">
+    <label className="search-box t-clear" ref={wrapRef}>
       <IconSearch aria-hidden="true" stroke={1.7} />
       <input
         ref={inputRef}
@@ -259,8 +271,9 @@ export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel })
           // ⚠️ **不能冒泡上去**：阅读区和弹层都在监听 Esc，
           // 不掐掉的话「清空搜索」会顺手把整层关掉
           e.stopPropagation();
-          onChange("");
-          e.currentTarget.blur();
+          const input = e.currentTarget;
+          clear(value);
+          input.blur();
         }}
       />
       {/* 有字才画。空框上挂一颗永远点不出效果的 × 是噪音 */}
@@ -270,7 +283,7 @@ export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel })
           className="search-box__clear"
           title="清空（Esc）"
           aria-label="清空搜索"
-          onClick={() => onChange("")}
+          onClick={() => clear(value)}
         >
           <IconX size={13} stroke={2} aria-hidden="true" />
         </button>
@@ -280,52 +293,106 @@ export function SearchBox({ value, onChange, placeholder, inputRef, ariaLabel })
 }
 
 /**
- * 页面顶部那一条：**一句说明 + 计数 + 动作**。
+ * 页面顶部那一条：**动作和计数进面板页头，说明留在内容里**。
  *
- * ⚠️ **标题撤了，页名只在顶栏的面包屑里出现一次。**
- * 之前每一页都从一个 38px 的大标题开始，而顶栏有了面包屑之后，那就是**同一个词
- * 一屏说两遍**——而且它拿走了首屏最大的一块地方，去说这一屏信息量最低的一件事
- *（你自己点进来的，你知道这是哪儿）。
+ * ⚠️ **组件不再自己画一条横栏。** 页头（`.view-head`）现在是外壳的一部分，
+ * 由 App 画出来并给出两个空位；这里只负责把这一页的东西 portal 进去。
+ * 各页自己再画一条的话，屏幕上就有两条并排的横栏——上一版「顶栏面包屑 + 页内页头」
+ * 正是这个毛病，只是那时两条隔得远，看着像两个应用。
  *
- * ⚠️ **`eyebrow` 一起撤了。** 它和 `desc` 是同一件事的两个详略
- *（「准备要写的东西」/「改成『撰写中』就开始成稿——先选一个主平台」）；
- * 没有标题夹在中间之后，两句连着念就是重复。留具体的那句。
+ * ⚠️ **`desc` 不进页头。** 它是注解不是控件：40px 的一条里塞一句中文长句，
+ * 要么被截断、要么把动作挤到没地方去。它落回内容流的第一行（`.page-lead`）。
  *
- * `title` 这个参数**故意留着**：调用方还在传，而它现在只进 `aria-label`——
- * 这一条对读屏来说仍然需要一个名字。
+ * `title` 这个参数**故意留着**：调用方还在传，而页名现在由外壳统一从路由取，
+ * 这里留着它是为了让「这一页叫什么」在页面文件里仍然读得到。
  */
 export function PageHeader({ title, count, desc, aside }) {
-  if (!desc && !count && !aside) return null;
+  const slots = useViewSlots();
+  const head = count || aside ? (
+    <>
+      {count ? <span className="view-head__count">{count}</span> : null}
+      {aside}
+    </>
+  ) : null;
   return (
-    <header className="page-bar" aria-label={title || undefined}>
-      {desc ? <p className="page-bar__desc">{desc}</p> : <span />}
-      <div className="page-bar__end">
-        {count ? <span className="page-bar__count">{count}</span> : null}
-        {aside}
-      </div>
-    </header>
+    <>
+      {head && slots?.end ? createPortal(head, slots.end) : null}
+      {desc ? <p className="page-lead" aria-label={title || undefined}>{desc}</p> : null}
+    </>
   );
 }
 
 /**
- * 「找题」「种子」那两页的页头：**一排芯片 + 一颗动作在最上面，说明贴在它正下方，整体居中。**
+ * 「找题」「种子」「复盘」那几页的页头：**一排芯片进页头第二条，动作进第一条右端。**
  *
- * ⚠️ **和 `PageHeader` 分开是因为这两页的页头回答的问题不一样。**
- * `PageHeader` 是「左边一句说明、右边计数和动作」——那是给**内容已经在那儿**的页用的。
- * 而这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
- * **那排芯片才是这一屏的第一件事**，说明是它的注脚，不是反过来。
+ * ⚠️ **和 `PageHeader` 分开是因为这两类页头回答的问题不一样。**
+ * `PageHeader` 是给**内容已经在那儿**的页用的；而这几页打开时你要先做一个选择
+ *（看哪一类候选 / 看哪一档种子），那排芯片才是这一屏的第一件事。
+ * Circle 的两条页头（`header-nav` + `header-options`）分的是同一刀：
+ * **第一条说「这是哪儿、能干什么」，第二条说「现在只看哪一部分」。**
  *
  * ⚠️ **两页共用这一份，别各写一遍。** 这个项目的事故清一色是「同一件事写在两个地方」。
  */
 export function FilterHeader({ title, desc, chips, action }) {
+  const slots = useViewSlots();
   return (
-    <header className="filter-head" aria-label={title || undefined}>
-      <div className="filter-head__row">
+    <>
+      {action && slots?.end ? createPortal(action, slots.end) : null}
+      {/**
+        * ⚠️ **胶囊在正文里居中，不在页头那一条里。**
+        *
+        * 试过把它 portal 进页头第二条：结果是页头下面又多一条**带底色和下边框的横带**，
+        * 而它上面刚好还有一条同样的横带（页名那条）——两条平行的白带夹着一句说明，
+        * 读起来是「重复了两遍」。而且塞进 40px 的一条之后胶囊只能拆成扁平文字，
+        * 「三个选项在同一颗胶囊里切换」这个形状本身就没了。
+        *
+        * 胶囊本来的位置就是**浮在灰底工作区上**——它是一颗浮起来的控件，
+        * 不是页头的一行字。说明跟在它正下方、一起居中：这两样是一组
+        *（先选看哪一档，那句话是它的注脚），不该被一条边框劈成两块。
+        */}
+      <div className="view-switch">
         {chips}
-        {action}
+        {desc ? <p className="view-switch__desc" aria-label={title || undefined}>{desc}</p> : null}
       </div>
-      {desc ? <p className="filter-head__desc">{desc}</p> : null}
-    </header>
+    </>
+  );
+}
+
+/**
+ * 页头第二条那排「现在只看哪一档」的分段切换。
+ *
+ * ⚠️ **五个页面共用这一份，别再各写一排。**
+ * 之前是两套长得不一样的东西：热点用 `.pill-tabs`（带图标的浮起胶囊），
+ * 找题 / 选题 / 复盘 / 数据用 `.chips-sm > .chip`（黄底打勾的芯片）。
+ * 两套回答的是**同一个问题**——「这一页现在看哪一部分」——而屏幕上长两个样子，
+ * 用户得分别学一次。这个项目的事故清一色是「同一件事写在两个地方」。
+ *
+ * ⚠️ **它是一颗胶囊：三个选项在同一个容器里切换。**
+ * 中间试过拆成扁平的一排（只有选中的那颗画底），为的是塞进 40px 的页头第二条——
+ * 那是把控件迁就容器。**迁就错了**：胶囊的形状本身就在说「这几个是一组、一次选一个」，
+ * 拆平之后它和页头上任何一排图标按钮长得一样。控件没错，是位置错了——
+ * 它该浮在灰底工作区上（见 `FilterHeader`），那儿没有 40px 的限制。
+ *
+ * `items`: `[{ key, label, count?, icon?, hint? }]`；`count` 给 `null` / `undefined` 就不画。
+ */
+export function ViewTabs({ items, value, onChange, label }) {
+  return (
+    <div className="view-tabs" role="tablist" aria-label={label}>
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="tab"
+          aria-selected={value === item.key}
+          onClick={() => onChange(item.key)}
+          title={item.hint}
+        >
+          {item.icon ? <item.icon aria-hidden="true" stroke={1.7} /> : null}
+          {item.label}
+          {item.count == null ? null : <span className="view-tabs__count">{item.count}</span>}
+        </button>
+      ))}
+    </div>
   );
 }
 

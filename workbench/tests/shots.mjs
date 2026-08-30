@@ -352,7 +352,7 @@ const shots = [
   ["seeds", "/#/seeds", ".seeds, .empty, .note-danger"],
   // 反应选择器：这一屏是「看到一个观点 → 说一句」的全部动作，光看列表看不出它长什么样
   ["seed-pick", "/#/seeds", ".seeds, .empty, .note-danger", async () => {
-    await page.click(".page-bar__end .btn-primary", { timeout: 8000 }).catch(() => {});
+    await page.click(".view-head__end .btn-primary", { timeout: 8000 }).catch(() => {});
     await page.waitForSelector(".rpick", { timeout: 8000 }).catch(() => {});
     await page.click(".rpick__opt >> nth=1").catch(() => {});
     // ⚠️ **只填不存**：建种子会往线上库写行（和设置面板那条同一个规矩）
@@ -362,13 +362,13 @@ const shots = [
   ["overview", "/#/overview", ".todo-card, .note-title"],
   ["hot-boards", "/#/hot", ".board, .empty, .note-title"],
   ["hot-ai", "/#/hot", ".board, .empty, .note-title", async () => {
-    await page.click('.pill-tab:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
+    await page.click('.view-tabs button:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
     await page.waitForSelector(".ai-item, .empty", { timeout: 40000 }).catch(() => {});
   }],
   // 设置面板。**只开不存**：写 .env 会让这个脚本自己起的 dev server 重启，
   // 而写提示词改的是 content-pipeline 的真文件
   ["settings", "/", ".todo-card, .note-title", async () => {
-    await page.click('.topbar__icon[aria-label="设置"]').catch(() => {});
+    await page.click(".sidebar__foot .nav-item").catch(() => {});
     // 设置默认先打开「我的创作」；等工作台内置专家与风格都画出来再截。
     await page.waitForSelector(".writing-profile-settings .profile-source", { timeout: 15000 }).catch(() => {});
   }],
@@ -433,7 +433,7 @@ const shots = [
   // 跑批面板：页头按钮点开之后那一屏。它是这一页唯一的动作入口，
   // 而且里面全是「要不要花钱」这类需要看清楚的信息——不截图就等于没验。
   ["insight-run", "/#/insights", ".wall-card, .empty, .note-title", async () => {
-    await page.click(".page-bar__end .btn-primary").catch(() => {});
+    await page.click(".view-head__end .btn-primary").catch(() => {});
     await page.waitForSelector(".run-panel", { timeout: 8000 }).catch(() => {});
   }],
   ["insight", "/#/insights", ".wall-card, .empty, .note-title", async () => {
@@ -501,20 +501,20 @@ const shots = [
   }],
   // 入库抽屉：全工作台最常用的一个入口，值得每次改完都看一眼
   ["intake", "/", ".todo-card, .note-title", async () => {
-    await page.click(".sidebar .btn-primary").catch(() => {});
+    await page.click('.sidebar [aria-label="收集"]').catch(() => {});
     await page.waitForSelector(".drawer", { timeout: 6000 }).catch(() => {});
     await page.fill(".drawer textarea", "复利不是利滚利，是「同一件事做久了，别人再进来就追不上」。").catch(() => {});
   }],
   // 在工作台里读热点原文：抓得到出正文、抓不到出带引导的错误，两种都要能看
   ["hot-read", "/#/hot", ".board, .empty, .note-title", async () => {
-    await page.click('.pill-tab:has-text("AI 情报")').catch(() => {});
+    await page.click('.view-tabs button:has-text("AI 情报")').catch(() => {});
     await page.waitForSelector(".ai-item", { timeout: 40000 }).catch(() => {});
     await page.click('.ai-item__acts button:has-text("在这里读")').catch(() => {});
     await page.waitForSelector(".reader-overlay .prose, .reader-overlay .note-danger", { timeout: 90000 }).catch(() => {});
   }],
   // 模型榜：一张表，数字要右对齐、小数点要对得上，光靠断言看不出来
   ["hot-models", "/#/hot", ".board, .empty, .note-title", async () => {
-    await page.click('.pill-tab:has-text("模型榜")').catch(() => {});
+    await page.click('.view-tabs button:has-text("模型榜")').catch(() => {});
     await page.waitForSelector(".lb__row, .empty", { timeout: 60000 }).catch(() => {});
   }],
   // 状态下拉：一行一个图标的浮层菜单，圆角和行高这些光靠断言看不出来
@@ -527,7 +527,7 @@ const shots = [
   ["typeset", "/#/typeset", ".embed iframe"],
   ["metrics", "/#/metrics", ".stat-strip, .dropzone"],
   ["metrics-sources", "/#/metrics", ".stat-strip, .dropzone", async () => {
-    await page.click('.pill-tab:has-text("数据来源")').catch(() => {});
+    await page.click('.view-tabs button:has-text("数据来源")').catch(() => {});
     await page.waitForSelector(".dropzone", { timeout: 8000 }).catch(() => {});
   }],
   ["quick-hotspot", "/#/hot", ".board, .empty, .note-title", async () => {

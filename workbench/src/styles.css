@@ -8,11 +8,13 @@
 
    三层：原始色 → 语义 → 组件。组件里只准用语义层，否则暗色主题必漏。
 
-   改版分三步走，现在做完的是第一步：
-   1. ✅ 外壳容器（本文件的 .app / .sidebar / .main / .main__inner）
-   2. ⬜ token 层（字阶、间距网格、圆角、状态色）
-   3. ⬜ 组件语汇（卡片墙 → 44px 列表行、分组色带、状态图标）
-   设计稿在 workbench/tmp/redesign-v3.html。 */
+   改版走了四步，四步都做完了：
+   1. ✅ 外壳容器（.app / .sidebar / .main / .main__inner）
+   2. ✅ token 层（字阶 9 档、间距 2/4px 点阵、圆角 4 档、状态色）
+   3. ✅ 组件语汇（撤眉标、选中态收成一对 token、卡片墙 → 列表行）
+   4. ✅ **顶栏整条撤掉**：搜索和设置回侧栏、页名进面板里的 `.view-head`
+        （见下面「外壳」那一大段；AI 页照 Circle 的 agent 页做成「标题即入口」）
+   取舍写在 docs/design-system.md。 */
 
 :root {
   color-scheme: light;
@@ -137,6 +139,26 @@
      这是语义层里唯一一个不是颜色的值——它表达的仍然是「此刻的底是深是浅」 */
   --logo-flip: 0;
 
+  /**
+   * 覆盖层背后那一层压暗。
+   *
+   * ⚠️ **暗色必须单独给一个值，而且要清楚它的上限。**
+   * 亮色下黑色 34% 压在 `--sunken`（#f4f4f5）上是 2.24:1，一眼看得出「后面那层不能点了」；
+   * 同一个值压在暗色的 #1d1d22 上只有 **1.07:1**——**等于没画**（量出来的，不是看出来的）。
+   * 提到 55% 也只有 1.16:1：暗色下背景本来就接近黑，靠「再压暗」拿不到多少余量。
+   * 所以暗色下「这是临时的一层」主要靠**覆盖层自己和背景的明暗差**（框架比工作区暗一档）
+   * 加上它的边框来说，遮罩只负责挡住点击。别再往上加 alpha 了，只会糊成一块黑。
+   */
+  --scrim-bg: rgba(10, 10, 10, 0.34);
+
+  /**
+   * 发送键**没东西可发**时的底色。
+   * ⚠️ **必须亮暗各给一个值。** 浅色下要够浅（它是一颗关着的按钮，不该像个实心块），
+   * 而同一个浅值在暗色下压在 #151518 的输入器上直接看不见——
+   * 「挑值只在浅色下试」是这套配色最常见的翻车方式，这一颗以前就栽过一次。
+   */
+  --send-idle: var(--line-1);
+
   --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.04);
   --shadow: 0 8px 30px rgba(10, 10, 10, 0.06);
   --shadow-lg: 0 24px 60px rgba(10, 10, 10, 0.09);
@@ -183,15 +205,26 @@
    * ⚠️ **组件里不许再写字面 px。** 要一个表里没有的字号，先回答：它和相邻的那两档
    * 差在哪儿、这个差别读得出来吗？读不出来就用相邻那档。
    */
-  --fs-2xs:  10px;   /* 机读小字：时间戳、路径、序号、UUID */
-  --fs-xs:   11px;   /* 标签、计数、芯片 */
-  --fs-sm:   12px;   /* 元信息、次要说明 */
-  --fs-base: 13px;   /* 界面正文——基准。也是「操作说明」类文字的下限，见下 */
-  --fs-md:   14px;   /* 列表主标题、可读正文 */
-  --fs-lg:   17px;   /* 卡片标题 */
-  --fs-xl:   21px;   /* 分区标题 */
-  --fs-2xl:  26px;   /* 页面标题 */
-  --fs-3xl:  32px;   /* 计数卡那种「一眼就要看到」的大数字 */
+  /**
+   * ⚠️ **2026-08-30 整档上调了一级：基准 13 → 15。**
+   *
+   * 上一版这一阶是照着「一屏塞得下多少」定的，而这个工作台是**每天开八小时读中文**的地方。
+   * 13px 的中文在 1080p 上要凑近看——「字小」是这一版最先被指出来的毛病，
+   * 而它不是某一处写错了，是整张表低了一档。
+   *
+   * ⚠️ **档数没变，还是 9 档，档与档的关系也没变**（小的一头 +1，读的那几档 +2，
+   * 大标题按比例走）。「高级感的物理来源是重复」那条一个字没改——变的是这把尺子的起点，
+   * 不是尺子的刻度密度。**组件里仍然不许写字面 px。**
+   */
+  --fs-2xs:  11px;   /* 机读小字：时间戳、路径、序号、UUID */
+  --fs-xs:   12px;   /* 标签、计数、芯片 */
+  --fs-sm:   13px;   /* 元信息、次要说明 */
+  --fs-base: 15px;   /* 界面正文——基准。也是「操作说明」类文字的下限，见下 */
+  --fs-md:   16px;   /* 列表主标题、可读正文 */
+  --fs-lg:   19px;   /* 卡片标题 */
+  --fs-xl:   23px;   /* 分区标题 */
+  --fs-2xl:  28px;   /* 页面标题 */
+  --fs-3xl:  34px;   /* 计数卡那种「一眼就要看到」的大数字 */
 
   /**
    * 间距：**2px 子格 + 4px 主格**的点阵，12 档。改之前是 31 种 padding + 22 种 gap。
@@ -298,6 +331,35 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   /**
+   * 动效参数（取自 transitions.dev，值按这套界面调过）。
+   * ⚠️ **写成变量不是为了「以后好改」，是为了让这两处动效读同一组数**——
+   * 各写各的 150ms / 8px 的话，两处的手感会慢慢分家，而没人会发现。
+   *
+   * 亮暗两色不写死：`--think-highlight` 吃 `--text-1`，暗色下自己翻过来。
+   */
+  --think-swap: 150ms;
+  --think-gap: 50ms;
+  --think-distance: 8px;
+  --think-blur: 2px;
+  --think-shimmer: 2000ms;
+  --think-highlight: var(--text-1);
+  --think-ease: ease-in-out;
+
+  --clear-dur: 1000ms;
+  --clear-out-dur: 400ms;
+  --clear-in-dur: 400ms;
+  --clear-out-fly: 12px;
+  --clear-in-fly: 12px;
+  --clear-blur: 2px;
+  --glow-delay: 50ms;
+  --glow-peak-at: 0.15;
+  --glow-opacity: 0.42;
+  --glow-spread: 1.5;
+  /* 流光的墨色。⚠️ **暗色下必须翻成白**：JS 画的是 rgba 渐变，
+     而 `mix-blend-mode: screen` 遇上黑色是恒等变换——深色主题下会「什么都没发生」。 */
+  --glow-ink: 10, 10, 10;
+
+  /**
    * 应用底色。**面板浮在它上面，侧栏就是它本身。**
    *
    * ⚠️ 刻意**不复用 `--canvas`**：`--canvas` 在四十来处当「白卡片上的凹陷面」用
@@ -318,7 +380,10 @@
    * 等于一处都不成立**。
    *
    * ⚠️ **实心黑只留给「主操作」一颗**（`.btn-primary`），以及少数几处表示「东西在这儿」
-   * 的数据记号（流水线非 0 的节点、自己发的聊天气泡）——那些不是选中态。
+   * 的数据记号（流水线非 0 的节点）——那些不是选中态。
+   * ⚠️ **「自己发的聊天气泡」2026-08-30 从这份名单里划掉了**，理由是数量：
+   * 主操作一屏一颗，而自己的消息一屏五到十条，十块纯黑排下来比真正要读的回答还重。
+   * 见 `project-assistant.css` 的 `.assistant-message__user > p`。
    */
   --sel-bg: var(--sunken);
   --sel-fg: var(--ink-900);
@@ -399,6 +464,9 @@
     --emph-line: rgba(245, 154, 60, 0.48);
 
     --logo-flip: 1;
+    --glow-ink: 255, 255, 255;
+    --send-idle: var(--line-2);
+    --scrim-bg: rgba(0, 0, 0, 0.55);
 
     /* 暗色下面板比底色**亮**（和亮色一个方向：面板永远是那块「读字的面」） */
     --shell: #08080a;
@@ -497,171 +565,132 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 
 /* ---------- 布局 ---------- */
 
-/**
- * ⚠️ **外壳是「底色 + 浮在上面的面板」，不是「两栏并排」。**
- *
- * 侧栏不再是一根有边框有底色的栏——**它就是应用底色本身**；正文是一块四周留 8px 沟、
- * 带边框圆角的白面板。这一层结构做完，界面才有「应用感」而不是「一张长网页」。
- *
- * ⚠️ **滚的从 body 换成了 `.main`。** `.app` 定高吃满视口并 `overflow: hidden`，
- * 所以侧栏永远在原地、面板边框始终贴着窗口四边（body 滚的话，滚下去面板顶边就跑没了）。
- * **滚动区的数量没有变**，还是一条：以前是 body，现在是面板。这不违反
- * 「不要为了少一条滚动条去套 max-height」——那条说的是把**一栏切成两半**，这里没切。
- *
- * 代价记在这儿：覆盖层锁滚动不能再锁 body 了，见 `lib/scroll-lock.js`。
- */
-/**
- * 外壳：**顶栏在最上面跨全宽，侧栏和正文并排在它下面。**
- *
- * ⚠️ 加顶栏之前这个工作台没有外壳，只有一叠文档——每一页都从一个巨大的中文标题
- * 开始，搜索框在侧栏里、设置在侧栏最底下。「我在哪」「搜什么」「设置在哪」
- * 这三件**跨页面不变**的事，跟着页面内容一起换位置的时候，
- * 它看起来就像一叠网页，不像一个应用。
- */
-/**
- * ⚠️ **`grid-template-columns: minmax(0, 1fr)` 不能省。**
- * grid 的隐式列是 `auto`，会被**最宽的那一行**撑开——看板横过来的时候，
- * `.app__body` 把整个 `.app` 撑到比视口还宽，而 `.topbar` 是它的另一行，
- * 于是**顶栏右端的齿轮被推出了屏幕**。`.app` 上的 `overflow: hidden` 拦不住这个：
- * 撑开的是 `.app` 自己的宽度，不是它内容的溢出。
- */
+/* ==========================================================================
+   外壳：**侧栏 + 一块浮着的面板**。中间没有顶栏。
+   ==========================================================================
+
+   ⚠️ **顶栏整条撤了，别照着旧注释加回来。**
+
+   它当初解决的是「这个工作台没有外壳，只有一叠文档」，那个判断没错；错的是代价——
+   一条跨全宽的 48px 横条把**最重的视觉位置**给了三件跨页面不变的事，于是屏幕上同时有
+   三处在抢注意力：顶栏正中的搜索、侧栏顶上那颗黑色「收集」大按钮、页面右上的主操作。
+   而内容区因为「页名只在顶栏」被剥掉了标题，剩一句说明悬在最上面——**框架和内容之间
+   没有交接的地方**，看着就是两个东西拼在一起。
+
+   参照 ln-dev7/circle（Linear 语汇）：
+
+     .app                 ← 横向两块，中间一道 1px 竖线
+       aside.sidebar      ← 框架的一半，和页头同色
+         .app__frame      ← 一道竖线隔开，**页头在它里面**
+         .view-head       ← 40px：左边「我在哪」，右边「这一页能干什么」。**只有一条**
+         .app__frame-body ← 正文 + AI 侧栏并排，同在这一圈边框里
+
+   滚的仍然只有一条（`.main`）：`.app` 定高吃满视口并 `overflow: hidden`。
+   代价记在这儿：覆盖层锁滚动不能锁 body，见 `lib/scroll-lock.js`。 */
 .app {
-  position: relative; z-index: 1; display: grid;
-  grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
-  height: 100vh; overflow: hidden;
-}
-.app__body { display: flex; min-width: 0; min-height: 0; }
-/* 顶栏和下面那两块之间也要一道线，否则白顶栏和白侧栏连成一片、看不出是两层 */
-/**
- * ⚠️ **顶栏要有显式高度，因为别处要减掉它。**
- * 项目页右栏定高时算的是「视口里还剩多少」，而它算不出一个内容撑出来的高度——
- * 不写死的话那个公式只能瞎猜，猜错的样子是「右栏最后一条怎么都划不出来」。
- * 冒烟测试量渲染值和这个变量对不对得上，改内容撑高了它会红。
- */
-.app { --topbar-h: 48px; }
-.topbar { height: var(--topbar-h); border-bottom: 1px solid var(--border); }
+  /**
+   * ⚠️ **页头高度写死，因为别处要减掉它。**
+   * 项目页右栏定高时算的是「视口里还剩多少」，而它算不出一个内容撑出来的高度。
+   * `--shell-chrome-h` 是**外壳在竖直方向吃掉的全部高度**，那几条 `calc(100vh - …)`
+   * 各减这一个变量就行——顶栏时代是几个变量连着减，每加一层外壳就要去找齐所有公式。
+   *
+   * ⚠️ **它现在等于页头高度，但别把它换成 `--view-head-h`。** 有过一版外壳带
+   * 上下 8px 的沟和边框，那时它是 `gap*2 + 2 + head`；名字说的是「外壳吃掉多少」，
+   * 而不是「页头多高」——两者恰好相等只是此刻的事实，不是同一件事。
+   */
+  /* 字阶上调之后跟着长一档：40px 里装 15px 的字会顶着上下边 */
+  --view-head-h: 44px;
+  /**
+   * ⚠️ **正文的左右内边距定义在这儿，因为页头也要吃它。**
+   * 留在 `.main__inner` 上的话，页名从 20px 起、内容从 52px 起——差 32px，
+   * 而这正是「框架和内容像两个东西」的一个具体来源。
+   */
+  --main-pad: clamp(22px, 3.4vw, 52px);
+  --shell-chrome-h: var(--view-head-h);
 
-/**
- * ⚠️ **三列 grid（左 1fr · 中 auto · 右 1fr），不是 flex。**
- * 用 flex + `margin: 0 auto` 的话，搜索框会停在**剩余空间**的中心，
- * 而左段（logo + 会变长的面包屑）和右段（两个图标）宽度差一大截——
- * 结果是每换一页搜索框就往旁边挪一次。两侧各占 1fr，中间那格才真的在视口中心。
- */
-/* ⚠️ 左内边距归零：品牌区自己带内边距，因为**它的宽度就是侧栏的宽度**
-   （见下面 `.topbar__brand`），左边多一层 padding 那条竖线就落不到缝上 */
-.topbar {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center; gap: 10px; flex: none;
-  height: 48px; padding: 0 12px 0 0;
-}
-.topbar__left { display: flex; align-items: center; gap: 10px; min-width: 0; align-self: stretch; }
-/**
- * ⚠️ **品牌区就是「导航那一栏的栏头」：宽度恒等于 `--sidebar-w`，跟着侧栏一起收放。**
- *
- * 所以那道竖线永远落在侧栏和正文之间的缝上，顶栏和下面两栏是同一套网格。
- * 两版都栽过：一版是「内容多宽就多宽」（竖线停在 197 而缝在 200，**差三像素**
- * 就是整个外壳看着没对齐的地方）；一版把它钉死在展开态的 200px 上，
- * 收起之后**顶上留着 200 宽的品牌区、底下的栏只有 60**，那道线悬在半空。
- *
- * 内边距写在这儿而不是 `.topbar` 上——外面再来一层的话，`width` 就不等于栏宽了。
- */
-.topbar__brand {
-  position: relative;
-  display: flex; align-items: center; gap: 9px; flex: none; align-self: stretch;
-  width: var(--sidebar-w); padding: 0 9px 0 14px;
-  transition: width 0.18s var(--ease);
-}
-/**
- * 一道竖线把「身份」和「位置」分开，而且它就是那条缝的一段：顶到底、同一个颜色。
- * ⚠️ **绝对定位在右缘，不当 flex 子项**——当子项的话它要吃掉 gap 和内边距，
- * 收起态那 10px 的居中内边距会把它从缝上推开 10 像素，而那正是这一轮要修的毛病。
- */
-.topbar__brand::after {
-  content: ""; position: absolute; right: 0; top: 0; bottom: 0;
-  width: 1px; background: var(--border);
-}
-/**
- * 收起态：**一个 40px 的方块，和底下那一列图标同宽同轴**（10px 内边距 + 40 = 60）。
- * 名字藏起来，收放钮铺满整块盖在 logo 上——**靶子一直在那儿**，
- * 悬停/聚焦时它才画出「展开」那枚图标。60px 里摆不下两个方块，
- * 而 logo 和收放钮争的是同一个格子。
- */
-.app[data-rail="collapsed"] .topbar__brand { padding: 0 10px; justify-content: center; position: relative; }
-.app[data-rail="collapsed"] .topbar__name { display: none; }
-.app[data-rail="collapsed"] .topbar__rail {
-  position: absolute; left: 10px; right: 10px; top: 4px; bottom: 4px;
-  width: auto; height: auto; margin: 0; opacity: 0; background: var(--surface);
-  transition: opacity 0.12s var(--ease);
-}
-.app[data-rail="collapsed"] .topbar__rail:hover,
-.app[data-rail="collapsed"] .topbar__rail:focus-visible { opacity: 1; color: var(--text-1); }
-.topbar__brand .brand-mark,
-.topbar__brand > svg { width: 22px; height: 22px; flex: none; border-radius: var(--r-sm); }
-.topbar__name { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; }
-/* 收放钮推到品牌区右端，紧挨着那道缝——和 Fincai 一样，它属于「这一栏」而不是「logo 旁边」 */
-.topbar__rail {
-  display: grid; place-items: center; width: 26px; height: 26px; flex: none;
-  margin-left: auto;
-  padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3);
-}
-.topbar__rail:hover { background: var(--surface-2); color: var(--text-1); }
-.topbar__rail svg { width: 16px; height: 16px; }
-
-/* 面包屑：一级 + 二级。**「我在哪」唯一的常驻答案** */
-.crumbs { display: flex; align-items: center; gap: 6px; flex: none; font-size: var(--fs-sm); color: var(--text-2); min-width: 0; }
-.crumbs svg { width: 15px; height: 15px; flex: none; color: var(--text-3); }
-.crumbs b { font-weight: 600; color: var(--text-1); }
-.crumbs i { font-style: normal; color: var(--text-3); }
-.crumbs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/**
- * 居中的搜索框。⚠️ **`margin: 0 auto` 配 `max-width`，不是 flex 的 1fr**：
- * 用 1fr 的话它会跟着左右两侧内容的宽度左右漂——而左边是会变的面包屑。
- * 居中要真的居中，否则每换一页它就挪一次位置。
- */
-.topbar__find {
-  display: flex; align-items: center; gap: 9px;
-  width: min(440px, 34vw); min-width: 0;
-  height: 30px; padding: 0 10px;
-  border: 1px solid var(--border-strong); border-radius: var(--r-pill);
-  background: var(--canvas); color: var(--text-3); font: inherit; font-size: var(--fs-sm);
-}
-.topbar__find:hover { border-color: var(--text-3); }
-.topbar__find svg { width: 15px; height: 15px; flex: none; }
-.topbar__find > span { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar__find kbd {
-  flex: none; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
-  padding: 2px 5px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface);
+  position: relative; z-index: 1;
+  display: flex; height: 100vh; overflow: hidden;
+  background: var(--canvas);
 }
 
-.topbar__end { display: flex; align-items: center; gap: 8px; justify-self: end; }
-.topbar__icon {
-  display: grid; place-items: center; width: 28px; height: 28px;
-  padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3);
-}
-.topbar__icon:hover { background: var(--surface-2); color: var(--text-1); }
-.topbar__icon svg { width: 16px; height: 16px; }
-
-/* 侧栏顶部原来那一大块品牌区没了，上内边距跟着收 */
-.app__body .sidebar { padding-top: 10px; }
-
+/* ---------- 侧栏 ---------- */
+/**
+ * ⚠️ **侧栏就是应用底色，不再是一块白板。**
+ * 翻过来之后底色关系是：**外面是底 · 面板是白框 · 工作区是浅灰 · 卡片是白**。
+ * 侧栏自己画底色的话，它和面板之间要么多一道线、要么两块白连成一片看不出是两层。
+ */
 .sidebar {
   width: var(--sidebar-w);
   flex: none;
-  /* 收放要看得出是同一条栏在变宽变窄，不是换了一张图。
-     文字先消失、宽度再收（`display:none` 是瞬时的），顺序正好不会出现挤字 */
+  /* 收放要看得出是同一条栏在变宽变窄，不是换了一张图 */
   transition: width 0.18s var(--ease);
-  /* ⚠️ **侧栏是白的**（上一版是透明、露出浅灰的应用底色）。翻过来之后：
-     白的是**框架**（顶栏 + 侧栏 + 卡片），浅灰的是**工作区**。 */
-  background: var(--surface);
-  padding: 24px 12px 16px;
+  background: transparent;
+  padding: 10px 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  /* 不再 sticky：body 不滚了，它天然待在原地 */
+  gap: 10px;
   height: 100%;
   min-height: 0;
   z-index: 20;
+}
+
+/**
+ * 栏头：身份 + 三颗随手就用的图标（收集 · 设置 · 收放）。
+ *
+ * ⚠️ **「收集」不再是那颗铺满一行的黑色大按钮。** 它是这一栏最常用的动作没错，
+ * 但整屏最重的实心黑块只能有一颗，而那一颗该留给**当前这一页**的主操作；
+ * 一列灰字上面顶着一块黑，读起来是「这一屏最重要的事是入库」，而它不是。
+ *
+ * ⚠️ **收起态这一行变成一列 40px 的方块**（logo / 收集 / 设置），不是把这几颗甩去页头。
+ * 靶子换位置比靶子变小难用得多——收放是个会一直保持的状态，每次收起都要重新找一遍
+ * 「设置去哪了」的话，这个收起就没人用了。
+ */
+.sidebar__head {
+  position: relative;
+  display: flex; align-items: center; gap: 2px;
+  height: 40px; padding: 0 2px 0 8px;
+}
+.sidebar__brand { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto; }
+.sidebar__brand .brand-mark,
+.sidebar__brand > svg { width: 22px; height: 22px; flex: none; border-radius: var(--r-sm); }
+.sidebar__name {
+  font-family: var(--font-display); font-size: var(--fs-md); font-weight: 650;
+  letter-spacing: -0.02em; white-space: nowrap;
+}
+
+/* 外壳上所有 26px 的图标钮走同一个类：侧栏栏头三颗、页头右端的 AI 键。
+   **长一样是因为它们是同一种东西**——不带字的、随手点的、不属于内容的动作。 */
+.rail-icon,
+.sidebar__rail {
+  display: grid; place-items: center; width: 26px; height: 26px; flex: none;
+  padding: 0; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--text-3); cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.rail-icon:hover,
+.sidebar__rail:hover { background: var(--surface-2); color: var(--text-1); }
+.rail-icon svg,
+.sidebar__rail svg { width: 17px; height: 17px; }
+
+/**
+ * 搜索：**整个工作台唯一一个跨四个库 + vault + posts + 热点的入口**，所以给它一整行、
+ * 用一句问句说清它能干什么。栏头里不再放第二枚放大镜——同一件事两个入口，
+ * 用户得先想它俩是不是一回事。**快捷键不能是唯一入口**（没人会去猜一个看不见的功能）。
+ */
+.sidebar__find {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; min-width: 0; height: 36px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-3);
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  transition: border-color 0.14s var(--ease), color 0.14s var(--ease);
+}
+.sidebar__find:hover { border-color: var(--border-strong); color: var(--text-2); }
+.sidebar__find svg { width: 16px; height: 16px; flex: none; }
+.sidebar__find > span { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar__find kbd {
+  flex: none; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3);
+  padding: 2px 5px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--canvas);
 }
 
 /* 形状、底色、字色全在 `BrandMark` 那个 SVG 里（它自带「三圆角 + 右下直角」的块），
@@ -671,8 +700,6 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    写死黑底的话 logo 会糊进深色背景，成为整屏唯一一个不认主题的东西。 */
 .brandmark__bg { fill: var(--accent); }
 .brandmark__x { fill: var(--on-accent); }
-/* 展开态它只是标识：点它既不该收侧栏也不该回首页，那种「点了会怎样」的犹豫
-   本身就是成本。收起态才接管展开这个动作（见下面的收起规则）。 */
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 /* `position: relative` 是给收起态那个二级浮层当锚点的，见 `.subnav[data-flyout]` */
@@ -680,34 +707,26 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 .nav-item {
   position: relative;
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border: 0; border-radius: var(--r-lg);
+  padding: 9px 10px; border: 0; border-radius: var(--r-lg);
   background: transparent; color: var(--text-2);
   text-align: left; width: 100%; font-size: var(--fs-base); font-weight: 500;
   transition: background 0.16s var(--ease), color 0.16s var(--ease);
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text-1); }
-/* 当前项是**实心黑药丸**，不是淡色底 + 侧边线。黑白配色下淡色底几乎看不出来，
-   而实心块在一列灰字里一眼就找得到。 */
 /**
- * ⚠️ **选中态是一层轻底，不再是实心黑块。**
+ * ⚠️ **选中态是一层轻底，不是实心黑块。**
  *
- * 「黑块 = 你在这儿」那条规则**没撤**，撤的是它的重量：在浅底上纯黑是最重的视觉元素，
+ * 「黑块 = 你在这儿」那条规则没撤，撤的是它的重量：在浅底上纯黑是最重的视觉元素，
  * 而「我在哪一页」是这一屏信息量最低的一件事——它拿走了整屏最强的强调。
- * 一屏四五个黑块（侧栏选中 + 右上主按钮 + tab + 入库）互相抢，谁都没抢到。
- *
- * 现在：底色 `--surface-2`（约 6%）+ 字重变实 + 图标转成正文色。
- * 和「标记黄 = 这个我圈中的」仍然分得开——两者一个是底色、一个是荧光笔，不同色域。
  */
 .nav-item[aria-current] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .nav-item[aria-current]:hover { background: var(--surface-2); color: var(--text-1); }
 .nav-item[aria-current] svg { color: var(--text-1); }
-/* 有下级的一级项只负责定位任务域，当前页由二级项承担。两层都画黑块会像有两个
-   当前页，所以这里用安静底色托住分组，把最强对比留给真正打开的页面。 */
+/* 有下级的一级项只负责定位任务域，当前页由二级项承担。两层都画底会像有两个当前页。 */
 .nav-group.has-children > .nav-item[data-current="true"] { background: transparent; color: var(--text-1); font-weight: 600; }
 /**
  * 二级项。⚠️ **那条竖线对齐的是一级项图标的中轴**（10px 内边距 + 18px 图标的一半 = 19px），
- * 不是随手挑的缩进——对齐之后这一组读起来是「挂在那枚图标下面」，
- * 而不是「又一列缩进不明的按钮」。参照的第三张图（那个可展开的侧栏）是同一个做法。
+ * 不是随手挑的缩进——对齐之后这一组读起来是「挂在那枚图标下面」。
  */
 .subnav {
   position: relative; display: flex; flex-direction: column; gap: 1px;
@@ -719,9 +738,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 }
 /**
  * 收起态：二级项变成一块**浮出来的面板**，不是消失。
- *
- * ⚠️ **上一版是 `display: none`**，于是收起之后「找题 / 选题 / 创作 / 复盘」一个都点不到——
- * 而收起是个会一直保持的状态（存在 localStorage 里），等于那四页从此只剩 Ctrl+K 一条路。
+ * ⚠️ 上一版是 `display: none`，于是收起之后那四页一个都点不到，而收起是个会一直保持的状态。
  * `:focus-within` 不能省：只写 `:hover` 的话，键盘 Tab 进去它是看不见的。
  */
 .subnav[data-flyout] {
@@ -755,12 +772,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   background: var(--border-strong);
 }
 .subnav-item:hover { background: var(--surface-2); color: var(--text-1); }
-/* 二级项同理。⚠️ 一级和二级**不能都铺底**——同屏两个高亮块读不出层级，
-   所以有下级时一级只提字色（见下面 `.nav-group.has-children` 那条）。 */
 .subnav-item[aria-current="page"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .subnav-item[aria-current="page"] > span { background: var(--accent); }
 .nav-item__icon { position: relative; display: grid; place-items: center; flex: none; }
-.nav-icon { width: 18px; height: 18px; flex: none; }
+.nav-icon { width: 19px; height: 19px; flex: none; }
 .nav-item__label { min-width: 0; overflow: hidden; white-space: nowrap; }
 .nav-item .count {
   margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-2xs);
@@ -768,78 +783,217 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   border: 1px solid var(--border); border-radius: var(--r-pill); padding: 0 6px;
 }
 .nav-item[aria-current] .count { color: var(--text-2); }
-/* 有下级的那两项才有的小角标。**它只报状态、不是第二个开关**（展开是跟着当前页自动的），
-   所以颜色压到最淡的一档——它要回答的是「这底下还有东西」，不是「点我」。 */
 .nav-item__caret {
   width: 13px; height: 13px; flex: none; margin-left: auto; color: var(--text-3);
   transition: transform 0.16s var(--ease);
 }
 .nav-group.has-children[data-open="true"] .nav-item__caret { transform: rotate(180deg); }
-/* 收起态才出现的那颗点，见下面的收起规则 */
 .nav-item__dot {
   position: absolute; top: -1px; right: -2px; width: 6px; height: 6px;
   border-radius: 50%; background: var(--accent);
-  box-shadow: 0 0 0 2px var(--surface);
+  box-shadow: 0 0 0 2px var(--canvas);
   display: none;
 }
 
 /* ---------- 侧栏收起 ----------
-   只改变量和「藏什么」，**不写第二套侧栏**：导航项、入库按钮、连接状态在两种形态下
-   是同一批 DOM，收起只是把文字那一段收掉。写两套的话，加一个导航项就要改两处，
-   迟早有一处漏掉。 */
+   只改变量和「藏什么」，**不写第二套侧栏**：栏头、搜索、导航项在两种形态下是同一批 DOM。
+   60px = 左右各 10px 内边距 + 一个 40px 的方块，栏里所有东西都对着这条竖线。 */
 .app[data-rail="collapsed"] { --sidebar-w: 60px; }
 .app[data-rail="collapsed"] .sidebar { padding-left: 10px; padding-right: 10px; }
-/* 收起态 **logo 自己就是展开按钮**，收放按钮藏起来：60px 宽的一条里摆两个方块显得挤，
-   而 logo 已经在最顺手的位置上了。hover 时轻轻放大——黑白配色下这是最省的「能点」提示，
-   加个描边或换底色都要引进第二个颜色。 */
-/* **收起态放大到和导航项的方块同宽**（40px = 60 - 左右各 10 的内边距）。
-   26px 的 logo 挂在一列 40px 宽的图标块上面，比谁都小一圈，看着像还没加载完；
-   等宽之后左右边缘和下面所有图标连成一条竖线。 */
+/* 栏头翻成一列：logo（= 展开钮）· 收集 · 设置，各占一个 40px 的方块 */
+.app[data-rail="collapsed"] .sidebar__head {
+  flex-direction: column; align-items: stretch; height: auto; gap: 2px; padding: 0;
+}
+.app[data-rail="collapsed"] .sidebar__brand { width: 40px; height: 40px; flex: none; justify-content: center; }
+.app[data-rail="collapsed"] .sidebar__name { display: none; }
+.app[data-rail="collapsed"] .sidebar__head .rail-icon { width: 40px; height: 40px; border-radius: var(--r-lg); }
+/**
+ * 收放钮盖在 logo 上：**靶子一直在那儿**，大小位置都不变，变的只是那一刻画哪个图标。
+ * 60px 里摆不下两个方块，而 logo 和「展开」争的是同一个格子。
+ * 不做成「hover 才存在的按钮」——它一直可聚焦，只是平时透明。
+ */
+.app[data-rail="collapsed"] .sidebar__rail {
+  position: absolute; left: 0; top: 0; width: 40px; height: 40px;
+  margin: 0; border-radius: var(--r-lg); background: var(--surface-2);
+  opacity: 0; transition: opacity 0.12s var(--ease);
+}
+.app[data-rail="collapsed"] .sidebar__rail:hover,
+.app[data-rail="collapsed"] .sidebar__rail:focus-visible { opacity: 1; color: var(--text-1); }
+/* 搜索退成一颗无边框图标：框里只剩放大镜时那个框不再解释任何东西，
+   只是在一列没有框的图标上面多出一个有框的。 */
+.app[data-rail="collapsed"] .sidebar__find {
+  width: 40px; height: 40px; justify-content: center; padding: 0;
+  border-color: transparent; background: transparent; border-radius: var(--r-lg);
+}
+.app[data-rail="collapsed"] .sidebar__find:hover { background: var(--surface-2); }
+.app[data-rail="collapsed"] .sidebar__find > span,
+.app[data-rail="collapsed"] .sidebar__find kbd { display: none; }
 .app[data-rail="collapsed"] .nav-item__label,
 .app[data-rail="collapsed"] .nav-item__caret,
 .app[data-rail="collapsed"] .nav-item .count { display: none; }
-/* ⚠️ **二级项不再是 `display: none`，它改成了浮层**，见上面 `.subnav[data-flyout]`。
-   一刀切藏掉的代价是收起之后那四页一个都点不到。 */
 /* 图标居中：`gap` 留着的话，藏掉文字后图标会偏左几像素 */
-.app[data-rail="collapsed"] .nav-item,
-.app[data-rail="collapsed"] .btn-block { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.app[data-rail="collapsed"] .nav-item { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
 .app[data-rail="collapsed"] .nav-item__dot { display: block; }
-/* 收起态的连接行：文字没了，齿轮居中，**状态点绝对定位到齿轮右上角当角标**。
-   和 .nav-item__dot 是同一条规则（60px 里放不下就退成一颗点），
-   所以两种形态用的是同一批 DOM——写两套的话，以后动这一行要改两处。 */
 
-.sidebar-foot {
-  margin-top: auto; display: flex; flex-direction: column; gap: 10px;
-  padding-top: 10px; border-top: 1px solid var(--border);
-}
+/* 栏底：设置。`margin-top: auto` 把它压到底，上面一道线和导航分开。 */
+.sidebar__foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* ---------- 面板 ---------- */
 /**
- * 侧栏底部那一行：**这台工作台此刻连着什么**。
- *
- * ⚠️ **不是按钮**（`div` 不是 `button`）：收起态它只剩一颗 7px 的点，一个点看不出可点；
- * 去改配置的入口是顶栏那枚齿轮。这一行回答「通没通」，不回答「去哪儿改」。
- *
- * 参照的四个侧栏底部都压着一块「你是谁 / 在哪个工作区」——这里没有多用户，
- * 对应的东西就是**连接状态 + vault 名**。它同时解决了两件事：
- * 底下那六百像素的空白有了收口，而「流水线不可达」从一个 7px 的 title 变成了一行字。
+ * ⚠️ **AI 侧栏在这一圈边框里面**（`.app__frame-body` 的第二列），所以整屏只有一圈边框。
+ * 它在外面的话，「正文 + AI」这一对会被那条边框劈成两块，而它们是一起看的。
  */
-.rail-ws {
-  display: flex; align-items: center; gap: 9px; min-width: 0;
-  padding: 7px 8px; border-radius: var(--r-ctl);
+/**
+ * ⚠️ **这个类不能叫 `.panel`。**
+ * 那个名字在这套设计系统里**已经是「卡片」**（见下面 `.card, .panel`：20px 内边距 +
+ * 边框 + 投影）。叫 `.panel` 的那一版外壳白白吃了 20px 内边距，于是浅灰的工作区
+ * 被一圈白边框住——屏幕上就是**框里画框**，而没有任何地方报错，只是看着多了一层。
+ *
+ * ⚠️ **沟用 margin，不再套一层带 padding 的 `div`。**
+ * 上一版是 `.app__panel`（padding）里面裹 `.panel`（border）两层。少一层 DOM 之后，
+ * 「这一层是干嘛的」这个问题也少问一次——而这正是用户看着觉得「嵌套好几层」的来源。
+ *
+ * ⚠️ **圆角靠子元素各自裁，这一层自己不能 `overflow: hidden`。**
+ * 页头里挂着好几个绝对定位的浮层（洞察的「跑一次」面板、各页的 `MenuButton`、
+ * AI 页的会话浮层），它们本来就该盖到正文上——一裁，那些浮层只能露出顶上一条，
+ * 而这**不报错**：屏幕上只是一块菜单缺了大半截。
+ */
+/**
+ * ⚠️ **不是一块浮起来的板：没有沟、没有边框圆角、没有投影。**
+ *
+ * 做过那一版（四周 8px 沟 + 1px 边框 + `--r-lg` 圆角 + 投影），撤了。三个毛病：
+ *   1. **顶上多出一条细边。** 正文和窗口顶之间那 8px 既不是内容也不是留白，
+ *      就是一条空条——而这一屏最上面本该直接是页头。
+ *   2. **左上左下两个圆角贴着侧栏。** 圆角说的是「这块东西是浮着的、和背后那层不挨着」，
+ *      而侧栏和正文明明是同一个平面上并排的两块。
+ *   3. 那圈边框 + 底色和里面的浅灰工作区叠起来，读成了**框里画框**。
+ *
+ * 现在只有一道竖线。这也是设计系统里原来那条：**分隔靠一道 1px 线，不靠沟和圆角**——
+ * 中间为了给「面板」这个说法找依据推翻过一次，推翻错了。
+ */
+.app__frame {
+  position: relative;
+  flex: 1 1 0; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
 }
-.rail-ws .dot { flex: none; }
-.rail-ws__text { display: grid; gap: 1px; min-width: 0; }
-.rail-ws__text b {
-  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.app__frame-body { flex: 1 1 auto; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
+/**
+ * 面板级覆盖层：盖住整个面板**含页头**，给需要通顶的东西用（AI 助手的历史抽屉）。
+ * ⚠️ **`pointer-events: none`**：空着时它铺满整个面板。不写的话整块面板从此点不动，
+ * 而这**不报错**——屏幕上只是「哪儿都点不了」。画进来的东西自己开 `auto`。
+ */
+.app__frame-overlay { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.app__frame-overlay > * { pointer-events: auto; }
+
+/* ---------- 页头 `.view-head` ---------- */
+/**
+ * 面板顶上那条：**左边「我在哪」，右边「这一页能干什么」**。
+ *
+ * ⚠️ **右端分两段，不是一排。**
+ *   - `.view-head__end` 是**插槽**：页面自己 portal 进来（`lib/view-slots.js`）。
+ *   - `.view-head__fixed` 是**外壳自己的**：现在只有 AI 召唤键。
+ * 混成一排的话，页面动作和外壳动作长得一模一样，而它们的去处根本不是一回事；
+ * 而且插槽里的东西多起来时，AI 键的位置会跟着左右漂。
+ */
+.view-head {
+  position: relative;
+  flex: none; display: flex; align-items: center; gap: 12px;
+  height: var(--view-head-h); padding: 0 10px 0 var(--main-pad);
+  border-bottom: 1px solid var(--border); background: var(--surface);
 }
-.rail-ws__text i {
-  font-style: normal; font-size: var(--fs-2xs); color: var(--text-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* ⚠️ **页头没有第二条了。** 那一条是给筛选胶囊准备的，而胶囊搬回了正文
+   （见 `.view-switch`）：页名一条白带、紧接着又一条白带，中间夹一句说明——
+   屏幕上读起来是「同一件事说了两遍」。要再加第二条之前先想清楚：
+   它和第一条的分工是什么，能不能并进第一条的右端。 */
+.view-head__name {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--fs-sm); color: var(--text-2);
 }
-/* 收起态：60px 里放不下两行字，退成一颗点——和 `.nav-item__dot` 同一条规则，
-   而且仍然是同一批 DOM（说明进 title）。 */
-.app[data-rail="collapsed"] .rail-ws { justify-content: center; padding: 7px 0; }
-.app[data-rail="collapsed"] .rail-ws__text { display: none; }
+.view-head__name svg { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.view-head__name b { font-weight: 600; color: var(--text-1); white-space: nowrap; }
+.view-head__name i { font-style: normal; color: var(--text-3); }
+.view-head__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-head__lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/**
+ * 正中那一格：给「自己接管整条页头」的页用（现在只有 AI 助手）。
+ *
+ * ⚠️ **绝对定位在页头正中，不参与那一行的 flex。**
+ * 当成普通 flex 项目的话，它会停在**剩余空间**的中心——而左边一颗 `≡`、
+ * 右边两三颗按钮，两侧宽度差一截，结果是标题看着永远偏一点，
+ * 而且右边多一颗按钮它就挪一次。这条坑顶栏时代那个居中搜索框栽过一次。
+ */
+.view-head__center {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px;
+  max-width: min(50%, 420px); min-width: 0;
+}
+/* ⚠️ **这儿原来有一道「/」**（`::before`），让页名和这一格读成一条面包屑。撤了：
+   现在唯一用这一格的是 AI 助手页，而那一页的页名是藏起来的——那道斜杠于是成了
+   一个前面没有东西、后面跟着一颗图标的孤立记号。屏幕上就是左上角凭空一个「/」。 */
+.view-head__end {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  margin-left: auto;
+}
+.view-head__fixed { display: flex; align-items: center; gap: 2px; flex: none; }
+/* 页头里的按钮压一档高度：40px 的一条里塞 34px 的默认按钮会顶到边线上 */
+.view-head .btn { height: 30px; padding: 0 11px; font-size: var(--fs-sm); }
+.view-head .btn svg { width: 14px; height: 14px; }
+/**
+ * 分隔线**只在真有东西从底下过去时才加深**——没滚动时它只是一条界线，
+ * 滚起来之后它得压住从下面钻过去的内容。`data-scrolled` 由 `.main` 的滚动直写 DOM。
+ */
+.app__frame:has(.main[data-scrolled="true"]) > .view-head { border-bottom-color: var(--border-strong); }
+
+/**
+ * ⚠️ **AI 助手页自己接管这条页头，所以它在这一页上不画成一条独立的白带。**
+ *
+ * 别的页是「白页头 + 灰工作区」两层：页头讲的是外壳的事（你在哪一页、这一页能干什么）。
+ * 而 AI 助手页的页头讲的全是**这段对话自己**的事（叫什么、换一段、开新的），
+ * 它就该和对话连成一片——中间横一道线，读起来是「上面那条是别人的，下面才是我的」。
+ *
+ * 一起藏掉两样：
+ *   - **页名（面包屑）**：正中已经写着这段对话叫什么，而侧栏里「AI助手」是高亮的，
+ *     再写一遍是同一个词一屏说两遍。
+ *   - **AI 召唤键**：你已经在 AI 助手页了，那颗按下去哪儿也不去。
+ */
+.app__frame:has(.assistant-page) > .view-head {
+  /**
+   * ⚠️ **这一页整页是白的**（见 `.assistant-page`），所以页头不另设底色——
+   * `.app__frame` 本来就是 `--surface`。上一版这儿写着 `--sunken`，
+   * 那是因为当时对话区是浅灰的。
+   */
+  border-bottom-color: transparent;
+  /* ⚠️ **比别的页高一档、内容不贴着顶。** 别的页那条 40px 里装的是一行小字加几颗按钮；
+     这一页装的是「这段对话叫什么」，它是这一屏的标题——顶着窗口边压得人喘不过气。 */
+  height: 56px; padding-top: 8px;
+}
+.app__frame:has(.assistant-page) > .view-head .assistant-head-icon { width: 34px; height: 34px; }
+.app__frame:has(.assistant-page) > .view-head .assistant-head-icon svg { width: 19px; height: 19px; }
+/**
+ * ⚠️ **「新对话」那颗不是 `.assistant-head-icon`**，它长在 `.assistant-context-actions` 里、
+ * 吃的是那套 28px 的图标钮样式。只按类名放大的话，屏幕上是 `≡` 和 `⋯` 大了、
+ * 中间那颗没动——三颗并排一眼看得出。
+ *
+ * ⚠️ **必须是直接子选择器 `>`。** 写成后代的那一版（就是这条的上一版）把
+ * `⋯` 菜单**里面**的菜单项也一起压成了 34px 的方块，「存为知识卡」五个字整个溢出框外。
+ * 那是同一个坑的第五次，而且这次是这条规则自己造的——
+ * `.assistant-context-actions` 底下现在不只有图标钮了，还有一块拉开的菜单。
+ *
+ * （代价记在这儿：`>` 够不到 `.assistant-context-window` 里那两颗。那一组只在
+ * 浮层和右栏出现，而这条规则限定在完整页上，所以够不到也没关系。）
+ */
+.app__frame:has(.assistant-page) > .view-head .assistant-context-actions > button:not(:has(span)) {
+  width: 34px; height: 34px;
+}
+.app__frame:has(.assistant-page) > .view-head .assistant-context-actions > button:not(:has(span)) svg {
+  width: 19px; height: 19px;
+}
+.app__frame:has(.assistant-page) > .view-head .view-head__name,
+.app__frame:has(.assistant-page) > .view-head .view-head__fixed { display: none; }
+/* 滚起来也不加深：这一页的页头和正文是同一块，加了线就又劈成两层 */
+.app__frame:has(.assistant-page):has(.main[data-scrolled="true"]) > .view-head { border-bottom-color: transparent; }
 
 /* ---------- 内容项目工作区 ---------- */
 /* 面板已经定高，这里按面板算不按视口算（视口那份会高出 16px 的沟 + 边框） */
@@ -995,7 +1149,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    * 而那个「底」在窗口外面**。往下滚一点它吸住之后反而正常，
    * 所以这个毛病只在「刚打开这一页」时出现，最容易被当成偶发。
    */
-  max-height: calc(100vh - var(--topbar-h) - var(--project-bar-h) - var(--project-block-h) - 28px);
+  max-height: calc(100vh - var(--shell-chrome-h) - var(--project-bar-h) - var(--project-block-h) - 28px);
   overflow-y: auto; overscroll-behavior: contain;
 }
 /**
@@ -1391,7 +1545,6 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 .main {
   flex: 1 1 0; min-width: 0;
   background: var(--sunken);
-  border-left: 1px solid var(--border);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1404,62 +1557,86 @@ html[data-scroll-lock] .main { overflow: hidden; }
    留在面板上的话，限宽 1320 会让面板自己缩到 1320 —— 右边露出一条底色，
    看着是「面板没铺满」而不是「正文不该太宽」。 */
 /* 左右内边距抽成变量，因为吸顶的页头要用负 margin 把它抵掉、好让底色铺到栏边 */
-.main__inner { --main-pad: clamp(22px, 3.4vw, 52px); --main-pad-top: 32px; padding: var(--main-pad-top) var(--main-pad) 80px; max-width: 1320px; }
+.main__inner { --main-pad-top: 32px; padding: var(--main-pad-top) var(--main-pad) 80px; max-width: 1320px; }
 
-/* ---------- 页头 ---------- */
+/* ---------- 页内的第一行说明 ---------- */
 
 /**
- * 页面顶部那一条：一句说明（左）+ 计数和动作（右）。
+ * ⚠️ **`.page-bar` 那条横栏没了。**
  *
- * ⚠️ **`.page-header` / `.page-title` / `.page-sub` 那一整套撤了。**
- * 每一页原来都从一个 `clamp(28px, 3.4vw, 38px)` 的大标题开始——顶栏有了面包屑之后，
- * 那是同一个词一屏说两遍，而且它拿走首屏最大的一块地方去说这一屏信息量最低的一件事。
+ * 走过四版，每一版都是同一个毛病换个长法：
+ *   1. 页头一个大标题，正文顶上那个框里再来一个「TOPICS / 选题库 1 条」；
+ *   2. 撤掉小标题，只剩页头那个 38px 的大标题；
+ *   3. 顶栏加面包屑之后，那个大标题又成了第二遍，于是也撤掉，只留一句说明 + 动作；
+ *   4. 而那条「说明 + 动作」本身又和顶栏并排成了**两条横栏**。
+ *
+ * 现在只有一条横栏，而且它是外壳的一部分（`.view-head`）：动作和计数 portal 进去，
+ * 说明落回内容流的第一行——它是注解，本来就不该和控件抢同一条。
+ *
+ * ⚠️ 有筛选胶囊的那几页（`FilterHeader`）用的是**居中**的另一组
+ *（`.view-switch` + `.view-switch__desc`）：那儿说明是胶囊的注脚，跟着它一起居中。
  */
-.page-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px 20px; flex-wrap: wrap; margin-bottom: 20px; min-height: 34px;
-}
-/**
- * ⚠️ **页头吸顶。** 它右端放着这一页的主操作（「新建内容」）和条数，
- * 而这几页都比一屏长——滚下去之后要新建一篇，得先滚回顶上。
- * 参照的那两个后台（Fincai / Tsenta）都是把这条动作行钉在内容区顶上的。
- *
- * ⚠️ **负 margin 抵掉 `.main__inner` 的内边距**，让底色铺到栏边：不抵的话
- * 内容会从它左右两侧的缝里钻过去，看着像页头浮在字上面。
- * 上边距挪进 padding，所以**视觉间距一点没变**，变的只是这个盒子的顶边在哪儿。
- *
- * ⚠️ **只认「`.main__inner` 的头一个孩子」**：页头夹在内容中间的页面（如果以后有）
- * 套上这条会被负 margin 往上拽一截，而那不报错、只是位置错了。
- */
-.main__inner > .page-bar:first-child,
-.main__inner > .filter-head:first-child {
-  position: sticky; top: 0; z-index: 6;
-  margin-top: calc(var(--main-pad-top) * -1);
-  margin-inline: calc(var(--main-pad) * -1);
-  padding: var(--main-pad-top) var(--main-pad) 14px;
-  background: var(--sunken);
-}
-/**
- * 分隔线**只在真有东西从底下过去时才画**——没滚动时它是一条无中生有的线。
- *
- * ⚠️ **画成 `::after` 而不是 `border-bottom`**：正文栏卡着 1320 的可读宽度上限，
- * 而面板比它宽，`border-bottom` 会在栏的右边缘**断掉**，看着像一条没画完的线。
- * 这条 rule 两端各收进一个内边距，**和它上面那行字左右对齐**，读起来是有意的。
- */
-.main[data-scrolled="true"] .main__inner > .page-bar:first-child::after,
-.main[data-scrolled="true"] .main__inner > .filter-head:first-child::after {
-  content: ""; position: absolute; left: var(--main-pad); right: var(--main-pad);
-  bottom: 0; height: 1px; background: var(--border);
-}
-.page-bar__desc {
-  margin: 0; min-width: 0; max-width: 620px;
+.page-lead {
+  margin: 0 0 20px; min-width: 0; max-width: 620px;
   font-size: var(--fs-base); line-height: 1.65; color: var(--text-2);
 }
-.page-bar__end { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto; }
-.page-bar__count { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
+/* 页头右端那个条数。**不给它边框和底**：它是一句事实，不是一颗按钮 */
+.view-head__count { flex: none; font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
+
+/**
+ * 页头第二条的分段切换（`ui.jsx` 的 `ViewTabs`，五个页面共用）。
+ *
+ * ⚠️ **只有选中的那一颗画边框和底色，其余是纯文字。**
+ * 上一版热点那排是一个「外面一圈边框 + 投影 + 4px 内衬」的胶囊，整体 44px——
+ * **比 40px 的页头还高**，于是它顶出那一条、看着像浮在页头下面的又一个控件。
+ * 而它本来就是那一条的内容。Circle 的 `IssueViewTabs` 是同一个做法：
+ * 未选中 `border-transparent` + 淡字，选中 `bg-accent` + 实边框。
+ *
+ * ⚠️ **计数跟在标签后面，不做成角标。** 角标要么和标签抢对齐，要么在选中态里
+ * 换一套配色——而它只是一个附注：这一档现在有几条。
+ */
+/**
+ * 「现在看哪一档」的胶囊（`ui.jsx` 的 `ViewTabs`，五个页面共用）。
+ *
+ * ⚠️ **它是一颗胶囊，别再拆成扁平的一排。**
+ * 拆平过一版——为的是塞进 40px 的页头第二条。那是**让控件迁就容器**：
+ * 胶囊的形状本身就在说「这几个是一组、一次只选一个」，拆平之后它和页头上
+ * 任何一排图标按钮长得一样。正确的做法是把它放回**没有高度限制的地方**：
+ * 浮在灰底工作区上（`.view-switch`）。
+ *
+ * ⚠️ **选中态只画底色，不画边框。** 胶囊外面已经有一圈边框了，
+ * 里面再画一圈就是框里画框——而这一颗要表达的只是「现在停在这儿」。
+ */
+.view-switch { display: grid; justify-items: center; gap: 10px; margin-bottom: 28px; }
+.view-switch__desc {
+  margin: 0; max-width: 640px; text-align: center;
+  color: var(--text-3); font-size: var(--fs-sm); line-height: 1.6;
+}
+.view-tabs {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.view-tabs button {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  height: 36px; padding: 0 18px;
+  border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--text-2);
+  font: inherit; font-size: var(--fs-md); white-space: nowrap; cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease);
+}
+.view-tabs button svg { width: 15px; height: 15px; flex: none; }
+.view-tabs button:hover { color: var(--text-1); }
+.view-tabs button[aria-selected="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
+.view-tabs__count { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--text-3); }
+.view-tabs button[aria-selected="true"] .view-tabs__count { color: var(--text-2); }
+@media (max-width: 760px) {
+  /* 窄屏胶囊会挤到出界，让它跟着容器换行——但仍然是一颗胶囊 */
+  .view-tabs { flex-wrap: wrap; justify-content: center; border-radius: var(--r-lg); }
+}
 
 /* ⚠️ **`.page-sub` 留着，它不只是页头在用**：阅读区的编辑提示、洞察就绪面板、
-   正文空态、抓取中的说明——六处。跟着 `.page-header` 一起删掉的话，
+   正文空态、抓取中的说明——六处。跟着一起删掉的话，
    那六处会安静地掉回默认字号和颜色，而没有任何地方会报错。 */
 .page-sub { color: var(--text-2); font-size: var(--fs-base); line-height: 1.7; margin: 10px 0 0; max-width: 620px; }
 
@@ -1471,7 +1648,7 @@ html[data-scroll-lock] .main { overflow: hidden; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 34px; padding: 0 12px; border-radius: var(--r-ctl);
+  height: 36px; padding: 0 13px; border-radius: var(--r-ctl);
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2);
   font-size: var(--fs-base);
   transition: border-color 0.16s var(--ease), color 0.16s var(--ease), background 0.16s var(--ease);
@@ -1741,9 +1918,9 @@ html[data-scroll-lock] .main { overflow: hidden; }
 .sysrow__done { font-size: var(--fs-xs); color: var(--text-3); }
 
 /* 一排紧凑的统计数字（热点/数据页顶部） */
-/* `.pill-tabs` 是 inline-flex，紧跟在它后面的 inline-grid 会挤到同一行去。
+/* 数据页那排数字紧跟在别的 inline 元素后面时会被挤到同一行去。
    数字条要自己占一行——它是这一页的第一眼，不该跟页签抢那条横线。 */
-.pill-tabs + .stat-strip { display: grid; width: max-content; }
+.stat-strip { display: inline-grid; width: max-content; }
 .stat-strip {
   display: inline-grid; grid-auto-flow: column; margin-bottom: 16px;
   border: 1px solid var(--border-strong); border-radius: var(--r-lg);
@@ -1921,7 +2098,7 @@ svg[data-tone] { color: var(--tone); }
 /* ---------- 入库抽屉 ---------- */
 
 .scrim {
-  position: fixed; inset: 0; background: rgba(10, 10, 10, 0.34);
+  position: fixed; inset: 0; background: var(--scrim-bg);
   backdrop-filter: blur(2px);
   display: flex; justify-content: flex-end; z-index: 60;
 }
@@ -2203,10 +2380,39 @@ svg[data-tone] { color: var(--tone); }
   display: flex; flex-direction: column; gap: 16px;
 }
 .set-pane__head { display: flex; flex-direction: column; gap: 4px; }
+/* 标题一行：名字在左，「撤销这一段」在右。撤销只在这一段真有改动时才出现 */
+.set-pane__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .set-pane__title {
   font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 700;
   margin: 0; letter-spacing: -0.02em;
 }
+.set-pane__revert { flex: none; }
+/**
+ * 「存到哪、什么时候生效」。
+ *
+ * ⚠️ **它比 `desc` 还淡，而且带一枚记号。** 这是**每一段都有**的一句话——
+ * 和 `desc` 同重的话，两行灰字并排，眼睛读不出哪句是「这是什么」哪句是「会怎样」；
+ * 而它又不能省（改完 Worker 提示词以为生效了，就是没这句话的代价）。
+ * 记号只借 `IconAlertCircle` 的形状，**不吃 --danger**：这是陈述不是警告。
+ */
+.set-pane__applies {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin: 2px 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6;
+}
+.set-pane__applies svg { flex: none; margin-top: 3px; }
+/**
+ * 一段的正文。⚠️ **藏起来的那些用 `hidden` 属性，不是 class。**
+ * 这一个属性同时管住「不显示 + Tab 走不进去 + 读屏读不到」；写成 `opacity: 0` 的话
+ * 那几段的输入框还在 Tab 序列里——看不见但按得到，正是这个项目一直在防的那类问题。
+ * 这条 `display: none` 是给它兜底的：一旦哪天有人给 `.set-pane > div` 写了显式
+ * `display`，UA 默认的 `[hidden]` 就会被压过去，而那**不报错**，只是几段内容一起堆出来。
+ */
+/* ⚠️ **`flex: 1 1 auto; min-height: 0` 不能省。** 这一层是新插进 `.set-pane` 和段正文
+   之间的，不给它伸缩和 `min-height: 0` 的话，它按内容撑高、把高度约束挡在外面——
+   流水线提示词那一段本来靠编辑器自己滚，结果**整个右栏跟着一起滚**（多出 1529px），
+   而「这一段只能有一条滚动条」正是这一屏钉着的规矩。 */
+.set-pane__slot { display: flex; flex-direction: column; gap: 16px; min-width: 0; flex: 1 1 auto; min-height: 0; }
+.set-pane__slot[hidden] { display: none; }
 
 /* 动作条固定在底：按钮永远在同一个位置，肌肉记忆才立得住 */
 .set-overlay__foot {
@@ -2397,7 +2603,11 @@ svg[data-tone] { color: var(--tone); }
  * 鼠标在哪滚的是哪，正是「不要为了少一条滚动条去套 max-height」那条踩过的坑。
  * 现在用 `:has()` 让这一段撑满可用高度，滚动只留编辑器里那一条。 */
 .set-pane:has(.set-pp) { overflow: hidden; }
-.set-pane > .set-pp { flex: 1 1 auto; min-height: 0; }
+/* ⚠️ **选择器要跟着结构走。** 这条原来写的是 `.set-pane > .set-pp`——而段的正文
+   现在包在 `.set-pane__slot` 里，直接子选择器当场失效，`.set-pp` 按内容撑高、
+   把整个右栏一起带着滚（多出 1500 多像素），而**没有任何地方报错**。
+   同一类坑这个项目已经踩过三次（模型菜单分组、权限按钮包定位父级、段尾自检）。 */
+.set-pane__slot > .set-pp { flex: 1 1 auto; min-height: 0; }
 .set-pp { display: flex; gap: 16px; align-items: stretch; }
 .set-pp__list { flex: none; width: 178px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .set-pp__group { display: flex; flex-direction: column; gap: 2px; }
@@ -2446,7 +2656,7 @@ svg[data-tone] { color: var(--tone); }
  */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .chip {
-  height: 30px; padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm);
+  height: 32px; padding: 0 13px; border-radius: var(--r-pill); font-size: var(--fs-sm);
   border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   transition: background 0.14s var(--ease), border-color 0.14s var(--ease), color 0.14s var(--ease);
@@ -2510,43 +2720,19 @@ svg[data-tone] { color: var(--tone); }
 .list-bar--center { justify-content: center; }
 
 /**
- * 「找题」「种子」的页头（`FilterHeader`）：**芯片在最上面，说明贴在它正下方，整体居中。**
+ * 「找题 / 选题 / 复盘」的筛选芯片。⚠️ **它们现在住在页头第二条**
+ *（`.view-switch`，见 `ui.jsx` 的 `FilterHeader`）：一颗胶囊 + 它正下方的注脚，整组居中。
  *
- * ⚠️ **顺序是有意的**：这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
- * 那排芯片才是第一件事，说明是它的注脚。说明在上、芯片在下的那一版
- * 让你先读完一句你早就知道的话，才看到真正要点的东西。
- */
-.filter-head { display: grid; justify-items: center; gap: 8px; margin-bottom: 16px; }
-/**
- * ⚠️ **芯片要在页面正中，而不是「芯片 + 按钮」这一组在正中。**
- *
- * 用 flex 居中的话，那颗 `+` 会把整组往左推——**芯片的中心和说明的中心对不上**，
- * 一眼就看出来歪了。三列网格（`1fr auto 1fr`）让中间那格**真的**落在页面中线上，
- * 按钮挂在它右边、不参与居中。
- */
-.filter-head { justify-items: stretch; }
-.filter-head__row {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
-}
-.filter-head__row > :first-child { grid-column: 2; }
-.filter-head__row > :nth-child(2) { grid-column: 3; justify-self: start; }
-.filter-head__desc {
-  justify-self: center; width: max-content; max-width: 100%; margin: 0; text-align: center;
-  white-space: nowrap;
-  color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6;
-}
-.filter-head .chips-sm { margin-bottom: 0; }
-/**
- * ⚠️ **主动作在这儿是一颗只有 `+` 的圆钮，紧挨着芯片。**
- * 它原来是右上角一颗写着「记一句」的实心黑长条——那个位置和那个宽度
- * 让它看起来像页面级的「新建」，而它其实是这一排的一部分。
- * 实心黑保留（这一页就这一颗），但收成图标：字写在 `title` 和 `aria-label` 里。
+ * ⚠️ **这里来回过一次，把两次的理由都记下来。**
+ * 中间那一版把它 portal 进了页头第二条，理由是「Circle 的两条页头正是这么分的」。
+ * 落地之后不成立：Circle 第二条放的是几颗图标按钮，而我们这一排是**一颗胶囊**——
+ * 40px 的一条塞不下，只能把胶囊拆成扁平文字；拆完它和页头上任何一排按钮长得一样，
+ * 而且页名一条白带、紧接着又一条白带，中间夹一句说明，读起来是同一件事说了两遍。
+ * **控件没错，是位置错了。** 胶囊要浮在灰底工作区上，那儿没有高度限制。
  */
 /**
  * ⚠️ **不画黑色容器。** 实心黑在这套界面里的意思是「点这儿」，
  * 而这一排里真正要你点的是芯片——那颗 `+` 是「还想加一条」，是次要的。
- * 一个黑色圆块摆在一排轻底芯片旁边，重量压过了它们。
- * 尺寸跟芯片对齐，否则并排时上下差一截。
  */
 .filter-head__add {
   width: 26px; height: 26px; padding: 0; border-radius: var(--r-pill);
@@ -2554,12 +2740,9 @@ svg[data-tone] { color: var(--tone); }
   border: 1px solid transparent; background: none; color: var(--text-3);
 }
 .filter-head__add:hover { border-color: var(--border-strong); color: var(--text-1); }
-@media (max-width: 760px) {
-  .filter-head__desc { width: auto; white-space: normal; }
-}
 
 /* 种子空态占满页头以下的剩余空间；底部多留一点，视觉中心才落在工作区正中。 */
-.seed-page { min-height: calc(100vh - var(--topbar-h) - 112px); display: flex; flex-direction: column; }
+.seed-page { min-height: calc(100vh - var(--shell-chrome-h) - 112px); display: flex; flex-direction: column; }
 .seed-page > .empty {
   flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 100%; padding: 0 16px 12vh;
@@ -2572,7 +2755,7 @@ svg[data-tone] { color: var(--tone); }
  *
  * 按这套界面自己的分界：**黑块回答「位置」**（当前页、当前视图、当前 tab、互斥的分流选择），
  * **标记黄回答「我对这东西做过什么」**（选区、高亮、打标、多选打勾）。状态筛选一次只能选一个，
- * 它说的是「我现在在看哪一档」——那是位置，和上面那排 `.pill-tab` 是同一件事。
+ * 它说的是「我现在在看哪一档」——那是位置，和页头第二条那排 `.view-tabs` 是同一件事。
  * 这里一直用着标记黄，是这条规则的一处漏网；正文换成暖色系之后它更明显了：
  * 一屏上粉底衬、橙加粗、黄芯片三种暖色互相打架，而其中只有前两个是内容。
  *
@@ -3439,20 +3622,9 @@ kbd {
 /* ---------- 药丸切换条 ---------- */
 
 /* 视角切换（平台热榜 / AI 情报）。当前项是实心黑药丸，和侧栏当前项同一套语言。 */
-.pill-tabs {
-  display: inline-flex; gap: 4px; margin-bottom: 20px; padding: 4px;
-  border: 1px solid var(--border); border-radius: var(--r-pill);
-  background: var(--surface); box-shadow: var(--shadow-sm);
-}
-.pill-tab {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 34px; padding: 0 16px; border: 0; border-radius: var(--r-pill);
-  background: transparent; color: var(--text-2); font-size: var(--fs-base);
-  transition: background 0.16s var(--ease), color 0.16s var(--ease);
-}
-.pill-tab svg { width: 15px; height: 15px; }
-.pill-tab:hover { color: var(--text-1); }
-.pill-tab[aria-selected="true"] { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
+/* ⚠️ **`.pill-tabs` / `.pill-tab` 整套撤了**，热点那三个视角改用页头第二条的
+   `.view-tabs`（见上面）。撤的理由：那是个 44px 的浮起胶囊，塞不进 40px 的页头，
+   而且和另外四页的 `.chip` 是两套长相、回答同一个问题。 */
 
 /* ---------- 数据面板（热点两个 tab 共用） ---------- */
 
@@ -3847,7 +4019,7 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 
 .search-box {
   display: inline-flex; align-items: center; gap: 8px;
-  height: 32px; padding: 0 12px; min-width: 240px;
+  height: 36px; padding: 0 12px; min-width: 240px;
   border: 1px solid var(--border-strong); border-radius: var(--r-pill);
   background: var(--canvas); color: var(--text-3);
 }
@@ -4213,12 +4385,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   color: var(--text-3); font-size: var(--fs-sm); line-height: 1.7;
 }
 
-/* 页内 tab 上的待办角标 */
-.pill-tab__count {
-  margin-left: 6px; padding: 0 6px; border-radius: var(--r-pill);
-  border: 1px solid var(--border-strong); font-family: var(--font-mono); font-size: var(--fs-2xs);
-}
-.pill-tab[aria-selected="true"] .pill-tab__count { border-color: rgba(127, 127, 127, 0.5); }
+/* ⚠️ 这儿原来有个「页内 tab 上的待办角标」（`.pill-tab__count`：描边小方块）。
+   一起撤了：那套 tab 没了，而且**它在 JSX 里一处都没用过**——
+   计数现在跟在标签后面（`.view-tabs__count`），不做成角标。 */
 
 /* ---------- 阅读区覆盖层 ---------- */
 
@@ -4461,6 +4630,19 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 700;
   letter-spacing: -0.02em; color: var(--text-1);
 }
+/**
+ * ⚠️ **每一格都不许换行。** 这张表是定宽网格（最后一列只有 68px），
+ * 而它的每一格都来自**解析对方页面**——对方一改版，某一格就可能从「89.7」
+ * 变成一整段说明。那一段在 68px 里逐字换行，一行撑到七百多像素高、
+ * 文字溢出整张卡片，**而没有任何地方报错**（真发生过，见 `aihot.mjs` 里那条注释）。
+ * 截断之后最坏是省略号：难看，但一眼看得出「这格数据不对」，而不是整页塌掉。
+ */
+.lb__head span, .lb__row > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 模型那一格是两行（名字 + 厂商），它自己管截断 */
+.lb__model { overflow: visible; }
+.lb__model strong, .lb__model small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) {
   /* 窄屏先丢掉「上线」和「评测」：分数和价格是主问题，日期是注脚 */
   .lb__head, .lb__row { grid-template-columns: 40px 1fr 110px 62px; }
@@ -5957,6 +6139,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 @media (max-width: 900px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; }
+  /* 竖着堆的时候那道竖线该横过来 */
+  .app__frame { border-left: 0; border-top: 1px solid var(--border); }
+  .sidebar__find { width: auto; flex: 1 1 220px; }
   .nav { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
   .nav-group { width: auto; }
   .nav-group[data-current="true"] { width: 100%; }
@@ -5965,7 +6150,6 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   .subnav::before { display: none; }
   .subnav-item { width: auto; }
   .nav-item[aria-current]::before { display: none; }
-  .sidebar-foot { margin: 0; flex-direction: row; }
   .workspace { flex-direction: column; height: auto; }
   .ws-list, .rail { width: 100%; border: 0; border-bottom: 1px solid var(--border); }
   .main-wide { height: auto; }
@@ -6191,7 +6375,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--r-lg); box-shadow: 0 18px 40px rgba(0, 0, 0, .12);
 }
-.page-bar__end { position: relative; }
+.view-head__end { position: relative; overflow: visible; }
 
 .run-panel__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .run-panel__head b { font-size: var(--fs-md); }

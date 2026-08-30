@@ -1,5 +1,5 @@
 /**
- * 全局 AI 助手：**`.app__body` 里的第三列**，和侧栏、正文并排。
+ * 全局 AI 助手：**面板里的第二列**，和正文并排（同在那一圈边框里）。
  *
  * ⚠️ **上一版是 `position: fixed` 的浮层，撤了。** 三个问题：
  * 1. 520px 的卡片压在正文上，遮住的正好是用户想一边看一边问的那块内容；
@@ -135,7 +135,7 @@
     width: min(420px, 100%);
     box-shadow: -12px 0 32px rgba(0, 0, 0, .10);
   }
-  .app__body { position: relative; }
+  .app__frame-body { position: relative; }
 }
 
 @media (prefers-reduced-motion: reduce) {

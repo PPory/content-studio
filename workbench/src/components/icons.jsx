@@ -73,6 +73,9 @@ export {
   IconBrandWechat,
   IconPhoto,
   IconArchive,
+  IconCornerDownLeft,
+  IconDots,
+  IconEdit,
   IconFolder,
   IconDatabase,
   IconPencil,
@@ -115,6 +118,7 @@ export {
   IconUser,
   IconUsers,
   IconWorld,
+  IconArrowDown,
   IconChevronDown,
   IconLink,
   IconCircleDashed,
@@ -184,6 +188,37 @@ export function BrandMark() {
  * 而 `npm run build` 照样绿（打包器不跑代码），只有冒烟测试抓得到。
  * 加一级导航项时这儿要跟着加，`tests/unit.mjs` 钉了两边逐键对齐。
  */
+/**
+ * 历史对话那颗开关。**自绘，因为 tabler 里没有这个形状**：
+ * 三条长短不一的横线（中 / 短 / 长），读起来是「一列长短不齐的会话标题」，
+ * 而不是通用的汉堡菜单（`IconMenu2` 那种三条等长）——后者在这个位置会被读成
+ * 「打开导航」，而它打开的是这一页自己的会话列表。
+ *
+ * ⚠️ **画成描边不是填充。** 原图是三个圆角实心条；这套图标全是 tabler 的描边，
+ * 混一枚填充的进去，它在一排里会明显更重。圆头描边和圆角实心条在 16px 下看不出差别。
+ * 宽度比例照原图：1004 / 669 / 1171（之于 1280），换算到 24 的画布是 18.8 / 12.5 / 22。
+ */
+export function IconChatList({ size = 24, stroke = 2, ...rest }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...rest}
+    >
+      <path d="M2 4h17.8" />
+      <path d="M2 12h11.5" />
+      <path d="M2 20h20" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   today: Home,
   assistant: Assistant,

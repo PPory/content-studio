@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { IconDatabase, IconFileText, IconSearch, IconShieldCheck, IconSparkles } from "../icons.jsx";
 import { ActionCard } from "./ActionCard.jsx";
 import { AssistantMessage } from "./AssistantMessage.jsx";
+import { ThinkingLine } from "./ThinkingLine.jsx";
 
 function elapsedSeconds(startedAt) {
   const value = Date.parse(startedAt || "");
@@ -39,7 +40,12 @@ export function Working({ label = "Pi 正在处理", detail = "", startedAt = ""
     return () => clearInterval(timer);
   }, [startedAt]);
   const stage = detail || (seconds < 3 ? "正在读取上下文" : seconds < 12 ? "正在组织回答" : "正在等待模型返回");
-  return <div className="assistant-working" role="status"><span className="assistant-orbit"><i /></span><div><b>{label}</b><small>{stage} · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
+  /**
+   * ⚠️ **阶段那一行换成会动的**（`ThinkingLine`），秒数留在它右边不动。
+   * 秒数在跳、阶段在换、微光在扫——三样都动的话读不出哪个是主信息；
+   * 秒数是**唯一一个精确的数**，它必须是静止可读的那一个。
+   */
+  return <div className="assistant-working"><span className="assistant-orbit" aria-hidden="true"><i /></span><div><b>{label}</b><small><ThinkingLine text={stage} sizer="正在等待模型返回" /> · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
 }
 
 /**
@@ -85,15 +91,21 @@ export function AssistantStarters({ onPrompt, scope }) {
 function EmptyAssistant({ scope }) {
   const reading = scope === "reading";
   const heading = scope === "global" ? "今天想一起想清什么？" : reading ? "想从这份文档看清什么？" : "这篇内容，下一步做什么？";
-  const description = scope === "global"
-    ? "直接开始对话，或从下面挑一个更明确的入口。"
-    : reading
-      ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
-      : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
+  /**
+   * ⚠️ **全局这一档没有注脚。**
+   *
+   * 原来那句是「直接开始对话，或从下面挑一个更明确的入口」——它把屏幕上
+   * **已经看得见**的两件事（一个光标在闪的输入框、三张写着字的卡）又说了一遍。
+   * 阅读和项目那两档的注脚留着，因为它们说的是看不见的事：
+   * AI 会读到什么、以及它不会动你的正文。**说明只在有东西要说明时才写。**
+   */
+  const description = reading
+    ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
+    : scope === "global" ? "" : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
   return <div className="assistant-empty" data-scope={scope}>
     <span className="assistant-empty__mark"><IconSparkles aria-hidden="true" /></span>
     <h3>{heading}</h3>
-    <p>{description}</p>
+    {description ? <p>{description}</p> : null}
   </div>;
 }
 

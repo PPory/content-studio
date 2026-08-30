@@ -2,6 +2,8 @@ import { useState } from "react";
 import { IconDots, IconPin, IconTrash } from "@tabler/icons-react";
 import { IconArchive, IconPencil, IconSearch, IconX } from "../icons.jsx";
 import { conversationStamp, groupConversationsByTime } from "../../lib/conversation-groups.js";
+import { useClearDissolve } from "../../lib/use-clear-dissolve.js";
+import "../clear-dissolve.css";
 
 export function AssistantHistory({
   visibleConversations,
@@ -23,6 +25,8 @@ export function AssistantHistory({
   onManageHistory,
 }) {
   const [query, setQuery] = useState("");
+  // 和别处的搜索框同一套清空手感（见 `lib/use-clear-dissolve.js`）
+  const { wrapRef: clearWrapRef, clear: clearQuery } = useClearDissolve(() => setQuery(""));
   /**
    * ⚠️ **这一栏顶上不再写一遍「历史对话」，也不再放第二颗「新对话」。**
    * 打开它的那颗按钮上就写着「历史对话」四个字，栏里再写一遍是同一个词一屏说两遍；
@@ -35,10 +39,10 @@ export function AssistantHistory({
     : visibleConversations;
   return <aside className="assistant-history" aria-label="历史对话">
     <header>
-      <label className="assistant-history__search">
+      <label className="assistant-history__search t-clear" ref={clearWrapRef}>
         <IconSearch aria-hidden="true" />
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索会话" aria-label="搜索历史会话" />
-        {query ? <button type="button" onClick={() => setQuery("")} aria-label="清空搜索"><IconX aria-hidden="true" /></button> : null}
+        {query ? <button type="button" onClick={() => clearQuery(query)} aria-label="清空搜索"><IconX aria-hidden="true" /></button> : null}
       </label>
     </header>
     <div className="assistant-history__filters" role="tablist" aria-label="历史范围"><button type="button" role="tab" aria-selected={historyView === "recent"} onClick={() => onHistoryView("recent")}>最近</button><button type="button" role="tab" aria-selected={historyView === "archived"} onClick={() => onHistoryView("archived")}>已归档</button></div>

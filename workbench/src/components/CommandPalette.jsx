@@ -31,7 +31,10 @@ import {
   IconStack2,
   IconChartLine,
   IconClipboardList,
+  IconX,
 } from "./icons.jsx";
+import { useClearDissolve } from "../lib/use-clear-dissolve.js";
+import "./clear-dissolve.css";
 
 // 结果类型 → 图标。认不出的回落到文件图标——**宁可给个通用的，
 // 也不要一行有图标一行没有**（和元信息那套字段图标同一条规矩）。
@@ -63,6 +66,11 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
   // 和上下键、回车在同一个监听里，拆开两处只会让「按了没反应」多一个可能的出处。
   const boxRef = useDialog(open, undefined, { autoFocus: false });
   const listRef = useRef(null);
+  /**
+   * 清空时字升起来散掉（transitions.dev / Input clear with dissolve）。
+   * 这一处是它最该在的地方：面板里一颗 `×` 换掉的是**整份检索结果**。
+   */
+  const { wrapRef: clearWrapRef, clear: clearQuery } = useClearDissolve(() => setQ(""));
 
   // 打开时重置。**不保留上次的查询词**：这个面板的常见用法是「想到什么搜什么」，
   // 留着上次的词等于每次都要先按一遍退格。上次搜过什么在下面的列表里能点回来。
@@ -226,7 +234,9 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
   return (
     <div className="scrim scrim--top" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="cmdk" ref={boxRef} role="dialog" aria-modal="true" aria-label="全局检索">
-        <div className="cmdk__input">
+        {/* ⚠️ **这儿多了一颗 `×`。** 原来只有 Esc，而 Esc 在这一层是「关掉整个面板」——
+            想换个词重搜的人只能全选再删。清空和关闭是两件事，得有两个记号。 */}
+        <div className="cmdk__input t-clear" ref={clearWrapRef}>
           <IconSearch size={17} stroke={1.8} aria-hidden="true" />
           <input
             ref={inputRef}
@@ -236,6 +246,17 @@ export function CommandPalette({ open, onClose, onGo, vaultName }) {
             aria-label="搜索"
           />
           {busy ? <span className="cmdk__busy">搜索中…</span> : null}
+          {q ? (
+            <button
+              type="button"
+              className="search-box__clear"
+              title="清空"
+              aria-label="清空搜索"
+              onClick={() => { clearQuery(q); inputRef.current?.focus(); }}
+            >
+              <IconX size={13} stroke={2} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
 
         {error ? (

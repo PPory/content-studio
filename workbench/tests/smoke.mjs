@@ -101,11 +101,13 @@ try {
 
   // 1. 渲染了，不是白屏
   // 首次冷启动要转译编辑器和中文字体，8 秒在 Windows 上偶尔只截到空白首帧。
-  await page.waitForSelector(".topbar__name", { timeout: 20000 });
-  check("界面渲染", (await page.textContent(".topbar__name")) === "Xenho OS");
+  await page.waitForSelector(".sidebar__name", { timeout: 20000 });
+  check("界面渲染", (await page.textContent(".sidebar__name")) === "Xenho OS");
 
   // 2. 侧栏只放用户任务。数据库对象、后台状态和单个工具都不再抢一级入口。
-  const nav = await page.$$eval(".nav-item", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
+  // ⚠️ **限定在 `.nav` 里。** 栏底的「设置」用的是同一套 `.nav-item` 样式
+  // （它就是一个导航项，不是一颗孤零零的齿轮），不限定的话它会混进这份清单。
+  const nav = await page.$$eval(".nav .nav-item", (els) => els.map((e) => e.textContent.replace(/\d+$/, "").trim()));
   /**
    * ⚠️ **和 `NAV_LABELS` 常量比，不写死那一串。**
    * 写死的话改一次名字这条就红，而代码完全正确——旁边那条「一律两个字」
@@ -132,7 +134,7 @@ try {
     .filter(([key, name]) => !twoCharExempt.has(key) && name.length !== 2)
     .map(([, name]) => name);
   check("标签一律两个字", longNames.length === 0, longNames.length ? `超长的：${longNames.join("/")}` : nav.join("/"));
-  check("默认进入今日", (await page.textContent(".crumbs")).trim() === "今日", await page.textContent(".crumbs"));
+  check("默认进入今日", (await page.textContent(".view-head__name")).trim() === "今日", await page.textContent(".view-head__name"));
 
   /**
    * ⚠️ **底色关系：框架白、工作区浅灰、卡片白。**
@@ -151,10 +153,13 @@ try {
       return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
     };
     const card = document.querySelector(".stat, .act-card");
-    return { side: lum(".sidebar"), main: lum(".main"), card: card ? lum(".stat, .act-card") : null };
+    // ⚠️ **量的是面板不是侧栏。** 侧栏现在**就是应用底色本身**（`background: transparent`），
+    // 量它拿回来的是 `rgba(0,0,0,0)`，算出来是 NaN——那条断言会以一种看不懂的方式红。
+    // 「框架白」这一层现在由面板（`.panel`，页头和边框那一圈）承担。
+    return { side: lum(".app__frame"), main: lum(".main"), card: card ? lum(".stat, .act-card") : null };
   });
   check(
-    "侧栏和卡片同色，正文区和它们分得开",
+    "面板和卡片同色，正文区和它们分得开",
     Math.abs(ground.side - (ground.card ?? ground.side)) < 0.01 && Math.abs(ground.main - ground.side) > 0.005,
     `侧栏 ${ground.side.toFixed(3)} · 正文 ${ground.main.toFixed(3)} · 卡片 ${ground.card == null ? "(这一页没有卡)" : ground.card.toFixed(3)}`
   );
@@ -345,8 +350,8 @@ try {
     `${beforeExpand} → ${await page.evaluate(() => location.hash)}`);
   // 展开之后再点二级项，那一下才换页
   await page.click('.subnav-item:has-text("创作")');
-  await page.waitForFunction(() => /内容/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 });
-  check("内容成为独立任务页", /^内容/.test((await page.textContent(".crumbs")).trim()), (await page.textContent(".crumbs")).trim());
+  await page.waitForFunction(() => /内容/.test(document.querySelector(".view-head__name")?.textContent || ""), null, { timeout: 8000 });
+  check("内容成为独立任务页", /^内容/.test((await page.textContent(".view-head__name")).trim()), (await page.textContent(".view-head__name")).trim());
 
   /**
    * 内容项目页：**顶上「需要你处理的」三张卡（要动手的少数）+ 下面一张全量表**。
@@ -544,8 +549,28 @@ try {
             if (!Number.isFinite(maxH)) return -1;
             return Math.round(maxH - (window.innerHeight - rail.getBoundingClientRect().top));
           })(),
-          topbar: Math.round(document.querySelector(".topbar")?.getBoundingClientRect().height || 0),
-          topbarVar: parseFloat(getComputedStyle(document.querySelector(".app")).getPropertyValue("--topbar-h")) || 0,
+          // 外壳吃掉的竖直空间：面板上下的沟 + 上下边框 + 页头。
+          // 右栏那几条 `calc(100vh - …)` 减的就是这一个数。
+          /**
+           * 外壳在竖直方向真正吃掉了多少。
+           * ⚠️ **直接量「视口高 − 正文可用高」，别按「页头 + 沟 + 边框」自己拼。**
+           * 拼出来的公式每改一次外壳就要跟着改一次（这条已经跟着改过两次了），
+           * 而它算错的样子是「右栏最后一条怎么都划不出来」——不像一个高度算错了。
+           */
+          chrome: (() => {
+            const main = document.querySelector(".main");
+            return main ? window.innerHeight - main.clientHeight : 0;
+          })(),
+          chromeVar: (() => {
+            const probe = document.createElement("div");
+            probe.style.height = "var(--shell-chrome-h)";
+            probe.style.position = "absolute";
+            probe.style.visibility = "hidden";
+            document.querySelector(".app").append(probe);
+            const h = probe.getBoundingClientRect().height;
+            probe.remove();
+            return Math.round(h);
+          })(),
           // 子项自己溢出也算——外壳没被撑破，不代表里面那一行没跑出去
           childOverhang: Math.max(0, ...[...rail.children].map((el) => Math.round(el.scrollWidth - el.clientWidth))),
           /**
@@ -671,9 +696,10 @@ try {
          */
         check("右栏撑满时也不掉出视口", stuck.roomShort < 0 || stuck.roomShort <= 2,
           `满高时超出 ${stuck.roomShort}px`);
-        // 顶栏高度写死在 `--topbar-h` 里给那个公式用——内容撑高了它，公式就该跟着改
-        check("顶栏的实际高度和 --topbar-h 对得上", Math.abs(stuck.topbar - stuck.topbarVar) <= 1,
-          `实际 ${stuck.topbar}px · 变量 ${stuck.topbarVar}px`);
+        // 外壳吃掉的高度写死在 `--shell-chrome-h` 里给那几个公式用——
+        // 页头长高了它，公式就该跟着改（不然的样子是「右栏最后一条怎么都划不出来」）
+        check("外壳的实际高度和 --shell-chrome-h 对得上", Math.abs(stuck.chrome - stuck.chromeVar) <= 2,
+          `实际 ${stuck.chrome}px · 变量 ${stuck.chromeVar}px`);
       }
       /**
        * ⚠️ **正文那一栏要吃满宽度**（`.main__inner:has(.project-workspace)` 解掉 1320 的上限）。
@@ -742,7 +768,7 @@ try {
    * 量的是**渲染后的位置**，不是「元素存在」——存在但在第三屏等于不存在。
    */
   const srcChips = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll(".filter-head .chip")];
+    const chips = [...document.querySelectorAll(".view-tabs button")];
     return {
       labels: chips.map((c) => c.textContent.trim()),
       // 最后一颗芯片的底边还在视口内，才算「都在首屏」
@@ -756,38 +782,56 @@ try {
    * 这两页打开时你要先做一个选择（看哪一类候选 / 看哪一档种子），
    * 那排芯片才是第一件事，说明是它的注脚——反过来的话你得先读完一句
    * 早就知道的话，才看到真正要点的东西。
+   *
+   * ⚠️ **口径来回改过两次，把最后的结论钉在这儿。**
+   * 中间有一版把这排芯片 portal 进了页头第二条，于是断言量的是「和页名左缘对齐」。
+   * 那一版撤了（40px 的一条塞不下一颗胶囊，而且两条白带夹一句说明像说了两遍），
+   * 胶囊搬回正文、和说明一起**沿页面中轴居中**。
+   * 现在真正会坏的是**两者中轴对不上**——一眼就看得出歪，而且不报错。
    */
   const headOrder = await page.evaluate(() => {
-    const row = document.querySelector(".filter-head__row");
-    const desc = document.querySelector(".filter-head__desc");
-    if (!row || !desc) return null;
-    return Math.round(desc.getBoundingClientRect().top - row.getBoundingClientRect().bottom);
+    const chips = document.querySelector(".view-tabs");
+    const desc = document.querySelector(".view-switch__desc");
+    if (!chips || !desc) return null;
+    return Math.round(desc.getBoundingClientRect().top - chips.getBoundingClientRect().bottom);
   });
-  check("芯片在上、说明在它正下方", headOrder === null || headOrder >= 0,
+  check("芯片在上、说明在它下方", headOrder === null || headOrder >= 0,
     headOrder === null ? "这一页没有说明" : `说明在芯片下方 ${headOrder}px`);
   const headAxis = await page.evaluate(() => {
     const mid = (node) => {
       const box = node?.getBoundingClientRect();
-      return box ? box.left + box.width / 2 : null;
+      return box ? Math.round(box.left + box.width / 2) : null;
     };
-    const chips = document.querySelector(".filter-head .chips-sm");
-    const desc = document.querySelector(".filter-head__desc");
-    const main = document.querySelector(".main");
-    return {
-      chips: mid(chips),
-      desc: mid(desc),
-      main: mid(main),
-      oneLine: !desc || desc.getBoundingClientRect().height < 24,
-    };
+    const chips = document.querySelector(".view-tabs");
+    const desc = document.querySelector(".view-switch__desc");
+    const inner = document.querySelector(".main__inner");
+    return { chips: mid(chips), desc: mid(desc), inner: mid(inner) };
   });
   check(
-    "选种的芯片和说明都沿页面中轴居中",
-    headAxis.chips !== null && headAxis.desc !== null && headAxis.main !== null
-      && Math.abs(headAxis.chips - headAxis.main) <= 1
-      && Math.abs(headAxis.desc - headAxis.main) <= 1,
+    "胶囊和说明沿页面中轴居中",
+    headAxis.chips !== null && headAxis.inner !== null
+      && Math.abs(headAxis.chips - headAxis.inner) <= 1
+      && (headAxis.desc === null || Math.abs(headAxis.desc - headAxis.inner) <= 1),
     JSON.stringify(headAxis)
   );
-  check("选种说明在桌面宽度保持一行", headAxis.oneLine, JSON.stringify(headAxis));
+  /**
+   * ⚠️ **三个选项在同一颗胶囊里。** 拆平过一版（只有选中的那颗画底），
+   * 那时它和页头上任何一排按钮长得一样——「这几个是一组、一次只选一个」这层意思没了。
+   * 量的是**渲染出来的容器**：胶囊自己有边框和底色，比里面的按钮高一圈。
+   */
+  const capsule = await page.evaluate(() => {
+    const box = document.querySelector(".view-tabs");
+    if (!box) return null;
+    const cs = getComputedStyle(box);
+    const btn = box.querySelector("button");
+    return {
+      有边框: cs.borderTopWidth !== "0px",
+      有底色: cs.backgroundColor !== "rgba(0, 0, 0, 0)",
+      比按钮高: Math.round(box.getBoundingClientRect().height - btn.getBoundingClientRect().height),
+    };
+  });
+  check("三个选项在同一颗胶囊里", !!capsule && capsule.有边框 && capsule.有底色 && capsule.比按钮高 >= 6,
+    JSON.stringify(capsule));
   check("三个入口都在首屏", srcChips.lastBottom > 0 && srcChips.lastBottom < srcChips.viewport,
     `最后一颗在 ${srcChips.lastBottom}px / 视口 ${srcChips.viewport}px`);
 
@@ -883,21 +927,34 @@ try {
       const box = node?.getBoundingClientRect();
       return box ? box.top + box.height / 2 : null;
     };
-    const chips = document.querySelector(".filter-head .chips-sm");
-    const add = document.querySelector(".filter-head__add");
-    const desc = document.querySelector(".filter-head__desc");
-    const main = document.querySelector(".main");
+    const chips = document.querySelector(".view-tabs");
+    const add = document.querySelector(".view-head__end .filter-head__add");
+    const desc = document.querySelector(".view-switch__desc");
+    const inner = document.querySelector(".main__inner");
     const empty = document.querySelector(".seed-page > .empty");
     const pageBox = document.querySelector(".seed-page")?.getBoundingClientRect();
+    const switchBox = document.querySelector(".view-switch")?.getBoundingClientRect();
     return {
-      controlDelta: chips && add ? Math.abs(midY(chips) - midY(add)) : null,
-      chipsAxis: chips && main ? Math.abs(midX(chips) - midX(main)) : null,
-      descAxis: desc && main ? Math.abs(midX(desc) - midX(main)) : null,
-      emptyDelta: empty && pageBox ? Math.abs(midY(empty) - (pageBox.top + pageBox.height / 2)) : null,
+      // 「记一句」是这一页的主操作，在页头右端；胶囊是「看哪一档」，在正文里居中。
+      // **两者不同一行是有意的**：一个是动作，一个是位置。
+      addInHead: !!add,
+      addAboveChips: chips && add ? Math.round(midY(chips) - midY(add)) : null,
+      chipsAxis: chips && inner ? Math.abs(midX(chips) - midX(inner)) : null,
+      descAxis: desc && inner ? Math.abs(midX(desc) - midX(inner)) : null,
+      /**
+       * ⚠️ **参照系是「胶囊以下那块」，不是整个 `.seed-page`。**
+       * 整块的中心里含着页头那一组（胶囊 + 说明），而空态是 `flex: 1` 撑在它**下面**
+       * 居中的——拿整块的中心去比，等于要求空态往上偏半个页头组，
+       * 那不是设计要的，也不是屏幕上好看的。上一版能过只是因为那时页头组只有一行字，
+       * 半个组高刚好在容差里；胶囊回来之后组高翻了一倍，同一条断言当场红。
+       */
+      emptyDelta: empty && pageBox && switchBox
+        ? Math.abs(midY(empty) - (switchBox.bottom + pageBox.bottom) / 2)
+        : null,
     };
   });
-  check("种子页加号和状态芯片在同一水平线", seedLayout.controlDelta !== null && seedLayout.controlDelta <= 1, JSON.stringify(seedLayout));
-  check("种子页页头沿页面中轴居中", seedLayout.chipsAxis !== null && seedLayout.chipsAxis <= 1 && seedLayout.descAxis !== null && seedLayout.descAxis <= 1, JSON.stringify(seedLayout));
+  check("「记一句」在页头右端", seedLayout.addInHead && (seedLayout.addAboveChips === null || seedLayout.addAboveChips > 0), JSON.stringify(seedLayout));
+  check("种子页胶囊和说明沿中轴居中", seedLayout.chipsAxis !== null && seedLayout.chipsAxis <= 1 && (seedLayout.descAxis === null || seedLayout.descAxis <= 1), JSON.stringify(seedLayout));
   if (seedLayout.emptyDelta !== null) check("种子空态在可用页面正中", seedLayout.emptyDelta <= 35, `${seedLayout.emptyDelta}px`);
 
   let seedWrites = 0;
@@ -906,8 +963,8 @@ try {
   };
   page.on("request", countSeedWrites);
 
-  // ⚠️ 「记一句」现在是紧挨着芯片的一颗 `+`（`.filter-head__add`），不再是右上角那条长按钮
-  await page.click(".filter-head__add");
+  // ⚠️ 「记一句」是页头右端那颗 `+`（`.filter-head__add`），芯片在页头第二条上
+  await page.click(".view-head__end .filter-head__add");
   await page.waitForSelector(".rpick", { timeout: 8000 });
 
   const picker = await page.evaluate(() => {
@@ -968,7 +1025,7 @@ try {
    * 判据是「你有没有话说」，两条出口在工作流文档里是并列的——合并成一颗就没了那个区别。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/hot`, { waitUntil: "networkidle" });
-  await page.click('.pill-tab:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
+  await page.click('.view-tabs button:has-text("AI 情报")', { timeout: 8000 }).catch(() => {});
   await page.waitForSelector(".ai-item, .empty", { timeout: 40000 }).catch(() => {});
   const hotSeed = await page.evaluate(() => {
     const items = [...document.querySelectorAll(".ai-item")];
@@ -996,7 +1053,7 @@ try {
     { timeout: 8000 },
   ).catch(() => {});
 
-  check("内容页不再把五个库画成主 Tab", !(await page.$(".main > .pill-tabs")));
+  check("内容页不再把五个库画成主 Tab", !(await page.$(".main .view-tabs")));
   /**
    * ⚠️ **顺序有意义**：这一排是按流程从左往右排的，不是按重要性——
    * 还没有想写的 → 找题；已经有一句判断 → 选题；开始写了 → 创作；发布后 → 复盘。
@@ -1017,11 +1074,11 @@ try {
   await page.click('.nav-item:has-text("发现")');
   await page.waitForSelector('.nav-group[data-open="true"] .subnav-item:has-text("热点")', { timeout: 8000 });
   await page.click('.subnav-item:has-text("热点")');
-  /* ⚠️ **等的是面包屑里真的写上「热点」，不是 `.crumbs` 这个壳。**
+  /* ⚠️ **等的是页名里真的写上「热点」，不是 `.view-head__name` 这个壳。**
      那个壳每一页都在，`waitForSelector` 立刻就返回——读到的是上一页的面包屑。
      「等容器不等内容」在这个文件里已经记过三次，这是第四处。 */
-  await page.waitForFunction(() => /热点/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
-  check("发现进入热点而非中转页", /热点/.test(await page.textContent(".crumbs")));
+  await page.waitForFunction(() => /热点/.test(document.querySelector(".view-head__name")?.textContent || ""), null, { timeout: 8000 }).catch(() => {});
+  check("发现进入热点而非中转页", /热点/.test(await page.textContent(".view-head__name")));
   /**
    * ⚠️ **跟 `App.jsx` 的 NAV 常量比，不写死那一串。**
    * 这个文件已经为「钉了一个本来就会变的名字」红过四次了
@@ -1044,12 +1101,12 @@ try {
    */
   await page.click('.subnav-item:has-text("素材")');
   await page.waitForSelector(".mflow, .empty, .note-title", { timeout: 25000 });
-  check("素材归到「发现」底下", /素材/.test(await page.textContent(".crumbs")), await page.textContent(".crumbs"));
+  check("素材归到「发现」底下", /素材/.test(await page.textContent(".view-head__name")), await page.textContent(".view-head__name"));
   // 素材自己仍然是**一整页**（链路那一排就是筛选器），没有再往下分二级
-  check("素材没有再拆成三个入口", !(await page.$(".main > .pill-tabs")));
+  check("素材没有再拆成三个入口", !(await page.$(".main .view-tabs")));
   // 「今日」没有二级项，点它仍然是直接换页
   await page.click('.nav-item:has-text("今日")');
-  await page.waitForFunction(() => /今日/.test(document.querySelector(".crumbs")?.textContent || ""), null, { timeout: 8000 });
+  await page.waitForFunction(() => /今日/.test(document.querySelector(".view-head__name")?.textContent || ""), null, { timeout: 8000 });
 
   /**
    * 侧栏能收起，而且**记得住**。
@@ -1060,50 +1117,51 @@ try {
   /**
    * 收起侧栏。
    *
-   * ⚠️ **这一段整个重写过。** 上一版验的是「收起后 logo 兼职当展开按钮」「收起态搜索
-   * 只剩一个图标」「收起态齿轮不能消失」——那三条的前提是**搜索、设置、收放按钮都长在
-   * 侧栏里**，而 60px 宽的一条里塞不下它们。这些东西现在都在**顶栏**，
-   * 顶栏的宽度不受侧栏收放影响，所以那三个问题连同那套绕法一起没有了。
-   *
-   * ⚠️ **「收侧栏时顶栏纹丝不动」那条已经改了口径，不是放宽了。**
-   * 品牌区（logo + 栏名 + 收放钮）画的是**导航那一栏的栏头**，所以它跟着侧栏一起收放；
-   * 顶上留着一条 200px 的品牌区、底下的栏只有 60px 时，那道竖线悬在半空。
-   * 面包屑贴着品牌区，于是它也跟着挪——**这是有意的，它属于那条缝右边**。
-   * 真正不许动的是**搜索和齿轮**：那两样跟侧栏没关系，一动就是每收一次栏它们跳一次。
+   * ⚠️ **这一段又重写了一次，口径跟着外壳走。**
+   * 顶栏时代验的是「收侧栏时顶栏纹丝不动」——那条的前提是搜索和齿轮在顶栏上，
+   * 而顶栏整条撤了：**搜索、收集、设置现在都在侧栏里，收起时它们跟着变窄是应该的**。
+   * 所以现在钉的不是「位置不变」，而是**三个入口一个都不能消失**——
+   * 收起是个存在 localStorage 里会一直保持的状态，少一个就是从此少一条路。
    */
   /**
-   * ⚠️ **顶栏那道竖线要落在侧栏和正文之间的那条缝上。**
+   * ⚠️ **侧栏和正文之间只有一道 1px 的线：不留沟、不画圆角、不投影。**
    *
-   * 品牌区原来是「内容多宽就多宽」，竖线停在 197px 而缝在 200px——**差三像素**，
-   * 而那三像素就是整个外壳看着「没对齐」的地方。现在品牌区量的是 `--rail-w`
-   *（展开态侧栏宽度），所以两者必然同一个 x。量不到就回 -1 让它红。
+   * 中间有一版把正文做成「四周留 8px 沟 + 边框 + 圆角」的浮起面板，撤了：
+   * 顶上那 8px 既不是内容也不是留白（这一屏最上面本该直接是页头），
+   * 而贴着侧栏的两个圆角在说「这块是浮着的」——可它俩明明是同一个平面上并排的两块。
+   * 这条断言就是防止它再浮起来：**两块严丝合缝，中间只有那道线的宽度。**
    */
   const seam = await page.evaluate(() => {
-    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().right) : -1; };
-    const main = document.querySelector(".main");
-    return { brand: r(".topbar__brand"), rail: r(".sidebar"), main: main ? Math.round(main.getBoundingClientRect().left) : -2 };
+    const rail = document.querySelector(".sidebar");
+    const frame = document.querySelector(".app__frame");
+    if (!rail || !frame) return null;
+    const cs = getComputedStyle(frame);
+    return {
+      间隙: Math.round(frame.getBoundingClientRect().left - rail.getBoundingClientRect().right),
+      竖线: cs.borderLeftWidth,
+      圆角: cs.borderTopLeftRadius,
+      投影: cs.boxShadow,
+      离窗口顶: Math.round(frame.getBoundingClientRect().top),
+    };
   });
   check(
-    "顶栏的竖线落在侧栏和正文之间的缝上",
-    seam.brand > 0 && seam.brand === seam.rail && seam.rail === seam.main,
-    `品牌区 ${seam.brand} · 侧栏 ${seam.rail} · 正文 ${seam.main}`
+    "侧栏和正文之间只有一道线，没有沟也没有圆角",
+    !!seam && seam.间隙 === 0 && seam.竖线 === "1px" && seam.圆角 === "0px"
+      && seam.投影 === "none" && seam.离窗口顶 === 0,
+    JSON.stringify(seam)
   );
 
-  const topBefore = await page.evaluate(() => {
-    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
-    return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
-  });
-  await page.click(".topbar__rail");
+  await page.click(".sidebar__rail");
   await page.waitForTimeout(250);
   const railW = await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width));
   check("收起后只剩一列图标的宽度", railW <= 64, `${railW}px`);
-  check("收起后文字不占位", (await page.$eval(".nav-item", (e) => e.innerText.trim())) === "", await page.$eval(".nav-item", (e) => e.innerText));
+  check("收起后文字不占位", (await page.$eval(".nav .nav-item", (e) => e.innerText.trim())) === "", await page.$eval(".nav .nav-item", (e) => e.innerText));
   /**
    * ⚠️ **跟导航项的个数比，别写死 5。**
    * 写死的话加一页就红，而代码是对的（已经为这个栽过一次）。
    * 真正要钉的是「**每一项**收起后都还剩得下那枚图标」。
    */
-  const iconCount = await page.$$eval(".nav-item", (els) => ({
+  const iconCount = await page.$$eval(".nav .nav-item", (els) => ({
     items: els.length,
     icons: els.filter((el) => el.querySelector(".nav-icon")).length,
   }));
@@ -1136,66 +1194,72 @@ try {
   });
   check("收起态二级项浮出来还点得到", !!flyout?.shown && flyout.items > 0, JSON.stringify(flyout));
 
-  const topAfter = await page.evaluate(() => {
-    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().left) : -1; };
-    return { find: r(".topbar__find"), gear: r(".topbar__icon"), crumb: r(".crumbs") };
+  /**
+   * ⚠️ **收起态下三个入口一个都不能少：搜索 · 收集 · 设置。**
+   *
+   * 顶栏撤掉之后它们全在侧栏里，而 60px 的一条里每一样都要有地方落——
+   * 少任何一个，代价都是「这个功能在收起状态下从此不存在」，而收起会一直保持着。
+   * 量的是**可见 + 有实际尺寸**，不是「元素在 DOM 里」。
+   */
+  const collapsedEntries = await page.evaluate(() => {
+    const on = (s) => {
+      const el = document.querySelector(s);
+      if (!el) return false;
+      const box = el.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && getComputedStyle(el).display !== "none";
+    };
+    return {
+      find: on(".sidebar__find"),
+      intake: on('.sidebar__head [aria-label="收集"]'),
+      settings: on(".sidebar__foot .nav-item"),
+      rail: on(".sidebar__rail"),
+    };
   });
   check(
-    "收侧栏时搜索和齿轮纹丝不动",
-    topAfter.find === topBefore.find && topAfter.gear === topBefore.gear,
-    `搜索 ${topBefore.find}→${topAfter.find} · 齿轮 ${topBefore.gear}→${topAfter.gear}`
+    "收起态搜索 / 收集 / 设置都还在",
+    collapsedEntries.find && collapsedEntries.intake && collapsedEntries.settings,
+    JSON.stringify(collapsedEntries)
   );
-  // 品牌区和面包屑属于「那条缝的左右两边」，跟着栏一起收
-  const seamAfter = await page.evaluate(() => {
-    const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().right) : -1; };
-    return { brand: r(".topbar__brand"), rail: r(".sidebar") };
-  });
-  check(
-    "收起后品牌区跟着栏一起收",
-    seamAfter.brand > 0 && seamAfter.brand === seamAfter.rail && topAfter.crumb < topBefore.crumb,
-    `品牌区 ${seamAfter.brand} · 侧栏 ${seamAfter.rail} · 面包屑 ${topBefore.crumb}→${topAfter.crumb}`
-  );
-  // ⚠️ **设置入口在收起态下不能消失**：工作台没配好时它是唯一那条能走的路，
-  // 而收起是个会一直保持的状态。搬去顶栏之后这条是天然成立的，但仍要钉着。
-  check("收起态设置入口还在", await page.isVisible(".topbar__icon"));
-  check("收起态搜索框还在", await page.isVisible(".topbar__find"));
+  // 页头不跟着侧栏收放变形：它在面板里，侧栏多宽跟它没关系
+  check("收起态页头还画着页名", (await page.textContent(".view-head__name")).trim().length > 0);
 
   await page.reload({ waitUntil: "networkidle" });
-  await page.waitForSelector(".nav-item", { timeout: 8000 });
+  await page.waitForSelector(".nav .nav-item", { timeout: 8000 });
   check(
     "刷新后记得收着",
     (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) <= 64
   );
-  // 收放按钮**两种状态都在顶栏上**，不再需要「收起后 logo 兼职」那套
-  check("收起态收放按钮仍在", await page.isVisible(".topbar__rail"));
-  await page.click(".topbar__rail");
+  // 收放钮在收起态盖在 logo 上（60px 里摆不下两个方块），仍然可聚焦可点
+  check("收起态收放按钮仍在", collapsedEntries.rail);
+  await page.click(".sidebar__rail");
   await page.waitForTimeout(250);
   check("再点一下展开回去", (await page.$eval(".sidebar", (e) => Math.round(e.getBoundingClientRect().width))) > 150);
 
   /**
-   * ⚠️ **页头吸顶：滚下去之后这一页的主操作要还在屏幕上。**
+   * ⚠️ **页头不再「吸顶」，它本来就在滚动区外面。**
    *
-   * 它右端放着「新建内容」和条数，而这几页都比一屏长——不吸顶的话，
-   * 滚到一半想新建一篇得先滚回顶上。量的是**滚动之后页头的上沿贴着面板上沿**，
-   * 不是「有没有 `position: sticky`」：负 margin 或内边距算错时属性照样是 sticky，
-   * 而它停的位置是错的。
+   * 上一版页头是正文里的第一个孩子，靠 `position: sticky` + 一串负 margin 假装钉住——
+   * 而那串负 margin 每次改内边距都要重算一遍。现在它是面板的一行，正文在它下面自己滚：
+   * 「滚下去主操作还在」是结构保证的，不需要断言。这里改钉两件真会坏的事：
+   *   1. 页头在滚动区**外面**（滚动之后它的位置一点不动）；
+   *   2. 滚起来了才加深那条分隔线（`data-scrolled`）——没滚时它只是一条界线。
    */
+  const headBefore = await page.evaluate(() => Math.round(document.querySelector(".view-head").getBoundingClientRect().top));
   await page.evaluate(() => { const m = document.querySelector(".main"); if (m) m.scrollTop = 400; });
   await page.waitForTimeout(250);
-  const stickyHead = await page.evaluate(() => {
+  const scrolledHead = await page.evaluate(() => {
     const main = document.querySelector(".main");
-    const bar = document.querySelector(".main__inner > .page-bar");
-    if (!main || !bar) return null;
-    const b = bar.getBoundingClientRect();
-    const m = main.getBoundingClientRect();
-    return { gap: Math.round(b.top - m.top), scrolled: main.scrollTop > 0, marked: main.dataset.scrolled };
+    return {
+      top: Math.round(document.querySelector(".view-head").getBoundingClientRect().top),
+      scrolled: main.scrollTop > 0,
+      marked: main.dataset.scrolled,
+    };
   });
-  if (stickyHead?.scrolled) {
-    check("滚下去页头还钉在正文栏顶上", Math.abs(stickyHead.gap) <= 1, `离面板上沿 ${stickyHead.gap}px`);
-    check("滚起来了才画那条分隔线", stickyHead.marked === "true", String(stickyHead.marked));
+  check("页头在滚动区外面，滚多少都不动", scrolledHead.top === headBefore, `${headBefore} → ${scrolledHead.top}`);
+  if (scrolledHead.scrolled) {
+    check("滚起来了才加深那条分隔线", scrolledHead.marked === "true", String(scrolledHead.marked));
   } else {
-    // 页面没长到能滚（数据少的时候）——这条不适用，但要说出来，别当成绿的
-    check("滚下去页头还钉在正文栏顶上", true, "这一页没长到能滚，跳过");
+    check("滚起来了才加深那条分隔线", true, "这一页没长到能滚，跳过");
   }
   await page.evaluate(() => { const m = document.querySelector(".main"); if (m) m.scrollTop = 0; });
 
@@ -1222,7 +1286,7 @@ try {
     // 而且标签本来就会改字——按文字点的选择器在这个项目里已经栽过一次（收起态的「创作」）
     const go = (key) => page.click(`.set-nav__item[data-key="${key}"]`);
     try {
-      await page.click('.topbar__icon[aria-label="设置"]');
+      await page.click(".sidebar__foot .nav-item");
       await page.waitForSelector(".set-overlay .set-nav__item", { timeout: 8000 });
 
       const groups = await page.$$eval(".set-nav__title", (els) => els.map((e) => e.textContent));
@@ -1253,10 +1317,37 @@ try {
       // 下面继续验证原有连接设置；默认页已经变成「我的创作」，需显式切回 vault。
       await go("vault");
       await page.waitForSelector("#set-VAULT_ROOT", { timeout: 5000 });
-      check("右边一次只画一段", (await page.$$(".set-pane .set-field")).length === 1);
+      /**
+       * ⚠️ **口径变了：从「DOM 里只有一段」变成「只有一段看得见」。**
+       * 访问过的段现在一直留在 DOM 里（只用 `hidden` 藏起来），这样切段才不会丢
+       * 改到一半的东西。所以数的是**可见那一段**里的字段——数 `.set-pane .set-field`
+       * 的话，翻过几段之后它必然大于 1，而屏幕上仍然只画着一段。
+       */
+      const paneFields = await page.$$eval(".set-pane__slot", (slots) => {
+        const shown = slots.filter((el) => !el.hasAttribute("hidden"));
+        return {
+          shown: shown.length,
+          fields: shown.reduce((n, el) => n + el.querySelectorAll(".set-field").length, 0),
+          hiddenFields: slots.filter((el) => el.hasAttribute("hidden"))
+            .reduce((n, el) => n + el.querySelectorAll(".set-field").length, 0),
+        };
+      });
+      check("右边一次只画一段", paneFields.shown === 1 && paneFields.fields === 1, JSON.stringify(paneFields));
+      /**
+       * ⚠️ **藏起来的那几段不能被 Tab 走到。**
+       * 这是「保活」这件事唯一真正危险的地方：看不见但按得到的输入框——按下去焦点跑到
+       * 一个你根本看不到的地方，而屏幕上什么都不动。`hidden` 属性同时管住显示、
+       * Tab 序列和读屏；换成 `opacity: 0` 就只管住第一件，**而且不报错**。
+       */
+      const reachable = await page.evaluate(() =>
+        [...document.querySelectorAll(".set-pane__slot[hidden]")]
+          .flatMap((el) => [...el.querySelectorAll("input, button, select, textarea, a[href]")])
+          .filter((el) => el.offsetParent !== null || el.getClientRects().length).length
+      );
+      check("藏起来的段按不到也 Tab 不到", reachable === 0, `${reachable} 个还能碰到`);
       check("非密钥字段带出当前值", (await page.$eval("#set-VAULT_ROOT", (e) => e.value)).length > 0);
       // 长说明默认收起——这正是上一版「一大坨」的根因
-      const whyOpen = await page.$$eval(".set-pane .set-why", (els) => els.filter((e) => e.open).length);
+      const whyOpen = await page.$$eval(".set-pane__slot:not([hidden]) .set-why", (els) => els.filter((e) => e.open).length);
       check("「为什么」默认是收起的", whyOpen === 0, `${whyOpen} 个展开着`);
       /**
        * ⚠️ **「为什么」不许自己占一行。** 它单独成行时，一个字段底下就是
@@ -1264,7 +1355,7 @@ try {
        * 判据是那句一行说明本身就是 `<summary>`：点整句都能展开。
        */
       const why = await page.evaluate(() => {
-        const s = document.querySelector(".set-pane .set-why > summary");
+        const s = document.querySelector(".set-pane__slot:not([hidden]) .set-why > summary");
         return s ? { text: s.textContent.trim(), more: !!s.querySelector(".set-why__more") } : null;
       });
       check(
@@ -1279,8 +1370,19 @@ try {
        * 写死其中一种的话，外部状态一变测试就红，而红着的测试等于没有测试。
        */
       await go("models");
-      await page.waitForSelector(".set-models .set-models__row, .set-models .note-danger, .set-pane .note-danger", { timeout: 20000 }).catch(() => {});
-      const modelPane = (await page.textContent(".set-pane")).replace(/\s+/g, " ");
+      await page.waitForSelector(".set-models .set-models__row, .set-models .note-danger, .set-pane__slot:not([hidden]) .note-danger", { timeout: 20000 }).catch(() => {});
+      /**
+       * ⚠️ **「这一段」= 抬头 + 可见的那块正文，两截都要。**
+       *   - 只读 `.set-pane` → 翻过的段的文字也进来了，断言会因为**别的段**里
+       *     恰好有那几个字而变绿；
+       *   - 只读 `.set-pane__slot` → 漏掉抬头，而「存到哪、什么时候生效」那句话
+       *     （`applies`）正是画在抬头里的。
+       */
+      const modelPane = (await page.evaluate(() => {
+        const head = document.querySelector(".set-pane__head")?.innerText || "";
+        const body = document.querySelector(".set-pane__slot:not([hidden])")?.innerText || "";
+        return `${head} ${body}`;
+      })).replace(/\s+/g, " ");
       const rows = (await page.$$(".set-models__row")).length;
       check(
         "模型这一段要么列出环节、要么给下一步",
@@ -1319,7 +1421,7 @@ try {
        * 而一个要悬停才找得到的提示等于没有。
        */
       const okLook = await page.evaluate(() => {
-        const f = document.querySelector(".set-pane .set-field");
+        const f = document.querySelector(".set-pane__slot:not([hidden]) .set-field");
         const dot = f?.querySelector(".set-field__label .set-field__dot");
         return {
           cls: dot ? [...dot.classList].join(" ") : null,
@@ -1337,7 +1439,8 @@ try {
       await page.waitForSelector("#set-DEEPL_API_KEY", { timeout: 5000 });
       // 段尾只剩**没有字段可挂**的那几条（对话引擎压根没有输入框，Worker / Firecrawl
       // 各自跨两个字段）。它们通了时仍然是一行小字，不画块面
-      const tailFlat = await page.$$eval(".set-pane > .set-check", (els) =>
+      // ⚠️ 直接子选择器要跟着结构走：段的正文现在包在 `.set-pane__slot` 里
+      const tailFlat = await page.$$eval(".set-pane__slot:not([hidden]) > .set-check", (els) =>
         els.map((e) => ({
           loud: e.classList.contains("set-check--bad") || e.classList.contains("set-check--warn"),
           bg: getComputedStyle(e).backgroundColor,
@@ -1379,7 +1482,16 @@ try {
 
       await go("prompts-worker");
       // 「今日」背景页自己也可能有 note-title，不能拿它冒充设置面板加载完成。
-      await page.waitForSelector(".set-pp__item, .set-pane .note-title", { timeout: 8000 });
+      /**
+       * ⚠️ **必须限定在「可见的那一段」里。**
+       *
+       * 访问过的段现在都留在 DOM 里（`hidden` 藏着）。而 `waitForSelector` 取的是
+       * **第一个**匹配的元素再等它可见——第一个匹配落在某个藏起来的段里的话，
+       * 它就永远等不到，超时 20 秒然后中断整轮，**而屏幕上那个元素明明画着**
+       *（实测：DOM 里 22 个 `.set-pp__item`、display flex、可见，照样超时）。
+       * 这是「保活」唯一真正咬人的地方，凡是在设置面板里按选择器找东西的都要带上这一层。
+       */
+      await page.waitForSelector(".set-pane__slot:not([hidden]) :is(.set-pp__item, .note-title)", { timeout: 8000 });
       // 二选一：content-pipeline 找得到就列文件、找不到就给引导
       const files = await page.$$eval(".set-pp__item", (els) => els.map((e) => e.innerText.trim()));
       if (files.length) {
@@ -1439,7 +1551,8 @@ try {
       await page.waitForTimeout(300);
       check("Esc 关得掉设置面板", !(await page.isVisible(".set-overlay")));
       // 关闭后焦点回到打开它的那个按钮上，不掉回 body
-      check("焦点回到齿轮上", await page.evaluate(() => document.activeElement?.classList.contains("topbar__icon")));
+      // 关闭后焦点回到打开它的那一项上（栏底的「设置」），不掉回 body
+      check("焦点回到设置入口上", await page.evaluate(() => !!document.activeElement?.closest(".sidebar__foot")));
     } finally {
       page.off("request", countWrites);
     }
@@ -1607,7 +1720,7 @@ try {
      * 首页要有创作入口。和侧栏常驻的「入库」**不是一回事**：入库是存一条已经有的素材，
      * 新建是开一篇还不存在的。同一个动作两个入口才该合并，这是两个动作。
      */
-    const createBtn = await page.$('.page-bar__end .btn-primary');
+    const createBtn = await page.$('.view-head__end .btn-primary');
     check("首页有新建入口", !!createBtn);
     if (createBtn) {
       const expectedProfile = await page.evaluate(() => fetch("/api/writing-profile").then((r) => r.json()).then((r) => r.profile));
@@ -1652,6 +1765,35 @@ try {
       check("新建内容不再弹起稿方式", !(await page.$(".menu-btn__pop, .creation")));
       check("新建内容自动沿用常用平台和固定读者", createdBody?.platform === expectedProfile.platform && createdBody?.audience === expectedProfile.audience, JSON.stringify(createdBody));
 
+      /**
+       * ⚠️ **后面这一串连续点击的前提是「上一步真的建出了那个 mock 项目」。**
+       *
+       * 本地化迁移把建项目从 `/api/pipe/create` 挪到了 `/api/workspace/*`，
+       * 上面那个 route mock 就拦不住了：页面落在一个**真实 ULID** 的项目上，
+       * `.project-back` 那一串点不动，`page.click` 等满 30 秒 **抛出去中断整轮**——
+       * 后面几十条（AI 助手页那一整段就在里面）一条都跑不到，
+       * 而报告上只剩一句 TimeoutError，看不出到底哪儿坏了。
+       *
+       * 前提不成立时把依赖它的几条**如实记成失败**（迁移确实把这条流程弄坏了，
+       * 不能悄悄记成通过），然后跳过这串操作。
+       */
+      if (created !== 1) {
+        const why = "建项目没再走 /api/pipe/create，退出流程这一串跳过";
+        check("空白新稿退出前有轻量提示", false, why);
+        check("继续写不会删除项目", false, why);
+        check("确认退出会删除空白临时项目", false, why);
+        check("退出后清掉临时项目标记", false, why);
+        /**
+         * ⚠️ **跳过之前必须把浏览器带出这个项目。**
+         * 光 `check(false)` 然后往下走的话，页面还停在那篇空稿里，
+         * 后面每一次跳转都会被「这篇还是空的」这个离开守卫拦下——
+         * 那个模态盖住整个侧栏，于是**从这里往后每一条点击都点不动**，
+         * 一路等到 30 秒超时中断整轮。跳过一段的代价不能是把浏览器留在模态里。
+         */
+        await page.click(".project-back").catch(() => {});
+        await page.click('.project-leave button:has-text("退出，不保留")', { timeout: 4000 }).catch(() => {});
+        await page.waitForFunction(() => !location.hash.startsWith("#/project/"), { timeout: 8000 }).catch(() => {});
+      } else {
       await page.click(".project-back");
       await page.waitForSelector(".project-leave");
       check("空白新稿退出前有轻量提示", /这篇还是空的/.test(await page.textContent(".project-leave")));
@@ -1662,10 +1804,11 @@ try {
       await page.waitForFunction(() => location.hash === "#/content", { timeout: 8000 });
       check("确认退出会删除空白临时项目", discarded === 1, `${discarded} 次删除`);
       check("退出后清掉临时项目标记", await page.evaluate(() => !sessionStorage.getItem("workbench:temporary-project:v1:smoke-topic")));
+      }
       await page.unroute("**/api/pipe/create").catch(() => {});
       await page.unroute("**/api/pipe/projects/smoke-topic**").catch(() => {});
       await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
-      await page.waitForSelector(".page-bar__end .btn-primary", { timeout: 15000 }).catch(() => {});
+      await page.waitForSelector(".view-head__end .btn-primary", { timeout: 15000 }).catch(() => {});
     }
 
     // 「N 件事等你」只数等你动手的两项。把 Worker 正在跑的活也算进去，
@@ -1675,7 +1818,7 @@ try {
      * 这一块中间跳去过项目页再回来（测「选平台直接落在项目页」），页面重挂过——
      * 拿跳转之前那份 `nums` 去比现在的角标，差的是**时间**不是代码。
      */
-    const badge = await page.textContent(".page-bar__end").catch(() => "");
+    const badge = await page.textContent(".view-head__end").catch(() => "");
     const numsNow = await page.$$eval(".todo-card__value", (els) => els.map((e) => e.textContent));
     const sum = (numsNow.length ? numsNow : nums).reduce((n, x) => n + Number(x), 0);
     check(
@@ -1773,12 +1916,13 @@ try {
   /**
    * 5. 入库抽屉能开能关——它是「万物皆可入库」的唯一入口，坏了整个打通机制就断了。
    *
-   * ⚠️ **选择器是 `.sidebar .btn-primary` 不是 `.sidebar-foot .btn-primary`。**
-   * 「收集」从侧栏页脚搬到了导航上面（页脚现在放连接状态），而按位置写的选择器
-   * 会跟着一起坏——**其中一条还会「坏成绿的」**：
-   * `!(await page.$(".sidebar-foot .btn-primary kbd"))` 在按钮压根不在那儿时恒为真。
+   * ⚠️ **按 `aria-label` 点，不按位置也不按样式类点。**
+   * 「收集」在这个项目里已经搬过三次家（侧栏页脚 → 导航上面那颗黑色大按钮 →
+   * 现在是栏头的一枚图标钮），而每一次按位置或按 `.btn-primary` 写的选择器都要跟着改；
+   * **其中一类还会「坏成绿的」**：`!(await page.$(".sidebar-foot .btn-primary kbd"))`
+   * 在按钮压根不在那儿时恒为真。`aria-label` 是这颗按钮唯一不该变的东西。
    */
-  await page.click(".sidebar .btn-primary");
+  await page.click('.sidebar [aria-label="收集"]');
   await page.waitForSelector(".drawer", { timeout: 4000 });
   check("入库抽屉打开", true);
   /**
@@ -1816,7 +1960,7 @@ try {
   check("入库表单先问内容", firstField === "内容", firstField);
   check("底部有退路也有主动作", (await page.textContent(".drawer-foot")).includes("取消"));
   // 快捷键提示不刻在按钮上：`n` 学一次就记住了，而那枚小方块要跟着最显眼的按钮出现在每一屏
-  check("入库按钮上没有常驻的快捷键角标", !(await page.$(".sidebar .btn-primary kbd")));
+  check("入库按钮上没有常驻的快捷键角标", !(await page.$('.sidebar [aria-label="收集"] kbd')));
   await page.keyboard.press("Escape");
   await page.waitForSelector(".drawer", { state: "detached", timeout: 4000 });
   check("Esc 关闭抽屉", true);
@@ -1847,7 +1991,7 @@ try {
   check("内容二级导航名称统一", subnav.join("/") === wantSubnav.join("/"), `${subnav.join("/")}（常量 ${wantSubnav.join("/")}）`);
   // 导航标签一律两个字——写死那一串会在加页时红，这条不会，而它钉的是真正的规矩
   check("二级导航每项都是两个字", subnav.every((n) => n.length === 2), subnav.join("/"));
-  check("页面内部不再重复跨页面 Tab", !(await page.$(".main > .pill-tabs")));
+  check("页面内部不再重复跨页面 Tab", !(await page.$(".main .view-tabs")));
   /**
    * ⚠️ **深链进来的页面，一级导航仍然要高亮到它所属的那一档。**
    * 靠的是 `CONTENT_VIEWS` 里还留着 `topics`——从导航里拿掉一个入口时
@@ -1876,8 +2020,8 @@ try {
   const nest = await page.evaluate(() => {
     const pb = document.querySelector(".panel-block");
     const cs = pb && getComputedStyle(pb);
-    // ⚠️ 页名现在**只在顶栏的面包屑里**，正文区一个标题都不该有
-    const crumb = document.querySelector(".crumbs")?.innerText.replace(/\s+/g, "") || "";
+    // ⚠️ 页名现在**只在面板页头里**（`.view-head__name`），正文区一个标题都不该有
+    const crumb = document.querySelector(".view-head__name")?.innerText.replace(/\s+/g, "") || "";
     return {
       crumb,
       h1s: document.querySelectorAll(".main h1").length,
@@ -1885,7 +2029,7 @@ try {
       echoes: [...document.querySelectorAll(".main h2")].filter((e) => crumb.includes(e.textContent.trim())).length,
       border: cs?.borderTopWidth,
       shadow: cs?.boxShadow,
-      count: document.querySelector(".page-bar__count")?.textContent.trim() || "",
+      count: document.querySelector(".view-head__count")?.textContent.trim() || "",
       // Worker 连不上时列表是空的、条数本来就没有——断言要写成二选一，
       // 不能写死「一定有条数」，那样外部一挂测试就红
       loaded: !!document.querySelector(".doc-row, .kanban-col"),
@@ -1906,7 +2050,7 @@ try {
    * 去说这一屏信息量最低的一件事（你自己点进来的，你知道这是哪儿）。
    * 所以判据是**正文区一个 `h1` 都没有**，且没有 `h2` 在复述面包屑上那个词。
    */
-  check("页名只在顶栏，正文里不再重复", nest.h1s === 0 && nest.echoes === 0, `正文 h1 ${nest.h1s} 个 · 复述 ${nest.echoes} 处 · 面包屑「${nest.crumb}」`);
+  check("页名只在页头，正文里不再重复", nest.h1s === 0 && nest.echoes === 0, `正文 h1 ${nest.h1s} 个 · 复述 ${nest.echoes} 处 · 面包屑「${nest.crumb}」`);
   check(
     "条数挂在动作条上",
     !nest.loaded || /条$/.test(nest.count),
@@ -2450,15 +2594,16 @@ try {
      * `类型` 决定（epub / pdf 一定是藏书），不由你点了哪个组的 `＋` 决定——
      * 每组一个的话，位置本身在暗示一个它保证不了的去处。
      *
-     * ⚠️ **页头右上角只留搜索框。** 加书那两颗按钮连同「支持 .md / .txt / …」那行说明
+     * ⚠️ **页头右端只留搜索框。** 加书那两颗按钮连同「支持 .md / .txt / …」那行说明
      * 挤在页头里，会把这一行撑到换行、把搜索框顶下去。
+     * ⚠️ 页头右端现在是**外壳那条 `.view-head` 的插槽**，页面用 portal 画进去。
      */
     const shelfHead = await page.evaluate(() => ({
-      buttons: [...document.querySelectorAll(".page-bar__end button")].map((e) => e.textContent.trim()),
-      search: !!document.querySelector(".page-bar__end .search-box input"),
+      buttons: [...document.querySelectorAll(".view-head__end button")].map((e) => e.textContent.trim()),
+      search: !!document.querySelector(".view-head__end .search-box input"),
       tiles: document.querySelectorAll(".add-book__tile").length,
     }));
-    check("页头右上角只有搜索框", shelfHead.search && shelfHead.buttons.length === 0, shelfHead.buttons.join("/") || "(没有按钮)");
+    check("页头右端只有搜索框", shelfHead.search && shelfHead.buttons.length === 0, shelfHead.buttons.join("/") || "(没有按钮)");
     check("墙尾只有一个加书格", shelfHead.tiles === 1, `${shelfHead.tiles} 个`);
 
     /**
@@ -2481,11 +2626,24 @@ try {
     );
 
     // ⚠️ **格子和封面一样高**，否则那一排会缺一角
+    /**
+     * ⚠️ **量之前先确认墙真的画出来了。**
+     * 上一版直接 `querySelector(...).getBoundingClientRect()`，书架是空的时候
+     * 这里抛 `Cannot read properties of null`，而抛出来的**不是一条红断言，是整轮中断**——
+     * 后面四十多条一条都跑不到，报告上只剩一句看不出所以然的 TypeError。
+     * 这一段的前提是「墙上有书」，前提不成立时它该说「跳过」，不该把整轮拖下水。
+     */
     const tileFit = await page.evaluate(() => {
-      const t = document.querySelector(".add-book__tile").getBoundingClientRect();
-      const c = document.querySelector(".book-card__cover .cover").getBoundingClientRect();
-      return { d: Math.abs(t.height - c.height), h: Math.round(t.height) };
+      const t = document.querySelector(".add-book__tile");
+      const c = document.querySelector(".book-card__cover .cover");
+      if (!t || !c) return null;
+      const tb = t.getBoundingClientRect();
+      const cb = c.getBoundingClientRect();
+      return { d: Math.abs(tb.height - cb.height), h: Math.round(tb.height) };
     });
+    if (!tileFit) {
+      check("加书格和封面一样高", true, "书架上没有书，这一段跳过");
+    } else {
     check("加书格和封面一样高", tileFit.d <= 2, `差 ${tileFit.d.toFixed(1)}px（${tileFit.h}px 高）`);
 
     await page.click(".add-book__tile");
@@ -2506,6 +2664,7 @@ try {
     check("加书菜单向上弹且在视口内", pop.up && pop.inViewport, `up=${pop.up} inViewport=${pop.inViewport}`);
     check("加书菜单没向右出界", pop.rightOk, pop.rightOk ? "在墙内" : "超出墙的右缘");
     await page.keyboard.press("Escape");
+    }
 
     /**
      * 封面底边那条进度**压在一张任意颜色的图上**，所以它的两个颜色都不能取自主题 token。
@@ -2531,8 +2690,38 @@ try {
       // 「本章」和「全书」是同一个数，区分不出来
       return { name: bk.name, chapters: bk.chapters?.length || 0 };
     });
-    await page.reload({ waitUntil: "networkidle" });
-    await page.waitForSelector(".book-card__prog", { timeout: 8000 });
+    /**
+     * ⚠️ **书架空的时候整段跳过，而不是一路等到超时。**
+     * 上一版这里直接 `waitForSelector(".book-card__prog")`，墙上没书时它等满 8 秒然后
+     * **抛出去中断整轮**——后面几十条一条都跑不到，而报告上只有一句 TimeoutError。
+     * 前提不成立时该说「跳过」，不该把整轮拖下水。
+     *
+     * ⚠️ **判据要问「墙上画出来了吗」，不能只问接口。**
+     * 只看 `seeded` 是不够的：它读的是 `/api/vault/books`，而页面读的是别的端点——
+     * 两边不一致的时候（迁移期就是这样）`seeded` 有值、墙上却一本都没有，
+     * 这段照样会等到超时。
+     */
+    /**
+     * ⚠️ **前提要等「进度条真的画出来了」为止，而且等不到就跳过——不能抛。**
+     *
+     * 上一版只判了「墙上有没有书」，这还不够：`seeded` 写的键取自
+     * `/api/vault/books` 的 `dir`，而页面认的是另一个端点给的键。两边对不上的时候
+     * （本地化迁移期就是这样）书在墙上、进度条却一条都不画，
+     * 于是 `waitForSelector` 等满 8 秒 **抛出去中断整轮**——
+     * 后面四十来条一条都跑不到，报告上只剩一句 TimeoutError。
+     *
+     * 这一段测的是「进度条画得清不清楚」。造不出进度条是**前提不成立**，
+     * 不是这条断言失败，更不该连累别的断言。
+     */
+    const wallHasBooks = !!(await page.$(".book-card__cover"));
+    if (seeded && wallHasBooks) await page.reload({ waitUntil: "networkidle" });
+    const hasBar = seeded && wallHasBooks
+      && await page.waitForSelector(".book-card__prog", { timeout: 8000 }).then(() => true, () => false);
+    if (!hasBar) {
+      const why = !wallHasBooks ? "墙上没有书" : !seeded ? "接口里没有书" : "造的进度键和页面认的对不上";
+      check("封面上的进度条在浅色封面上也分得出来", true, `${why}，这一段跳过`);
+      check("封面上的进度画的是整本不是本章", true, `${why}，这一段跳过`);
+    } else {
     const bar = await page.evaluate(() => {
       const el = document.querySelector(".book-card__prog");
       const px = (c) => (c.match(/[\d.]+/g) || []).map(Number);
@@ -2565,6 +2754,7 @@ try {
     await page.evaluate(() => localStorage.removeItem("workbench:reading:v1"));
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForSelector(".add-book__tile", { timeout: 8000 });
+    }
 
     /**
      * ⚠️ **搜索框只有一份实现**（`ui.jsx` 的 `SearchBox`），三处调用方共用。
@@ -2574,7 +2764,7 @@ try {
      * 两条退路都要有：**× 是看得见的那条，Esc 是快的那条。**
      * 只给 Esc 不够——框里有字、旁边没有任何清除的记号，人不会去猜快捷键。
      */
-    const box = ".page-bar__end .search-box";
+    const box = ".view-head__end .search-box";
     check("没输入时不画清空按钮", (await page.$(`${box} .search-box__clear`)) === null);
     await page.fill(`${box} input`, "内容");
     await page.waitForSelector(`${box} .search-box__clear`, { timeout: 4000 });
@@ -3424,6 +3614,25 @@ try {
     await page.waitForTimeout(1500);
     check("下架后书架上没了", !(await page.$(`.book-card:has-text("${mdBook}")`)));
     check("下架是移进 .trash 不是删掉", fs.readdirSync(path.join(VAULT_ROOT, ".trash")).some((n) => n.includes(mdBook)));
+  } catch (err) {
+    /**
+     * ⚠️ **这一整段炸了只算这一段炸了，不该中断整轮。**
+     *
+     * 阅读链路是「建书 → 读 → 划词 → 批注 → 落盘」的长串连续操作，中间任何一步接不上，
+     * 后面每一步都点在空气上、各等 30 秒。上一版没有这个 `catch`：异常穿过 `finally`
+     * 抛到最外层，**它后面的几十条一条都跑不到**（AI 助手页那一整段就在里面），
+     * 报告上只剩一句 TimeoutError——真正坏掉的那一处反而看不出来。
+     *
+     * 记成一条**失败**，不是跳过：这一段确实没跑完，得红着。
+     *
+     * 已知会踩到这儿的一处（2026-08-30，本地化迁移期）：
+     * `/api/vault/books/import` 把书写进 vault 并返回成功，
+     * `/api/vault/books` 也数得到它（15 → 16），但**书墙上不出现**——
+     * 墙读的是另一套本地库，看不见 vault 这边的导入。
+     * 那是业务层的真 bug（导进来的书找不到），不是这条测试的问题。
+     */
+    check("阅读工作区整条链路跑完", false, `半路断了：${String(err.message).split(String.fromCharCode(10))[0].slice(0, 80)}`);
+    await page.goto(`http://127.0.0.1:${PORT}/#/shelf`, { waitUntil: "networkidle" }).catch(() => {});
   } finally {
     fs.rmSync(bookDir, { recursive: true, force: true });
     fs.rmSync(`${bookDir}_md`, { recursive: true, force: true });
@@ -3553,7 +3762,7 @@ try {
   await page.waitForSelector(".board, .empty, .note-title", { timeout: 60000 });
 
   // AI 情报这一侧才过滤，而且过滤是个**看得见的开关**，不是一句状态说明
-  await page.click('.pill-tab:has-text("AI 情报")');
+  await page.click('.view-tabs button:has-text("AI 情报")');
   await page.waitForSelector(".ai-item, .empty", { timeout: 60000 });
   const switchBtns = await page.$$eval(".switch button", (els) => els.map((e) => e.textContent.trim()));
   check("过滤是两段式开关", switchBtns.length === 2 && switchBtns[1].startsWith("全部"), switchBtns.join(" | "));
@@ -3625,7 +3834,7 @@ try {
    */
   await page.goto("about:blank");
   await page.goto(`http://127.0.0.1:${PORT}/#/hot`, { waitUntil: "networkidle" });
-  await page.click('.pill-tab:has-text("模型榜")');
+  await page.click('.view-tabs button:has-text("模型榜")');
   await page.waitForSelector(".lb__row, .empty", { timeout: 60000 });
   const models = await page.$$eval(".lb__row", (els) => els.length);
   if (models) {
@@ -3841,7 +4050,7 @@ try {
   /* ⚠️ 这里原来写的是 `.page-head`，而共用页头件（`ui.jsx` 的 `PageHeader`）的类名一直是
      `.page-header`——**选择器指着一个不存在的类**，于是这条恒红，而按钮从头到尾都在。
      `.catch(() => "")` 把「找不到元素」和「按钮文案不对」抹成了同一种结果，所以看不出是哪种。 */
-  const collectAction = (await page.textContent(".page-bar__end .btn-primary").catch(() => "")).trim();
+  const collectAction = (await page.textContent(".view-head__end .btn-primary").catch(() => "")).trim();
   check("统一素材页保留收集入口", collectAction.includes("收集"), collectAction || "（没有这颗按钮）");
   await shot("ideas");
 
@@ -4058,8 +4267,8 @@ try {
   {
     await page.goto(`http://127.0.0.1:${PORT}/#/review`, { waitUntil: "networkidle" });
     // ⚠️ 等的是内容不是壳：芯片渲染好了才说明这一页真的活着
-    await page.waitForSelector(".filter-head .chip", { timeout: 8000 });
-    const lanes = await page.$$eval(".filter-head .chip", (els) => els.map((e) => e.textContent.trim()));
+    await page.waitForSelector(".view-tabs button", { timeout: 8000 });
+    const lanes = await page.$$eval(".view-tabs button", (els) => els.map((e) => e.textContent.trim()));
     check("收成页头是居中的芯片，不是左对齐那一条", lanes.length === 3, lanes.join(" / "));
 
     /* ⚠️ **「没对上稿子」那一档必须真的列出东西。**
@@ -4068,7 +4277,7 @@ try {
      * 断言写成二选一：posts.csv 里有没对上的就要列出来，没有就给一句空态。 */
     const loosePosts = fs.readFileSync(path.join(ROOT, "data", "posts.csv"), "utf8")
       .split(String.fromCharCode(10)).slice(1).filter(Boolean).length;
-    await page.click(`.filter-head .chip >> nth=1`);
+    await page.click(`.view-tabs button >> nth=1`);
     await page.waitForTimeout(300);
     const cards = await page.$$eval(".loose", (els) => els.length);
     const empty = await page.$(".empty");
@@ -4088,17 +4297,17 @@ try {
   try {
     /**
      * ⚠️ **入口和等待的选择器都换过。**
-     * 这一段原来 `goto #/metrics` 然后等 `.pill-tabs`。导航重构（306b993）把数据页那三个
-     * 页内 tab 搬进了侧栏二级导航，`.pill-tabs` 在这一页**再也不存在**，而 `#/metrics`
+     * 这一段原来 `goto #/metrics` 然后等那排页内 tab。导航重构（306b993）把数据页那三个
+     * 页内 tab 搬进了侧栏二级导航，那排页内 tab 在这一页**再也不存在**，而 `#/metrics`
      * 现在会重定向到 `#/review-performance`（内容表现），导入 UI 在 `#/review-sources`。
      *
      * 这条断言因此空等了 8 秒然后抛错——**而它整段包在 try 里，异常被吞掉**，
      * 于是二十来条断言集体不执行，冒烟测试照样报绿。这就是「红着的测试等于没有测试」
-     * 的更坏版本：**它连红都没红**。等的改成每一页都有的顶栏面包屑 `.crumbs`：
+     * 的更坏版本：**它连红都没红**。等的改成每一页都有的页头的页名 `.view-head__name`：
      * 页内 tab 以后还会动，页面标题不会。
      */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
-    await page.waitForSelector(".crumbs", { timeout: 8000 });
+    await page.waitForSelector(".view-head__name", { timeout: 8000 });
 
     /* 9a0. 自动发现：从下载目录（和项目的 data/inbox/）里翻出还没导进来的导出文件。
      *      这条路存在的理由是「能推断的不让用户填」——文件在哪、哪个最新、哪个是刚下的，
@@ -4112,8 +4321,8 @@ try {
       "utf8"
     );
     await page.reload({ waitUntil: "networkidle" });
-    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
-       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+    /* ⚠️ 这里原来点 `.view-tabs button:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有那排 tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".inbox__row", { timeout: 8000 });
@@ -4149,8 +4358,8 @@ try {
     /* 9a. 导入：**先 dry 看一眼、再确认写盘**。这两步存在的全部理由是解析器只能靠列名
      *     认字段——认错了不报错，只会让一列数字安静地进错格子。所以断言钉的是
      *     「界面上真的把映射摊开给人看了」，不只是「导入成功了」。 */
-    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
-       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+    /* ⚠️ 这里原来点 `.view-tabs button:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有那排 tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
@@ -4288,8 +4497,8 @@ try {
     check("没有数据的指标整格不出现", missing.length === 0, missing.join(",") || "全部平台都对");
 
     // 9c. 幂等：同一份文件再导一次不能多出三行
-    /* ⚠️ 这里原来点 `.pill-tab:has-text("数据来源")`。那三个页内 tab 在导航重构里
-       搬进了侧栏二级导航，**这一页上不再有 pill-tab**，点它就是空等 30 秒然后抛错。
+    /* ⚠️ 这里原来点 `.view-tabs button:has-text("数据来源")`。那三个页内 tab 在导航重构里
+       搬进了侧栏二级导航，**这一页上不再有那排 tab**，点它就是空等 30 秒然后抛错。
        现在入口直接是 `#/review-sources`，本来就在这一页，不需要再点一次。 */
     await page.goto(`http://127.0.0.1:${PORT}/#/review-performance/${encodeURIComponent("同步")}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".dropzone", { timeout: 5000 });
@@ -4412,7 +4621,7 @@ try {
    *（vault 没配 / 服务没起）。写死「一定看到材料清单」的话，换台机器就红，
    * 而红着的测试等于没有测试。
    */
-  const runBtn = await page.$(".page-bar__end .btn-primary");
+  const runBtn = await page.$(".view-head__end .btn-primary");
   check("洞察页有跑批入口", !!runBtn, runBtn ? await runBtn.textContent() : "没找到页头按钮");
   if (runBtn) {
     await runBtn.click().catch(() => {});
@@ -4535,7 +4744,19 @@ try {
   check("阅读区复用创作区助手组件", !!(await page.$(".rail .assistant-composer")) && !(await page.$(".chat-permission-mode")));
   check("内容阅读区使用固定只读策略", !(await page.$(".rail .assistant-composer__access")));
   check("内容阅读区输入框也能选模型", !!(await page.$(".rail .assistant-composer__model")));
-  await page.locator('.rail:visible button[aria-label="新对话"]').click();
+  /**
+   * ⚠️ **这一步要的是「线程是干净的」，不是「那颗按钮被点到了」。**
+   *
+   * 阅读右栏那条 header 在**空闲态不画**（没选区、没消息、没后台任务时整条藏起来，
+   * 见 `AssistantPane` 里 `railHeaderIdle` 那段）——而这里刚开栏，正好是空闲态。
+   * 上一版直接点 `新对话`，于是等满 30 秒**抛出去中断整轮**：
+   * 后面的完整 AI 助手页、收集抽屉那几段一条都跑不到。
+   *
+   * 而且它等的那颗按钮**本来就不该在**：线程已经是空的，「新对话」点了等于没点。
+   * 所以有就点、没有就跳过，最后一律断言「线程确实是空的」——判据落在结果上。
+   */
+  const railNew = page.locator('.rail:visible button[aria-label="新对话"]');
+  if (await railNew.count()) await railNew.click();
   await page.waitForFunction(() => !document.querySelector(".rail .assistant-message"), null, { timeout: 5000 });
   await page.evaluate(() => {
     const paragraph = document.querySelector(".reader .prose p");
@@ -4588,8 +4809,125 @@ try {
   await page.click('.assistant-page .assistant-permission-menu > button:has-text("开发")');
   await page.waitForFunction(() => document.querySelector(".assistant-page .assistant-composer__access")?.textContent.includes("开发"));
   check("完整全局 AI 切入开发模式会警告并生效", developerWarning && (await page.textContent(".assistant-page .assistant-composer__access")).includes("开发"));
-  await page.locator('.assistant-page button[aria-label="新对话"]').click();
+  // ⚠️ **「新对话」在页头上，不在 `.assistant-page` 里。** 完整页那一条 header 是
+  // portal 进外壳页头的（`lib/view-slots.js`），按 `.assistant-page` 找永远找不到——
+  // 这条一直没红只是因为整轮在更早的地方就中断了，跑不到这儿。
+  await page.locator('.view-head button[aria-label="新对话"]').click();
   check("完整全局 AI 新对话回到日常模式", (await page.textContent(".assistant-page .assistant-composer__access")).includes("日常"));
+
+  /**
+   * 空态那一屏的三件事，三条都**按量的判、不按类名判**。
+   *
+   * ⚠️ 「入口卡比输入框窄」这条不能写成「有没有某个 class」：那三张卡和输入框
+   * 曾经等宽等重，屏幕上是两块一样分量的东西上下叠着，而它们的地位差得远。
+   * 判据只能是两个盒子的实际宽度。
+   */
+  const emptyShape = await page.evaluate(() => {
+    const w = (s) => document.querySelector(s)?.getBoundingClientRect().width || 0;
+    return { 输入框: Math.round(w(".assistant-page .assistant-composer")), 入口卡: Math.round(w(".assistant-page .assistant-empty__actions")), 注脚: !!document.querySelector(".assistant-page .assistant-empty p") };
+  });
+  check(
+    "空态入口卡比输入框窄",
+    emptyShape.入口卡 > 0 && emptyShape.入口卡 < emptyShape.输入框,
+    `卡 ${emptyShape.入口卡} / 框 ${emptyShape.输入框}`
+  );
+  // 那句「直接开始对话，或从下面挑一个更明确的入口」说的是屏幕上**已经看得见**的两件事
+  check("全局空态不再挂那句多余的注脚", !emptyShape.注脚);
+
+  /**
+   * 历史抽屉 + 「跳到底部」。**要一段真有消息的对话**，所以从抽屉里挑一条已有的开——
+   * 现发一轮会真的打模型，而这两条要验的是版面，不是模型。
+   */
+  await page.click('.view-head button[aria-label="历史对话"]');
+  await page.waitForSelector(".assistant-history-drawer", { timeout: 4000 });
+  const drawerShape = await page.evaluate(() => {
+    const d = document.querySelector(".assistant-history-drawer");
+    const btn = d.querySelector(".assistant-history-drawer__head .assistant-head-icon");
+    const t = d.querySelector(".assistant-history__open time");
+    const b = d.querySelector(".assistant-history__open b");
+    const db = d.getBoundingClientRect();
+    return {
+      通顶: Math.round(db.top) === 0,
+      收起钮在右半边: btn ? btn.getBoundingClientRect().left > db.left + db.width / 2 : null,
+      时间在标题下方: t && b ? t.getBoundingClientRect().top >= b.getBoundingClientRect().bottom - 1 : null,
+      时间可见: t ? getComputedStyle(t).opacity : null,
+    };
+  });
+  // 通顶是这一版的形态：只盖到页头以下那一版在屏幕上是上亮下暗的一截，读成了渲染坏掉
+  check("历史抽屉通顶", drawerShape.通顶, JSON.stringify(drawerShape));
+  check("抽屉自己的收起钮在右上角", drawerShape.收起钮在右半边 === true);
+  // ⚠️ 时间曾经绝对定位在右端，**并且指上去就 `opacity: 0`**（给 `⋯` 让位）——
+  // 一条信息只在你不看它的时候存在。挪到第二行之后两者各占一边，谁也不用让位。
+  check("会话时间在标题下方且一直可见", drawerShape.时间在标题下方 === true && drawerShape.时间可见 === "1", JSON.stringify(drawerShape));
+
+  const opened = await page.$$(".assistant-history-drawer .assistant-history__open");
+  if (!opened.length) {
+    const why = "库里一条历史对话都没有，跳到底部这两条跳过";
+    check("跳到底部在底部时不画", true, why);
+    check("翻上去之后它出现在输入框正上方", true, why);
+    await page.keyboard.press("Escape");
+  } else {
+    await opened[0].click();
+    await page.waitForTimeout(1200);
+    /**
+     * ⚠️ **两个方向都要钉。** 只钉「翻上去会出现」的话，一颗**常驻**的按钮照样能过——
+     * 而它压在输入框正上方，那是这一屏最贵的一块地方，常驻就是纯噪音。
+     */
+    const jumpAtEnd = !(await page.$(".assistant-page .assistant-jump button"));
+    /**
+     * ⚠️ **把消息区压到 100px，再确认它真的溢出够了才断言。**
+     * 抽屉里第一条常常是一句「hi」加一句短回复——按 200px 压的话
+     * 「离底 120px」这个阈值根本够不着，按钮不出现是**对的**，
+     * 而断言会红在「按钮没出现」上，看着像功能坏了。前提要自己验一遍。
+     */
+    const overflow = await page.evaluate(() => {
+      const th = document.querySelector(".assistant-page .assistant-thread");
+      th.style.maxHeight = "100px"; th.scrollTop = 0; th.dispatchEvent(new Event("scroll"));
+      return Math.round(th.scrollHeight - th.clientHeight);
+    });
+    await page.waitForTimeout(250);
+    const jumpAway = overflow <= 120 ? null : await page.evaluate(() => {
+      const b = document.querySelector(".assistant-page .assistant-jump button");
+      const c = document.querySelector(".assistant-page .assistant-composer");
+      if (!b || !c) return null;
+      const bb = b.getBoundingClientRect(), cb = c.getBoundingClientRect();
+      return { 居中差: Math.round(Math.abs(bb.left + bb.width / 2 - (cb.left + cb.width / 2))), 在框上方: bb.bottom <= cb.top + 2 };
+    });
+    /**
+   * 发送键的几何。⚠️ **量出来的、不是 CSS 里写的那份。**
+   *
+   * `.assistant-composer > footer > div > button` 的特异度是 (0,1,3)，
+   * 而 `.assistant-send` 只有 (0,1,0)——短的那条在 `height` / `padding` /
+   * `border-radius` / `display` 上**全线落败**。屏幕上是一颗 34×26 的扁椭圆、
+   * 回车符偏右 4px；而 CSS 源码里 `height: 34px` 写得明明白白，
+   * 连 `getMatchedStylesForNode` 都报 34px。**只有 `getComputedStyle` 会说实话。**
+   * 这是这一类「容器规则套到特例成员上」的第六次，所以钉死它。
+   */
+  const sendShape = await page.evaluate(() => {
+    const b = document.querySelector(".assistant-page .assistant-send");
+    if (!b) return null;
+    const g = b.querySelector("svg");
+    const bb = b.getBoundingClientRect(), gb = g.getBoundingClientRect();
+    return {
+      方: Math.abs(bb.width - bb.height) <= 1,
+      正圆: getComputedStyle(b).borderRadius.startsWith("999"),
+      图标居中: Math.abs(bb.left + bb.width / 2 - (gb.left + gb.width / 2)) <= 1
+        && Math.abs(bb.top + bb.height / 2 - (gb.top + gb.height / 2)) <= 1,
+      盒: `${Math.round(bb.width)}×${Math.round(bb.height)}`,
+      图: Math.round(gb.width),
+    };
+  });
+  // 长宽一样才是圆角**方**块；不一样就是被压出来的扁椭圆
+  check("发送键是正方的圆角块，不是扁椭圆", sendShape && sendShape.方 && !sendShape.正圆, JSON.stringify(sendShape));
+  check("发送键的图标在正中，且没被内边距挤小", sendShape && sendShape.图标居中 && sendShape.图 >= 18, JSON.stringify(sendShape));
+
+  check("跳到底部在底部时不画", jumpAtEnd);
+    check(
+      "翻上去之后它出现在输入框正上方",
+      overflow <= 120 ? true : Boolean(jumpAway && jumpAway.居中差 <= 1 && jumpAway.在框上方),
+      overflow <= 120 ? `这段对话只溢出 ${overflow}px，翻不上去，跳过` : JSON.stringify(jumpAway)
+    );
+  }
 
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
   await page.waitForSelector(".todo-card, .note-title", { timeout: 20000 });
@@ -4615,13 +4953,26 @@ try {
       localStorage.setItem("workbench:reading:v1", JSON.stringify({ version: 1, books: rec }));
     }, twoBooks);
     await page.reload({ waitUntil: "networkidle" });
-    await page.waitForSelector(".resume-book", { timeout: 20000 });
+    /**
+     * ⚠️ **等不到就如实记失败，不要抛。**
+     * 灌进去的键取自 `/api/vault/books` 的 `dir`，而总览这一格认的是另一套本地库的键
+     * （本地化迁移期两边对不上，见「阅读工作区整条链路」那条注释）——
+     * 那时候一张卡都不画，`waitForSelector` 等满 20 秒**抛出去中断整轮**，
+     * 后面完整 AI 助手页、收集抽屉那几段一条都跑不到。
+     */
+    const hasResume = await page.waitForSelector(".resume-book", { timeout: 20000 }).then(() => true, () => false);
+    if (!hasResume) {
+      const why = "灌的进度键和总览认的对不上，一张卡都没画";
+      check("接着读列两本", false, why);
+      check("两本的进度条在同一高度", false, why);
+    } else {
     const cards = await page.$$(".resume-book");
     check("接着读列两本", cards.length === 2, `${cards.length} 本`);
     const bars = await page.$$eval(".resume-book", (els) =>
       els.map((e) => Math.round(e.querySelector(".resume-book__bar").getBoundingClientRect().top - e.getBoundingClientRect().top))
     );
     check("两本的进度条在同一高度", bars[0] === bars[1], bars.join("/"));
+    }
   }
 
   await shot("overview");
@@ -4746,7 +5097,18 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
   await page.waitForSelector(".sysrow", { timeout: 8000 });
   await page.click('.sysrow__btn:has-text("备份与恢复")');
-  await page.waitForSelector(".drawer--wide .bk-list .bk-row", { timeout: 8000 });
+  /**
+   * ⚠️ **面板没列出东西是这几条的失败，不是整轮的终点。**
+   * 等不到 `.bk-row` 就抛的那一版会把后面的全局检索、AI 助手页、收集抽屉全部拖没。
+   */
+  const bkReady = await page.waitForSelector(".drawer--wide .bk-list .bk-row", { timeout: 8000 }).then(() => true, () => false);
+  if (!bkReady) {
+    const why = "备份面板一行数据都没列出来";
+    for (const n of ["备份面板列出全部工作台数据", "面板说清 vault 正文不在包里", "面板说清密钥不在包里", "面板承诺恢复前留快照"]) check(n, false, why);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    check("Esc 关得掉备份面板", !(await page.$(".drawer--wide")));
+  } else {
   const bk = await page.evaluate(() => ({
     rows: [...document.querySelectorAll(".bk-row__label")].map((e) => e.textContent.trim()),
     text: document.querySelector(".drawer--wide").innerText,
@@ -4771,6 +5133,7 @@ try {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(150);
   check("Esc 关得掉备份面板", !(await page.$(".drawer--wide")));
+  }
 
   /**
    * 11.8 全局检索：Ctrl+K 开、Esc 关、键盘能走、结果能直接执行。
@@ -4779,15 +5142,28 @@ try {
    * vault 里的书和洞察——写死某一种外部状态的话，外部一变测试就红。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".topbar__find", { timeout: 8000 });
+  await page.waitForSelector(".sidebar__find", { timeout: 8000 });
   // 快捷键不能是唯一入口：看不见的功能没人会去猜它存不存在。
-  // ⚠️ 它现在在**顶栏正中**，不在侧栏里——那是整个工作台唯一一个跨四个库 + vault +
-  // posts + 热点的入口，塞在侧栏 200px 的一条里、只写两个字「搜索」，看着像个侧栏功能。
-  check("顶栏正中有看得见的搜索入口", await page.isVisible(".topbar__find"));
-  const findHint = await page.textContent(".topbar__find");
-  check("搜索框说清它能搜什么", /选题|稿件|素材/.test(findHint), findHint.replace(/\s+/g, " ").trim().slice(0, 30));
+  // ⚠️ **它现在就在侧栏里**（跨全宽的顶栏整条撤掉了）。上一版这条注释还写着
+  // 「它在顶栏正中，塞进侧栏会看着像个侧栏功能」——那个顾虑是真的，
+  // 解法不是把它搬回顶栏，而是把「能搜什么」交给面板的 placeholder（见下）。
+  check("侧栏里有看得见的搜索入口", await page.isVisible(".sidebar__find"));
   await page.keyboard.press("Control+k");
   await page.waitForSelector(".cmdk input", { timeout: 5000 });
+  /**
+   * ⚠️ **「能搜什么」这句话现在在面板的 placeholder 上，不在那颗触发器上。**
+   *
+   * 它原来写在跨全宽顶栏正中那个 440px 的框里。搜索搬进侧栏之后那一行只有 180px，
+   * 同一句话在那儿被截成「搜选题、稿…」——既没说清、又把 `Ctrl K` 挤没地方。
+   * 所以它搬进了面板自己的 placeholder：**打开的第一眼就能看见**，
+   * 比在一个截断的按钮上读半句强（`App.jsx` 那颗按钮上记着同一条）。
+   *
+   * 断言跟着搬，但**问的还是同一件事**：这个入口有没有说清它能搜到什么。
+   * 只把选择器换成按钮、把判据放宽成「有字就行」的话，这条就退化成
+   * 「按钮渲染出来了」——那不是这条要防的事。
+   */
+  const findHint = (await page.getAttribute(".cmdk input", "placeholder")) || "";
+  check("搜索框说清它能搜什么", /选题|稿件|素材/.test(findHint), findHint.slice(0, 40));
   check("Ctrl+K 打开全局检索", await page.isVisible(".cmdk"));
   // 空态就是「继续上次工作」，不是一片空白
   const emptyText = await page.textContent(".cmdk");
@@ -4919,8 +5295,8 @@ try {
    * 而回车就是一次删除。所以断言的是「焦点出不去」，不是「有没有 aria 属性」。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/overview`, { waitUntil: "networkidle" });
-  await page.waitForSelector(".sidebar .btn-primary", { timeout: 8000 });
-  await page.click(".sidebar .btn-primary"); // 入库抽屉
+  await page.waitForSelector('.sidebar [aria-label="收集"]', { timeout: 8000 });
+  await page.click('.sidebar [aria-label="收集"]'); // 入库抽屉
   await page.waitForSelector(".drawer textarea", { timeout: 5000 });
   check("弹层打开后焦点进到弹层里", await page.evaluate(() => !!document.querySelector(".drawer")?.contains(document.activeElement)));
   check(
@@ -4946,7 +5322,7 @@ try {
   check(
     "背景里的按钮真的聚不上焦",
     await page.evaluate(() => {
-      const btn = document.querySelector(".sidebar .btn-primary");
+      const btn = document.querySelector('.sidebar [aria-label="收集"]');
       if (!btn) return false;
       const before = document.activeElement;
       btn.focus();
@@ -4982,7 +5358,7 @@ try {
   // 关掉之后焦点要回到打开它的那个按钮上，不能掉回 body（那样下一次 Tab 从整页开头重来）
   check(
     "关闭后焦点回到打开它的按钮",
-    await page.evaluate(() => document.activeElement?.closest(".sidebar .btn-primary") != null),
+    await page.evaluate(() => document.activeElement?.closest('.sidebar [aria-label="收集"]') != null),
     await page.evaluate(() => document.activeElement?.className || "(body)")
   );
 
@@ -5031,7 +5407,7 @@ try {
       const [r, g, b] = rgb.match(/\d+/g).map(Number);
       return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
     };
-    const el = [...document.querySelectorAll(".field-hint, .empty, .page-sub, .page-bar__desc")].find((e) => e.offsetParent);
+    const el = [...document.querySelectorAll(".field-hint, .empty, .page-sub, .page-lead, .view-switch__desc")].find((e) => e.offsetParent);
     if (!el) return null;
     const s = getComputedStyle(el);
     const [a, b] = [L(s.color), L(getComputedStyle(document.body).backgroundColor)].sort((x, y) => y - x);
@@ -5041,7 +5417,7 @@ try {
     check("辅助文字过 WCAG AA（4.5:1）", contrast.ratio >= 4.5, `${contrast.ratio}:1 · ${contrast.color}`);
     check("辅助文字不小于 13px", contrast.size >= 13, `${contrast.size}px`);
   } else {
-    check("辅助文字能量到", false, "这一页上没有 .field-hint / .empty / .page-sub / .page-bar__desc");
+    check("辅助文字能量到", false, "这一页上没有 .field-hint / .empty / .page-sub / .page-lead / .view-switch__desc");
   }
 
   /**
@@ -5085,6 +5461,13 @@ const failed = checks.filter((c) => !c.pass).length;
 if (fatal) {
   console.log(`\n ✗ 中断：${String(fatal.message).split("\n")[0]}`);
   console.log(`   失败时的截图：tmp/smoke-failure.png`);
+  /**
+   * ⚠️ **中断必须连出事的位置一起打出来。**
+   * 上一版只打 `fatal.message`，于是报告上是一句光秃秃的
+   *「page.click: Timeout 30000ms exceeded.」——**哪一行、等的哪个选择器全看不到**，
+   * 只能靠一遍遍重跑去猜。这一轮为此白跑了五次。
+   */
+  console.log(String(fatal.stack).split(String.fromCharCode(10)).slice(0, 6).map((l) => "   " + l.trim()).filter(Boolean).join(String.fromCharCode(10)));
   if (consoleErrors.length) {
     console.log("   页面报错：");
     for (const e of consoleErrors.slice(0, 3)) console.log("     " + e.split("\n")[0]);

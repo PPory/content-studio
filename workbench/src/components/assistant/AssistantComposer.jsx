@@ -1,5 +1,5 @@
 import {
-  IconCheck, IconChevronDown, IconFileText, IconPlayerStopFilled, IconPlus, IconSend, IconShieldCheck, IconX,
+  IconCheck, IconChevronDown, IconCornerDownLeft, IconFileText, IconPlayerStopFilled, IconPlus, IconShieldCheck, IconX,
   IconModelAnthropic, IconModelDeepseek, IconModelGeneric, IconModelGoogle, IconModelMeta,
   IconModelMinimax, IconModelMistral, IconModelMoonshot, IconModelOpenai, IconModelQwen,
   IconModelXai, IconModelZhipu,
@@ -146,7 +146,7 @@ export function AssistantComposer({
         {/* 发送键**永远看得见**。上一版空输入时 `opacity: .28`，
             用户看不出那儿有个按钮，也就不知道 Enter 能发——空态用静止的浅底，
             有内容才翻成实心黑，状态差别靠颜色说，不靠「有没有」说。 */}
-        {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={onStop} aria-label="停止生成" title="停止生成"><IconPlayerStopFilled aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={(!input.trim() && !pendingAttachments.length) || loading || uploading} aria-label="发送" title="发送（Enter）"><IconSend aria-hidden="true" /></button>}
+        {busy ? <button type="button" className="assistant-send assistant-send--stop" onClick={onStop} aria-label="停止生成" title="停止生成"><IconPlayerStopFilled aria-hidden="true" /></button> : <button type="submit" className="assistant-send" disabled={(!input.trim() && !pendingAttachments.length) || loading || uploading} aria-label="发送" title="发送（Enter）"><IconCornerDownLeft aria-hidden="true" /></button>}
       </div>
     </footer>
   </form>;

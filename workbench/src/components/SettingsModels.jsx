@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note, Select } from "./ui.jsx";
-import { IconCheck, IconLoader2, IconRefresh, IconSparkles } from "./icons.jsx";
+import { IconArrowBackUp, IconCheck, IconLoader2, IconRefresh, IconSparkles } from "./icons.jsx";
 
 // 「跟随默认」在下拉里是一个真选项：它和「选了某个模型」是两回事，
 // 而空字符串在下拉里显示成空白行，看着像坏了
@@ -104,6 +104,14 @@ export function ModelSettings() {
 
       <div className="set-models__foot">
         {saved && !dirty.length ? <span className="field-hint"><IconCheck size={14} stroke={2} aria-hidden="true" />已保存，下一次调用就按新的走</span> : null}
+        {/* ⚠️ **是「撤销改动」不是「恢复默认」**：这几项没有出厂默认值，
+            能「恢复」的只有「我改之前是什么样」。见 SettingsOverlay 里同名那颗。 */}
+        {dirty.length ? (
+          <button className="btn btn-sm" onClick={() => setDraft({})} disabled={saving} title="把这一段改的放回保存前的样子">
+            <IconArrowBackUp size={14} stroke={1.8} aria-hidden="true" />
+            撤销改动
+          </button>
+        ) : null}
         <button className="btn btn-primary btn-sm" onClick={save} disabled={!dirty.length || saving}>
           {saving ? <IconLoader2 className="spin" aria-hidden="true" /> : null}
           {dirty.length ? `保存这 ${dirty.length} 项` : "没有改动"}

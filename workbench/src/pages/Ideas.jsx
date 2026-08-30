@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { FilterHeader, ErrorNote, Loading, Empty } from "../components/ui.jsx";
+import { FilterHeader, ViewTabs, ErrorNote, Loading, Empty } from "../components/ui.jsx";
 import { IdeaCard } from "../components/IdeaCard.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import { IconBulb, IconSearch } from "../components/icons.jsx";
@@ -141,13 +141,7 @@ export function Ideas({ onGo, onChanged }) {
         title="找题"
         desc="还没确定写什么时从这儿开始。选题顾问会从洞察、素材和争点里整理候选；你挑一条并留下自己的判断。"
         chips={
-          <div className="chips chips-sm" aria-label="候选从哪来">
-            {chips.map((c) => (
-              <button key={c.key} className="chip" aria-pressed={from === c.key} onClick={() => setFrom(c.key)}>
-                {c.label}{c.count == null ? "" : ` ${c.count}`}
-              </button>
-            ))}
-          </div>
+          <ViewTabs items={chips} value={from} onChange={setFrom} label="候选从哪来" />
         }
       />
 

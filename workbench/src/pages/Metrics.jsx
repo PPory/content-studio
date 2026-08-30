@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { TrendChart, platformColor } from "../components/TrendChart.jsx";
 import { DailyLines } from "../components/DailyLines.jsx";
-import { ErrorNote, Note, Loading, Select, Empty, relTime, FilterHeader, SearchBox } from "../components/ui.jsx";
+import { ErrorNote, Note, Loading, Select, Empty, relTime, FilterHeader, ViewTabs, SearchBox } from "../components/ui.jsx";
 import {
   IconChartBar,
   IconChevronLeft,
@@ -107,13 +107,7 @@ export function Metrics({ onSettings, tab = "明细", onTab }) {
         title="数据"
         desc="先把平台数字和稿子对上，再判断什么有效、下一篇具体改变什么。"
         chips={
-          <div className="chips chips-sm" aria-label="切换视图">
-            {DATA_TABS.map((t) => (
-              <button key={t.key} className="chip" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <ViewTabs items={DATA_TABS} value={tab} onChange={(k) => onTab?.(k)} label="切换视图" />
         }
         action={
           rows.length && monthly ? (

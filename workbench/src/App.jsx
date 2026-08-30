@@ -1,12 +1,13 @@
 // 一级导航只表达五个用户任务：今天做什么、内容走到哪、有什么素材、外面有什么、发布后学到什么。
 // 数据库对象和旧工具路由仍保留兼容，但只归属于其中一个任务，不再争抢侧栏位置。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
 import { normalizeMaterialRoute } from "./lib/open-target.js";
-import { NAV_ICONS, IconPlus, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, IconSparkles, BrandMark } from "./components/icons.jsx";
+import { ViewSlots } from "./lib/view-slots.js";
+import { NAV_ICONS, IconInbox, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, IconSparkles, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
@@ -204,6 +205,19 @@ export function App() {
   const [intake, setIntake] = useState(null); // null=关闭；{} 或 {content,source}=打开
   const [intakeVersion, setIntakeVersion] = useState(0);
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
+  /**
+   * 页头两个插槽的 DOM 节点。**走 state 不走 ref**：消费方（`PageHeader`）在渲染阶段
+   * 就要拿到节点去 `createPortal`，而 ref 要等提交阶段。回调 ref 里 setState 会在
+   * 浏览器绘制前再跑一轮，所以第一帧不会缺按钮。
+   */
+  const [headLead, setHeadLead] = useState(null);
+  const [headCenter, setHeadCenter] = useState(null);
+  const [headEnd, setHeadEnd] = useState(null);
+  const [frameOverlay, setFrameOverlay] = useState(null);
+  const slots = useMemo(
+    () => ({ lead: headLead, center: headCenter, end: headEnd, overlay: frameOverlay }),
+    [headLead, headCenter, headEnd, frameOverlay]
+  );
   const [finder, setFinder] = useState(false); // 全局检索（Ctrl/⌘ + K）
   const [settings, setSettings] = useState(false); // 设置面板
   const [quickAssistantOpen, setQuickAssistantOpen] = useState(false);
@@ -454,43 +468,40 @@ export function App() {
   return (
     <div className="app" data-rail={railCollapsed ? "collapsed" : "open"}>
       {/**
-        * ⚠️ **应用顶栏。跨全宽，侧栏在它下面。**
+        * ⚠️ **顶栏整条撤了。**
         *
-        * 加它是因为在这之前**这个工作台没有外壳，只有一叠文档**：每一页都从一个巨大的
-        * 中文标题开始，搜索框塞在侧栏里，设置和连接状态挤在侧栏最底下。
-        * 「我在哪」「搜什么」「设置在哪」这三件**跨页面不变**的事，本来就该待在一条
-        * 跨页面不变的横条里——它们跟着页面内容一起滚动、一起换位置的时候，
-        * 这东西看起来就像一叠网页而不像一个应用。
+        * 它当初解决的是「这个工作台没有外壳，只有一叠文档」，而代价是**同一屏上三处在争
+        * 最重的那一块**：顶栏正中的搜索、侧栏顶上那颗黑色「收集」大按钮、页面右上的主操作。
+        * 参照 ln-dev7/circle：外壳只有两件东西——**侧栏**，和一块四周留沟、带边框圆角的**面板**；
+        * 「我在哪」和「这一页能干什么」都归面板顶上那条 `.view-head`，跟着内容走。
         *
-        * 四段，从左到右：**身份**（logo + 折叠）· **位置**（面包屑）·
-        * **找东西**（居中搜索）· **状态与设置**（连接点 + 齿轮）。
+        * 搬家清单（都在下面）：搜索 → 侧栏一整行；设置 + 收集 → 侧栏栏头的小图标；
+        * 面包屑 → `.view-head` 的页名；AI 召唤键 → `.view-head` 右端；
+        * **连接状态整条删掉**（后续全本地，Worker 会退场）。
         */}
-      <header className="topbar">
-        {/* 左段包一层：顶栏是三列 grid（左 1fr · 中 auto · 右 1fr），
-            中间那格才真的落在视口中心——见 styles.css 里那条注释 */}
-        <div className="topbar__left">
+      <aside className="sidebar">
         {/**
-          * ⚠️ **品牌区跟着侧栏收放，不跟着顶栏。**
-          * 它画的是「导航那一栏的栏头」——logo、栏名、收放钮说的都是侧栏的事，
-          * 所以侧栏收到 60px 时它也得收到 60px。上一版把它钉死在展开态的宽度上，
-          * 于是收起之后**顶上还留着一条 200px 宽的品牌区、底下的栏只有 60px**，
-          * 那道竖线悬在半空，一眼就看出是两个不相干的东西拼在一起。
-          *
-          * 代价说清楚：**面包屑会跟着左右挪一次**（冒烟测试里那条「顶栏纹丝不动」
-          * 已经改成「搜索和齿轮不动 + 面包屑跟着栏走」）。搜索框在三列 grid 的中格、
-          * 齿轮 `justify-self: end`，两者都不受左段宽度影响。
+          * 栏头：身份 + 三颗随手就用的图标。
+          * ⚠️ **收起态它变成一列 40px 的方块**（logo / 收集 / 设置），不是把这几颗甩去别处——
+          * 靶子换位置比靶子变小难用得多。收放钮在收起态盖在 logo 上（60px 里摆不下两个方块）。
           */}
-        <div className="topbar__brand">
-          <BrandMark />
-          <span className="topbar__name">Xenho OS</span>
-          {/**
-            * 收放钮**两种形态都在同一个位置**（栏头右端；收起态它铺满那 40px 的方块，
-            * 盖在 logo 上、悬停或聚焦才现形）。**不是「hover 才出现」的按钮**——
-            * 靶子一直在那儿、大小位置都不变，变的只是那一刻画哪个图标：
-            * 60px 的一条里摆不下两个方块，而 logo 和「展开」争的是同一个格子。
-            */}
+        <div className="sidebar__head">
+          <div className="sidebar__brand">
+            <BrandMark />
+            <span className="sidebar__name">Xenho OS</span>
+          </div>
+          {/* ⚠️ **收件箱图标，不是一个 `+`。** 挨着「Xenho OS」的加号读起来是
+              **「Xenho OS＋」**——它成了品牌名的一部分，而不是一颗按钮。 */}
           <button
-            className="topbar__rail"
+            className="rail-icon"
+            onClick={() => setIntake({})}
+            aria-label="收集"
+            title="收集（快捷键 n）"
+          >
+            <IconInbox aria-hidden="true" stroke={1.7} />
+          </button>
+          <button
+            className="sidebar__rail"
             onClick={toggleRail}
             aria-label={railCollapsed ? "展开侧栏" : "收起侧栏"}
             title={railCollapsed ? "展开侧栏" : "收起侧栏"}
@@ -499,77 +510,21 @@ export function App() {
           </button>
         </div>
 
-        {/* 面包屑：一级任务 +（有的话）二级页面。**这是「我在哪」唯一的常驻答案** */}
-        <nav className="crumbs" aria-label="当前位置">
-          {(() => {
-            const item = NAV.find((n) => (n.match ? n.match(route.view) : route.view === n.key));
-            const Icon = item ? NAV_ICONS[item.key] : null;
-            const child = item?.children?.find(
-              (c) => c.to === route.view || (route.view === "project" && c.to === "content")
-            );
-            return (
-              <>
-                {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
-                <b>{item ? NAV_LABELS[item.key] : "工作台"}</b>
-                {child ? <><i aria-hidden="true">/</i><span>{child.label}</span></> : null}
-              </>
-            );
-          })()}
-        </nav>
-        </div>
-
         {/**
-          * ⚠️ **搜索框居中，而且是一句问句。**
-          * 它原来在侧栏里，宽度只有 200px 出头、写着两个字「搜索」——那看着是个
-          * 「侧栏功能」，而它其实是整个工作台唯一一个**跨四个库 + vault + posts + 热点**
-          * 的入口。放中间、给足宽度、用一句话说清它能干什么，是在说「这是主路」。
-          * **快捷键仍然不能是唯一入口**（没人会去猜一个看不见的功能存不存在）。
+          * ⚠️ **搜索只有这一个入口。** 栏头里不再放第二枚放大镜——同一件事两个入口，
+          * 用户得先想它俩是不是一回事。**快捷键不能是唯一入口**（没人会去猜一个看不见的功能）。
+          *
+          * ⚠️ **字只写「搜索」。** 顶栏时代那句「搜选题、稿件、素材、书里的一句话…」
+          * 是给 440px 写的；180px 的一行里它被截成「搜选题、稿…」，等于既没说清、
+          * 又把那颗 `Ctrl K` 挤到没地方。那句话搬进了命令面板自己的 placeholder——
+          * 打开的第一眼就能看见，比在一个截断的按钮上读半句强。
+          * 收起态退成一颗无边框图标：框里只剩放大镜时，那个框不再解释任何东西。
           */}
-        <button className="topbar__find" onClick={() => setFinder(true)} title="全局检索（Ctrl+K）">
+        <button className="sidebar__find" onClick={() => setFinder(true)} title="全局检索（Ctrl+K）">
           <IconSearch aria-hidden="true" stroke={1.7} />
-          <span>搜选题、稿件、素材、书里的一句话…</span>
+          <span>搜索</span>
           <kbd>Ctrl K</kbd>
         </button>
-
-        {/**
-          * 右端只剩设置。⚠️ **那颗 7px 的连接点搬去侧栏底部了**（`.rail-ws`）——
-          * 顶栏里它旁边放不下一行字，于是「流水线不可达」这件事只能挂在 `title` 里，
-          * **而没人会去悬停一个 7px 的点**。侧栏底部那一行放得下把话说完。
-          * 齿轮留在顶栏：它是「跨页面不变的三件事」之一，而且收起侧栏时也不能跟着变窄。
-          */}
-        <div className="topbar__end">
-          <button className="topbar__icon" data-assistant-summoner onClick={summon} aria-label="召唤 AI 助手" title="AI 助手（Ctrl+I）"><IconSparkles aria-hidden="true" stroke={1.7} /></button>
-          <button
-            className="topbar__icon"
-            onClick={() => setSettings(true)}
-            aria-label="设置"
-            title="设置：vault 路径、流水线、密钥、本机路径"
-          >
-            <IconSettings aria-hidden="true" stroke={1.7} />
-          </button>
-        </div>
-      </header>
-
-      <div className="app__body">
-      <aside className="sidebar">
-        {/* ⚠️ **品牌块和搜索框都搬去顶栏了。** 副标 `CREATOR WORKBENCH` 一起撤掉：
-            顶栏一行放不下两行字，而那句话是说给「第一次见」听的——天天看着它，
-            它就是「每个都说的话等于没说」里的那一个。 */}
-        {/**
-          * ⚠️ **「收集」从侧栏最底下搬到了导航上面。**
-          * 它原来钉在 `margin-top: auto` 的页脚上，而这个工作台只有五个一级项——
-          * 导航到页脚之间是**六百多像素的空白**，那颗按钮孤零零飘在底下，
-          * 看着像被落下的，不像这一栏最重的动作。
-          * 参考的四个侧栏都是同一个读法：**动作在最上面 · 导航在中间 · 身份在底部**。
-          * 快捷键提示不刻在按钮上（`n` 学一次就记住，而那枚小方块要跟着最显眼的按钮
-          * 出现在每一屏），留在 title 里。
-          */}
-        <div className="sidebar-head">
-          <button className="btn btn-primary btn-block" onClick={() => setIntake({})} title="入库（快捷键 n）">
-            <IconPlus aria-hidden="true" stroke={2} />
-            <span className="nav-item__label">收集</span>
-          </button>
-        </div>
 
         <nav className="nav">
           {NAV.map((item) => {
@@ -648,124 +603,186 @@ export function App() {
         </nav>
 
         {/**
-          * 侧栏底部：**这台工作台此刻连着什么**——一颗状态点 + 一行字。
+          * 栏底：设置。⚠️ **它长得和导航项一样**（图标 + 两个字），不是一颗孤零零的齿轮——
+          * 栏头三颗图标挤在 200px 里时，那个 `+` 会读成品牌名的一部分；
+          * 而设置本来就不是「随手点」那一类，它是「偶尔去一趟的一个地方」，
+          * 和导航是同一种东西。参照的几个侧栏底部压的也都是这一类（帮助 / 账号 / 设置）。
           *
-          * ⚠️ **整行不做成按钮**（和上一版 `.conn` 同一条理由）：收起态它只剩一颗 7px 的点，
-          * 一个点看不出可点；去改配置的入口是顶栏那枚齿轮。这里回答的是「通没通」，
-          * 不是「去哪儿改」。搬回侧栏是因为**顶栏那一格放不下一行字**：
-          * 「流水线不可达」只能藏在 title 里，而那句话正是出事时唯一该被看见的。
-          *
-          * vault 名跟在下面一行：它是「我在哪个知识库上干活」，
-          * 而在这之前整个界面只有设置面板里提过一次。
+          * 连接状态那一行**整条删掉了**：这台工作台正在往全本地走，Worker 会退场，
+          * 而一条永远亮着绿灯的状态行是纯装饰。真出事时各页面自己会报（`statusError`）。
           */}
-        <div className="sidebar-foot">
-          <div
-            className="rail-ws"
-            title={`${connLabel(config, statusError, status, statusRetrying)}${config?.vault?.root ? ` · ${config.vault.root}` : ""}`}
+        <div className="sidebar__foot">
+          <button
+            className="nav-item"
+            onClick={() => setSettings(true)}
+            title="设置：本地工作区、模型与本机工具"
           >
-            <span className={`dot ${connTone(config, statusError, status, statusRetrying)}`} aria-hidden="true" />
-            <span className="rail-ws__text">
-              <b>{connLabel(config, statusError, status, statusRetrying)}</b>
-              {config?.vault?.name ? <i>{config.vault.name}</i> : null}
+            <span className="nav-item__icon">
+              <IconSettings aria-hidden="true" className="nav-icon" stroke={1.7} />
             </span>
-          </div>
+            <span className="nav-item__label">设置</span>
+          </button>
         </div>
       </aside>
 
-      {/* 正文面板。⚠️ **内容多包一层 `.main__inner`**：面板负责「浮起来 + 自己滚」，
-          内层负责内边距和可读宽度上限。合成一层的话，限宽会让面板本身缩窄，
-          右边露出一条应用底色——那看着是「面板没铺满」，不是「正文不该太宽」。 */}
       {/**
-        * ⚠️ **`data-scrolled` 直接写 DOM，不进 React state。**
-        * 它每滚一像素就要判断一次，进 state 等于整页跟着重渲染——
-        * 而它唯一的作用是让吸顶的页头在内容从底下钻过去时长出一道分隔线。
-        * `key={route.view}` 换页时这一层整个重挂，所以不用手动复位。
+        * 工作面板：**四周留 8px 沟、一圈边框、一个圆角**，里面装页头 + 正文 + AI 侧栏。
+        * ⚠️ **AI 侧栏在这一圈边框里面**，所以整屏只有一圈边框；助手栏自己那条 header 高度
+        * 对齐 `--view-head-h`，两条连成同一条水平线。
+        *
+        * ⚠️ **类名不叫 `.panel`。** 那个名字在这套设计系统里**已经是「卡片」**
+        *（`styles.css` 里 `.card, .panel { padding: 20px; border; shadow }`）。
+        * 叫 `.panel` 的那一版外壳白白吃了 20px 内边距，于是浅灰的工作区被一圈白边框住——
+        * 屏幕上就是「框里画框」，而**没有任何地方报错**，只是看着多了一层。
+        * 沟也从外面那层 `div` 的 padding 改成了这一层的 margin：少一层 DOM，少一次「这层是干嘛的」。
         */}
-      <main className="main" key={route.view} onScroll={onMainScroll}>
-        <div className="main__inner">
-          {route.view === "today" ? (
-            <Today
-              config={config}
-              status={status}
-              statusError={statusError}
-              statusLoading={statusLoading}
-              onRetryStatus={refreshStatus}
-              onGo={go}
-              onChanged={refreshStatus}
-              onSettings={() => setSettings(true)}
-            />
-          ) : route.view === "assistant" ? (
-            <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
-          ) : route.view === "ideas" ? (
-            <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
-          ) : route.view === "seeds" ? (
-            <Seeds onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
-          ) : route.view === "content" ? (
-            <Content
-              workerReady={true}
-              onGo={go}
-              onChanged={refreshStatus}
-              onSettings={() => setSettings(true)}
-            />
-          ) : route.view === "project" ? (
-            <ProjectWorkspace
-              projectId={route.state}
-              onGo={go}
-              onForceGo={forceGo}
-              registerNavigationGuard={registerNavigationGuard}
-              onChanged={refreshStatus}
-            />
-          ) : route.view === "review" ? (
-            <Review onGo={go} />
-          ) : route.view === "review-performance" ? (
-            <Metrics
-              tab={DATA_TABS.some((t) => t.key === route.state) ? route.state : "明细"}
-              onTab={(t) => go("review-performance", t)}
-              onSettings={() => setSettings(true)}
-            />
-          ) : route.view === "overview" ? (
-            <Overview
-              config={config}
-              status={status}
-              statusError={statusError}
-              statusLoading={statusLoading}
-              onRetryStatus={refreshStatus}
-              onGo={go}
-              onIntake={() => setIntake({})}
-              onSettings={() => setSettings(true)}
-            />
-          ) : route.view === "hot" ? (
-            <Hotspots onIntake={setIntake} />
-          ) : route.view === "typeset" ? (
-            <Typeset onGo={go} />
-          ) : route.view === "shelf" ? (
-            <Shelf onIntake={setIntake} state={route.state} />
-          ) : STUDIO.has(route.view) ? (
-            <Studio
-              sourceKey={route.view === "materials" ? "material-workspace" : route.view}
-              state={route.state}
-              counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
-              onState={(s) => go(route.view, s)}
-              onGo={go}
-              onIntake={setIntake}
-              onChanged={refreshStatus}
-              refreshKey={intakeVersion}
-            />
-          ) : null}
+      <div className="app__frame">
+        {/**
+          * ⚠️ **页头在面板里，不是跨全宽的顶栏。** 左边「我在哪」，右边「这一页能干什么」。
+          * 右端两段：`.view-head__end` 是插槽（页面自己往里画，见 `lib/view-slots.js`），
+          * `.view-head__fixed` 是外壳自己的——现在只有 AI 召唤键。
+          */}
+        <header className="view-head">
+          <div className="view-head__name">
+            {(() => {
+              const item = groupOf(route.view);
+              const Icon = item ? NAV_ICONS[item.key] : null;
+              const child = item?.children?.find(
+                (c) => c.to === route.view || (route.view === "project" && c.to === "content")
+              );
+              return (
+                <>
+                  {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
+                  <b>{item ? NAV_LABELS[item.key] : "工作台"}</b>
+                  {child ? <><i aria-hidden="true">/</i><span>{child.label}</span></> : null}
+                </>
+              );
+            })()}
+          </div>
+          {/* 页名右边紧挨着的一格：**页名的下一级**。AI 助手页的「当前对话标题 ⌄」
+              落在这儿，读起来是「AI助手 / 帮我梳理这周的选题」，而不是第二条横栏。 */}
+          <div className="view-head__lead" ref={setHeadLead} />
+          {/* 居中那一格：**给「自己接管这条页头」的页用**（现在只有 AI 助手）。
+              它绝对定位在页头正中，所以左右两边放多少东西都不会把它推歪。 */}
+          <div className="view-head__center" ref={setHeadCenter} />
+          <div className="view-head__end" ref={setHeadEnd} />
+          <div className="view-head__fixed">
+            <button
+              className="rail-icon"
+              data-assistant-summoner
+              onClick={summon}
+              aria-label="召唤 AI 助手"
+              title="AI 助手（Ctrl+I）"
+            >
+              <IconSparkles aria-hidden="true" stroke={1.7} />
+            </button>
+          </div>
+        </header>
+        {/* ⚠️ **页头只有这一条。** 曾经在它下面挂过第二条放筛选胶囊——
+            结果是两条平行的白带夹着一句说明，读起来像同一件事说了两遍；
+            而 40px 的一条也塞不下一颗胶囊。胶囊搬回正文居中了（`ui.jsx` 的 `FilterHeader`）。 */}
+        {/**
+          * 面板级覆盖层的挂载点：**盖住整个面板，含页头**。
+          *
+          * AI 助手页的历史抽屉要从窗口顶上一路盖到底（参考里就是这样）——
+          * 而它自己长在 `.main` 里，那一层的顶已经是页头**以下**了，
+          * 定位再怎么算也够不到页头。所以由外壳提供这一层，页面往里 portal。
+          *
+          * ⚠️ **`pointer-events: none`**：空着的时候它铺满整个面板，不挡住任何东西；
+          * 画进来的东西自己再打开 `auto`。不写的话整块面板从此点不动，
+          * 而这**不报错**——屏幕上只是「哪儿都点不了」。
+          */}
+        <div className="app__frame-overlay" ref={setFrameOverlay} />
+
+        <div className="app__frame-body">
+          <main className="main" key={route.view} onScroll={onMainScroll}>
+            <div className="main__inner">
+              <ViewSlots.Provider value={slots}>
+              {route.view === "today" ? (
+                <Today
+                  config={config}
+                  status={status}
+                  statusError={statusError}
+                  statusLoading={statusLoading}
+                  onRetryStatus={refreshStatus}
+                  onGo={go}
+                  onChanged={refreshStatus}
+                  onSettings={() => setSettings(true)}
+                />
+              ) : route.view === "assistant" ? (
+                <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
+              ) : route.view === "ideas" ? (
+                <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
+              ) : route.view === "seeds" ? (
+                <Seeds onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
+              ) : route.view === "content" ? (
+                <Content
+                  workerReady={true}
+                  onGo={go}
+                  onChanged={refreshStatus}
+                  onSettings={() => setSettings(true)}
+                />
+              ) : route.view === "project" ? (
+                <ProjectWorkspace
+                  projectId={route.state}
+                  onGo={go}
+                  onForceGo={forceGo}
+                  registerNavigationGuard={registerNavigationGuard}
+                  onChanged={refreshStatus}
+                />
+              ) : route.view === "review" ? (
+                <Review onGo={go} />
+              ) : route.view === "review-performance" ? (
+                <Metrics
+                  tab={DATA_TABS.some((t) => t.key === route.state) ? route.state : "明细"}
+                  onTab={(t) => go("review-performance", t)}
+                  onSettings={() => setSettings(true)}
+                />
+              ) : route.view === "overview" ? (
+                <Overview
+                  config={config}
+                  status={status}
+                  statusError={statusError}
+                  statusLoading={statusLoading}
+                  onRetryStatus={refreshStatus}
+                  onGo={go}
+                  onIntake={() => setIntake({})}
+                  onSettings={() => setSettings(true)}
+                />
+              ) : route.view === "hot" ? (
+                <Hotspots onIntake={setIntake} />
+              ) : route.view === "typeset" ? (
+                <Typeset onGo={go} />
+              ) : route.view === "shelf" ? (
+                <Shelf onIntake={setIntake} state={route.state} />
+              ) : STUDIO.has(route.view) ? (
+                <Studio
+                  sourceKey={route.view === "materials" ? "material-workspace" : route.view}
+                  state={route.state}
+                  counts={{ ...(status?.counts || {}), collectionPending: status?.collections?.pending || 0 }}
+                  onState={(s) => go(route.view, s)}
+                  onGo={go}
+                  onIntake={setIntake}
+                  onChanged={refreshStatus}
+                  refreshKey={intakeVersion}
+                />
+              ) : null}
+              </ViewSlots.Provider>
+            </div>
+          </main>
+          {/* ⚠️ **AI 助手是面板里的第二列，不是浮在页面上的层。**
+              做过浮层版：520px 的卡片压在正文上，遮住的正好是用户想一边看一边问的那块内容，
+              而且它有自己的边框、阴影和圆角，看着像另一个应用贴上来的。
+              现在它和正文一样在同一圈边框里——打开时正文让出宽度，两边都完整可见。 */}
+          <QuickAssistant
+            open={quickAssistantOpen}
+            context={assistantPageContext(route)}
+            conversationId={railConversationId}
+            onConversationChange={setRailConversationId}
+            onClose={() => setQuickAssistantOpen(false)}
+            onContinue={() => { setGlobalConversationId(railConversationId); setQuickAssistantOpen(false); go("assistant"); }}
+          />
         </div>
-      </main>
-      {/* ⚠️ **AI 助手是 `.app__body` 里的第三列，不是浮在页面上的层。**
-          做过浮层版：520px 的卡片压在正文上，遮住的正好是用户想一边看一边问的那块内容，
-          而且它有自己的边框、阴影和圆角，看着像另一个应用贴上来的。
-          现在它和侧栏、正文一样是外壳的一部分——打开时正文让出宽度，两边都完整可见。 */}
-      <QuickAssistant
-        open={quickAssistantOpen}
-        context={assistantPageContext(route)}
-        conversationId={railConversationId}
-        onConversationChange={setRailConversationId}
-        onClose={() => setQuickAssistantOpen(false)}
-        onContinue={() => { setGlobalConversationId(railConversationId); setQuickAssistantOpen(false); go("assistant"); }}
-      />
       </div>
 
       <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} vaultName="" />
@@ -781,23 +798,4 @@ export function App() {
       />
     </div>
   );
-}
-
-/**
- * 侧栏那颗点。**重连中是黄的，不是红的**——红色是「你得去处理」，而代理抖一下
- * 用户什么都不用做，几秒后自己就好了。两者用同一个颜色的话，真出事那次就不显眼了。
- */
-function connTone(config, error, status, retrying) {
-  if (!config?.worker?.configured) return "";
-  if (error) return "dot-bad";
-  if (retrying) return "dot-warn";
-  return status ? "dot-ok" : "";
-}
-
-function connLabel(config, error, status, retrying) {
-  if (!config) return "本地服务连接中…";
-  if (!config.worker.configured) return "未连接流水线";
-  if (error) return "流水线不可达";
-  if (retrying) return "流水线重连中…";
-  return status ? "流水线已连接" : "读取中…";
 }

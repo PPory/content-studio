@@ -37,10 +37,32 @@ import { typesetDir } from "../routes/tools.mjs";
  * 生效」是两种完全不同的东西；混在一起的必然结果是用户改完 Worker 的提示词、
  * 看到「已保存」、然后以为它生效了——而 Worker 那边照旧按老提示词跑。
  *
+ * `applies` 回答**「存到哪、什么时候生效」**，一行，必填。**和 hint / why / desc 一样是纯文本**，
+ * 不过 renderMarkdown——写了星号，屏幕上出现的就是星号。
+ *
+ * ⚠️ **它和 `desc` 分工，别写重。** `desc` 说「这一段是什么」，`applies` 说
+ * 「改完之后会发生什么」。这个工作台里同一个面板管着三种去处（本机 `.env`、
+ * Worker 的 D1、worker/ 目录里的文件），生效时机也是三种（立刻 / 重启本地服务 /
+ * 要部署一次）——不写清楚的直接后果是：改完 Worker 的提示词、看到「已保存」、
+ * 以为生效了，而 Worker 那边照旧按老提示词跑。
+ *
+ * ⚠️ **这句话以前是硬编码在 `SettingsOverlay` 页脚里的三个 `<span>`**，
+ * 只覆盖 11 段里的 3 段，而且离它描述的东西隔着大半屏。搬进真源之后每一段都有，
+ * 并且画在面板抬头、紧挨着它说的那件事。
+ *
  * `checks` 是这一段要显示哪几条自检（id 见 `lib/settings-check.mjs`）。
  * **自检结果紧贴着它检的那个配置项**，不另开一个「诊断」段：单开一段的话，
  * 「流水线连不上」和「Worker 地址」隔着半屏，看到结论还得自己找回去改哪儿。
  */
+/**
+ * `.env` 那几段共用的一句。
+ *
+ * ⚠️ **「会重启一次」这件事必须写出来。** 写 `.env` 会让 Vite 把整个 dev server 重启
+ *（它把 env 文件当配置依赖看着），界面上的表现是保存之后有几秒钟接口全不通。
+ * 不预告的话，那几秒里任何一次请求失败都会被读成「刚才保存失败了」。
+ */
+const ENV_APPLIES = "写进本机 .env。保存后本地服务会重启一次，几秒后自动回来。";
+
 export const NAV = [
   {
     group: "创作",
@@ -50,6 +72,7 @@ export const NAV = [
         kind: "writing-profile",
         label: "我的创作",
         desc: "只设置一次：新内容自动继承固定读者和常用平台；风格长期生效，专家只在需要时调用。",
+        applies: "在上面单独保存，改完立刻生效。只影响之后新建的内容，已有项目不会被重写。",
       },
     ],
   },
@@ -61,6 +84,7 @@ export const NAV = [
         kind: "env",
         label: "知识库",
         desc: "书架、洞察报告、批注和全局检索都从这里读。不配这一项，工作台大半是空的。",
+        applies: ENV_APPLIES,
         checks: ["vault"],
       },
       {
@@ -70,6 +94,7 @@ export const NAV = [
         // 库从 Notion 迁到 D1 之后这句话得改：工作台仍然不直连数据库，
         // 但它经过的是 worker/ 那个 Worker，而不再是「Notion 的代理」
         desc: "灵感 / 素材 / 选题 / 稿件四个库都在 Worker 的 D1 里，工作台一律经 /wb/* 取。没配时「创作」页是空的。",
+        applies: ENV_APPLIES,
         checks: ["worker"],
       },
       {
@@ -77,12 +102,14 @@ export const NAV = [
         kind: "env",
         label: "云端存储",
         desc: "稿件插图进入私有 Supabase Storage；临时链接只在同步到飞书时生成，不写进正文。",
+        applies: ENV_APPLIES,
       },
       {
         key: "feishu",
         kind: "env",
         label: "飞书文档",
         desc: "工作台和飞书编辑同一篇正文；默认写入个人知识库，也可以指定专用知识空间或父节点。",
+        applies: ENV_APPLIES,
       },
     ],
   },
@@ -94,6 +121,7 @@ export const NAV = [
         kind: "env",
         label: "可选能力",
         desc: "都不配也能用，配了各多一件事。空着不是出错。",
+        applies: ENV_APPLIES,
         // 「AI 对话」也挂在这儿：它同样是「有就多一件事」，只是开关不在 .env 里而是
         // 「本机装没装那个 CLI」。归到别处的话，它就成了一条没有归属的孤立提示
         checks: ["deepl", "firecrawl", "sixty", "agent"],
@@ -103,12 +131,14 @@ export const NAV = [
         kind: "env",
         label: "AI 助手",
         desc: "对话、素材查缺、品控九问和事实核查统一由工作台内置的 Pi Agent SDK 执行。模型连接只在本机保存，正文改动仍需你明确采纳。",
+        applies: ENV_APPLIES,
       },
       {
         key: "paths",
         kind: "env",
         label: "本机路径",
         desc: "同仓的 worker/ 和外面那几个独立项目装在哪。留空就用默认值——每一项底下写着默认值算出来是哪个目录。",
+        applies: ENV_APPLIES,
         checks: ["typeset", "mediacrawler", "workerdir"],
       },
     ],
@@ -123,7 +153,8 @@ export const NAV = [
         // 那张字段表，也不跟着底部那条动作条保存——和「流水线提示词」是同一类：
         // 面板管的东西不都住在同一个地方，那就分开说清楚，别让人以为点了「保存」就全存了。
         label: "各环节模型",
-        desc: "初筛 / 整理 / 成稿这些重活值得用强模型，挑素材、打标签用便宜快的就够。改完立刻生效，不用部署。",
+        desc: "初筛 / 整理 / 成稿这些重活值得用强模型，挑素材、打标签用便宜快的就够。",
+        applies: "写的是 Worker 的库，不是本机 .env，在上面单独保存。改完立刻生效，不用部署。",
         checks: ["worker"],
       },
     ],
@@ -135,13 +166,15 @@ export const NAV = [
         key: "prompts-local",
         kind: "prompts-local",
         label: "工作台",
-        desc: "工作台自己发出去的那几段指令。改完立刻生效，不用重启也不用部署。",
+        desc: "工作台自己发出去的那几段指令。",
+        applies: "跟着底部那条动作条一起保存，写进 config/prompts.json。改完立刻生效，不用重启也不用部署。",
       },
       {
         key: "prompts-worker",
         kind: "prompts-worker",
         label: "流水线",
-        desc: "worker/prompt 底下那些提示词，初筛 / 整理 / 成稿 / 划词 AI 全按它们跑。它们打包进 Worker，所以改完要部署一次才算数。",
+        desc: "worker/prompt 底下那些提示词，初筛 / 整理 / 成稿 / 划词 AI 全按它们跑。",
+        applies: "在上面单独保存，写的是 worker/ 目录里的文件。它们打包进 Worker，改完要跑一次部署才算数。",
         checks: ["workerdir"],
       },
     ],
@@ -157,6 +190,7 @@ export const NAV = [
         kind: "env",
         label: "数据保留",
         desc: "工作台每次改 posts / metrics / 关注配置之前都会自动留一份快照。",
+        applies: ENV_APPLIES,
       },
     ],
   },
