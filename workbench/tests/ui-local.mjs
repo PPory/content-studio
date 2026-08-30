@@ -191,6 +191,58 @@ try {
   const unchanged = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
   check("容错显示不会静默改写正文", unchanged.project.masterDraft.body.includes(`asset://${assetId}\n## 后续章节`));
 
+
+  const insertFromSlash = async (label) => {
+    await editor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("\n\n/");
+    await page.getByRole("listbox", { name: "可插入的区块" }).waitFor();
+    await page.getByRole("option", { name: label, exact: true }).click();
+  };
+
+  await insertFromSlash("待办事项");
+  await page.keyboard.type("核对文章标题");
+  const todoBlock = page.locator(".cm-lp-todo").last();
+  await todoBlock.waitFor();
+  await todoBlock.click();
+  check("待办事项可以在正文里直接勾选", await todoBlock.getAttribute("aria-checked") === "true");
+
+  await insertFromSlash("标注");
+  await page.keyboard.type("这是需要读者记住的结论。");
+  check("标注插入后直接呈现为可编辑信息块", await page.locator(".cm-lp-callout-label").last().innerText() === "标注");
+
+  await insertFromSlash("引用");
+  await page.keyboard.type("真正重要的是把判断讲清楚。");
+  check("引用插入后直接呈现引用样式", await page.locator(".cm-line.cm-lp-quote").last().innerText().then((text) => text.includes("真正重要")));
+
+  await insertFromSlash("代码块");
+  await page.keyboard.type("const answer = 42;");
+  check("代码块隐藏围栏并保留可编辑代码", await page.locator(".cm-line.cm-lp-code-block").allInnerTexts().then((items) => items.some((text) => text.includes("const answer = 42;")) && items.every((text) => !text.includes(String.fromCharCode(96).repeat(3)))));
+
+  await insertFromSlash("表格");
+  const tableBlock = page.locator(".cm-lp-table").last();
+  await tableBlock.waitFor();
+  const tableInputs = tableBlock.locator("input");
+  await tableInputs.nth(0).fill("观点");
+  await tableInputs.nth(1).fill("依据");
+  await tableInputs.nth(2).fill("先验证");
+  await tableInputs.nth(3).fill("真实操作");
+  await tableBlock.getByRole("button", { name: "添加一行" }).click();
+  check("表格单元格可编辑并可添加行", await tableBlock.locator("input").count() === 6);
+
+  await page.waitForTimeout(1800);
+  const blocksSaved = await request("/api/workspace/projects/" + encodeURIComponent(projectId));
+  const blocksBody = blocksSaved.project.masterDraft.body;
+  const fence = String.fromCharCode(96).repeat(3);
+  check("内容块仍以可移植 Markdown 保存", [
+    "- [x] 核对文章标题",
+    "> [!note]\n> 这是需要读者记住的结论。",
+    "> 真正重要的是把判断讲清楚。",
+    fence + "\nconst answer = 42;\n" + fence,
+    "| 观点 | 依据 |",
+    "| 先验证 | 真实操作 |",
+  ].every((part) => blocksBody.includes(part)));
+
   await page.locator('button[title^="设置："]').click();
   await page.getByRole("dialog", { name: "设置" }).waitFor();
   const settingsText = await page.getByRole("dialog", { name: "设置" }).innerText();

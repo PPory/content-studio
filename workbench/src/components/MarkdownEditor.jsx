@@ -257,6 +257,27 @@ function insertBlock(view, text) {
   view.focus();
 }
 
+/**
+ * 插入一个可以继续编辑的完整内容块。
+ *
+ * 空行直接占用当前位置；有正文时另起一段。末尾始终留出一个空段，避免表格、代码等
+ * 原子块把光标困在文末。`caretOffset` 让标注和代码插入后直接落在真正要输入的位置。
+ */
+function insertStructuredBlock(view, text, { caretOffset = text.length, focusSelector = "" } = {}) {
+  const line = view.state.doc.lineAt(view.state.selection.main.from);
+  const hasText = Boolean(line.text.trim());
+  const at = hasText ? line.to : line.from;
+  const lead = hasText ? "\n\n" : "";
+  const tail = line.to < view.state.doc.length ? "\n" : "\n\n";
+  const insert = `${lead}${text}${tail}`;
+  view.dispatch({
+    changes: { from: at, insert },
+    selection: { anchor: at + lead.length + caretOffset },
+  });
+  view.focus();
+  if (focusSelector) requestAnimationFrame(() => view.dom.querySelector(focusSelector)?.focus());
+}
+
 
 /**
  * 正文里的相对媒体路径 → 能取的地址。
@@ -297,17 +318,19 @@ function applyBlockItem(view, id, eat) {
   if (id === "bullet") return prefixLines(view, "- ", /^[-*]\s/);
   if (id === "ordered") return prefixLines(view, "1. ", /^\d+\.\s/);
   if (id === "todo") return prefixLines(view, "- [ ] ", /^[-*]\s\[[ xX]\]\s/);
+  if (id === "callout") return insertStructuredBlock(view, "> [!note]\n> ", { caretOffset: 12 });
   if (id === "quote") return prefixLines(view, "> ", /^>\s?/);
+  if (id === "table") {
+    return insertStructuredBlock(
+      view,
+      "| 列 1 | 列 2 |\n| --- | --- |\n|  |  |",
+      { focusSelector: ".cm-lp-table input" },
+    );
+  }
   if (id === "divider") return insertBlock(view, "---");
   if (id === "code") {
     // 围栏中间空一行并把光标放进去——插完就能直接开始写，不用自己再敲一次回车
-    const { from } = view.state.selection.main;
-    const line = view.state.doc.lineAt(from);
-    const fence = "```\n\n```";
-    const at = line.text.trim() ? line.to : line.from;
-    const lead = line.text.trim() ? "\n\n" : "";
-    view.dispatch({ changes: { from: at, insert: `${lead}${fence}` }, selection: { anchor: at + lead.length + 4 } });
-    view.focus();
+    return insertStructuredBlock(view, "```\n\n```", { caretOffset: 4 });
   }
 }
 
@@ -607,7 +630,7 @@ export function MarkdownEditor({
           ]),
           markdown({ base: markdownLanguage }),
           /**
-           * 实时预览：光标不在的行隐掉记号、图片就地渲染。
+           * 实时预览：Markdown 记号始终隐去，图片和结构化内容块就地渲染。
            * 文档一个字节没变——见 `editor-live-preview.js` 开头那段。
            */
           livePreview({ resolveUrl: (src) => resolveMediaUrl(src, mediaBaseRef.current) }),

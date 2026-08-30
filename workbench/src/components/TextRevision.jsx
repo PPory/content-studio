@@ -27,6 +27,7 @@ import {
   IconH1,
   IconH2,
   IconH3,
+  IconHighlight,
   IconItalic,
   IconLink,
   IconList,
@@ -40,6 +41,7 @@ import {
   IconShieldCheck,
   IconSparkles,
   IconStrikethrough,
+  IconTable,
   IconWand,
   IconX,
 } from "./icons.jsx";
@@ -78,18 +80,20 @@ export const BLOCK_AI_ITEMS = [
   { id: "ai:nudge", label: "想一想", icon: IconBulb, note: "给一个角度，不改正文" },
 ];
 
-/** `/` 菜单的「基本区块」。全部映射到编辑器已有的 Markdown 记号命令，没有第二套模型。 */
+/** `/` 菜单的「基本区块」。统一保存为可移植 Markdown，编辑层只负责把它们变成可操作的内容块。 */
 export const BLOCK_ITEMS = [
-  { id: "text", label: "正文", icon: IconPilcrow, note: "去掉当前行的标题或列表记号" },
-  { id: "h1", label: "标题 1", icon: IconH1, hint: "#" },
-  { id: "h2", label: "标题 2", icon: IconH2, hint: "##" },
-  { id: "h3", label: "标题 3", icon: IconH3, hint: "###" },
-  { id: "bullet", label: "项目符号列表", icon: IconList, hint: "-" },
-  { id: "ordered", label: "有序列表", icon: IconListNumbers, hint: "1." },
-  { id: "todo", label: "待办事项", icon: IconListCheck, hint: "- [ ]" },
-  { id: "quote", label: "引用", icon: IconQuote, hint: ">" },
-  { id: "code", label: "代码块", icon: IconCode, hint: "```" },
-  { id: "divider", label: "分隔线", icon: IconSeparator, hint: "---" },
+  { id: "text", label: "正文", icon: IconPilcrow, note: "普通文本", keywords: "文本 paragraph" },
+  { id: "h1", label: "标题 1", icon: IconH1, hint: "#", keywords: "一级 heading" },
+  { id: "h2", label: "标题 2", icon: IconH2, hint: "##", keywords: "二级 heading" },
+  { id: "h3", label: "标题 3", icon: IconH3, hint: "###", keywords: "三级 heading" },
+  { id: "bullet", label: "项目符号列表", icon: IconList, hint: "-", keywords: "无序 列表 bullet" },
+  { id: "ordered", label: "有序列表", icon: IconListNumbers, hint: "1.", keywords: "编号 列表 number" },
+  { id: "todo", label: "待办事项", icon: IconListCheck, note: "可直接勾选", keywords: "任务 清单 checkbox todo" },
+  { id: "callout", label: "标注", icon: IconHighlight, note: "突出提示或结论", keywords: "提示 高亮 callout note" },
+  { id: "quote", label: "引用", icon: IconQuote, hint: ">", keywords: "引语 blockquote" },
+  { id: "table", label: "表格", icon: IconTable, note: "单元格直接编辑", keywords: "二维 数据 table" },
+  { id: "code", label: "代码块", icon: IconCode, hint: "```", keywords: "程序 code" },
+  { id: "divider", label: "分隔线", icon: IconSeparator, hint: "---", keywords: "水平线 divider" },
 ];
 
 /** 媒体组。选中后弹文件选择器，文件落进本地资产库，正文里只留稳定资源引用。 */
@@ -288,7 +292,9 @@ export function BlockInsertMenu({ anchor, query = "", ownFilter = false, canWrit
   const text = (ownFilter ? ownQuery : query).trim().toLowerCase();
 
   const groups = useMemo(() => {
-    const match = (item) => !text || item.label.toLowerCase().includes(text) || item.id.includes(text);
+    const match = (item) => !text || [item.label, item.id, item.note, item.keywords]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(text));
     return [
       // 只读文档不出现「建议」组：那一组每一条都会改正文，列出来只是等着被拒绝
       canWrite ? { id: "ai", title: "建议", items: BLOCK_AI_ITEMS.filter(match) } : null,
@@ -354,6 +360,7 @@ export function BlockInsertMenu({ anchor, query = "", ownFilter = false, canWrit
                   key={item.id}
                   type="button"
                   role="option"
+                  aria-label={item.label}
                   aria-selected={index === active}
                   data-active={index === active ? "true" : undefined}
                   data-inline-ai-action="true"
