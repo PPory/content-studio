@@ -1,7 +1,7 @@
 # 外部资源删除前对账与恢复报告
 
 生成日期：2026-08-30
-状态：**Cloudflare 资源、Obsidian 专用目录及废弃 Telegram webhook 已删除；飞书与 Supabase 已完成新一轮精确盘点和数据恢复点，等待删除前最后确认；共享 GitHub vault 仓库和无法证明专用的上游 Token 保留。**
+状态：**Cloudflare 资源、Obsidian 专用目录及废弃 Telegram webhook 已删除；飞书空间与 Supabase 项目已有完整恢复点，后续由用户自行删除；共享 GitHub vault 仓库和无法证明专用的上游 Token 保留。**
 
 ## 1. 迁移对账结论
 
@@ -233,9 +233,38 @@ Supabase CLI 的管理接口仍返回 `Unauthorized`，因此当前会话不能�
 
 已撤销 `n8n_ob_bot` 指向已删除 Worker 的 webhook，未设置 `drop_pending_updates`，未删除 Bot，未吊销 Token。删除前目标 URL 精确匹配，删除后 URL 为空，前后积压消息均为 0。
 
-### 6.5 本轮明确保留
+### 6.5 交由用户自行处理或明确保留
 
-- 飞书 `工作台知识库`：恢复点已就绪，等待本报告交付后的最后确认。
-- Supabase `ynplhqqmljbhwbghslmf`：恢复点已就绪，但缺少管理认证，不能执行项目删除。
+- 飞书 `工作台知识库`：恢复点已就绪，空间删除由用户自行完成。
+- Supabase `ynplhqqmljbhwbghslmf`：恢复点已就绪，项目删除由用户自行完成。
 - GitHub `PPory/obsidian-vault`：共享仓库。
 - Telegram Bot、当前飞书 CLI 应用、GitHub CLI 凭据及其他无法证明专用的上游 Token。
+
+### 6.6 本机配置与书架封面收尾
+
+完成时间：`2026-08-30T15:04:51+08:00`
+
+修改真实工作区前已创建完整恢复点：
+
+- 文件：`D:\文档\Xenho\Backups\Manual\pre-cover-link-2026-08-30T14-55-34-577.xenho-backup`
+- 字节：50,566,714
+- SHA-256：`755446d17f5e2b8a024c4d859c2641dac9f0594edcec1fe1b2627cbfec8dd5ca`
+- 服务端返回哈希一致，恢复预览通过。
+
+书架封面修复：
+
+- 15 本书中 14 本在已验证的 Obsidian 恢复包中有原封面；
+- 14 张原封面已按书名、文件字节与 SHA-256 三重匹配后重新关联；
+- 复用现役资产记录，没有复制图片：资产仍为 779 条、图片文件仍为 418 个；
+- 《关于写作的建议-20260629》原目录没有封面，继续显示占位卡；
+- 正常重启后工作区 ID 仍为 `01M17CQGZXFP2E8CER7MFVAYFP`，书籍仍为 15 本；
+- 真实浏览器验证 14/14 张图片像素加载成功、损坏图片 0、占位封面 1、浏览器错误 0。
+
+本机旧配置清理：
+
+- `workbench/.env` 已固定 `XENHO_HOME=D:/文档/Xenho`；
+- 已移除 `WORKER_URL`、`WORKBENCH_KEY`、`SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`FEISHU_WIKI_NODE`、`VAULT_ROOT` 和 4 个旧 Notion 页面 URL；
+- 已永久删除未被 Git 跟踪的 `worker/` 本地依赖缓存、Wrangler 状态、临时产物和 `.dev.vars`，共 1,692 个文件、约 174 MB；
+- 已永久删除未被 Git 跟踪的 `supabase/.temp`；
+- 未删除或撤销现役 AI、搜索、排版配置及无法证明专用的上游 Token；
+- `npm run check` 通过：工作区路径、路径边界、SQLite 完整性、外键和本机 AI 配置均正常。
