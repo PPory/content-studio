@@ -222,14 +222,60 @@ try {
   await insertFromSlash("表格");
   const tableBlock = page.locator(".cm-lp-table").last();
   await tableBlock.waitFor();
-  const tableInputs = tableBlock.locator("input");
-  await tableInputs.nth(0).fill("观点");
-  await tableInputs.nth(1).fill("依据");
-  await tableInputs.nth(2).fill("先验证");
-  await tableInputs.nth(3).fill("真实操作");
-  await tableBlock.getByRole("button", { name: "添加一行" }).click();
-  check("表格单元格可编辑并可添加行", await tableBlock.locator("input").count() === 6);
+  let tableInputs = tableBlock.locator("input");
+  const tableValues = [
+    "观点", "依据", "结论",
+    "先验证", "真实操作", "可复现",
+    "后验证", "保存结果", "可追溯",
+  ];
+  for (const [index, value] of tableValues.entries()) await tableInputs.nth(index).fill(value);
+  check("表格默认提供三行三列", await tableInputs.count() === 9);
 
+  const addRow = tableBlock.getByRole("button", { name: "添加一行" });
+  const addColumn = tableBlock.getByRole("button", { name: "添加一列" });
+  check("新增行入口平时隐藏", await addRow.evaluate((node) => getComputedStyle(node).opacity === "0"));
+  await addRow.hover();
+  await page.waitForTimeout(150);
+  check("只有鼠标到表格下方时才显示新增行入口", await addRow.evaluate((node) => getComputedStyle(node).opacity === "1"));
+  if (process.argv.includes("--table-shots")) {
+    const output = path.join(ROOT, "output", "playwright");
+    await fs.mkdir(output, { recursive: true });
+    await tableBlock.screenshot({ path: path.join(output, "table-add-row.png") });
+  }
+  await addColumn.hover();
+  await page.waitForTimeout(150);
+  check("鼠标到表格右侧时显示新增列入口", await addColumn.evaluate((node) => getComputedStyle(node).opacity === "1"));
+  if (process.argv.includes("--table-shots")) {
+    await tableBlock.screenshot({ path: path.join(ROOT, "output", "playwright", "table-add-column.png") });
+  }
+
+  await tableBlock.getByRole("button", { name: "移动第 3 行" }).dragTo(
+    tableBlock.getByRole("button", { name: "移动第 2 行" }),
+  );
+  tableInputs = tableBlock.locator("input");
+  check("拖动行手柄可以交换行位置",
+    await tableInputs.nth(3).inputValue() === "后验证"
+    && await tableInputs.nth(6).inputValue() === "先验证");
+
+  await tableBlock.getByRole("button", { name: "移动第 3 列" }).dragTo(
+    tableBlock.getByRole("button", { name: "移动第 1 列" }),
+  );
+  tableInputs = tableBlock.locator("input");
+  check("拖动列手柄可以交换列位置",
+    await tableInputs.nth(0).inputValue() === "结论"
+    && await tableInputs.nth(1).inputValue() === "观点");
+
+  await addRow.click();
+  check("表格下方入口可以添加一整行", await tableBlock.locator("input").count() === 12);
+  await addColumn.click();
+  check("表格右侧入口可以添加一整列", await tableBlock.locator("input").count() === 16);
+
+  await editor.focus();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("/");
+  await page.getByRole("listbox", { name: "可插入的区块" }).waitFor();
+  await page.getByRole("option", { name: "分隔线", exact: true }).click();
+  await page.locator(".cm-lp-rule").last().waitFor();
   await page.waitForTimeout(1800);
   const blocksSaved = await request("/api/workspace/projects/" + encodeURIComponent(projectId));
   const blocksBody = blocksSaved.project.masterDraft.body;
@@ -239,9 +285,11 @@ try {
     "> [!note]\n> 这是需要读者记住的结论。",
     "> 真正重要的是把判断讲清楚。",
     fence + "\nconst answer = 42;\n" + fence,
-    "| 观点 | 依据 |",
-    "| 先验证 | 真实操作 |",
+    "| 结论 | 观点 | 依据 |  |",
+    "| 可追溯 | 后验证 | 保存结果 |  |",
+    "| 可复现 | 先验证 | 真实操作 |  |",
   ].every((part) => blocksBody.includes(part)));
+  check("分割线不会在上方制造多余空行", !/\n{3,}---/.test(blocksBody));
 
   await page.locator('button[title^="设置："]').click();
   await page.getByRole("dialog", { name: "设置" }).waitFor();

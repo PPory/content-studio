@@ -3245,72 +3245,121 @@ kbd {
   letter-spacing: 0.02em;
 }
 
-/* 表格是原子内容块：每个单元格直接输入，底部动作只在靠近表格时显现。 */
+/* 表格是原子内容块：单元格直接编辑，四周热区分别负责重排和新增。 */
 .cm-editor .cm-line.cm-lp-table-host { padding-top: 0; padding-bottom: 0; }
 .cm-editor .cm-line.cm-lp-table-source-hidden { display: none; }
 .cm-lp-table {
-  width: calc(100% - 4px);
-  margin: 8px 2px 12px;
-  overflow-x: auto;
+  --table-row-height: 42px;
+  position: relative;
+  width: 100%;
+  min-width: 430px;
+  margin: 8px 0 12px;
+  padding: 26px 34px 30px 32px;
   color: var(--text-1);
 }
 .cm-lp-table table {
   width: 100%;
   min-width: 360px;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   table-layout: fixed;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  overflow: hidden;
+  border: 1px solid var(--border);
   background: var(--surface);
 }
 .cm-lp-table th,
 .cm-lp-table td {
   padding: 0;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
 }
-.cm-lp-table tr:last-child td { border-bottom: 0; }
-.cm-lp-table th:last-child,
-.cm-lp-table td:last-child { border-right: 0; }
-.cm-lp-table th { background: var(--surface-2); }
+.cm-lp-table th { background: var(--surface); font-weight: 400; }
 .cm-lp-table input {
   width: 100%;
   min-width: 100px;
-  height: 36px;
-  padding: 7px 9px;
+  height: var(--table-row-height);
+  padding: 8px 10px;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--text-1);
   font: 400 var(--fs-sm)/1.4 var(--font);
 }
-.cm-lp-table th input { font-weight: 650; }
 .cm-lp-table input:focus { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--canvas); }
-.cm-lp-table__controls {
-  height: 28px;
+.cm-lp-table__add-row,
+.cm-lp-table__add-column,
+.cm-lp-table__row-handle,
+.cm-lp-table__column-handle {
+  position: absolute;
   display: flex;
   align-items: center;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.12s var(--ease);
-}
-.cm-lp-table:hover .cm-lp-table__controls,
-.cm-lp-table:focus-within .cm-lp-table__controls { opacity: 1; }
-.cm-lp-table__controls button {
-  height: 24px;
-  padding: 0 8px;
+  justify-content: center;
   border: 0;
-  border-radius: var(--r-ctl);
+  border-radius: 4px;
   background: transparent;
   color: var(--text-3);
-  font: 500 11px/1 var(--font);
   cursor: pointer;
+  opacity: 0;
+  transition: opacity .1s var(--ease), background-color .1s var(--ease), color .1s var(--ease);
 }
-.cm-lp-table__controls button:hover,
-.cm-lp-table__controls button:focus-visible { background: var(--surface-2); color: var(--text-1); }
-
+.cm-lp-table__add-row {
+  left: 32px;
+  right: 34px;
+  bottom: 3px;
+  height: 21px;
+  border: 1px solid var(--border);
+  font: 400 18px/1 var(--font);
+}
+.cm-lp-table__add-column {
+  top: 26px;
+  right: 3px;
+  bottom: 30px;
+  width: 23px;
+  border: 1px solid var(--border);
+  font: 400 18px/1 var(--font);
+}
+.cm-lp-table__add-row:hover,
+.cm-lp-table__add-column:hover,
+.cm-lp-table__add-row:focus-visible,
+.cm-lp-table__add-column:focus-visible {
+  opacity: 1;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.cm-lp-table__row-handle,
+.cm-lp-table__column-handle {
+  z-index: 1;
+  font: 500 14px/1 var(--font-mono);
+  cursor: grab;
+}
+.cm-lp-table__row-handle {
+  left: 3px;
+  width: 23px;
+  height: var(--table-row-height);
+}
+.cm-lp-table__column-handle {
+  top: 1px;
+  width: 30px;
+  height: 20px;
+  transform: translateX(-50%) rotate(90deg);
+}
+.cm-lp-table__row-handle:hover,
+.cm-lp-table__column-handle:hover,
+.cm-lp-table__row-handle:focus-visible,
+.cm-lp-table__column-handle:focus-visible,
+.cm-lp-table__row-handle.is-dragging,
+.cm-lp-table__column-handle.is-dragging {
+  opacity: 1;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.cm-lp-table__row-handle.is-drop-target,
+.cm-lp-table__column-handle.is-drop-target {
+  opacity: 1;
+  background: var(--accent);
+  color: white;
+}
+.cm-lp-table:has(.cm-lp-table__row-handle.is-drop-target) table,
+.cm-lp-table:has(.cm-lp-table__column-handle.is-drop-target) table { box-shadow: 0 0 0 1px var(--accent); }
+.cm-lp-table__row-handle:active,
+.cm-lp-table__column-handle:active { cursor: grabbing; }
 .md-editor__bar { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 4px 8px; }
 /* 上传中 / 失败的反馈。**不做 toast**：视线此刻在正文里那个插入点上 */
 .md-editor__media {
