@@ -222,8 +222,8 @@ export const api = {
       headers: { "content-type": "application/octet-stream" },
       body: file,
     }),
-  applyBackup: (file) =>
-    req("/api/backup/restore", {
+  applyBackup: (file, confirmationSha256) =>
+    req(`/api/backup/restore?confirm=${encodeURIComponent(confirmationSha256 || "")}`, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: file,
@@ -369,11 +369,11 @@ export function applyLocalData(data) {
  * 导出：拿服务端压好的 zip，直接触发下载。
  * 不走 `req()`——那个会把响应 `json()` 掉，而这里回的是二进制。
  */
-export async function downloadBackup() {
+export async function downloadBackup({ kind = "portable", includeBookAssets = false } = {}) {
   const res = await fetch("/api/backup/export", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ browser: collectLocalData() }),
+    body: JSON.stringify({ kind, includeBookAssets }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

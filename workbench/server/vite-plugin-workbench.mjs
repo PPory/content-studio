@@ -5,6 +5,7 @@
 // `npm run build` 只用来验证前端能编译过。
 
 import { createApi } from "./api.mjs";
+import { applyPendingWorkspaceRestore, ensureAutomaticWorkspaceBackup } from "./backup/workspace-backup.mjs";
 import { createDefaultJobHandlers } from "./jobs/default-job-handlers.mjs";
 import { startWorkspaceRuntime } from "./jobs/workspace-runtime.mjs";
 import { installAutoExit } from "./lib/auto-exit.mjs";
@@ -13,10 +14,16 @@ import { openWorkspace } from "./storage/workspace.mjs";
 import { runtimeXenhoHome } from "./storage/workspace-paths.mjs";
 
 export async function startLocalWorkspaceRuntime(env = {}) {
-  const workspace = await openWorkspace({ xenhoHome: runtimeXenhoHome(env) });
+  const xenhoHome = runtimeXenhoHome(env);
+  const pendingRestore = await applyPendingWorkspaceRestore({ xenhoHome });
+  const workspace = await openWorkspace({ xenhoHome });
   try {
     const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace) });
-    return { workspace, runtime };
+    const automaticBackup = ensureAutomaticWorkspaceBackup(workspace).catch((error) => {
+      console.warn(`[backup] 自动备份失败：${error instanceof Error ? error.message : String(error)}`);
+      return { created: false, error: error instanceof Error ? error.message : String(error) };
+    });
+    return { workspace, runtime, automaticBackup, pendingRestore };
   } catch (error) {
     workspace.close();
     throw error;
@@ -36,6 +43,7 @@ export function workbenchApi(env) {
         void localRuntime.then(async (state) => {
           if (!state) return;
           await state.runtime.stop();
+          await state.automaticBackup;
           state.workspace.close();
         });
       });

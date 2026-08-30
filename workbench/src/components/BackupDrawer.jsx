@@ -1,24 +1,13 @@
 /**
  * 备份与恢复抽屉。
  *
- * 这一屏要回答的问题只有三个，所以它就分三段：
- *   1. 现在有什么可以回退的？    —— 每份数据的大小、时间、快照条数
- *   2. 怎么带走一份？            —— 一个「导出备份」按钮
- *   3. 怎么带回来？              —— 选文件 → **先看预览** → 确认
- *
- * 恢复是覆盖式的，所以**预览这一步不能跳过**。「即将恢复 3 份数据」这种说法把
- * 「42 条变 43 条」和「42 条变 7 条」显示成同一句话，而这是两个完全不同的决定。
- * 预览里直接写清每份数据从几条变成几条。
- *
- * 「快照」和「备份文件」是两个不同的东西，界面上不能混：
- *   - 快照是**工作台自己在每次改数据之前留的**，只在这台机器上，用来「退回上一版」；
- *   - 备份文件是**你主动导出、可以带走的一个 zip**，用来「换台机器 / 硬盘挂了」。
- * 混成一个列表的话，用户不知道点下去的东西会不会随着这台机器一起没。
+ * 完整备份用于原样恢复；便携导出同时提供 Markdown/frontmatter、CSV、JSONL 和资源。
+ * 选择文件时只校验和预览，确认精确 SHA-256 后才建立恢复点并暂存，重启时原子切换。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog.js";
-import { api, applyLocalData, downloadBackup } from "../lib/api.js";
+import { api, downloadBackup } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
 import { IconArchive, IconCheck, IconDatabase, IconDownload, IconHistory, IconUpload, IconX } from "./icons.jsx";
 
@@ -39,6 +28,7 @@ export function BackupDrawer({ open, onClose }) {
   const [done, setDone] = useState("");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [includeBookAssets, setIncludeBookAssets] = useState(false);
   const fileRef = useRef(null);
   const boxRef = useDialog(open, onClose);
 
@@ -69,9 +59,9 @@ export function BackupDrawer({ open, onClose }) {
     }
   }
 
-  const onExport = () =>
-    run("export", async () => {
-      const r = await downloadBackup();
+  const onExport = (kind) =>
+    run(`export-${kind}`, async () => {
+      const r = await downloadBackup({ kind, includeBookAssets });
       setDone(`已导出 ${r.name}（${fmtBytes(r.bytes)}）`);
     });
 
@@ -85,9 +75,8 @@ export function BackupDrawer({ open, onClose }) {
 
   const onApply = () =>
     run("apply", async () => {
-      const r = await api.applyBackup(file);
-      const n = applyLocalData(r.browser);
-      setDone(`已恢复 ${r.restored.length} 份数据${n ? `，浏览器本地数据 ${n} 项` : ""}。刷新页面后生效。`);
+      const r = await api.applyBackup(file, preview.confirmationSha256);
+      setDone(`已建立完整恢复点并暂存恢复。关闭并重新打开工作台后切换；恢复点：${r.restorePoint}`);
       setPreview(null);
       setFile(null);
       load();
@@ -113,22 +102,23 @@ export function BackupDrawer({ open, onClose }) {
           </Note>
         ) : null}
 
-        {status?.ready === false ? (
-          <Note title="阶段 5 启用完整备份与恢复">
-            当前旧备份接口已停用，不会读取或覆盖仓库文件、旧 vault 或真实工作区。完成本地工作区导出、导入预览和恢复验收后，这里才会开放。
-          </Note>
-        ) : null}
         {/* 1. 现在有什么 ---------------------------------------------------- */}
         <div className="field">
           <label>工作台数据</label>
-          <div className="bk-list">
-            {(status?.items || []).map((it) => (
-              <DataRow key={it.key} item={it} onRestored={(msg) => { setDone(msg); load(); }} onError={setError} />
-            ))}
-            {!status ? <div className="field-hint">读取中…</div> : null}
-          </div>
+          {status ? (
+            <div className="bk-list">
+              <div className="bk-row">
+                <div className="bk-row__main"><IconDatabase size={15} stroke={1.7} aria-hidden="true" /><span className="bk-row__label">SQLite 工作区</span><span className="bk-row__meta mono">{status.workspaceId}</span></div>
+                <div className="bk-row__side"><span className="bk-row__meta">{fmtBytes(status.database?.bytes)} · {status.database?.tables?.entities?.count ?? 0} 条实体</span></div>
+              </div>
+              <div className="bk-row">
+                <div className="bk-row__main"><IconHistory size={15} stroke={1.7} aria-hidden="true" /><span className="bk-row__label">自动完整备份</span></div>
+                <div className="bk-row__side"><span className="bk-row__meta">日备份 {status.automatic?.daily?.length || 0} 份 · 周备份 {status.automatic?.weekly?.length || 0} 份</span></div>
+              </div>
+            </div>
+          ) : <div className="field-hint">读取中…</div>}
           <div className="field-hint">
-            {status?.ready === false ? "阶段 5 完成前不会读取旧快照或执行恢复。" : `每次改动前自动留快照，保留 ${status?.keepDays ?? 30} 天。`}
+            完整备份包含 SQLite、图片、图书原件和附件；不包含 .env、密钥、旧 vault 或远程资源。
           </div>
         </div>
 
@@ -136,13 +126,18 @@ export function BackupDrawer({ open, onClose }) {
         <div className="field">
           <label>导出</label>
           <div className="bk-acts">
-            <button className="btn btn-primary" onClick={onExport} disabled={!!busy || status?.ready === false}>
+            <button className="btn btn-primary" onClick={() => onExport("portable")} disabled={!!busy}>
               <IconDownload aria-hidden="true" stroke={1.8} />
-              {busy === "export" ? "打包中…" : "导出备份（.zip）"}
+              {busy === "export-portable" ? "打包中…" : "便携导出"}
+            </button>
+            <button className="btn" onClick={() => onExport("full")} disabled={!!busy}>
+              <IconArchive aria-hidden="true" stroke={1.8} />
+              {busy === "export-full" ? "打包中…" : "完整备份"}
             </button>
           </div>
+          <label className="field-hint"><input type="checkbox" checked={includeBookAssets} onChange={(event) => setIncludeBookAssets(event.target.checked)} /> 便携导出也包含图书原件</label>
           <div className="field-hint">
-            阶段 5 会在完成导出包、导入预览、冲突处理和完整恢复验收后开放。模型密钥不会进入备份。
+            便携导出包含 Markdown/frontmatter、CSV、JSONL 和资源，默认只带图书笔记与元数据；完整备份始终包含图书原件。
           </div>
         </div>
 
@@ -153,11 +148,11 @@ export function BackupDrawer({ open, onClose }) {
             <input
               ref={fileRef}
               type="file"
-              accept=".zip"
+              accept=".xenho-backup,.zip"
               hidden
               onChange={(e) => onPick(e.target.files?.[0])}
             />
-            <button className="btn" onClick={() => fileRef.current?.click()} disabled={!!busy || status?.ready === false}>
+            <button className="btn" onClick={() => fileRef.current?.click()} disabled={!!busy}>
               <IconUpload aria-hidden="true" stroke={1.8} />
               {file ? file.name : "选择备份文件…"}
             </button>
@@ -171,116 +166,42 @@ export function BackupDrawer({ open, onClose }) {
   );
 }
 
-/** 一份数据 + 它的快照。快照收在一个折叠里——平时没人看，出事时才要。 */
-function DataRow({ item, onRestored, onError }) {
-  const [openSnaps, setOpenSnaps] = useState(false);
-  const [pending, setPending] = useState("");
-
-  async function restore(snap) {
-    setPending(snap.name);
-    try {
-      await api.restoreSnapshot(item.key, snap.name);
-      onRestored(`${item.label} 已退回到 ${fmtTime(snap.at)} 那一版。刷新页面后生效。`);
-      setOpenSnaps(false);
-    } catch (e) {
-      onError(e);
-    } finally {
-      setPending("");
-    }
-  }
-
-  return (
-    <div className="bk-row">
-      <div className="bk-row__main">
-        <IconDatabase size={15} stroke={1.7} aria-hidden="true" />
-        <span className="bk-row__label">{item.label}</span>
-        <span className="bk-row__meta mono">{item.rel}</span>
-      </div>
-      <div className="bk-row__side">
-        <span className="bk-row__meta">
-          {item.bytes == null ? "还没有这份数据" : `${fmtBytes(item.bytes)} · ${fmtTime(item.at)}`}
-        </span>
-        <button
-          className="sysrow__btn"
-          onClick={() => setOpenSnaps((v) => !v)}
-          disabled={!item.snapshots.length}
-          title={item.snapshots.length ? "看看能退回到哪一版" : "还没有快照——改过一次之后才会有"}
-        >
-          <IconHistory size={14} stroke={1.7} aria-hidden="true" />
-          {item.snapshots.length} 份快照
-        </button>
-      </div>
-      {openSnaps ? (
-        <ul className="bk-snaps">
-          {item.snapshots.map((s) => (
-            <li key={s.name}>
-              <span className="mono">{fmtTime(s.at)}</span>
-              <span className="bk-row__meta">{fmtBytes(s.bytes)}</span>
-              <button className="sysrow__btn" onClick={() => restore(s)} disabled={!!pending}>
-                {pending === s.name ? "回退中…" : "回到这一版"}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 /**
  * 恢复预览。**每一行都要给出「从几条变成几条」**——这才是用户点确认前真正在判断的事。
  */
 function RestorePreview({ preview, busy, onApply }) {
-  const changed = preview.items.filter((i) => i.action !== "skip");
+  const changed = preview.tables.filter((table) => !table.same);
   return (
     <div className="bk-preview">
       <div className="bk-preview__head">
-        <b>这份备份生成于 {fmtTime(preview.generatedAt)}</b>
-        {preview.vault?.path ? (
-          <span className="bk-row__meta">当时的 vault：{preview.vault.path}（正文不在包里）</span>
-        ) : null}
+        <b>{preview.kind === "full" ? "完整备份" : "便携导出"} · {fmtTime(preview.createdAt)}</b>
+        <span className="bk-row__meta mono">确认 SHA-256：{preview.confirmationSha256}</span>
       </div>
 
-      {preview.blocked ? (
-        <Note tone="danger" title="这份备份里有读不通的数据，不能恢复">
-          当前数据一个字节都没有被改动。换一个备份文件试试。
+      {preview.portableConflict ? (
+        <Note tone="danger" title="便携导出不能覆盖当前工作区">
+          当前工作区已有数据。请导入新的空工作区，或改用完整备份恢复。
         </Note>
       ) : null}
 
       <ul className="bk-diff">
-        {preview.items.map((i) => (
-          <li key={i.key}>
-            <span className="bk-diff__label">{i.label}</span>
-            {i.action === "skip" ? (
-              <span className="bk-row__meta">{i.reason}</span>
-            ) : i.action === "blocked" ? (
-              <span className="bk-diff__bad">{i.reason}</span>
-            ) : i.isCsv ? (
-              <span className="bk-diff__num mono">
-                {i.currentRows == null ? "（还没有）" : `${i.currentRows} 条`} → {i.backupRows} 条
-              </span>
-            ) : (
-              <span className="bk-diff__num mono">
-                {i.currentBytes == null ? "（还没有）" : fmtBytes(i.currentBytes)} → {fmtBytes(i.backupBytes)}
-              </span>
-            )}
+        {preview.tables.filter((table) => !table.same).map((table) => (
+          <li key={table.name}>
+            <span className="bk-diff__label mono">{table.name}</span>
+            <span className="bk-diff__num mono">{table.current} 条 → {table.incoming} 条</span>
           </li>
         ))}
-        {preview.browserKeys.length ? (
-          <li>
-            <span className="bk-diff__label">浏览器本地数据</span>
-            <span className="bk-diff__num mono">{preview.browserKeys.length} 项（阅读进度 / 书签 / 阅读设置 / 排版草稿）</span>
-          </li>
-        ) : null}
+        <li><span className="bk-diff__label">资源文件</span><span className="bk-diff__num mono">{preview.assets.included} 个 · {fmtBytes(preview.assets.bytes)}</span></li>
+        {preview.assets.excludedBookAssets ? <li><span className="bk-diff__label">未包含图书原件</span><span className="bk-diff__num mono">{preview.assets.excludedBookAssets} 个</span></li> : null}
       </ul>
 
       <div className="bk-acts">
-        <button className="btn btn-primary" onClick={onApply} disabled={!!busy || preview.blocked || !changed.length}>
+        <button className="btn btn-primary" onClick={onApply} disabled={!!busy || preview.portableConflict}>
           <IconArchive aria-hidden="true" stroke={1.8} />
-          {busy === "apply" ? "恢复中…" : `覆盖当前数据，恢复这 ${changed.length} 份`}
+          {busy === "apply" ? "建立恢复点…" : `确认并在重启时恢复${changed.length ? `（${changed.length} 张表变化）` : ""}`}
         </button>
         <span className="field-hint" style={{ margin: 0 }}>
-          <IconCheck size={13} stroke={2} aria-hidden="true" /> 恢复前会先把当前数据存成快照，退得回来。
+          <IconCheck size={13} stroke={2} aria-hidden="true" /> 先建立完整恢复点；当前进程不覆盖正在使用的 SQLite。
         </span>
       </div>
     </div>

@@ -134,8 +134,18 @@ try {
   check("发布文件先预览再写入本地发布记录", dryImport.value.dry === true && committedImport.value.added === 1 && workspace.db.prepare("SELECT COUNT(*) AS count FROM external_publication_records").get().count === 1);
   const archive = await call(base, "/api/archive/run", { method: "POST", body: {} });
   const backupStatus = await call(base, "/api/backup/status");
-  const blockedBackup = await call(base, "/api/backup/export", { method: "POST", body: {} });
-  check("旧归档变为本地核对且阶段 5 前禁用旧备份写入口", archive.value.localOnly === true && backupStatus.value.ready === false && blockedBackup.response.status === 503);
+  const portableBackup = await call(base, "/api/backup/export", { method: "POST", body: { kind: "portable" } });
+  const backupPreview = await call(base, "/api/backup/restore?dry=1", {
+    method: "POST",
+    body: portableBackup.value,
+    headers: { "content-type": "application/octet-stream" },
+  });
+  const rejectedRestore = await call(base, "/api/backup/restore?confirm=wrong", {
+    method: "POST",
+    body: portableBackup.value,
+    headers: { "content-type": "application/octet-stream" },
+  });
+  check("旧归档变为本地核对且阶段 5 备份只操作隔离工作区", archive.value.localOnly === true && backupStatus.value.ready === true && portableBackup.response.status === 200 && backupPreview.value.dry === true && rejectedRestore.response.status === 409);
   const expertStarted = await call(base, "/api/expert-runs", { method: "POST", body: { kind: "quality-review", scopeId: `project:${projectId}`, document: { id: draftId, title: "隔离测试稿", body: "这是一段需要检查的正文。", platform: "公众号", audience: "测试读者" } } });
   assert.equal(expertStarted.response.status, 202, JSON.stringify(expertStarted.value));
   let expertState = expertStarted.value.run;

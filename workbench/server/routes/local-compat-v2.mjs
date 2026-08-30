@@ -149,8 +149,6 @@ function importPreview(workspace, parsed, { dry, platform }) {
   };
 }
 
-const backupUnavailable = guard(async ({ res }) => fail(res, "本地工作区备份将在阶段 5 启用", { status: 503, hint: "当前不会读取、覆盖或恢复任何旧数据。" }));
-
 export const localCompatRoutes = [
   { method: "GET", path: "/api/workspace/insights", handler: guard(async ({ workspace, res }) => json(res, { ok: true, exists: true, dir: "SQLite workspace", reports: insightRows(workspace).map(insightDto) })) },
   { method: "GET", path: "/api/workspace/insights/:id", handler: guard(async ({ workspace, res, params }) => { const row=insightRows(workspace).find((item)=>item.id===params.id); if(!row) throw Object.assign(new Error("洞察报告不存在"),{status:404}); json(res,{ok:true,id:row.id,title:row.title,content:row.body,stamp:String(workspace.repository.getEntity(row.id).version),notes:"",noteItems:[],meta:{id:row.id,editedAt:row.updatedAt}}); }) },
@@ -162,8 +160,4 @@ export const localCompatRoutes = [
   { method: "GET", path: "/api/posts/inbox", handler: guard(async ({ res }) => json(res,{ok:true,files:[],dirs:[],disabled:true,reason:"本地优先模式不主动扫描真实 Downloads；请手动选择要导入的文件。"})) },
   { method: "POST", path: "/api/posts/inbox/import", handler: guard(async ({ res }) => fail(res,"本地优先模式不读取 Downloads 中的文件",{status:410,hint:"请在页面中手动选择导出文件；导入前仍会先显示预览。"})) },
   { method: "POST", path: "/api/archive/run", handler: guard(async ({ workspace, res }) => { const total=workspace.db.prepare("SELECT COUNT(*) AS count FROM publication_records p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL").get().count; json(res,{ok:true,localOnly:true,total,written:[],skipped:total,message:"发布记录已经保存在当前本地工作区，无需再导出到旧 vault。"}); }) },
-  { method: "GET", path: "/api/backup/status", handler: guard(async ({ res }) => json(res,{ok:true,ready:false,phase:5,items:[],keepDays:0,hint:"完整备份、预览和恢复将在阶段 5 验收后启用。"})) },
-  { method: "POST", path: "/api/backup/export", handler: backupUnavailable },
-  { method: "POST", path: "/api/backup/restore", handler: backupUnavailable },
-  { method: "POST", path: "/api/backup/snapshot/:key/restore", handler: backupUnavailable },
 ];

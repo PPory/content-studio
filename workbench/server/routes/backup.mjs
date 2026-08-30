@@ -1,85 +1,90 @@
-// /api/backup/* —— 导出、预览、恢复、快照回退。
-//
-// 导出走 **POST 而不是 GET**：浏览器的 localStorage（阅读进度、书签、阅读设置、
-// 排版草稿）服务端读不到，只能由前端把它交上来一起打包。为一个「下载」动作用 POST
-// 看着别扭，但另一条路是让前端自己压 zip——那要把 fflate 打进前端包，
-// 而这个项目明确规定解析类依赖只在服务端跑。
-
-import path from "node:path";
 import { json, fail, readJsonBody, readRawBody } from "../lib/http.mjs";
-import { snapshotKeepDays } from "../lib/safe-write.mjs";
-import { backupStatus, exportBundle, previewBundle, restoreBundle, restoreSnapshot } from "../lib/backup.mjs";
+import {
+  createWorkspaceBundle,
+  previewWorkspaceBundle,
+  stageWorkspaceRestore,
+  workspaceBackupStatus,
+} from "../backup/workspace-backup.mjs";
 
-const ROOT = () => process.cwd();
+async function currentWorkspace(value) {
+  const workspace = await value;
+  if (!workspace?.db?.open) {
+    throw Object.assign(new Error("本地工作区尚未就绪"), { status: 503 });
+  }
+  return workspace;
+}
+
+function sendBundle(res, bundle) {
+  const label = bundle.manifest.kind === "full" ? "full-backup" : "portable";
+  const extension = bundle.manifest.kind === "full" ? "xenho-backup" : "xenho-export.zip";
+  const name = `xenho-${label}-${bundle.manifest.createdAt.slice(0, 19).replace(/[:T]/g, "-")}.${extension}`;
+  res.writeHead(200, {
+    "content-type": "application/zip",
+    "content-disposition": `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    "content-length": String(bundle.bytes.length),
+    "x-xenho-bundle-sha256": bundle.archiveSha256,
+    "cache-control": "no-store",
+  });
+  res.end(bundle.bytes);
+}
 
 export const backupRoutes = [
   {
     method: "GET",
     path: "/api/backup/status",
-    async handler({ res }) {
+    async handler({ res, workspace }) {
       try {
-        json(res, { ok: true, ...(await backupStatus(ROOT(), { keepDays: snapshotKeepDays() })) });
-      } catch (e) {
-        fail(res, e.message);
+        json(res, { ok: true, ...(await workspaceBackupStatus(await currentWorkspace(workspace))) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
       }
     },
   },
   {
     method: "POST",
     path: "/api/backup/export",
-    async handler({ req, res, env }) {
+    async handler({ req, res, workspace }) {
       try {
         const body = await readJsonBody(req);
-        const { zip, manifest } = await exportBundle(ROOT(), {
-          browser: body.browser && typeof body.browser === "object" ? body.browser : {},
-          vaultPath: (env.VAULT_ROOT || "").trim(),
+        const kind = body.kind === "full" ? "full" : "portable";
+        const bundle = await createWorkspaceBundle(await currentWorkspace(workspace), {
+          kind,
+          includeBookAssets: body.includeBookAssets === true,
         });
-        const name = `xenho-workbench-backup-${manifest.generatedAt.slice(0, 19).replace(/[:T]/g, "-")}.zip`;
-        res.writeHead(200, {
-          "content-type": "application/zip",
-          // 文件名里没有非 ASCII，但还是给 filename* ——以后加了中文名不用回头再修一次
-          "content-disposition": `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-          "content-length": String(zip.length),
-          "cache-control": "no-store",
-        });
-        res.end(zip);
-      } catch (e) {
-        if (!res.headersSent) fail(res, e.message, { status: e.status || 500, hint: e.hint });
+        sendBundle(res, bundle);
+      } catch (error) {
+        if (!res.headersSent) fail(res, error.message, { status: error.status || 500, hint: error.hint });
       }
     },
   },
   {
-    // 预览和恢复走同一条路径、同一份字节，靠 ?dry=1 分流：
-    // 两个端点的话，「预览时说的」和「恢复时做的」迟早会不一样。
     method: "POST",
     path: "/api/backup/restore",
-    async handler({ req, res, url }) {
+    async handler({ req, res, url, workspace }) {
       try {
-        const bytes = await readRawBody(req, 200_000_000);
-        if (!bytes.length) return fail(res, "没有收到备份文件", { status: 400 });
+        const bytes = await readRawBody(req, 1_500_000_000);
+        if (!bytes.length) return fail(res, "没有收到工作区备份文件", { status: 400 });
+        const active = await currentWorkspace(workspace);
         if (url.searchParams.get("dry") === "1") {
-          return json(res, { ok: true, dry: true, ...(await previewBundle(ROOT(), bytes)) });
+          return json(res, { ok: true, dry: true, ...(await previewWorkspaceBundle(active, bytes)) });
         }
-        const out = await restoreBundle(ROOT(), bytes, { keepDays: snapshotKeepDays() });
+        const out = await stageWorkspaceRestore(active, bytes, {
+          confirmedSha256: String(url.searchParams.get("confirm") || ""),
+        });
         json(res, { ok: true, ...out });
-      } catch (e) {
-        fail(res, e.message, { status: e.status || 500, hint: e.hint });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
       }
     },
   },
   {
     method: "POST",
     path: "/api/backup/snapshot/:key/restore",
-    async handler({ req, res, params }) {
-      try {
-        const b = await readJsonBody(req);
-        const out = await restoreSnapshot(ROOT(), params.key, String(b.name || ""), { keepDays: snapshotKeepDays() });
-        json(res, { ok: true, ...out });
-      } catch (e) {
-        fail(res, e.message, { status: e.status || 500, hint: e.hint });
-      }
+    async handler({ res }) {
+      fail(res, "旧文件快照恢复已停用", {
+        status: 410,
+        hint: "现在使用完整工作区恢复点；先预览整包数量与哈希，再确认并重启切换。",
+      });
     },
   },
 ];
-
-export const backupDir = () => path.resolve(ROOT(), "data", ".snapshots");
