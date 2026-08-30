@@ -93,7 +93,7 @@ export const workspaceRoutes = [
   }) },
   { method: "GET", path: "/api/workspace/series/:id", handler: guarded(async ({ workspace, res, params }) => {
     const series = seriesDto(workspace, params.id);
-    if (!series) throw new Error("系列不存在");
+    if (!series) throw new Error("合集不存在");
     json(res, { ok: true, series });
   }) },
   { method: "POST", path: "/api/workspace/series/:id/update", handler: guarded(async ({ workspace, req, res, params }) => {
@@ -128,10 +128,41 @@ export const workspaceRoutes = [
     workspace.domain.linkSeriesChapter(params.id, params.chapterId, clean(body.projectId), { actor, now: now() });
     json(res, { ok: true, series: seriesDto(workspace, params.id) });
   }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/remove", handler: guarded(async ({ workspace, res, params }) => {
+    workspace.domain.removeSeriesChapter(params.id, params.chapterId, { actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id), preservedArticle: true });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/projects", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req); const stamp = now();
+    const project = projectDto(workspace, clean(body.projectId));
+    if (!project) throw new Error("内容项目不存在");
+    workspace.domain.addSeriesChapter(params.id, { title: project.title, projectId: project.id, actor, now: stamp });
+    json(res, { ok: true, projectId: project.id, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/projects/new", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req); const stamp = now();
+    const series = seriesDto(workspace, params.id);
+    if (!series) throw new Error("合集不存在");
+    const projectId = workspace.repository.transaction(() => {
+      const id = workspace.domain.createProject({
+        title: "未命名",
+        audience: body.audience,
+        primaryPlatform: body.platform || "公众号",
+        confirmed: true,
+        actor,
+        now: stamp,
+      });
+      const draftId = workspace.domain.createDraft({ projectId: id, title: "未命名", platform: body.platform || "公众号", actor, now: stamp });
+      workspace.domain.setPrimaryDraft(id, draftId, { actor, now: stamp });
+      workspace.domain.addSeriesChapter(params.id, { title: "未命名", projectId: id, actor, now: stamp });
+      return id;
+    });
+    json(res, { ok: true, projectId, series: seriesDto(workspace, params.id) });
+  }) },
   { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/start", handler: guarded(async ({ workspace, req, res, params }) => {
     const body = await readJsonBody(req); const stamp = now();
     const chapter = workspace.db.prepare("SELECT title, summary, project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(params.chapterId, params.id);
-    if (!chapter) throw new Error("系列章节不存在");
+    if (!chapter) throw new Error("合集条目不存在");
     if (chapter.projectId) return json(res, { ok: true, created: false, projectId: chapter.projectId, series: seriesDto(workspace, params.id) });
     const series = seriesDto(workspace, params.id);
     const projectId = workspace.repository.transaction(() => {
@@ -153,7 +184,7 @@ export const workspaceRoutes = [
   }) },
   { method: "POST", path: "/api/workspace/series/:id/trash", handler: guarded(async ({ workspace, res, params }) => {
     const series = seriesDto(workspace, params.id);
-    if (!series) throw new Error("系列不存在");
+    if (!series) throw new Error("合集不存在");
     workspace.domain.softDeleteEntity(params.id, { actor, now: now() });
     json(res, { ok: true, deleted: 1, preservedProjects: series.chapters.filter((chapter) => chapter.projectId).length, recoverable: true });
   }) },

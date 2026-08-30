@@ -41,6 +41,7 @@ export const MUTATING_ACTIONS = Object.freeze([
   "series.chapter.create",
   "series.chapter.update",
   "series.chapter.link",
+  "series.chapter.remove",
   "series.chapters.reorder",
   "material.create",
   "material.verify",

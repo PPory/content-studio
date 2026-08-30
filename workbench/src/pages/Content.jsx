@@ -119,8 +119,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
       />
 
       <div className="content-kind-switch seg" role="group" aria-label="创作类型">
-        <button aria-pressed="true">单篇文章</button>
-        <button aria-pressed="false" onClick={() => onGo("series")}>系列教程</button>
+        <button aria-pressed="true">全部文章</button>
+        <button aria-pressed="false" onClick={() => onGo("series")}>合集</button>
       </div>
 
       {!workerReady ? (

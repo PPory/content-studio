@@ -130,9 +130,10 @@ export function projectDto(workspace, projectId) {
   const seed = project.seed_id ? workspace.db.prepare(`SELECT s.*, e.updated_at FROM seeds s JOIN entities e ON e.id = s.id AND e.deleted_at IS NULL WHERE s.id = ?`).get(project.seed_id) : null;
   const stage = workspace.domain.projectStage(projectId);
   const nextAction = { 策划中: "开始写作", 生成中: "等待候选稿", 写作中: "写完了，去发布", 待发布: "去排版发布", 待复盘: "开始复盘", 已完成: "查看复盘", 已搁置: "恢复写作", 需处理: "检查项目关系" }[stage.stage] || "打开项目";
+  const displayTitle = master?.title || project.title || "未命名内容";
   return {
     id: project.id,
-    title: project.title || "未命名内容",
+    title: displayTitle,
     stage: stage.stage,
     stageReason: stage.reason,
     nextAction,
@@ -168,7 +169,7 @@ export function seriesDto(workspace, seriesId) {
       linkedProjectId: row.project_id || null,
       stage: project?.stage || (row.project_id ? "文章在回收站" : "待开始"),
       publicationStatus: project?.publication?.status || "未发布",
-      projectTitle: project?.title || "",
+      projectTitle: project?.masterDraft?.title || project?.title || "",
       updatedAt: project?.updatedAt || row.updated_at,
     };
   });

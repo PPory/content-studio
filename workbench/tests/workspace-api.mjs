@@ -67,35 +67,36 @@ try {
   check("本地项目和主稿通过工作区 API 创建", Boolean(projectId && draftId && initialVersion));
 
   const invalidSeries = await call(base, "/api/workspace/series", { method: "POST", body: { title: "" } });
-  check("系列标题为空时由服务端拒绝", invalidSeries.response.status === 400 && invalidSeries.value.ok === false);
+  check("合集名称为空时由服务端拒绝", invalidSeries.response.status === 400 && invalidSeries.value.ok === false);
   const createdSeries = await call(base, "/api/workspace/series", {
     method: "POST",
     body: {
-      title: "隔离系列教程",
-      description: "只保存在临时 SQLite 的系列总纲",
-      audience: "测试读者",
-      outcome: "完成两篇相互衔接的文章",
+      title: "隔离文章合集",
+      description: "只保存在临时 SQLite 的合集说明",
     },
   });
   assert.equal(createdSeries.response.status, 200, JSON.stringify(createdSeries.value));
   const seriesId = createdSeries.value.series.id;
-  const withFirstChapter = await call(base, `/api/workspace/series/${seriesId}/chapters`, { method: "POST", body: { title: "第一篇：开始", summary: "建立基础" } });
-  const firstChapterId = withFirstChapter.value.series.chapters[0].id;
-  const withSecondChapter = await call(base, `/api/workspace/series/${seriesId}/chapters`, { method: "POST", body: { title: "第二篇：进阶" } });
-  const secondChapterId = withSecondChapter.value.series.chapters[1].id;
-  const invalidOrder = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [firstChapterId] } });
+  const withExistingProject = await call(base, `/api/workspace/series/${seriesId}/projects`, { method: "POST", body: { projectId } });
+  const existingItemId = withExistingProject.value.series.chapters[0].id;
+  const withNewProject = await call(base, `/api/workspace/series/${seriesId}/projects/new`, { method: "POST", body: { platform: "公众号", audience: "测试读者" } });
+  const newProjectId = withNewProject.value.projectId;
+  const newItemId = withNewProject.value.series.chapters.find((item) => item.projectId === newProjectId).id;
+  const invalidOrder = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [existingItemId] } });
   assert.equal(invalidOrder.response.status, 400);
-  const reordered = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [secondChapterId, firstChapterId] } });
-  assert.equal(reordered.value.series.chapters[0].id, secondChapterId);
-  const startedChapter = await call(base, `/api/workspace/series/${seriesId}/chapters/${secondChapterId}/start`, { method: "POST", body: { platform: "公众号" } });
-  assert.equal(startedChapter.response.status, 200, JSON.stringify(startedChapter.value));
-  const linkedChapter = await call(base, `/api/workspace/series/${seriesId}/chapters/${firstChapterId}/link`, { method: "POST", body: { projectId } });
-  check("系列 API 支持规划、排序、开始写作和关联已有文章", linkedChapter.value.series.progress.writing === 2 && linkedChapter.value.series.progress.planned === 0);
-  await call(base, `/api/workspace/projects/${startedChapter.value.projectId}/trash`, { method: "POST", body: {} });
+  const reordered = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [newItemId, existingItemId] } });
+  assert.equal(reordered.value.series.chapters[0].id, newItemId);
+  const removedFromCollection = await call(base, `/api/workspace/series/${seriesId}/chapters/${newItemId}/remove`, { method: "POST", body: {} });
+  const preservedProject = await call(base, `/api/workspace/projects/${newProjectId}`);
+  check("合集支持加入旧文章、直接新建、排序和移出且不删除文章", removedFromCollection.value.series.chapters.length === 1 && removedFromCollection.value.preservedArticle === true && preservedProject.response.status === 200 && preservedProject.value.project.series === null);
+  const addedBack = await call(base, `/api/workspace/series/${seriesId}/projects`, { method: "POST", body: { projectId: newProjectId } });
+  const addedBackItemId = addedBack.value.series.chapters.find((item) => item.projectId === newProjectId).id;
+  assert(addedBackItemId);
+  await call(base, `/api/workspace/projects/${newProjectId}/trash`, { method: "POST", body: {} });
   const seriesWithRecycledArticle = await call(base, `/api/workspace/series/${seriesId}`);
   const activeProjectWithSeries = await call(base, `/api/workspace/projects/${projectId}`);
-  const recycledChapter = seriesWithRecycledArticle.value.series.chapters.find((chapter) => chapter.id === secondChapterId);
-  check("系列保留回收文章的章节关系但不再提供打开入口", recycledChapter.stage === "文章在回收站" && recycledChapter.projectId === null && recycledChapter.linkedProjectId === startedChapter.value.projectId && activeProjectWithSeries.value.project.series.previous.projectId === null);
+  const recycledChapter = seriesWithRecycledArticle.value.series.chapters.find((chapter) => chapter.id === addedBackItemId);
+  check("合集保留回收文章的归类关系但不再提供打开入口", recycledChapter.stage === "文章在回收站" && recycledChapter.projectId === null && recycledChapter.linkedProjectId === newProjectId && activeProjectWithSeries.value.project.series.next.projectId === null);
 
   const saved = await call(base, `/api/workspace/drafts/${draftId}/save`, {
     method: "POST",
@@ -255,7 +256,7 @@ try {
   base = await start();
   const reopened = await call(base, `/api/workspace/projects/${projectId}`);
   const reopenedSeries = await call(base, `/api/workspace/series/${seriesId}`);
-  check("关闭重开后项目、系列关系、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && reopened.value.project.series.id === seriesId && reopenedSeries.value.series.chapters.length === 2 && workspace.manifest.workspaceId === workspaceId);
+  check("关闭重开后项目、合集关系、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && reopened.value.project.series.id === seriesId && reopenedSeries.value.series.chapters.length === 2 && workspace.manifest.workspaceId === workspaceId);
   const reopenedPlan = await call(base, `/api/plan?date=${today}`);
   const reopenedProfile = await call(base, "/api/writing-profile");
   check("关闭重开后计划、读者偏好和修订历史仍存在", reopenedPlan.value.tasks[0]?.done === true && reopenedProfile.value.profile.audience === "隔离工作区读者" && (await call(base, `/api/revisions?scope=${encodeURIComponent(`${draftId}:published`)}`)).value.items.length === 1);

@@ -232,13 +232,13 @@ export class WorkspaceDomain {
     });
   }
   createSeries({ id = createUlid(), title, descriptionMarkdown = "", audience = "", outcome = "", confirmed = false, now, ...auth } = {}) {
-    if (confirmed !== true) throw new Error("创建系列必须来自用户明确确认");
-    const canonicalTitle = required(title, "系列标题");
+    if (confirmed !== true) throw new Error("创建合集必须来自用户明确确认");
+    const canonicalTitle = required(title, "合集名称");
     const description = normalizeStoredText(descriptionMarkdown);
     const canonicalAudience = clean(audience);
     const canonicalOutcome = clean(outcome);
-    if (canonicalTitle.length > 120) throw new TypeError("系列标题不能超过 120 字");
-    if (description.length > 2000) throw new TypeError("系列说明不能超过 2000 字");
+    if (canonicalTitle.length > 120) throw new TypeError("合集名称不能超过 120 字");
+    if (description.length > 2000) throw new TypeError("合集说明不能超过 2000 字");
     if (canonicalAudience.length > 200) throw new TypeError("目标读者不能超过 200 字");
     if (canonicalOutcome.length > 500) throw new TypeError("学习成果不能超过 500 字");
     const payload = { title: canonicalTitle, descriptionMarkdown: description, audience: canonicalAudience, outcome: canonicalOutcome };
@@ -257,12 +257,12 @@ export class WorkspaceDomain {
 
   updateSeries(seriesId, { title, descriptionMarkdown = "", audience = "", outcome = "", now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
-    const canonicalTitle = required(title, "系列标题");
+    const canonicalTitle = required(title, "合集名称");
     const description = normalizeStoredText(descriptionMarkdown);
     const canonicalAudience = clean(audience);
     const canonicalOutcome = clean(outcome);
     if (canonicalTitle.length > 120 || description.length > 2000 || canonicalAudience.length > 200 || canonicalOutcome.length > 500) {
-      throw new TypeError("系列字段超过长度限制");
+      throw new TypeError("合集字段超过长度限制");
     }
     const payload = { title: canonicalTitle, descriptionMarkdown: description, audience: canonicalAudience, outcome: canonicalOutcome };
     const authorization = this.authorizeMutation("series.update", seriesId, payload, auth);
@@ -280,10 +280,10 @@ export class WorkspaceDomain {
 
   addSeriesChapter(seriesId, { id = createUlid(), title, summary = "", projectId = null, now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
-    const canonicalTitle = required(title, "章节标题");
+    const canonicalTitle = required(title, "合集条目标题");
     const canonicalSummary = clean(summary);
-    if (canonicalTitle.length > 120) throw new TypeError("章节标题不能超过 120 字");
-    if (canonicalSummary.length > 500) throw new TypeError("章节说明不能超过 500 字");
+    if (canonicalTitle.length > 120) throw new TypeError("合集条目标题不能超过 120 字");
+    if (canonicalSummary.length > 500) throw new TypeError("合集条目说明不能超过 500 字");
     if (projectId) this.entity(projectId, "project");
     const payload = { title: canonicalTitle, summary: canonicalSummary, projectId };
     const authorization = this.authorizeMutation("series.chapter.create", seriesId, payload, auth);
@@ -302,10 +302,10 @@ export class WorkspaceDomain {
   updateSeriesChapter(seriesId, chapterId, { title, summary = "", now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
     const chapter = this.db.prepare("SELECT id FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
-    if (!chapter) throw new Error("系列章节不存在");
-    const canonicalTitle = required(title, "章节标题");
+    if (!chapter) throw new Error("合集条目不存在");
+    const canonicalTitle = required(title, "合集条目标题");
     const canonicalSummary = clean(summary);
-    if (canonicalTitle.length > 120 || canonicalSummary.length > 500) throw new TypeError("章节字段超过长度限制");
+    if (canonicalTitle.length > 120 || canonicalSummary.length > 500) throw new TypeError("合集条目字段超过长度限制");
     const payload = { chapterId, title: canonicalTitle, summary: canonicalSummary };
     const authorization = this.authorizeMutation("series.chapter.update", seriesId, payload, auth);
     if (authorization.replay) return chapterId;
@@ -323,10 +323,10 @@ export class WorkspaceDomain {
     this.entity(seriesId, "content_series");
     this.entity(projectId, "project");
     const chapter = this.db.prepare("SELECT project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
-    if (!chapter) throw new Error("系列章节不存在");
-    if (chapter.projectId && chapter.projectId !== projectId) throw new Error("这个章节已经关联其他文章");
+    if (!chapter) throw new Error("合集条目不存在");
+    if (chapter.projectId && chapter.projectId !== projectId) throw new Error("这个合集条目已经关联其他文章");
     const occupied = this.db.prepare("SELECT id FROM series_chapters WHERE project_id = ? AND id <> ?").get(projectId, chapterId);
-    if (occupied) throw new Error("这篇文章已经属于其他系列章节");
+    if (occupied) throw new Error("这篇文章已经属于其他合集");
     const payload = { chapterId, projectId };
     const authorization = this.authorizeMutation("series.chapter.link", seriesId, payload, auth);
     if (authorization.replay) return projectId;
@@ -341,12 +341,34 @@ export class WorkspaceDomain {
     });
   }
 
+  removeSeriesChapter(seriesId, chapterId, { now, ...auth } = {}) {
+    this.entity(seriesId, "content_series");
+    const chapter = this.db.prepare("SELECT project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
+    if (!chapter) throw new Error("合集中的文章不存在");
+    const payload = { chapterId, projectId: chapter.projectId || null };
+    const authorization = this.authorizeMutation("series.chapter.remove", seriesId, payload, auth);
+    if (authorization.replay) return chapterId;
+    return this.repository.transaction(() => {
+      this.db.prepare("DELETE FROM series_chapters WHERE id = ? AND series_id = ?").run(chapterId, seriesId);
+      const remaining = this.db.prepare("SELECT id FROM series_chapters WHERE series_id = ? ORDER BY position").all(seriesId);
+      const offset = remaining.length + 1000;
+      this.db.prepare("UPDATE series_chapters SET position = position + ? WHERE series_id = ?").run(offset, seriesId);
+      const reorder = this.db.prepare("UPDATE series_chapters SET position = ?, updated_at = ? WHERE id = ?");
+      remaining.forEach((item, index) => reorder.run(index + 1, isoNow(now), item.id));
+      this.touch(seriesId, now);
+      if (chapter.projectId) this.touch(chapter.projectId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: chapterId }, now });
+      this.audit("series.chapter_removed", seriesId, payload, now);
+      return chapterId;
+    });
+  }
+
   reorderSeriesChapters(seriesId, chapterIds, { now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
     const current = this.db.prepare("SELECT id FROM series_chapters WHERE series_id = ? ORDER BY position").all(seriesId).map((row) => row.id);
     const wanted = Array.isArray(chapterIds) ? chapterIds.map(clean) : [];
     if (wanted.length !== current.length || new Set(wanted).size !== current.length || current.some((id) => !wanted.includes(id))) {
-      throw new Error("章节顺序必须完整包含当前系列的全部章节");
+      throw new Error("文章顺序必须完整包含当前合集的全部条目");
     }
     const payload = { chapterIds: wanted };
     const authorization = this.authorizeMutation("series.chapters.reorder", seriesId, payload, auth);

@@ -23,36 +23,33 @@ export function Series({ onGo, onChanged }) {
     <>
       <PageHeader
         title="创作"
-        desc="单篇文章保持独立；系列教程在这里先搭完整目录，再逐篇进入原有写作、发布和复盘。"
+        desc="像文件夹一样整理文章。合集只负责归类，文章仍然沿用原来的写作、发布和复盘。"
         aside={<>
-          {result ? <span className="project-total">{result.total ?? items.length} 个系列</span> : null}
-          <button className="icon-btn" onClick={load} disabled={loading} aria-label="刷新系列" title="刷新"><IconRefresh aria-hidden="true" className={loading ? "spinning" : ""} /></button>
-          <button className="btn btn-primary" onClick={() => setCreating(true)}><IconPlus aria-hidden="true" />新建系列</button>
+          {result ? <span className="project-total">{result.total ?? items.length} 个合集</span> : null}
+          <button className="icon-btn" onClick={load} disabled={loading} aria-label="刷新合集" title="刷新"><IconRefresh aria-hidden="true" className={loading ? "spinning" : ""} /></button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}><IconPlus aria-hidden="true" />新建合集</button>
         </>}
       />
 
       <div className="content-kind-switch seg" role="group" aria-label="创作类型">
-        <button aria-pressed="false" onClick={() => onGo("content")}>单篇文章</button>
-        <button aria-pressed="true">系列教程</button>
+        <button aria-pressed="false" onClick={() => onGo("content")}>全部文章</button>
+        <button aria-pressed="true">合集</button>
       </div>
 
-      {error ? <ErrorNote error={error} what="读取系列教程" onRetry={load} /> : null}
+      {error ? <ErrorNote error={error} what="读取合集" onRetry={load} /> : null}
       {loading && !result ? <Loading rows={4} /> : null}
       {result && !items.length ? (
-        <Empty icon={IconBook}>还没有系列教程。先建立系列目标和章节目录，暂时不必创建任何文章。</Empty>
+        <Empty icon={IconBook}>还没有合集。可以先建一个文件夹，再把已有文章放进去。</Empty>
       ) : null}
       {items.length ? (
-        <section className="series-list" aria-label="系列教程列表">
+        <section className="series-list" aria-label="合集列表">
           {items.map((series) => (
             <button key={series.id} type="button" className="series-row" onClick={() => onGo("series-detail", series.id)}>
               <span className="series-row__main">
                 <strong>{series.title}</strong>
-                <span>{series.outcome || series.description || "还没有填写系列目标"}</span>
+                <span>{series.description || "还没有填写合集说明"}</span>
               </span>
-              <span className="series-row__progress" aria-label={`已发布 ${series.progress.published} 篇，共 ${series.progress.total} 篇`}>
-                <span><i style={{ width: `${series.progress.percent}%` }} /></span>
-                <b>{series.progress.published}/{series.progress.total} 已发布</b>
-              </span>
+              <span className="series-row__count">{series.progress.total} 篇文章</span>
               <span className="series-row__meta">{series.progress.writing ? `${series.progress.writing} 篇写作中 · ` : ""}{relTime(series.updatedAt)}</span>
             </button>
           ))}

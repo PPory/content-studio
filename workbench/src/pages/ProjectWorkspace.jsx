@@ -567,7 +567,7 @@ ${(form.body || "").slice(0, 3000)}`);
   }
 
   const mainAction = PRIMARY_ACTION[project.stage];
-  const backTarget = project.series ? { view: "series-detail", state: project.series.id, label: "系列" } : { view: "content", state: "", label: "内容" };
+  const backTarget = project.series ? { view: "series-detail", state: project.series.id, label: "合集" } : { view: "content", state: "", label: "内容" };
   /**
    * 主操作此刻为什么点不动。空串＝能点。
    * ⚠️ **判据要和 Worker 那道闸门一致**（`draftReadyToFinish`：正文去空白后非空）。
@@ -591,7 +591,7 @@ ${(form.body || "").slice(0, 3000)}`);
           <button className="project-back" onClick={() => onGo(backTarget.view, backTarget.state)}>
             <IconArrowLeft aria-hidden="true" />{backTarget.label}
           </button>
-          {project.series ? <button className="project-series-context" onClick={() => onGo("series-detail", project.series.id)} title={"返回系列“" + project.series.title + "”"}>
+          {project.series ? <button className="project-series-context" onClick={() => onGo("series-detail", project.series.id)} title={"返回合集“" + project.series.title + "”"}>
             第 {project.series.position}/{project.series.total} 篇 · {project.series.title}
           </button> : null}
           {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
