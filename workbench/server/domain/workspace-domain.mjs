@@ -231,46 +231,44 @@ export class WorkspaceDomain {
       return id;
     });
   }
-  createSeries({ id = createUlid(), title, descriptionMarkdown = "", audience = "", outcome = "", confirmed = false, now, ...auth } = {}) {
+  /**
+   * 合集 = 文章的归属 + 有序目录。它**不是一个要维护的项目**：没有目标读者、
+   * 没有学习成果、没有发布进度。`content_series` 上残留的
+   * `audience` / `outcome` / `status` 三列已在 0005 里退役（见那份 migration 的抬头），
+   * ⚠️ **不要重新接线**。
+   */
+  createSeries({ id = createUlid(), title, descriptionMarkdown = "", confirmed = false, now, ...auth } = {}) {
     if (confirmed !== true) throw new Error("创建合集必须来自用户明确确认");
     const canonicalTitle = required(title, "合集名称");
     const description = normalizeStoredText(descriptionMarkdown);
-    const canonicalAudience = clean(audience);
-    const canonicalOutcome = clean(outcome);
     if (canonicalTitle.length > 120) throw new TypeError("合集名称不能超过 120 字");
     if (description.length > 2000) throw new TypeError("合集说明不能超过 2000 字");
-    if (canonicalAudience.length > 200) throw new TypeError("目标读者不能超过 200 字");
-    if (canonicalOutcome.length > 500) throw new TypeError("学习成果不能超过 500 字");
-    const payload = { title: canonicalTitle, descriptionMarkdown: description, audience: canonicalAudience, outcome: canonicalOutcome };
+    const payload = { title: canonicalTitle, descriptionMarkdown: description };
     const authorization = this.authorizeMutation("series.create", null, payload, auth);
     if (authorization.replay) return authorization.result?.id;
     return this.repository.transaction(() => {
       this.repository.createEntity({ id, type: "content_series", now });
-      this.db.prepare("INSERT INTO content_series(id, title, description_markdown, audience, outcome) VALUES (?, ?, ?, ?, ?)")
-        .run(id, canonicalTitle, description, canonicalAudience, canonicalOutcome);
-      this.repository.setEntityText(id, { title: canonicalTitle, body: [description, canonicalAudience, canonicalOutcome].filter(Boolean).join("\n\n"), now });
+      this.db.prepare("INSERT INTO content_series(id, title, description_markdown) VALUES (?, ?, ?)")
+        .run(id, canonicalTitle, description);
+      this.repository.setEntityText(id, { title: canonicalTitle, body: description, now });
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
       this.audit("series.created", id, {}, now);
       return id;
     });
   }
 
-  updateSeries(seriesId, { title, descriptionMarkdown = "", audience = "", outcome = "", now, ...auth } = {}) {
+  updateSeries(seriesId, { title, descriptionMarkdown = "", now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
     const canonicalTitle = required(title, "合集名称");
     const description = normalizeStoredText(descriptionMarkdown);
-    const canonicalAudience = clean(audience);
-    const canonicalOutcome = clean(outcome);
-    if (canonicalTitle.length > 120 || description.length > 2000 || canonicalAudience.length > 200 || canonicalOutcome.length > 500) {
-      throw new TypeError("合集字段超过长度限制");
-    }
-    const payload = { title: canonicalTitle, descriptionMarkdown: description, audience: canonicalAudience, outcome: canonicalOutcome };
+    if (canonicalTitle.length > 120 || description.length > 2000) throw new TypeError("合集字段超过长度限制");
+    const payload = { title: canonicalTitle, descriptionMarkdown: description };
     const authorization = this.authorizeMutation("series.update", seriesId, payload, auth);
     if (authorization.replay) return seriesId;
     return this.repository.transaction(() => {
-      this.db.prepare("UPDATE content_series SET title = ?, description_markdown = ?, audience = ?, outcome = ? WHERE id = ?")
-        .run(canonicalTitle, description, canonicalAudience, canonicalOutcome, seriesId);
-      this.repository.setEntityText(seriesId, { title: canonicalTitle, body: [description, canonicalAudience, canonicalOutcome].filter(Boolean).join("\n\n"), now });
+      this.db.prepare("UPDATE content_series SET title = ?, description_markdown = ? WHERE id = ?")
+        .run(canonicalTitle, description, seriesId);
+      this.repository.setEntityText(seriesId, { title: canonicalTitle, body: description, now });
       this.touch(seriesId, now);
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: seriesId }, now });
       this.audit("series.updated", seriesId, {}, now);
@@ -278,109 +276,179 @@ export class WorkspaceDomain {
     });
   }
 
-  addSeriesChapter(seriesId, { id = createUlid(), title, summary = "", projectId = null, now, ...auth } = {}) {
+  /** 追加一条 = 拿当前最大 position + 1。`series_entries` 上 `UNIQUE(series_id, position)` 挡重复。 */
+  #appendSeriesEntry(seriesId, { id, kind, projectId, heading, note, now }) {
+    const position = this.db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS value FROM series_entries WHERE series_id = ?").get(seriesId).value;
+    this.db.prepare("INSERT INTO series_entries(id, series_id, kind, project_id, heading, note, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, seriesId, kind, projectId, heading, note, position, isoNow(now), isoNow(now));
+    return id;
+  }
+
+  /**
+   * 把一篇已有文章放进合集。
+   *
+   * ⚠️ **一篇文章可以同时属于多个合集**——0005 去掉了 `project_id` 上那条全局 UNIQUE，
+   * 只留 `UNIQUE(series_id, project_id)`。旧版那条全局唯一让已归属的文章在选择器里
+   * 静默消失，而用户只看到「没有可添加的文章」。这里重复加入要**说清原因**，不能静默。
+   */
+  addSeriesArticle(seriesId, { id = createUlid(), projectId, note = "", now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
-    const canonicalTitle = required(title, "合集条目标题");
-    const canonicalSummary = clean(summary);
-    if (canonicalTitle.length > 120) throw new TypeError("合集条目标题不能超过 120 字");
-    if (canonicalSummary.length > 500) throw new TypeError("合集条目说明不能超过 500 字");
-    if (projectId) this.entity(projectId, "project");
-    const payload = { title: canonicalTitle, summary: canonicalSummary, projectId };
-    const authorization = this.authorizeMutation("series.chapter.create", seriesId, payload, auth);
+    const canonicalProjectId = required(projectId, "文章");
+    this.entity(canonicalProjectId, "project");
+    const canonicalNote = clean(note);
+    if (canonicalNote.length > 500) throw new TypeError("条目说明不能超过 500 字");
+    const existing = this.db.prepare("SELECT id FROM series_entries WHERE series_id = ? AND project_id = ?").get(seriesId, canonicalProjectId);
+    if (existing) throw new Error("这篇文章已经在这个合集里了");
+    const payload = { projectId: canonicalProjectId, note: canonicalNote };
+    const authorization = this.authorizeMutation("series.article.add", seriesId, payload, auth);
     if (authorization.replay) return authorization.result?.id;
     return this.repository.transaction(() => {
-      const position = this.db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS value FROM series_chapters WHERE series_id = ?").get(seriesId).value;
-      this.db.prepare("INSERT INTO series_chapters(id, series_id, project_id, title, summary, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, seriesId, projectId, canonicalTitle, canonicalSummary, position, isoNow(now), isoNow(now));
+      this.#appendSeriesEntry(seriesId, { id, kind: "article", projectId: canonicalProjectId, heading: "", note: canonicalNote, now });
       this.touch(seriesId, now);
+      this.touch(canonicalProjectId, now);
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
-      this.audit("series.chapter_created", seriesId, { chapterId: id, projectId }, now);
+      this.audit("series.article_added", seriesId, { entryId: id, projectId: canonicalProjectId }, now);
       return id;
     });
   }
 
-  updateSeriesChapter(seriesId, chapterId, { title, summary = "", now, ...auth } = {}) {
+  /** 分节行：合集里的一条分隔标题（「入门 / 进阶 / 参考」），本身不是文章。 */
+  addSeriesSection(seriesId, { id = createUlid(), heading, now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
-    const chapter = this.db.prepare("SELECT id FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
-    if (!chapter) throw new Error("合集条目不存在");
-    const canonicalTitle = required(title, "合集条目标题");
-    const canonicalSummary = clean(summary);
-    if (canonicalTitle.length > 120 || canonicalSummary.length > 500) throw new TypeError("合集条目字段超过长度限制");
-    const payload = { chapterId, title: canonicalTitle, summary: canonicalSummary };
-    const authorization = this.authorizeMutation("series.chapter.update", seriesId, payload, auth);
-    if (authorization.replay) return chapterId;
+    const canonicalHeading = required(heading, "分节标题");
+    if (canonicalHeading.length > 120) throw new TypeError("分节标题不能超过 120 字");
+    const payload = { heading: canonicalHeading };
+    const authorization = this.authorizeMutation("series.section.add", seriesId, payload, auth);
+    if (authorization.replay) return authorization.result?.id;
     return this.repository.transaction(() => {
-      this.db.prepare("UPDATE series_chapters SET title = ?, summary = ?, updated_at = ? WHERE id = ? AND series_id = ?")
-        .run(canonicalTitle, canonicalSummary, isoNow(now), chapterId, seriesId);
+      this.#appendSeriesEntry(seriesId, { id, kind: "section", projectId: null, heading: canonicalHeading, note: "", now });
       this.touch(seriesId, now);
-      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: chapterId }, now });
-      this.audit("series.chapter_updated", seriesId, { chapterId }, now);
-      return chapterId;
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
+      this.audit("series.section_added", seriesId, { entryId: id }, now);
+      return id;
     });
   }
 
-  linkSeriesChapter(seriesId, chapterId, projectId, { now, ...auth } = {}) {
+  /**
+   * 改一条条目上的字：分节改 `heading`，文章条目改 `note`。
+   *
+   * ⚠️ **文章标题不在这里改**。条目上不存标题——旧版 `series_chapters.title`
+   * 和文章标题双写，改了文章标题合集里还是旧的。标题永远从 `projects` 现取。
+   */
+  updateSeriesEntry(seriesId, entryId, { heading, note, now, ...auth } = {}) {
     this.entity(seriesId, "content_series");
-    this.entity(projectId, "project");
-    const chapter = this.db.prepare("SELECT project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
-    if (!chapter) throw new Error("合集条目不存在");
-    if (chapter.projectId && chapter.projectId !== projectId) throw new Error("这个合集条目已经关联其他文章");
-    const occupied = this.db.prepare("SELECT id FROM series_chapters WHERE project_id = ? AND id <> ?").get(projectId, chapterId);
-    if (occupied) throw new Error("这篇文章已经属于其他合集");
-    const payload = { chapterId, projectId };
-    const authorization = this.authorizeMutation("series.chapter.link", seriesId, payload, auth);
-    if (authorization.replay) return projectId;
-    return this.repository.transaction(() => {
-      this.db.prepare("UPDATE series_chapters SET project_id = ?, updated_at = ? WHERE id = ? AND series_id = ?")
-        .run(projectId, isoNow(now), chapterId, seriesId);
-      this.touch(seriesId, now);
-      this.touch(projectId, now);
-      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { projectId }, now });
-      this.audit("series.chapter_linked", seriesId, { chapterId, projectId }, now);
-      return projectId;
-    });
-  }
-
-  removeSeriesChapter(seriesId, chapterId, { now, ...auth } = {}) {
-    this.entity(seriesId, "content_series");
-    const chapter = this.db.prepare("SELECT project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(chapterId, seriesId);
-    if (!chapter) throw new Error("合集中的文章不存在");
-    const payload = { chapterId, projectId: chapter.projectId || null };
-    const authorization = this.authorizeMutation("series.chapter.remove", seriesId, payload, auth);
-    if (authorization.replay) return chapterId;
-    return this.repository.transaction(() => {
-      this.db.prepare("DELETE FROM series_chapters WHERE id = ? AND series_id = ?").run(chapterId, seriesId);
-      const remaining = this.db.prepare("SELECT id FROM series_chapters WHERE series_id = ? ORDER BY position").all(seriesId);
-      const offset = remaining.length + 1000;
-      this.db.prepare("UPDATE series_chapters SET position = position + ? WHERE series_id = ?").run(offset, seriesId);
-      const reorder = this.db.prepare("UPDATE series_chapters SET position = ?, updated_at = ? WHERE id = ?");
-      remaining.forEach((item, index) => reorder.run(index + 1, isoNow(now), item.id));
-      this.touch(seriesId, now);
-      if (chapter.projectId) this.touch(chapter.projectId, now);
-      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: chapterId }, now });
-      this.audit("series.chapter_removed", seriesId, payload, now);
-      return chapterId;
-    });
-  }
-
-  reorderSeriesChapters(seriesId, chapterIds, { now, ...auth } = {}) {
-    this.entity(seriesId, "content_series");
-    const current = this.db.prepare("SELECT id FROM series_chapters WHERE series_id = ? ORDER BY position").all(seriesId).map((row) => row.id);
-    const wanted = Array.isArray(chapterIds) ? chapterIds.map(clean) : [];
-    if (wanted.length !== current.length || new Set(wanted).size !== current.length || current.some((id) => !wanted.includes(id))) {
-      throw new Error("文章顺序必须完整包含当前合集的全部条目");
+    const entry = this.db.prepare("SELECT id, kind FROM series_entries WHERE id = ? AND series_id = ?").get(entryId, seriesId);
+    if (!entry) throw new Error("合集条目不存在");
+    const payload = { entryId };
+    if (entry.kind === "section") {
+      payload.heading = required(heading, "分节标题");
+      if (payload.heading.length > 120) throw new TypeError("分节标题不能超过 120 字");
+    } else {
+      payload.note = clean(note);
+      if (payload.note.length > 500) throw new TypeError("条目说明不能超过 500 字");
     }
-    const payload = { chapterIds: wanted };
-    const authorization = this.authorizeMutation("series.chapters.reorder", seriesId, payload, auth);
+    const authorization = this.authorizeMutation("series.entry.update", seriesId, payload, auth);
+    if (authorization.replay) return entryId;
+    return this.repository.transaction(() => {
+      if (entry.kind === "section") {
+        this.db.prepare("UPDATE series_entries SET heading = ?, updated_at = ? WHERE id = ? AND series_id = ?")
+          .run(payload.heading, isoNow(now), entryId, seriesId);
+      } else {
+        this.db.prepare("UPDATE series_entries SET note = ?, updated_at = ? WHERE id = ? AND series_id = ?")
+          .run(payload.note, isoNow(now), entryId, seriesId);
+      }
+      this.touch(seriesId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: entryId }, now });
+      this.audit("series.entry_updated", seriesId, { entryId }, now);
+      return entryId;
+    });
+  }
+
+  /**
+   * 文章那一侧的入口：一次写定这篇文章属于哪些合集。
+   *
+   * ⚠️ **前端不要拼多次调用**（先删两条再加三条）。中途失败会留下一半状态，
+   * 而用户在界面上做的是**一个**动作：勾几个合集然后确认。
+   */
+  setProjectSeries(projectId, seriesIds, { now, ...auth } = {}) {
+    this.entity(projectId, "project");
+    const wanted = [...new Set((Array.isArray(seriesIds) ? seriesIds : []).map(clean).filter(Boolean))];
+    for (const seriesId of wanted) this.entity(seriesId, "content_series");
+    const current = this.db.prepare("SELECT series_id AS seriesId, id FROM series_entries WHERE project_id = ?").all(projectId);
+    const currentIds = new Set(current.map((row) => row.seriesId));
+    const added = wanted.filter((id) => !currentIds.has(id));
+    const removed = current.filter((row) => !wanted.includes(row.seriesId));
+    const payload = { projectId, seriesIds: wanted };
+    const authorization = this.authorizeMutation("series.project.set", projectId, payload, auth);
     if (authorization.replay) return wanted;
     return this.repository.transaction(() => {
+      for (const seriesId of added) {
+        this.#appendSeriesEntry(seriesId, { id: createUlid(), kind: "article", projectId, heading: "", note: "", now });
+        this.touch(seriesId, now);
+      }
+      for (const row of removed) {
+        this.#removeSeriesEntryRow(row.seriesId, row.id, now);
+        this.touch(row.seriesId, now);
+      }
+      this.touch(projectId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { projectId, seriesIds: wanted }, now });
+      this.audit("series.project_set", projectId, { added, removed: removed.map((row) => row.seriesId) }, now);
+      return wanted;
+    });
+  }
+
+  /**
+   * 删一条并把序号收紧。
+   *
+   * ⚠️ **必须先整体加一个 offset 再逐条落位**：`UNIQUE(series_id, position)` 是即时生效的，
+   * 直接把第 3 条改成 2 会撞上还没挪走的第 2 条。
+   */
+  #removeSeriesEntryRow(seriesId, entryId, now) {
+    this.db.prepare("DELETE FROM series_entries WHERE id = ? AND series_id = ?").run(entryId, seriesId);
+    const remaining = this.db.prepare("SELECT id FROM series_entries WHERE series_id = ? ORDER BY position").all(seriesId);
+    const offset = remaining.length + 1000;
+    this.db.prepare("UPDATE series_entries SET position = position + ? WHERE series_id = ?").run(offset, seriesId);
+    const reorder = this.db.prepare("UPDATE series_entries SET position = ?, updated_at = ? WHERE id = ?");
+    remaining.forEach((item, index) => reorder.run(index + 1, isoNow(now), item.id));
+  }
+
+  /** 移出合集**不删文章**——文章仍留在全部文章里，只是不再属于这个合集。 */
+  removeSeriesEntry(seriesId, entryId, { now, ...auth } = {}) {
+    this.entity(seriesId, "content_series");
+    const entry = this.db.prepare("SELECT project_id AS projectId FROM series_entries WHERE id = ? AND series_id = ?").get(entryId, seriesId);
+    if (!entry) throw new Error("合集条目不存在");
+    const payload = { entryId, projectId: entry.projectId || null };
+    const authorization = this.authorizeMutation("series.entry.remove", seriesId, payload, auth);
+    if (authorization.replay) return entryId;
+    return this.repository.transaction(() => {
+      this.#removeSeriesEntryRow(seriesId, entryId, now);
+      this.touch(seriesId, now);
+      if (entry.projectId) this.touch(entry.projectId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id: entryId }, now });
+      this.audit("series.entry_removed", seriesId, payload, now);
+      return entryId;
+    });
+  }
+
+  reorderSeriesEntries(seriesId, entryIds, { now, ...auth } = {}) {
+    this.entity(seriesId, "content_series");
+    const current = this.db.prepare("SELECT id FROM series_entries WHERE series_id = ? ORDER BY position").all(seriesId).map((row) => row.id);
+    const wanted = Array.isArray(entryIds) ? entryIds.map(clean) : [];
+    if (wanted.length !== current.length || new Set(wanted).size !== current.length || current.some((id) => !wanted.includes(id))) {
+      throw new Error("顺序必须完整包含当前合集的全部条目");
+    }
+    const payload = { entryIds: wanted };
+    const authorization = this.authorizeMutation("series.entries.reorder", seriesId, payload, auth);
+    if (authorization.replay) return wanted;
+    return this.repository.transaction(() => {
+      // 同 `#removeSeriesEntryRow`：先整体挪开，再逐条落位
       const offset = current.length + 1000;
-      this.db.prepare("UPDATE series_chapters SET position = position + ? WHERE series_id = ?").run(offset, seriesId);
-      const statement = this.db.prepare("UPDATE series_chapters SET position = ?, updated_at = ? WHERE id = ? AND series_id = ?");
+      this.db.prepare("UPDATE series_entries SET position = position + ? WHERE series_id = ?").run(offset, seriesId);
+      const statement = this.db.prepare("UPDATE series_entries SET position = ?, updated_at = ? WHERE id = ? AND series_id = ?");
       wanted.forEach((id, index) => statement.run(index + 1, isoNow(now), id, seriesId));
       this.touch(seriesId, now);
-      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { chapterIds: wanted }, now });
-      this.audit("series.chapters_reordered", seriesId, { chapterIds: wanted }, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { entryIds: wanted }, now });
+      this.audit("series.entries_reordered", seriesId, { entryIds: wanted }, now);
       return wanted;
     });
   }
@@ -460,7 +528,7 @@ export class WorkspaceDomain {
       publication: "SELECT d.project_id AS id FROM publication_records p JOIN drafts d ON d.id = p.draft_id WHERE p.id = ?",
       metric_snapshot: "SELECT d.project_id AS id FROM metric_snapshots m JOIN publication_records p ON p.id = m.publication_id JOIN drafts d ON d.id = p.draft_id WHERE m.id = ?",
       review: "SELECT d.project_id AS id FROM reviews r JOIN publication_records p ON p.id = r.publication_id JOIN drafts d ON d.id = p.draft_id WHERE r.id = ?",
-      content_series: "SELECT project_id AS id FROM series_chapters WHERE series_id = ? AND project_id IS NOT NULL",
+      content_series: "SELECT project_id AS id FROM series_entries WHERE series_id = ? AND project_id IS NOT NULL",
     };
     return queries[type] ? this.db.prepare(queries[type]).all(entityId).map((row) => row.id) : [];
   }

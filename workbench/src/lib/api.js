@@ -34,15 +34,17 @@ export const api = {
   series: (id) => req(`/api/workspace/series/${encodeURIComponent(id)}`),
   createSeries: (body) => postJson("/api/workspace/series", body),
   updateSeries: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/update`, body),
-  addSeriesChapter: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters`, body),
-  updateSeriesChapter: (id, chapterId, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/update`, body),
-  reorderSeriesChapters: (id, chapterIds) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/reorder`, { chapterIds }),
-  linkSeriesChapter: (id, chapterId, projectId) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/link`, { projectId }),
-  removeSeriesChapter: (id, chapterId) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/remove`, {}),
-  startSeriesChapter: (id, chapterId, platform) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/start`, { platform }),
-  addProjectToSeries: (id, projectId) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/projects`, { projectId }),
-  createProjectInSeries: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/projects/new`, body),
+  addSeriesArticles: (id, projectIds) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/articles`, { projectIds }),
+  createArticleInSeries: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/articles/new`, body),
+  addSeriesSection: (id, heading) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/sections`, { heading }),
+  reorderSeriesEntries: (id, entryIds) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/entries/reorder`, { entryIds }),
+  updateSeriesEntry: (id, entryId, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}/update`, body),
+  removeSeriesEntry: (id, entryId) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}/remove`, {}),
+  seriesRead: (id) => req(`/api/workspace/series/${encodeURIComponent(id)}/read`),
+  exportSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/export`, {}),
   removeSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/trash`, {}),
+  /** 一次写定这篇文章属于哪些合集。⚠️ 别在前端拆成「先删两条再加三条」，中途失败会留一半状态。 */
+  setProjectSeries: (projectId, seriesIds) => postJson(`/api/workspace/projects/${encodeURIComponent(projectId)}/series`, { seriesIds }),
   projects: (stage = "") => req(`/api/workspace/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
   project: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}`),
   transitionProject: (id, action, input = {}) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
@@ -374,6 +376,26 @@ export async function downloadBackup({ kind = "portable", includeBookAssets = fa
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   return { name, bytes: blob.size };
+}
+
+/**
+ * 把整个合集下载成一份 Markdown。
+ *
+ * 服务端只把拼好的文本回过来，**不落盘**：写文件要过根目录限制和真实路径检查，
+ * 而这里根本不需要写。下载动作和 `downloadBackup` 同一套 Blob + `<a download>`。
+ */
+export async function downloadSeriesMarkdown(seriesId) {
+  const { title, markdown } = await api.exportSeries(seriesId);
+  const name = `${String(title || "合集").replace(/[\\/:*?"<>|]/g, "_")}.md`;
+  const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { name, bytes: markdown.length };
 }
 
 /**

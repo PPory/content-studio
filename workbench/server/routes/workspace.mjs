@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { SEED_REACTION_GROUPS, SEED_REACTIONS } from "../domain/values.mjs";
-import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto } from "../workspace/workspace-view.mjs";
+import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto, seriesMarkdown, seriesReadDto } from "../workspace/workspace-view.mjs";
 
 const actor = "user";
 const clean = (value) => String(value ?? "").trim();
@@ -83,8 +83,6 @@ export const workspaceRoutes = [
     const id = workspace.domain.createSeries({
       title: body.title,
       descriptionMarkdown: body.description,
-      audience: body.audience,
-      outcome: body.outcome,
       confirmed: true,
       actor,
       now: stamp,
@@ -101,92 +99,82 @@ export const workspaceRoutes = [
     workspace.domain.updateSeries(params.id, {
       title: body.title,
       descriptionMarkdown: body.description,
-      audience: body.audience,
-      outcome: body.outcome,
       actor,
       now: now(),
     });
     json(res, { ok: true, series: seriesDto(workspace, params.id) });
   }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters", handler: guarded(async ({ workspace, req, res, params }) => {
-    const body = await readJsonBody(req);
-    workspace.domain.addSeriesChapter(params.id, { title: body.title, summary: body.summary, actor, now: now() });
-    json(res, { ok: true, series: seriesDto(workspace, params.id) });
-  }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters/reorder", handler: guarded(async ({ workspace, req, res, params }) => {
-    const body = await readJsonBody(req);
-    workspace.domain.reorderSeriesChapters(params.id, body.chapterIds, { actor, now: now() });
-    json(res, { ok: true, series: seriesDto(workspace, params.id) });
-  }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/update", handler: guarded(async ({ workspace, req, res, params }) => {
-    const body = await readJsonBody(req);
-    workspace.domain.updateSeriesChapter(params.id, params.chapterId, { title: body.title, summary: body.summary, actor, now: now() });
-    json(res, { ok: true, series: seriesDto(workspace, params.id) });
-  }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/link", handler: guarded(async ({ workspace, req, res, params }) => {
-    const body = await readJsonBody(req);
-    workspace.domain.linkSeriesChapter(params.id, params.chapterId, clean(body.projectId), { actor, now: now() });
-    json(res, { ok: true, series: seriesDto(workspace, params.id) });
-  }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/remove", handler: guarded(async ({ workspace, res, params }) => {
-    workspace.domain.removeSeriesChapter(params.id, params.chapterId, { actor, now: now() });
-    json(res, { ok: true, series: seriesDto(workspace, params.id), preservedArticle: true });
-  }) },
-  { method: "POST", path: "/api/workspace/series/:id/projects", handler: guarded(async ({ workspace, req, res, params }) => {
+  { method: "POST", path: "/api/workspace/series/:id/articles", handler: guarded(async ({ workspace, req, res, params }) => {
     const body = await readJsonBody(req); const stamp = now();
-    const project = projectDto(workspace, clean(body.projectId));
-    if (!project) throw new Error("内容项目不存在");
-    workspace.domain.addSeriesChapter(params.id, { title: project.title, projectId: project.id, actor, now: stamp });
-    json(res, { ok: true, projectId: project.id, series: seriesDto(workspace, params.id) });
+    // 一次可以放多篇：选择器是多选的，前端不该为了加三篇打三次。
+    const projectIds = (Array.isArray(body.projectIds) ? body.projectIds : [body.projectId]).map(clean).filter(Boolean);
+    if (!projectIds.length) throw new Error("请选择要放进合集的文章");
+    workspace.repository.transaction(() => {
+      for (const projectId of projectIds) workspace.domain.addSeriesArticle(params.id, { projectId, actor, now: stamp });
+    });
+    json(res, { ok: true, added: projectIds.length, series: seriesDto(workspace, params.id) });
   }) },
-  { method: "POST", path: "/api/workspace/series/:id/projects/new", handler: guarded(async ({ workspace, req, res, params }) => {
+  { method: "POST", path: "/api/workspace/series/:id/articles/new", handler: guarded(async ({ workspace, req, res, params }) => {
     const body = await readJsonBody(req); const stamp = now();
-    const series = seriesDto(workspace, params.id);
-    if (!series) throw new Error("合集不存在");
+    if (!seriesDto(workspace, params.id)) throw new Error("合集不存在");
+    const platform = body.platform || "公众号";
     const projectId = workspace.repository.transaction(() => {
       const id = workspace.domain.createProject({
         title: "未命名",
         audience: body.audience,
-        primaryPlatform: body.platform || "公众号",
+        primaryPlatform: platform,
         confirmed: true,
         actor,
         now: stamp,
       });
-      const draftId = workspace.domain.createDraft({ projectId: id, title: "未命名", platform: body.platform || "公众号", actor, now: stamp });
+      const draftId = workspace.domain.createDraft({ projectId: id, title: "未命名", platform, actor, now: stamp });
       workspace.domain.setPrimaryDraft(id, draftId, { actor, now: stamp });
-      workspace.domain.addSeriesChapter(params.id, { title: "未命名", projectId: id, actor, now: stamp });
+      workspace.domain.addSeriesArticle(params.id, { projectId: id, actor, now: stamp });
       return id;
     });
     json(res, { ok: true, projectId, series: seriesDto(workspace, params.id) });
   }) },
-  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/start", handler: guarded(async ({ workspace, req, res, params }) => {
-    const body = await readJsonBody(req); const stamp = now();
-    const chapter = workspace.db.prepare("SELECT title, summary, project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(params.chapterId, params.id);
-    if (!chapter) throw new Error("合集条目不存在");
-    if (chapter.projectId) return json(res, { ok: true, created: false, projectId: chapter.projectId, series: seriesDto(workspace, params.id) });
-    const series = seriesDto(workspace, params.id);
-    const projectId = workspace.repository.transaction(() => {
-      const id = workspace.domain.createProject({
-        title: chapter.title,
-        briefMarkdown: chapter.summary,
-        audience: series.audience,
-        primaryPlatform: body.platform || "公众号",
-        confirmed: true,
-        actor,
-        now: stamp,
-      });
-      const draftId = workspace.domain.createDraft({ projectId: id, title: chapter.title, platform: body.platform || "公众号", actor, now: stamp });
-      workspace.domain.setPrimaryDraft(id, draftId, { actor, now: stamp });
-      workspace.domain.linkSeriesChapter(params.id, params.chapterId, id, { actor, now: stamp });
-      return id;
-    });
-    json(res, { ok: true, created: true, projectId, series: seriesDto(workspace, params.id) });
+  { method: "POST", path: "/api/workspace/series/:id/sections", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.addSeriesSection(params.id, { heading: body.heading, actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/entries/reorder", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.reorderSeriesEntries(params.id, body.entryIds, { actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/entries/:entryId/update", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.updateSeriesEntry(params.id, params.entryId, { heading: body.heading, note: body.note, actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/entries/:entryId/remove", handler: guarded(async ({ workspace, res, params }) => {
+    workspace.domain.removeSeriesEntry(params.id, params.entryId, { actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id), preservedArticle: true });
+  }) },
+  { method: "GET", path: "/api/workspace/series/:id/read", handler: guarded(async ({ workspace, res, params }) => {
+    const read = seriesReadDto(workspace, params.id);
+    if (!read) throw new Error("合集不存在");
+    json(res, { ok: true, read });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/export", handler: guarded(async ({ workspace, res, params }) => {
+    // ⚠️ **不落盘**：拼好的 Markdown 直接回给前端，由浏览器触发下载。
+    // 写文件要过根目录限制和真实路径检查，而这里根本不需要写。
+    const exported = seriesMarkdown(workspace, params.id);
+    if (!exported) throw new Error("合集不存在");
+    json(res, { ok: true, ...exported });
   }) },
   { method: "POST", path: "/api/workspace/series/:id/trash", handler: guarded(async ({ workspace, res, params }) => {
     const series = seriesDto(workspace, params.id);
     if (!series) throw new Error("合集不存在");
     workspace.domain.softDeleteEntity(params.id, { actor, now: now() });
-    json(res, { ok: true, deleted: 1, preservedProjects: series.chapters.filter((chapter) => chapter.projectId).length, recoverable: true });
+    json(res, { ok: true, deleted: 1, preservedProjects: series.progress.total, recoverable: true });
+  }) },
+  { method: "POST", path: "/api/workspace/projects/:id/series", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.setProjectSeries(params.id, body.seriesIds, { actor, now: now() });
+    json(res, { ok: true, project: projectDto(workspace, params.id) });
   }) },
   { method: "GET", path: "/api/workspace/projects", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listProjects(workspace, { stage: url.searchParams.get("stage") || "" }) })) },
   { method: "GET", path: "/api/workspace/projects/:id", handler: guarded(async ({ workspace, res, params }) => { const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); json(res, { ok: true, project }); }) },

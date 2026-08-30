@@ -22,9 +22,10 @@ try {
   workspace = await openWorkspace({ xenhoHome: path.join(root, "Xenho"), now });
   const { db, domain, jobs } = workspace;
 
-  check("领域 migration 已创建收集、项目、合集、发布包、AI 和任务表", ["captures", "projects", "content_series", "series_chapters", "release_packages", "action_candidates", "local_jobs"].every((name) => (
+  check("领域 migration 已创建收集、项目、合集、发布包、AI 和任务表", ["captures", "projects", "content_series", "series_entries", "release_packages", "action_candidates", "local_jobs"].every((name) => (
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
   )));
+  check("旧的合集章节表已被 0005 移除", !db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'series_chapters'").get());
   check("纯打开工作区不会注册或补跑计划", db.prepare("SELECT COUNT(*) AS count FROM local_schedules").get().count === 0);
   check("没有恢复已退出的每日计划表", !db.prepare("SELECT 1 FROM sqlite_master WHERE name LIKE '%daily_plan%'").get());
   assert.throws(() => domain.createCapture({ kind: "thought", title: "缺 actor", now }), /明确提供 actor/);
@@ -60,16 +61,34 @@ try {
     actor,
     now,
   });
-  const openingChapterId = domain.addSeriesChapter(seriesId, { title: "先建立最小写作习惯", summary: "从每天十分钟开始", actor, now });
-  const publishChapterId = domain.addSeriesChapter(seriesId, { title: "再完成第一次发布", actor, now });
-  assert.throws(() => domain.reorderSeriesChapters(seriesId, [openingChapterId], { actor, now }), /完整包含/);
-  domain.reorderSeriesChapters(seriesId, [publishChapterId, openingChapterId], { actor, now });
-  domain.linkSeriesChapter(seriesId, openingChapterId, projectId, { actor, now });
+  const articleEntryId = domain.addSeriesArticle(seriesId, { projectId, note: "从每天十分钟开始", actor, now });
+  const sectionEntryId = domain.addSeriesSection(seriesId, { heading: "入门", actor, now });
+  assert.throws(() => domain.reorderSeriesEntries(seriesId, [articleEntryId], { actor, now }), /完整包含/);
+  domain.reorderSeriesEntries(seriesId, [sectionEntryId, articleEntryId], { actor, now });
+  check("分节和文章同在一条顺序里", db.prepare("SELECT position FROM series_entries WHERE id = ?").get(sectionEntryId).position === 1);
+
+  // ⚠️ 这一条以前是反过来的（「一篇文章只属于一个合集」）。0005 去掉了那条全局
+  // UNIQUE：教程知识库里同一篇经常既属于系列也属于精选。同合集内仍然不许重复。
   const otherSeriesId = domain.createSeries({ title: "另一个合集", confirmed: true, actor, now });
-  const otherChapterId = domain.addSeriesChapter(otherSeriesId, { title: "不能重复关联", actor, now });
-  assert.throws(() => domain.linkSeriesChapter(otherSeriesId, otherChapterId, projectId, { actor, now }), /已经属于其他合集/);
-  domain.removeSeriesChapter(otherSeriesId, otherChapterId, { actor, now });
-  check("合集文章可完整排序、移出且一篇文章只属于一个合集", db.prepare("SELECT position FROM series_chapters WHERE id = ?").get(publishChapterId).position === 1 && !db.prepare("SELECT id FROM series_chapters WHERE id = ?").get(otherChapterId));
+  domain.addSeriesArticle(otherSeriesId, { projectId, actor, now });
+  assert.throws(() => domain.addSeriesArticle(otherSeriesId, { projectId, actor, now }), /已经在这个合集里/);
+  check("一篇文章可以同时属于多个合集，但同一合集里不重复",
+    db.prepare("SELECT COUNT(*) AS count FROM series_entries WHERE project_id = ?").get(projectId).count === 2);
+
+  // 文章那一侧一次写定归属：加的加、减的减，不用前端拼多次调用
+  domain.setProjectSeries(projectId, [otherSeriesId], { actor, now });
+  check("从文章一侧改归属会同步增减两边",
+    db.prepare("SELECT COUNT(*) AS count FROM series_entries WHERE project_id = ?").get(projectId).count === 1
+    && db.prepare("SELECT series_id AS id FROM series_entries WHERE project_id = ?").get(projectId).id === otherSeriesId);
+  domain.setProjectSeries(projectId, [seriesId, otherSeriesId], { actor, now });
+
+  // 移出合集不删文章
+  const strayId = domain.addSeriesSection(otherSeriesId, { heading: "待删", actor, now });
+  domain.removeSeriesEntry(otherSeriesId, strayId, { actor, now });
+  check("移出条目后序号收紧且文章本身还在",
+    !db.prepare("SELECT id FROM series_entries WHERE id = ?").get(strayId)
+    && db.prepare("SELECT position FROM series_entries WHERE series_id = ?").get(otherSeriesId).position === 1
+    && Boolean(db.prepare("SELECT id FROM projects WHERE id = ?").get(projectId)));
   domain.transitionProject(projectId, "park", { actor, now });
   check("项目搁置时保留内容和关系", domain.projectStage(projectId).stage === "已搁置");
   domain.transitionProject(projectId, "resume", { actor, now });

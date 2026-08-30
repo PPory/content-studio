@@ -77,26 +77,54 @@ try {
   });
   assert.equal(createdSeries.response.status, 200, JSON.stringify(createdSeries.value));
   const seriesId = createdSeries.value.series.id;
-  const withExistingProject = await call(base, `/api/workspace/series/${seriesId}/projects`, { method: "POST", body: { projectId } });
-  const existingItemId = withExistingProject.value.series.chapters[0].id;
-  const withNewProject = await call(base, `/api/workspace/series/${seriesId}/projects/new`, { method: "POST", body: { platform: "公众号", audience: "测试读者" } });
+  const withExistingProject = await call(base, `/api/workspace/series/${seriesId}/articles`, { method: "POST", body: { projectIds: [projectId] } });
+  const existingItemId = withExistingProject.value.series.entries[0].id;
+  const withNewProject = await call(base, `/api/workspace/series/${seriesId}/articles/new`, { method: "POST", body: { platform: "公众号", audience: "测试读者" } });
   const newProjectId = withNewProject.value.projectId;
-  const newItemId = withNewProject.value.series.chapters.find((item) => item.projectId === newProjectId).id;
-  const invalidOrder = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [existingItemId] } });
+  const newItemId = withNewProject.value.series.entries.find((item) => item.projectId === newProjectId).id;
+  const invalidOrder = await call(base, `/api/workspace/series/${seriesId}/entries/reorder`, { method: "POST", body: { entryIds: [existingItemId] } });
   assert.equal(invalidOrder.response.status, 400);
-  const reordered = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [newItemId, existingItemId] } });
-  assert.equal(reordered.value.series.chapters[0].id, newItemId);
-  const removedFromCollection = await call(base, `/api/workspace/series/${seriesId}/chapters/${newItemId}/remove`, { method: "POST", body: {} });
+  const reordered = await call(base, `/api/workspace/series/${seriesId}/entries/reorder`, { method: "POST", body: { entryIds: [newItemId, existingItemId] } });
+  assert.equal(reordered.value.series.entries[0].id, newItemId);
+  const removedFromCollection = await call(base, `/api/workspace/series/${seriesId}/entries/${newItemId}/remove`, { method: "POST", body: {} });
   const preservedProject = await call(base, `/api/workspace/projects/${newProjectId}`);
-  check("合集支持加入旧文章、直接新建、排序和移出且不删除文章", removedFromCollection.value.series.chapters.length === 1 && removedFromCollection.value.preservedArticle === true && preservedProject.response.status === 200 && preservedProject.value.project.series === null);
-  const addedBack = await call(base, `/api/workspace/series/${seriesId}/projects`, { method: "POST", body: { projectId: newProjectId } });
-  const addedBackItemId = addedBack.value.series.chapters.find((item) => item.projectId === newProjectId).id;
+  check("合集支持加入旧文章、直接新建、排序和移出且不删除文章", removedFromCollection.value.series.entries.length === 1 && removedFromCollection.value.preservedArticle === true && preservedProject.response.status === 200 && preservedProject.value.project.collections.length === 0);
+
+  // ⚠️ 归属是多对多的。这条以前断言的是反面（「已经属于其他合集」被拒），
+  // 而那条全局 UNIQUE 正是「已归属的文章在选择器里静默消失」的根。
+  const secondSeries = await call(base, "/api/workspace/series", { method: "POST", body: { title: "第二个合集" } });
+  await call(base, `/api/workspace/series/${secondSeries.value.series.id}/articles`, { method: "POST", body: { projectIds: [projectId] } });
+  const multiHomed = await call(base, `/api/workspace/projects/${projectId}`);
+  const duplicate = await call(base, `/api/workspace/series/${seriesId}/articles`, { method: "POST", body: { projectIds: [projectId] } });
+  check("一篇文章可同时属于多个合集，重复加入同一合集被明确拒绝",
+    multiHomed.value.project.collections.length === 2
+    && multiHomed.value.project.collections.every((item) => item.previous === null && item.next === null)
+    && duplicate.response.status === 400);
+
+  // 分节 + 通读 + 导出：教程知识库真正要的那三下
+  const sectioned = await call(base, `/api/workspace/series/${seriesId}/sections`, { method: "POST", body: { heading: "入门" } });
+  const readBack = await call(base, `/api/workspace/series/${seriesId}/read`);
+  const exported = await call(base, `/api/workspace/series/${seriesId}/export`, { method: "POST", body: {} });
+  check("合集可分节、按顺序通读并导出成一份 Markdown",
+    sectioned.value.series.entries.some((entry) => entry.kind === "section" && entry.heading === "入门")
+    && readBack.value.read.sections.some((section) => section.kind === "section")
+    && exported.value.markdown.startsWith("# 隔离文章合集")
+    && exported.value.markdown.includes("## 入门"));
+
+  // 文章那一侧改归属：一次写定，不是前端拼多次调用
+  const refiled = await call(base, `/api/workspace/projects/${projectId}/series`, { method: "POST", body: { seriesIds: [seriesId] } });
+  check("从文章一侧改归属会一次写定两边", refiled.value.project.collections.length === 1 && refiled.value.project.collections[0].id === seriesId);
+
+  const addedBack = await call(base, `/api/workspace/series/${seriesId}/articles`, { method: "POST", body: { projectIds: [newProjectId] } });
+  const addedBackItemId = addedBack.value.series.entries.find((item) => item.projectId === newProjectId).id;
   assert(addedBackItemId);
   await call(base, `/api/workspace/projects/${newProjectId}/trash`, { method: "POST", body: {} });
   const seriesWithRecycledArticle = await call(base, `/api/workspace/series/${seriesId}`);
-  const activeProjectWithSeries = await call(base, `/api/workspace/projects/${projectId}`);
-  const recycledChapter = seriesWithRecycledArticle.value.series.chapters.find((chapter) => chapter.id === addedBackItemId);
-  check("合集保留回收文章的归类关系但不再提供打开入口", recycledChapter.stage === "文章在回收站" && recycledChapter.projectId === null && recycledChapter.linkedProjectId === newProjectId && activeProjectWithSeries.value.project.series.next.projectId === null);
+  const recycledEntry = seriesWithRecycledArticle.value.series.entries.find((entry) => entry.id === addedBackItemId);
+  check("合集保留回收文章的归类关系但不再提供打开入口，且不计入篇数",
+    recycledEntry.deleted === true && recycledEntry.stage === "在回收站" && recycledEntry.projectId === null
+    && seriesWithRecycledArticle.value.series.progress.recycled === 1
+    && seriesWithRecycledArticle.value.series.progress.total === 1);
 
   const saved = await call(base, `/api/workspace/drafts/${draftId}/save`, {
     method: "POST",
@@ -256,7 +284,7 @@ try {
   base = await start();
   const reopened = await call(base, `/api/workspace/projects/${projectId}`);
   const reopenedSeries = await call(base, `/api/workspace/series/${seriesId}`);
-  check("关闭重开后项目、合集关系、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && reopened.value.project.series.id === seriesId && reopenedSeries.value.series.chapters.length === 2 && workspace.manifest.workspaceId === workspaceId);
+  check("关闭重开后项目、合集关系、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && reopened.value.project.collections.some((item) => item.id === seriesId) && reopenedSeries.value.series.entries.length === 3 && workspace.manifest.workspaceId === workspaceId);
   const reopenedPlan = await call(base, `/api/plan?date=${today}`);
   const reopenedProfile = await call(base, "/api/writing-profile");
   check("关闭重开后计划、读者偏好和修订历史仍存在", reopenedPlan.value.tasks[0]?.done === true && reopenedProfile.value.profile.audience === "隔离工作区读者" && (await call(base, `/api/revisions?scope=${encodeURIComponent(`${draftId}:published`)}`)).value.items.length === 1);
