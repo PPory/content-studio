@@ -9,6 +9,8 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-ui-local-"));
 const xenhoHome = path.join(tempRoot, "Xenho");
 const shotFile = path.join(tempRoot, "project-workspace.png");
+const seriesShotFile = path.join(os.tmpdir(), "xenho-series-workspace.png");
+const seriesOutlineShotFile = path.join(os.tmpdir(), "xenho-series-outline.png");
 const PORT = 5204;
 const oldHome = process.env.XENHO_HOME;
 const oldProxy = { HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
@@ -83,6 +85,53 @@ try {
     if (message.type() === "error" && !/Failed to load resource/i.test(message.text())) errors.push(message.text());
   });
 
+  await page.goto(`http://127.0.0.1:${PORT}/#/series`);
+  await page.getByRole("button", { name: "新建系列" }).click();
+  const createSeriesDialog = page.getByRole("dialog", { name: "新建系列教程" });
+  await createSeriesDialog.getByLabel("系列名称").fill("从零搭建本地内容工作台");
+  await createSeriesDialog.getByLabel("写给谁").fill("第一次搭建个人内容系统的创作者");
+  await createSeriesDialog.getByLabel("完成后能做到什么").fill("完成一个可以持续写作和复盘的本地工作台");
+  await createSeriesDialog.getByRole("button", { name: "建立系列" }).click();
+  const seriesTitle = page.getByRole("textbox", { name: "系列名称", exact: true });
+  await seriesTitle.waitFor();
+  check("新建系列后进入系列工作区", await seriesTitle.inputValue() === "从零搭建本地内容工作台");
+
+  await page.getByRole("button", { name: "添加章节" }).click();
+  await page.getByLabel("章节标题").fill("第一章：建立唯一内容工作区");
+  await page.getByLabel("章节作用").fill("先确定资料与正文放在哪里");
+  await page.getByRole("button", { name: "加入目录" }).click();
+  await page.getByText("第一章：建立唯一内容工作区", { exact: true }).waitFor();
+  check("系列工作区可先规划章节而不创建文章", await page.getByText("待开始", { exact: true }).isVisible());
+
+  await page.getByRole("button", { name: "开始写" }).click();
+  await page.waitForSelector(".md-editor__cm .cm-content");
+  await page.getByText("第 1/1 篇 · 从零搭建本地内容工作台", { exact: true }).waitFor();
+  check("章节开始写后进入原有单篇编辑器", await page.getByLabel("主稿标题").inputValue() === "第一章：建立唯一内容工作区");
+  await page.locator(".project-back").click();
+  await page.waitForSelector(".series-workspace");
+  await page.locator(".series-chapter__title", { hasText: "第一章：建立唯一内容工作区" }).waitFor();
+
+  await page.getByRole("button", { name: "添加章节" }).click();
+  await page.getByLabel("章节标题").fill("第二章：把旧文章纳入目录");
+  await page.getByRole("button", { name: "加入目录" }).click();
+  const secondChapter = page.locator(".series-chapter").filter({ hasText: "第二章：把旧文章纳入目录" });
+  await secondChapter.getByRole("button", { name: "关联已有文章" }).click();
+  const linkDialog = page.getByRole("dialog", { name: "关联已有文章" });
+  await linkDialog.getByRole("button", { name: /阶段六隔离稿/ }).click();
+  await secondChapter.getByRole("button", { name: "打开文章" }).waitFor();
+  check("已有单篇文章可以纳入系列目录", await secondChapter.innerText().then((text) => text.includes("文章标题：阶段六隔离稿")));
+
+  await secondChapter.getByRole("button", { name: "上移" }).click();
+  await page.getByText("章节顺序已更新", { exact: true }).waitFor();
+  await page.reload();
+  await seriesTitle.waitFor();
+  const chapterTitles = await page.locator(".series-chapter__title strong").allInnerTexts();
+  check("系列目录排序和文章关联刷新后仍然存在", chapterTitles[0] === "第二章：把旧文章纳入目录" && chapterTitles[1] === "第一章：建立唯一内容工作区");
+  if (process.argv.includes("--shots")) {
+    await page.screenshot({ path: seriesShotFile, fullPage: true });
+    await page.locator(".series-outline").screenshot({ path: seriesOutlineShotFile });
+  }
+
   await page.goto(`http://127.0.0.1:${PORT}/#/project/${encodeURIComponent(projectId)}`);
   await page.waitForSelector(".md-editor__cm .cm-content");
   await page.getByText("阶段六隔离稿", { exact: true }).first().waitFor();
@@ -154,7 +203,7 @@ try {
   await page.keyboard.press("Escape");
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
-  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}`);
+  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 系列截图：${seriesShotFile}\n 章节截图：${seriesOutlineShotFile}`);
   console.log("\n阶段 6 本地 UI 验证通过。");
 } finally {
   await browser?.close().catch(() => {});

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { SEED_REACTION_GROUPS, SEED_REACTIONS } from "../domain/values.mjs";
-import { entityPage, listMaterials, listProjects, projectDto } from "../workspace/workspace-view.mjs";
+import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto } from "../workspace/workspace-view.mjs";
 
 const actor = "user";
 const clean = (value) => String(value ?? "").trim();
@@ -77,6 +77,86 @@ function updateEntity(workspace, view, id, fields = {}, markdown) {
 
 export const workspaceRoutes = [
   { method: "GET", path: "/api/workspace/status", handler: guarded(async ({ workspace, res }) => json(res, { ok: true, ready: true, workspaceId: workspace.manifest.workspaceId, counts: { projects: listProjects(workspace).total, materials: listMaterials(workspace).total } })) },
+  { method: "GET", path: "/api/workspace/series", handler: guarded(async ({ workspace, res }) => json(res, { ok: true, ...listSeries(workspace) })) },
+  { method: "POST", path: "/api/workspace/series", handler: guarded(async ({ workspace, req, res }) => {
+    const body = await readJsonBody(req); const stamp = now();
+    const id = workspace.domain.createSeries({
+      title: body.title,
+      descriptionMarkdown: body.description,
+      audience: body.audience,
+      outcome: body.outcome,
+      confirmed: true,
+      actor,
+      now: stamp,
+    });
+    json(res, { ok: true, series: seriesDto(workspace, id) });
+  }) },
+  { method: "GET", path: "/api/workspace/series/:id", handler: guarded(async ({ workspace, res, params }) => {
+    const series = seriesDto(workspace, params.id);
+    if (!series) throw new Error("系列不存在");
+    json(res, { ok: true, series });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/update", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.updateSeries(params.id, {
+      title: body.title,
+      descriptionMarkdown: body.description,
+      audience: body.audience,
+      outcome: body.outcome,
+      actor,
+      now: now(),
+    });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.addSeriesChapter(params.id, { title: body.title, summary: body.summary, actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters/reorder", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.reorderSeriesChapters(params.id, body.chapterIds, { actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/update", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.updateSeriesChapter(params.id, params.chapterId, { title: body.title, summary: body.summary, actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/link", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    workspace.domain.linkSeriesChapter(params.id, params.chapterId, clean(body.projectId), { actor, now: now() });
+    json(res, { ok: true, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/chapters/:chapterId/start", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req); const stamp = now();
+    const chapter = workspace.db.prepare("SELECT title, summary, project_id AS projectId FROM series_chapters WHERE id = ? AND series_id = ?").get(params.chapterId, params.id);
+    if (!chapter) throw new Error("系列章节不存在");
+    if (chapter.projectId) return json(res, { ok: true, created: false, projectId: chapter.projectId, series: seriesDto(workspace, params.id) });
+    const series = seriesDto(workspace, params.id);
+    const projectId = workspace.repository.transaction(() => {
+      const id = workspace.domain.createProject({
+        title: chapter.title,
+        briefMarkdown: chapter.summary,
+        audience: series.audience,
+        primaryPlatform: body.platform || "公众号",
+        confirmed: true,
+        actor,
+        now: stamp,
+      });
+      const draftId = workspace.domain.createDraft({ projectId: id, title: chapter.title, platform: body.platform || "公众号", actor, now: stamp });
+      workspace.domain.setPrimaryDraft(id, draftId, { actor, now: stamp });
+      workspace.domain.linkSeriesChapter(params.id, params.chapterId, id, { actor, now: stamp });
+      return id;
+    });
+    json(res, { ok: true, created: true, projectId, series: seriesDto(workspace, params.id) });
+  }) },
+  { method: "POST", path: "/api/workspace/series/:id/trash", handler: guarded(async ({ workspace, res, params }) => {
+    const series = seriesDto(workspace, params.id);
+    if (!series) throw new Error("系列不存在");
+    workspace.domain.softDeleteEntity(params.id, { actor, now: now() });
+    json(res, { ok: true, deleted: 1, preservedProjects: series.chapters.filter((chapter) => chapter.projectId).length, recoverable: true });
+  }) },
   { method: "GET", path: "/api/workspace/projects", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listProjects(workspace, { stage: url.searchParams.get("stage") || "" }) })) },
   { method: "GET", path: "/api/workspace/projects/:id", handler: guarded(async ({ workspace, res, params }) => { const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); json(res, { ok: true, project }); }) },
   { method: "POST", path: "/api/workspace/projects", handler: guarded(async ({ workspace, req, res }) => {

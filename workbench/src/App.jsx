@@ -12,6 +12,8 @@ import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
 import { Content } from "./pages/Content.jsx";
+import { Series } from "./pages/Series.jsx";
+import { SeriesWorkspace } from "./pages/SeriesWorkspace.jsx";
 import { Ideas } from "./pages/Ideas.jsx";
 import { Seeds } from "./pages/Seeds.jsx";
 import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
@@ -34,7 +36,7 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
-const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "topics", "drafts", "review"]);
+const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "review"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
 // ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
@@ -126,7 +128,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -563,7 +565,7 @@ export function App() {
                       <button
                         key={child.to}
                         className="subnav-item"
-                        aria-current={route.view === child.to || (route.view === "project" && child.to === "content") ? "page" : undefined}
+                        aria-current={route.view === child.to || (["project", "series", "series-detail"].includes(route.view) && child.to === "content") ? "page" : undefined}
                         // ⚠️ **不传第二个参数**。传 `""` 的话 `state === undefined` 不成立，
                         // `go` 里那条「没指定就用适配器的 defaultState」的分支永远走不到——
                         // 于是进选题库看到的是「全部」，而 `sources.js` 写着 `defaultState: "待写"`、
@@ -627,7 +629,7 @@ export function App() {
               const item = groupOf(route.view);
               const Icon = item ? NAV_ICONS[item.key] : null;
               const child = item?.children?.find(
-                (c) => c.to === route.view || (route.view === "project" && c.to === "content")
+                (c) => c.to === route.view || (["project", "series", "series-detail"].includes(route.view) && c.to === "content")
               );
               return (
                 <>
@@ -700,6 +702,10 @@ export function App() {
                   onChanged={refreshStatus}
                   onSettings={() => setSettings(true)}
                 />
+              ) : route.view === "series" ? (
+                <Series onGo={go} onChanged={refreshStatus} />
+              ) : route.view === "series-detail" ? (
+                <SeriesWorkspace seriesId={route.state} onGo={go} onChanged={refreshStatus} />
               ) : route.view === "project" ? (
                 <ProjectWorkspace
                   projectId={route.state}

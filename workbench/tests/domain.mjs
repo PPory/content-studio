@@ -22,7 +22,7 @@ try {
   workspace = await openWorkspace({ xenhoHome: path.join(root, "Xenho"), now });
   const { db, domain, jobs } = workspace;
 
-  check("领域 migration 已创建收集、项目、发布包、AI 和任务表", ["captures", "projects", "release_packages", "action_candidates", "local_jobs"].every((name) => (
+  check("领域 migration 已创建收集、项目、系列、发布包、AI 和任务表", ["captures", "projects", "content_series", "series_chapters", "release_packages", "action_candidates", "local_jobs"].every((name) => (
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
   )));
   check("纯打开工作区不会注册或补跑计划", db.prepare("SELECT COUNT(*) AS count FROM local_schedules").get().count === 0);
@@ -51,6 +51,26 @@ try {
   });
   check("用户确认后才创建项目且同一种子只能建立一个项目", domain.projectStage(projectId).stage === "策划中");
   assert.throws(() => domain.createProject({ title: "重复项目", seedId, confirmed: true, actor, now }), /攒着|UNIQUE/);
+  assert.throws(() => domain.createSeries({ title: "未确认系列", actor, now }), /明确确认/);
+  assert.throws(() => domain.createSeries({ title: "", confirmed: true, actor, now }), /不能为空/);
+  const seriesId = domain.createSeries({
+    title: "从零开始持续写作",
+    descriptionMarkdown: "一套从习惯到发布的系列教程",
+    audience: "想稳定输出的创作者",
+    outcome: "建立一条可以长期执行的写作流程",
+    confirmed: true,
+    actor,
+    now,
+  });
+  const openingChapterId = domain.addSeriesChapter(seriesId, { title: "先建立最小写作习惯", summary: "从每天十分钟开始", actor, now });
+  const publishChapterId = domain.addSeriesChapter(seriesId, { title: "再完成第一次发布", actor, now });
+  assert.throws(() => domain.reorderSeriesChapters(seriesId, [openingChapterId], { actor, now }), /完整包含/);
+  domain.reorderSeriesChapters(seriesId, [publishChapterId, openingChapterId], { actor, now });
+  domain.linkSeriesChapter(seriesId, openingChapterId, projectId, { actor, now });
+  const otherSeriesId = domain.createSeries({ title: "另一个系列", confirmed: true, actor, now });
+  const otherChapterId = domain.addSeriesChapter(otherSeriesId, { title: "不能重复关联", actor, now });
+  assert.throws(() => domain.linkSeriesChapter(otherSeriesId, otherChapterId, projectId, { actor, now }), /已经属于其他系列/);
+  check("系列章节可规划、完整排序并且一篇文章只属于一个系列", db.prepare("SELECT position FROM series_chapters WHERE id = ?").get(publishChapterId).position === 1);
   domain.transitionProject(projectId, "park", { actor, now });
   check("项目搁置时保留内容和关系", domain.projectStage(projectId).stage === "已搁置");
   domain.transitionProject(projectId, "resume", { actor, now });

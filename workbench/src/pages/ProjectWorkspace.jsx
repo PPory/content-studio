@@ -567,6 +567,7 @@ ${(form.body || "").slice(0, 3000)}`);
   }
 
   const mainAction = PRIMARY_ACTION[project.stage];
+  const backTarget = project.series ? { view: "series-detail", state: project.series.id, label: "系列" } : { view: "content", state: "", label: "内容" };
   /**
    * 主操作此刻为什么点不动。空串＝能点。
    * ⚠️ **判据要和 Worker 那道闸门一致**（`draftReadyToFinish`：正文去空白后非空）。
@@ -587,14 +588,19 @@ ${(form.body || "").slice(0, 3000)}`);
         */}
       <header className="project-bar">
         <div className="project-bar__left">
-          <button className="project-back" onClick={() => onGo("content", "")}>
-            <IconArrowLeft aria-hidden="true" />内容
+          <button className="project-back" onClick={() => onGo(backTarget.view, backTarget.state)}>
+            <IconArrowLeft aria-hidden="true" />{backTarget.label}
           </button>
+          {project.series ? <button className="project-series-context" onClick={() => onGo("series-detail", project.series.id)} title={"返回系列“" + project.series.title + "”"}>
+            第 {project.series.position}/{project.series.total} 篇 · {project.series.title}
+          </button> : null}
           {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
           <StatePill state={projectPhase(project.stage)} />
           {project.stageReason ? <span className="project-bar__why">{project.stageReason}</span> : null}
         </div>
         <div className="project-bar__end">
+          {project.series?.previous ? <button className="btn btn-sm" onClick={() => project.series.previous.projectId ? onGo("project", project.series.previous.projectId) : onGo("series-detail", project.series.id)} title={project.series.previous.title}>上一篇</button> : null}
+          {project.series?.next ? <button className="btn btn-sm" onClick={() => project.series.next.projectId ? onGo("project", project.series.next.projectId) : onGo("series-detail", project.series.id)} title={project.series.next.title}>下一篇</button> : null}
           {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
           {dirty ? <span className="project-saved" role="status">{busy ? "保存中…" : "待保存"}</span> : saved ? <span className="project-saved" role="status"><IconCheck aria-hidden="true" />已保存</span> : null}
           {/**

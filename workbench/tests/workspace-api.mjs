@@ -66,6 +66,37 @@ try {
   const initialVersion = created.value.project.masterDraft.version;
   check("本地项目和主稿通过工作区 API 创建", Boolean(projectId && draftId && initialVersion));
 
+  const invalidSeries = await call(base, "/api/workspace/series", { method: "POST", body: { title: "" } });
+  check("系列标题为空时由服务端拒绝", invalidSeries.response.status === 400 && invalidSeries.value.ok === false);
+  const createdSeries = await call(base, "/api/workspace/series", {
+    method: "POST",
+    body: {
+      title: "隔离系列教程",
+      description: "只保存在临时 SQLite 的系列总纲",
+      audience: "测试读者",
+      outcome: "完成两篇相互衔接的文章",
+    },
+  });
+  assert.equal(createdSeries.response.status, 200, JSON.stringify(createdSeries.value));
+  const seriesId = createdSeries.value.series.id;
+  const withFirstChapter = await call(base, `/api/workspace/series/${seriesId}/chapters`, { method: "POST", body: { title: "第一篇：开始", summary: "建立基础" } });
+  const firstChapterId = withFirstChapter.value.series.chapters[0].id;
+  const withSecondChapter = await call(base, `/api/workspace/series/${seriesId}/chapters`, { method: "POST", body: { title: "第二篇：进阶" } });
+  const secondChapterId = withSecondChapter.value.series.chapters[1].id;
+  const invalidOrder = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [firstChapterId] } });
+  assert.equal(invalidOrder.response.status, 400);
+  const reordered = await call(base, `/api/workspace/series/${seriesId}/chapters/reorder`, { method: "POST", body: { chapterIds: [secondChapterId, firstChapterId] } });
+  assert.equal(reordered.value.series.chapters[0].id, secondChapterId);
+  const startedChapter = await call(base, `/api/workspace/series/${seriesId}/chapters/${secondChapterId}/start`, { method: "POST", body: { platform: "公众号" } });
+  assert.equal(startedChapter.response.status, 200, JSON.stringify(startedChapter.value));
+  const linkedChapter = await call(base, `/api/workspace/series/${seriesId}/chapters/${firstChapterId}/link`, { method: "POST", body: { projectId } });
+  check("系列 API 支持规划、排序、开始写作和关联已有文章", linkedChapter.value.series.progress.writing === 2 && linkedChapter.value.series.progress.planned === 0);
+  await call(base, `/api/workspace/projects/${startedChapter.value.projectId}/trash`, { method: "POST", body: {} });
+  const seriesWithRecycledArticle = await call(base, `/api/workspace/series/${seriesId}`);
+  const activeProjectWithSeries = await call(base, `/api/workspace/projects/${projectId}`);
+  const recycledChapter = seriesWithRecycledArticle.value.series.chapters.find((chapter) => chapter.id === secondChapterId);
+  check("系列保留回收文章的章节关系但不再提供打开入口", recycledChapter.stage === "文章在回收站" && recycledChapter.projectId === null && recycledChapter.linkedProjectId === startedChapter.value.projectId && activeProjectWithSeries.value.project.series.previous.projectId === null);
+
   const saved = await call(base, `/api/workspace/drafts/${draftId}/save`, {
     method: "POST",
     body: { title: "隔离测试稿", body: "第二版正文", expectedVersion: initialVersion },
@@ -223,7 +254,8 @@ try {
   workspace = await openWorkspace({ xenhoHome });
   base = await start();
   const reopened = await call(base, `/api/workspace/projects/${projectId}`);
-  check("关闭重开后项目、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && workspace.manifest.workspaceId === workspaceId);
+  const reopenedSeries = await call(base, `/api/workspace/series/${seriesId}`);
+  check("关闭重开后项目、系列关系、正文和工作区身份保持不变", reopened.value.project.masterDraft.body === "第二版正文" && reopened.value.project.series.id === seriesId && reopenedSeries.value.series.chapters.length === 2 && workspace.manifest.workspaceId === workspaceId);
   const reopenedPlan = await call(base, `/api/plan?date=${today}`);
   const reopenedProfile = await call(base, "/api/writing-profile");
   check("关闭重开后计划、读者偏好和修订历史仍存在", reopenedPlan.value.tasks[0]?.done === true && reopenedProfile.value.profile.audience === "隔离工作区读者" && (await call(base, `/api/revisions?scope=${encodeURIComponent(`${draftId}:published`)}`)).value.items.length === 1);

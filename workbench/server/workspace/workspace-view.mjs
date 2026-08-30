@@ -88,6 +88,34 @@ function reviewDto(workspace, publication) {
   };
 }
 
+function seriesContextForProject(workspace, projectId) {
+  const chapter = workspace.db.prepare(`SELECT sc.id AS chapterId, sc.series_id AS seriesId, sc.title AS chapterTitle, sc.position,
+    s.title AS seriesTitle
+    FROM series_chapters sc
+    JOIN content_series s ON s.id = sc.series_id
+    JOIN entities e ON e.id = s.id AND e.deleted_at IS NULL
+    WHERE sc.project_id = ?`).get(projectId);
+  if (!chapter) return null;
+  const siblings = workspace.db.prepare(`SELECT sc.id AS chapterId,
+    CASE WHEN pe.deleted_at IS NULL THEN sc.project_id ELSE NULL END AS projectId,
+    sc.title, sc.position
+    FROM series_chapters sc
+    LEFT JOIN entities pe ON pe.id = sc.project_id
+    WHERE sc.series_id = ? ORDER BY sc.position`)
+    .all(chapter.seriesId);
+  const index = siblings.findIndex((item) => item.chapterId === chapter.chapterId);
+  return {
+    id: chapter.seriesId,
+    title: chapter.seriesTitle,
+    chapterId: chapter.chapterId,
+    chapterTitle: chapter.chapterTitle,
+    position: chapter.position,
+    total: siblings.length,
+    previous: index > 0 ? siblings[index - 1] : null,
+    next: index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null,
+  };
+}
+
 export function projectDto(workspace, projectId) {
   const project = workspace.db.prepare(`SELECT p.*, e.updated_at FROM projects p JOIN entities e ON e.id = p.id AND e.deleted_at IS NULL WHERE p.id = ?`).get(projectId);
   if (!project) return null;
@@ -118,9 +146,62 @@ export function projectDto(workspace, projectId) {
     sources: [],
     publication: { status: latest ? "已发布" : "未发布", latest, records: publicationRecords },
     review: reviewDto(workspace, latestRow),
+    series: seriesContextForProject(workspace, projectId),
     releaseOptions: releaseOptions(),
     updatedAt: project.updated_at,
   };
+}
+
+export function seriesDto(workspace, seriesId) {
+  const series = workspace.db.prepare(`SELECT s.*, e.updated_at FROM content_series s
+    JOIN entities e ON e.id = s.id AND e.deleted_at IS NULL WHERE s.id = ?`).get(seriesId);
+  if (!series) return null;
+  const rows = workspace.db.prepare("SELECT * FROM series_chapters WHERE series_id = ? ORDER BY position").all(seriesId);
+  const chapters = rows.map((row) => {
+    const project = row.project_id ? projectDto(workspace, row.project_id) : null;
+    return {
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      position: row.position,
+      projectId: project?.id || null,
+      linkedProjectId: row.project_id || null,
+      stage: project?.stage || (row.project_id ? "文章在回收站" : "待开始"),
+      publicationStatus: project?.publication?.status || "未发布",
+      projectTitle: project?.title || "",
+      updatedAt: project?.updatedAt || row.updated_at,
+    };
+  });
+  const published = chapters.filter((chapter) => chapter.publicationStatus === "已发布").length;
+  const writing = chapters.filter((chapter) => chapter.projectId && chapter.publicationStatus !== "已发布").length;
+  const planned = chapters.filter((chapter) => !chapter.linkedProjectId).length;
+  const recycled = chapters.filter((chapter) => chapter.linkedProjectId && !chapter.projectId).length;
+  return {
+    id: series.id,
+    title: series.title,
+    description: series.description_markdown,
+    audience: series.audience,
+    outcome: series.outcome,
+    status: series.status,
+    chapters,
+    progress: {
+      total: chapters.length,
+      planned,
+      writing,
+      published,
+      recycled,
+      percent: chapters.length ? Math.round((published / chapters.length) * 100) : 0,
+    },
+    updatedAt: series.updated_at,
+  };
+}
+
+export function listSeries(workspace) {
+  const ids = workspace.db.prepare(`SELECT s.id FROM content_series s
+    JOIN entities e ON e.id = s.id AND e.deleted_at IS NULL
+    ORDER BY e.updated_at DESC, s.id DESC`).all();
+  const series = ids.map((row) => seriesDto(workspace, row.id)).filter(Boolean);
+  return { series, total: series.length, nextCursor: null };
 }
 
 export function listProjects(workspace, { stage = "" } = {}) {

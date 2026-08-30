@@ -30,6 +30,16 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 
 export const api = {
   status: () => req("/api/workspace/status"),
+  seriesList: () => req("/api/workspace/series"),
+  series: (id) => req(`/api/workspace/series/${encodeURIComponent(id)}`),
+  createSeries: (body) => postJson("/api/workspace/series", body),
+  updateSeries: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/update`, body),
+  addSeriesChapter: (id, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters`, body),
+  updateSeriesChapter: (id, chapterId, body) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/update`, body),
+  reorderSeriesChapters: (id, chapterIds) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/reorder`, { chapterIds }),
+  linkSeriesChapter: (id, chapterId, projectId) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/link`, { projectId }),
+  startSeriesChapter: (id, chapterId, platform) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapterId)}/start`, { platform }),
+  removeSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/trash`, {}),
   projects: (stage = "") => req(`/api/workspace/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
   project: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}`),
   transitionProject: (id, action, input = {}) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/transition`, { action, ...input }),
