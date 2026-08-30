@@ -390,7 +390,7 @@ export function MarkdownEditor({
   assistantScope = "", assistantTarget = { kind: "none", editable: false }, inlineAiContext = {},
   onCandidateReviewModeChange,
   onDiscuss,                       // 回答卡的「对话」：把这一问交给右侧 AI 助手继续聊
-  mediaBase = "",                  // 正文里相对图片/视频路径的基准目录（vault 相对路径）
+  mediaBase = "",                  // 导入文档中相对图片/视频路径的兼容基准目录
   readOnly = false,
 }) {
   const host = useRef(null);
@@ -432,7 +432,7 @@ export function MarkdownEditor({
   const revisionAbort = useRef(null);
   const cursorNudgeAbort = useRef(null);
   const imeComposingRef = useRef(false);
-  // 正文里相对媒体路径的基准目录（vault 相对路径）。编辑器不知道 vault 在哪，只转交。
+  // 导入文档里可能仍有相对媒体路径；编辑器只转交兼容基准，不直接读取文件系统。
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState("");
   const mediaBaseRef = useRef(mediaBase);
@@ -1523,31 +1523,44 @@ export function MarkdownEditor({
   };
 
   /**
-   * 插图片 / 视频。**文件落进 vault，正文里只留相对路径。**
+   * 插图片 / 视频。**文件落进本地资产库，正文里只留稳定的 asset URI。**
    *
    * ⚠️ 上传成功之前正文一个字都不写：失败时留下一个指向不存在文件的
    * `![](…)` 比什么都没有更糟——它看着像插成功了。
    */
+  function mediaLabel(file) {
+    const fallback = file?.type?.startsWith("video/") ? "视频" : "图片";
+    return String(file?.name || fallback)
+      .replace(/\.[^.]+$/, "")
+      .replace(/[\[\]\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120) || fallback;
+  }
+
   async function insertMediaFile(file) {
     const v = view.current;
     if (!v || !file) return;
-    const at = v.state.selection.main.head;
+    const kind = file.type?.startsWith("video/") ? "视频" : "图片";
     setMediaError("");
-    setMediaBusy(true);
+    setMediaBusy(kind);
     try {
       const result = await api.uploadMedia(file);
       const rel = mediaBaseRef.current && result.path.startsWith(`${mediaBaseRef.current}/`)
         ? result.path.slice(mediaBaseRef.current.length + 1)
         : result.path;
+      // 上传期间仍可移动光标或继续写字，完成后以此刻的光标为准，避免旧下标把图片插错段。
+      const at = v.state.selection.main.head;
       const line = v.state.doc.lineAt(at);
       const lead = line.text.trim() ? "\n\n" : "";
-      // 路径进正文前必须编码：vault 目录名带空格（`07 - 附件`），裸写出来不是合法 Markdown
-      const markdown = `${lead}![${file.name.replace(/\.[^.]+$/, "")}](${encodeMarkdownPath(rel)})`;
+      const tail = line.to < v.state.doc.length ? "\n" : "\n\n";
+      // 路径进正文前必须编码；文件名也要去掉会截断 Markdown alt 的方括号与换行。
+      const markdown = `${lead}![${mediaLabel(file)}](${encodeMarkdownPath(rel)})${tail}`;
       const insertAt = line.text.trim() ? line.to : line.from;
       v.dispatch({ changes: { from: insertAt, insert: markdown }, selection: { anchor: insertAt + markdown.length } });
       v.focus();
     } catch (error) {
-      setMediaError(error.message || "没能插入这个文件");
+      setMediaError(error.message || `没能插入这个${kind}`);
     } finally {
       setMediaBusy(false);
     }
@@ -1625,7 +1638,7 @@ export function MarkdownEditor({
         */}
       {mediaBusy || mediaError ? (
         <div className={`md-editor__media${mediaError ? " is-bad" : ""}`} aria-live="polite">
-          {mediaBusy ? <><IconLoader2 className="spin" aria-hidden="true" />正在把文件放进知识库…</> : <>{mediaError}<button type="button" onClick={() => setMediaError("")}>知道了</button></>}
+          {mediaBusy ? <><IconLoader2 className="spin" aria-hidden="true" />正在插入{mediaBusy}…</> : <>{mediaError}<button type="button" onClick={() => setMediaError("")}>知道了</button></>}
         </div>
       ) : null}
       {/**

@@ -145,7 +145,7 @@ export const api = {
   uploadMedia: (file) =>
     req(`/api/workspace/assets/images?name=${encodeURIComponent(file.name || "image.bin")}`, {
       method: "POST",
-      headers: { "content-type": "application/octet-stream" },
+      headers: { "content-type": file.type || "application/octet-stream" },
       body: file,
     }),
 

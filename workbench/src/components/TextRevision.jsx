@@ -92,7 +92,7 @@ export const BLOCK_ITEMS = [
   { id: "divider", label: "分隔线", icon: IconSeparator, hint: "---" },
 ];
 
-/** 媒体组。选中后弹文件选择器，文件落进 vault，正文里只留相对路径。 */
+/** 媒体组。选中后弹文件选择器，文件落进本地资产库，正文里只留稳定资源引用。 */
 export const MEDIA_ITEMS = [
   { id: "image", label: "图片", icon: IconPhoto, note: "png / jpg / gif / webp，也可以直接粘贴或拖进来" },
   { id: "video", label: "视频", icon: IconVideo, note: "mp4 / webm / mov" },

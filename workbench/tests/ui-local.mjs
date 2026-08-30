@@ -93,13 +93,38 @@ try {
   await page.keyboard.press("Control+End");
   await page.keyboard.type("\n\n刷新后仍然存在的修改。");
   await page.waitForTimeout(1800);
-  const saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
+  let saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
   check("编辑器自动保存写入隔离 SQLite", saved.project.masterDraft.body.includes("刷新后仍然存在的修改"));
+
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("\n\n/");
+  await page.getByRole("listbox", { name: "可插入的区块" }).waitFor();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("option", { name: "图片" }).click();
+  await (await chooser).setFiles({
+    name: "正文] 配图.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  });
+  await page.getByText("正在插入图片…").waitFor({ state: "hidden" });
+  const inlineImage = page.locator(".cm-lp-media img").last();
+  await inlineImage.waitFor();
+  check("插入图片后正文就地显示预览", await inlineImage.evaluate((image) => image.complete && image.naturalWidth > 0));
+  await page.waitForTimeout(1800);
+  saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
+  const assetId = saved.project.masterDraft.body.match(/!\[正文 配图\]\(asset:\/\/([^\s)]+)\)/)?.[1];
+  check("正文只保存稳定的图片资源引用", Boolean(assetId));
+  const imageResponse = await fetch(`http://127.0.0.1:${PORT}/api/workspace/assets/${encodeURIComponent(assetId)}`);
+  check("图片读取端点返回真实图片类型", imageResponse.headers.get("content-type") === "image/png");
 
   if (process.argv.includes("--shots")) await page.screenshot({ path: shotFile, fullPage: true });
   await page.reload();
   await page.waitForSelector(".md-editor__cm .cm-content");
   check("刷新后从 SQLite 重新读到正文", await page.locator(".cm-content").innerText().then((text) => text.includes("刷新后仍然存在的修改")));
+  const restoredImage = page.locator(".cm-lp-media img").last();
+  await restoredImage.waitFor();
+  check("刷新后仍能读取并显示正文图片", await restoredImage.evaluate((image) => image.complete && image.naturalWidth > 0));
 
   await page.locator('button[title^="设置："]').click();
   await page.getByRole("dialog", { name: "设置" }).waitFor();
