@@ -7,6 +7,7 @@ import { IconFileText, IconLayoutGrid, IconLayoutKanban, IconPlus, IconRefresh }
 import { ProjectCard } from "../components/ProjectCard.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { ProjectBoard } from "./content/ProjectBoard.jsx";
+import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import "./series.css";
 
 export function Content({ workerReady, onGo, onChanged, onSettings }) {
@@ -19,6 +20,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [layout, setLayout] = useState("list");
   const [moving, setMoving] = useState(false);
   const [moveError, setMoveError] = useState(null);
+  /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
+  const [filing, setFiling] = useState(null);
 
   const load = useCallback(() => {
     if (!workerReady) return;
@@ -200,13 +203,25 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               busy={moving}
             />
           ) : shown.length ? (
-            <ProjectTable projects={shown} onOpen={open} onRemove={remove} removing={removing} />
+            <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} removing={removing} />
           ) : (
             <Empty icon={IconFileText}>这一阶段目前没有内容。</Empty>
           )}
         </>
       ) : null}
 
+      <SeriesPicker
+        open={Boolean(filing)}
+        mode="series"
+        project={filing}
+        onClose={() => setFiling(null)}
+        onDone={(result) => {
+          // 服务端回的那份整个换掉，不在前端拼一份「应该长这样」
+          if (result?.project) setResult((cur) => cur && { ...cur, projects: cur.projects.map((p) => (p.id === result.project.id ? result.project : p)) });
+          setToast({ text: result?.project?.collections?.length ? `已放进 ${result.project.collections.length} 个合集` : "已移出全部合集" });
+          onChanged?.();
+        }}
+      />
       <Toast text={toast?.text} onClose={() => setToast(null)} />
     </>
   );

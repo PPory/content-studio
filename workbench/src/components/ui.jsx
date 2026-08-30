@@ -109,7 +109,7 @@ export function StatCard({ icon: Icon, label, value, unit, delta, deltaTone = ""
  * `busy` 是给「点完要等一下才跳走」的入口用的（建项目那条）：不给的话
  * 用户会以为没点上，然后再点一次——那就是两个项目。
  */
-export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end", busy = false, className = "btn btn-primary" }) {
+export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end", busy = false, className = "btn btn-primary", mark = "+" }) {
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(-1);
   const ref = useRef(null);
@@ -179,8 +179,10 @@ export function MenuButton({ label, icon: Icon, items, ariaLabel, align = "end",
                 </span>
                 {/* 右端那个 `+`：**它不区分任何东西**（四行都一样），
                     作用是给每一行一个「这会新建一个东西」的一致记号和右锚点。
-                    它是装饰，所以 `aria-hidden`——读屏念的是标题和说明。 */}
-                <i className="menu-btn__plus" aria-hidden="true">+</i>
+                    它是装饰，所以 `aria-hidden`——读屏念的是标题和说明。
+                    ⚠️ **不是新建菜单就传 `mark={null}` 关掉它**：在一张
+                    「打开 / 上移 / 移出合集」的菜单上，每行挂个 `+` 是在说谎。 */}
+                {mark ? <i className="menu-btn__plus" aria-hidden="true">{mark}</i> : null}
               </button>
               </Fragment>
             );

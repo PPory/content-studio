@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { StatePill, relTime } from "../../components/ui.jsx";
-import { IconAlertTriangle, IconChevronRight, IconLoader2, IconTrash } from "../../components/icons.jsx";
+import { IconAlertTriangle, IconChevronRight, IconFolder, IconLoader2, IconTrash } from "../../components/icons.jsx";
 
 /**
  * 一行 = 一个项目。
@@ -18,7 +18,7 @@ import { IconAlertTriangle, IconChevronRight, IconLoader2, IconTrash } from "../
  * **状态 → 标题 → 平台 → 素材 → 下一步 → 多久没动**。
  * 状态在最左边，因为一列同色的 pill 竖着排下来，哪一档堆了多少一眼就看出来了。
  */
-export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
+export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = "" }) {
   // 正在等第二下确认的那一行。**一次只有一行**：留着多行确认态，
   // 你会分不清刚才点的是哪一行
   const [confirming, setConfirming] = useState("");
@@ -38,6 +38,7 @@ export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
           <span role="columnheader">下一步</span>
           <span role="columnheader">更新</span>
         </div>
+        {onFile ? <span aria-hidden="true" /> : null}
         {onRemove ? <span aria-hidden="true" /> : null}
       </div>
 
@@ -64,6 +65,17 @@ export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
                   {blockers[0]}
                 </em>
               ) : null}
+              {/**
+                * 所属合集**压在标题下面，不另开一列**（和 blocker 同一处理）：
+                * 给它一列的话，还没归类的行那一格是空的——一整列的空白只为少数行服务。
+                * 有它才能一眼看出哪些文章还散着。
+                */}
+              {(p.collections || []).length ? (
+                <em className="ptable__series">
+                  <IconFolder size={12} stroke={1.8} aria-hidden="true" />
+                  {p.collections.map((item) => item.title).join(" · ")}
+                </em>
+              ) : null}
             </span>
 
             {/* 平台取简报里那个**主平台**，不是变体清单——一行表格要的是「发去哪儿」 */}
@@ -79,6 +91,23 @@ export function ProjectTable({ projects, onOpen, onRemove, removing = "" }) {
               <IconChevronRight size={14} stroke={1.8} aria-hidden="true" />
             </span>
           </button>
+
+          {/**
+            * 归类。和删除一样是行的兄弟节点（行本身是 `<button>`）。
+            * ⚠️ **这是「合集不方便」的主要修复**：上一版要归类一篇文章，得先进合集、
+            * 点「添加已有文章」、再搜标题。现在在你看得到这篇文章的地方就能归。
+            */}
+          {onFile ? (
+            <button
+              className="ptable__file"
+              onClick={() => onFile(p)}
+              aria-label={`把「${title}」放进合集`}
+              title={p.collections?.length ? `已在 ${p.collections.length} 个合集里，点这里改` : "放进合集"}
+              data-on={p.collections?.length ? "" : undefined}
+            >
+              <IconFolder size={14} stroke={1.7} aria-hidden="true" />
+            </button>
+          ) : null}
 
           {/**
             * ⚠️ **删除是行的兄弟节点，不在行里面**——行本身是个 `<button>`，

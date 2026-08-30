@@ -43,9 +43,10 @@ export function SeriesDialog({ open, onClose, onCreated }) {
           <div><span className="eyebrow">COLLECTION</span><h2>新建合集</h2></div>
           <button type="button" className="icon-btn" onClick={onClose} disabled={busy} aria-label="关闭"><IconX aria-hidden="true" /></button>
         </header>
-        <p className="series-create__intro">像建一个文件夹一样，把同一主题、栏目或项目下的文章放在一起。</p>
+        <p className="series-create__intro">把同一系列的文章收在一起。写教程或知识库时，合集就是那本书的目录——能排序、能分节、能通读，也能整份导出。</p>
         <div className="series-create__fields">
-          <label className="field"><span>合集名称</span><input data-autofocus="" value={form.title} onChange={(event) => change("title", event.target.value)} maxLength="120" placeholder="例如：本地内容工作台" /></label>
+          <label className="field"><span>合集名称</span><input data-autofocus="" value={form.title} onChange={(event) => change("title", event.target.value)} maxLength="120" placeholder="例如：Claude Code 入门教程" /></label>
+          {/* 说明这里就可选，进去之后随时能补——建一个文件夹不该先写一段介绍 */}
           <label className="field"><span>合集说明（可选）</span><textarea value={form.description} onChange={(event) => change("description", event.target.value)} maxLength="2000" placeholder="这个合集收录什么内容" /></label>
         </div>
         <ErrorNote error={error} what="创建合集" />

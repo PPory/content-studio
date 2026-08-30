@@ -9,6 +9,7 @@ import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
+import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
 import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
@@ -221,6 +222,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
   const [pendingLeave, setPendingLeave] = useState(null);
   const [leaving, setLeaving] = useState(false);
+  const [pickingSeries, setPickingSeries] = useState(false);
   const cursor = useRef(null);
   const selection = useRef(null);
   const selectedDraftRef = useRef("");
@@ -567,7 +569,17 @@ ${(form.body || "").slice(0, 3000)}`);
   }
 
   const mainAction = PRIMARY_ACTION[project.stage];
-  const backTarget = project.series ? { view: "series-detail", state: project.series.id, label: "合集" } : { view: "content", state: "", label: "内容" };
+  /**
+   * 这篇文章属于哪些合集。**是个数组**——一篇可以同时进多个。
+   *
+   * ⚠️ 「上一篇 / 下一篇」**只在恰好属于一个合集时才有**（服务端就是这么给的）：
+   * 属于两个合集时「上一篇」指哪一条没有答案，给一个就是在猜。
+   */
+  const collections = project.collections || [];
+  const solo = collections.length === 1 ? collections[0] : null;
+  const backTarget = collections[0]
+    ? { view: "series-detail", state: collections[0].id, label: "合集" }
+    : { view: "content", state: "", label: "内容" };
   /**
    * 主操作此刻为什么点不动。空串＝能点。
    * ⚠️ **判据要和 Worker 那道闸门一致**（`draftReadyToFinish`：正文去空白后非空）。
@@ -591,16 +603,34 @@ ${(form.body || "").slice(0, 3000)}`);
           <button className="project-back" onClick={() => onGo(backTarget.view, backTarget.state)}>
             <IconArrowLeft aria-hidden="true" />{backTarget.label}
           </button>
-          {project.series ? <button className="project-series-context" onClick={() => onGo("series-detail", project.series.id)} title={"返回合集“" + project.series.title + "”"}>
-            第 {project.series.position}/{project.series.total} 篇 · {project.series.title}
-          </button> : null}
+          {/**
+            * ⚠️ **归属在这里能改，不只是能看。** 上一版这行是一句只读文字，
+            * 于是「把这篇放进另一个合集」的唯一路径是退出去、进那个合集、再搜一遍标题。
+            * 现在每个合集是一颗可点的 chip（点了回目录），末尾那颗「＋」开归类选择器。
+            */}
+          <span className="project-collections">
+            {collections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="project-collection"
+                onClick={() => onGo("series-detail", item.id)}
+                title={`回到合集「${item.title}」`}
+              >
+                {solo ? `第 ${item.position}/${item.total} 篇 · ` : ""}{item.title}
+              </button>
+            ))}
+            <button type="button" className="project-collection is-add" onClick={() => setPickingSeries(true)} title="把这篇放进合集">
+              <IconPlus size={13} stroke={2} aria-hidden="true" />{collections.length ? "" : "加入合集"}
+            </button>
+          </span>
           {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
           <StatePill state={projectPhase(project.stage)} />
           {project.stageReason ? <span className="project-bar__why">{project.stageReason}</span> : null}
         </div>
         <div className="project-bar__end">
-          {project.series?.previous ? <button className="btn btn-sm" onClick={() => project.series.previous.projectId ? onGo("project", project.series.previous.projectId) : onGo("series-detail", project.series.id)} title={project.series.previous.title}>上一篇</button> : null}
-          {project.series?.next ? <button className="btn btn-sm" onClick={() => project.series.next.projectId ? onGo("project", project.series.next.projectId) : onGo("series-detail", project.series.id)} title={project.series.next.title}>下一篇</button> : null}
+          {solo?.previous ? <button className="btn btn-sm" onClick={() => onGo("project", solo.previous.projectId)} title={solo.previous.title}>上一篇</button> : null}
+          {solo?.next ? <button className="btn btn-sm" onClick={() => onGo("project", solo.next.projectId)} title={solo.next.title}>下一篇</button> : null}
           {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
           {dirty ? <span className="project-saved" role="status">{busy ? "保存中…" : "待保存"}</span> : saved ? <span className="project-saved" role="status"><IconCheck aria-hidden="true" />已保存</span> : null}
           {/**
@@ -827,6 +857,14 @@ ${(form.body || "").slice(0, 3000)}`);
           </section>
         </div>
       ) : null}
+
+      <SeriesPicker
+        open={pickingSeries}
+        mode="series"
+        project={project}
+        onClose={() => setPickingSeries(false)}
+        onDone={(result) => { if (result?.project) setProject(result.project); onChanged?.(); }}
+      />
     </div>
   );
 }
