@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { IconAt, IconFileText, IconLoader2, IconPaperclip, IconPlus, IconSparkles, IconUserStar } from "../icons.jsx";
+import { IconAt, IconFileText, IconLoader2, IconPaperclip, IconPlus, IconShieldCheck, IconSparkles, IconUserStar } from "../icons.jsx";
 
 /**
  * 输入框左下角那颗 `+`：**这一栏唯一的「往这轮对话里加东西」入口。**
@@ -21,7 +21,9 @@ const ROOT_ITEMS = [
   { level: "skills", icon: IconSparkles, label: "Skill" },
 ];
 
-const KIND_ICONS = { article: IconFileText, expert: IconUserStar, skill: IconSparkles };
+// `expert-run` 用盾——项目右栏那颗「检查中 / 报告就绪」状态芯片就是这个记号，
+// 点下去会出现的东西和列表里看到的图标对得上。
+const KIND_ICONS = { article: IconFileText, expert: IconUserStar, skill: IconSparkles, "expert-run": IconShieldCheck };
 
 const LEVEL_PLACEHOLDER = { articles: "搜索文章…", experts: "搜索专家…", skills: "搜索 Skill…", mention: "搜索…" };
 

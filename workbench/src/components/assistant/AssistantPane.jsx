@@ -30,14 +30,26 @@ const EXPERTS = [
 const PROJECT_EXPERTS = new Set(["writing-coach", ...EXPERT_KINDS.map((item) => item.expertId)]);
 
 /**
- * 三个「跑一次出报告」的专家：`@` 菜单里选中它们不是插一段提及，而是**直接起任务**。
+ * 「跑一次检查，出一份报告」——和「选一个专家」**不是同一件事，所以不共用同一行**。
  *
- * ⚠️ 这是「项目检查」搬家之后的唯一入口。原来它是上下文面板里的一组常驻按钮——
- * 那块面板要回答的是「这一轮 AI 读到什么」，而检查是「去做一件新的事」，
- * 两件事塞在一个抽屉里，结果最低频的动作占了最显眼的半屏。
- * 现在它和其他专家共用 `@`：想让谁看，就 `@` 谁。
+ * ⚠️ **这条来回过三版，第三版的教训写在这儿。**
+ *  1. 它曾经是上下文面板里一排常驻按钮：那块面板回答的是「这一轮 AI 读到什么」，
+ *     而检查是「去做一件新的事」，结果一年跑不了几回的动作占着最显眼的半屏。
+ *  2. 于是并进专家列表，靠一行小灰字「跑一次出报告」区分。
+ *     **在 336px 的侧栏里那行字会被 `ellipsis` 截掉**，而它是整行唯一说明后果的地方——
+ *     用户点「审稿顾问」以为是加个视角，屏幕上直接跳出「检查中 34%」。
+ *  3. 现在：**单独一组，组名就是后果**。上面那组选中 = 这轮带上它的视角，
+ *     下面这组选中 = 现在就跑。两种后果两组标题，不靠读小字、不靠记。
+ *
+ * 名字用 `displayName`（素材查缺 / Xenho 品控九问 / 事实核查）而不是专家名：
+ * 这一组列的是**要做的事**，不是要找的人。
  */
-const EXPERT_RUN_KIND = new Map(EXPERT_KINDS.map((item) => [item.expertId, item.id]));
+const EXPERT_RUNS = EXPERT_KINDS.map((item) => ({
+  id: item.id,
+  label: item.displayName,
+  // 事实核查那一条的任务名和专家名一模一样，「事实核查 · 由事实核查执行」是句废话。
+  hint: item.displayName === item.expertName ? "跑完出一份可逐条处理的报告" : `由${item.expertName}执行`,
+}));
 
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
 
@@ -491,13 +503,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     finally { setUploading(false); }
   };
 
+  // 专家一律只是引用：选中 = 这一轮带上它的指令，和文章、Skill 完全一致。
+  // 起任务的那三个在下面 `EXPERT_RUNS` 里单独成组，见那儿的注释。
   const experts = (expertPresets.length ? expertPresets : EXPERTS)
-    .filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id))
-    // 会起任务的那几个要在菜单里说清楚「点下去会发生什么」——
-    // 同一个菜单里一半是引用一半是跑任务，不写出来的话只能靠点一次才知道。
-    // ⚠️ **写在最前面。** 上一版缀在职责说明后面，而这一行在 336px 的侧栏里会被
-    // `text-overflow: ellipsis` 截掉——被截掉的恰好是唯一一句「点下去会发生什么」。
-    .map((item) => onExpertRun && EXPERT_RUN_KIND.has(item.id) ? { ...item, hint: `跑一次出报告${item.hint ? ` · ${item.hint}` : ""}` } : item);
+    .filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id));
   const modelItems = model && !models.some((item) => item.id === model) ? [{ id: model, name: model, remembered: true }, ...models] : models;
   const filteredMenuItems = modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.remembered ? "最近使用" : "", provider: item.ownedBy || "" })).slice(0, 80);
 
@@ -523,6 +532,9 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const groups = [];
     if (addLevel === "articles" || addLevel === "mention") groups.push({ key: "articles", label: "文章", items: pick("article", articles || []) });
     if (addLevel === "experts" || addLevel === "mention") groups.push({ key: "experts", label: "专家", items: pick("expert", experts) });
+    // ⚠️ **只在专家二级里出现，`@` 里不出现。** `@` 的语义是「提及」——
+    // 一个打字打到一半的人不该因为多打了一个字就起一个后台任务。
+    if (addLevel === "experts" && onExpertRun) groups.push({ key: "expert-runs", label: "跑一次检查，出报告", items: EXPERT_RUNS.map((item) => ({ ...item, kind: "expert-run" })).filter(match) });
     if (addLevel === "skills") groups.push({ key: "skills", label: "Skill", items: pick("skill", skills) });
     return groups.filter((group) => group.items.length);
   })();
@@ -563,11 +575,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
   function chooseAddItem(item) {
     if (!item) return;
-    // 三个检查类专家点下去是**直接起任务**，不是加一条引用——菜单里已经写了「跑一次并出报告」。
-    const kind = item.kind === "expert" && onExpertRun ? EXPERT_RUN_KIND.get(item.id) : "";
     dropCommandText();
     closeAdd();
-    if (kind) { onExpertRun(kind); requestAnimationFrame(() => inputRef.current?.focus()); return; }
+    // 「跑一次检查」是这个菜单里唯一有后果的一项，所以它自己单独一组、组名写着后果。
+    if (item.kind === "expert-run" && onExpertRun) { onExpertRun(item.id); requestAnimationFrame(() => inputRef.current?.focus()); return; }
     setReferences((current) => current.some((entry) => entry.kind === item.kind && entry.id === item.id)
       ? current
       : [...current, { kind: item.kind, id: item.id, title: item.label, hint: item.hint || "" }]);

@@ -994,7 +994,11 @@
      而 `100vw - 32px` 是给窄窗口的兜底——**不要写 `min(…, 100%)`**，
      `100%` 在这里量的是那颗 28px 的圆按钮。 */
   width: min(280px, calc(100vw - var(--sp-10)));
-  max-height: min(320px, 46vh); overflow-y: auto; overscroll-behavior: contain;
+  /* ⚠️ **480 不是随手写的：专家那一级有两组共七行 + 两个组名 + 搜索框 ≈ 460px。**
+     上一版 320 把第二组「跑一次检查，出报告」压到可视区外——而那一组正是
+     这个菜单里唯一有后果的东西，看不见等于没有。文章那一级仍然会滚，那没关系：
+     长列表本来就该滚，而它每一行的后果都一样。 */
+  max-height: min(480px, 62vh); overflow-y: auto; overscroll-behavior: contain;
   padding: var(--sp-2);
   border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); box-shadow: var(--shadow-lg);
