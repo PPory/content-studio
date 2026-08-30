@@ -66,7 +66,7 @@ try {
     body: JSON.stringify({
       kind: "draft",
       title: "阶段六隔离稿",
-      body: "# 阶段六隔离稿\n\n这是临时工作区里的初稿。",
+      body: "# 阶段六隔离稿\n\n这是临时工作区里的初稿。\n\n## 后续章节\n\n这段内容在图片后面。",
       viewpoint: "本地优先必须能离线持续写作",
       audience: "个人内容创作者",
       platform: "公众号",
@@ -87,6 +87,8 @@ try {
   await page.waitForSelector(".md-editor__cm .cm-content");
   await page.getByText("阶段六隔离稿", { exact: true }).first().waitFor();
   check("项目页渲染 SQLite 中的初稿", await page.locator(".cm-content").innerText().then((text) => text.includes("这是临时工作区里的初稿")));
+  await page.locator(".cm-line").first().click();
+  check("选中标题行仍只显示排版结果", await page.locator(".cm-line").first().innerText().then((text) => !text.includes("#")));
 
   const editor = page.locator(".cm-content");
   await editor.click();
@@ -96,9 +98,11 @@ try {
   let saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
   check("编辑器自动保存写入隔离 SQLite", saved.project.masterDraft.body.includes("刷新后仍然存在的修改"));
 
-  await editor.click();
-  await page.keyboard.press("Control+End");
-  await page.keyboard.type("\n\n/");
+  const lines = page.locator(".cm-line");
+  const secondHeadingIndex = (await lines.allInnerTexts()).findIndex((text) => text.includes("后续章节"));
+  check("找到两段正文之间的插图位置", secondHeadingIndex > 0);
+  await lines.nth(secondHeadingIndex - 1).click();
+  await page.keyboard.type("/");
   await page.getByRole("listbox", { name: "可插入的区块" }).waitFor();
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("option", { name: "图片" }).click();
@@ -112,16 +116,26 @@ try {
   await inlineImage.waitFor();
   check("插入图片后正文就地显示预览", await inlineImage.evaluate((image) => image.complete && image.naturalWidth > 0));
   await page.keyboard.press("Backspace");
-  await page.keyboard.press("Backspace");
   await inlineImage.waitFor();
   check("删除图片后的空行且光标停在图片行时仍保持预览", await page.locator(".cm-content").innerText().then((text) => !text.includes("asset://")));
   await page.waitForTimeout(1800);
   saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
   const assetId = saved.project.masterDraft.body.match(/!\[正文 配图\]\(asset:\/\/([^\s)]+)\)/)?.[1];
   check("正文只保存稳定的图片资源引用", Boolean(assetId));
-  check("删除图片后的空行不会删除图片", saved.project.masterDraft.body.endsWith(`asset://${assetId})`));
+  check("删除图片后的空行不会删除图片", saved.project.masterDraft.body.includes(`asset://${assetId})\n## 后续章节`));
   const imageResponse = await fetch(`http://127.0.0.1:${PORT}/api/workspace/assets/${encodeURIComponent(assetId)}`);
   check("图片读取端点返回真实图片类型", imageResponse.headers.get("content-type") === "image/png");
+
+  // 模拟旧交互已经误删最后一个右括号的正文，只验证容错显示，不由界面静默修正文。
+  const malformedBody = saved.project.masterDraft.body.replace(`asset://${assetId})`, `asset://${assetId}`);
+  await request(`/api/workspace/drafts/${encodeURIComponent(saved.project.masterDraft.id)}/save`, {
+    method: "POST",
+    body: JSON.stringify({
+      title: saved.project.masterDraft.title,
+      body: malformedBody,
+      expectedVersion: saved.project.masterDraft.version,
+    }),
+  });
 
   if (process.argv.includes("--shots")) await page.screenshot({ path: shotFile, fullPage: true });
   await page.reload();
@@ -129,7 +143,9 @@ try {
   check("刷新后从 SQLite 重新读到正文", await page.locator(".cm-content").innerText().then((text) => text.includes("刷新后仍然存在的修改")));
   const restoredImage = page.locator(".cm-lp-media img").last();
   await restoredImage.waitFor();
-  check("刷新后仍能读取并显示正文图片", await restoredImage.evaluate((image) => image.complete && image.naturalWidth > 0));
+  check("缺少右括号的历史图片引用仍能显示", await restoredImage.evaluate((image) => image.complete && image.naturalWidth > 0));
+  const unchanged = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
+  check("容错显示不会静默改写正文", unchanged.project.masterDraft.body.includes(`asset://${assetId}\n## 后续章节`));
 
   await page.locator('button[title^="设置："]').click();
   await page.getByRole("dialog", { name: "设置" }).waitFor();

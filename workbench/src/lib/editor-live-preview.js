@@ -1,31 +1,20 @@
 /**
- * 实时预览：**光标不在的行隐掉记号，光标落上去再显回来。**
+ * 实时预览：**Markdown 记号始终隐去，正文始终保持排版后的样子。**
  *
- * 这是 Obsidian Live Preview 的做法，也是这个编辑器一直缺的那一块——
+ * 这是“所见即源码”编辑器一直缺的那一块——
  * 上一版靠一颗「预览」按钮在「能改但难看」和「好看但不能改」之间切，
  * 而**一个「看排版后的样子」的开关，等于承认平时看的不是那个样子**。
  *
  * ⚠️ **文档本身一个字节都没变。** 隐藏是 `Decoration.replace`（把 `#`、`**` 那几个字符
  * 换成零宽），渲染是 widget。存回去的仍然是原字节的 Markdown——`[[双链]]`、脚注、
- * `> [!note]` 这些 Obsidian 专有语法不会被任何一次「保存」重写。这条是这个编辑器
+ * `> [!note]` 这类扩展语法不会被任何一次「保存」重写。这条是这个编辑器
  * 选 CodeMirror 而不是富文本内核的全部理由，实时预览不能把它换掉。
  *
- * 规则只有一条：**光标（或选区）碰到的那一行，原样显示。** 不然你没法改那些记号。
+ * 光标和选区只编辑内容，不再让当前行突然切回源码。格式变化由菜单和快捷键完成。
  */
 import { RangeSetBuilder } from "@codemirror/state";
-import { Decoration, ViewPlugin, WidgetType } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType } from "@codemirror/view";
 import { decodeMarkdownPath } from "./markdown-path.js";
-
-/** 这一行有没有被光标或选区碰到。碰到就原样显示，否则隐记号。 */
-function touchedLines(state) {
-  const lines = new Set();
-  for (const range of state.selection.ranges) {
-    const from = state.doc.lineAt(range.from).number;
-    const to = state.doc.lineAt(range.to).number;
-    for (let n = from; n <= to; n += 1) lines.add(n);
-  }
-  return lines;
-}
 
 /** 图片。`src` 由外面给的 `resolveUrl` 解析——相对路径怎么变成可取的地址不是这一层的事。 */
 class ImageWidget extends WidgetType {
@@ -83,11 +72,13 @@ export function mediaKind(url) {
  * 整行就是一张图（`![alt](src)` 独占一行）时，才换成 widget。
  *
  * ⚠️ **目标里可以有空格。** 上一版写的是 `[^)\s]+`，于是
- * `![](99 - 个人工作台/07 - 附件/x.jpg)` 这种 vault 路径**一条都匹配不上**，
+ * `![](导入目录/附件/x.jpg)` 这种带空格的相对路径**一条都匹配不上**，
  * 现象是正文里只显示那行链接文字。整行必须以 `)` 收尾，所以贪婪匹配到最后一个 `)` 是安全的。
  * `<...>` 是 CommonMark 给「目标里有空格」的正式写法，一并认。
  */
 const IMAGE_LINE = /^!\[([^\]]*)\]\(\s*(.+?)\s*\)\s*$/;
+const INCOMPLETE_ASSET_IMAGE_LINE = /^!\[([^\]]*)\]\(\s*(asset:\/\/[^\s)]+)\s*$/;
+const imageLineOf = (text) => text.match(IMAGE_LINE) || text.match(INCOMPLETE_ASSET_IMAGE_LINE);
 
 /**
  * 行内记号：`**粗**`、`*斜*`、`~~删~~`、`` `码` ``。
@@ -105,7 +96,7 @@ const INLINE_MARKS = [
 
 function buildDecorations(view, resolveUrl) {
   const builder = [];
-  const active = touchedLines(view.state);
+  const atomic = [];
   for (const { from, to } of view.visibleRanges) {
     let pos = from;
     while (pos <= to) {
@@ -117,21 +108,20 @@ function buildDecorations(view, resolveUrl) {
       /**
        * 图片行始终保持预览。
        *
-       * 普通 Markdown 记号在光标进入时显露，方便直接编辑；图片的 asset URI 不是正文内容，
-       * 光标上移或删掉图片后的空行时把整张图换成源码，只会让人误以为图片被删除。
-       * 替换装饰仍保留图片行前后的光标位置，因此键盘选择和删除整行不受影响。
+       * 对缺少最后一个右括号的历史 asset 引用只做容错显示，不改写正文；完整或容错图片行
+       * 都作为一个原子范围，光标和退格不会钻进 URI 里只删掉半截。
        */
-      const image = text.match(IMAGE_LINE);
+      const image = imageLineOf(text);
       if (image) {
         const url = resolveUrl(decodeMarkdownPath(image[2]));
-        builder.push(Decoration.replace({
+        const range = Decoration.replace({
           widget: new ImageWidget({ url, alt: image[1], raw: text }),
           block: false,
-        }).range(line.from, line.to));
+        }).range(line.from, line.to);
+        builder.push(range);
+        atomic.push(range);
         continue;
       }
-
-      if (active.has(line.number)) continue;
 
       /**
        * 分隔线。`/` 菜单里的「分隔线」插的就是 `---`——**我们自己产出的记号，
@@ -142,7 +132,7 @@ function buildDecorations(view, resolveUrl) {
         continue;
       }
 
-      // 标题：隐掉 `#` 和它后面那个空格，字号由既有的语法高亮负责
+      // 标题：始终隐掉 `#` 和它后面那个空格，选中标题时也只看到标题本身
       const heading = text.match(/^(#{1,6})\s/);
       if (heading) builder.push(Decoration.replace({}).range(line.from, line.from + heading[0].length));
 
@@ -179,7 +169,9 @@ function buildDecorations(view, resolveUrl) {
   builder.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
   const set = new RangeSetBuilder();
   for (const range of builder) set.add(range.from, range.to, range.value);
-  return set.finish();
+  const atomicSet = new RangeSetBuilder();
+  for (const range of atomic) atomicSet.add(range.from, range.to, range.value);
+  return { decorations: set.finish(), atomic: atomicSet.finish() };
 }
 
 class RuleWidget extends WidgetType {
@@ -213,20 +205,27 @@ class BulletWidget extends WidgetType {
 
 /**
  * `resolveUrl(src)` 把正文里的相对路径变成能取的地址。
- * 编辑器不知道 vault 在哪、也不该知道——这一层只管画。
+ * 编辑器不知道导入源或资产库在哪、也不该知道——这一层只管画。
  */
 export function livePreview({ resolveUrl = (src) => src } = {}) {
-  return ViewPlugin.fromClass(class {
+  const plugin = ViewPlugin.fromClass(class {
     constructor(view) {
-      this.decorations = buildDecorations(view, resolveUrl);
+      const built = buildDecorations(view, resolveUrl);
+      this.decorations = built.decorations;
+      this.atomic = built.atomic;
     }
     update(update) {
-      // 选区一动就要重算：光标进出某一行决定那一行显不显记号
-      if (update.docChanged || update.selectionSet || update.viewportChanged) {
-        this.decorations = buildDecorations(update.view, resolveUrl);
+      if (update.docChanged || update.viewportChanged) {
+        const built = buildDecorations(update.view, resolveUrl);
+        this.decorations = built.decorations;
+        this.atomic = built.atomic;
       }
     }
   }, {
-    decorations: (plugin) => plugin.decorations,
+    decorations: (value) => value.decorations,
   });
+  return [
+    plugin,
+    EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic || Decoration.none),
+  ];
 }
