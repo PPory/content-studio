@@ -111,10 +111,16 @@ function buildDecorations(view, resolveUrl) {
     while (pos <= to) {
       const line = view.state.doc.lineAt(pos);
       pos = line.to + 1;
-      if (active.has(line.number)) continue;
       const text = line.text;
       if (!text) continue;
 
+      /**
+       * 图片行始终保持预览。
+       *
+       * 普通 Markdown 记号在光标进入时显露，方便直接编辑；图片的 asset URI 不是正文内容，
+       * 光标上移或删掉图片后的空行时把整张图换成源码，只会让人误以为图片被删除。
+       * 替换装饰仍保留图片行前后的光标位置，因此键盘选择和删除整行不受影响。
+       */
       const image = text.match(IMAGE_LINE);
       if (image) {
         const url = resolveUrl(decodeMarkdownPath(image[2]));
@@ -124,6 +130,8 @@ function buildDecorations(view, resolveUrl) {
         }).range(line.from, line.to));
         continue;
       }
+
+      if (active.has(line.number)) continue;
 
       /**
        * 分隔线。`/` 菜单里的「分隔线」插的就是 `---`——**我们自己产出的记号，

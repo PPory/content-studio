@@ -111,10 +111,15 @@ try {
   const inlineImage = page.locator(".cm-lp-media img").last();
   await inlineImage.waitFor();
   check("插入图片后正文就地显示预览", await inlineImage.evaluate((image) => image.complete && image.naturalWidth > 0));
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await inlineImage.waitFor();
+  check("删除图片后的空行且光标停在图片行时仍保持预览", await page.locator(".cm-content").innerText().then((text) => !text.includes("asset://")));
   await page.waitForTimeout(1800);
   saved = await request(`/api/workspace/projects/${encodeURIComponent(projectId)}`);
   const assetId = saved.project.masterDraft.body.match(/!\[正文 配图\]\(asset:\/\/([^\s)]+)\)/)?.[1];
   check("正文只保存稳定的图片资源引用", Boolean(assetId));
+  check("删除图片后的空行不会删除图片", saved.project.masterDraft.body.endsWith(`asset://${assetId})`));
   const imageResponse = await fetch(`http://127.0.0.1:${PORT}/api/workspace/assets/${encodeURIComponent(assetId)}`);
   check("图片读取端点返回真实图片类型", imageResponse.headers.get("content-type") === "image/png");
 
