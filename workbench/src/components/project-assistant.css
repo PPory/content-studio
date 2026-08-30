@@ -681,6 +681,7 @@
    **凡是在 JSX 里给控件包一层定位父级，都要回头查一遍 `>` 选择器。** */
 .assistant-composer > footer > div > button,
 .assistant-composer__access,
+.assistant-composer__attach,
 .assistant-composer__model {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   height: 26px; padding: 0 var(--sp-5);
@@ -693,10 +694,16 @@
 .assistant-composer > footer > div > button[aria-expanded="true"],
 .assistant-composer__access:hover,
 .assistant-composer__access[aria-expanded="true"],
+.assistant-composer__attach:hover,
+.assistant-composer__attach[aria-expanded="true"],
 .assistant-composer__model:hover { border-color: var(--border-strong); color: var(--text-1); }
 .assistant-composer > footer > div > button > span,
 .assistant-composer__access > span { font-weight: 400; }
-.assistant-composer > footer > div .assistant-composer__attach {
+/* ⚠️ **`+` 现在包在 `.assistant-add` 里，不再是 `footer > div` 的直接子节点。**
+   上面那条基底规则已经把 `.assistant-composer__attach` 列进去了——
+   只靠 `> button` 的话它会静默失效，一颗圆 pill 变成直角方块。
+   这个坑在本文件里是第三次了（权限按钮、模型菜单分组）。 */
+.assistant-composer__attach {
   width: 28px; padding: 0; justify-content: center; border-radius: 50%;
 }
 .assistant-composer__attach svg { width: 15px; height: 15px; }
@@ -965,6 +972,96 @@
 .assistant-command-menu small { overflow: hidden; color: var(--text-3); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 .assistant-command-menu__empty { margin: 0; padding: var(--sp-7); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
 .assistant-command-menu__notice { margin: 0 var(--sp-3) var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+
+/* --------------------------------------------------------------------------
+   `+` 菜单：这一栏唯一的「往这轮对话里加东西」入口
+   -------------------------------------------------------------------------- */
+/**
+ * ⚠️ **定位父级是 `.assistant-add`，也就是触发器自己那层。**
+ *
+ * 这条在这个文件里已经写了三遍（模型菜单来回过三版、权限菜单一版），每次的症状不同
+ * 但根因是同一个：**浮层必须看得出是从哪个控件长出来的**。
+ * 挂在 `> footer` 上 → 铺满整行、底边离按钮一百多像素；
+ * 挂在 `.assistant-composer` 上 → `bottom: 100%` 贴的是输入器顶边，中间空一大片。
+ */
+.assistant-add { position: relative; flex: none; display: flex; }
+.assistant-add__spin { animation: assistant-add-spin 0.9s linear infinite; }
+@keyframes assistant-add-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .assistant-add__spin { animation: none; } }
+.assistant-add-menu {
+  position: absolute; z-index: 9; left: 0; bottom: calc(100% + var(--sp-3));
+  /* 280px 是内容宽度：一行文章标题在 348px 侧栏里也读得完，
+     而 `100vw - 32px` 是给窄窗口的兜底——**不要写 `min(…, 100%)`**，
+     `100%` 在这里量的是那颗 28px 的圆按钮。 */
+  width: min(280px, calc(100vw - var(--sp-10)));
+  max-height: min(320px, 46vh); overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--sp-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.assistant-add-menu__search {
+  display: block; width: 100%; height: 30px; margin-bottom: var(--sp-2);
+  border: 1px solid var(--border); border-radius: var(--r-ctl);
+  padding: 0 var(--sp-4); background: var(--surface-2); color: var(--text-1);
+  font: inherit; font-size: var(--fs-sm); outline: 0;
+}
+.assistant-add-menu__search:focus { border-color: var(--border-strong); background: var(--surface); }
+.assistant-add-menu__group + .assistant-add-menu__group { margin-top: var(--sp-2); }
+.assistant-add-menu__group h4 {
+  margin: 0; padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  color: var(--text-3); font-size: var(--fs-2xs); font-weight: 500;
+}
+/* ⚠️ **两个层级都要写。** 一级那四行是菜单的直接子节点，二级的落在
+   `.assistant-add-menu__group` 里——只留 `> button` 的话二级**静默失效**：
+   按钮丢掉 grid 和宽度，一行行叠在一起，而 CSS 不报任何错。
+   模型菜单分组时踩过同一个坑，这是第三次了。 */
+.assistant-add-menu > button,
+.assistant-add-menu__group > button {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: var(--sp-5);
+  width: 100%; min-height: 32px; border: 0; border-radius: var(--r-sm);
+  padding: var(--sp-3) var(--sp-4);
+  background: transparent; color: var(--text-1); font: inherit; font-size: var(--fs-sm);
+  text-align: left; cursor: pointer;
+}
+.assistant-add-menu > button:hover,
+.assistant-add-menu > button[aria-current="true"],
+.assistant-add-menu__group > button:hover,
+.assistant-add-menu__group > button[aria-current="true"] { background: var(--surface-2); }
+.assistant-add-menu svg { width: 16px; height: 16px; color: var(--text-3); }
+.assistant-add-menu > button > span,
+.assistant-add-menu__group > button > span { display: grid; gap: 1px; min-width: 0; }
+.assistant-add-menu b { overflow: hidden; font-size: var(--fs-sm); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-add-menu small { overflow: hidden; color: var(--text-3); font-size: var(--fs-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.assistant-add-menu__empty { margin: 0; padding: var(--sp-6); color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
+
+/* 引用芯片：这一轮带上了哪几篇文章 / 哪个专家 / 哪个 Skill。
+   和附件那行同一套形状——它们回答的是同一个问题（这句话除了文字还带了什么）。 */
+.assistant-references {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-4) var(--sp-5) 0;
+}
+.assistant-references > span {
+  display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 240px;
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs);
+}
+.assistant-references > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-references svg { width: 13px; height: 13px; flex: none; }
+.assistant-references button {
+  display: grid; place-items: center; width: 16px; height: 16px; flex: none;
+  border: 0; border-radius: var(--r-sm); padding: 0;
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.assistant-references button:hover { background: var(--border); color: var(--text-1); }
+.assistant-references button svg { width: 11px; height: 11px; }
+/* 发出去之后仍然看得见。跟着用户气泡靠右，用和气泡同一档的深色。 */
+.assistant-message__references { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); max-width: min(420px, 70vw); }
+.assistant-message__references > span {
+  display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 260px;
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-sm);
+  background: var(--accent); color: var(--on-accent); font-size: var(--fs-xs);
+}
+.assistant-message__references > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-message__references svg { width: 13px; height: 13px; flex: none; }
 
 /* 权限是输入器唯一的能力入口；详细资源留在浮层，不占常驻空间。 */
 .assistant-composer__access { max-width: 160px; }

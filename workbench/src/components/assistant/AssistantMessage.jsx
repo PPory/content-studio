@@ -1,7 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { RunningMark } from "./loaders.jsx";
-import { IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconWand } from "../icons.jsx";
+import { IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
+
+const REFERENCE_ICONS = { expert: IconUserStar, skill: IconSparkles };
 
 /**
  * 复制按钮：**点完必须看得见它成功了。**
@@ -28,6 +30,9 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
   const assistant = item.role === "assistant";
   const stale = assistant && item.documentVersion && currentVersion && item.documentVersion !== currentVersion;
   const sentAttachments = assistant ? [] : attachments.filter((attachment) => item.attachmentIds?.includes(attachment.id));
+  // ⚠️ **发出去之后仍然看得见这一句带了什么。** 引用是「这条消息读到了什么」的唯一凭证；
+  // 输入框那行芯片发送即清空，如果这里不留，回头就再也说不清那次回答的依据是哪一篇。
+  const sentReferences = assistant ? [] : (item.references || []);
   if (assistant && !item.text && item.pending) return null;
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
@@ -47,7 +52,7 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
       * 生成中那条 `__live` **一直可见**——它是状态，不是回执。
       */}
     {assistant && working ? <small><span className="assistant-message__live"><RunningMark />{activity || "正在生成回答"}</span></small> : null}
-    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user">{sentAttachments.length ? <div className="assistant-message__attachments">{sentAttachments.map((attachment) => <span key={attachment.id}>{attachment.kind === "image" ? (attachment.previewUrl ? <img src={attachment.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{attachment.name}</span></span>)}</div> : null}{item.text ? <p>{item.text}</p> : null}{item.text ? <footer className="assistant-message__user-actions"><button type="button" data-copied={userCopied ? "true" : undefined} onClick={() => copyUser(item.text)} title={userCopied ? "已复制" : "复制消息"} aria-label={userCopied ? "已复制" : "复制消息"}>{userCopied ? <IconCheck aria-hidden="true" /> : <IconCopy aria-hidden="true" />}</button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer> : null}</div>}
+    {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user">{sentReferences.length ? <div className="assistant-message__references">{sentReferences.map((reference) => { const Icon = REFERENCE_ICONS[reference.kind] || IconFileText; return <span key={`${reference.kind}:${reference.id}`}><Icon aria-hidden="true" /><span>{reference.title}</span></span>; })}</div> : null}{sentAttachments.length ? <div className="assistant-message__attachments">{sentAttachments.map((attachment) => <span key={attachment.id}>{attachment.kind === "image" ? (attachment.previewUrl ? <img src={attachment.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{attachment.name}</span></span>)}</div> : null}{item.text ? <p>{item.text}</p> : null}{item.text ? <footer className="assistant-message__user-actions"><button type="button" data-copied={userCopied ? "true" : undefined} onClick={() => copyUser(item.text)} title={userCopied ? "已复制" : "复制消息"} aria-label={userCopied ? "已复制" : "复制消息"}>{userCopied ? <IconCheck aria-hidden="true" /> : <IconCopy aria-hidden="true" />}</button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer> : null}</div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {/**
       * 动作条**只有图标**。

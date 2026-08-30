@@ -9,10 +9,12 @@ import { PI_RUNTIME_VERSION, piImageContent, piRuntimeInfo, probePiRuntime } fro
 import {
   assistantConversations,
   assistantExperts,
+  assistantReferencePrompt,
   assistantSkills,
   configureAssistantWorkspace,
   createAssistantConversation,
   manageAssistantConversation,
+  resolveAssistantReferences,
 } from "../server/agent-runtime/assistant-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
@@ -60,6 +62,33 @@ try {
   const projectId = workspace.domain.createProject({ title: "隔离 Pi 项目", confirmed: true, actor: "user", now: new Date() });
   const draftId = workspace.domain.createDraft({ projectId, title: "隔离 Pi 项目", bodyMarkdown: "本地正文", platform: "公众号", actor: "user", now: new Date() });
   workspace.domain.setPrimaryDraft(projectId, draftId, { actor: "user", now: new Date() });
+
+  /**
+   * 输入框 `+` 菜单选中的文章 / 专家 / Skill 走结构化 `references` 字段，
+   * 服务端必须**真读出正文**再进 prompt——上一版专家靠正则从消息里抠 `@名字`，
+   * Skill 那半截 `/skill-id` 根本没人读，用户选了等于什么都没发生。
+   */
+  const references = await resolveAssistantReferences(workspace, [
+    { kind: "article", id: projectId, title: "用户看到的标题" },
+    { kind: "expert", id: "writing-coach", title: "写作教练" },
+    { kind: "skill", id: "material-gap", title: "material-gap" },
+    { kind: "article", id: "01NOTAREALPROJECTID0000000", title: "已经删掉的文章" },
+    { kind: "skill", id: "../../../etc/passwd", title: "越界" },
+  ]);
+  const byKind = (kind) => references.filter((item) => item.kind === kind);
+  assert.equal(byKind("article")[0].body, "本地正文", "引用的文章必须带上 SQLite 里的真实正文");
+  assert.equal(byKind("article")[0].title, "隔离 Pi 项目", "标题以库里的为准，不采信前端传来的那份");
+  assert(byKind("expert")[0].body.includes("写作教练"), "引用的专家必须带上完整指令");
+  assert(byKind("skill").find((item) => item.id === "material-gap")?.body.includes("material-gap"), "引用的 Skill 必须真读到 SKILL.md");
+  assert.equal(byKind("article")[1].missing, true, "找不到的引用必须标成失效，不能静默丢掉");
+  assert.equal(byKind("skill").find((item) => item.id === "../../../etc/passwd")?.missing, true, "Skill id 必须挡住路径穿越");
+  const referenceText = assistantReferencePrompt({ references });
+  assert.match(referenceText, /【本轮引用的文章：隔离 Pi 项目/);
+  assert.match(referenceText, /本地正文/);
+  assert.match(referenceText, /【本轮调用专家：写作教练】/);
+  assert.match(referenceText, /【本轮指定 Skill：material-gap】/);
+  assert.match(referenceText, /【引用已失效】/);
+  assert.equal(assistantReferencePrompt({ references: [] }), "", "没有引用时不往 prompt 里塞空段");
 
   await assert.rejects(() => resolveProjectPath("../outside.txt", { write: true }), /路径越界/);
   await assert.rejects(() => resolveProjectPath("node_modules/blocked.txt", { write: true }), /依赖目录/);

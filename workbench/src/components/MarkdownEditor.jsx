@@ -251,19 +251,13 @@ function setHeading(view, level) {
   view.focus();
 }
 
-function insertBlock(view, text) {
-  const line = view.state.doc.lineAt(view.state.selection.main.from);
-  view.dispatch({ changes: { from: line.to, insert: `\n\n${text}` }, selection: { anchor: line.to + 2 + text.length } });
-  view.focus();
-}
-
 /**
  * 插入一个可以继续编辑的完整内容块。
  *
  * 空行直接占用当前位置；有正文时另起一段。末尾始终留出一个空段，避免表格、代码等
  * 原子块把光标困在文末。`caretOffset` 让标注和代码插入后直接落在真正要输入的位置。
  */
-function insertStructuredBlock(view, text, { caretOffset = text.length, focusSelector = "" } = {}) {
+function insertStructuredBlock(view, text, { caretOffset = text.length, focusSelector = "", caretAfter = false } = {}) {
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const hasText = Boolean(line.text.trim());
   const at = hasText ? line.to : line.from;
@@ -272,7 +266,7 @@ function insertStructuredBlock(view, text, { caretOffset = text.length, focusSel
   const insert = `${lead}${text}${tail}`;
   view.dispatch({
     changes: { from: at, insert },
-    selection: { anchor: at + lead.length + caretOffset },
+    selection: { anchor: at + (caretAfter ? insert.length : lead.length + caretOffset) },
   });
   view.focus();
   if (focusSelector) requestAnimationFrame(() => view.dom.querySelector(focusSelector)?.focus());
@@ -323,11 +317,11 @@ function applyBlockItem(view, id, eat) {
   if (id === "table") {
     return insertStructuredBlock(
       view,
-      "| 列 1 | 列 2 |\n| --- | --- |\n|  |  |",
+      "| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
       { focusSelector: ".cm-lp-table input" },
     );
   }
-  if (id === "divider") return insertBlock(view, "---");
+  if (id === "divider") return insertStructuredBlock(view, "---", { caretAfter: true });
   if (id === "code") {
     // 围栏中间空一行并把光标放进去——插完就能直接开始写，不用自己再敲一次回车
     return insertStructuredBlock(view, "```\n\n```", { caretOffset: 4 });

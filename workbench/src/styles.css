@@ -2899,7 +2899,9 @@ kbd {
    差的不是空间，是当初分别调的。 */
 .rail > .assistant-pane { flex: 1 1 auto; height: auto; min-height: 0; --asst-gutter: var(--sp-5); --asst-turn-gap: var(--sp-6); }
 .rail .assistant-composer textarea { min-height: 44px; max-height: 132px; padding: var(--sp-4) var(--sp-5) 0; }
-.rail .assistant-command-menu:not(.assistant-command-menu--models) { left: 0; right: 0; bottom: calc(100% + var(--sp-2)); max-height: min(320px, 46vh); border-radius: var(--r-md); }
+/* ⚠️ **`.rail` 是 348px 且 `overflow: hidden`。** `+` 那颗浮层从左边缘长出来、
+   宽 280px，加上 `.assistant-composer` 自己的 gutter 仍然在栏内——不要在这里
+   再补一条宽度覆盖，那正是模型菜单当年被切掉半截时打的补丁。 */
 .rail .assistant-composer > footer { gap: var(--sp-2); padding-inline: var(--sp-3); }
 .rail .assistant-composer > footer > div { gap: var(--sp-2); }
 .rail .assistant-composer > footer > .assistant-composer__left { flex: 1 1 auto; }

@@ -67,6 +67,12 @@ export {
   IconQuote,
   IconSearch,
   IconArrowLeft,
+  // 输入框那颗 `+` 展开的菜单：附件 / 提及文章 / 专家 / Skill 各一枚。
+  // 回形针和 @ 是这两件事在所有编辑器里的通用记号，不要换成「更有设计感」的替代品——
+  // 这一列存在的意义是不用读字也认得出。
+  IconPaperclip,
+  IconAt,
+  IconUserStar,
   IconX,
   IconAlertTriangle,
   IconCheck,

@@ -1,10 +1,11 @@
 import {
-  IconCheck, IconChevronDown, IconCornerDownLeft, IconFileText, IconPlayerStopFilled, IconPlus, IconShieldCheck, IconX,
+  IconCheck, IconChevronDown, IconCornerDownLeft, IconFileText, IconPlayerStopFilled, IconShieldCheck, IconSparkles, IconUserStar, IconX,
   IconModelAnthropic, IconModelDeepseek, IconModelGeneric, IconModelGoogle, IconModelMeta,
   IconModelMinimax, IconModelMistral, IconModelMoonshot, IconModelOpenai, IconModelQwen,
   IconModelXai, IconModelZhipu,
 } from "../icons.jsx";
 import { groupModelsByBrand, modelBrand } from "../../lib/model-brands.js";
+import { ComposerAddMenu } from "./ComposerAddMenu.jsx";
 
 /** 厂商 key → 标志。判据（谁是哪家）在 model-brands.js，这里只负责画。 */
 const BRAND_ICONS = {
@@ -41,9 +42,15 @@ export function AssistantComposer({
   permissionMode,
   modePending,
   menu,
-  menuQuery,
   filteredMenuItems,
   menuIndex,
+  references,
+  addLevel,
+  addSource,
+  addQuery,
+  addIndex,
+  addGroups,
+  addLoading,
   modelPending,
   fileRef,
   uploading,
@@ -56,9 +63,14 @@ export function AssistantComposer({
   onInputChange,
   onInputKeyDown,
   onChoosePermissionMode,
-  onCloseMenu,
   onMenuIndex,
   onChooseMenuItem,
+  onAddLevel,
+  onAddQuery,
+  onAddIndex,
+  onChooseAddItem,
+  onCloseAdd,
+  onRemoveReference,
   onUploadFile,
   onTogglePermission,
   onToggleModel,
@@ -88,13 +100,31 @@ export function AssistantComposer({
       * 只有一处，不重复：header 那边已经撤掉了。
       */}
     {context ? <div className="assistant-composer__context">{context}</div> : null}
+    {/**
+      * 引用芯片：**这一轮带上了哪几篇文章 / 哪个专家 / 哪个 Skill。**
+      *
+      * ⚠️ **不往 textarea 里插字。** 上一版选中专家是插一段 `@专家名 `、选中 Skill 是插
+      * `/skill-id `，服务端再拿正则从正文里把它抠回来。那既让用户的一句话里混进了
+      * 一段不是说给人看的记号（删半个字就失效，而屏幕上看不出坏了），也正好撞在
+      * AGENTS.md 边界 6 上：系统信息用结构化字段存，正文不承担流程状态。
+      *
+      * 芯片带 ✕：**加得进去就要拿得出来。** 一个只能加不能减的引用，
+      * 用户唯一的撤销手段是清空重来。
+      */}
+    {references.length ? <div className="assistant-references">{references.map((item) => {
+      const Icon = item.kind === "expert" ? IconUserStar : item.kind === "skill" ? IconSparkles : IconFileText;
+      return <span key={`${item.kind}:${item.id}`}>
+        <Icon aria-hidden="true" />
+        <span>{item.title}</span>
+        <button type="button" onClick={() => onRemoveReference(item)} title={`移除引用 ${item.title}`} aria-label={`移除引用 ${item.title}`}><IconX aria-hidden="true" /></button>
+      </span>;
+    })}</div> : null}
     {pendingAttachments.length && !busy ? <div className="assistant-attachments">{pendingAttachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
     {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={onDismissUploadError} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
     <textarea ref={inputRef} data-autofocus={overlay ? "true" : undefined} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
-    {menu && menu !== "models" ? <div className="assistant-command-menu" role="menu">
-      <header><span>{menu === "experts" ? "选择专家" : "选择 Skill"}{menuQuery ? <em>“{menuQuery}”</em> : null}</span><button type="button" onClick={onCloseMenu}><IconX aria-hidden="true" /></button></header>
-      {filteredMenuItems.length ? filteredMenuItems.map((item, index) => <button type="button" role="menuitem" aria-current={index === menuIndex ? "true" : undefined} key={item.id} onMouseEnter={() => onMenuIndex(index)} onClick={() => onChooseMenuItem(item)}><span className="assistant-command-menu__mark">{menu === "experts" ? "@" : "/"}</span><span><b>{item.label}</b><small>{item.hint}</small></span></button>) : <p className="assistant-command-menu__empty">没有匹配项</p>}
-    </div> : null}
+    {/* ⚠️ **`.assistant-command-menu` 现在只服务模型选择器。** 专家和 Skill 那块
+        铺满输入器宽度、顶上写着「选择 Skill ✕」的横幅已经撤了：在 348px 的侧栏里
+        它糊住整个输入区，看着不像菜单像报错条。它们搬进了 `+` 自己那颗浮层。 */}
     <footer>
       {/**
         * ⚠️ **模型贴着发送键，权限留在左边。这两个不是同一类东西，别再按「都是设置」归成一组。**
@@ -108,7 +138,13 @@ export function AssistantComposer({
         * Codex 桌面端也是这个分法（左：附件 + 功能入口，右：模型 + 语音 + 发送）。
         */}
       <div className="assistant-composer__left">
-        <><input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={onUploadFile} /><button type="button" className="assistant-composer__attach" title={uploading ? "正在读取附件" : "添加图片或文件"} aria-label={uploading ? "正在读取附件" : "添加图片或文件"} onClick={() => fileRef.current?.click()} disabled={uploading}><IconPlus aria-hidden="true" /></button></>
+        <input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.md,.markdown,.txt,.csv,.json,.xml,.html,.htm,.yaml,.yml,.js,.jsx,.ts,.tsx,.css" onChange={onUploadFile} />
+        <ComposerAddMenu
+          level={addLevel} source={addSource} query={addQuery} index={addIndex}
+          groups={addGroups} loading={addLoading} uploading={uploading} disabled={busy}
+          onLevel={onAddLevel} onQuery={onAddQuery} onIndex={onAddIndex}
+          onChoose={onChooseAddItem} onClose={onCloseAdd} onAttach={() => fileRef.current?.click()}
+        />
         {/* ⚠️ **菜单挂在按钮自己的定位父级里，不挂在整个输入器上。**
             上一版它是 textarea 的兄弟节点、`bottom` 相对整个 `.assistant-composer` 算——
             于是菜单底边贴的是**输入器顶部**，而触发它的按钮在输入器**左下角**，

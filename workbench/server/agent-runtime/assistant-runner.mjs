@@ -7,6 +7,7 @@ import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { parsePdf } from "../lib/books.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
+import { projectDto } from "../workspace/workspace-view.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
 import { agentMountsFromUserMessage, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath } from "./permission-modes.mjs";
@@ -338,7 +339,8 @@ export async function assistantModelCatalog(env) {
   void assistantModels(env, ids, { refresh: true }).catch(() => {});
   return { ...initial, items: initial.items || [] };
 }
-export async function assistantSkills() {
+/** `.agents/skills` 的绝对路径。从 cwd 往上找 `.git` 定位仓库根。 */
+async function skillsRoot() {
   let projectRoot = process.cwd();
   while (true) {
     try {
@@ -350,25 +352,45 @@ export async function assistantSkills() {
       projectRoot = parent;
     }
   }
-  const roots = [path.join(projectRoot, ".agents", "skills")];
+  return { projectRoot, root: path.join(projectRoot, ".agents", "skills") };
+}
+
+export async function assistantSkills() {
+  const { projectRoot, root } = await skillsRoot();
   const items = [];
   const seen = new Set();
-  for (const root of roots) {
-    let entries = [];
-    try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { continue; }
-    for (const entry of entries.filter((item) => item.isDirectory())) {
-      try {
-        const source = await fs.readFile(path.join(root, entry.name, "SKILL.md"), "utf8");
-        const header = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
-        const name = clean(header?.[1].match(/^name:\s*(.+)$/m)?.[1], 100) || entry.name;
-        if (seen.has(name)) continue;
-        seen.add(name);
-        const description = clean(header?.[1].match(/^description:\s*(.+)$/m)?.[1], 500);
-        items.push({ id: name, name, description, source: path.relative(projectRoot, root).replaceAll("\\", "/") });
-      } catch {}
-    }
+  let entries = [];
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return { items: [] }; }
+  for (const entry of entries.filter((item) => item.isDirectory())) {
+    try {
+      const source = await fs.readFile(path.join(root, entry.name, "SKILL.md"), "utf8");
+      const header = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+      const name = clean(header?.[1].match(/^name:\s*(.+)$/m)?.[1], 100) || entry.name;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const description = clean(header?.[1].match(/^description:\s*(.+)$/m)?.[1], 500);
+      // ⚠️ **`id` 是目录名，不是 frontmatter 里的 `name`。** 引用一个 Skill 之后
+      // 服务端要靠这个 id 回头读 `.agents/skills/<id>/SKILL.md`——用显示名的话
+      // 但凡两者不一致（很常见）就读不到，而前端看着一切正常。
+      items.push({ id: entry.name, name, description, source: path.relative(projectRoot, root).replaceAll("\\", "/") });
+    } catch {}
   }
   return { items: items.sort((a, b) => a.name.localeCompare(b.name, "zh-CN")) };
+}
+
+/**
+ * 读一个被引用的 Skill 的 SKILL.md。
+ *
+ * `id` 来自 `assistantSkills()`，但**仍然要当成不可信输入校验**：它经过前端和 HTTP
+ * 走了一圈，构造一个 `../../` 就能读到仓库外的文件。只允许单段的安全目录名。
+ */
+async function readSkillSource(id) {
+  const name = clean(id, 120);
+  if (!name || name !== path.basename(name) || name.startsWith(".")) return null;
+  const { root } = await skillsRoot();
+  const file = path.join(root, name, "SKILL.md");
+  if (path.relative(root, file).startsWith("..")) return null;
+  try { return await fs.readFile(file, "utf8"); } catch { return null; }
 }
 
 export function assistantExperts() {
@@ -428,7 +450,56 @@ async function matchingBookSources(_env, input, queries) {
     const chapters = workspace.db.prepare("SELECT COUNT(*) AS count FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=?").get(book.id).count;
     return { id:`book:${book.id}`,type:"book",typeLabel:"书架",title:book.title,source:[book.author,book.reading_status].filter(Boolean).join(" · ")||"书架",state:book.reading_status,snippet:`共 ${chapters||1} 章；${counts.notes||0} 条批注，${counts.highlights||0} 条高亮`,path:`book:${book.id}` };
   });
-}async function localContext(env, input, record) {
+}/**
+ * 用户在输入框里点名带上的东西：文章 / 专家 / Skill。
+ *
+ * ⚠️ **这是结构化字段，不是从正文里抠出来的。** 上一版专家靠 `expertForMessage()`
+ * 拿正则从消息里找 `@xxx`，Skill 那半截 `/skill-id` 则根本没人读——用户选了个技能，
+ * 除了正文里多一段记号之外什么都没发生。AGENTS.md 边界 6 就是说这件事：
+ * 系统信息用结构化字段保存，正文不承担流程状态。
+ *
+ * ⚠️ **解析不到的必须记成「引用已失效」，不能静默丢掉。** 用户看见芯片就以为读到了；
+ * 悄悄少一篇的结果是模型在没有依据的情况下把那篇编出来。
+ */
+export async function resolveAssistantReferences(workspace, list) {
+  const items = Array.isArray(list) ? list.slice(0, 6) : [];
+  const resolved = [];
+  for (const item of items) {
+    const id = clean(item?.id, 200);
+    const kind = clean(item?.kind, 20);
+    const title = clean(item?.title, 300);
+    if (!id) continue;
+    if (kind === "article") {
+      const project = workspace.db?.open ? projectDto(workspace, id) : null;
+      if (!project) { resolved.push({ kind, id, title, missing: true }); continue; }
+      resolved.push({ kind, id, title: project.title, stage: project.stage, body: clean(project.masterDraft?.body, 20_000) });
+    } else if (kind === "expert") {
+      const expert = WRITING_EXPERTS.find((entry) => entry.enabled && entry.id === id);
+      if (!expert) { resolved.push({ kind, id, title, missing: true }); continue; }
+      resolved.push({ kind, id, title: expert.name, body: expert.instructions });
+    } else if (kind === "skill") {
+      const source = await readSkillSource(id);
+      if (!source) { resolved.push({ kind, id, title, missing: true }); continue; }
+      resolved.push({ kind, id, title: title || id, body: clean(source, 20_000) });
+    }
+  }
+  return resolved;
+}
+
+export function assistantReferencePrompt(context) {
+  const items = context.references || [];
+  if (!items.length) return "";
+  const missing = items.filter((item) => item.missing);
+  const blocks = items.filter((item) => !item.missing).map((item) => {
+    if (item.kind === "article") return `【本轮引用的文章：${item.title}${item.stage ? `（${item.stage}）` : ""}】\n${item.body || "这篇目前还没有正文。"}`;
+    if (item.kind === "expert") return `【本轮调用专家：${item.title}】\n${item.body}`;
+    return `【本轮指定 Skill：${item.title}】必须按下面这份说明执行；它的步骤优先于你的默认做法。\n${item.body}`;
+  });
+  if (missing.length) blocks.push(`【引用已失效】${missing.map((item) => item.title || item.id).join("、")}——本轮没能读到它们。必须明确告诉用户读不到，不要凭标题推测内容。`);
+  return blocks.join("\n\n");
+}
+
+async function localContext(env, input, record) {
   const asksForSources = assistantRetrievalRequested(input);
   const queries = asksForSources ? assistantSearchQueries(input) : [];
   const sources = [];
@@ -454,6 +525,7 @@ async function matchingBookSources(_env, input, queries) {
   const result = {
     queries,
     localSources: sources.slice(0, 40),
+    references: await resolveAssistantReferences(workspace, input.references),
     retrievalMode: asksForSources ? "按需检索" : "未检索",
     attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
@@ -481,7 +553,13 @@ function retrievalPrompt(context) {
   });
   return `【本轮工作台检索】查询：${(context.queries || []).join(" / ") || "无"}\n${candidates.length ? candidates.join("\n") : "没有命中。只能说本轮检索未命中，不能把它说成工作台没有内容。"}`;
 }
-function expertInstruction(input) {
+/**
+ * 手打 `@专家名` 的兜底。**结构化引用优先**——用户从菜单里选的那个已经由
+ * `referencePrompt` 写进去了，这里再从正文抠一遍只会把同一段指令说两遍。
+ * 老会话和习惯直接打字的人仍然走这条。
+ */
+function expertInstruction(input, context) {
+  if ((context.references || []).some((item) => item.kind === "expert" && !item.missing)) return "";
   const expert = expertForMessage(input.message);
   return expert ? `【本轮调用专家：${expert.name}】\n${expert.instructions}` : "";
 }
@@ -501,11 +579,12 @@ function contentPrompt(input, context, model) {
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
+    assistantReferencePrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
     style,
-    expertInstruction(input),
+    expertInstruction(input, context),
     input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
@@ -521,7 +600,8 @@ function generalPrompt(input, context, model) {
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
-    expertInstruction(input),
+    assistantReferencePrompt(context),
+    expertInstruction(input, context),
     input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
     `【用户本轮输入】\n${clean(input.message, 8_000)}`,
@@ -670,7 +750,12 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   };
   let context;
   try {
-    const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), createdAt: now() };
+    // 引用跟着这条消息落库：它是「这句话读到了什么」的凭证，
+    // 输入框那行芯片发送即清空，不留一份的话回头说不清那次回答的依据。
+    const messageReferences = (Array.isArray(input.references) ? input.references : []).slice(0, 6)
+      .map((item) => ({ kind: clean(item?.kind, 20), id: clean(item?.id, 200), title: clean(item?.title, 300) }))
+      .filter((item) => item.kind && item.id);
+    const userMessage = { id: `user-${Date.now().toString(36)}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), references: messageReferences, createdAt: now() };
     const grants = await agentMountsFromUserMessage(message);
     record.pathGrants = [...(record.pathGrants || []), ...grants].filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index).slice(-12);
     record.archivedAt = "";

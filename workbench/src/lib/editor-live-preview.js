@@ -209,6 +209,21 @@ function writeTable(dom, view, rows) {
   view.dispatch({ changes: { from, to, insert: tableMarkdown(rows) } });
 }
 
+function moveTableItem(items, from, to) {
+  const next = [...items];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+function focusTableCell(view, tableFrom, row, column) {
+  requestAnimationFrame(() => {
+    view.dom.querySelector(
+      `.cm-lp-table[data-from="${tableFrom}"] input[data-row="${row}"][data-column="${column}"]`,
+    )?.focus();
+  });
+}
+
 class TableWidget extends WidgetType {
   constructor({ from, to, rows }) {
     super();
@@ -223,8 +238,58 @@ class TableWidget extends WidgetType {
     const wrap = document.createElement("div");
     wrap.className = "cm-lp-table";
     this.syncMeta(wrap);
+
     const table = document.createElement("table");
     const body = document.createElement("tbody");
+    const dragState = { kind: "", index: -1 };
+    const handles = [];
+    const clearDragState = () => {
+      dragState.kind = "";
+      dragState.index = -1;
+      handles.forEach((handle) => handle.classList.remove("is-dragging", "is-drop-target"));
+    };
+    const makeHandle = (kind, index, label) => {
+      const handle = document.createElement("button");
+      handle.type = "button";
+      handle.draggable = true;
+      handle.className = `cm-lp-table__${kind}-handle`;
+      handle.dataset.index = String(index);
+      if (kind === "row") {
+        handle.style.top = `${26 + index * 42}px`;
+      } else {
+        const ratio = (index + 0.5) / this.rows[0].length;
+        handle.style.left = `calc(${ratio * 100}% + ${32 - ratio * 66}px)`;
+      }
+      handle.setAttribute("aria-label", label);
+      handle.title = `${label}，拖动以调整位置`;
+      handle.textContent = "⠿";
+      handle.addEventListener("dragstart", (event) => {
+        dragState.kind = kind;
+        dragState.index = index;
+        event.dataTransfer?.setData("text/plain", `${kind}:${index}`);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        handle.classList.add("is-dragging");
+      });
+      handle.addEventListener("dragover", (event) => {
+        if (dragState.kind !== kind || dragState.index === index) return;
+        event.preventDefault();
+        handles.forEach((item) => item.classList.remove("is-drop-target"));
+        handle.classList.add("is-drop-target");
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      });
+      handle.addEventListener("dragleave", () => handle.classList.remove("is-drop-target"));
+      handle.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const rows = tableRowsFromDOM(wrap);
+        if (kind === "row") writeTable(wrap, view, moveTableItem(rows, dragState.index, index));
+        else writeTable(wrap, view, rows.map((row) => moveTableItem(row, dragState.index, index)));
+        clearDragState();
+      });
+      handle.addEventListener("dragend", clearDragState);
+      handles.push(handle);
+      wrap.append(handle);
+    };
+
     this.rows.forEach((row, rowIndex) => {
       const tr = document.createElement("tr");
       row.forEach((value, columnIndex) => {
@@ -240,31 +305,37 @@ class TableWidget extends WidgetType {
         tr.append(cell);
       });
       body.append(tr);
+      makeHandle("row", rowIndex, `移动第 ${rowIndex + 1} 行`);
     });
     table.append(body);
     wrap.append(table);
+    this.rows[0].forEach((_, columnIndex) => makeHandle("column", columnIndex, `移动第 ${columnIndex + 1} 列`));
 
-    const controls = document.createElement("div");
-    controls.className = "cm-lp-table__controls";
     const addRow = document.createElement("button");
     addRow.type = "button";
-    addRow.textContent = "+ 添加一行";
+    addRow.className = "cm-lp-table__add-row";
+    addRow.textContent = "+";
+    addRow.setAttribute("aria-label", "添加一行");
+    addRow.title = "点击以添加新行";
     addRow.addEventListener("click", () => {
       const rows = tableRowsFromDOM(wrap);
       rows.push(Array.from({ length: Number(wrap.dataset.columns) }, () => ""));
       writeTable(wrap, view, rows);
-      requestAnimationFrame(() => view.dom.querySelectorAll(".cm-lp-table input")[rows.length * rows[0].length - rows[0].length]?.focus());
+      focusTableCell(view, this.from, rows.length - 1, 0);
     });
+
     const addColumn = document.createElement("button");
     addColumn.type = "button";
-    addColumn.textContent = "+ 添加一列";
+    addColumn.className = "cm-lp-table__add-column";
+    addColumn.textContent = "+";
+    addColumn.setAttribute("aria-label", "添加一列");
+    addColumn.title = "点击以添加新列";
     addColumn.addEventListener("click", () => {
       const rows = tableRowsFromDOM(wrap).map((row) => [...row, ""]);
       writeTable(wrap, view, rows);
-      requestAnimationFrame(() => view.dom.querySelector(".cm-lp-table th:last-child input")?.focus());
+      focusTableCell(view, this.from, 0, rows[0].length - 1);
     });
-    controls.append(addRow, addColumn);
-    wrap.append(controls);
+    wrap.append(addRow, addColumn);
     return wrap;
   }
   updateDOM(dom) {
@@ -286,7 +357,6 @@ class TableWidget extends WidgetType {
     return true;
   }
 }
-
 const VIDEO_EXT = /\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i;
 
 export function mediaKind(url) {

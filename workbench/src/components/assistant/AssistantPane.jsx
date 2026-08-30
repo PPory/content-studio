@@ -66,12 +66,20 @@ function rememberAssistantModel(value) {
   catch {}
 }
 
+/**
+ * 光标前那半截 `@…` / `/…`。
+ *
+ * ⚠️ **`@` 现在只有一个语义：提及。** 上一版 `@` 是专家、`/` 是 Skill，
+ * 两个记号各一套语义，用户得先记住哪个对应哪个才用得上。现在 `@` 唤起的是
+ * 「文章 + 专家」同一个列表（照 Notion 的「页面 / 用户」两组），
+ * `/` 仍然留给 Skill——它在别处（编辑器块菜单、命令行）也一直是这个意思。
+ */
 function commandAt(value, cursor) {
   const before = String(value || "").slice(0, cursor);
   const match = before.match(/(^|\s)([@/])([^\s@/]*)$/u);
   if (!match) return null;
   return {
-    type: match[2] === "@" ? "experts" : "skills",
+    type: match[2] === "@" ? "mention" : "skills",
     query: match[3] || "",
     from: before.length - match[2].length - (match[3] || "").length,
     to: cursor,
@@ -117,10 +125,23 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const [turnStartedAt, setTurnStartedAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // `menu` 现在只剩模型选择器一支（"" | "models"）。专家 / Skill / 文章都归 `addLevel`。
   const [menu, setMenu] = useState("");
-  const [menuQuery, setMenuQuery] = useState("");
   const [menuIndex, setMenuIndex] = useState(0);
   const [commandRange, setCommandRange] = useState(null);
+  /**
+   * `+` 那颗浮层的全部状态。
+   * - `addLevel`：`"" | "root" | "articles" | "experts" | "skills" | "mention"`
+   * - `addSource`：`"button"`（浮层自带搜索框）或 `"typing"`（过滤词来自 textarea）
+   */
+  const [addLevel, setAddLevel] = useState("");
+  const [addSource, setAddSource] = useState("button");
+  const [addQuery, setAddQuery] = useState("");
+  const [addIndex, setAddIndex] = useState(0);
+  /** 本轮带上的文章 / 专家 / Skill。`[{ kind, id, title, hint }]` */
+  const [references, setReferences] = useState([]);
+  const [articles, setArticles] = useState(null);
+  const [articlesLoading, setArticlesLoading] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
   const [conversationId, setConversationId] = useState("");
   const [conversationTitle, setConversationTitle] = useState("新对话");
@@ -269,7 +290,9 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
         return next;
       });
     }).catch((next) => { if (!cancelled) setModelNotice(next.message || "模型目录暂时不可用"); });
-    api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: `skill:${item.id}`, label: item.name, hint: item.description, prompt: `/${item.id} ` }))); }).catch(() => {});
+    // `item.id` 是 `.agents/skills` 下的目录名——引用之后服务端要靠它读回 SKILL.md，
+    // 不能在这里改写成显示名或加前缀。
+    api.assistantSkills().then((result) => { if (!cancelled) setSkills((result.skills?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description }))); }).catch(() => {});
     api.assistantModes().then((result) => { if (!cancelled) setPermissionModes(result.modes?.items || []); }).catch(() => {});
 
     api.assistantExperts().then((result) => { if (!cancelled) setExpertPresets((result.experts?.items || []).map((item) => ({ id: item.id, label: item.name, hint: item.description }))); }).catch(() => {});
@@ -293,10 +316,14 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     return () => clearInterval(timer);
   }, [historyEnabled, scopeId, hasRunningHistory]);
   useEffect(() => {
-    if (!permissionOpen && !menu && !historyMenuId && !historyDeleteId && !renameId) return undefined;
+    const typingMenu = addLevel && addSource === "typing";
+    if (!permissionOpen && !menu && !typingMenu && !historyMenuId && !historyDeleteId && !renameId) return undefined;
     const close = (event) => {
       if (permissionOpen && !permissionRef.current?.contains(event.target) && !event.target.closest?.(".assistant-composer__access")) setPermissionOpen(false);
       if (menu && !event.target.closest?.(".assistant-command-menu, .assistant-composer__model")) { setMenu(""); setCommandRange(null); }
+      // 打字唤起的那颗浮层由这里收；`+` 点开的那条路由 ComposerAddMenu 自己收
+      // （它要能分辨「点在搜索框里」，那不该关）。
+      if (typingMenu && !event.target.closest?.(".assistant-add-menu, .assistant-composer textarea")) closeAdd();
       if ((historyMenuId || historyDeleteId) && !event.target.closest?.(".assistant-history__item")) { setHistoryMenuId(""); setHistoryDeleteId(""); }
     };
     const key = (event) => {
@@ -304,11 +331,12 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       event.preventDefault();
       event.stopPropagation();
       setPermissionOpen(false); setMenu(""); setCommandRange(null); setHistoryMenuId(""); setHistoryDeleteId(""); setRenameId("");
+      if (typingMenu) closeAdd();
     };
     window.document.addEventListener("pointerdown", close);
     window.document.addEventListener("keydown", key, true);
     return () => { window.document.removeEventListener("pointerdown", close); window.document.removeEventListener("keydown", key, true); };
-  }, [permissionOpen, menu, historyMenuId, historyDeleteId, renameId]);
+  }, [permissionOpen, menu, addLevel, addSource, historyMenuId, historyDeleteId, renameId]);
   /**
    * ⚠️ **别把这个函数直接当回调传出去。** 它现在收一个参数，而
    * `requestAnimationFrame(scrollThreadToEnd)` 会把**时间戳**塞进 `behavior`——
@@ -362,15 +390,18 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const message = String(text || "").trim();
     const pendingAttachments = attachments.filter((item) => !item.usedAt);
     if ((!message && !pendingAttachments.length) || busy) return;
-    const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), createdAt: new Date().toISOString() };
+    const sentReferences = references.map((item) => ({ kind: item.kind, id: item.id, title: item.title }));
+    const optimistic = { id: `optimistic-${Date.now()}`, role: "user", text: message, attachmentIds: pendingAttachments.map((item) => item.id), references: sentReferences, createdAt: new Date().toISOString() };
     const streamingId = `streaming-${Date.now()}`;
     const requestId = Symbol("assistant-request");
     setMessages((current) => [...current, optimistic, { id: streamingId, role: "assistant", text: "", createdAt: new Date().toISOString(), pending: true, model }]);
     activeRequestRef.current = requestId;
-    setInput(""); setMenu(""); setBusy(true); setActivity("正在读取上下文"); setTurnStartedAt(new Date().toISOString()); setError(null); setUploadError("");
+    // 引用**发出去就清空**：它说的是「这一句带了什么」，不是会话级设置。
+    // 留着的话下一句会莫名其妙再带一遍同样的全文，而屏幕上那行芯片看着毫无变化。
+    setInput(""); setMenu(""); setReferences([]); closeAdd(); setBusy(true); setActivity("正在读取上下文"); setTurnStartedAt(new Date().toISOString()); setError(null); setUploadError("");
     try {
       const result = await api.assistantChatStream(
-        { scopeId, conversationId, startNew: !conversationId, message, document, documentVersion: currentVersion, materials, style: policy.capabilities.writingStyle ? style : null, model, permissionMode, mode: policy.requestMode },
+        { scopeId, conversationId, startNew: !conversationId, message, references: sentReferences, document, documentVersion: currentVersion, materials, style: policy.capabilities.writingStyle ? style : null, model, permissionMode, mode: policy.requestMode },
         (event) => {
           if (activeRequestRef.current !== requestId) return;
           if (event.type === "conversation" && event.conversationId) {
@@ -409,7 +440,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     conversationIdRef.current = "";
     onConversationChange?.("");
     setTitleEditing(false);
-    setConversationId(""); setConversationTitle("新对话"); setPermissionMode("daily"); setMessages([]); setActions([]); setAttachments([]); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
+    setConversationId(""); setConversationTitle("新对话"); setPermissionMode("daily"); setMessages([]); setActions([]); setAttachments([]); setReferences([]); closeAdd(); setError(null); setUploadError(""); setInput(""); setBusy(false); setActivity(""); setTurnStartedAt("");
     refreshHistory().catch(() => {});
     inputRef.current?.focus();
   };
@@ -460,46 +491,96 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     finally { setUploading(false); }
   };
 
-  function chooseExpert(item) {
-    const kind = onExpertRun ? EXPERT_RUN_KIND.get(item.id) : "";
-    if (!kind) { insertCommand(`@${item.label} `); return; }
-    // 检查类专家点下去就开跑，所以要把用户为了唤出菜单打的那半截 `@…` 抹掉——
-    // 留在输入框里的话，下一句话会莫名其妙带上一个没人再用的提及。
-    const range = commandRange;
-    if (range) setInput(`${input.slice(0, range.from)}${input.slice(range.to)}`);
-    setMenu(""); setMenuQuery(""); setCommandRange(null);
-    onExpertRun(kind);
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }
-
-  function chooseSkill(item) {
-    insertCommand(item.prompt || `/${item.label} `);
-  }
-
   const experts = (expertPresets.length ? expertPresets : EXPERTS)
     .filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id))
     // 会起任务的那几个要在菜单里说清楚「点下去会发生什么」——
-    // 同一个菜单里一半插字一半跑任务，不写出来的话只能靠点一次才知道。
-    .map((item) => onExpertRun && EXPERT_RUN_KIND.has(item.id) ? { ...item, hint: `${item.hint ? `${item.hint} · ` : ""}跑一次并出报告` } : item);
-  const availableSkills = skills;
+    // 同一个菜单里一半是引用一半是跑任务，不写出来的话只能靠点一次才知道。
+    // ⚠️ **写在最前面。** 上一版缀在职责说明后面，而这一行在 336px 的侧栏里会被
+    // `text-overflow: ellipsis` 截掉——被截掉的恰好是唯一一句「点下去会发生什么」。
+    .map((item) => onExpertRun && EXPERT_RUN_KIND.has(item.id) ? { ...item, hint: `跑一次出报告${item.hint ? ` · ${item.hint}` : ""}` } : item);
   const modelItems = model && !models.some((item) => item.id === model) ? [{ id: model, name: model, remembered: true }, ...models] : models;
-  const menuItems = menu === "experts" ? experts : menu === "skills" ? availableSkills : modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.remembered ? "最近使用" : "", provider: item.ownedBy || "" }));
-  const filteredMenuItems = (menu === "models" ? menuItems : menuItems.filter((item) => !menuQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(menuQuery.toLowerCase()))).slice(0, 80);
+  const filteredMenuItems = modelItems.map((item) => ({ id: item.id, label: item.name || item.id, hint: item.remembered ? "最近使用" : "", provider: item.ownedBy || "" })).slice(0, 80);
 
   function openMenu(type) {
-    setMenu(type); setMenuQuery(""); setMenuIndex(0); setCommandRange(null);
+    setMenu(type); setMenuIndex(0); setCommandRange(null); closeAdd();
   }
 
-  function insertCommand(text) {
+  /**
+   * `+` 浮层的候选。二级各只列自己那一组；`@` 打字唤起的 `mention` 把
+   * 「文章 / 专家」两组一起列——照参考图里 Notion 的「页面 / 用户」。
+   *
+   * ⚠️ **已经加进去的不再列。** 同一篇文章引用两次没有意义，而列表里留着它
+   * 只会让人以为第一次没点上，于是点第二次。
+   */
+  const addGroups = (() => {
+    if (!addLevel || addLevel === "root") return [];
+    const taken = new Set(references.map((item) => `${item.kind}:${item.id}`));
+    const match = (item) => !addQuery || `${item.label} ${item.id} ${item.hint || ""}`.toLowerCase().includes(addQuery.toLowerCase());
+    const pick = (kind, source) => source
+      .map((item) => ({ ...item, kind }))
+      .filter((item) => !taken.has(`${kind}:${item.id}`) && match(item))
+      .slice(0, 40);
+    const groups = [];
+    if (addLevel === "articles" || addLevel === "mention") groups.push({ key: "articles", label: "文章", items: pick("article", articles || []) });
+    if (addLevel === "experts" || addLevel === "mention") groups.push({ key: "experts", label: "专家", items: pick("expert", experts) });
+    if (addLevel === "skills") groups.push({ key: "skills", label: "Skill", items: pick("skill", skills) });
+    return groups.filter((group) => group.items.length);
+  })();
+
+  /**
+   * 文章列表**用到才拉**。它走 `api.projects()`，那个接口对每个项目跑一次全量 DTO；
+   * 每次开输入框都拉一遍是白花的开销，而这个二级菜单大部分会话里根本不会被点开。
+   */
+  async function loadArticles() {
+    if (articles || articlesLoading) return;
+    setArticlesLoading(true);
+    try {
+      const result = await api.projects();
+      setArticles((result.projects || []).map((item) => ({ id: item.id, label: item.title || "未命名内容", hint: item.stage || "" })));
+    } catch { setArticles([]); }
+    finally { setArticlesLoading(false); }
+  }
+
+  function openAdd(level, source = "button") {
+    setAddLevel(level); setAddIndex(0); setAddSource(source);
+    if (source === "button") setAddQuery("");
+    setMenu(""); setPermissionOpen(false);
+    if (level === "articles" || level === "mention") loadArticles();
+  }
+
+  function closeAdd() {
+    setAddLevel(""); setAddQuery(""); setAddIndex(0); setAddSource("button"); setCommandRange(null);
+  }
+
+  /** 选中之后把用户为了唤出菜单打的那半截 `@…` / `/…` 抹掉——留着的话下一句话会莫名带上它。 */
+  function dropCommandText() {
     const range = commandRange;
-    const next = range ? `${input.slice(0, range.from)}${text}${input.slice(range.to)}` : `${input}${input && !/\s$/.test(input) ? " " : ""}${text}`;
-    setInput(next); setMenu(""); setMenuQuery(""); setCommandRange(null);
-    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(next.length, next.length); });
+    if (!range) return;
+    const next = `${input.slice(0, range.from)}${input.slice(range.to)}`;
+    setInput(next);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(range.from, range.from); });
+  }
+
+  function chooseAddItem(item) {
+    if (!item) return;
+    // 三个检查类专家点下去是**直接起任务**，不是加一条引用——菜单里已经写了「跑一次并出报告」。
+    const kind = item.kind === "expert" && onExpertRun ? EXPERT_RUN_KIND.get(item.id) : "";
+    dropCommandText();
+    closeAdd();
+    if (kind) { onExpertRun(kind); requestAnimationFrame(() => inputRef.current?.focus()); return; }
+    setReferences((current) => current.some((entry) => entry.kind === item.kind && entry.id === item.id)
+      ? current
+      : [...current, { kind: item.kind, id: item.id, title: item.label, hint: item.hint || "" }]);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function removeReference(item) {
+    setReferences((current) => current.filter((entry) => !(entry.kind === item.kind && entry.id === item.id)));
   }
 
   async function chooseModel(item) {
     const previous = model;
-    setMenu(""); setMenuQuery(""); setCommandRange(null); setModel(item.id); rememberAssistantModel(item.id); setModelPending(true); setError(null);
+    setMenu(""); setCommandRange(null); setModel(item.id); rememberAssistantModel(item.id); setModelPending(true); setError(null);
     if (!conversationId) { setModelPending(false); return; }
     try {
       const result = await api.setAssistantModel({ scopeId, conversationId, model: item.id });
@@ -593,34 +674,35 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     setActions((items) => items.map((action) => action.id === actionId ? transitionActionResult(action, "rejected") : action));
   }
 
-  function chooseMenuItem(item) {
-    if (!item) return;
-    if (menu === "experts") chooseExpert(item);
-    else if (menu === "skills") chooseSkill(item);
-    else chooseModel(item);
-  }
-
   function changeInput(event) {
     const value = event.target.value;
     const command = commandAt(value, event.target.selectionStart ?? value.length);
     setInput(value);
     if (command) {
-      setMenu(command.type); setMenuQuery(command.query); setMenuIndex(0); setCommandRange({ from: command.from, to: command.to });
-    } else if (menu === "experts" || menu === "skills") {
-      setMenu(""); setMenuQuery(""); setCommandRange(null);
+      if (addLevel !== command.type) openAdd(command.type, "typing");
+      setAddQuery(command.query); setAddIndex(0); setAddSource("typing");
+      setCommandRange({ from: command.from, to: command.to });
+    } else if (addLevel && addSource === "typing") {
+      closeAdd();
     }
   }
 
+  /**
+   * ⚠️ **`+` 浮层开着时 Enter 是「选中这一项」，不是发送。**
+   * 打字唤起的那条路焦点仍然在 textarea 上，键盘事件到不了浮层自己那个 `onKeyDown`——
+   * 所以导航必须在这里再接一遍。`+` 点开的那条路焦点在浮层里，走它自己那份。
+   */
   function inputKeyDown(event) {
-    if (menu && filteredMenuItems.length) {
+    const addItems = addSource === "typing" ? addGroups.flatMap((group) => group.items) : [];
+    if (addItems.length) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const step = event.key === "ArrowDown" ? 1 : -1;
-        setMenuIndex((value) => (value + step + filteredMenuItems.length) % filteredMenuItems.length);
+        setAddIndex((value) => (value + step + addItems.length) % addItems.length);
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); chooseMenuItem(filteredMenuItems[menuIndex] || filteredMenuItems[0]); return; }
-      if (event.key === "Escape") { event.preventDefault(); setMenu(""); setCommandRange(null); return; }
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); chooseAddItem(addItems[addIndex] || addItems[0]); return; }
+      if (event.key === "Escape") { event.preventDefault(); closeAdd(); return; }
     }
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
   }
@@ -953,13 +1035,17 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       pendingAttachments={pendingAttachments} busy={busy} uploadError={uploadError} inputRef={inputRef}
       input={input} scope={scope} surface={surface} permissionOpen={permissionOpen} permissionRef={permissionRef}
       permissionModes={permissionModes} permissionMode={permissionMode} modePending={modePending}
-      menu={menu} menuQuery={menuQuery} filteredMenuItems={filteredMenuItems} menuIndex={menuIndex}
+      menu={menu} filteredMenuItems={filteredMenuItems} menuIndex={menuIndex}
+      references={references} addLevel={addLevel} addSource={addSource} addQuery={addQuery}
+      addIndex={addIndex} addGroups={addGroups} addLoading={articlesLoading && !articles}
       modelPending={modelPending} fileRef={fileRef} uploading={uploading} models={models} model={model}
       modelNotice={modelNotice} loading={loading} onSubmit={send}
       onDismissUploadError={() => setUploadError("")} onInputChange={changeInput} onInputKeyDown={inputKeyDown}
-      onChoosePermissionMode={choosePermissionMode} onCloseMenu={() => setMenu("")}
-      onMenuIndex={setMenuIndex} onChooseMenuItem={chooseMenuItem} onUploadFile={uploadFile}
-      onTogglePermission={() => { setPermissionOpen((value) => !value); setMenu(""); }}
+      onChoosePermissionMode={choosePermissionMode}
+      onMenuIndex={setMenuIndex} onChooseMenuItem={chooseModel} onUploadFile={uploadFile}
+      onAddLevel={(level) => openAdd(level, "button")} onAddQuery={(value) => { setAddQuery(value); setAddIndex(0); }}
+      onAddIndex={setAddIndex} onChooseAddItem={chooseAddItem} onCloseAdd={closeAdd} onRemoveReference={removeReference}
+      onTogglePermission={() => { setPermissionOpen((value) => !value); setMenu(""); closeAdd(); }}
       onToggleModel={() => menu === "models" ? setMenu("") : openMenu("models")} onStop={stop}
       context={composerContext}
     />
