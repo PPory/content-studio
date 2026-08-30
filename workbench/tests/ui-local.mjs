@@ -222,6 +222,9 @@ try {
   await insertFromSlash("表格");
   const tableBlock = page.locator(".cm-lp-table").last();
   await tableBlock.waitFor();
+  const tableBox = await tableBlock.boundingBox();
+  const tableGridBox = await tableBlock.locator("table").boundingBox();
+  check("表格上下不再预留多行空白", tableBox.height - tableGridBox.height <= 24);
   let tableInputs = tableBlock.locator("input");
   const tableValues = [
     "观点", "依据", "结论",
@@ -269,6 +272,10 @@ try {
   check("表格下方入口可以添加一整行", await tableBlock.locator("input").count() === 12);
   await addColumn.click();
   check("表格右侧入口可以添加一整列", await tableBlock.locator("input").count() === 16);
+
+  await page.waitForTimeout(1800);
+  const compactTableSaved = await request("/api/workspace/projects/" + encodeURIComponent(projectId));
+  check("插入表格后正文只保留一个续写空行", /\|  \|  \|  \|  \|\n$/.test(compactTableSaved.project.masterDraft.body));
 
   await editor.focus();
   await page.keyboard.press("Control+End");

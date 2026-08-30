@@ -255,10 +255,10 @@ class TableWidget extends WidgetType {
       handle.className = `cm-lp-table__${kind}-handle`;
       handle.dataset.index = String(index);
       if (kind === "row") {
-        handle.style.top = `${26 + index * 42}px`;
+        handle.style.top = `${index * 42}px`;
       } else {
         const ratio = (index + 0.5) / this.rows[0].length;
-        handle.style.left = `calc(${ratio * 100}% + ${32 - ratio * 66}px)`;
+        handle.style.left = `calc(${ratio * 100}% + ${28 - ratio * 58}px)`;
       }
       handle.setAttribute("aria-label", label);
       handle.title = `${label}，拖动以调整位置`;

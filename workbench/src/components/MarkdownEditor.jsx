@@ -257,12 +257,12 @@ function setHeading(view, level) {
  * 空行直接占用当前位置；有正文时另起一段。末尾始终留出一个空段，避免表格、代码等
  * 原子块把光标困在文末。`caretOffset` 让标注和代码插入后直接落在真正要输入的位置。
  */
-function insertStructuredBlock(view, text, { caretOffset = text.length, focusSelector = "", caretAfter = false } = {}) {
+function insertStructuredBlock(view, text, { caretOffset = text.length, focusSelector = "", caretAfter = false, compactTail = false } = {}) {
   const line = view.state.doc.lineAt(view.state.selection.main.from);
   const hasText = Boolean(line.text.trim());
   const at = hasText ? line.to : line.from;
   const lead = hasText ? "\n\n" : "";
-  const tail = line.to < view.state.doc.length ? "\n" : "\n\n";
+  const tail = compactTail ? "\n" : line.to < view.state.doc.length ? "\n" : "\n\n";
   const insert = `${lead}${text}${tail}`;
   view.dispatch({
     changes: { from: at, insert },
@@ -318,7 +318,7 @@ function applyBlockItem(view, id, eat) {
     return insertStructuredBlock(
       view,
       "| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
-      { focusSelector: ".cm-lp-table input" },
+      { focusSelector: ".cm-lp-table input", compactTail: true },
     );
   }
   if (id === "divider") return insertStructuredBlock(view, "---", { caretAfter: true });
