@@ -1,7 +1,7 @@
 # 外部资源删除前对账与恢复报告
 
 生成日期：2026-08-30
-状态：**仅完成只读盘点和恢复点；未授权、未执行任何外部删除。**
+状态：**已按 2026-08-30 最终确认删除就绪的 Cloudflare 资源和 Obsidian 专用目录；飞书、Supabase 与上游 Token 仍未授权、未删除。**
 
 ## 1. 迁移对账结论
 
@@ -121,14 +121,61 @@ Supabase CLI 的只读 `projects list` 返回 `Unauthorized`，因此尚未远�
 
 | 资源 | 对账 | 恢复点 | 精确归属 | 当前结论 |
 | --- | --- | --- | --- | --- |
-| Cloudflare Worker / D1 / Workflow / 路由 / Cron | 通过 | 通过 | 已远程确认 | 可在最终明确确认后删除 |
-| Obsidian `99 - 个人工作台` | 通过 | 整目录归档并实测恢复 | 已核验绝对路径 | 可在最终明确确认后删除 |
+| Cloudflare Worker / D1 / Workflow / 路由 / Cron | 通过 | 通过 | 已远程确认 | 已按最终确认删除并验证不存在 |
+| Obsidian `99 - 个人工作台` | 通过 | 整目录归档并实测恢复 | 已核验绝对路径 | 已按最终确认删除，vault 其他项目未变 |
 | 飞书知识空间与同步文档 | 来源已快照 | 有来源快照 | 子树未枚举 | 暂不得删除 |
 | Supabase 项目与 Storage | 来源为 0 | 有来源快照 | 远程认证失败 | 暂不得删除 |
 | 上游 Token / 授权 | 不适用 | 不保存密钥值 | 是否共享未知 | 暂不得撤销 |
 
 ## 5. 最终确认边界
 
-此前对 119 个 Git 历史文件的批准只适用于仓库内删除，**不构成任何外部资源删除授权**。
+此前对 119 个 Git 历史文件的批准只适用于仓库内删除。用户随后单独明确确认删除本报告中已就绪的 Cloudflare 资源和 Obsidian 专用目录；该确认不扩展到飞书、Supabase、整个 vault、其他 D1、GitHub 仓库或上游 Token。
 
 下一次确认必须逐项写明资源 ID 或绝对路径。未点名资源继续保留。删除执行后还必须分别验证：远端资源不存在、Webhook/路由已解除、真实 vault 其他目录未变、断网且无旧环境变量时本地工作台仍可运行。
+
+## 6. 实际删除与验证记录
+
+完成时间：`2026-08-30T13:34:49.5930186+08:00`
+
+### 6.1 Cloudflare
+
+已删除：
+
+- Workflow `content-jobs` 及其实例；
+- Worker `content-pipeline`，随之解除 Worker 路由、Cron、绑定与 Worker 内密钥；
+- D1 `content-pipeline`（`10dfd4ad-7a6c-4418-98e4-563305698908`）。
+
+删除后验证：
+
+- 查询 Worker 部署返回 `This Worker does not exist on your account`（Cloudflare 代码 `10007`）；
+- 当前账号没有已部署 Workflow；
+- D1 列表不再包含目标 ID；
+- `content-pipeline.zongxinl258.workers.dev` 返回 404；
+- `pipeline.214007.xyz` 不再建立旧 Worker 服务连接；
+- `bid-fill-license-staging`、`cloudmail`、`bid-fill-license` 三个 D1 仍存在且 ID 未变。
+
+未执行：飞书或 Telegram 后台操作、GitHub Token 撤销、LLM/Jina/Notion Token 撤销、Cloudflare 账号内其他资源删除。
+
+### 6.2 Obsidian
+
+已删除唯一目标：`D:\ObsidianVault\obsidian-vault\99 - 个人工作台`。
+
+删除后验证：
+
+- 目标目录不存在，vault 根目录仍存在；
+- 删除前后的 17 个兄弟项目清单完全一致；
+- 恢复 ZIP SHA-256 仍为 `f66df29df5a94e7532d5d44e9a37c5e92698d1c057f9ffc33f77ec0527a7a301`；
+- 未删除整个 vault、其他目录、Obsidian 程序或 GitHub vault 仓库。
+
+### 6.3 本地工作台
+
+从当前提交导出独立副本到系统临时目录，移除旧 Worker、Supabase、飞书和 vault 环境变量，并将外网代理指向不可用地址后完成：
+
+- `npm run check`；
+- 真实 Chromium 页面渲染；
+- SQLite 自动保存；
+- 刷新后持久化读取；
+- 本地设置页检查；
+- 页面无运行异常。
+
+测试只使用系统临时 `XENHO_HOME`，结束后临时副本与数据均已清理。
