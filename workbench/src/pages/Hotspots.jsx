@@ -571,7 +571,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                         </a>
                       ) : null}
                       {/**
-                        * ⚠️ **「我有反应」和「收录」不是一回事，别合并。**
+                        * ⚠️ **「聊一聊」和「收录」不是一回事，别合并。**
                         * 收录 = 这东西以后可能有用（进灵感库，等 AI 拆素材）；
                         * 有反应 = **我此刻有话说**，那句话本身就是一篇的起点。
                         * 前者是资料，后者是种子——判据是「你有没有话说」，
@@ -587,7 +587,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                       ) : (
                         <button className="btn btn-sm" onClick={() => onSeed(it)}>
                           <IconSeedling aria-hidden="true" size={14} stroke={1.8} />
-                          我有反应
+                          聊一聊
                         </button>
                       )}
                       {stored[key] && !["sending", "done"].includes(stored[key]) ? (

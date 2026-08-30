@@ -716,10 +716,21 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
    * 其它 surface 只有两颗不可点的事实芯片。两者落在同一个位置，
    * 所以用户在任何一栏里找「它读的是什么」都是同一处。
    */
+  /**
+   * ⚠️ **「当前全文」这颗芯片是**回执**，只在**真的有正文**时才画。**
+   *
+   * 上一版的判据是 `policy.capabilities.documentContext`——那是「这一档**允许**读全文」，
+   * 不是「这一轮**真的带了**全文」。于是阅读栏里文档没接上时它照样写着「当前全文」，
+   * 而模型回的是「您尚未开始编写正文」：**界面在替一件没发生的事打包票**。
+   * 这比不显示糟得多——用户会照着这条回执去判断模型为什么答错。
+   */
+  const hasDocumentBody = Boolean(String(document?.body || "").trim());
   const composerContext = projectRail
     ? projectContext
-    : (policy.capabilities.documentContext || materials.length) ? <>
-        {policy.capabilities.documentContext ? <span className="assistant-context-chip" data-live={selection?.text ? "true" : undefined}>{selection?.text ? `选中 ${selection.text.length} 字` : "当前全文"}</span> : null}
+    : (hasDocumentBody || selection?.text || materials.length) ? <>
+        {selection?.text
+          ? <span className="assistant-context-chip" data-live="true">选中 {selection.text.length} 字</span>
+          : hasDocumentBody ? <span className="assistant-context-chip">当前全文</span> : null}
         {materials.length ? <span className="assistant-context-chip">项目素材 {materials.length}</span> : null}
       </> : null;
 
@@ -802,12 +813,20 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       </>, <>
         <div className="assistant-context-actions">
           {policy.capabilities.writingStyle && enabledStyles.length ? <label className="assistant-context-style" title="本轮写作风格"><span>风格</span><select value={styleId} onChange={(event) => setStyleId(event.target.value)}><option value="">原本语气</option>{enabledStyles.map((item) => <option value={item.id} key={item.id}>{item.name}{item.customized ? " · 已校准" : ""}</option>)}</select></label> : null}
-          {backgroundConversation ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
+          {/* ⚠️ **浮层里不画它。** 那颗绿芯片一直亮在浮层最上面一行，
+              而浮层是个「问一句就走」的地方——你在这儿不会去接管另一段后台对话。
+              入口没丢：完整 AI 页的页头上有同一颗，那儿才是管会话的地方。 */}
+          {backgroundConversation && surface !== "overlay" ? <button className="assistant-background-task" type="button" onClick={() => openConversation(backgroundConversation.id)} title="查看仍在后台运行的对话"><span className="assistant-background-task__dot" /> <span>后台任务进行中</span></button> : null}
           {/* ⚠️ **完整页上「存为知识卡」收进右端那颗 `⋯`。**
               它是「这段对话结束之后要不要留点什么」——**一段对话里最多用一次**，
               而它带字的按钮一直摆在页头上，和每天都点的「新对话」抢同一排位置。
               侧栏和项目栏窄，那儿仍然是直接一颗图标钮：再套一层菜单是多一次点击。 */}
-          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="预览知识卡；确认后保存到当前本地工作区"><IconArchive aria-hidden="true" /><span>存为知识卡</span></button> : null}
+          {/* ⚠️ **只留图标，不带字。** 这一栏最窄处只有 360px，而它旁边那两颗
+              （新对话、收起）本来就是纯图标——三颗并排里唯一带字的那颗会把整条压偏，
+              而它并不比另外两颗更常用。说明留在 `title` 和 `aria-label` 里。
+              ⚠️ 带 `<span>` 的话还会被 `.assistant-context-actions button:not(:has(span))`
+              那条排除在 28px 之外，三颗高矮不齐——这是那条后代选择器的又一次现场。 */}
+          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="存为知识卡：预览后确认，保存到当前本地工作区" aria-label="存为知识卡"><IconArchive aria-hidden="true" /></button> : null}
           {/* ⚠️ **侧栏里没有「历史对话」入口——全局侧栏和项目协作栏都没有。**
               这一栏是「现在这段对话」的地方，翻旧会话是另一件事：完整 AI 工作区那边
               有带搜索和时间分组的历史栏，比在 420px 里塞一个抽屉好用得多。

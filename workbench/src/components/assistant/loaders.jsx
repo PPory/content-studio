@@ -1,57 +1,50 @@
 /**
  * 全站「还在跑」的动态记号，统一从这里出去（和 `icons.jsx` 同一条规矩）。
  *
+ * 用 [`thinking-orbs`](https://www.npmjs.com/package/thinking-orbs) 的 `ThinkingOrb`。
+ *
  * **三个记号各有明确分工，别混用**——同一个记号在两处表示不同的事，用户就学不会它；
  * 不同记号表示同一件事，也一样。
  *
- *   WaitingMark   halo       等模型开口。整段回复还没有一个字，是**纯等待**。
- *   RunningMark   dot-pulse  已经在出东西 / 这段还在跑（流式输出、后台运行中的会话）。
- *   DraftingMark  spark      正在生成候选。对应「无中生有一份新稿」，不是「等一个回答」。
+ *   WaitingMark   composing @64→38  等模型开口。整段回复还没有一个字，是**纯等待**。
+ *   RunningMark   working   @20  已经在出东西 / 这段还在跑（流式输出、后台运行中的会话）。
+ *   DraftingMark  weaving   @20  正在生成候选。「三股绳编在一起」，对应无中生有一份新稿。
  *
- * ⚠️ **`halo` 和 `dot-pulse` 是自己画的**（`loaders.css`），不是库里的变体。
- * `generative-loaders` 已发布的两个版本（0.1.0 / 0.1.1）InlineLoader 变体完全一样，
- * 只有这 14 个，两个都不在里面：
- *   glyph · matrix · orbit · ripple · signal · spark · rotor · pixel-drift ·
- *   chomp · snake · fold · gravity · domino · aperture
- * 换库版本之前先核对这份清单，别照着别处看到的名字直接写。
+ * ⚠️ **尺寸只有 64 和 20 两档，而且它们是两套独立设计、不是缩放。**
+ * 每一档自带各自的点数、点径和速度（库的类型就写死成 `64 | 20`）。
+ * 想要 14px 就传 14 的话，TypeScript 层面不合法、视觉上也拿不到它调好的那一版。
  *
- * ⚠️ **目前只剩 `DraftingMark` 还用那个库**，而它带着 framer-motion（约 5MB）。
- * 要再省一个依赖的话，从这里下手。
+ * ⚠️ **所以「要一个 38px 的球」的做法是：按 64 画，用 CSS 显示成 38，不是传 38。**
+ * 缩小一块 canvas 是安全的（下采样只会更锐），放大才会糊——
+ * 而 20 那一档拉到 38 就是放大，在两行文字旁边糊成一团。
+ * 组件的 `style` 是在库自己那份之后展开的，所以外面传 `style.width/height` 压得住。
+ * 量过 64 / 44 / 38 / 32 / 20 五档：38 和右边那两行文字差不多高，最稳。
+ *
+ * ⚠️ **`theme="auto"` 正好对上我们的主题方案**：它先找祖先上的
+ * `data-theme="dark|light"`（用 `MutationObserver` 跟着变），找不到再退到
+ * `prefers-color-scheme`。两层我们都用得上，所以**不要**手动传 theme 把它钉死。
+ *
+ * ⚠️ **这里不再依赖 `generative-loaders`。** 那个库带 framer-motion（约 5MB），
+ * 而 `thinking-orbs` 零依赖、纯 2D canvas（92KB）。换过来之后两个包一起摘掉了。
+ * 之前自绘的 `halo` / `dot-pulse`（`loaders.css`）也一并撤了。
  */
-import { InlineLoader } from "generative-loaders";
-import "generative-loaders/styles.css";
-import "./loaders.css";
+import { ThinkingOrb } from "thinking-orbs";
 
 /**
  * 等模型开口：整段还没有一个字。
  *
- * 一圈淡底环 + 一段绕着转的亮弧 + 一层呼吸的光晕。形状的取舍写在 `loaders.css` 里。
- * ⚠️ 尺寸只走 `--m-size` 一个入口——内部全是百分比，12px 和 24px 是同一个形状。
+ * `size` 是**显示尺寸**；内部一律按 64 那一档画再缩下去，理由见文件头。
  */
-export function WaitingMark({ size = 24, ...rest }) {
-  return (
-    <span
-      className="m-mark m-mark--halo"
-      style={{ "--m-size": `${size}px`, "--m-ring": `${Math.max(1, Math.round(size * 0.075))}px` }}
-      {...rest}
-    >
-      <span className="m-halo__ring" />
-      <span className="m-halo__glow" />
-      <span className="m-halo__arc" />
-    </span>
-  );
+export function WaitingMark({ size = 38, style, ...rest }) {
+  return <ThinkingOrb state="composing" size={64} style={{ width: size, height: size, ...style }} {...rest} />;
 }
 
 /** 已经在出东西，或这段仍在后台跑 */
-export function RunningMark({ size = 14, ...rest }) {
-  return (
-    <span className="m-mark m-mark--dots" style={{ "--m-size": `${size}px` }} {...rest}>
-      <i /><i /><i />
-    </span>
-  );
+export function RunningMark(props) {
+  return <ThinkingOrb state="working" size={20} {...props} />;
 }
 
 /** 正在生成候选 */
-export function DraftingMark({ size = 16, ...rest }) {
-  return <InlineLoader variant="spark" size={size} {...rest} />;
+export function DraftingMark(props) {
+  return <ThinkingOrb state="weaving" size={20} {...props} />;
 }

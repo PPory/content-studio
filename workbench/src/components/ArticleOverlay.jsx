@@ -50,7 +50,7 @@ export function ArticleOverlay({ item, onClose, onIntake, onToast }) {
   const [state, setState] = useState({ loading: true });
   const [outline, setOutline] = useState([]);
   const [rails, setRails] = useState({ left: true, right: false });
-  const [railMode, setRailMode] = useState("ai");
+  const [railMode, setRailMode] = useState("chat");
   const [quote, setQuote] = useState("");
 
   const title = state.article?.title || item.title;
@@ -147,8 +147,8 @@ export function ArticleOverlay({ item, onClose, onIntake, onToast }) {
           className="icon-btn"
           onClick={() => setRails((r) => ({ ...r, right: !r.right }))}
           aria-pressed={rails.right}
-          title={rails.right ? "收起 AI 面板" : "展开 AI 面板"}
-          aria-label={rails.right ? "收起 AI 面板" : "展开 AI 面板"}
+          title={rails.right ? "收起 AI 助手" : "展开 AI 助手"}
+          aria-label={rails.right ? "收起 AI 助手" : "展开 AI 助手"}
         >
           <IconLayoutSidebarRight aria-hidden="true" stroke={1.7} />
         </button>
@@ -229,10 +229,25 @@ export function ArticleOverlay({ item, onClose, onIntake, onToast }) {
           )}
         </div>
 
-        {/* 右栏只给「理解」：这篇不在 vault 里，「标记」没有落点、「对话」翻不到它 */}
+        {/**
+          * 右栏只给「AI 助手」。
+          *
+          * ⚠️ **原来给的是「衍生」**（划词五个模式），理由是「这篇不在 vault 里，
+          * 对话翻不到它」。前半句仍然成立（所以「标记」还是不给），后半句不成立了——
+          * 对话读的是**这一轮传进去的正文**，不是去 vault 里检索；
+          * 把 `a.markdown` 交给它就够了。
+          *
+          * 而两者摆在一起时，「衍生」是个更窄的东西：它只处理**你选中的那一段**，
+          * 且空态要用一整屏去解释「先去正文里选一段、再点灯泡」。
+          * 读一篇没读过的文章时，先想问的是「这篇讲什么」——那是对话，不是划词。
+          * 划词那条路没有消失：正文里的工具条一直在。
+          */}
         {rails.right && a ? (
           <SideRail
-            tabs={["ai"]}
+            tabs={["chat"]}
+            assistantScopeId={`reader:article:${item.link}`}
+            assistantDocument={{ title: item.title || a.title || "", body: a.markdown || "" }}
+            assistantSelection={quote ? { text: quote } : null}
             saveLabel="存素材"
             railActions={["intake", "copy"]}
             mode={railMode}

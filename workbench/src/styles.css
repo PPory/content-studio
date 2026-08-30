@@ -542,6 +542,30 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
 ::selection { background: var(--mark-yellow); color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
 
+/**
+ * ⚠️ **文字输入类控件的焦点不画黑框。**
+ *
+ * 上面那条 `:focus-visible` 是给键盘导航用的，而**浏览器对文本输入框一律
+ * 判定为 `:focus-visible`**——鼠标点一下就够。于是每个输入框、搜索框一被点中
+ * 就套上一圈 2px 的近黑描边（`--accent` 就是 #18181b），
+ * 一屏上最安静的那个控件反而变成最重的一块。
+ *
+ * 换成把边框往下走一档（`--border-strong`）。焦点感知不靠它：
+ * 输入框里有闪着的光标、打字立刻出字，那比任何描边都直接。
+ * 真正需要靠描边认焦点的是「看不出选中了什么」的控件，不是正在打字的输入框。
+ *
+ * ⚠️ 这条**不覆盖按钮和链接**：那些没有光标，键盘用户只能靠那圈描边定位。
+ */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
 /* 全局排版件 */
 /**
  * ⚠️ **`//` + 全大写 + 等宽 + 0.2em 字距那一套眉标撤了。**
@@ -1004,7 +1028,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
    一整栏元信息**。参考的四个界面（写作器两个、项目详情两个）在这一点上一致。
    ========================================================================== */
 /* `--project-bar-h` 是那条吸顶操作条的高度，右栏定高时要减掉它 */
-.project-workspace { --project-bar-h: 52px; --project-block-h: 0px; min-height: 100%; background: var(--sunken); }
+/* ⚠️ **这一页是白底，不是工作区那档浅灰。**
+   「框架白 · 工作区浅灰」那条针对的是**扫一列条目**的页面；这一页是写字的地方，
+   和阅读区同类。底翻白之后编辑区那张卡才能撤掉——见 `.project-draft`。 */
+.project-workspace { --project-bar-h: 52px; --project-block-h: 0px; min-height: 100%; background: var(--surface); }
 .project-workspace:has(> .project-bar__blocked) { --project-block-h: 35px; }
 .project-workspace-load { max-width: 860px; margin: 0 auto; padding: 48px; }
 
@@ -1071,9 +1098,17 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
  * 宽度和阅读页的 `.ws-edit`（860px）保持一致：从「读」切到「改」不该有落差感，
  * 这也是选 CodeMirror 而不是富文本内核时定下的那条——两处用同一套排版参数。
  */
+/**
+ * ⚠️ **不画卡。** 上一版是「1px 边框 + 白底 + 圆角」的一张卡，浮在浅灰工作区上。
+ * 屏幕上是**框里画框**：外壳已经给了一个白色框架，里面再套一张白卡，
+ * 而卡里装的是一整页正文——一页正文不是一张卡片。
+ * 这和外壳那次「不要圆角、直接直线分割」是同一条：
+ * **分区靠留白和一道线，不靠给每块内容套盒子。**
+ * 右栏那道 `border-left` 已经把两边分开了，这里不需要第二道边界。
+ */
 .project-draft {
   min-width: 0; padding: 26px clamp(24px, 3.2vw, 52px) 34px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: transparent; border: 0; border-radius: 0;
 }
 .project-draft > .project-draft__label,
 .project-draft > .project-draft__title,
@@ -1090,7 +1125,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   font-family: var(--font-display); font-size: clamp(24px, 2.4vw, 32px); font-weight: 650; letter-spacing: -.035em; line-height: 1.25;
   resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.project-draft__title:focus { outline: 0; border-color: var(--text-1); }
+.project-draft__title:focus { outline: 0; border-color: var(--border-strong); }
 .project-draft__title:disabled { opacity: 1; color: var(--text-1); cursor: default; }
 /**
  * 简报两项贴在标题下面。⚠️ **它们不在右栏**：目标读者和核心观点是**你写的时候要瞟的**，
@@ -1200,7 +1235,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing:
   padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--r-ctl);
   background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs);
 }
-.ideas__run input[type="date"]:focus, .ideas__pick:focus { outline: 0; border-color: var(--text-1); }
+.ideas__run input[type="date"]:focus, .ideas__pick:focus { outline: 0; border-color: var(--border-strong); }
 /* 热点标题很长，给它吃掉整行剩下的宽度而不是把按钮挤下去 */
 .ideas__pick { flex: 1 1 320px; min-width: 0; max-width: 640px; }
 
@@ -1501,7 +1536,7 @@ a.pseed__from:hover { color: var(--text-1); text-decoration: underline; text-und
 .release-field { display: grid; gap: 6px; margin-top: 14px; }
 .release-field > span { color: var(--text-2); font-size: var(--fs-2xs); letter-spacing: .04em; }
 .release-field textarea, .release-field input { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); line-height: 1.5; resize: vertical; }
-.release-field textarea:focus, .release-field input:focus { outline: 0; border-color: var(--text-1); }
+.release-field textarea:focus, .release-field input:focus { outline: 0; border-color: var(--border-strong); }
 .project-publish__save { width: 100%; justify-content: center; margin-top: 14px; }
 .project-publish__primary, .project-publish__record { width: 100%; justify-content: center; }
 .project-publish__primary { margin-top: 14px; }
@@ -2175,7 +2210,7 @@ svg[data-tone] { color: var(--tone); }
 }
 .field textarea { min-height: 150px; resize: vertical; line-height: 1.7; }
 .field input:focus, .field textarea:focus, .field select:focus {
-  outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent;
+  outline: none; border-color: var(--border-strong);
 }
 /* **操作说明的下限是 13px。** 这一类字（每个抽屉里「这会发生什么」那几行、
    空态里「接下来该干什么」）是要真读进去的，不是扫一眼的元信息；
@@ -2454,7 +2489,7 @@ svg[data-tone] { color: var(--tone); }
   color: var(--text-1); background: var(--canvas);
   border: 1px solid var(--border-strong); border-radius: var(--r-ctl); padding: 8px 10px;
 }
-.set-field__input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.set-field__input:focus { outline: none; border-color: var(--border-strong); }
 .set-field__eff code { font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-all; }
 /* 「我的创作」只放跨文章重复使用的选择，不做一张新的项目简报。 */
 .writing-profile-settings { display: flex; flex-direction: column; gap: 20px; }
@@ -2465,7 +2500,7 @@ svg[data-tone] { color: var(--tone); }
   border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1); font: inherit;
 }
 .profile-field textarea { resize: vertical; line-height: 1.6; }
-.profile-field input:focus, .profile-field select:focus, .profile-field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.profile-field input:focus, .profile-field select:focus, .profile-field textarea:focus { outline: none; border-color: var(--border-strong); }
 .profile-field small, .profile-experts p, .profile-source small { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
 .profile-experts { padding-top: 2px; }
 .profile-experts > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -2696,7 +2731,7 @@ svg[data-tone] { color: var(--tone); }
   background: var(--canvas); border: 1px solid var(--border);
   border-radius: var(--r-pill); padding: 6px 12px; margin-bottom: 10px;
 }
-.ws-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.ws-search:focus { outline: none; border-color: var(--border-strong); }
 
 /* 筛选条一行装完：状态芯片 + 分面下拉。两排芯片摞在一起时第一眼分不出
    「上面是状态、下面是平台」（长得一模一样），而且第二排会随选项数量变长，
@@ -2711,6 +2746,13 @@ svg[data-tone] { color: var(--tone); }
   gap: 12px 20px; flex-wrap: wrap; margin-bottom: 14px;
 }
 .list-bar > :first-child { min-width: 0; }
+/* 没有筛选条的库，这一格放那句说明（见 `Studio.jsx` 里 `.list-bar` 那段注释）。
+   ⚠️ 它是**注解**不是控件：不加边框底色，字号跟着 `.page-lead` 走，
+   只是位置从「自己占一行」挪到了这一行的左端。 */
+.list-bar__lead {
+  margin: 0; min-width: 0; max-width: 620px;
+  color: var(--text-2); font-size: var(--fs-base); line-height: 1.65;
+}
 /**
  * ⚠️ **居中只给「找题」和「种子」，不给整套 `.list-bar`。**
  * 那两页的芯片是**这一页唯一的操作**（挑来源 / 挑状态），一整行只有它，
@@ -2962,7 +3004,7 @@ kbd {
   background: var(--canvas); border: 1px solid var(--border-strong);
   border-radius: var(--r-md); padding: 12px 12px;
 }
-.rail-editor:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.rail-editor:focus { outline: none; border-color: var(--border-strong); }
 
 .rail-empty {
   display: grid; place-items: center; gap: 8px; text-align: center;
@@ -3053,7 +3095,7 @@ kbd {
   color: var(--text-1); background: transparent; border: 0; border-bottom: 1px solid var(--border);
   padding: 0 0 12px; margin-bottom: 16px;
 }
-.edit-title:focus { outline: none; border-bottom-color: var(--accent); }
+.edit-title:focus { outline: none; border-bottom-color: var(--border-strong); }
 /* vault 源的标题只读（文件名就是标题）。长成一模一样的一行，只是点不动——
    给个改了却不生效的输入框，比不给更糟。 */
 .edit-title--fixed { cursor: default; }
@@ -3608,7 +3650,7 @@ kbd {
   background: var(--canvas); border: 1px solid var(--border-strong); border-radius: var(--r-md);
   transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
 }
-.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.composer:focus-within { border-color: var(--border-strong); }
 .composer textarea {
   font: inherit; font-size: var(--fs-base); line-height: 1.7; color: var(--text-1);
   background: transparent; border: 0; outline: none; width: 100%;
@@ -3908,7 +3950,7 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
   background: var(--canvas); color: var(--text-1);
   font: inherit; font-size: var(--fs-base); line-height: 1.7;
 }
-.rpick__take:focus { outline: 0; border-color: var(--text-1); }
+.rpick__take:focus { outline: 0; border-color: var(--border-strong); }
 .rpick__err { margin: 0; color: var(--danger); font-size: var(--fs-xs); }
 .rpick__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* ⚠️ 灰按钮自己说不了话，所以这一行必须在场：它说清为什么现在点不动 */
@@ -4023,7 +4065,7 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
   border: 1px solid var(--border-strong); border-radius: var(--r-pill);
   background: var(--canvas); color: var(--text-3);
 }
-.search-box:focus-within { border-color: var(--text-1); color: var(--text-1); }
+.search-box:focus-within { border-color: var(--border-strong); color: var(--text-1); }
 .search-box svg { width: 15px; height: 15px; flex: none; }
 .search-box input {
   flex: 1 1 auto; min-width: 0; border: 0; background: transparent;
@@ -5534,7 +5576,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .review-text { display: grid; gap: 7px; margin-top: 14px; }
 .review-text > span { color: var(--text-3); font-size: var(--fs-xs); }
 .review-text textarea { width: 100%; resize: vertical; border: 1px solid var(--border-strong); border-radius: var(--r-ctl); background: var(--canvas); color: var(--text-1); padding: 12px 14px; font: inherit; font-size: var(--fs-sm); line-height: 1.65; }
-.review-text textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.review-text textarea:focus { outline: none; border-color: var(--border-strong); }
 .review-feedback-plan { margin-top: 20px; padding: 20px; border: 1px solid var(--border-strong); background: var(--surface-2); }
 .review-feedback-plan > div:first-child { display: flex; justify-content: space-between; gap: 16px; }
 .review-feedback-plan > div:first-child span, .review-feedback-plan > p { color: var(--text-3); font-size: var(--fs-xs); }
@@ -6250,7 +6292,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
   color: var(--text-1); background: var(--canvas); font: inherit; line-height: 1.6;
 }
-.verification-panel textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.verification-panel textarea:focus { outline: none; border-color: var(--border-strong); }
 .verification-panel > button { justify-self: start; }
 /* 我的清单 —— 首页的主位。手写的任务落 vault 的 `05 - 计划/<日期>.md` */
 .day-plan { margin-bottom: 20px; }
@@ -6307,7 +6349,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-strong);
   border-radius: var(--r-ctl); background: var(--canvas); color: var(--text-1); font: inherit; font-size: var(--fs-md);
 }
-.plan-add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.plan-add input:focus { outline: none; border-color: var(--border-strong); }
 .plan-add button {
   flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px;
   border: 1px solid var(--accent); border-radius: var(--r-ctl);

@@ -56,16 +56,27 @@ export function QuickAssistant({ open, context, conversationId, onConversationCh
           draftStorageKey="workbench:quick-assistant-draft:v1"
           onContinue={onContinue}
           onClose={onClose}
+          /**
+           * ⚠️ **没带上内容就什么都不画。**
+           *
+           * 上一版无论如何都留一颗芯片：带上了写「热点 · Uber…」，没带上写
+           * 「未附带页面内容」甚至「未附带页面上下文」。后者是**一句报告"什么都没发生"的话**，
+           * 而它常驻在整个浮层最显眼的一行上——绝大多数页面本来就没有可带的对象，
+           * 于是这条头栏日常显示的就是一句「无」。
+           *
+           * 现在：真带上了才画芯片（并且带一颗 ✕ 可以摘掉）；没带上就只剩身份。
+           * 「这一轮读到了什么」在没有的时候，最诚实的表达是**不占位置**。
+           */
           headerLead={<>
             <span className="quick-assistant__mark"><IconSparkles aria-hidden="true" /></span>
             <strong className="quick-assistant__title">AI 助手</strong>
-            {contextAttached ? (
+            {contextAttached && attachedObject ? (
               <span className="quick-assistant__chip">
                 <b>{context?.label || "工作台"}</b>
-                <small>{attachedObject ? attachedObject.title || attachedObject.id : "未附带页面内容"}</small>
+                <small>{attachedObject.title || attachedObject.id}</small>
                 <button type="button" onClick={() => setContextAttached(false)} aria-label="移除当前页面上下文" title="移除当前页面上下文"><IconX aria-hidden="true" /></button>
               </span>
-            ) : <span className="quick-assistant__chip" data-detached="true"><b>未附带页面上下文</b></span>}
+            ) : null}
           </>}
         />
       </div>

@@ -91,6 +91,17 @@ function CopyButton({ text, label = "复制这段" }) {
   );
 }
 
+/**
+ * 把阅读页那份文档翻译成服务端认的形状。
+ * ⚠️ **`body` 是契约字段，`content` 是阅读页的内部叫法**——两边的翻译只在这一处做，
+ * 别让 `content` 漏进请求里（见下面 `document=` 那段注释）。
+ */
+function buildReadingDocument(assistantDocument, knowledgeSource) {
+  const source = assistantDocument || {};
+  const body = source.body || source.content || knowledgeSource?.text || "";
+  return { ...source, body, title: source.title || knowledgeSource?.title || "" };
+}
+
 export function SideRail({
   mode, // "notes" | "annotate" | "ai" | "chat"
   onMode,
@@ -159,7 +170,19 @@ export function SideRail({
           surface="rail"
           target={{ kind: "workspace-document", editable: false, selection: assistantSelection }}
           scopeId={assistantScopeId || `reader:${knowledgeSource?.ref || "document"}`}
-          document={assistantDocument || { title: knowledgeSource?.title || "", content: knowledgeSource?.text || "" }}
+          /**
+           * ⚠️ **正文必须落在 `body` 上。**
+           *
+           * 服务端读的是 `document.body`（`assistant-runner.mjs` 组 prompt 的那一段），
+           * 而阅读这条路上游给的是 `content`（`doc.content` / `knowledgeSource.text`）。
+           * 名字对不上的后果是：输入框上明明写着「当前全文」，模型却**一个字都没收到**，
+           * 于是它回「您尚未开始编写正文…请上传相关文档」——
+           * 屏幕上看起来是模型犯傻，实际是这一行没接上，而**没有任何地方报错**。
+           *
+           * 在这里补齐，不改服务端契约：`body` 是那份契约的字段名，
+           * `content` 只是阅读页内部的叫法，两边的翻译放在边界上做。
+           */
+          document={buildReadingDocument(assistantDocument, knowledgeSource)}
           promptRequest={assistantPrompt}
           handoffRequest={assistantHandoff}
         />

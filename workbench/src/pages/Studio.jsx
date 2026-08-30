@@ -596,6 +596,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   // 两处隔着整个 PageHeader，各自轮询会互相打架、百分比还会差一拍。
   const insightRun = useInsightRun(reload);
 
+  const hasFilterBar = Boolean(showStates || facetPick || source.verificationFilters?.length);
+
   return (
     <>
       <PageHeader
@@ -605,7 +607,9 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         // 页头刚说完「选题库」、正文顶上再来一个「TOPICS / 选题库 1 条」，
         // 同一个名字一屏出现两次，中间只隔一行描述
         count={list ? `${list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条` : ""}
-        desc={source.sub}
+        /* ⚠️ **没有筛选条的库，说明不走页头这条路**——它会自己占一整行，
+           而下面那条 `.list-bar` 的左半边正好空着（见下）。两行并成一行。 */
+        desc={hasFilterBar ? source.sub : ""}
         aside={
           source.isMaterialWorkspace ? (
             <button className="btn btn-primary" onClick={() => onIntake({ target: "collection" })}>
@@ -643,7 +647,15 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           * 包装留在页面这一层：`FilterBar` 要不要画由三个条件决定，那是编排问题。
           */}
         <div className="list-bar">
-          {showStates || facetPick || source.verificationFilters?.length ? (
+          {/**
+            * ⚠️ **左半边空着的时候，把那句说明放进来，而不是画一个空的 `<span />`。**
+            *
+            * 洞察、书架这类没有状态筛选的库，上一版是：说明自己占一行，
+            * 下面再来一条只有右端有东西的工具条——屏幕上是**一行字和一个搜索框
+            * 各据一行的两端，中间隔着一条空带**，两者明明是同一层的东西。
+            * 它俩本来就该并排：左边说「这一页是什么」，右边是「怎么看」。
+            */}
+          {hasFilterBar ? (
             <FilterBar
               source={source}
               showStates={showStates}
@@ -656,7 +668,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
               setVerification={setVerification}
               counts={{ total: list?.total, ...(list?.counts || {}) }}
             />
-          ) : <span />}
+          ) : source.sub ? <p className="list-bar__lead">{source.sub}</p> : <span />}
             <ListHead
             source={source}
             list={list}

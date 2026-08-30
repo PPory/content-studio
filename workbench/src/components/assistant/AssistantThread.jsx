@@ -52,7 +52,7 @@ export function Working({ label = "正在思考", detail = "", startedAt = "" })
    * 秒数在跳、阶段在换、微光在扫——三样都动的话读不出哪个是主信息；
    * 秒数是**唯一一个精确的数**，它必须是静止可读的那一个。
    */
-  return <div className="assistant-working"><span className="assistant-working__mark" aria-hidden="true"><WaitingMark size={24} /></span><div><b>{label}</b><small><ThinkingLine text={stage} sizer="正在等待模型返回" /> · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
+  return <div className="assistant-working"><span className="assistant-working__mark" aria-hidden="true"><WaitingMark /></span><div><b>{label}</b><small><ThinkingLine text={stage} sizer="正在等待模型返回" /> · {elapsedLabel(seconds)}</small>{seconds >= 20 ? <em>可以离开此页，任务会在后台继续</em> : null}</div></div>;
 }
 
 /**
@@ -127,9 +127,20 @@ function EmptyAssistant({ scope }) {
    * 阅读和项目那两档的注脚留着，因为它们说的是看不见的事：
    * AI 会读到什么、以及它不会动你的正文。**说明只在有东西要说明时才写。**
    */
+  /**
+   * ⚠️ **一句，不是一段。**
+   *
+   * 原文是「它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。」——
+   * 内容没错，但它落在一条 336px 的右栏里就是**三行灰字**，压在两张入口卡上面，
+   * 而下面的正文才是这一栏要你看的东西。
+   *
+   * 保留的是那半句**看不见的保证**（它不会动你的正文）；
+   * 删掉的是那半句**屏幕上已经在说的**（它读什么——输入框上就挂着「当前全文」的芯片）。
+   * 全局那一档一个字都不留，理由见下面 `EmptyAssistant` 的注释。
+   */
   const description = reading
-    ? "它会读取当前文档与选区；回答只作为阅读参考，不会修改原文。"
-    : scope === "global" ? "" : "它会读取当前全文与选区；任何改写都先给候选，由你决定是否采用。";
+    ? "只作阅读参考，不改原文。"
+    : scope === "global" ? "" : "只给候选，不动正文。";
   /**
    * ⚠️ **不画那枚圆圈里的 ✦。**
    * 它是纯装饰：这一页叫「AI 助手」、侧栏那一项也是同一枚 ✦、问候语就在它下面——

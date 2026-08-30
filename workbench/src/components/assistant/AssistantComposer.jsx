@@ -125,7 +125,11 @@ export function AssistantComposer({
         {showModel ? <div className="assistant-model-picker">
           <button type="button" className="assistant-composer__model" title={modelNotice || "从当前接口返回的可用模型中选择"} onClick={onToggleModel} aria-expanded={menu === "models"} disabled={busy || modelPending}><ModelGlyph id={model} provider={models.find((item) => item.id === model)?.ownedBy} /><b>{models.find((item) => item.id === model)?.name || model || "默认模型"}</b><IconChevronDown aria-hidden="true" /></button>
           {menu === "models" ? <div className="assistant-command-menu assistant-command-menu--models" role="menu">
-            <header><span>选择模型</span><button type="button" onClick={onCloseMenu}><IconX aria-hidden="true" /></button></header>
+            {/* ⚠️ **不画「选择模型 ✕」那一行。**
+                标题是同义反复：这块面板是从「模型」那颗芯片长出来的，里面列的全是模型名——
+                它没回答任何一个屏幕上还没答过的问题。
+                那颗 ✕ 同理：点外面、按 Esc、再点一次触发器，三条路本来就都能关，
+                而它占着整行的右端，是这块面板上唯一一个「点了不选模型」的按钮。 */}
             {/* ⚠️ **同一家连着排，并且写出厂商名。**
                 上一版直接用接口返回的顺序，于是 gpt / claude / gpt / glm / claude 交叉出现——
                 换模型时用户找的几乎总是「同一家的另一档」，穿插排列等于每次把整列读一遍。

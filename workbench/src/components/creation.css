@@ -47,7 +47,7 @@
 .creation-brief-field > span { color: var(--text-2); font-size: var(--fs-xs); }
 .creation-audience { position: relative; }
 .creation-audience__box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--canvas); }
-.creation-audience__box:focus-within { border-color: var(--text-1); }
+.creation-audience__box:focus-within { border-color: var(--border-strong); }
 .creation-audience__box input { min-width: 0; flex: 1; padding: 8px 0 8px 10px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: var(--fs-sm); }
 .creation-audience__toggle { flex: none; width: 28px; height: 28px; margin-right: 2px; display: grid; place-items: center; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer; }
 .creation-audience__toggle:hover { background: var(--surface-2); color: var(--text-1); }

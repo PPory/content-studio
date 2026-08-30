@@ -46,7 +46,7 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
       * 是唯一能回答问题的信息，删掉就再也找不回来了。
       * 生成中那条 `__live` **一直可见**——它是状态，不是回执。
       */}
-    {assistant && working ? <small><span className="assistant-message__live"><RunningMark size={14} />{activity || "正在生成回答"}</span></small> : null}
+    {assistant && working ? <small><span className="assistant-message__live"><RunningMark />{activity || "正在生成回答"}</span></small> : null}
     {assistant ? (working ? <p className="assistant-message__stream">{item.text}</p> : <div className="assistant-message__markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.text || "") }} />) : <div className="assistant-message__user">{sentAttachments.length ? <div className="assistant-message__attachments">{sentAttachments.map((attachment) => <span key={attachment.id}>{attachment.kind === "image" ? (attachment.previewUrl ? <img src={attachment.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{attachment.name}</span></span>)}</div> : null}{item.text ? <p>{item.text}</p> : null}{item.text ? <footer className="assistant-message__user-actions"><button type="button" data-copied={userCopied ? "true" : undefined} onClick={() => copyUser(item.text)} title={userCopied ? "已复制" : "复制消息"} aria-label={userCopied ? "已复制" : "复制消息"}>{userCopied ? <IconCheck aria-hidden="true" /> : <IconCopy aria-hidden="true" />}</button>{latestUser && !working ? <button type="button" onClick={onEdit} title="编辑并重新发送" aria-label="编辑并重新发送"><IconPencil aria-hidden="true" /></button> : null}</footer> : null}</div>}
     {stale ? <p className="assistant-message__stale">正文已在这条回复之后变化；建议重新生成候选，避免覆盖新内容。</p> : null}
     {/**

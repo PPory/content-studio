@@ -372,7 +372,7 @@
 .revision-bar__note.is-bad, .revision-bar__note.is-bad svg { color: var(--danger); }
 .revision-bar__command { display: flex; gap: 4px; margin-top: 7px; }
 .revision-bar__command input { min-width: 0; flex: 1; height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--canvas); color: var(--text-1); font: 400 12px/1.4 var(--font); outline: none; }
-.revision-bar__command input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
+.revision-bar__command input:focus { border-color: var(--border-strong); }
 .revision-bar__command button { flex: none; width: 32px; border: 0; border-radius: var(--r-ctl); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .revision-bar__command button:disabled { opacity: .46; cursor: default; }
 .revision-bar__command button svg { width: 15px; height: 15px; }

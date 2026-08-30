@@ -162,14 +162,23 @@
   margin-left: var(--sp-2); padding-left: var(--sp-3);
   border-left: 1px solid var(--border);
 }
+/**
+ * ⚠️ **这一条只剩动作时要靠右。**
+ * `.assistant-pane__context` 是 `space-between`，而阅读栏那一档**没有左段**
+ * （身份和上下文都不画）——于是「存为知识卡 / 新对话」孤零零地贴在左上角，
+ * 和右边一大片空白面面相觑。动作永远在右，这是这一屏其它三条 header 的共识。
+ */
+.assistant-pane__context > .assistant-context-actions:first-child:last-child { margin-left: auto; }
 .assistant-context-expand { width: 28px; padding: 0 !important; justify-content: center; border-color: transparent !important; }
 .assistant-context-expand:hover { background: var(--surface-2); border-color: transparent !important; }
 .assistant-context-actions > .assistant-background-task {
   border-color: color-mix(in srgb, var(--ok) 28%, var(--border));
   background: color-mix(in srgb, var(--ok) 7%, var(--surface)); color: var(--text-2);
 }
-.assistant-background-task__dot,
-.assistant-history__running {
+/* ⚠️ **`.assistant-history__running` 不在这条里了。** 它现在装的是一块 20px 的
+   canvas（`RunningMark`），而这条会把它按 7px 的圆点压扁——
+   压扁的是 canvas，画面直接糊掉，而且不报错。它自己的规则在下面。 */
+.assistant-background-task__dot {
   width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ok);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 12%, transparent);
   animation: assistant-live-pulse 1.4s ease-in-out infinite;
@@ -306,7 +315,7 @@
   display: inline-flex; align-items: center; gap: var(--sp-2);
   color: var(--text-3);
 }
-/* （原来这里是个自绘的脉冲圆点；现在由 `RunningMark`（`signal`）画。
+/* （原来这里是个自绘的脉冲圆点；现在由 `RunningMark` 画（thinking-orbs 的 canvas）。
    `assistant-live-pulse` 那组 keyframes 别的地方还在用，留着。） */
 @keyframes assistant-live-pulse {
   0%, 100% { opacity: 0.28; transform: scale(0.8); }
@@ -572,11 +581,13 @@
   .t-think-text { animation: none; }
   .t-think-text::before { display: none; }
 }
-/* 思考态那颗记号：现在由 `generative-loaders` 的 `InlineLoader variant="orbit"` 画，
-   这里只负责给它一个不塌陷的位置和继承下去的颜色。
-   ⚠️ 原来是自绘的 `@keyframes assistant-orbit`，连同下面 reduced-motion 里给它减速的
-   那一条一起撤了——库自己处理 `prefers-reduced-motion`，两边都减会变成一顿一顿的。 */
-.assistant-working__mark { display: grid; place-items: center; flex: none; color: var(--text-2); }
+/* 思考态那颗记号：现在是 `thinking-orbs` 的一块 canvas（见 `assistant/loaders.jsx`），
+   这里只负责给它一个不塌陷的位置。
+   ⚠️ **不要在这一层设 `color`**：canvas 自己按主题选墨色（它读 `data-theme`
+   或 `prefers-color-scheme`），`currentColor` 对它无效——设了只会让人以为改得动。
+   ⚠️ 原来是自绘的 `@keyframes assistant-orbit`，连同 reduced-motion 里给它减速的
+   那一条一起撤了。 */
+.assistant-working__mark { display: grid; place-items: center; flex: none; }
 
 /* 失败：走全局的告警语义色，不再自带一套砖红 */
 .assistant-error {
@@ -862,12 +873,39 @@
   padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); box-shadow: var(--shadow-lg);
 }
-.assistant-model-picker { position: relative; flex: none; }
-/* 模型选择器在输入器右组，菜单跟着锚到右边——
-   浮层必须从它的触发器长出来，不能从对面飞过来 */
+/**
+ * ⚠️ **模型菜单锚在输入器上，不锚在那颗小小的触发器上。**
+ *
+ * 上一版 `.assistant-model-picker` 是 `position: relative`，于是菜单的定位父级
+ * 只有触发器那么宽（约 170px），宽度只能写成 `min(320px, 100vw - …)`——
+ * **那个 `100vw` 量的是整个窗口，而它其实待在一条 336px 的右栏里。**
+ * 结果菜单往左顶出栏外，被 `.project-assistant` 的 `overflow: hidden` 切掉半截：
+ * 屏幕上是「Anthropic」只剩「aropic」、「OpenAI」只剩「nAI」。
+ *
+ * 改成锚在 `.assistant-composer`（它本来就是 `position: relative`）之后，
+ * `100%` 量的就是输入器自己的宽度——**在完整页、右栏、浮层里都自动是对的**，
+ * 不需要给每个 surface 各写一条宽度。
+ */
+/**
+ * ⚠️ **锚在输入器**底下那一行**上，不是整个输入器，也不是那颗小触发器。**
+ *
+ * 三版：
+ *  1. 锚在 `.assistant-model-picker`（触发器本身，约 170px 宽）——宽度只好写成
+ *     `min(320px, 100vw - …)`，而那个 `100vw` 量的是整个窗口；它其实待在一条
+ *     336px 的右栏里，于是顶出栏外被 `overflow: hidden` 切掉半截。
+ *  2. 锚在 `.assistant-composer`（整个输入器，约 105px 高）——宽度对了，
+ *     但 `bottom: 100%` 是输入器的**顶**，菜单于是浮在离那颗芯片一百多像素的高处，
+ *     中间空一大片，读不出它是从哪儿长出来的。
+ *  3. 现在：锚在 `> footer`，也就是**那颗芯片自己所在的那一行**。
+ *     宽度仍然是整行（够宽、不出界），底边紧贴着芯片上方 8px。
+ *
+ * **浮层必须看得出是从哪个控件长出来的**——这是这三版唯一没变的判据。
+ */
+.assistant-model-picker { flex: none; }
+.assistant-composer > footer { position: relative; }
 .assistant-command-menu--models {
-  left: auto; right: 0; bottom: calc(100% + var(--sp-3));
-  width: min(320px, calc(100vw - var(--sp-8))); max-height: min(320px, 46vh);
+  left: auto; right: 0; bottom: calc(100% + var(--sp-2));
+  width: min(320px, 100%); max-height: min(320px, 46vh);
 }
 .assistant-command-menu header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1191,7 +1229,7 @@
   background: var(--surface-2); color: var(--text-3);
   transition: border-color 0.12s var(--ease), background 0.12s var(--ease);
 }
-.assistant-history__search:focus-within { border-color: var(--accent); background: var(--surface); }
+.assistant-history__search:focus-within { border-color: var(--border-strong); background: var(--surface); }
 .assistant-history__search > svg { width: 14px; height: 14px; flex: none; }
 .assistant-history__search input {
   flex: 1 1 auto; min-width: 0; border: 0; background: none; outline: 0;
@@ -1233,7 +1271,7 @@
 .assistant-history__open b svg { width: 12px; height: 12px; flex: none; color: var(--text-3); }
 .assistant-history__open small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-history__open small:has(.assistant-history__running) { display: flex; align-items: center; gap: var(--sp-3); }
-.assistant-history__running { display: inline-grid; place-items: center; flex: none; color: var(--text-3); }
+.assistant-history__running { display: inline-grid; place-items: center; flex: none; }
 /**
  * ⚠️ **时间在标题**下面**一行，不再绝对定位到右端。**
  *
@@ -1655,8 +1693,26 @@
 .assistant-pane--project-rail .assistant-empty__mark svg { width: 15px; height: 15px; }
 .assistant-pane--project-rail .assistant-empty h3 { margin-top: var(--sp-5); font-size: var(--fs-md); }
 .assistant-pane--project-rail .assistant-empty > p { font-size: var(--fs-xs); line-height: 1.6; }
-.assistant-pane--project-rail .assistant-empty__actions { margin-top: var(--sp-5); gap: var(--sp-2); }
-.assistant-pane--project-rail .assistant-empty__actions button { grid-template-columns: 24px minmax(0, 1fr); gap: var(--sp-4); padding: var(--sp-4); }
+/**
+ * ⚠️ **窄栏里的入口卡不画框。**
+ *
+ * 这一栏的底色是 `--surface`（白），而卡也是「白底 + 1px 边框」——
+ * 白卡压在白底上，那圈边框成了屏幕上唯一在说话的东西，
+ * 两张并排就是两个空盒子。这和项目页编辑区那张卡是同一个毛病：**框里画框**。
+ * 宽屏上它们是并排三张、需要边界互相分开；这里是竖着两条，
+ * 靠间距和 hover 底色就分得开。
+ */
+.assistant-pane--project-rail .assistant-empty__actions,
+.assistant-pane--overlay .assistant-empty__actions { margin-top: var(--sp-4); gap: 2px; }
+.assistant-pane--project-rail .assistant-empty__actions button,
+.assistant-pane--overlay .assistant-empty__actions button {
+  grid-template-columns: 24px minmax(0, 1fr); gap: var(--sp-4); padding: var(--sp-3) var(--sp-4);
+  border-color: transparent; background: transparent;
+}
+.assistant-pane--project-rail .assistant-empty__actions button:hover,
+.assistant-pane--overlay .assistant-empty__actions button:hover {
+  border-color: transparent; box-shadow: none; background: var(--surface-2);
+}
 .assistant-pane--project-rail .assistant-empty__actions button > svg { width: 24px; height: 24px; padding: 5px; }
 .assistant-pane--project-rail .assistant-empty__actions button b { font-size: var(--fs-sm); }
 .assistant-pane--project-rail .assistant-empty__actions button small { font-size: var(--fs-xs); }
