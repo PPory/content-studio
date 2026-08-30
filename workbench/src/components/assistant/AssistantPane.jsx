@@ -125,6 +125,9 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   if (policy.capabilities.reviseSelection && typeof target.actions?.revise !== "function") {
     throw new TypeError(`Assistant target "${target.kind}" requires a revision action`);
   }
+  if (policy.capabilities.rewriteBody && typeof target.actions?.replaceBody !== "function") {
+    throw new TypeError(`Assistant target "${target.kind}" requires a replaceBody action`);
+  }
   const selection = target.selection || null;
   const historyEnabled = policy.capabilities.history;
   const globalScope = scope === "global";
@@ -1022,7 +1025,8 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
       error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
-      policy={policy} target={target} currentVersion={currentVersion} onPrompt={send} onPrefill={prefill} onRegenerate={() => rewind(false)}
+      policy={policy} target={target} currentVersion={currentVersion} documentLength={String(document.body || "").length}
+      onPrompt={send} onPrefill={prefill} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}
       onRetry={() => { setError(null); setInput(messages.at(-1)?.role === "user" ? messages.at(-1).text : input); }}
       starters={surface === "page" ? null : starters}

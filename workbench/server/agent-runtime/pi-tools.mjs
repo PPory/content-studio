@@ -157,6 +157,22 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return appendAction(actionsFile, { type: "create_content", title: clean(title, 200), platform: clean(platform, 40), audience: clean(audience, 500), viewpoint: clean(viewpoint, 2_000), body: clean(body, 200_000) });
   }));
 
+  /**
+   * 整理 / 清理 / 重排**整篇**正文时走这里，不要把全文写进回复。
+   *
+   * ⚠️ **它不写正文。** 提交的只是一份候选：工作台会把它送进正文区的「全文审阅」，
+   * 用户在那儿看红绿 diff、自己决定采纳还是弃用。正文的唯一写入路径始终是
+   * 编辑器的候选采纳（它带版本、修订记录和审计），这里再开一条就是同一条规则实现两遍。
+   */
+  tools.push(tool("propose_body_rewrite", "准备全文整理候选", "提交整篇正文的替换候选，交给用户在正文里逐处审阅。不直接改写正文。", Type.Object({
+    reason: Type.String({ maxLength: 500 }),
+    body: Type.String({ maxLength: 200_000 }),
+  }), async ({ reason, body }) => {
+    allowed("propose_body_rewrite");
+    if (!clean(body, 200_000)) throw new Error("全文整理候选必须包含完整正文");
+    return appendAction(actionsFile, { type: "rewrite_body", reason: clean(reason, 500), body: clean(body, 200_000) });
+  }));
+
   tools.push(tool("project_read", "读取当前内容", "读取当前内容项目快照。只读。", Type.Object({}), async () => {
     allowed("project_read");
     return text(context.project || context.document || {});

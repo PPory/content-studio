@@ -18,6 +18,8 @@ const COMMON_TOOLS = [
   "web_search",
   "web_fetch",
   "propose_content_create",
+  // 和 `propose_content_create` 同一档：只产候选，写入仍要用户在正文里确认。
+  "propose_body_rewrite",
   "submit_expert_report",
 ];
 

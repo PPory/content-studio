@@ -432,12 +432,26 @@
   color: var(--text-2); font-size: var(--fs-xs); line-height: 1.55;
 }
 
+/**
+ * ⚠️ **窄栏里按钮换行，不压扁。**
+ *
+ * 上一版是 `flex` 不换行：在 336px 的项目右栏里，「拒绝」被压成竖排的「拒/绝」、
+ * 「看改动」只剩一个「看」——而这张卡整个存在的理由就是那两颗按钮。
+ * 现在文字块声明 `flex: 1 1 200px`，放不下 200px 时按钮整组掉到下一行；
+ * 宽处（完整 AI 页）仍然是一行，`margin-left: auto` 把它们顶到右端。
+ */
 .assistant-action-card {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-4) var(--sp-6);
   max-width: var(--asst-measure); margin: var(--sp-4) auto 0; padding: var(--sp-5) var(--sp-6);
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
 }
-.assistant-action-card > div { display: grid; gap: var(--sp-1); min-width: 0; }
+/* ⚠️ **必须排掉 `__actions`。** 那一组按钮也是一个 `<div>` 直接子节点，
+   `▸ div` 的特异度（0,1,1）还高过 `.assistant-action-card__actions`（0,1,0）——
+   不排的话按钮那组会被当成文字块：`display: grid` + `flex: 1 1 200px`，
+   于是两颗按钮各自铺满一整行、上下叠成两层。
+   这个坑在本文件里已经标过三次（权限按钮、模型菜单分组、`+` 按钮）：
+   **凡是在 JSX 里给控件包一层，都要回头查一遍 `>` 选择器。** */
+.assistant-action-card > div:not(.assistant-action-card__actions) { display: grid; gap: var(--sp-1); flex: 1 1 200px; min-width: 0; }
 .assistant-action-card small { color: var(--text-3); font-size: var(--fs-xs); }
 .assistant-action-card b { font-size: var(--fs-base); }
 .assistant-action-card p { margin: 0; overflow: hidden; color: var(--text-2); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
@@ -445,11 +459,12 @@
 .assistant-action-card > button,
 .assistant-action-card__actions button {
   flex: none; height: 30px; padding: 0 var(--sp-5); border: 1px solid var(--border); border-radius: var(--r-ctl);
-  background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-sm);
+  white-space: nowrap; cursor: pointer;
 }
 .assistant-action-card > button,
 .assistant-action-card__actions button.is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.assistant-action-card__actions { display: flex; align-items: center; gap: var(--sp-2); }
+.assistant-action-card__actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; margin-left: auto; }
 .assistant-action-card[data-status="rejected"] { background: var(--surface-2); }
 
 /* --------------------------------------------------------------------------

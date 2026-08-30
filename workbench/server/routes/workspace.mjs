@@ -4,6 +4,7 @@ import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { SEED_REACTION_GROUPS, SEED_REACTIONS } from "../domain/values.mjs";
 import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto, seriesMarkdown, seriesReadDto } from "../workspace/workspace-view.mjs";
+import { collectAssetRefs, exportFileName, markdownBundle, markdownToDocx, markdownToPlainText, projectMarkdown, rewriteAssetRefs } from "../lib/document-export.mjs";
 
 const actor = "user";
 const clean = (value) => String(value ?? "").trim();
@@ -32,6 +33,47 @@ function guarded(handler) {
     try { await handler({ ...context, workspace: await currentWorkspace(context.workspace) }); }
     catch (error) { fail(context.res, error.message || "本地工作区操作失败", { status: error.status || (/不存在|找不到|回收站/.test(error.message || "") ? 404 : 400), hint: error.hint }); }
   };
+}
+
+const EXPORT_FORMATS = {
+  md: { extension: "md", type: "text/markdown; charset=utf-8" },
+  txt: { extension: "txt", type: "text/plain; charset=utf-8" },
+  docx: { extension: "docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+};
+
+/**
+ * 正文里引用到的资产字节。
+ *
+ * 读不到的**跳过但记下来**——由调用方决定怎么呈现（md 保留原链接、docx 画一行说明）。
+ * 静默当作没有这张图，会导出一个看着完好、其实少了插图的文件。
+ */
+async function exportAssets(workspace, markdown) {
+  const items = [];
+  const seen = new Set();
+  for (const ref of collectAssetRefs(markdown)) {
+    const asset = workspace.assets.get(ref.id);
+    if (!asset) continue;
+    try {
+      const bytes = await fs.readFile(await workspace.assets.resolveStoredFile(asset));
+      // 同名的第二张图要改名，否则 zip 里后一张会盖掉前一张。
+      let name = asset.originalName || `${ref.id}.bin`;
+      if (seen.has(name)) name = `${ref.id}-${name}`;
+      seen.add(name);
+      items.push({ id: ref.id, name, bytes, mimeType: asset.mimeType });
+    } catch { /* 文件缺失：按读不到处理 */ }
+  }
+  return items;
+}
+
+/** 导出一律回二进制 + `content-disposition`，前端照 `downloadBackup` 那套直接落盘。 */
+function sendDownload(res, { name, type, bytes }) {
+  res.writeHead(200, {
+    "content-type": type,
+    "content-disposition": `attachment; filename="${name.replace(/[^\x20-\x7E]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    "content-length": String(bytes.length),
+    "cache-control": "no-store",
+  });
+  res.end(bytes);
 }
 
 function seedDto(row) {
@@ -175,6 +217,43 @@ export const workspaceRoutes = [
     const body = await readJsonBody(req);
     workspace.domain.setProjectSeries(params.id, body.seriesIds, { actor, now: now() });
     json(res, { ok: true, project: projectDto(workspace, params.id) });
+  }) },
+  /**
+   * 单篇导出。**不落盘**——拼好的字节直接回给浏览器（写文件要过根目录限制和真实路径
+   * 检查，而这里根本不需要写）。这条和合集导出（`/series/:id/export`）同一个判断，
+   * 只是那边回的是 JSON 里的字符串，这边有二进制，所以一律走 `content-disposition`。
+   */
+  { method: "POST", path: "/api/workspace/projects/:id/export", handler: guarded(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    const format = EXPORT_FORMATS[clean(body.format) || "md"];
+    if (!format) throw new Error("只支持导出 Markdown、Word 和纯文本");
+    const project = projectDto(workspace, params.id);
+    if (!project) throw new Error("内容项目不存在");
+    const markdown = projectMarkdown(project);
+    const assets = await exportAssets(workspace, markdown);
+
+    if (format.extension === "txt") {
+      // ⚠️ **纯文本不带 frontmatter。** 传 `markdown`（带 frontmatter 的那份）进去的话，
+      // `---` 会被当成分隔线渲染成「————」，后面跟着一串 `title: …` 的裸 YAML——
+      // 一个说好「剥掉所有记号」的格式，开头三行全是记号。标题单独放第一行就够了。
+      const text = `${project.title || "未命名内容"}\n\n${markdownToPlainText(project.masterDraft?.body || "")}`;
+      return sendDownload(res, { name: exportFileName(project.title, "txt"), type: format.type, bytes: Buffer.from(text, "utf8") });
+    }
+    if (format.extension === "docx") {
+      const images = new Map(assets.map((item) => [item.id, item]));
+      return sendDownload(res, { name: exportFileName(project.title, "docx"), type: format.type, bytes: markdownToDocx({ title: project.title, markdown: project.masterDraft?.body || "", images }) });
+    }
+    // ⚠️ **有图就必须打包。** 单个 `.md` 里留着 `asset://` 链接，在别的编辑器里
+    // 一张图都显示不出来——而文件看着是正常的，用户要等发出去之后才发现。
+    if (!assets.length) {
+      return sendDownload(res, { name: exportFileName(project.title, "md"), type: format.type, bytes: Buffer.from(markdown, "utf8") });
+    }
+    const rewritten = rewriteAssetRefs(markdown, assets.map((item) => [item.id, `assets/${item.name}`]));
+    return sendDownload(res, {
+      name: exportFileName(project.title, "zip"),
+      type: "application/zip",
+      bytes: markdownBundle({ title: project.title, markdown: rewritten, assets }),
+    });
   }) },
   { method: "GET", path: "/api/workspace/projects", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listProjects(workspace, { stage: url.searchParams.get("stage") || "" }) })) },
   { method: "GET", path: "/api/workspace/projects/:id", handler: guarded(async ({ workspace, res, params }) => { const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); json(res, { ok: true, project }); }) },

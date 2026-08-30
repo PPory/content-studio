@@ -15,12 +15,32 @@ const ACTION_LABELS = {
   save_knowledge_card: ["保存为 Markdown 知识卡", "确认保存"],
 };
 
-export function ActionCard({ action, onApply, onReject }) {
+export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalLength = 0 }) {
   if (!action || action.status === "superseded") return null;
   const result = createAiResult({ ...action, kind: "action", status: action.status === "pending" ? "proposed" : action.status });
   const applied = result.status === "applied";
   const rejected = result.status === "rejected";
   const [title, button] = ACTION_LABELS[result.type] || ["执行候选操作", "确认执行"];
+  /**
+   * 「整理全文」是这批卡里**唯一一张不在这儿落地的**。
+   *
+   * 别的动作点「确认执行」就由服务端做完了；这一张点下去只是**把候选送进正文区**，
+   * 真正的决定发生在那边的全文审阅里（红绿 diff + 采纳 / 弃用）。所以：
+   *  - 按钮写「看改动」，不写「确认执行」——后者是在说一件它不会做的事；
+   *  - 卡片**不自己翻成「已执行」**。用户在审阅里还可能弃用，而那时卡上写着已执行，
+   *    就是屏幕上唯一一处说了假话的地方。它保持可点：想再看一次就再点一次。
+   */
+  if (result.type === "rewrite_body") {
+    const next = String(result.body || "").length;
+    const size = originalLength ? `${originalLength} 字 → ${next} 字` : `${next} 字`;
+    return <section className="assistant-action-card" data-status={rejected ? "rejected" : "proposed"}>
+      <div><small>{rejected ? "已拒绝" : "等待你在正文里确认"}</small><b>整理全文</b><p>{[size, result.reason].filter(Boolean).join(" · ")}</p></div>
+      {rejected ? <span>不会执行</span> : <div className="assistant-action-card__actions">
+        <button type="button" onClick={() => onReject(result.id)}>拒绝</button>
+        <button type="button" className="is-primary" onClick={() => onOpenRewrite?.(result)}>看改动</button>
+      </div>}
+    </section>;
+  }
   const detail = result.type === "create_content" ? `${result.title} · ${result.platform}` : result.path || result.command?.slice(0, 120) || "已由服务端校验范围";
   return <section className="assistant-action-card" data-status={result.status}>
     <div><small>{applied ? "已执行" : rejected ? "已拒绝" : "等待你确认"}</small><b>{title}</b><p>{detail}</p></div>

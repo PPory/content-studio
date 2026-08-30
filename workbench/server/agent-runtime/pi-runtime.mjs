@@ -164,6 +164,7 @@ const TOOL_LABELS = {
   powershell: "正在准备 PowerShell 候选",
   submit_expert_report: "正在整理专家结论",
   propose_content_create: "正在准备工作台新建内容候选",
+  propose_body_rewrite: "正在整理全文",
 };
 
 export async function createPiRun({

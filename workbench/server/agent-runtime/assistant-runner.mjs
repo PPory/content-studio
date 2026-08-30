@@ -576,6 +576,9 @@ function contentPrompt(input, context, model) {
   return [
     "你正在 Xenho OS 的内容项目中协助主创。先回答用户当前这一步，不抢走创作主导权。",
     "你可以分析、检索、提出建议或生成候选，但绝不能声称已经修改正文；正文只有用户点击采纳后才会变化。需要本地资料时调用 knowledge_search，需要时效性事实或公开证据时调用 web_search/web_fetch，读取附件时调用 attachment_read。图片已作为视觉内容随本轮消息发送；需要再次查看时也可调用 attachment_read。用户明确要求在工作台另建内容时，调用 propose_content_create 提交待确认操作。",
+    // ⚠️ 这条是为了让「整理全文」落在正文里，而不是把四千字倒进对话栏。
+    // 用户在那条窄栏里读不完一整篇，也没法在里面逐处比对——比对要在正文区做。
+    "用户要求整理、清理、重排、精简或改写**整篇**正文时，必须调用 propose_body_rewrite 提交完整的新正文，并在 reason 里一句话说明改了什么。**不要把整篇正文写在回复里**——回复只写你做了什么判断，候选会送进正文区让用户逐处审阅。只改其中一段时不要用它，按用户点名的范围给候选就行。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
@@ -620,6 +623,7 @@ const TOOL_LABELS = {
   skill: "正在加载 Skill",
   submit_expert_report: "正在整理专家结论",
   propose_content_create: "正在准备工作台新建内容候选",
+  propose_body_rewrite: "正在整理全文",
 };
 
 function normalizeProposedAction(item, permissionMode) {
@@ -636,6 +640,11 @@ function normalizeProposedAction(item, permissionMode) {
     title: clean(item.title, 200) || "未命名",
     platform: ["公众号", "X", "小红书", "视频号", "YouTube"].includes(item.platform) ? item.platform : "公众号",
     audience: clean(item.audience, 500), viewpoint: clean(item.viewpoint, 2_000), body: clean(item.body, 200_000),
+  };
+  if (item.type === "rewrite_body") return {
+    ...base,
+    reason: clean(item.reason, 500),
+    body: clean(item.body, 200_000),
   };
   if (["document_create", "document_update", "annotation_append", "reference_insert", "workspace_write", "workspace_edit", "workspace_powershell", "project_write", "project_edit", "powershell"].includes(item.type)) {
     return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
@@ -962,6 +971,11 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     const draftId = workspace.domain.createDraft({projectId,title:action.title,bodyMarkdown:action.body,platform:action.platform,actor:"user",now:stamp});
     workspace.domain.setPrimaryDraft(projectId,draftId,{actor:"user",now:stamp});
     result = {projectId,draftId,title:action.title};
+  } else if (action.type === "rewrite_body") {
+    // ⚠️ **这一条永远不在这儿落地。** 正文的唯一写入路径是编辑器的候选采纳
+    // （带版本、修订记录和审计）；服务端再开一条就是同一条业务规则实现两遍，
+    // 而且会绕过用户看 diff 的那一步。前端点「看改动」走的是本地路径，不调这个接口。
+    throw Object.assign(new Error("全文整理要在正文里审阅后采纳"), { status: 409, hint: "点这张卡上的「看改动」，在正文区确认后再采纳。" });
   } else if (["document_create","document_update","annotation_append","reference_insert"].includes(action.type)) {
     throw Object.assign(new Error("这项旧文件写入操作已停用；请在本地书架或内容项目中重新发起"),{status:409});  } else if (["workspace_write", "workspace_edit", "workspace_powershell"].includes(action.type)) {
     if (action.permissionMode !== "developer" || record.permissionMode !== "developer") throw Object.assign(new Error("这项操作没有开发权限"), { status: 403 });

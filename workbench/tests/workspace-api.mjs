@@ -222,6 +222,92 @@ try {
   const downloaded = await call(base, `/api/workspace/assets/${uploaded.value.asset.id}`);
   check("资源上传与读取保持原始字节", downloaded.response.status === 200 && Buffer.compare(downloaded.value, imageBytes) === 0);
 
+  // ---- 单篇导出：Markdown / Word / 纯文本 ----
+  const exportProject = await call(base, "/api/workspace/projects", { method: "POST", body: { title: "导出测试稿", body: "占位", platform: "公众号" } });
+  const exportProjectId = exportProject.value.project.id;
+  const exportDraftId = exportProject.value.project.masterDraft.id;
+  const exportBody = [
+    "# 一级标题",
+    "",
+    "正文里有**粗体**、*斜体* 和 `代码`。",
+    "",
+    "- 第一条",
+    "- 第二条",
+    "",
+    "> 一段引用",
+    "",
+    `![示意图](asset://${uploaded.value.asset.id})`,
+    "",
+    "| 列 1 | 列 2 |",
+    "| --- | --- |",
+    "| a | b |",
+  ].join("\n");
+  const savedForExport = await call(base, `/api/workspace/drafts/${exportDraftId}/save`, {
+    method: "POST",
+    body: { title: "导出测试稿", body: exportBody, expectedVersion: exportProject.value.project.masterDraft.version },
+  });
+  assert.equal(savedForExport.response.status, 200, JSON.stringify(savedForExport.value));
+
+  const exportedMarkdown = await call(base, `/api/workspace/projects/${exportProjectId}/export`, { method: "POST", body: { format: "md" } });
+  assert.equal(exportedMarkdown.response.status, 200, JSON.stringify(exportedMarkdown.value));
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const bundle = unzipSync(new Uint8Array(exportedMarkdown.value));
+  const bundleNames = Object.keys(bundle);
+  const bundleMarkdown = strFromU8(bundle[bundleNames.find((name) => name.endsWith(".md"))]);
+  const bundledImage = bundle[bundleNames.find((name) => name.includes("/assets/"))];
+  check(
+    "Markdown 导出带 frontmatter，正文里的图打包进 zip 且字节一致",
+    /^---\ntitle: 导出测试稿\n/.test(bundleMarkdown)
+    && bundleMarkdown.includes("![示意图](assets/bytes.png)")
+    && !bundleMarkdown.includes("asset://")
+    && Buffer.compare(Buffer.from(bundledImage), imageBytes) === 0,
+  );
+
+  // 没有图的那一篇必须回单个 .md，不能一律打成 zip
+  const plainExport = await call(base, `/api/workspace/projects/${projectId}/export`, { method: "POST", body: { format: "md" } });
+  check(
+    "没有插图时 Markdown 导出是单个文件",
+    plainExport.response.status === 200
+    && /filename\*=UTF-8''/.test(plainExport.response.headers.get("content-disposition") || "")
+    && decodeURIComponent(/filename\*=UTF-8''([^;]+)/.exec(plainExport.response.headers.get("content-disposition"))[1]).endsWith(".md")
+    && plainExport.value.toString("utf8").includes("第二版正文"),
+  );
+
+  const exportedDocx = await call(base, `/api/workspace/projects/${exportProjectId}/export`, { method: "POST", body: { format: "docx" } });
+  assert.equal(exportedDocx.response.status, 200);
+  const docx = unzipSync(new Uint8Array(exportedDocx.value));
+  const documentXml = strFromU8(docx["word/document.xml"]);
+  const mediaName = Object.keys(docx).find((name) => name.startsWith("word/media/"));
+  check(
+    "Word 导出是可解开的 OOXML，标题、表格和内嵌图片都在",
+    Boolean(docx["[Content_Types].xml"] && docx["word/styles.xml"] && docx["word/_rels/document.xml.rels"])
+    && documentXml.includes("一级标题")
+    && documentXml.includes("<w:tbl>")
+    && documentXml.includes("<w:b/>")
+    && Boolean(mediaName)
+    && Buffer.compare(Buffer.from(docx[mediaName]), imageBytes) === 0,
+  );
+
+  const exportedText = await call(base, `/api/workspace/projects/${exportProjectId}/export`, { method: "POST", body: { format: "txt" } });
+  const plainText = exportedText.value.toString("utf8");
+  check(
+    "纯文本导出剥掉 Markdown 记号和 frontmatter，图片降级成一行说明",
+    exportedText.response.status === 200
+    && plainText.startsWith("导出测试稿\n")
+    && plainText.includes("一级标题")
+    && plainText.includes("[图片：示意图]")
+    && !plainText.includes("**")
+    && !/^#/m.test(plainText)
+    // frontmatter 必须整段不见：`---` 会被渲染成分隔线，`title:` 会原样漏出来
+    && !plainText.includes("title:")
+    && !plainText.includes("————")
+    && !plainText.includes("asset://"),
+  );
+
+  const unknownFormat = await call(base, `/api/workspace/projects/${exportProjectId}/export`, { method: "POST", body: { format: "epub" } });
+  const missingProject = await call(base, "/api/workspace/projects/01NOTAREALPROJECT000000000/export", { method: "POST", body: { format: "md" } });
+  check("未知格式和不存在的项目都由服务端拒绝", unknownFormat.response.status === 400 && missingProject.response.status === 404);
+
   const extensionOrigin = "chrome-extension://xenho-test";
   const status = await call(base, "/api/extension/status", { headers: { origin: extensionOrigin, "x-xenho-extension": "1" } });
   assert.equal(status.response.status, 200);

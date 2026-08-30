@@ -149,9 +149,24 @@ try {
   await assert.rejects(() => fs.access(path.join(outside, "new.txt")), { code: "ENOENT" });
   await assert.rejects(() => execute(creative, "powershell", { command: "Get-Location" }), /创作模式不允许/);
   await assert.rejects(() => execute(developer, "powershell", { command: "Remove-Item -Recurse ." }), /破坏性删除/);
+  /**
+   * 「整理全文」走结构化候选，不把正文倒进对话。
+   *
+   * ⚠️ **日常模式就要有**：它只产候选，正文的写入仍然要用户在编辑器里逐处审阅后采纳。
+   * 把它锁进创作/开发模式的话，最常见的那句「帮我整理一下全文」在默认档下无路可走，
+   * 模型只会退回去把四千字写进回复里——那正是这条要修的东西。
+   */
+  assert(PERMISSION_MODES.daily.tools.includes("propose_body_rewrite"), "日常模式必须能提交全文整理候选");
+  await assert.rejects(() => execute(daily, "propose_body_rewrite", { reason: "清理乱码", body: "   " }), /完整正文/);
+  await execute(daily, "propose_body_rewrite", { reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" });
+
   const queued = (await fs.readFile(actionsFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
-  assert.equal(queued.length, 2);
-  assert(queued.every((item) => ["workspace_write", "workspace_edit"].includes(item.type)));
+  assert.equal(queued.length, 3);
+  assert(queued.slice(0, 2).every((item) => ["workspace_write", "workspace_edit"].includes(item.type)));
+  assert.deepEqual(
+    { type: queued[2].type, reason: queued[2].reason, body: queued[2].body },
+    { type: "rewrite_body", reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" },
+  );
 
   const scope = `draft:${draftId}`;
   const first = await createAssistantConversation(scope);

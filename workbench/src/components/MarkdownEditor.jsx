@@ -953,7 +953,16 @@ export function MarkdownEditor({
     const text = String(insertRequest?.text || "").trim();
     if (!v || !insertRequest?.id || !text) return;
     if (insertRequest.resultKind === "candidate" && activeRevisionRef.current) return;
-    const { from, to } = v.state.selection.main;
+    /**
+     * `scope: "document"` = **这一版是整篇的替换品**，范围就是整个文档，和光标在哪无关。
+     *
+     * ⚠️ 没有这条的时候，AI 整理完全文只能走「插到光标处」——插进去的是第二份全文，
+     * 屏幕上是同一篇文章出现两次。而「全文审阅」那套 UI（`md-candidate-focus` +
+     * `CandidateCard`）其实一直建好在下面，`candidateTargetKind` 也早就认
+     * `whole-document`，缺的只有这里这一个范围。
+     */
+    const wholeDoc = insertRequest.scope === "document";
+    const { from, to } = wholeDoc ? { from: 0, to: v.state.doc.length } : v.state.selection.main;
     const exact = insertRequest.spacing === "exact";
     const before = exact ? "" : v.state.sliceDoc(0, from);
     const after = exact ? "" : v.state.sliceDoc(to);
@@ -971,7 +980,7 @@ export function MarkdownEditor({
      * 产出新的字就走续写底纹——插到光标处、带底纹、点别处即落定，
      * 和空行上生成、回答卡「在下面插入」完全同一条路。
      */
-    if (insertRequest.resultKind === "candidate" && from !== to) {
+    if (insertRequest.resultKind === "candidate" && (wholeDoc || from !== to)) {
       const createdAt = new Date().toISOString();
       const documentVersion = documentVersionOf(v.state.doc.toString());
       const candidate = createCandidate({

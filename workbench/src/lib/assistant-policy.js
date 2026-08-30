@@ -72,6 +72,14 @@ export function resolveAssistantPolicy({ scope, target = {} }) {
       insertCandidate: candidate,
       writeAtCursor: candidate,
       reviseSelection: selectionCandidate,
+      /**
+       * 「把整篇换成这一版」——只给内容项目的稿件。
+       *
+       * ⚠️ **不给 `workspace-document`（阅读页那份书籍文档）。** 那边没有实现
+       * `replaceBody`，而下面 `AssistantPane` 对「声明了能力却没有实现」是直接抛
+       * `TypeError`——多给一个 kind 就是把阅读页整页打崩，而且崩在打开的那一刻。
+       */
+      rewriteBody: candidate && targetKind === "draft",
       history: base.history,
       projectContext: base.projectContext,
       projectMaterials: base.projectContext,

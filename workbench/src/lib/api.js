@@ -379,6 +379,38 @@ export async function downloadBackup({ kind = "portable", includeBookAssets = fa
 }
 
 /**
+ * 单篇文章导出。服务端一律回二进制，所以不走 `req()`（那个会 `json()` 掉响应）。
+ *
+ * ⚠️ **文件名以服务端回的 `content-disposition` 为准，不在这里再拼一次。**
+ * Markdown 有图时回的是 zip 而不是 `.md`——扩展名是服务端的判断，
+ * 前端自己拼的话会把一个 zip 存成 `.md`，双击打不开。
+ */
+export async function downloadProjectExport(projectId, format = "md") {
+  const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/export`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ format }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(data.error || `导出失败（HTTP ${res.status}）`), { hint: data.hint });
+  }
+  const disposition = res.headers.get("content-disposition") || "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const name = (encoded ? decodeURIComponent(encoded) : /filename="([^"]+)"/.exec(disposition)?.[1]) || `导出.${format}`;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { name, bytes: blob.size };
+}
+
+/**
  * 把整个合集下载成一份 Markdown。
  *
  * 服务端只把拼好的文本回过来，**不落盘**：写文件要过根目录限制和真实路径检查，

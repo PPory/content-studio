@@ -1058,6 +1058,27 @@ select:focus-visible {
   color: var(--st-urgent-ink); font-size: var(--fs-xs);
 }
 .project-bar__end { flex: none; display: flex; align-items: center; gap: 8px; }
+/* 导出下拉。⚠️ 定位父级是**触发器自己这一层**，不是整条 `.project-bar`——
+   挂在操作条上的话面板会从整条的左端长出来，而按钮在最右边。
+   这条在 AI 输入器那边已经栽过三次了（见 project-assistant.css 顶上那段）。 */
+.project-export { position: relative; flex: none; }
+.project-export > .btn svg:last-child { width: 12px; height: 12px; opacity: .6; }
+.project-export__menu {
+  position: absolute; z-index: 30; right: 0; top: calc(100% + 6px);
+  width: 260px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.project-export__menu > button {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 10px;
+  width: 100%; border: 0; border-radius: var(--r-sm); padding: 8px;
+  background: transparent; color: var(--text-1); font: inherit; text-align: left; cursor: pointer;
+}
+.project-export__menu > button:hover { background: var(--surface-2); }
+.project-export__menu svg { width: 16px; height: 16px; color: var(--text-3); }
+.project-export__menu > button > span { display: grid; gap: 1px; min-width: 0; }
+.project-export__menu b { font-size: var(--fs-sm); font-weight: 500; }
+.project-export__menu small { overflow: hidden; color: var(--text-3); font-size: var(--fs-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .project-back {
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 4px;
   border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2);
@@ -1083,7 +1104,11 @@ select:focus-visible {
 .project-collection svg { flex: none; }
 .project-saved, .project-notice { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-xs); }
 .project-saved svg, .project-notice svg { width: 14px; height: 14px; }
-.project-notice { color: var(--text-2); }
+/* ⚠️ **回执要能被截断。** 导出的文件名就是文章标题，中文标题动不动二三十个字——
+   不封顶的话这条回执会把整条操作条挤到「保存 / 写完了，去发布」被推出屏幕。
+   完整文件名留在 `title` 里，鼠标停一下就能看全。 */
+.project-notice { max-width: 260px; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.project-notice svg { flex: none; }
 
 /**
  * ⚠️ **七段流程线整条撤了**（`.project-flow` 连同 `<ol>` 一起）。

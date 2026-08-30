@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/api.js";
+import { api, downloadProjectExport } from "../lib/api.js";
+import { useDialog } from "../lib/use-dialog.js";
 import { projectPhase } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
@@ -16,7 +17,24 @@ import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.j
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
 import { clearTemporaryProject, isBlankTemporaryDraft, isTemporaryProject } from "../lib/temporary-project.js";
-import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconCopy, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
+
+/**
+ * 导出格式。
+ *
+ * ⚠️ **Markdown 那条写「有图会打包成 zip」。** 服务端会按正文里有没有图决定回
+ * `.md` 还是 `.zip`——用户点的是「Markdown」，下下来却是个压缩包，
+ * 不先说一句的话那是个意外；说了就是个贴心。
+ *
+ * 没有 PDF：仓库里没有 PDF 库，而引一个 JS PDF 库在中文字体嵌入和断行上会明显更糟。
+ * 真要做的话正确路径是打印视图 + `window.print()`（Chrome 的「另存为 PDF」），
+ * 代价是弹打印面板而不是直接下文件。
+ */
+const EXPORT_FORMATS = [
+  { id: "md", label: "Markdown", hint: "带 frontmatter，有图会打包成 zip" },
+  { id: "docx", label: "Word", hint: "标题、列表、表格和插图都保留" },
+  { id: "txt", label: "纯文本", hint: "剥掉所有 Markdown 记号" },
+];
 
 /**
  * ⚠️ **七段流程线整条撤了。** 它画的是 Worker 的状态机，不是你的动线：
@@ -223,6 +241,11 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [pendingLeave, setPendingLeave] = useState(null);
   const [leaving, setLeaving] = useState(false);
   const [pickingSeries, setPickingSeries] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState("");
+  // 弹层规矩（Esc、点外面、焦点归还）走 `use-dialog.js` 那一份。
+  // `modal: false`：它只是顶栏上一颗小下拉，把整页设成 inert 是杀鸡用牛刀。
+  const exportRef = useDialog(exportOpen, () => setExportOpen(false), { modal: false, dismissOnPointerDownOutside: true, outsideIgnore: ".project-export" });
   const cursor = useRef(null);
   const selection = useRef(null);
   const selectedDraftRef = useRef("");
@@ -322,6 +345,23 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
       window.removeEventListener("pagehide", pageHide);
     };
   }, [blankTemporary, dirty, projectId, temporary]);
+
+  /**
+   * 导出。**先存再导**：导出读的是 SQLite 里的正文，而屏幕上可能还有没保存的字——
+   * 不先存的话，用户导出的是自己刚刚改之前的那一版，而文件看着完全正常。
+   */
+  async function runExport(format) {
+    setExportOpen(false);
+    setExporting(format);
+    setNotice("");
+    try {
+      if (dirty) await saveDraft();
+      const result = await downloadProjectExport(projectId, format);
+      setNotice(`已导出 ${result.name}`);
+    } catch (error) {
+      setError(error);
+    } finally { setExporting(""); }
+  }
 
   async function saveDraft() {
     if (!draft || busy || !dirty) return true;
@@ -631,7 +671,7 @@ ${(form.body || "").slice(0, 3000)}`);
         <div className="project-bar__end">
           {solo?.previous ? <button className="btn btn-sm" onClick={() => onGo("project", solo.previous.projectId)} title={solo.previous.title}>上一篇</button> : null}
           {solo?.next ? <button className="btn btn-sm" onClick={() => onGo("project", solo.next.projectId)} title={solo.next.title}>下一篇</button> : null}
-          {notice ? <span className="project-notice"><IconCheck aria-hidden="true" />{notice}</span> : null}
+          {notice ? <span className="project-notice" title={notice}><IconCheck aria-hidden="true" />{notice}</span> : null}
           {dirty ? <span className="project-saved" role="status">{busy ? "保存中…" : "待保存"}</span> : saved ? <span className="project-saved" role="status"><IconCheck aria-hidden="true" />已保存</span> : null}
           {/**
             * ⚠️ **「退回写作修改」搬到顶栏了。**
@@ -641,6 +681,31 @@ ${(form.body || "").slice(0, 3000)}`);
           {draft && project.stage === "待发布" ? (
             <button className="btn btn-sm" onClick={() => transition("return-writing")} disabled={busy}>退回写作</button>
           ) : null}
+          {/**
+            * ⚠️ **导出排在「保存」左边，不和主动作抢位置。**
+            * 它是关于这一篇的动作，但一篇稿子从头到尾也就导那么一两次；
+            * 而「写完了，去发布」是这条操作条存在的理由。低频的排前面、小一号、不上色。
+            */}
+          {draft ? <div className="project-export">
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setExportOpen((value) => !value)}
+              aria-expanded={exportOpen}
+              aria-haspopup="menu"
+              disabled={Boolean(exporting)}
+              title="把这一篇存成文件"
+            >
+              {exporting ? <IconLoader2 className="spin" aria-hidden="true" /> : <IconDownload aria-hidden="true" />}导出<IconChevronDown aria-hidden="true" />
+            </button>
+            {exportOpen ? <div className="project-export__menu" role="menu" ref={exportRef} aria-label="选择导出格式">
+              {EXPORT_FORMATS.map((item) => (
+                <button type="button" role="menuitem" key={item.id} onClick={() => runExport(item.id)}>
+                  <IconFileText aria-hidden="true" /><span><b>{item.label}</b><small>{item.hint}</small></span>
+                </button>
+              ))}
+            </div> : null}
+          </div> : null}
           {draft && (draftEditable || releaseEditable) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
           {project.stage === "待发布" ? (
             draft?.platform === "公众号" ? <button className="btn btn-primary" onClick={openTypeset}><IconBrandWechat aria-hidden="true" />去排版<IconArrowRight aria-hidden="true" /></button> : null
@@ -783,6 +848,12 @@ ${(form.body || "").slice(0, 3000)}`);
               actions: {
                 insert: (text, meta = {}) => setInsertRequest({ id: `assistant-${Date.now()}`, text, spacing: "exact", ai: meta.ai !== false, kind: meta.kind || "AI 助手候选", resultKind: meta.resultKind, grounding: meta.grounding, rerun: meta.rerun }),
                 revise: (request) => setRevisionRequest({ ...request, id: `assistant-revision-${Date.now()}` }),
+                /**
+                 * 「把整篇换成这一版」。走的是和插入候选**同一条**路，只是范围是整个文档——
+                 * 于是正文区自动变成「全文审阅」（红绿 diff + 采纳 / 弃用），
+                 * 采纳时的版本、修订记录和审计也全部沿用同一套，没有第二条写入路径。
+                 */
+                replaceBody: (text, meta = {}) => setInsertRequest({ id: `assistant-body-${Date.now()}`, text, scope: "document", spacing: "exact", targetKind: "whole-document", resultKind: "candidate", ai: true, kind: meta.kind || "AI 全文整理" }),
               },
             }}
           >

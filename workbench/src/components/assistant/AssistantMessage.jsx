@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { RunningMark } from "./loaders.jsx";
-import { IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
+import { IconArrowsExchange, IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
 
 const REFERENCE_ICONS = { expert: IconUserStar, skill: IconSparkles };
 
@@ -24,7 +24,7 @@ function useCopied(ms = 1_400) {
   }];
 }
 
-export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], capabilities, currentVersion, onRevise, onInsert, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "", showRuntime = true }) {
+export const AssistantMessage = memo(function AssistantMessage({ item, attachments = [], capabilities, currentVersion, onRevise, onInsert, onReplaceBody, onRegenerate, onEdit, latestAssistant = false, latestUser = false, working = false, activity = "", showRuntime = true }) {
   const [copied, copy] = useCopied();
   const [userCopied, copyUser] = useCopied();
   const assistant = item.role === "assistant";
@@ -66,6 +66,10 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
       <button data-copied={copied ? "true" : undefined} onClick={() => copy(item.text)} title={copied ? "已复制" : "复制这条回复"} aria-label={copied ? "已复制" : "复制这条回复"}>{copied ? <IconCheck aria-hidden="true" /> : <IconCopy aria-hidden="true" />}</button>
       {capabilities.insertCandidate ? <button onClick={() => onInsert(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "插到光标处，带底纹，点别处即落定"} aria-label="插入正文"><IconPlus aria-hidden="true" /></button> : null}
       {capabilities.reviseSelection ? <button onClick={() => onRevise(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "按这条建议改写选中的文字"} aria-label="按建议改选区"><IconWand aria-hidden="true" /></button> : null}
+      {/* ⚠️ **这颗是兜底，不是主路。** 模型正常应该调 `propose_body_rewrite`，
+          对话里只出一张卡；但它照旧可能把整理好的全文直接写在回复里——
+          那时候没有这颗按钮，用户唯一的出路就是手动全选复制。 */}
+      {capabilities.rewriteBody ? <button onClick={() => onReplaceBody(item.text)} disabled={stale} title={stale ? "正文版本已变化，请重新生成" : "用这一版替换整篇正文，先看改动再决定"} aria-label="换成正文"><IconArrowsExchange aria-hidden="true" /></button> : null}
       {latestAssistant ? <button onClick={onRegenerate} title="用相同问题重新生成" aria-label="重新生成"><IconRefresh aria-hidden="true" /></button> : null}
       {/**
         * 模型和耗时。**排在按钮后面，指到才现形。**
