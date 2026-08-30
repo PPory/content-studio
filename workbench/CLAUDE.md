@@ -22,6 +22,9 @@ Xenho OS 的现役本地应用。React 界面、本地 API、SQLite、资产库�
 ## 代码边界
 
 - `src/`：页面、组件和前端 API；页面之间不要互相 import。
+- ⚠️ **代码里 `series` = 界面上的「合集」**（`content_series` / `series_entries` / `SeriesPicker`）。
+  而 `collection*`（`CollectionOrganizer`、`applyCollectionOrganize`）指的是 Inbox 里的**收藏**，
+  和合集无关。不要把 `series` 改名成 `collection`，两个含义会撞在一起。
 - `server/routes/`：本地 HTTP 契约；业务规则不要复制到前端。
 - `server/storage/`、`server/domain/`：SQLite、资产、版本、审计和业务不变量。
 - `server/agent-runtime/`：Pi 会话、权限模式和受控工具。
