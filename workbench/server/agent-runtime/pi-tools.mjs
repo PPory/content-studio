@@ -291,6 +291,20 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text(content.slice(0, 80_000), { path: resolved.relative, truncated: content.length > 80_000 });
   }));
 
+  if (typeof context.delegateExperts === "function") {
+    tools.push(tool("delegate_experts", "委派内容专家", "把当前正文交给 1 到 3 位只读专家子 Agent 独立检查。适合素材查缺、事实核查和品控九问；多位专家并行运行，返回结构化报告，不修改正文。", Type.Object({
+      kinds: Type.Array(Type.Union([
+        Type.Literal("material-research"),
+        Type.Literal("quality-review"),
+        Type.Literal("fact-check"),
+      ]), { minItems: 1, maxItems: 3 }),
+      instruction: Type.Optional(Type.String({ maxLength: 2_000 })),
+    }), async ({ kinds, instruction = "" }, signal) => {
+      allowed("delegate_experts");
+      return text(await context.delegateExperts({ kinds, instruction, signal }), { delegated: true, kinds });
+    }));
+  }
+
   tools.push(tool("project_file_read", "读取项目文件", "开发模式下读取工作台项目内文件。只读。", Type.Object({ path: Type.String({ maxLength: 1_000 }) }), async ({ path: requested }, signal) => {
     allowed("project_file_read");
     const resolved = await resolveProjectPath(requested);
@@ -370,15 +384,16 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ url: url.href, contentType: clean(response.headers.get("content-type"), 200), content: body.slice(0, 120_000), truncated: body.length > 120_000 });
   }));
 
-  tools.push(tool("submit_expert_report", "提交专家报告", "提交结构化专家报告。仅用于后台专家任务。", Type.Object({ reportJson: Type.String({ maxLength: 200_000 }) }), async ({ reportJson }) => {
-    allowed("submit_expert_report");
-    if (!reportFile) throw new Error("当前任务不是专家报告任务");
-    let report;
-    try { report = JSON.parse(reportJson); } catch { throw new Error("reportJson 不是合法 JSON"); }
-    if (!report || typeof report !== "object" || Array.isArray(report) || (expertKind && report.kind !== expertKind)) throw new Error("报告结构与当前专家任务不一致");
-    await fs.writeFile(reportFile, JSON.stringify(report, null, 2), "utf8");
-    return text("结构化报告已提交。", { kind: report.kind });
-  }));
+  if (reportFile) {
+    tools.push(tool("submit_expert_report", "提交专家报告", "提交结构化专家报告。仅用于后台专家任务。", Type.Object({ reportJson: Type.String({ maxLength: 200_000 }) }), async ({ reportJson }) => {
+      allowed("submit_expert_report");
+      let report;
+      try { report = JSON.parse(reportJson); } catch { throw new Error("reportJson 不是合法 JSON"); }
+      if (!report || typeof report !== "object" || Array.isArray(report) || (expertKind && report.kind !== expertKind)) throw new Error("报告结构与当前专家任务不一致");
+      await fs.writeFile(reportFile, JSON.stringify(report, null, 2), "utf8");
+      return text("结构化报告已提交。", { kind: report.kind });
+    }));
+  }
 
   return tools;
 }

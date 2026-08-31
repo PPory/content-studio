@@ -9,6 +9,8 @@ import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { projectDto } from "../workspace/workspace-view.mjs";
 import { createPiRun } from "./pi-runtime.mjs";
+import { runExpertSubagents } from "./expert-subagents.mjs";
+import { DELEGATABLE_EXPERT_KINDS, EXPERT_TASKS } from "./expert-contracts.mjs";
 import { agentMountsFromUserMessage, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import { DEFAULT_PERMISSION_MODE, normalizePermissionMode, permissionModeCatalog, assertConversationIdle, resolveProjectPath } from "./permission-modes.mjs";
 
@@ -490,11 +492,23 @@ export function assistantReferencePrompt(context) {
   const items = context.references || [];
   if (!items.length) return "";
   const missing = items.filter((item) => item.missing);
+  const delegated = [];
   const blocks = items.filter((item) => !item.missing).map((item) => {
     if (item.kind === "article") return `【本轮引用的文章：${item.title}${item.stage ? `（${item.stage}）` : ""}】\n${item.body || "这篇目前还没有正文。"}`;
-    if (item.kind === "expert") return `【本轮调用专家：${item.title}】\n${item.body}`;
+    if (item.kind === "expert") {
+      const kind = DELEGATABLE_EXPERT_KINDS.find((candidate) => EXPERT_TASKS[candidate].expertId === item.id);
+      if (kind && typeof context.delegateExperts === "function") {
+        delegated.push({ kind, title: item.title });
+        return "";
+      }
+      return `【本轮调用专家：${item.title}】\n${item.body}`;
+    }
     return `【本轮指定 Skill：${item.title}】必须按下面这份说明执行；它的步骤优先于你的默认做法。\n${item.body}`;
-  });
+  }).filter(Boolean);
+  if (delegated.length) {
+    const unique = [...new Map(delegated.map((item) => [item.kind, item])).values()];
+    blocks.push(`【本轮指定专家子 Agent】用户已明确选择：${unique.map((item) => item.title).join("、")}。必须调用一次 delegate_experts，kinds 使用 ${JSON.stringify(unique.map((item) => item.kind))}；等待独立报告返回后再汇总，不要由主助手冒充这些专家完成。`);
+  }
   if (missing.length) blocks.push(`【引用已失效】${missing.map((item) => item.title || item.id).join("、")}——本轮没能读到它们。必须明确告诉用户读不到，不要凭标题推测内容。`);
   return blocks.join("\n\n");
 }
@@ -532,7 +546,7 @@ async function localContext(env, input, record) {
       id: clean(input.document?.id, 160),
       workspaceId: workspace.manifest.workspaceId,
       title: clean(input.document?.title, 300),
-      body: clean(input.document?.body, 60_000),
+      body: String(input.document?.body ?? ""),
       platform: clean(input.document?.platform, 80),
       audience: clean(input.document?.audience, 300),
       selection: input.document?.selection || null,
@@ -735,7 +749,17 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   const key = activeKey(scopeId, record.id);
   if (active.has(key)) throw Object.assign(new Error("AI 助手还在处理上一条消息"), { status: 409 });
   let stageWrite = Promise.resolve();
-  const runState = { session: null, cancelled: false, drain: () => stageWrite };
+  const delegatedRuns = new Set();
+  const expertAbort = new AbortController();
+  const runState = {
+    session: null,
+    cancelled: false,
+    abortExperts: () => expertAbort.abort(Object.assign(new Error("本轮已停止"), { name: "AbortError" })),
+    drain: async () => {
+      await stageWrite;
+      await Promise.allSettled([...delegatedRuns]);
+    },
+  };
   active.set(key, runState);
   options.onEvent?.({ type: "conversation", conversationId: record.id });
 
@@ -776,6 +800,29 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     await writeConversationRecord(scopeId, record);
     emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(runtimeEnv, input, record);
+    if (input.mode !== "general" && (context.project.body || context.project.selection?.text)) {
+      Object.defineProperty(context, "delegateExperts", {
+        enumerable: false,
+        value: ({ kinds, instruction, signal }) => {
+          const combinedSignal = signal ? AbortSignal.any([signal, expertAbort.signal]) : expertAbort.signal;
+          const delegated = runExpertSubagents({
+            env: runtimeEnv,
+            workspace: currentWorkspace(),
+            context,
+            parentDir: dir,
+            scopeId,
+            conversationId: record.id,
+            model: record.model,
+            kinds,
+            instruction,
+            signal: combinedSignal,
+          });
+          delegatedRuns.add(delegated);
+          void delegated.finally(() => delegatedRuns.delete(delegated)).catch(() => {});
+          return delegated;
+        },
+      });
+    }
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
     // ⚠️ 阶段文案里不写「Pi」：这几句直接画在等待那一屏上，
     // 用户在这一刻要认的是「进行到哪一步了」，不是「用的哪个运行时」。
@@ -1031,9 +1078,10 @@ export async function cancelAssistantTurn(scopeId, conversationId = "") {
   const running = active.get(key);
   if (!running) return false;
   running.cancelled = true;
+  running.abortExperts?.();
   await running.session?.abort().catch(() => {});
-  active.delete(key);
   await running.drain?.().catch(() => {});
+  active.delete(key);
   const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
   if (latest?.activeTurn) {
     latest.lastTurn = { ...latest.activeTurn, status: "cancelled", finishedAt: now() };

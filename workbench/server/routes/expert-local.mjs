@@ -2,12 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
-import { qualityNinePrompt, XENHO_QUALITY_NINE } from "../lib/quality-nine.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { createPiRun, piRuntimeInfo } from "../agent-runtime/pi-runtime.mjs";
+import { EXPERT_TASKS, expertPrompt, validateExpertReport } from "../agent-runtime/expert-contracts.mjs";
 
-const KINDS = new Set(["material-research", "quality-review", "fact-check", "style-calibration"]);
+const KINDS = new Set(Object.keys(EXPERT_TASKS));
 const active = new Map();
 const executing = new Set();
 const clean = (value, max = 80_000) => String(value ?? "").trim().slice(0, max);
@@ -48,38 +47,6 @@ function list(workspace, scopeId = "") {
     .filter((run) => run && (!scopeId || run.scopeId === scopeId));
 }
 
-function reportContract(kind) {
-  if (kind === "material-research") return `{"kind":"material-research","summary":"...","claims":[{"quote":"...","location":"...","need":"...","localSources":[],"webSources":[],"gap":"..."}],"nextSteps":[]}`;
-  if (kind === "quality-review") return `{"kind":"quality-review","summary":"...","strengths":[],"questions":[{"id":"audience","status":"pass|warn|fail","location":"...","finding":"...","direction":"..."}],"mustFix":[]}`;
-  if (kind === "fact-check") return `{"kind":"fact-check","summary":"...","claims":[{"quote":"...","type":"数字|日期|人物|事件|引语|绝对化判断","status":"verified|disputed|unsupported|overstated","localSources":[],"webSources":[],"risk":"...","suggestion":"..."}]}`;
-  return `{"kind":"style-calibration","summary":"...","dimensions":{"tone":"...","method":"...","thinking":"...","expression":"...","habits":"...","signature":"..."},"name":"我的风格","description":"...","instructions":"...","warnings":[]}`;
-}
-
-function promptFor(kind, document, sources) {
-  const expertId = { "material-research": "material-researcher", "quality-review": "quality-reviewer", "fact-check": "fact-checker", "style-calibration": "style-coach" }[kind];
-  const expert = WRITING_EXPERTS.find((item) => item.id === expertId);
-  const target = document.selection?.text ? `只分析选中段落：\n${document.selection.text}` : `分析全文：\n${document.body}`;
-  return [
-    expert?.instructions || "",
-    kind === "quality-review" ? `Xenho 品控九问：\n${qualityNinePrompt()}` : "",
-    `标题：${document.title || "未命名"}\n平台：${document.platform || ""}\n目标读者：${document.audience || ""}\n${target}`,
-    `本地工作区预检到 ${sources.length} 条候选来源。必须先用 knowledge_search 核对；需要时可用 web_search 只读核查公开网页。`,
-    "不得修改正文、业务状态或文件；只提交建议和证据。最后必须调用 submit_expert_report。",
-    `reportJson 必须严格符合：${reportContract(kind)}`,
-  ].filter(Boolean).join("\n\n");
-}
-
-function validateReport(kind, report) {
-  if (!report || typeof report !== "object" || Array.isArray(report) || report.kind !== kind) throw new Error("专家没有提交符合约定的结构化报告");
-  if (kind === "quality-review") {
-    const ids = new Set((report.questions || []).map((item) => item?.id));
-    if (XENHO_QUALITY_NINE.some((item) => !ids.has(item.id))) throw new Error("品控报告没有逐项回答完整的 Xenho 品控九问");
-  }
-  if (["material-research", "fact-check"].includes(kind) && !Array.isArray(report.claims)) throw new Error("专家报告缺少逐条观点或事实");
-  if (kind === "style-calibration" && (!report.dimensions || !report.instructions)) throw new Error("风格画像缺少六维分析或提示词");
-  return report;
-}
-
 async function execute(env, workspace, run, document) {
   const dir = path.join(workspace.paths.stagingDir, "expert-runs", run.id);
   let session;
@@ -96,7 +63,7 @@ async function execute(env, workspace, run, document) {
       kind: run.kind,
       sessionRoot: path.join(dir, "pi-sessions"),
       sessionId: run.piSessionId,
-      prompt: promptFor(run.kind, document, sources),
+      prompt: expertPrompt(run.kind, document, sources),
       persona: "你是 Xenho 的专业内容顾问。用户是主创。只读研究、保留来源、提交结构化报告；不得修改正文、业务状态或文件。",
       mode: "daily",
       context: { workspace, document, localSources: sources },
@@ -111,7 +78,7 @@ async function execute(env, workspace, run, document) {
     run.piSessionId = result.piSessionId;
     run.piSessionFile = result.piSessionFile;
     run = persist(workspace, { ...run, stage: "validate", stageLabel: "整理结构化报告", percent: 92 });
-    const report = validateReport(run.kind, JSON.parse(await fs.readFile(path.join(dir, "report.json"), "utf8")));
+    const report = validateExpertReport(run.kind, JSON.parse(await fs.readFile(path.join(dir, "report.json"), "utf8")));
     persist(workspace, { ...run, status: "done", stage: "done", stageLabel: "检查完成", percent: 100, report, finishedAt: now() });
   } catch (error) {
     const current = load(workspace, run.id) || run;

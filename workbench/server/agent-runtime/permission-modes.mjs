@@ -15,6 +15,7 @@ const COMMON_TOOLS = [
   "hotspot_search",
   "attachment_read",
   "skill_read",
+  "delegate_experts",
   "web_search",
   "web_fetch",
   "propose_content_create",

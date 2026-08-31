@@ -6,6 +6,8 @@ import { createPiTools } from "../server/agent-runtime/pi-tools.mjs";
 import { agentAccess, agentMountsFromUserMessage, resolveAgentMountPath } from "../server/agent-runtime/agent-access.mjs";
 import { permissionModeCatalog, PERMISSION_MODES, resolveProjectPath } from "../server/agent-runtime/permission-modes.mjs";
 import { PI_RUNTIME_VERSION, piImageContent, piRuntimeInfo, probePiRuntime } from "../server/agent-runtime/pi-runtime.mjs";
+import { EXPERT_READONLY_TOOLS, MAX_EXPERT_SUBAGENTS, runExpertSubagents } from "../server/agent-runtime/expert-subagents.mjs";
+import { validateExpertReport } from "../server/agent-runtime/expert-contracts.mjs";
 import {
   assistantConversations,
   assistantExperts,
@@ -40,6 +42,7 @@ assert(!PERMISSION_MODES.developer.tools.includes("document_create"));
 assert(!PERMISSION_MODES.creative.tools.includes("powershell"));
 assert(PERMISSION_MODES.developer.tools.includes("powershell"));
 assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"));
+assert(PERMISSION_MODES.daily.tools.includes("delegate_experts"), "日常模式必须允许只读专家委派");
 
 const skills = await assistantSkills();
 assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
@@ -89,6 +92,10 @@ try {
   assert.match(referenceText, /【本轮指定 Skill：material-gap】/);
   assert.match(referenceText, /【引用已失效】/);
   assert.equal(assistantReferencePrompt({ references: [] }), "", "没有引用时不往 prompt 里塞空段");
+  const delegatedReferenceText = assistantReferencePrompt({ references: [...references, { kind: "expert", id: "fact-checker", title: "事实核查", body: "事实核查指令" }], delegateExperts: async () => ({}) });
+  assert.match(delegatedReferenceText, /【本轮指定专家子 Agent】/);
+  assert.match(delegatedReferenceText, /"fact-check"/);
+  assert.match(delegatedReferenceText, /【本轮调用专家：写作教练】/, "非审查型专家仍应保留在主会话");
 
   await assert.rejects(() => resolveProjectPath("../outside.txt", { write: true }), /路径越界/);
   await assert.rejects(() => resolveProjectPath("node_modules/blocked.txt", { write: true }), /依赖目录/);
@@ -131,6 +138,24 @@ try {
     assert(!allNames.has(name), `本地优先运行时不应暴露旧 vault 工具：${name}`);
   }
   const execute = (items, name, params) => items.find((item) => item.name === name).execute("test-call", params, undefined, undefined, {});
+  assert(!daily.some((item) => item.name === "delegate_experts"), "没有服务端委派器时不能暴露空壳工具");
+  let delegatedInput;
+  const delegatedTools = createPiTools({
+    env: dailyEnv,
+    mode: "daily",
+    context: {
+      ...context,
+      delegateExperts: async (input) => {
+        delegatedInput = input;
+        return { batchId: "test-batch", completed: input.kinds.length, results: [] };
+      },
+    },
+    actionsFile,
+  });
+  const delegatedResult = JSON.parse((await execute(delegatedTools, "delegate_experts", { kinds: ["fact-check", "quality-review"], instruction: "重点核对开头" })).content[0].text);
+  assert.equal(delegatedResult.completed, 2);
+  assert.deepEqual(delegatedInput.kinds, ["fact-check", "quality-review"]);
+  assert.equal(delegatedInput.instruction, "重点核对开头");
   const imageAttachment = await execute(daily, "attachment_read", { id: "image-1" });
   assert.deepEqual(imageAttachment.content, [
     { type: "text", text: "图片附件：attachment.png" },
@@ -159,6 +184,115 @@ try {
   assert(PERMISSION_MODES.daily.tools.includes("propose_body_rewrite"), "日常模式必须能提交全文整理候选");
   await assert.rejects(() => execute(daily, "propose_body_rewrite", { reason: "清理乱码", body: "   " }), /完整正文/);
   await execute(daily, "propose_body_rewrite", { reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" });
+
+  const childCalls = [];
+  const fakeExpertRun = async (input) => {
+    childCalls.push(input);
+    assert.equal(input.mode, "daily", "专家子 Agent 必须固定为日常只读模式");
+    assert.deepEqual(input.allowedTools, EXPERT_READONLY_TOOLS, "专家子 Agent 只能拿到精确的只读工具集");
+    assert(!input.allowedTools.includes("propose_body_rewrite") && !input.allowedTools.includes("delegate_experts"));
+    assert.equal(typeof input.context.delegateExperts, "undefined", "专家子 Agent 不能继续委派");
+    const reports = {
+      "material-research": { kind: "material-research", summary: "素材报告", claims: [], nextSteps: [] },
+      "quality-review": { kind: "quality-review", summary: "品控报告", strengths: [], questions: XENHO_QUALITY_NINE.map((item) => ({ id: item.id, status: "pass", location: "全文", finding: "通过", direction: "保持" })), mustFix: [] },
+      "fact-check": { kind: "fact-check", summary: "事实报告", claims: [] },
+    };
+    await fs.writeFile(input.reportFile, JSON.stringify(reports[input.kind]), "utf8");
+    const session = { abort: async () => {}, dispose: () => {} };
+    input.onSession?.(session, { sessionId: `child-${input.kind}`, sessionFile: path.join(input.runDir, "session.jsonl") });
+    return { piSessionId: `child-${input.kind}`, piSessionFile: path.join(input.runDir, "session.jsonl") };
+  };
+  const expertBatch = await runExpertSubagents({
+    env: dailyEnv,
+    workspace,
+    context: { ...context, project: { id: projectId, title: "隔离 Pi 项目", body: "这是一段需要联合检查的正文。", platform: "公众号", audience: "测试读者" } },
+    parentDir: tempRoot,
+    scopeId: `draft:${draftId}`,
+    conversationId: "chat-subagent-test",
+    model: "test-model",
+    kinds: ["material-research", "quality-review", "fact-check"],
+    instruction: "分别独立判断，不要互相覆盖",
+    executeRun: fakeExpertRun,
+  });
+  assert.equal(expertBatch.mode, "parallel");
+  assert.equal(expertBatch.completed, 3);
+  assert.equal(expertBatch.failed, 0);
+  assert.equal(childCalls.length, 3);
+  assert(childCalls.find((item) => item.kind === "material-research")?.prompt.includes("material-gap/SKILL.md"));
+  assert(childCalls.find((item) => item.kind === "quality-review")?.prompt.includes("xenho-quality-nine/SKILL.md"));
+  assert(childCalls.find((item) => item.kind === "fact-check")?.prompt.includes("fact-check/SKILL.md"));
+  const delegatedRuns = workspace.db.prepare("SELECT value_json FROM workspace_settings WHERE key LIKE 'expert-delegation:%'").all().map((row) => JSON.parse(row.value_json)).filter((item) => item.delegated);
+  assert.equal(delegatedRuns.length, 3, "每个专家子 Agent 都必须留下 SQLite 运行记录");
+  assert(delegatedRuns.every((item) => item.status === "done" && item.parentConversationId === "chat-subagent-test"));
+
+  let concurrentChildren = 0;
+  let peakChildren = 0;
+  const concurrentRun = async (input) => {
+    concurrentChildren += 1;
+    peakChildren = Math.max(peakChildren, concurrentChildren);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    concurrentChildren -= 1;
+    const report = input.kind === "quality-review"
+      ? { kind: input.kind, summary: "并发品控", strengths: [], questions: XENHO_QUALITY_NINE.map((item) => ({ id: item.id, status: "pass", location: "全文", finding: "通过", direction: "保持" })), mustFix: [] }
+      : { kind: input.kind, summary: "并发检查", claims: [], ...(input.kind === "material-research" ? { nextSteps: [] } : {}) };
+    await fs.writeFile(input.reportFile, JSON.stringify(report), "utf8");
+    return { piSessionId: `concurrent-${input.kind}`, piSessionFile: "" };
+  };
+  await Promise.all([
+    runExpertSubagents({ env: dailyEnv, workspace, context: { ...context, project: { body: "并发正文 A" } }, parentDir: tempRoot, scopeId: "parallel:a", conversationId: "parallel-a", model: "test", kinds: ["material-research", "quality-review", "fact-check"], executeRun: concurrentRun }),
+    runExpertSubagents({ env: dailyEnv, workspace, context: { ...context, project: { body: "并发正文 B" } }, parentDir: tempRoot, scopeId: "parallel:b", conversationId: "parallel-b", model: "test", kinds: ["material-research", "quality-review", "fact-check"], executeRun: concurrentRun }),
+  ]);
+  assert.equal(peakChildren, MAX_EXPERT_SUBAGENTS, "跨对话同时运行的专家数也不能超过全局上限");
+
+  const longPrefix = "长正文".repeat(30_000);
+  const longA = await runExpertSubagents({ env: dailyEnv, workspace, context: { ...context, project: { body: `${longPrefix}尾部-A` } }, parentDir: tempRoot, scopeId: "long:a", conversationId: "long-a", model: "test", kinds: ["fact-check"], executeRun: fakeExpertRun });
+  const longB = await runExpertSubagents({ env: dailyEnv, workspace, context: { ...context, project: { body: `${longPrefix}尾部-B` } }, parentDir: tempRoot, scopeId: "long:b", conversationId: "long-b", model: "test", kinds: ["fact-check"], executeRun: fakeExpertRun });
+  assert.notEqual(longA.documentVersion, longB.documentVersion, "长正文尾部变化必须进入专家报告版本");
+  assert(childCalls.at(-1).context.document.body.endsWith("尾部-B"), "专家必须收到完整长正文");
+  const abortController = new AbortController();
+  let childStarted = 0;
+  let childDisposed = 0;
+  const cancelledBatch = runExpertSubagents({
+    env: dailyEnv,
+    workspace,
+    context: { ...context, project: { id: projectId, title: "取消测试", body: "等待取消的正文。" } },
+    parentDir: tempRoot,
+    scopeId: `draft:${draftId}`,
+    conversationId: "chat-subagent-cancel",
+    model: "test-model",
+    kinds: ["material-research", "quality-review", "fact-check"],
+    signal: abortController.signal,
+    executeRun: (input) => new Promise((_resolve, reject) => {
+      childStarted += 1;
+      input.onSession?.({ abort: async () => reject(new Error("子任务已停止")), dispose: () => { childDisposed += 1; } }, { sessionId: `child-cancel-${input.kind}`, sessionFile: path.join(input.runDir, "session.jsonl") });
+    }),
+  });
+  while (childStarted < 3) await new Promise((resolve) => setImmediate(resolve));
+  abortController.abort(new Error("用户取消"));
+  await assert.rejects(() => cancelledBatch, /用户取消/);
+  assert.equal(childDisposed, 3, "批量取消必须等待所有专家会话完成清理");
+  const cancelledRuns = workspace.db.prepare("SELECT value_json FROM workspace_settings WHERE key LIKE 'expert-delegation:%'").all()
+    .map((row) => JSON.parse(row.value_json))
+    .filter((item) => item.parentConversationId === "chat-subagent-cancel");
+  assert.equal(cancelledRuns.length, 3);
+  assert(cancelledRuns.every((item) => item.status === "cancelled"), "取消后不能留下永远运行中的专家记录");
+
+  workspace.repository.setSetting("expert-delegation:stale-test", { id: "stale-test", kind: "fact-check", status: "running", stage: "expert-run" });
+  await runExpertSubagents({ env: dailyEnv, workspace, context: { ...context, project: { body: "触发恢复检查" } }, parentDir: tempRoot, scopeId: "recover", conversationId: "recover", model: "test", kinds: ["fact-check"], executeRun: fakeExpertRun });
+  assert.equal(workspace.repository.getSetting("expert-delegation:stale-test").status, "failed", "应用重启留下的运行中记录必须自动收口");
+
+  assert.throws(() => validateExpertReport("fact-check", { kind: "fact-check", summary: "不完整", claims: [{ quote: "x", status: "maybe" }] }), /字段不完整/);
+  await assert.rejects(() => runExpertSubagents({
+    env: dailyEnv,
+    workspace,
+    context: { ...context, project: { body: "正文" } },
+    parentDir: tempRoot,
+    scopeId: "test",
+    conversationId: "test",
+    model: "test-model",
+    kinds: ["style-calibration"],
+    executeRun: fakeExpertRun,
+  }), /请选择 1 到 3 位可用的只读专家/);
 
   const queued = (await fs.readFile(actionsFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(queued.length, 3);
