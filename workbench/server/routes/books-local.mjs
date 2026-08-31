@@ -115,7 +115,7 @@ async function parsedBook(fileName, bytes) {
   return parseText(new TextDecoder("utf-8").decode(bytes));
 }
 
-async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10) }) {
+export async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10) }) {
   const id = createUlid();
   const stamp = new Date();
   const normalized = chapters.length ? chapters : [{ title, text: "" }];
