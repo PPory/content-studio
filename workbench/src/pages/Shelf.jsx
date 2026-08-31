@@ -80,6 +80,14 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
     setAssistantPrompt({ id: `reader-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`, text });
   }, []);
   const resumedRef = useRef(false);   // `#/shelf/resume` 只认一次，见下面那个 effect
+  /**
+   * 从别处深链进来时，「返回」该回到**来的地方**，不是书架。
+   *
+   * ⚠️ 从词条详情点「打开来源」进来，按钮却写「返回书架」——而这份资料是「文档」
+   * 不是「书籍」，书架列表里**根本没有它**。点回去落在一个不含它的列表上，
+   * 比不给返回按钮更让人困惑。
+   */
+  const [returnTo, setReturnTo] = useState(null);   // { label, hash }
 
   // 划词 AI 那一套（攒结果、中止、翻译）三处共用一个 hook，见 lib/use-ai-runs.js
   const { ai, runAi, translate, stopAi, resetAi } = useAiRuns({
@@ -234,6 +242,9 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
      * 找不到（书重新导入过、章节文件换了名字）就退回「按进度继续读」，
      * 不是弹一个空的阅读区。
      */
+    // 和 `shelf` 那张交接条同源：谁把人送过来，谁顺手写下「返回哪儿」。
+    const back = takeOpenTarget("shelf-return");
+    if (back) { const [label, hash] = back.split("|"); setReturnTo({ label, hash }); }
     const want = takeOpenTarget("shelf");
     if (want) {
       const book = all.find((b) => b.dir === state) || target?.book;
@@ -575,7 +586,7 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
           baseDir={book?.dir}
           initialScroll={reading.initialScroll}
           onProgress={onProgress}
-          backLabel={entries.length > 1 ? "返回目录" : "返回书架"}
+          backLabel={returnTo?.label || (entries.length > 1 ? "返回目录" : "返回书架")}
           cover={book?.cover ? api.imageUrl(book.cover) : ""}
           highlights={highlights}
           bookmarked={isBookmarked(reading.entry.path)}
@@ -583,7 +594,10 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
             toggleBookmark(book.dir, reading.entry.path, reading.entry.title);
             setMarked((n) => n + 1);
           }}
-          onClose={closeDoc}
+          onClose={() => {
+            if (returnTo?.hash) { const target = returnTo.hash; setReturnTo(null); closeDoc(); window.location.hash = target; return; }
+            closeDoc();
+          }}
           onSelect={onSelect}
           onSaved={() => {
             // 存完重新读一遍这份文档：正文、stamp（下一次保存的乐观锁）和批注要一起对上。
