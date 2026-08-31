@@ -4,6 +4,7 @@ import net from "node:net";
 import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { searchWeb } from "../lib/web-search.mjs";
 import { listProjects, projectDto } from "../workspace/workspace-view.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
 import { fetchBoards } from "../lib/sixty.mjs";
@@ -385,18 +386,10 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     const resolved = await resolveAgentMountPath(env, mountId, ".", { execute: true });
     return appendAction(actionsFile, { type: "workspace_powershell", mountId: resolved.mount.id, command: validatePowerShell(command), permissionMode: mode });
   }));
-  tools.push(tool("web_search", "搜索公开网页", "通过工作台统一网络通道使用 Brave 搜索公开网页。只读。", Type.Object({ query: Type.String({ maxLength: 300 }), maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })) }), async ({ query, maxResults = 8 }, signal) => {
+  tools.push(tool("web_search", "搜索公开网页", "通过工作台统一网络通道搜索公开网页。只读。", Type.Object({ query: Type.String({ maxLength: 300 }), maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })) }), async ({ query, maxResults = 8 }, signal) => {
     allowed("web_search");
-    const key = clean(env.BRAVE_SEARCH_API_KEY, 4_000);
-    if (!key) throw Object.assign(new Error("联网搜索尚未配置"), { status: 400, hint: "在设置中填写 Brave Search 密钥。" });
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", clean(query, 300));
-    url.searchParams.set("count", String(Math.max(1, Math.min(10, Number(maxResults) || 8))));
-    url.searchParams.set("search_lang", "zh-hans");
-    const response = await proxyFetch(url, { headers: { Accept: "application/json", "X-Subscription-Token": key }, signal });
-    if (!response.ok) throw new Error(`Brave Search 返回 HTTP ${response.status}`);
-    const data = await response.json();
-    return text({ query: clean(query, 300), sources: (data.web?.results || []).map((item) => ({ url: clean(item.url, 2_000), title: clean(item.title, 500), snippet: clean(item.description, 1_200), publishedAt: clean(item.page_age || item.age, 100) })).filter((item) => item.url).slice(0, maxResults) });
+    // 供应商的挑选和回落都在 `lib/web-search.mjs`；这里只管把结果交给模型。
+    return text(await searchWeb(env, { query, maxResults, signal }));
   }));
 
   tools.push(tool("web_fetch", "读取公开网页", "读取一个公开 HTTP/HTTPS 网页，阻止本机和局域网地址。只读。", Type.Object({ url: Type.String({ maxLength: 2_000 }) }), async ({ url: inputUrl }, signal) => {

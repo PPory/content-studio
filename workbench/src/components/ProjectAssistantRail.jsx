@@ -5,7 +5,7 @@ import { AssistantOrb } from "./assistant/AssistantOrb.jsx";
 import { ProjectContextPanel } from "./ProjectContextPanel.jsx";
 import { IconChevronDown, IconFileText, IconLayoutSidebarRight, IconX } from "./icons.jsx";
 
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, children }) {
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, children }) {
   const [contextOpen, setContextOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false);
@@ -113,6 +113,16 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
         * 它不是第二个入口：栏开着时不画，顶栏那颗键和 `Ctrl+I` 一个都没动，
         * 走的也是同一个 `focusAssistant`。
         */}
+      {/**
+        * ⚠️ **相关词条画在这儿，不放进 `children`。**
+        *
+        * children 挂在「项目素材」浮层里，要点两下（文档芯片 → 打开素材）才看得到——
+        * 那就不叫主动浮出，和自己跑去知识库翻没有区别。
+        *
+        * 放在助手上面、且**没有命中时整块不画**（组件自己返回 null）：
+        * 没东西可说时它一个像素都不占，有东西时它已经在你眼睛落点的那一列里。
+        */}
+      {collapsed ? null : recall}
       {collapsed ? null : <AssistantPane
         scope="project"
         surface="rail"

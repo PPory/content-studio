@@ -50,6 +50,24 @@ export const ENTRY_RELATION_TYPES = Object.freeze([
   "based_on", "contrasts_with", "same_kind_as", "adopted_by", "part_of", "example_of", "contradicts",
 ]);
 export const ENTRY_RELATION_SET = new Set(ENTRY_RELATION_TYPES);
+/**
+ * 每种关系**怎么读**。给模型看的是这一份，不是类型名。
+ *
+ * ⚠️ 只给类型名的话方向会反。实测跑出过 `行为经济学 example_of 损失厌恶`——
+ * 而模型自己写的理由是「损失厌恶……是行为经济学研究的现象之一」，
+ * 它知道事实，只是不知道这个字段该从哪头往哪头读。方向错的关系比没有关系更糟：
+ * 写作时它会把从属关系整个颠倒过来推给你。
+ */
+export const ENTRY_RELATION_READINGS = Object.freeze({
+  based_on: "A 建立在 B 之上（B 是更基础的那个）",
+  contrasts_with: "A 与 B 形成对照（双向对等）",
+  same_kind_as: "A 和 B 是同一类东西（双向对等）",
+  adopted_by: "A 被 B 采用（B 是使用方）",
+  part_of: "A 是 B 的组成部分（B 是整体）",
+  example_of: "A 是 B 的一个例子（B 是更一般的那个）",
+  contradicts: "A 与 B 互相冲突（双向对等）",
+});
+
 export const ENTRY_RELATION_LABELS = Object.freeze({
   based_on: "基于", contrasts_with: "对比", same_kind_as: "同属", adopted_by: "被采用",
   part_of: "属于", example_of: "是……的例子", contradicts: "与之冲突",

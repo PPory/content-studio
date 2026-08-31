@@ -451,6 +451,49 @@ export class WorkspaceDomain {
       ORDER BY a.entry_id, a.id LIMIT ?`).all(Math.max(1, Math.min(2_000, Number(limit) || 400)));
   }
 
+  /**
+   * 写作现场的召回：这段正文里，哪些词条该浮出来。
+   *
+   * ⚠️ **两层，第二层才是这套东西的回报。**
+   *
+   *  1. **直接命中**——词条名出现在正文里。用包含判断不用 FTS：SQLite 的 unicode61
+   *     不切中文，这个坑在提炼召回和孤儿召回上各栽过一次。
+   *  2. **一跳邻居**——命中词条连着的那些。你写「金字塔原理」，它把「结构化思维」
+   *     一起带出来，而那个词你根本没提。**这是关系存在的理由**：没有第二层的话，
+   *     这个面板只是个「你刚打过的字」的回声。
+   *
+   * 每条都带上**为什么出现**（直接提到，还是因为连着谁）。主动浮出来的东西
+   * 必须解释自己，否则用户只会觉得它在瞎猜，然后再也不看这一栏。
+   */
+  recallEntries(text, { limit = 6 } = {}) {
+    const haystack = String(text || "");
+    if (haystack.trim().length < 10) return [];
+    const all = this.db.prepare(`SELECT e.id, e.name, e.entry_kind AS kind, e.definition
+      FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL`).all();
+    const direct = all
+      .filter((entry) => entry.name.length >= 2 && haystack.includes(entry.name))
+      .sort((left, right) => right.name.length - left.name.length);
+
+    const picked = new Map();
+    for (const entry of direct.slice(0, limit)) picked.set(entry.id, { ...entry, why: "正文里提到了" });
+    for (const entry of direct.slice(0, limit)) {
+      if (picked.size >= limit) break;
+      const neighbors = this.entryNeighbors(entry.id);
+      for (const neighbor of [...neighbors.outgoing, ...neighbors.incoming]) {
+        if (picked.size >= limit) break;
+        if (picked.has(neighbor.id)) continue;
+        const full = all.find((item) => item.id === neighbor.id);
+        if (full) picked.set(neighbor.id, { ...full, why: `连着「${entry.name}」`, via: entry.name, relationType: neighbor.relationType });
+      }
+    }
+    return [...picked.values()].map((entry) => ({
+      ...entry,
+      facts: this.db.prepare(`SELECT f.id, f.statement, f.status, COALESCE(t.title, '') AS sourceTitle
+        FROM entry_facts f LEFT JOIN entity_text t ON t.entity_id = f.source_entity_id
+        WHERE f.entry_id = ? AND f.status <> 'superseded' ORDER BY f.created_at LIMIT 4`).all(entry.id),
+    }));
+  }
+
   /** 词条的双向邻居。正向存在表里，反向是索引上的一次查询。 */
   entryNeighbors(entryId) {
     return {

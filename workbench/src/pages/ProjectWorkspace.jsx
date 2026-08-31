@@ -6,6 +6,7 @@ import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
+import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
@@ -830,6 +831,7 @@ ${(form.body || "").slice(0, 3000)}`);
           <ProjectAssistantRail
             handoffRequest={assistantHandoff}
             reviewingCandidate={candidateReviewFocused}
+            recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}
             scopeId={draft?.id || projectId}
             document={{
               id: project.id,

@@ -6913,3 +6913,48 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .rels button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 /* 入链的方向反过来读：「组块 属于 本词条」，而不是「本词条 属于 组块」 */
 .rels__in em:last-child { color: var(--text-3); }
+
+/* ==========================================================================
+   写作现场的相关词条
+   ==========================================================================
+   右栏窄，所以不画卡（「白底容器里的条目不画白底 + 边框的卡」）——
+   靠一道 1px 线和缩进分条。 */
+
+/* ⚠️ **要封顶，而且要能滚。** 不封顶的话它会把下面的助手挤出可视区——
+   实测四条词条就已经压住「协作」那行标题了。这一栏是**旁边的提示**，
+   不是主角：给它一块固定的地盘，撑不下的自己滚。 */
+.rel {
+  margin-bottom: 0; padding: 12px 16px;
+  max-height: 38vh; overflow-y: auto;
+  border-bottom: 1px solid var(--border); flex: none;
+}
+.rel__item { border-top: 1px solid var(--border); padding: 8px 0; }
+.rel__item:first-of-type { border-top: 0; }
+.rel__head {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; text-align: left;
+}
+.rel__head b { color: var(--text-1); font-weight: 600; }
+/* 「为什么它在这儿」永远可见，不藏在展开里——不解释自己的推荐没人会看第二次 */
+.rel__head em {
+  font-style: normal; margin-left: auto; flex: none;
+  font-size: 11px; color: var(--text-3);
+}
+.rel__head:hover b { color: var(--accent); }
+.rel__def {
+  margin: 2px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.rel__facts { list-style: none; margin: 8px 0 2px; padding: 0 0 0 10px; border-left: 2px solid var(--border); }
+.rel__facts li { margin-bottom: 8px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
+.rel__facts li span { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
+/* 有冲突的事实要看得出来：引用一条正在打架的说法，比引用不到更糟 */
+.rel__facts li[data-disputed] { border-left: 2px solid var(--warn); margin-left: -12px; padding-left: 10px; }
+.rel__more { margin-bottom: 0 !important; }
+.rel__more button {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: var(--text-2);
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong);
+}
+.rel__more button:hover { color: var(--accent); }

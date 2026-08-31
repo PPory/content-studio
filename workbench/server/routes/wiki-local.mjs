@@ -5,7 +5,7 @@
 // 和实际词条对不对得上——那是因为飞书没有全文检索。这里索引就是一次查询，
 // 日志就是 `audit_events`，两者都不会和事实不同步，也就没有「对账」这回事。
 
-import { fail, json } from "../lib/http.mjs";
+import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { ENTRY_KIND_LABELS, ENTRY_RELATION_LABELS } from "../domain/values.mjs";
 
 function guard(handler) {
@@ -129,6 +129,19 @@ export const wikiRoutes = [
 
   { method: "GET", path: "/api/workspace/knowledge/sources/:id", handler: guard(async ({ workspace, res, params }) => {
     json(res, { ok: true, documents: sourceDocuments(workspace, params.id) });
+  }) },
+
+  /**
+   * 写作现场的召回。**POST 是因为正文可能很长**，不是因为它会改东西——只读。
+   */
+  { method: "POST", path: "/api/workspace/knowledge/recall", handler: guard(async ({ workspace, req, res }) => {
+    const body = await readJsonBody(req);
+    json(res, {
+      ok: true,
+      entries: workspace.domain.recallEntries(String(body.text || ""), { limit: Number(body.limit) || 6 }),
+      relationLabels: ENTRY_RELATION_LABELS,
+      kindLabels: ENTRY_KIND_LABELS,
+    });
   }) },
 
   /** 体检。孤儿和矛盾候选都是查询，不是 AI 巡检出来的。 */

@@ -101,6 +101,25 @@ export const SETTINGS = [
     check: "mediacrawler",
   },
   {
+    /**
+     * 网页检索供应商。留空则「有 Tavily 密钥就用 Tavily，否则用 Brave」。
+     *
+     * Tavily 是给检索增强场景做的，按问题意图排序、每条结果直接带正文摘录；
+     * Brave 是通用网页索引，找官方文档时常把博客和转述排在前面。
+     */
+    key: "TAVILY_API_KEY",
+    group: "agent",
+    label: "Tavily 检索密钥",
+    secret: true,
+    placeholder: "填了就优先用它搜网页",
+  },
+  {
+    key: "AGENT_SEARCH_PROVIDER",
+    group: "agent",
+    label: "检索供应商",
+    placeholder: "tavily / brave，留空自动选",
+  },
+  {
     key: "AGENT_LLM_BASE_URL",
     group: "agent",
     label: "模型接口地址",
