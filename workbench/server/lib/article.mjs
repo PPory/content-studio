@@ -76,6 +76,14 @@ const WALL_WORDS =
  * 抓回来两百来字的，实测全是页面外壳（导航、点赞按钮的文案、验证页）。
  */
 const TOO_SHORT = 250;
+/**
+ * 一个真段落的下限。
+ *
+ * 量过库里 1390 份真实文档：**最长行的中位数是 267 字**，p5 是 40。
+ * 而「最长行」最短的那几份恰恰是扉页、目录、书名页——它们本身就是导航性质的，
+ * 被这道闸拦下正是对的。60 落在 p1(18) 和 p10(95) 之间，够宽也够紧。
+ */
+const PARAGRAPH_MIN = 60;
 
 export function looksBlocked(text) {
   const body = text.replace(/\s/g, "");
@@ -90,9 +98,77 @@ export function looksBlocked(text) {
  * （「Weixin Official Accounts Platform」+「轻点两下取消赞」）两条都过，
  * 界面上渲染出一篇由按钮文案拼成的「正文」。补一处漏一处，而用户看到的是同一屏垃圾。
  */
+/**
+ * 内联的 `data:` 图片一律去掉。
+ *
+ * ⚠️ **它们不只是没用，还会骗过长度检查。** 站点的导航壳里塞着几十个 base64 编码的
+ * SVG 图标，一个就上千字符——实测某站抓回来 9309 字符，其中几乎全是 base64，
+ * 而正文一个字都没有。`junkReason` 按字符数判断，于是这坨壳大摇大摆过了闸门，
+ * 存进知识库变成一篇「正文」。
+ *
+ * 它们也取不回来、撑爆 SQLite 和全文索引。落地之前就该消失。
+ */
+export function stripInlineData(markdown) {
+  return String(markdown || "")
+    .replace(/!\[[^\]]*\]\(\s*data:[^)]*\)/g, "")
+    .replace(/\[[^\]]*\]\(\s*data:[^)]*\)/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** 真正的正文有多少字：图片、链接地址和代码围栏标记都不算。 */
+function proseLength(markdown) {
+  return String(markdown || "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/`{1,3}/g, "")
+    .replace(/\s/g, "")
+    .length;
+}
+
+/**
+ * 最长的一行有多少字。**这是判断「是正文还是导航」最可靠的一个信号。**
+ *
+ * ⚠️ 别再靠特征词认垃圾了，那是追不完的（这个文件上面就是这么说的）。
+ * 导航壳和正文的差别是**结构性**的：菜单是几十行「Get started」「Video generation」，
+ * 每行一两个词；而任何真正的段落都会超过 60 字。实测某站抓回来 677 字的
+ * 纯菜单，字数检查照过不误——因为它确实有 677 个字，只是没有一行是句子。
+ */
+function longestLineLength(markdown) {
+  return String(markdown || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/^[#>\-*\d.\s]+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trim())
+    .reduce((longest, line) => Math.max(longest, line.length), 0);
+}
+
+/**
+ * 掐掉正文前后的站点外壳。
+ *
+ * ⚠️ **Firecrawl 的 `onlyMainContent` 不总是管用。** 实测 BytePlus 文档站
+ * （整个应用就是一个 div 的 SPA）它照样把页头、登录链接、产品菜单一起返回，
+ * 于是存进知识库的那篇「教程」开头是四十行「Sign in / Pricing / Docs」。
+ *
+ * 判据复用 `PARAGRAPH_MIN`：**留下第一个成段的行到最后一个成段的行之间的全部内容**。
+ * 中间的短行（小标题、列表项）原样保留——它们是正文的一部分；被掐掉的只有
+ * 前后那两坨永远成不了段的导航。
+ */
+function trimToBody(markdown) {
+  const lines = String(markdown || "").split("\n");
+  const isParagraph = (line) => line.replace(/^[#>\-*\d.\s]+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trim().length >= PARAGRAPH_MIN;
+  const first = lines.findIndex(isParagraph);
+  if (first < 0) return String(markdown || "").trim();
+  let last = lines.length - 1;
+  while (last > first && !isParagraph(lines[last])) last -= 1;
+  return lines.slice(first, last + 1).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function junkReason(markdown) {
   if (looksBlocked(markdown)) return "抓回来的是验证页，不是正文";
-  if (markdown.replace(/\s/g, "").length < TOO_SHORT) return "抓回来的正文太短，多半没抓对";
+  // ⚠️ 按**正文字数**判断，不是按字符数：图片地址和 base64 都不是正文。
+  if (proseLength(markdown) < TOO_SHORT) return "抓回来的正文太短，多半没抓对";
+  // 一行成段的都没有 → 这是目录或导航。误判的代价只是多跑一次 Firecrawl，
+  // 而漏判的代价是一篇菜单被当成正文存进知识库。
+  if (longestLineLength(markdown) < PARAGRAPH_MIN) return "抓回来的像是导航或目录，没有成段的正文";
   return "";
 }
 
@@ -138,7 +214,8 @@ async function viaFirecrawl(env, url) {
   }
   // 和直取那条走**同一套**门槛：Firecrawl 说 success 只代表它跑完了页面，
   // 不代表拿到的是正文——公众号连真浏览器都挡，它回的照样是一份外壳
-  const markdown = String(data.data?.markdown || "").trim();
+  // Firecrawl 也会把内联 base64 图片原样带回来，同样清掉。
+  const markdown = trimToBody(stripInlineData(data.data?.markdown));
   if (junkReason(markdown)) return null;
 
   const meta = data.data?.metadata || {};
@@ -148,7 +225,7 @@ async function viaFirecrawl(env, url) {
     siteName: (meta.ogSiteName || meta.siteName || hostOf(url)).trim(),
     url,
     markdown,
-    words: markdown.replace(/\s/g, "").length,
+    words: proseLength(markdown),
     via: "firecrawl",
   };
 }
@@ -250,7 +327,7 @@ export async function readArticle(url, env = {}) {
       return "";
     }
   };
-  const markdown = xhtmlToMd(article.content, toAbsolute).trim();
+  const markdown = trimToBody(stripInlineData(xhtmlToMd(article.content, toAbsolute)));
   const junk = junkReason(markdown);
   if (junk) return fallback(err(junk, whyNot(target.hostname, env)));
 
@@ -260,7 +337,8 @@ export async function readArticle(url, env = {}) {
     siteName: (article.siteName || target.hostname).trim(),
     url: target.href,
     markdown,
-    // 中文按字数算，`textContent` 里全角空格和换行不算字
-    words: (article.textContent || "").replace(/\s/g, "").length,
+    // ⚠️ 按**清洗后的正文**算，不按 `textContent`：后者含导航壳和图标文案，
+    // 报出来的字数会比真正存进去的多出好几倍。
+    words: proseLength(markdown),
   };
 }

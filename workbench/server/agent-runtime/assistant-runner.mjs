@@ -701,6 +701,9 @@ const TOOL_LABELS = {
   propose_body_rewrite: "正在整理全文",
 };
 
+/** 只给测试用：确认每个 propose_* 工具的动作类型都登记过了。 */
+export const normalizeProposedActionForTest = (item, permissionMode) => normalizeProposedAction(item, permissionMode);
+
 function normalizeProposedAction(item, permissionMode) {
   if (!item || typeof item !== "object") return null;
   const base = {
@@ -721,9 +724,24 @@ function normalizeProposedAction(item, permissionMode) {
     reason: clean(item.reason, 500),
     body: clean(item.body, 200_000),
   };
+  if (item.type === "knowledge_source_add") return {
+    ...base,
+    url: clean(item.url, 2_000),
+    title: clean(item.title, 200),
+    why: clean(item.why, 500),
+  };
   if (["document_create", "document_update", "annotation_append", "reference_insert", "workspace_write", "workspace_edit", "workspace_powershell", "project_write", "project_edit", "powershell"].includes(item.type)) {
     return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
   }
+  /**
+   * ⚠️ **不认识的类型要喊出来，不能静默丢掉。**
+   *
+   * 这里的 `type` 来自**我们自己的工具**，不是模型自由填的——出现不认识的值只有一种
+   * 可能：有人加了个 `propose_*` 工具却忘了在这儿登记。而丢掉它的后果是整条链
+   * 都在报成功：工具回「候选已提交」，模型照着告诉用户「已提交」，库里空空如也。
+   * 我加 `knowledge_source_add` 时就踩了这个坑，跑通一次才发现。
+   */
+  console.warn(`[assistant] 未登记的候选动作类型被丢弃：${clean(item.type, 80) || "(空)"}——在 normalizeProposedAction 里补上它`);
   return null;
 }
 
@@ -1148,8 +1166,20 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
 ---
 来源：${action.url}` }],
     });
-    // 入库和提炼分开：先把资料落住，提炼是另一件会花钱的事，由你在知识库里发起。
-    result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability" };
+    /**
+     * 入库之后**自动排一次提炼**，不用你再去点一次。
+     *
+     * ⚠️ 自动的是**提炼**，不是**写入**：任务产出的是候选（`action_candidates`），
+     * 词条要等你在审阅卡上确认才落库。所以这里省掉的是一次纯粹的手工触发——
+     * 一件你在「同意收这份资料」时就已经默认要做的事——而不是省掉你的判断。
+     *
+     * 幂等键按来源实体定：同一份资料重复排队只会跑一次。
+     */
+    const documents = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ? ORDER BY document_order").all(book.id);
+    for (const document of documents) {
+      workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
+    }
+    result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability", queuedForDistill: documents.length };
   } else if (action.type === "rewrite_body") {
     // ⚠️ **这一条永远不在这儿落地。** 正文的唯一写入路径是编辑器的候选采纳
     // （带版本、修订记录和审计）；服务端再开一条就是同一条业务规则实现两遍，

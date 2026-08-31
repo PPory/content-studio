@@ -51,6 +51,16 @@ assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_source"), "日�
 {
   const names = createPiTools({ env: {}, mode: "daily", context: {}, actionsFile: "" }).map((item) => item.name ?? item.spec?.name);
   assert(names.includes("propose_knowledge_source"), "日常模式的工具集里必须真的带上 propose_knowledge_source");
+  /**
+   * ⚠️ **每个 propose_* 工具产出的动作类型，都必须在 normalizeProposedAction 里登记。**
+   * 漏登记不会报错——动作被静默丢掉，而工具、模型和界面**全都在报成功**。
+   * 这条断言就是为了让下一个加工具的人立刻撞上去。
+   */
+  const { normalizeProposedActionForTest } = await import("../server/agent-runtime/assistant-runner.mjs");
+  for (const type of ["create_content", "rewrite_body", "knowledge_source_add"]) {
+    assert(normalizeProposedActionForTest({ type, url: "https://example.com/a", title: "t", why: "w", body: "b", platform: "公众号" }, "daily"),
+      `候选动作类型 ${type} 没有在 normalizeProposedAction 里登记，会被静默丢弃`);
+  }
 }
 
 const skills = await assistantSkills();
