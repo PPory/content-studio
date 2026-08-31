@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { json, fail, matchRoute } from "./lib/http.mjs";
 import { workspaceRoutes } from "./routes/workspace.mjs";
 import { localBookRoutes } from "./routes/books-local.mjs";
+import { wikiRoutes } from "./routes/wiki-local.mjs";
 import { localContentRoutes } from "./routes/local-content.mjs";
 import { localAiRoutes } from "./routes/local-ai.mjs";
 import { localSupportRoutes } from "./routes/local-support.mjs";
@@ -66,6 +67,7 @@ const ROUTES = [
   ...promptsRoutes,
   ...workspaceRoutes,
   ...localBookRoutes,
+  ...wikiRoutes,
   ...localContentRoutes,
   ...localAiRoutes,
   ...localSupportRoutes,

@@ -154,6 +154,9 @@ import {
   IconBrandWechat as Typeset,
   IconChartLine as ChartLine,
   IconSparkles as Assistant,
+  // 知识库：一摞书。**不是灯泡也不是大脑**——那两个说的是「想法」，
+  // 而这一栏装的是**已经沉淀下来、有出处的东西**，跟灵感正好相反。
+  IconBooks as Knowledge,
 } from "@tabler/icons-react";
 
 /**
@@ -231,6 +234,7 @@ export const NAV_ICONS = {
   content: Stack,
   typeset: Typeset,
   discover: Radar,
+  knowledge: Knowledge,
   review: ChartLine,
 };
 

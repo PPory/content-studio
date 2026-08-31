@@ -41,7 +41,21 @@ import {
   IconTrash,
 } from "../components/icons.jsx";
 
-export function Shelf({ onIntake, state = "" }) {
+const KIND_HINTS = {
+  书籍: "别人写的书",
+  课程: "成体系的课，按节读",
+  文档: "单篇资料",
+  文章: "自己写的",
+};
+
+/**
+ * 书架 / 资料。**同一个阅读器，两个入口**——差别只在放哪一类来源进来。
+ *
+ * ⚠️ `sourceKinds` 是**知识库的归类**（书籍 / 课程 / 文档 / 文章），
+ * 和每本书那个「藏书 / 资料」不是一回事：后者管正文能不能改（引用可信度），
+ * 一门课同样是只读的。两个维度正交，不要合并。
+ */
+export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = false }) {
   const [list, setList] = useState(null);
   const [listError, setListError] = useState(null);
   const [query, setQuery] = useState("");
@@ -106,11 +120,13 @@ export function Shelf({ onIntake, state = "" }) {
   }, []);
 
   const books = useMemo(() => {
-    const items = (list?.items || []).map((it) => it.raw);
+    const all = (list?.items || []).map((it) => it.raw);
+    // 归类缺省当「书籍」：0007 之前导进来的书没有这一列，不该因此从书架上消失。
+    const items = sourceKinds ? all.filter((b) => sourceKinds.includes(b.sourceKind || "书籍")) : all;
     const q = query.trim().toLowerCase();
     if (!q) return items;
     return items.filter((b) => [b.name, b.author, ...(b.tags || [])].filter(Boolean).join(" ").toLowerCase().includes(q));
-  }, [list, query]);
+  }, [list, query, sourceKinds]);
 
   // 一本书的「文档」列表：多章书是各章，单文件书就 book.md 一份
   const docsOf = useCallback(
@@ -404,6 +420,14 @@ export function Shelf({ onIntake, state = "" }) {
    * 等于把「这些都是藏书」这句废话摆在最显眼的地方。和分组色带那条同一个判据。
    */
   const groups = useMemo(() => {
+    // 「资料」那一栏里混着课程、文档和自己写的，它们的差别是**这是什么**，
+    // 不是「能不能改」——那一栏按归类分组才读得懂。
+    if (sourceKinds && sourceKinds.length > 1) {
+      const byKind = sourceKinds
+        .map((kind) => ({ key: kind, label: kind, hint: KIND_HINTS[kind] || "", items: books.filter((b) => (b.sourceKind || "书籍") === kind) }))
+        .filter((group) => group.items.length);
+      return byKind.length > 1 ? byKind : [{ key: "all", label: "", hint: "", items: books }];
+    }
     const shelf = books.filter((b) => b.kind !== "资料");
     const own = books.filter((b) => b.kind === "资料");
     if (!shelf.length || !own.length) return [{ key: "all", label: "", hint: "", items: books }];
@@ -411,7 +435,7 @@ export function Shelf({ onIntake, state = "" }) {
       { key: "shelf", label: "藏书", hint: "别人写的，正文只读", items: shelf },
       { key: "own", label: "资料", hint: "自己攒的，正文能改", items: own },
     ];
-  }, [books]);
+  }, [books, sourceKinds]);
 
   return (
     <>
@@ -484,7 +508,7 @@ export function Shelf({ onIntake, state = "" }) {
                     tick={progressTick}
                     onResume={(b, entry) => openDoc(b, entry, { resume: true, detail: b.chapterCount > 1 })}
                   />
-                  <RecentMarks onOpen={(m) => openDocByPath(m)} />
+                  <RecentMarks onOpen={(m) => openDocByPath(m)} bookDirs={sourceKinds ? books.map((b) => b.dir) : null} hideWhenEmpty={catalogOnly} />
                 </div>
                 {/**
                   * ⚠️ **标注放书架不放书详情**：放详情页意味着你得先想起「是哪本书」

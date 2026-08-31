@@ -41,6 +41,7 @@ function bookDto(workspace, row) {
     chapters: mapped.length > 1 ? mapped : [],
     chapterCount: mapped.length,
     kind: metadata.kind || "资料",
+    sourceKind: row.source_kind || "书籍",
     author: row.author || "",
     status: row.reading_status,
     tags: Array.isArray(metadata.tags) ? metadata.tags : [],
@@ -115,14 +116,14 @@ async function parsedBook(fileName, bytes) {
   return parseText(new TextDecoder("utf-8").decode(bytes));
 }
 
-export async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10) }) {
+export async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceKind = "书籍", sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10) }) {
   const id = createUlid();
   const stamp = new Date();
   const normalized = chapters.length ? chapters : [{ title, text: "" }];
   workspace.repository.transaction(() => {
     workspace.repository.createEntity({ id, type: "book", now: stamp });
-    workspace.db.prepare("INSERT INTO books(id,title,author,reading_status,source_asset_id,metadata_json) VALUES (?,?,?,?,?,?)")
-      .run(id, title, author, "在读", sourceAssetId, JSON.stringify({ kind, coverAssetId, tags: [], importedAt }));
+    workspace.db.prepare("INSERT INTO books(id,title,author,reading_status,source_asset_id,metadata_json,source_kind) VALUES (?,?,?,?,?,?,?)")
+      .run(id, title, author, "在读", sourceAssetId, JSON.stringify({ kind, coverAssetId, tags: [], importedAt }), sourceKind);
     workspace.repository.setEntityText(id, { title, body: normalized.map((item) => item.text).join("\n\n"), now: stamp });
     normalized.forEach((chapter, index) => {
       const documentId = createUlid();

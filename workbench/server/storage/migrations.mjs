@@ -7,6 +7,7 @@ const localClientsSql = fs.readFileSync(new URL("./migrations/0003-local-clients
 const seriesSql = fs.readFileSync(new URL("./migrations/0004-series.sql", import.meta.url), "utf8");
 const seriesEntriesSql = fs.readFileSync(new URL("./migrations/0005-series-entries.sql", import.meta.url), "utf8");
 const wikiSql = fs.readFileSync(new URL("./migrations/0006-wiki.sql", import.meta.url), "utf8");
+const sourceKindSql = fs.readFileSync(new URL("./migrations/0007-source-kind.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -44,6 +45,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "wiki",
     sql: wikiSql,
     checksum: crypto.createHash("sha256").update(wikiSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 7,
+    name: "source-kind",
+    sql: sourceKindSql,
+    checksum: crypto.createHash("sha256").update(sourceKindSql).digest("hex"),
   }),
 ]);
 

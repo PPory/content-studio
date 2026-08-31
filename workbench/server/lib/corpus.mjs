@@ -186,6 +186,21 @@ export function planDocument({ title, text, order = 1 }) {
   return { title, order, dead, sections };
 }
 
+/**
+ * 这份来源在知识库里算什么。
+ *
+ * ⚠️ 和「藏书 / 资料」那一位**正交**：那位管正文能不能改（引用可信度），
+ * 这位管归置和阅读方式。一门课同样是只读的。
+ *
+ * 判据用结构而不是文件名：一个目录装着多份文件，本身就说明它是成体系的课程或专栏；
+ * 孤立的一份 md / zip 就是一篇文档。
+ */
+export function classifySource({ title = "", fileCount = 1, own = false } = {}) {
+  if (own || /^随笔|^我的/.test(title)) return "文章";
+  if (fileCount > 1) return "课程";
+  return "文档";
+}
+
 /** 目录里的文件按名字排；这批语料用了 `01-` `02-` 前缀，字典序就是课程顺序。 */
 export function sortSourceNames(names) {
   return [...names].sort((left, right) => left.localeCompare(right, "zh-Hans-CN", { numeric: true }));

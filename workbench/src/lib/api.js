@@ -76,6 +76,10 @@ export const api = {
     req(`/api/workspace/search/${view}?q=${encodeURIComponent(q)}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
   page: (id, view = "") => req(`/api/workspace/items/${encodeURIComponent(view)}/${encodeURIComponent(id)}`),
   intake: (body) => postJson("/api/workspace/intake", body),
+  entries: () => req("/api/workspace/entries"),
+  entry: (id) => req(`/api/workspace/entries/${encodeURIComponent(id)}`),
+  knowledgeSources: () => req("/api/workspace/knowledge/sources"),
+  knowledgeLint: () => req("/api/workspace/knowledge/lint"),
   // 种子响应携带领域层的反应清单，前端不复制业务规则。
   seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   createSeed: (body) => postJson("/api/workspace/seeds", body),

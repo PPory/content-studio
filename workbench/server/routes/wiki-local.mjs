@@ -1,0 +1,113 @@
+// 知识库的本地 API：词条、来源和体检。
+//
+// ⚠️ **索引和更新日志不在这里，因为它们不该是被维护出来的东西。**
+// 参照的那套飞书实现要人（其实是 AI）手写一份 A-Z 索引文档、再跑一条 lint 去查它
+// 和实际词条对不对得上——那是因为飞书没有全文检索。这里索引就是一次查询，
+// 日志就是 `audit_events`，两者都不会和事实不同步，也就没有「对账」这回事。
+
+import { fail, json } from "../lib/http.mjs";
+import { ENTRY_KIND_LABELS, ENTRY_RELATION_LABELS } from "../domain/values.mjs";
+
+function guard(handler) {
+  return async (context) => {
+    try {
+      const workspace = await context.workspace;
+      if (!workspace?.db?.open) throw Object.assign(new Error("本地工作区尚未就绪"), { status: 503 });
+      await handler({ ...context, workspace });
+    } catch (error) {
+      fail(context.res, error.message || "知识库请求失败", { status: error.status || 400 });
+    }
+  };
+}
+
+function entryRows(workspace) {
+  return workspace.db.prepare(`
+    SELECT e.id, e.name, e.entry_kind AS kind, e.definition, e.orphan_since AS orphanSince, en.updated_at AS updatedAt,
+      (SELECT COUNT(*) FROM entry_facts f WHERE f.entry_id = e.id AND f.status = 'active') AS activeFacts,
+      (SELECT COUNT(*) FROM entry_facts f WHERE f.entry_id = e.id AND f.status = 'disputed') AS disputedFacts,
+      (SELECT COUNT(*) FROM entry_facts f WHERE f.entry_id = e.id AND f.status = 'superseded') AS supersededFacts,
+      (SELECT COUNT(DISTINCT f.source_entity_id) FROM entry_facts f WHERE f.entry_id = e.id) AS sourceCount,
+      (SELECT COUNT(*) FROM entity_relations r WHERE r.from_id = e.id OR r.to_id = e.id) AS relationCount
+    FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL
+    ORDER BY en.updated_at DESC, e.name
+  `).all();
+}
+
+/**
+ * 来源一览。知识库里「我已经有什么」的那一半。
+ *
+ * 归类（书籍 / 课程 / 文档 / 文章）和可写性（藏书 / 资料）分开报——
+ * 它们是正交的两件事，混成一列的话「这门课能不能改正文」就没地方看了。
+ */
+function sourceRows(workspace) {
+  return workspace.db.prepare(`
+    SELECT b.id, b.title, b.source_kind AS sourceKind, b.reading_status AS status,
+      json_extract(b.metadata_json, '$.kind') AS writable,
+      (SELECT COUNT(*) FROM book_documents d JOIN entities de ON de.id = d.id AND de.deleted_at IS NULL WHERE d.book_id = b.id) AS documents,
+      (SELECT COALESCE(SUM(LENGTH(d.body_markdown)), 0) FROM book_documents d WHERE d.book_id = b.id) AS chars,
+      (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts
+    FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL
+    ORDER BY b.source_kind, b.title
+  `).all();
+}
+
+export const wikiRoutes = [
+  { method: "GET", path: "/api/workspace/entries", handler: guard(async ({ workspace, res }) => {
+    const entries = entryRows(workspace);
+    json(res, {
+      ok: true,
+      entries,
+      kindLabels: ENTRY_KIND_LABELS,
+      relationLabels: ENTRY_RELATION_LABELS,
+      health: {
+        total: entries.length,
+        orphans: workspace.domain.entryOrphans({ limit: 500 }).length,
+        contradictions: workspace.domain.entryContradictionCandidates({ limit: 200 }).length,
+        disputed: entries.reduce((sum, entry) => sum + entry.disputedFacts, 0),
+      },
+    });
+  }) },
+
+  { method: "GET", path: "/api/workspace/entries/:id", handler: guard(async ({ workspace, res, params }) => {
+    const entry = workspace.domain.entryRow(params.id);
+    const facts = workspace.db.prepare(`
+      SELECT f.id, f.statement, f.status, f.source_entity_id AS sourceId, f.source_locator AS locator,
+        f.asserted_at AS assertedAt, f.superseded_by AS supersededBy, f.conflicts_with AS conflictsWith,
+        COALESCE(t.title, '') AS sourceTitle, se.entity_type AS sourceType
+      FROM entry_facts f
+      LEFT JOIN entities se ON se.id = f.source_entity_id
+      LEFT JOIN entity_text t ON t.entity_id = f.source_entity_id
+      WHERE f.entry_id = ? ORDER BY f.status, f.created_at
+    `).all(params.id);
+    json(res, {
+      ok: true,
+      entry: { id: entry.id, name: entry.name, kind: entry.entry_kind, definition: entry.definition, definitionSourceId: entry.definition_source_id },
+      facts,
+      neighbors: workspace.domain.entryNeighbors(params.id),
+      kindLabels: ENTRY_KIND_LABELS,
+      relationLabels: ENTRY_RELATION_LABELS,
+    });
+  }) },
+
+  { method: "GET", path: "/api/workspace/knowledge/sources", handler: guard(async ({ workspace, res }) => {
+    const sources = sourceRows(workspace);
+    json(res, {
+      ok: true,
+      sources,
+      totals: {
+        sources: sources.length,
+        documents: sources.reduce((sum, item) => sum + item.documents, 0),
+        chars: sources.reduce((sum, item) => sum + item.chars, 0),
+      },
+    });
+  }) },
+
+  /** 体检。孤儿和矛盾候选都是查询，不是 AI 巡检出来的。 */
+  { method: "GET", path: "/api/workspace/knowledge/lint", handler: guard(async ({ workspace, res }) => {
+    json(res, {
+      ok: true,
+      orphans: workspace.domain.entryOrphans({ limit: 100 }),
+      contradictions: workspace.domain.entryContradictionCandidates({ limit: 50 }),
+    });
+  }) },
+];

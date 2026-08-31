@@ -376,6 +376,38 @@ try {
   check("关闭重开后计划、读者偏好和修订历史仍存在", reopenedPlan.value.tasks[0]?.done === true && reopenedProfile.value.profile.audience === "隔离工作区读者" && (await call(base, `/api/revisions?scope=${encodeURIComponent(`${draftId}:published`)}`)).value.items.length === 1);
   const reopenedBook = await call(base, `/api/workspace/doc?path=${encodeURIComponent(bookDoc)}`);
   check("关闭重开后书籍正文、批注和恢复状态仍存在", reopenedBook.response.status === 200 && reopenedBook.value.content.includes("更新后的正文") && reopenedBook.value.noteItems[0]?.body === "更新后的本地批注");
+  // ————— 知识库：词条 + 来源 —————
+  const emptyEntries = await call(base, "/api/workspace/entries");
+  check("没有词条时知识库仍返回可用结构，而不是报错", emptyEntries.value.ok && emptyEntries.value.entries.length === 0
+    && emptyEntries.value.health.total === 0 && emptyEntries.value.kindLabels.stance === "我的主张");
+
+  const wikiSourceId = workspace.domain.createCapture({ kind: "article", title: "词条来源", bodyMarkdown: "四段式提示词。", actor: "user", now: new Date() });
+  const conceptId = workspace.domain.createEntry({ name: "四段式提示词", kind: "method", definition: "角色、任务、约束、示例。", definitionSourceId: wikiSourceId, actor: "user", now: new Date() });
+  const otherId = workspace.domain.createEntry({ name: "提示词工程", kind: "concept", definition: "写提示的方法总称。", definitionSourceId: wikiSourceId, actor: "user", now: new Date() });
+  workspace.domain.addEntryFact({ entryId: conceptId, statement: "四段式适合长视频提示。", sourceEntityId: wikiSourceId, actor: "user", now: new Date() });
+  const listed = await call(base, "/api/workspace/entries");
+  check("词条列表带出事实数、来源数、关系数和孤儿状态", listed.value.entries.length === 2
+    && listed.value.entries.find((item) => item.id === conceptId).activeFacts === 1
+    && listed.value.entries.find((item) => item.id === conceptId).sourceCount === 1
+    && listed.value.health.orphans === 2);
+  workspace.domain.linkEntries(conceptId, otherId, "part_of", { actor: "user", now: new Date() });
+  const linked = await call(base, "/api/workspace/entries");
+  check("建立关系后孤儿数归零，无需任何巡检", linked.value.health.orphans === 0);
+
+  const detail = await call(base, `/api/workspace/entries/${conceptId}`);
+  check("词条详情带出每条事实的来源标题和双向邻居", detail.value.entry.name === "四段式提示词"
+    && detail.value.facts[0].sourceTitle === "词条来源"
+    && detail.value.neighbors.outgoing[0]?.relationType === "part_of"
+    && detail.value.relationLabels.part_of === "属于");
+
+  const knowledgeSources = await call(base, "/api/workspace/knowledge/sources");
+  check("知识库来源把归类和可写性分开报，两个维度互不冒充", knowledgeSources.value.sources.length >= 1
+    && knowledgeSources.value.sources.every((item) => item.sourceKind && item.writable)
+    && knowledgeSources.value.totals.documents >= 1);
+
+  const lint = await call(base, "/api/workspace/knowledge/lint");
+  check("体检把孤儿和矛盾候选作为查询返回", Array.isArray(lint.value.orphans) && Array.isArray(lint.value.contradictions));
+
   check("隔离工作区数据库完整性检查通过", workspace.check().ok);
 
   console.log("\n ✓ 阶段 3 本地工作区 API、并发保存、资源字节和扩展幂等全部通过");

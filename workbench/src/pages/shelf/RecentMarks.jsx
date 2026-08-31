@@ -11,7 +11,14 @@ import { useEffect, useState } from "react";
 import { ErrorNote, Loading } from "../../components/ui.jsx";
 import { IconChevronRight, IconQuote } from "../../components/icons.jsx";
 
-export function RecentMarks({ onOpen, limit = 3 }) {
+/**
+ * @param bookDirs 只显示这些书的标注；`null` 表示不限。
+ *   ⚠️ **筛过的书单必须传。** 「资料」那一栏只列课程和文档，而标注接口是跨全库的——
+ *   不传的话这里会冒出一条《纳瓦尔宝典》的划线，**而且点不动**（跳转要在当前书单里
+ *   找到那本书，找不到就什么都不做）。一个看得见、点不动、又不解释为什么的东西，
+ *   比不显示更糟。
+ */
+export function RecentMarks({ onOpen, limit = 3, bookDirs = null, hideWhenEmpty = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -34,6 +41,14 @@ export function RecentMarks({ onOpen, limit = 3 }) {
   // 那一屏上已经有「书架目录还没建」的引导了，再来一个空栏是同一句话说两遍。
   if (data?.shelfMissing) return null;
 
+  const allow = bookDirs ? new Set(bookDirs) : null;
+  const items = (data?.items || []).filter((item) => !allow || allow.has(item.bookDir));
+  // ⚠️ **书架留着空态，资料页不留。**
+  // 书架是开始读书的地方，「划一句就会出现在这儿」是有用的引导；
+  // 而资料页是一份目录，用户来这儿是找东西的——一个恒空的框在首屏上压掉四分之一，
+  // 只为说一句在别处已经说过的话。
+  if (hideWhenEmpty && data && !items.length) return null;
+
   return (
     <section className="recent-marks shelf-top__col">
       {/* 标题和左栏「正在阅读」共用一套，两栏才落在同一条基线上 */}
@@ -46,9 +61,9 @@ export function RecentMarks({ onOpen, limit = 3 }) {
 
       {!data && !error ? (
         <Loading rows={3} />
-      ) : data?.items?.length ? (
+      ) : items.length ? (
         <>
-          {data.items.map((m) => {
+          {items.map((m) => {
             /**
              * ⚠️ **定位不到章节的条目点不动，而且要**说出来**。**
              * 那种批注（引的原文在任何一章里都找不到）没有可跳的落点。

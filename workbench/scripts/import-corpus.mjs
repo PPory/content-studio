@@ -2,8 +2,9 @@
 // 冷启动语料导入。把一个本地目录里的 md 和飞书导出 zip 变成书架上的「资料」，
 // 供词条层做原始来源。
 //
-//   node scripts/import-corpus.mjs "<目录>"            # 预演，只看会导入什么
-//   node scripts/import-corpus.mjs "<目录>" --commit   # 真的写进当前工作区
+//   node scripts/import-corpus.mjs "<目录>"                # 预演，只看会导入什么
+//   node scripts/import-corpus.mjs "<目录>" --commit       # 真的写进当前工作区
+//   node scripts/import-corpus.mjs "<目录>" --reclassify   # 只按目录结构回填归类，不导正文
 //
 // ⚠️ **默认是预演。** 这个脚本写的是用户唯一的真源库，而「导进去什么」这件事
 // 光看目录名判断不了——一个 146KB 的文档会切成几节、哪些图是死链、哪本书重名了，
@@ -14,11 +15,24 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { planDocument, readFeishuArchive, sortSourceNames } from "../server/lib/corpus.mjs";
+import { classifySource, planDocument, readFeishuArchive, sortSourceNames } from "../server/lib/corpus.mjs";
 import { createBookRecord } from "../server/routes/books-local.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 
 const SOURCE_EXTENSIONS = new Set([".md", ".markdown", ".zip"]);
+
+/**
+ * 导进来的默认是**藏书（正文只读）**，不是资料。
+ *
+ * 书架上这两个值不是分类，是权限开关——「改了它，从书里摘的引用就不可信了」。
+ * 词条的每条事实都要挂一个来源实体，来源能被随手改写的话，事实就不可验证，
+ * 真实性硬闸也就形同虚设。别人写的东西一律只读。
+ *
+ * 例外是自己写的：那是自己的想法，本来就该继续改。
+ */
+function kindFor(title) {
+  return /^随笔|^我的|草稿$/.test(title) ? "资料" : "藏书";
+}
 
 function mimeOf(name) {
   const ext = path.extname(name).toLowerCase();
@@ -79,6 +93,7 @@ async function buildBook(book, { workspace = null } = {}) {
 
 const [, , rootArgument, ...flags] = process.argv;
 const commit = flags.includes("--commit");
+const reclassify = flags.includes("--reclassify");
 if (!rootArgument) {
   console.error("用法：node scripts/import-corpus.mjs <目录> [--commit]");
   process.exit(1);
@@ -99,7 +114,20 @@ try {
   let totalChars = 0;
   let totalDead = 0;
   for (const book of books) {
-    const existing = workspace.db.prepare(`SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.title = ?`).get(book.title);
+    const existing = workspace.db.prepare(`SELECT b.id, b.source_kind AS sourceKind FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.title = ?`).get(book.title);
+    // 归类只看目录结构，不需要重读正文，所以已经在库里的也能就地回填。
+    if (existing && reclassify) {
+      const own = kindFor(book.title) === "资料";
+      const wanted = classifySource({ title: book.title, fileCount: book.sources.length, own });
+      if (existing.sourceKind === wanted) console.log(`  不变  ${book.title}　　${wanted}`);
+      else {
+        // ⚠️ 回填同样受 `--commit` 管。预演就是预演——一个说着「没有写入」却写了库的
+        // 工具，比没有预演更糟：下次你就不敢信它任何一句话了。
+        if (commit) workspace.db.prepare("UPDATE books SET source_kind = ? WHERE id = ?").run(wanted, existing.id);
+        console.log(`  ${commit ? "归类" : "待归类"}  ${book.title}　　${existing.sourceKind} → ${wanted}`);
+      }
+      continue;
+    }
     if (existing) {
       console.log(`  跳过  ${book.title}（书架上已经有了）`);
       continue;
@@ -109,11 +137,13 @@ try {
     totalChapters += built.chapters.length;
     totalChars += chars;
     totalDead += built.dead;
-    const notes = [`${book.sources.length} 个文件`, `${built.chapters.length} 节`, `${chars.toLocaleString()} 字符`];
+    const kind = kindFor(book.title);
+    const sourceKind = classifySource({ title: book.title, fileCount: book.sources.length, own: kind === "资料" });
+    const notes = [`${sourceKind}·${kind}`, `${book.sources.length} 个文件`, `${built.chapters.length} 节`, `${chars.toLocaleString()} 字符`];
     if (built.images) notes.push(`${built.images} 张图`);
     if (built.dead) notes.push(`${built.dead} 处失效图链`);
     console.log(`  ${commit ? "导入" : "待导"}  ${book.title}　　${notes.join(" / ")}`);
-    if (commit) await createBookRecord(workspace, { title: book.title, kind: "资料", chapters: built.chapters });
+    if (commit) await createBookRecord(workspace, { title: book.title, kind, sourceKind, chapters: built.chapters });
   }
 
   console.log(`\n合计 ${totalChapters} 节、${totalChars.toLocaleString()} 字符${totalDead ? `，${totalDead} 处飞书失效图链已替换为占位说明` : ""}。`);

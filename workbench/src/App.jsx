@@ -18,6 +18,7 @@ import { Ideas } from "./pages/Ideas.jsx";
 import { Seeds } from "./pages/Seeds.jsx";
 import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
 import { Studio } from "./pages/Studio.jsx";
+import { Entries } from "./pages/Entries.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
@@ -38,7 +39,12 @@ const STATUS_RETRY_MS = [3000, 8000, 20000];
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
 const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "review"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
-const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "shelf"]);
+const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
+// 知识库：词条（提炼出来的）+ 来源（书架和其他资料）
+const KNOWLEDGE_VIEWS = new Set(["knowledge", "entries", "shelf", "sources"]);
+// 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
+const SHELF_KINDS = Object.freeze(["书籍"]);
+const SOURCE_KINDS = Object.freeze(["课程", "文档", "文章"]);
 // ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
 // 留在这儿的话点进去侧栏会同时亮两处。
 const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]);
@@ -89,7 +95,6 @@ const NAV = [
     children: [
       { to: "hot", label: "热点" },
       { to: "insights", label: "洞察" },
-      { to: "shelf", label: "书架" },
       /**
        * ⚠️ **「素材」归到「发现」，不归「内容」。**
        * 发现回答的是「东西从哪儿来」（热点 / 洞察 / 书架），而素材是
@@ -98,6 +103,21 @@ const NAV = [
        * 而且写的时候你是从**项目页右栏**用它的，不需要跳过去。
        */
       { to: "materials", label: "素材" },
+    ],
+  },
+  {
+    /**
+     * ⚠️ **书架在这儿，不在「发现」。** 发现回答「东西从哪儿来」，
+     * 而这一栏回答「我已经有什么」——沉淀下来的东西和从中提炼的词条。
+     *
+     * 顺序是**从产物到原料**：词条是你真正会去用的，来源是它的依据。
+     * 反过来排会把最常点的那一项压到第二位。
+     */
+    key: "knowledge", to: "entries", match: (v) => KNOWLEDGE_VIEWS.has(v),
+    children: [
+      { to: "entries", label: "词条" },
+      { to: "shelf", label: "书架" },
+      { to: "sources", label: "资料" },
     ],
   },
   /**
@@ -128,7 +148,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -737,7 +757,13 @@ export function App() {
               ) : route.view === "typeset" ? (
                 <Typeset onGo={go} />
               ) : route.view === "shelf" ? (
-                <Shelf onIntake={setIntake} state={route.state} />
+                // 书架只放真正的书；课程、文档和自己写的走「资料」那一栏，
+                // 否则 15 本藏书会被上百节导入的讲义淹掉。
+                <Shelf onIntake={setIntake} state={route.state} sourceKinds={SHELF_KINDS} />
+              ) : route.view === "sources" ? (
+                <Shelf onIntake={setIntake} state={route.state} sourceKinds={SOURCE_KINDS} catalogOnly />
+              ) : route.view === "entries" ? (
+                <Entries onGo={go} />
               ) : STUDIO.has(route.view) ? (
                 <Studio
                   sourceKey={route.view === "materials" ? "material-workspace" : route.view}
