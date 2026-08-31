@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { zipSync, strToU8 } from "fflate";
 import { cleanFeishuMarkdown, cleanHeadingTitle, findDeadFeishuImages, planDocument, readFeishuArchive, sortSourceNames, splitDocument, stripDeadFeishuImages } from "../server/lib/corpus.mjs";
+import { stripInlineData, stripNavigationLines } from "../server/lib/article.mjs";
 
 function check(name, value) {
   assert(value, name);
@@ -58,5 +59,25 @@ const planned = planDocument({ title: "提示词工程", text: read.text });
 check("planDocument 一次做完清洗、去死链和切块", planned.sections.length === 1 && planned.sections[0].text.includes("**重点**"));
 
 check("目录内文件按数字前缀排序，课程顺序不会乱", sortSourceNames(["10-第十课.md", "2-第二课.md", "1-第一课.md"]).at(0) === "1-第一课.md");
+
+
+// ————— 网页抓取的清洗。实测某文档站抓回 1047 行里 787 行是导航。—————
+const BASE64 = "![](data:image/svg+xml;base64," + "A".repeat(2000) + ")";
+check("内联 base64 图片被剥掉——它一个上千字符，会骗过任何按字符数的长度检查",
+  stripInlineData("正文一句话。" + BASE64).length < 40);
+
+const nav = [
+  "[Quick start (code)](https://example.com/a)",
+  "[Define agents](https://example.com/b)",
+  "![](https://example.com/icon.svg)",
+  "这是一段真正的正文，它足够长而且不是一整行链接，应该被保留下来。",
+  "文中偶尔有一个[链接](https://example.com/c)，但整行主要还是正文，同样应该保留。",
+].join(String.fromCharCode(10));
+const kept = stripNavigationLines(nav);
+check("整行都是链接的导航行被删掉", !kept.includes("Quick start") && !kept.includes("Define agents"));
+check("只剩图片的行被删掉", !kept.includes("icon.svg"));
+check("正文行保留", kept.includes("这是一段真正的正文"));
+// ⚠️ 反面：正文里偶尔一个链接不算导航，误删的话文章会被切碎
+check("含少量内联链接的正文行不被误删", kept.includes("但整行主要还是正文"));
 
 console.log("\n ✓ 语料清洗、切块与飞书导出解析全部通过");

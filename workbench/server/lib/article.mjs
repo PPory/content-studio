@@ -142,24 +142,61 @@ function longestLineLength(markdown) {
 }
 
 /**
- * 掐掉正文前后的站点外壳。
- *
- * ⚠️ **Firecrawl 的 `onlyMainContent` 不总是管用。** 实测 BytePlus 文档站
- * （整个应用就是一个 div 的 SPA）它照样把页头、登录链接、产品菜单一起返回，
- * 于是存进知识库的那篇「教程」开头是四十行「Sign in / Pricing / Docs」。
- *
- * 判据复用 `PARAGRAPH_MIN`：**留下第一个成段的行到最后一个成段的行之间的全部内容**。
- * 中间的短行（小标题、列表项）原样保留——它们是正文的一部分；被掐掉的只有
- * 前后那两坨永远成不了段的导航。
+ * 一行里有多少字是躺在链接里的。导航是「一行一个链接」，正文是「一段话里偶尔一个链接」。
  */
-function trimToBody(markdown) {
+function linkShare(line) {
+  const visible = String(line).replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^[#>\-*\d.\s]+/, "").trim();
+  if (!visible.length) return 1;
+  const inLinks = [...String(line).matchAll(/\[([^\]]*)\]\([^)]*\)/g)].reduce((sum, match) => sum + match[1].length, 0);
+  return inLinks / visible.length;
+}
+
+/**
+ * 去掉导航行。
+ *
+ * ⚠️ **要全文逐行删，不能只掐头去尾。** 上一版是「留下第一个成段的行到最后一个之间」，
+ * 对这个站点完全无效：侧栏导航树被拍平之后是**穿插在正文里**的，而且首行是一句
+ * 89 字的促销 banner，够长，于是一行都没被掐掉。
+ *
+ * 判据是**链接占比**，不是关键词：导航行的字几乎全躺在链接里，正文行不会。
+ * 图片-only 的行（站点图标、被抽走的 base64 占位）同理。
+ */
+export function stripNavigationLines(markdown) {
+  const kept = String(markdown || "").split("\n").filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    const bare = trimmed.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^[#>\-*\d.\s]+/, "").trim();
+    if (!bare) return false;                      // 只剩图片或空链接
+    if (linkShare(trimmed) >= 0.8) return false;  // 几乎整行都是链接文字
+    return true;
+  });
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * 用**页面自己的标题**定正文起点。
+ *
+ * ⚠️ 到这一步之前已经试过六种办法：`onlyMainContent`、`excludeTags`、剥 data URI、
+ * 结构性垃圾判据、掐头去尾、按链接占比逐行删。对 BytePlus 这类 SPA 文档站全都不够——
+ * 它既不用 `<nav>` 语义标签，导航项又是不带链接的纯文字，形状上和小标题一模一样。
+ *
+ * 再加一条形状规则只会继续这个循环。换一个**不靠猜的锚点**：页面标题。
+ * 正文从「标题重复出现的那一行」开始，这是页面自己给的信息，不是我总结的规律。
+ * 找不到标题就原样返回——宁可留着噪音，也不要切掉真正文。
+ */
+function trimToTitle(markdown, title) {
+  // ⚠️ **反过来判断：正文里那一行是标题的前缀**，而不是从标题里切出主段。
+  // 站点的 <title> 分隔符五花八门（`|` `--` `–` `·` `::`），猜分隔符要么漏要么切错；
+  // 而「Dreamina Seedance 2.5 prompt guide」一定是
+  // 「Dreamina Seedance 2.5 prompt guide--ModelArk-Byteplus」的前缀。
+  const key = String(title || "").replace(/\s+/g, "").trim();
+  if (key.length < 8) return markdown;
   const lines = String(markdown || "").split("\n");
-  const isParagraph = (line) => line.replace(/^[#>\-*\d.\s]+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trim().length >= PARAGRAPH_MIN;
-  const first = lines.findIndex(isParagraph);
-  if (first < 0) return String(markdown || "").trim();
-  let last = lines.length - 1;
-  while (last > first && !isParagraph(lines[last])) last -= 1;
-  return lines.slice(first, last + 1).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const at = lines.findIndex((line) => {
+    const bare = line.replace(/^[#>\-*\d.\s]+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, "").trim();
+    return bare.length >= 8 && key.startsWith(bare);
+  });
+  return at <= 0 ? markdown : lines.slice(at).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function junkReason(markdown) {
@@ -199,7 +236,15 @@ async function viaFirecrawl(env, url) {
       ...(key ? { authorization: `Bearer ${key}` } : {}),
     },
     // onlyMainContent 让它自己做正文提取；直接要 markdown，省掉我们再转一道
-    body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true, timeout: 45000 }),
+    /**
+     * ⚠️ **`onlyMainContent` 一个人不够。** 实测 BytePlus 文档站（SPA，整个应用一个 div）
+     * 它照样把整棵侧栏导航树拍平进 markdown——1047 行里 787 行是导航。
+     * `excludeTags` 是**语义**判据（按 HTML 标签删），比事后猜哪行是菜单可靠得多。
+     */
+    body: JSON.stringify({
+      url, formats: ["markdown"], onlyMainContent: true, timeout: 45000,
+      excludeTags: ["nav", "header", "footer", "aside", "script", "style", "noscript", "form"],
+    }),
     signal: AbortSignal.timeout(60000),
   });
 
@@ -215,7 +260,8 @@ async function viaFirecrawl(env, url) {
   // 和直取那条走**同一套**门槛：Firecrawl 说 success 只代表它跑完了页面，
   // 不代表拿到的是正文——公众号连真浏览器都挡，它回的照样是一份外壳
   // Firecrawl 也会把内联 base64 图片原样带回来，同样清掉。
-  const markdown = trimToBody(stripInlineData(data.data?.markdown));
+  const cleaned = stripNavigationLines(stripInlineData(data.data?.markdown));
+  const markdown = trimToTitle(cleaned, data.data?.metadata?.title);
   if (junkReason(markdown)) return null;
 
   const meta = data.data?.metadata || {};
@@ -327,7 +373,7 @@ export async function readArticle(url, env = {}) {
       return "";
     }
   };
-  const markdown = trimToBody(stripInlineData(xhtmlToMd(article.content, toAbsolute)));
+  const markdown = trimToTitle(stripNavigationLines(stripInlineData(xhtmlToMd(article.content, toAbsolute))), article.title);
   const junk = junkReason(markdown);
   if (junk) return fallback(err(junk, whyNot(target.hostname, env)));
 

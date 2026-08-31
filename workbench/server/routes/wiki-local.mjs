@@ -97,10 +97,15 @@ export const wikiRoutes = [
     const facts = workspace.db.prepare(`
       SELECT f.id, f.statement, f.status, f.source_entity_id AS sourceId, f.source_locator AS locator,
         f.asserted_at AS assertedAt, f.superseded_by AS supersededBy, f.conflicts_with AS conflictsWith,
-        COALESCE(t.title, '') AS sourceTitle, se.entity_type AS sourceType
+        COALESCE(t.title, '') AS sourceTitle, se.entity_type AS sourceType,
+        -- ⚠️ **来源所属的那本书要一起给。** 少了它，界面上「打开来源」只能退回
+        -- 「继续读上次那本」——于是点 Seedance 的来源会跳进《结构化与知识管理》，
+        -- 而用户完全无法理解发生了什么。
+        d.book_id AS sourceBookId
       FROM entry_facts f
       LEFT JOIN entities se ON se.id = f.source_entity_id
       LEFT JOIN entity_text t ON t.entity_id = f.source_entity_id
+      LEFT JOIN book_documents d ON d.id = f.source_entity_id
       WHERE f.entry_id = ? ORDER BY f.status, f.created_at
     `).all(params.id);
     json(res, {

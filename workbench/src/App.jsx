@@ -783,7 +783,16 @@ export function App() {
                     entryId={route.state}
                     onBack={() => go("entries")}
                     onGo={(target) => go("entries", String(target).split("/")[1] || "")}
-                    onOpenSource={(sourceId) => { setOpenTarget("shelf", `bookdoc:${sourceId}`); go("shelf", "resume"); }}
+                    /**
+                     * ⚠️ **要跳到来源所在的那本书，不是「继续读上次那本」。**
+                     * 上一版第二个参数写的是 `"resume"`，于是点任何一条事实的来源
+                     * 都会打开你最近读过的书——落点完全对不上，而且没有任何提示。
+                     */
+                    onOpenSource={(fact) => {
+                      if (!fact?.sourceBookId) return;
+                      setOpenTarget("shelf", `bookdoc:${fact.sourceId}`);
+                      go("shelf", `book:${fact.sourceBookId}`);
+                    }}
                   />
                 ) : (
                   <Entries onGo={(target) => {

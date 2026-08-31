@@ -35,7 +35,8 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
   const factLine = (fact) => (
     <li key={fact.id} className="fact">
       <p className="fact__text">{fact.statement}</p>
-      <button type="button" className="fact__src" onClick={() => onOpenSource?.(fact.sourceId)} title="打开来源">
+      <button type="button" className="fact__src" onClick={() => onOpenSource?.(fact)} title={fact.sourceBookId ? "打开来源" : "这条事实的来源不是书架上的文档，没有可跳的落点"}
+        disabled={!fact.sourceBookId}>
         {fact.sourceTitle || "未记录来源"}
       </button>
     </li>
