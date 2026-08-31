@@ -65,9 +65,8 @@ const mdHighlight = HighlightStyle.define([
   { tag: t.heading2, fontSize: "1.22em", fontWeight: "700", lineHeight: "1.35" },
   { tag: t.heading3, fontSize: "1.06em", fontWeight: "700", lineHeight: "1.4" },
   { tag: [t.heading4, t.heading5, t.heading6], fontWeight: "700" },
-  // 加粗用正文那套暖色强调，和阅读区里看到的是同一个颜色——
-  // 编辑和阅读长两样的话，人得在两套记号之间做一次翻译
-  { tag: t.strong, fontWeight: "700", color: "var(--emph)" },
+  // 加粗只加字重，和阅读区一致——编辑和阅读长两样的话，人得在两套记号之间做一次翻译
+  { tag: t.strong, fontWeight: "700" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through", color: "var(--text-3)" },
   { tag: t.quote, color: "var(--text-2)", fontStyle: "italic" },
