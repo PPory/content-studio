@@ -30,6 +30,31 @@ export const PUBLICATION_STATUS = Object.freeze({ UNPUBLISHED: "未发布", PUBL
 export const REVIEW_STATUS = Object.freeze(["样本不足", "普通", "表现突出"]);
 export const PROJECT_STAGES = Object.freeze(["策划中", "生成中", "写作中", "待发布", "待复盘", "已完成", "已搁置", "需处理"]);
 
+export const ENTRY_KINDS = Object.freeze(["concept", "product", "method", "person", "work", "stance"]);
+export const ENTRY_KIND_SET = new Set(ENTRY_KINDS);
+export const ENTRY_KIND_LABELS = Object.freeze({
+  concept: "概念", product: "产品", method: "方法论", person: "人物", work: "作品", stance: "我的主张",
+});
+export const ENTRY_FACT_STATUS = Object.freeze({ ACTIVE: "active", SUPERSEDED: "superseded", DISPUTED: "disputed" });
+
+/**
+ * 词条之间的关系类型。**没有「相关」这一项，这是故意的。**
+ *
+ * 「A 和 B 相关」不携带任何信息——两个词条既然都在你的库里，多半都沾点边。
+ * 有用的是「A 基于 B」「A 和 B 对比后更强」「A 被 B 采用」这种能反过来读的关系：
+ * 写作时你要的是「这个说法建立在什么之上」，不是「这个说法旁边还有什么」。
+ *
+ * ⚠️ 取值必须匹配 `entity_relations.relation_type` 的 CHECK（小写、数字、下划线、连字符）。
+ */
+export const ENTRY_RELATION_TYPES = Object.freeze([
+  "based_on", "contrasts_with", "same_kind_as", "adopted_by", "part_of", "example_of", "contradicts",
+]);
+export const ENTRY_RELATION_SET = new Set(ENTRY_RELATION_TYPES);
+export const ENTRY_RELATION_LABELS = Object.freeze({
+  based_on: "基于", contrasts_with: "对比", same_kind_as: "同属", adopted_by: "被采用",
+  part_of: "属于", example_of: "是……的例子", contradicts: "与之冲突",
+});
+
 export const MUTATING_ACTIONS = Object.freeze([
   "capture.create",
   "seed.create",
@@ -46,6 +71,12 @@ export const MUTATING_ACTIONS = Object.freeze([
   "series.project.set",
   "material.create",
   "material.verify",
+  "entry.create",
+  "entry.fact.add",
+  "entry.fact.supersede",
+  "entry.fact.dispute",
+  "entry.link",
+  "entry.merge",
   "draft.create",
   "draft.update",
   "draft.transition",

@@ -3,7 +3,7 @@ import { createUlid } from "../storage/ids.mjs";
 import { ActionPolicy } from "./action-policy.mjs";
 import { assertGroundedGeneratedText, isMaterialEligibleForDraft, isValidHttpSource, normalizeStoredText, sha256Json, sourceContainsVerbatim, verificationForMaterial } from "./integrity.mjs";
 import { assertDraftReadyToFinish, deriveProjectStage, nextCaptureStatus, nextDraftWorkflow, nextSeedStatus } from "./state-rules.mjs";
-import { DRAFT_WORKFLOW, MATERIAL_TYPE_SET, PLATFORMS, PRIORITIES, PROJECT_STATUS, PUBLICATION_STATUS, REVIEW_STATUS, VERBATIM_MATERIAL_TYPES, VERIFICATION } from "./values.mjs";
+import { DRAFT_WORKFLOW, ENTRY_KIND_SET, ENTRY_RELATION_SET, MATERIAL_TYPE_SET, PLATFORMS, PRIORITIES, PROJECT_STATUS, PUBLICATION_STATUS, REVIEW_STATUS, VERBATIM_MATERIAL_TYPES, VERIFICATION } from "./values.mjs";
 
 const isoNow = (now = new Date()) => new Date(now).toISOString();
 const clean = (value) => String(value || "").trim();
@@ -202,6 +202,259 @@ export class WorkspaceDomain {
       return status;
     });
   }
+  /* ————————————————— 词条层（本地 LLM Wiki）—————————————————
+   *
+   * 让知识复利而不是堆积，只有三个操作：**归并**（新事实落到已有词条上）、
+   * **矛盾**（冲突被记录而不是被静默覆盖）、**连接**。下面这组方法就是这三个。
+   *
+   * ⚠️ 这一层没有 update 语义。事实只会被**追加**、被**推翻**（superseded）
+   * 或被**标记冲突**（disputed），不会被就地改写——否则「这个说法什么时候变的、
+   * 因为哪份资料变的」就查不回来了，而那恰恰是这套东西比一堆笔记值钱的地方。
+   */
+
+  entryRow(entryId) {
+    const row = this.db.prepare("SELECT e.* FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL WHERE e.id = ?").get(entryId);
+    if (!row) throw new Error("词条不存在");
+    return row;
+  }
+
+  /**
+   * 把词条正文写进 FTS。**每次事实变动都要重跑。**
+   *
+   * 写作时「不用 @、相关词条自己出现」靠的是拿草稿正文去 match 词条正文；
+   * 事实不进索引的话，召回就退化成只看标题匹配，等于没有。
+   * 已被推翻的事实不进索引——它们仍然可查，但不该再被当成现在的知识召回。
+   */
+  refreshEntryText(entryId, now) {
+    const entry = this.db.prepare("SELECT name, definition FROM entries WHERE id = ?").get(entryId);
+    if (!entry) return;
+    const facts = this.db.prepare("SELECT statement FROM entry_facts WHERE entry_id = ? AND status <> 'superseded' ORDER BY created_at, id").all(entryId);
+    this.repository.setEntityText(entryId, {
+      title: entry.name,
+      body: [entry.definition, ...facts.map((fact) => fact.statement)].filter(Boolean).join("\n"),
+      now,
+    });
+  }
+
+  createEntry({ id = createUlid(), name, kind, definition = "", definitionSourceId = null, now, ...auth } = {}) {
+    const canonicalName = required(name, "词条名");
+    const canonicalDefinition = normalizeStoredText(definition);
+    const payload = { name: canonicalName, kind, definition: canonicalDefinition, definitionSourceId };
+    const authorization = this.authorizeMutation("entry.create", definitionSourceId, payload, auth);
+    if (authorization.replay) return authorization.result?.id;
+    if (!ENTRY_KIND_SET.has(kind)) throw new TypeError("词条类型不合法");
+    // 定义必须有来源。没有来源的定义就是模型的记忆——而模型的记忆正是这套东西要根除的东西。
+    if (!canonicalDefinition) throw new TypeError("词条定义不能为空");
+    if (!definitionSourceId) throw new TypeError("词条定义必须注明来源实体");
+    if (auth.actor === "ai") assertGroundedGeneratedText({ title: canonicalName, body: canonicalDefinition }, this.groundingMaterials(null));
+    return this.repository.transaction(() => {
+      this.entity(definitionSourceId);
+      // 重名先拦一道。表上有 UNIQUE，但 `UNIQUE constraint failed: entries.name`
+      // 对调用方没有意义——ingest 需要的是「已经有这个词条了，去追加事实或者合并」。
+      // ⚠️ 软删的词条**仍然占着名字**（UNIQUE 不带 deleted 条件），这是故意的：
+      // 合并掉的名字不该被另起炉灶重建，那样刚合完就又分叉了。
+      const existing = this.db.prepare("SELECT id FROM entries WHERE name = ?").get(canonicalName);
+      if (existing) throw Object.assign(new Error(`词条「${canonicalName}」已存在，应追加事实或合并，不要重建`), { code: "ENTRY_NAME_TAKEN", entryId: existing.id });
+      this.repository.createEntity({ id, type: "entry", now });
+      // 建出来就是孤儿，直到有人链它或它链别人。**不在这里硬拦**：
+      // 批量入库时第一个词条无处可链，硬拦会让整批卡死。孤儿是一个队列，不是一道门。
+      this.db.prepare("INSERT INTO entries(id, name, entry_kind, definition, definition_source_id, orphan_since) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(id, canonicalName, kind, canonicalDefinition, definitionSourceId, isoNow(now));
+      this.refreshEntryText(id, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
+      this.audit("entry.created", id, { kind, definitionSourceId }, now);
+      return id;
+    });
+  }
+
+  /**
+   * 往词条上追加一条事实。
+   *
+   * `assertedAt` 是「这条事实在什么时间点为真」，默认取来源实体的创建时间。
+   * ⚠️ 对导入的书籍章节来说那是**入库时间**而不是成书时间，过期检测在这类来源上
+   * 会偏松；需要精确时间的调用方要自己传。
+   */
+  addEntryFact({ id = createUlid(), entryId, statement, sourceEntityId, sourceLocator = "", assertedAt = "", now, ...auth } = {}) {
+    const canonicalStatement = required(statement, "事实内容");
+    const payload = { entryId, statement: canonicalStatement, sourceEntityId, sourceLocator, assertedAt };
+    const authorization = this.authorizeMutation("entry.fact.add", entryId, payload, auth);
+    if (authorization.replay) return authorization.result?.id;
+    // 硬闸：没有来源的事实进不来。表上是 NOT NULL，这里先给一句人话的错误。
+    if (!sourceEntityId) throw new TypeError("事实必须注明来源实体");
+    if (auth.actor === "ai") assertGroundedGeneratedText({ body: canonicalStatement }, this.groundingMaterials(null));
+    return this.repository.transaction(() => {
+      this.entryRow(entryId);
+      const source = this.entity(sourceEntityId);
+      const stamp = isoNow(now);
+      this.db.prepare(`INSERT INTO entry_facts(id, entry_id, statement, source_entity_id, source_locator, asserted_at, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
+        .run(id, entryId, canonicalStatement, sourceEntityId, clean(sourceLocator), assertedAt ? requiredIso(assertedAt, "事实时间") : source.createdAt, stamp, stamp);
+      this.refreshEntryText(entryId, now);
+      this.touch(entryId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
+      this.audit("entry.fact_added", entryId, { factId: id, sourceEntityId }, now);
+      return id;
+    });
+  }
+
+  /** 新资料推翻旧论断。旧事实**不删**，标记 superseded 并指向新的那条。 */
+  supersedeEntryFact(factId, { supersededBy, now, ...auth } = {}) {
+    const payload = { supersededBy };
+    const authorization = this.authorizeMutation("entry.fact.supersede", factId, payload, auth);
+    if (authorization.replay) return authorization.result?.status;
+    return this.repository.transaction(() => {
+      const stale = this.db.prepare("SELECT * FROM entry_facts WHERE id = ?").get(factId);
+      const fresh = this.db.prepare("SELECT * FROM entry_facts WHERE id = ?").get(supersededBy);
+      if (!stale || !fresh) throw new Error("事实不存在");
+      if (stale.id === fresh.id) throw new TypeError("事实不能推翻自己");
+      if (stale.entry_id !== fresh.entry_id) throw new TypeError("只能用同一词条下的事实推翻");
+      if (stale.status === "superseded") throw new Error("这条事实已经被推翻过");
+      this.db.prepare("UPDATE entry_facts SET status = 'superseded', superseded_by = ?, conflicts_with = NULL, updated_at = ? WHERE id = ?")
+        .run(fresh.id, isoNow(now), stale.id);
+      this.refreshEntryText(stale.entry_id, now);
+      this.touch(stale.entry_id, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { status: "superseded" }, now });
+      this.audit("entry.fact_superseded", stale.entry_id, { factId: stale.id, supersededBy: fresh.id }, now);
+      return "superseded";
+    });
+  }
+
+  /**
+   * 两条事实互相打架、又都站得住。
+   *
+   * ⚠️ **这不是删除，也不是二选一。** 参照的那套飞书实现在这里写的是
+   * 「以最新入库资料为准」——直接覆盖。那样一来「我曾经相信过什么、为什么改了」
+   * 就永久丢了，而对写作者来说，认知变化本身往往就是选题。
+   */
+  disputeEntryFacts(factId, otherFactId, { now, ...auth } = {}) {
+    const payload = { otherFactId };
+    const authorization = this.authorizeMutation("entry.fact.dispute", factId, payload, auth);
+    if (authorization.replay) return authorization.result?.status;
+    return this.repository.transaction(() => {
+      const left = this.db.prepare("SELECT * FROM entry_facts WHERE id = ?").get(factId);
+      const right = this.db.prepare("SELECT * FROM entry_facts WHERE id = ?").get(otherFactId);
+      if (!left || !right) throw new Error("事实不存在");
+      if (left.id === right.id) throw new TypeError("事实不能和自己冲突");
+      if (left.entry_id !== right.entry_id) throw new TypeError("只能标记同一词条下的事实冲突");
+      if (left.status === "superseded" || right.status === "superseded") throw new Error("已被推翻的事实不再参与冲突标记");
+      const stamp = isoNow(now);
+      this.db.prepare("UPDATE entry_facts SET status = 'disputed', conflicts_with = ?, updated_at = ? WHERE id = ?").run(right.id, stamp, left.id);
+      this.db.prepare("UPDATE entry_facts SET status = 'disputed', conflicts_with = ?, updated_at = ? WHERE id = ?").run(left.id, stamp, right.id);
+      this.touch(left.entry_id, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { status: "disputed" }, now });
+      this.audit("entry.fact_disputed", left.entry_id, { factIds: [left.id, right.id] }, now);
+      return "disputed";
+    });
+  }
+
+  /**
+   * 连接两个词条。
+   *
+   * 只存**一条有方向的边**，不写回链——反向链接是 `entity_relations_to_idx` 上的
+   * 一次查询，免费且不会和正向不同步。参照的那套实现要专门跑一条 lint 去查
+   * 「回链补全了没有」，那是 markdown 和飞书文档链接才需要的账。
+   */
+  linkEntries(fromId, toId, relationType, { now, ...auth } = {}) {
+    const payload = { toId, relationType };
+    const authorization = this.authorizeMutation("entry.link", fromId, payload, auth);
+    if (authorization.replay) return authorization.result?.linked;
+    if (!ENTRY_RELATION_SET.has(relationType)) throw new TypeError("词条关系类型不合法");
+    if (fromId === toId) throw new TypeError("词条不能链接到自己");
+    return this.repository.transaction(() => {
+      this.entryRow(fromId);
+      this.entryRow(toId);
+      this.repository.relate(fromId, toId, relationType, { now });
+      // 两端都不再是孤儿——被链接和链接别人一样算「接上了」。
+      this.db.prepare("UPDATE entries SET orphan_since = NULL WHERE id IN (?, ?)").run(fromId, toId);
+      this.touch(fromId, now);
+      this.touch(toId, now);
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { linked: true }, now });
+      this.audit("entry.linked", fromId, { toId, relationType }, now);
+      return true;
+    });
+  }
+
+  /**
+   * 合并重复词条：把 source 的事实和关系搬到 target，然后软删 source。
+   *
+   * AI 提词条一定会造出「结构化提示词」和「结构化提示」这种同义重复，
+   * 没有合并的话它们会各自长事实，然后互相矛盾——而那是**假矛盾**，
+   * 会把真矛盾淹掉。
+   */
+  mergeEntries(sourceId, targetId, { now, ...auth } = {}) {
+    const payload = { targetId };
+    const authorization = this.authorizeMutation("entry.merge", sourceId, payload, auth);
+    if (authorization.replay) return authorization.result?.merged;
+    if (sourceId === targetId) throw new TypeError("词条不能和自己合并");
+    return this.repository.transaction(() => {
+      this.entryRow(sourceId);
+      this.entryRow(targetId);
+      this.db.prepare("UPDATE entry_facts SET entry_id = ?, updated_at = ? WHERE entry_id = ?").run(targetId, isoNow(now), sourceId);
+      // 搬关系时要绕开两个坑：搬过去会变成自链的（source 和 target 本来就相连），
+      // 以及 target 上已经有的同类边。两者都直接丢弃。
+      for (const row of this.db.prepare("SELECT to_id AS toId, relation_type AS type FROM entity_relations WHERE from_id = ?").all(sourceId)) {
+        if (row.toId !== targetId) this.repository.relate(targetId, row.toId, row.type, { now });
+      }
+      for (const row of this.db.prepare("SELECT from_id AS fromId, relation_type AS type FROM entity_relations WHERE to_id = ?").all(sourceId)) {
+        if (row.fromId !== targetId) this.repository.relate(row.fromId, targetId, row.type, { now });
+      }
+      this.db.prepare("DELETE FROM entity_relations WHERE from_id = ? OR to_id = ?").run(sourceId, sourceId);
+      const attached = this.db.prepare("SELECT COUNT(*) AS count FROM entity_relations WHERE from_id = ? OR to_id = ?").get(targetId, targetId).count;
+      if (attached > 0) this.db.prepare("UPDATE entries SET orphan_since = NULL WHERE id = ?").run(targetId);
+      this.refreshEntryText(targetId, now);
+      this.touch(targetId, now);
+      this.repository.softDeleteEntity(sourceId, { now });
+      if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { merged: true }, now });
+      this.audit("entry.merged", targetId, { sourceId }, now);
+      return true;
+    });
+  }
+
+  /** 按名字找词条。ingest 每提一个词条都要先问一次「这个是不是已经有了」。 */
+  findEntryByName(name) {
+    return this.db.prepare(`SELECT e.id, e.name, e.entry_kind AS kind, e.definition
+      FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL WHERE e.name = ?`).get(clean(name)) || null;
+  }
+
+  /** 孤儿词条。**是一个查询，不是一次巡检**——不需要 AI 遍历全库去找。 */
+  entryOrphans({ limit = 100 } = {}) {
+    return this.db.prepare(`SELECT e.id, e.name, e.entry_kind AS kind, e.orphan_since AS orphanSince
+      FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL
+      WHERE NOT EXISTS (SELECT 1 FROM entity_relations r WHERE r.from_id = e.id OR r.to_id = e.id)
+      ORDER BY e.orphan_since, e.id LIMIT ?`).all(Math.max(1, Math.min(500, Number(limit) || 100)));
+  }
+
+  /**
+   * 矛盾候选：同一词条下、来自**不同来源**、都还 active 的事实两两配对。
+   *
+   * ⚠️ 这个方法是整个词条层的理由。在 markdown 里「找矛盾」等于让模型读全库然后祈祷，
+   * 库一大就必然漏。这里数据库先把搜索空间缩到几十对，AI 只判断这几十对——
+   * 于是 lint 的成本随「同词条多来源事实」的数量增长，而不是随全库大小增长。
+   */
+  entryContradictionCandidates({ limit = 50 } = {}) {
+    return this.db.prepare(`SELECT a.entry_id AS entryId, e.name AS entryName,
+        a.id AS leftFactId, a.statement AS leftStatement, a.source_entity_id AS leftSourceId, a.asserted_at AS leftAssertedAt,
+        b.id AS rightFactId, b.statement AS rightStatement, b.source_entity_id AS rightSourceId, b.asserted_at AS rightAssertedAt
+      FROM entry_facts a
+      JOIN entry_facts b ON b.entry_id = a.entry_id AND b.id > a.id AND b.source_entity_id <> a.source_entity_id
+      JOIN entries e ON e.id = a.entry_id
+      JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL
+      WHERE a.status = 'active' AND b.status = 'active'
+      ORDER BY a.entry_id, a.id LIMIT ?`).all(Math.max(1, Math.min(200, Number(limit) || 50)));
+  }
+
+  /** 词条的双向邻居。正向存在表里，反向是索引上的一次查询。 */
+  entryNeighbors(entryId) {
+    return {
+      outgoing: this.db.prepare(`SELECT r.to_id AS id, e.name, e.entry_kind AS kind, r.relation_type AS relationType
+        FROM entity_relations r JOIN entries e ON e.id = r.to_id
+        JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL WHERE r.from_id = ? ORDER BY e.name`).all(entryId),
+      incoming: this.db.prepare(`SELECT r.from_id AS id, e.name, e.entry_kind AS kind, r.relation_type AS relationType
+        FROM entity_relations r JOIN entries e ON e.id = r.from_id
+        JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL WHERE r.to_id = ? ORDER BY e.name`).all(entryId),
+    };
+  }
+
   createProject({ id = createUlid(), title, briefMarkdown = "", viewpoint = "", audience = "", primaryPlatform = "", priority = "中", seedId = null, confirmed = false, now, ...auth } = {}) {
     if (confirmed !== true) throw new Error("创建项目必须来自用户明确确认");
     const canonicalTitle = required(title, "项目标题");

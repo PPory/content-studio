@@ -119,6 +119,57 @@ try {
   assert.throws(() => domain.createMaterial({ title: "伪导入", type: "金句/原话", bodyMarkdown: "伪导入", origin: "import", importedVerification: { status: "已核验" }, importBatchId: "fake", actor, now }), /受信迁移器/);
   check("普通领域调用不能自报导入核验状态", true);
 
+  // ————— 词条层：复利靠的是「归并 / 矛盾 / 连接」，不是「又存了一条」—————
+  check("词条层 migration 已创建 entries 和 entry_facts", ["entries", "entry_facts"].every((name) => (
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
+  )));
+  const sourceA = domain.createCapture({ kind: "article", title: "资料 A", bodyMarkdown: "四段式提示词的说明", sourceUrl: "https://example.com/a", actor, now });
+  const sourceB = domain.createCapture({ kind: "article", title: "资料 B", bodyMarkdown: "对四段式的反驳", sourceUrl: "https://example.com/b", actor, now });
+  assert.throws(() => domain.createEntry({ name: "无来源词条", kind: "concept", definition: "凭空来的定义", actor, now }), /必须注明来源/);
+  assert.throws(() => domain.createEntry({ name: "空定义词条", kind: "concept", definition: "", definitionSourceId: sourceA, actor, now }), /定义不能为空/);
+  assert.throws(() => domain.createEntry({ name: "类型不对", kind: "随便", definition: "定义", definitionSourceId: sourceA, actor, now }), /类型不合法/);
+  check("词条的定义必须有来源实体，没有来源的定义写不进去", true);
+
+  const methodEntryId = domain.createEntry({ name: "结构化提示词", kind: "method", definition: "把提示拆成角色、任务、约束、示例四段。", definitionSourceId: sourceA, actor, now });
+  const productEntryId = domain.createEntry({ name: "Seedance", kind: "product", definition: "一个视频生成模型。", definitionSourceId: sourceB, actor, now });
+  assert.throws(() => domain.createEntry({ name: "结构化提示词", kind: "concept", definition: "重复建的", definitionSourceId: sourceA, actor, now }), (error) => error.code === "ENTRY_NAME_TAKEN");
+  check("重名词条被挡下并提示去追加或合并，而不是抛 UNIQUE", domain.findEntryByName("结构化提示词").id === methodEntryId);
+  check("新建的词条先进孤儿队列", domain.entryOrphans().length === 2);
+  assert.throws(() => domain.linkEntries(methodEntryId, methodEntryId, "based_on", { actor, now }), /不能链接到自己/);
+  assert.throws(() => domain.linkEntries(productEntryId, methodEntryId, "相关", { actor, now }), /关系类型不合法/);
+  check("关系必须有具体语义，「相关」这种零信息关系进不来", true);
+  domain.linkEntries(productEntryId, methodEntryId, "based_on", { actor, now });
+  check("建立一条有向边后两端都不再是孤儿", domain.entryOrphans().length === 0);
+  check("反向链接不存表也能查到，正反两向不会不同步", domain.entryNeighbors(methodEntryId).incoming.at(0)?.id === productEntryId
+    && domain.entryNeighbors(productEntryId).outgoing.at(0)?.relationType === "based_on");
+
+  assert.throws(() => domain.addEntryFact({ entryId: methodEntryId, statement: "没来源的事实", actor, now }), /必须注明来源/);
+  const factFromA = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里效果更好。", sourceEntityId: sourceA, actor, now });
+  const factFromB = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里反而更差。", sourceEntityId: sourceB, actor, now });
+  check("事实进 FTS，写作时能靠正文召回而不只靠标题", workspace.repository.search("长视频提示").some((row) => row.id === methodEntryId));
+  check("同词条不同来源的两条事实被机械筛成矛盾候选，不靠模型遍历全库", domain.entryContradictionCandidates().length === 1);
+  assert.throws(() => domain.disputeEntryFacts(factFromA, factFromA, { actor, now }), /不能和自己冲突/);
+  domain.disputeEntryFacts(factFromA, factFromB, { actor, now });
+  check("标记冲突后两条都还在、互相指认，不是二选一覆盖", db.prepare("SELECT COUNT(*) AS count FROM entry_facts WHERE entry_id = ? AND status = 'disputed'").get(methodEntryId).count === 2
+    && db.prepare("SELECT conflicts_with AS other FROM entry_facts WHERE id = ?").get(factFromA).other === factFromB
+    && domain.entryContradictionCandidates().length === 0);
+
+  const supersedingFact = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式已被六段式取代。", sourceEntityId: sourceB, actor, now });
+  assert.throws(() => domain.supersedeEntryFact(supersedingFact, { supersededBy: supersedingFact, actor, now }), /不能推翻自己/);
+  domain.supersedeEntryFact(factFromB, { supersededBy: supersedingFact, actor, now });
+  check("被推翻的事实保留原文并指向新论断，认知变化可回溯", db.prepare("SELECT status, superseded_by AS by FROM entry_facts WHERE id = ?").get(factFromB).by === supersedingFact);
+  check("被推翻的事实退出 FTS，不再被当成现在的知识召回", !workspace.repository.search("反而更差").some((row) => row.id === methodEntryId));
+
+  const duplicateEntryId = domain.createEntry({ name: "结构化提示", kind: "method", definition: "同义重复的词条。", definitionSourceId: sourceA, actor, now });
+  domain.addEntryFact({ entryId: duplicateEntryId, statement: "重复词条上也长了一条事实。", sourceEntityId: sourceA, actor, now });
+  domain.linkEntries(duplicateEntryId, productEntryId, "adopted_by", { actor, now });
+  domain.mergeEntries(duplicateEntryId, methodEntryId, { actor, now });
+  check("合并同义词条后事实归并到目标、来源被软删", db.prepare("SELECT COUNT(*) AS count FROM entry_facts WHERE entry_id = ?").get(duplicateEntryId).count === 0
+    && workspace.repository.getEntity(duplicateEntryId) === null
+    && db.prepare("SELECT COUNT(*) AS count FROM entry_facts WHERE entry_id = ? AND statement LIKE '重复词条%'").get(methodEntryId).count === 1);
+  check("合并搬关系时不产生自链，也不留下指向已合并词条的悬空边", db.prepare("SELECT COUNT(*) AS count FROM entity_relations WHERE from_id = ? OR to_id = ?").get(duplicateEntryId, duplicateEntryId).count === 0
+    && db.prepare("SELECT COUNT(*) AS count FROM entity_relations WHERE from_id = to_id").get().count === 0);
+
   const experienceText = "去年我开始每天写作，连续写了一百天。";
   const experienceId = domain.createMaterial({ title: "真实写作经历", type: "个人经历", bodyMarkdown: experienceText, actor, now });
   domain.linkMaterial(projectId, experienceId, { relationKind: "evidence", actor, now });

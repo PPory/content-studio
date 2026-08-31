@@ -6,6 +6,7 @@ const domainSql = fs.readFileSync(new URL("./migrations/0002-domain.sql", import
 const localClientsSql = fs.readFileSync(new URL("./migrations/0003-local-clients.sql", import.meta.url), "utf8");
 const seriesSql = fs.readFileSync(new URL("./migrations/0004-series.sql", import.meta.url), "utf8");
 const seriesEntriesSql = fs.readFileSync(new URL("./migrations/0005-series-entries.sql", import.meta.url), "utf8");
+const wikiSql = fs.readFileSync(new URL("./migrations/0006-wiki.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -37,6 +38,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "series-entries",
     sql: seriesEntriesSql,
     checksum: crypto.createHash("sha256").update(seriesEntriesSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 6,
+    name: "wiki",
+    sql: wikiSql,
+    checksum: crypto.createHash("sha256").update(wikiSql).digest("hex"),
   }),
 ]);
 
