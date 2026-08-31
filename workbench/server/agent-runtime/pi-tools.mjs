@@ -164,6 +164,30 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
    * 用户在那儿看红绿 diff、自己决定采纳还是弃用。正文的唯一写入路径始终是
    * 编辑器的候选采纳（它带版本、修订记录和审计），这里再开一条就是同一条规则实现两遍。
    */
+  /**
+   * 把一个公开网页收进知识库。
+   *
+   * ⚠️ **这里只提候选，不抓也不写。** 抓取发生在用户确认之后（见 assistant-runner
+   * 的 `knowledge_source_add` 分支）——因为「AI 说它找到了一篇好资料」和
+   * 「那个地址真的存在、真的能读出正文」是两件事，而后者要等确认时才验。
+   * 现在就抓的话，用户拒绝了也已经花过一次网络请求，而且会给模型一个
+   * 「先抓下来再说」的激励。
+   *
+   * 一次一条 URL。让模型一次提交十条的结果是你只能整批接受或整批拒绝。
+   */
+  tools.push(tool("propose_knowledge_source", "准备收进知识库", "把一个公开网页作为资料收进知识库。只生成待确认动作，确认后才会抓取和入库。", Type.Object({
+    url: Type.String({ maxLength: 2_000 }),
+    title: Type.Optional(Type.String({ maxLength: 200 })),
+    why: Type.String({ maxLength: 500 }),
+  }), async ({ url, title = "", why }) => {
+    allowed("propose_knowledge_source");
+    let target;
+    try { target = new URL(clean(url, 2_000)); } catch { throw new Error("这不是一个合法的网址"); }
+    if (!/^https?:$/.test(target.protocol)) throw new Error("只支持 http / https 网页");
+    if (!clean(why, 500)) throw new Error("要说明为什么这份资料值得收进知识库");
+    return appendAction(actionsFile, { type: "knowledge_source_add", url: target.href, title: clean(title, 200), why: clean(why, 500) });
+  }));
+
   tools.push(tool("propose_body_rewrite", "准备全文整理候选", "提交整篇正文的替换候选，交给用户在正文里逐处审阅。不直接改写正文。", Type.Object({
     reason: Type.String({ maxLength: 500 }),
     body: Type.String({ maxLength: 200_000 }),

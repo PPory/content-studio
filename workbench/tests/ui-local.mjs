@@ -11,6 +11,8 @@ const xenhoHome = path.join(tempRoot, "Xenho");
 const shotFile = path.join(tempRoot, "project-workspace.png");
 const seriesShotFile = path.join(os.tmpdir(), "xenho-series-workspace.png");
 const seriesOutlineShotFile = path.join(os.tmpdir(), "xenho-series-outline.png");
+const seriesReadShotFile = path.join(os.tmpdir(), "xenho-series-read.png");
+const seriesListShotFile = path.join(os.tmpdir(), "xenho-series-list.png");
 const PORT = 5204;
 const oldHome = process.env.XENHO_HOME;
 const oldProxy = { HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
@@ -85,46 +87,80 @@ try {
     if (message.type() === "error" && !/Failed to load resource/i.test(message.text())) errors.push(message.text());
   });
 
+  // ── 合集：建 → 从文章列表归类 → 在合集中新建 → 排序 → 分节 → 通读 ──
+  //
+  // ⚠️ **归类走的是文章列表那条路**，不是「进合集再添加」。那条新路径正是这次
+  // 重做要修的东西；只测老路的话，改坏了也测不出来。
   await page.goto(`http://127.0.0.1:${PORT}/#/series`);
   await page.getByRole("button", { name: "新建合集" }).click();
   const createSeriesDialog = page.getByRole("dialog", { name: "新建合集" });
   await createSeriesDialog.getByLabel("合集名称").fill("本地内容工作台");
-  await createSeriesDialog.getByLabel("合集说明").fill("收录与本地内容系统有关的文章");
   await createSeriesDialog.getByRole("button", { name: "建立合集" }).click();
   const seriesTitle = page.getByRole("textbox", { name: "合集名称", exact: true });
   await seriesTitle.waitFor();
-  check("新建合集后进入合集工作区", await seriesTitle.inputValue() === "本地内容工作台");
-  const emptyCollection = page.getByText("这个合集还是空的。添加已有文章，或者直接新建一篇。", { exact: true });
-  await emptyCollection.waitFor({ state: "attached" });
-  check("新合集从空文件夹开始", await emptyCollection.count() === 1);
+  check("新建合集后进入合集目录页", await seriesTitle.inputValue() === "本地内容工作台");
+  check("目录页不再有「保存合集」按钮", await page.getByRole("button", { name: "保存合集" }).count() === 0);
+  await page.getByText("这个合集还是空的。把已有文章放进来，或者直接在这里开始写第一篇。").waitFor();
 
-  await page.getByRole("button", { name: "添加已有文章" }).click();
-  const linkDialog = page.getByRole("dialog", { name: "添加文章到合集" });
-  await linkDialog.getByRole("button", { name: /阶段六隔离稿/ }).click();
-  const existingArticle = page.locator(".series-chapter").filter({ hasText: "阶段六隔离稿" });
-  await existingArticle.getByRole("button", { name: "打开文章" }).waitFor();
-  check("已有文章可以直接放入合集", await existingArticle.isVisible());
+  await page.goto(`http://127.0.0.1:${PORT}/#/content`);
+  await page.getByRole("button", { name: "把「阶段六隔离稿」放进合集" }).click();
+  const filePicker = page.getByRole("dialog", { name: "把这篇文章放进合集" });
+  await filePicker.getByRole("checkbox").first().check();
+  await filePicker.getByRole("button", { name: "确认" }).click();
+  await page.getByText("已放进 1 个合集").waitFor();
+  check("从文章列表就能归类，并在行上显示所属合集", await page.locator(".ptable__series").filter({ hasText: "本地内容工作台" }).count() === 1);
 
+  await page.goto(`http://127.0.0.1:${PORT}/#/series`);
+  await page.locator(".series-card__open").filter({ hasText: "本地内容工作台" }).click();
+  await seriesTitle.waitFor();
   await page.getByRole("button", { name: "在合集中新建" }).click();
   await page.waitForSelector(".md-editor__cm .cm-content");
-  await page.getByText("第 2/2 篇 · 本地内容工作台", { exact: true }).waitFor();
+  await page.locator(".project-collection").filter({ hasText: "本地内容工作台" }).waitFor();
   await page.getByLabel("主稿标题").fill("合集内新建稿");
   await page.locator(".cm-content").click();
   await page.keyboard.type("这是一篇直接在合集中建立的文章。");
   await page.waitForTimeout(1800);
   check("在合集中新建仍进入原有单篇编辑器", await page.getByLabel("主稿标题").inputValue() === "合集内新建稿");
+
   await page.locator(".project-back").click();
-  await page.waitForSelector(".series-workspace");
-  const newArticle = page.locator(".series-chapter").filter({ hasText: "合集内新建稿" });
-  await newArticle.getByRole("button", { name: "上移" }).click();
-  await page.getByText("文章顺序已更新", { exact: true }).waitFor();
+  await page.waitForSelector(".series-outline");
+  await page.getByRole("button", { name: "「合集内新建稿」的操作" }).click();
+  await page.getByRole("menuitem", { name: /上移/ }).click();
+  await page.waitForTimeout(600);
+
+  // 分节：教程知识库要能分「入门 / 进阶」
+  await page.getByRole("button", { name: "插入分节" }).click();
+  await page.getByLabel("新分节标题").fill("入门");
+  await page.getByLabel("新分节标题").blur();
+  await page.getByText("已插入分节").waitFor();
+
   await page.reload();
   await seriesTitle.waitFor();
-  const chapterTitles = await page.locator(".series-chapter__title strong").allInnerTexts();
-  check("合集归类、顺序和新文章刷新后仍然存在", chapterTitles[0] === "合集内新建稿" && chapterTitles[1] === "阶段六隔离稿");
+  const outlineTitles = await page.locator(".series-row__title").allInnerTexts();
+  check("合集归类、顺序、分节刷新后仍然存在",
+    outlineTitles[0] === "合集内新建稿"
+    && outlineTitles[1] === "阶段六隔离稿"
+    && await page.locator(".series-row__section").innerText() === "入门");
+
+  // 通读：把整个合集拼成一条连续正文，空正文的那一篇要留下痕迹
+  await page.getByRole("button", { name: "通读" }).click();
+  const reader = page.getByRole("dialog", { name: /通读/ });
+  await reader.waitFor();
+  const readerText = await reader.innerText();
+  check("通读按顺序拼出整个合集，并标出还没写正文的那一篇",
+    readerText.includes("这是一篇直接在合集中建立的文章。")
+    && readerText.includes("这是临时工作区里的初稿")
+    && readerText.includes("入门"));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: seriesReadShotFile, fullPage: true });
+  await reader.getByRole("button", { name: "关闭通读" }).click();
+
   if (process.argv.includes("--shots")) {
     await page.screenshot({ path: seriesShotFile, fullPage: true });
     await page.locator(".series-outline").screenshot({ path: seriesOutlineShotFile });
+    // 合集列表页以前没有截图目标，而它正是这次改动最大的一块
+    await page.goto(`http://127.0.0.1:${PORT}/#/series`);
+    await page.locator(".series-card").first().waitFor();
+    await page.screenshot({ path: seriesListShotFile, fullPage: true });
   }
 
   await page.goto(`http://127.0.0.1:${PORT}/#/project/${encodeURIComponent(projectId)}`);
@@ -305,7 +341,7 @@ try {
   await page.keyboard.press("Escape");
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
-  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集截图：${seriesShotFile}\n 文章列表截图：${seriesOutlineShotFile}`);
+  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}`);
   console.log("\n阶段 6 本地 UI 验证通过。");
 } finally {
   await browser?.close().catch(() => {});

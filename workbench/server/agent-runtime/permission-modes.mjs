@@ -21,6 +21,9 @@ const COMMON_TOOLS = [
   "propose_content_create",
   // 和 `propose_content_create` 同一档：只产候选，写入仍要用户在正文里确认。
   "propose_body_rewrite",
+  // 收资料进知识库。放在日常档：它本身只产候选，网页也是公开的；
+  // 抓取和写库都发生在用户点确认之后。
+  "propose_knowledge_source",
   "submit_expert_report",
 ];
 

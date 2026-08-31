@@ -46,6 +46,12 @@ assert(!PERMISSION_MODES.creative.tools.includes("powershell"));
 assert(PERMISSION_MODES.developer.tools.includes("powershell"));
 assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"));
 assert(PERMISSION_MODES.daily.tools.includes("delegate_experts"), "日常模式必须允许只读专家委派");
+// 收资料进知识库只产候选，抓取和写库都在用户确认之后，所以归日常档。
+assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_source"), "日常模式必须允许提出收资料候选");
+{
+  const names = createPiTools({ env: {}, mode: "daily", context: {}, actionsFile: "" }).map((item) => item.name ?? item.spec?.name);
+  assert(names.includes("propose_knowledge_source"), "日常模式的工具集里必须真的带上 propose_knowledge_source");
+}
 
 const skills = await assistantSkills();
 assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);

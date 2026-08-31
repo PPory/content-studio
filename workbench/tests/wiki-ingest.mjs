@@ -32,7 +32,11 @@ check("整段编造要拦住", !quoteGrounded(SOURCE, "这段话在原文里根�
 check("太短的片段不算依据——两三个字在任何文档里都找得到", !quoteGrounded(SOURCE, "情绪"));
 check("单段太短的拼接引用也不算数", !quoteGrounded(SOURCE, "比如情绪……场景"));
 
-const existing = [{ id: "F1", name: "神经元链接", kind: "concept", definition: "场景与反应之间的连接。", facts: [{ id: "FACT1", statement: "旧链接会被新信息削弱。" }] }];
+const existing = [
+  { id: "F1", name: "神经元链接", kind: "concept", definition: "场景与反应之间的连接。", facts: [{ id: "FACT1", statement: "旧链接会被新信息削弱。" }] },
+  { id: "F2", name: "主题", kind: "concept", definition: "彼此相关的知识汇成的整体。", facts: [] },
+  { id: "F3", name: "概念", kind: "concept", definition: "一个想法的最小单位。", facts: [] },
+];
 const proposal = {
   entries: [
     { name: "第三者干扰", kind: "method", definition: "用新行为干扰已有的场景-情绪链接。", quote: "所以我说如何应对情绪呢？一个做法就是用一个新的行为来干扰这个链接。" },
@@ -40,6 +44,8 @@ const proposal = {
     { name: "凭空词条", kind: "concept", definition: "编的。", quote: "这段依据在原文里根本找不到，纯属编造出来的句子。" },
     { name: "类型不对", kind: "随便写的", definition: "类型不在允许值里。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。" },
     { name: "P", kind: "concept", definition: "缩写里的单个字母。", quote: "所以我说如何应对情绪呢？一个做法就是用一个新的行为来干扰这个链接。" },
+    { name: "主题K", kind: "concept", definition: "作者简写里的变体。", quote: "所以我说如何应对情绪呢？一个做法就是用一个新的行为来干扰这个链接。" },
+    { name: "概念笔记", kind: "method", definition: "容纳某个概念相关信息的笔记。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。" },
   ],
   facts: [
     { entry: "第三者干扰", statement: "用新行为干扰旧链接。", quote: "一个做法就是用一个新的行为来干扰这个链接" },
@@ -57,13 +63,19 @@ const proposal = {
 };
 const result = validateProposal(proposal, { sourceText: SOURCE, existing });
 
-check("已经存在的词条不许重建，会被引导去归并", result.entries.length === 1 && result.entries[0].name === "第三者干扰"
+check("已经存在的词条不许重建，会被引导去归并", result.entries.some((item) => item.name === "第三者干扰")
+  && !result.entries.some((item) => item.name === "神经元链接")
   && result.rejected.some((item) => item.why.includes("已存在")));
 check("依据对不上的词条整条丢掉", !result.entries.some((item) => item.name === "凭空词条"));
 check("类型不合法的词条丢掉", !result.entries.some((item) => item.name === "类型不对"));
 // 实测跑出过叫「N」和「P」的词条——模型把 INKP 拆成了四个字母各建一条。
 check("缩写里的单个字母不许单独成条", !result.entries.some((item) => item.name === "P")
   && result.rejected.some((item) => item.why.includes("名字太短")));
+// 实测跑出过「主题K」，而库里已经有「主题」——INKP 的 K 就是主题，作者写的是简写。
+check("尾巴上粘着缩写字母的变体名被挡下，引导去归并", !result.entries.some((item) => item.name === "主题K")
+  && result.rejected.some((item) => item.why.includes("「主题」的变体")));
+// ⚠️ 反面：不能用「包含」当判据，否则「概念笔记」会被「概念」误杀。
+check("真概念不因为名字包含已有词条就被误杀", result.entries.some((item) => item.name === "概念笔记"));
 check("挂在不存在词条上的事实丢掉，不会凭空造一个词条出来", result.facts.length === 1 && result.facts[0].entry === "第三者干扰");
 check("自链和零信息关系都被拦下，只留下有语义的那条", result.relations.length === 1 && result.relations[0].type === "based_on");
 check("指向不存在的已有事实的矛盾丢掉", result.contradictions.length === 1 && result.contradictions[0].existingFactId === "FACT1");

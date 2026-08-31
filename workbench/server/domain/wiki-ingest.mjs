@@ -32,6 +32,23 @@ const MIN_SPAN_CHARS = 8;
 const MIN_ENTRY_NAME_CHARS = 2;
 
 /**
+ * 已有词条名的**变体**。命中就该归并，不该新建。
+ *
+ * ⚠️ 实测跑出过「主题K」，而库里已经有「主题」——原文里 INKP 的 K 就是主题，
+ * 作者写「主题K」是简写。两个词条定义几乎一样，于是它们之间还会互相「矛盾」。
+ * 只拦完全同名是不够的。
+ *
+ * ⚠️ **但不能用「包含」当判据。**「概念笔记」包含「概念」，而那是两个真概念。
+ * 这里只拦一种具体的病：**名字尾巴上多挂了几个拉丁字母或数字**
+ * （缩写里的那个字母），剥掉之后正好等于一个已有词条。精确、且不会误伤。
+ */
+function variantOf(name, knownNames) {
+  const stripped = String(name).replace(/[A-Za-z0-9]+$/, "").trim();
+  if (!stripped || stripped === name) return "";
+  return knownNames.has(stripped) ? stripped : "";
+}
+
+/**
  * 引用里的省略号。模型引两处相关原文时会写成 `前一段……后一段`，这是**正当的引用方式**，
  * 不该因为整串在原文里连不起来就被判成编造。
  */
@@ -90,6 +107,7 @@ export const INGEST_SYSTEM_PROMPT = [
   "5. 关系必须具体。只能用给定的类型，不许输出「相关」这种没有信息的关系。",
   "6. 宁缺毋滥。一份资料提炼出 3 到 8 个词条通常就够了；目录、致谢、纯代码清单这类没有可沉淀观点的资料，返回空数组。",
   "7. 词条名要是一个你以后会去搜的说法。不要把缩写拆成单个字母各建一条（INKP 是一个词条，不是 I、N、K、P 四个）。",
+  "8. 不要在概念名后面粘上缩写里的字母。资料里写「主题K」是作者的简写，词条名应该是「主题」。",
   "",
   "只输出 JSON，不要解释。结构：",
   JSON.stringify({
@@ -179,6 +197,8 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
     if (!name || !definition) { rejected.push({ what: `词条 ${name || "(无名)"}`, why: "缺名字或定义" }); continue; }
     if (name.length < MIN_ENTRY_NAME_CHARS) { rejected.push({ what: `词条 ${name}`, why: "名字太短，缩写里的单个字母不该单独成条" }); continue; }
     if (known.has(name)) { rejected.push({ what: `词条 ${name}`, why: "已存在，应作为归并处理" }); continue; }
+    const variant = variantOf(name, new Set(known.keys()));
+    if (variant) { rejected.push({ what: `词条 ${name}`, why: `是已有词条「${variant}」的变体，应归并而不是新建` }); continue; }
     if (!inList(item?.kind, ENTRY_KINDS)) { rejected.push({ what: `词条 ${name}`, why: `类型不合法：${clean(item?.kind, 40)}` }); continue; }
     if (!grounded(item?.quote, `词条 ${name} 的定义`)) continue;
     entries.push({ name, kind: item.kind, definition, quote: clean(item.quote, 1_000) });

@@ -4,7 +4,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
+import { readArticle } from "../lib/article.mjs";
 import { parsePdf } from "../lib/books.mjs";
+import { createBookRecord } from "../routes/books-local.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { projectDto } from "../workspace/workspace-view.mjs";
@@ -1120,6 +1122,34 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     const draftId = workspace.domain.createDraft({projectId,title:action.title,bodyMarkdown:action.body,platform:action.platform,actor:"user",now:stamp});
     workspace.domain.setPrimaryDraft(projectId,draftId,{actor:"user",now:stamp});
     result = {projectId,draftId,title:action.title};
+  } else if (action.type === "knowledge_source_add") {
+    /**
+     * 抓取发生在**这里**，不在提候选的时候。
+     *
+     * 模型说「我找到了一篇官方教程」和「那个地址真的存在、真的读得出正文」
+     * 是两件事。放到确认之后再验，好处有三个：拒绝掉的候选不花网络请求；
+     * 抓不动时报错正好落在你刚点的那颗按钮旁边；也不给模型
+     * 「先抓下来占个位」的激励。
+     */
+    const article = await readArticle(action.url, runtimeEnv);
+    const body = clean(article.markdown, 400_000);
+    if (body.replace(/\s/g, "").length < 200) {
+      throw Object.assign(new Error("这个页面没读出足够的正文"), { status: 422, hint: "多半是需要登录或要浏览器才渲染得出。可以自己复制正文，用「收集」存进来。" });
+    }
+    const workspace = currentWorkspace();
+    const title = clean(action.title, 100) || clean(article.title, 100) || new URL(action.url).hostname;
+    const existing = workspace.db.prepare("SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.title = ?").get(title);
+    if (existing) throw Object.assign(new Error(`知识库里已经有「${title}」了`), { status: 409, hint: "换个标题，或者直接去「知识 → 来源」里看那一份。" });
+    // 网页收进来是**只读的文档**：事实要引用它，正文能随手改的话引用就不可信。
+    const book = await createBookRecord(workspace, {
+      title, author: clean(article.byline, 120), kind: "藏书", sourceKind: "文档",
+      chapters: [{ title, text: `${body}
+
+---
+来源：${action.url}` }],
+    });
+    // 入库和提炼分开：先把资料落住，提炼是另一件会花钱的事，由你在知识库里发起。
+    result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability" };
   } else if (action.type === "rewrite_body") {
     // ⚠️ **这一条永远不在这儿落地。** 正文的唯一写入路径是编辑器的候选采纳
     // （带版本、修订记录和审计）；服务端再开一条就是同一条业务规则实现两遍，

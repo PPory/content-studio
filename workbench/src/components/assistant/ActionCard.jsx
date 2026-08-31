@@ -13,6 +13,7 @@ const ACTION_LABELS = {
   workspace_edit: ["编辑授权工作区", "确认编辑"],
   workspace_powershell: ["在授权工作区执行命令", "确认执行"],
   save_knowledge_card: ["保存为 Markdown 知识卡", "确认保存"],
+  knowledge_source_add: ["收进知识库", "抓取并入库"],
 };
 
 export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalLength = 0 }) {
@@ -41,7 +42,11 @@ export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalL
       </div>}
     </section>;
   }
-  const detail = result.type === "create_content" ? `${result.title} · ${result.platform}` : result.path || result.command?.slice(0, 120) || "已由服务端校验范围";
+  const detail = result.type === "create_content" ? `${result.title} · ${result.platform}`
+    // 收资料这张卡上最该看的是**地址和理由**：地址决定你信不信这个来源，
+    // 理由决定它值不值得占知识库的位置。两者都比「已由服务端校验范围」有用。
+    : result.type === "knowledge_source_add" ? [result.title, result.url, result.why].filter(Boolean).join(" · ")
+    : result.path || result.command?.slice(0, 120) || "已由服务端校验范围";
   return <section className="assistant-action-card" data-status={result.status}>
     <div><small>{applied ? "已执行" : rejected ? "已拒绝" : "等待你确认"}</small><b>{title}</b><p>{detail}</p></div>
     {applied ? (result.result?.projectId ? <button type="button" onClick={() => { window.location.hash = `#/project/${result.result.projectId}`; }}>打开内容</button> : <span>已完成</span>)
