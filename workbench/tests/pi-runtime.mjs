@@ -13,6 +13,7 @@ import {
   assistantExperts,
   assistantReferencePrompt,
   assistantSkills,
+  applyKnowledgeUpdate,
   configureAssistantWorkspace,
   createAssistantConversation,
   expertTargetDocument,
@@ -48,16 +49,18 @@ assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"));
 assert(PERMISSION_MODES.daily.tools.includes("delegate_experts"), "日常模式必须允许只读专家委派");
 // 收资料进知识库只产候选，抓取和写库都在用户确认之后，所以归日常档。
 assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_source"), "日常模式必须允许提出收资料候选");
+assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_update"), "日常模式必须允许提出带证据的知识沉淀候选");
 {
   const names = createPiTools({ env: {}, mode: "daily", context: {}, actionsFile: "" }).map((item) => item.name ?? item.spec?.name);
   assert(names.includes("propose_knowledge_source"), "日常模式的工具集里必须真的带上 propose_knowledge_source");
+  assert(names.includes("propose_knowledge_update"), "日常模式的工具集里必须真的带上 propose_knowledge_update");
   /**
    * ⚠️ **每个 propose_* 工具产出的动作类型，都必须在 normalizeProposedAction 里登记。**
    * 漏登记不会报错——动作被静默丢掉，而工具、模型和界面**全都在报成功**。
    * 这条断言就是为了让下一个加工具的人立刻撞上去。
    */
   const { normalizeProposedActionForTest } = await import("../server/agent-runtime/assistant-runner.mjs");
-  for (const type of ["create_content", "rewrite_body", "knowledge_source_add"]) {
+  for (const type of ["create_content", "rewrite_body", "knowledge_source_add", "knowledge_update"]) {
     assert(normalizeProposedActionForTest({ type, url: "https://example.com/a", title: "t", why: "w", body: "b", platform: "公众号" }, "daily"),
       `候选动作类型 ${type} 没有在 normalizeProposedAction 里登记，会被静默丢弃`);
   }
@@ -156,7 +159,7 @@ try {
   const creative = createPiTools({ env: dailyEnv, mode: "creative", context, actionsFile });
   const developer = createPiTools({ env: developerEnv, mode: "developer", context, actionsFile });
   const allNames = new Set(developer.map((item) => item.name));
-  for (const name of ["workbench_projects", "knowledge_search", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "attachment_read", "web_search", "web_fetch"]) {
+  for (const name of ["workbench_projects", "knowledge_search", "propose_knowledge_update", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "attachment_read", "web_search", "web_fetch"]) {
     assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
   }
   for (const name of ["vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert"]) {
@@ -209,6 +212,30 @@ try {
   assert(PERMISSION_MODES.daily.tools.includes("propose_body_rewrite"), "日常模式必须能提交全文整理候选");
   await assert.rejects(() => execute(daily, "propose_body_rewrite", { reason: "清理乱码", body: "   " }), /完整正文/);
   await execute(daily, "propose_body_rewrite", { reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" });
+
+  const groundedQuote = "稳定的个人知识应该保留逐字证据，并由用户确认后再写入。";
+  const knowledgeSourceId = workspace.domain.createCapture({
+    kind: "article", title: "知识沉淀来源", bodyMarkdown: groundedQuote, actor: "user", now: new Date("2025-01-02T03:04:05.000Z"),
+  });
+  await execute(daily, "propose_knowledge_update", {
+    change: "new_entry", entry: "知识沉淀原则", kind: "stance", text: "个人知识应保留证据并经确认后写入。",
+    sourceId: knowledgeSourceId, sourceTitle: "知识沉淀来源", quote: groundedQuote, why: "这是可长期复用的知识库边界。",
+  });
+  const appliedKnowledge = applyKnowledgeUpdate(workspace, {
+    id: "test-knowledge-action", change: "new_entry", entry: "知识沉淀原则", kind: "stance",
+    text: "个人知识应保留证据并经确认后写入。", sourceId: knowledgeSourceId,
+    sourceTitle: "知识沉淀来源", quote: groundedQuote, why: "这是可长期复用的知识库边界。",
+  }, new Date("2025-01-03T00:00:00.000Z"));
+  assert(workspace.domain.entryRow(appliedKnowledge.entryId).definition_quote === groundedQuote, "对话沉淀的新词条必须保存逐字证据");
+  const appliedFact = applyKnowledgeUpdate(workspace, {
+    id: "test-knowledge-fact", change: "fact", entry: "知识沉淀原则", text: "用户确认是正式写入前的最后一步。",
+    sourceId: knowledgeSourceId, sourceTitle: "知识沉淀来源", quote: groundedQuote, why: "补充一个可检索事实。",
+  }, new Date("2025-01-03T00:01:00.000Z"));
+  assert.equal(workspace.db.prepare("SELECT source_quote FROM entry_facts WHERE id=?").get(appliedFact.factId).source_quote, groundedQuote);
+  assert.throws(() => applyKnowledgeUpdate(workspace, {
+    change: "fact", entry: "知识沉淀原则", text: "这条不应写入。", sourceId: knowledgeSourceId,
+    quote: "这是一段来源里根本没有的伪造引用文字。", why: "测试硬闸。",
+  }), /逐字原文无法在本地来源中找到/);
 
   const childCalls = [];
   const fakeExpertRun = async (input) => {
@@ -320,11 +347,15 @@ try {
   }), /请选择 1 到 3 位可用的只读专家/);
 
   const queued = (await fs.readFile(actionsFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
-  assert.equal(queued.length, 3);
+  assert.equal(queued.length, 4);
   assert(queued.slice(0, 2).every((item) => ["workspace_write", "workspace_edit"].includes(item.type)));
   assert.deepEqual(
     { type: queued[2].type, reason: queued[2].reason, body: queued[2].body },
     { type: "rewrite_body", reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" },
+  );
+  assert.deepEqual(
+    { type: queued[3].type, change: queued[3].change, entry: queued[3].entry, sourceId: queued[3].sourceId, quote: queued[3].quote },
+    { type: "knowledge_update", change: "new_entry", entry: "知识沉淀原则", sourceId: knowledgeSourceId, quote: groundedQuote },
   );
 
   const orchestrationEvents = [];

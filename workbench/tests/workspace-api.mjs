@@ -338,6 +338,30 @@ try {
   const marks = await call(base, `/api/workspace/book-marks?dir=${encodeURIComponent(book.dir)}`);
   check("书籍、高亮和批注全部写入隔离 SQLite", marks.value.total === 2 && workspace.db.prepare("SELECT COUNT(*) AS count FROM book_marks").get().count === 2);
 
+  const articleText = Buffer.from("# 我过去的文章\n\n这是我过去发布过的一篇文章，内容足够用于来源去重和后续知识提炼。", "utf8");
+  const articleQuery = new URLSearchParams({
+    filename: "old-post.md", name: "我过去的文章", sourceKind: "文章", author: "本人",
+    platform: "公众号", publishedAt: "2025-01-02T03:04:05.000Z", sourceUrl: "https://example.com/old-post",
+  });
+  const importedArticle = await call(base, `/api/workspace/books/import?${articleQuery}`, {
+    method: "POST", body: articleText, headers: { "content-type": "application/octet-stream" },
+  });
+  const articleRow = workspace.db.prepare("SELECT source_kind AS sourceKind, author, platform, published_at AS publishedAt, source_url AS sourceUrl FROM books WHERE id=?").get(importedArticle.value.book.id);
+  check("旧文章导入保留作者、平台、发布时间和原链接", importedArticle.response.status === 200
+    && articleRow.sourceKind === "文章" && articleRow.author === "本人" && articleRow.platform === "公众号"
+    && articleRow.publishedAt.startsWith("2025-01-02") && articleRow.sourceUrl === "https://example.com/old-post");
+  const articleAssetsAfterFirst = workspace.db.prepare("SELECT COUNT(*) AS count FROM assets").get().count;
+  const duplicateArticle = await call(base, `/api/workspace/books/import?${articleQuery}`, {
+    method: "POST", body: articleText, headers: { "content-type": "application/octet-stream" },
+  });
+  check("同一原链接或同一正文不会重复导入，也不会留下孤立附件", duplicateArticle.response.status === 409
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM assets").get().count === articleAssetsAfterFirst);
+  const invalidArticleQuery = new URLSearchParams({ filename: "bad.md", name: "坏链接", sourceKind: "文章", sourceUrl: "file:///tmp/private" });
+  const invalidArticle = await call(base, `/api/workspace/books/import?${invalidArticleQuery}`, {
+    method: "POST", body: Buffer.from("这是一篇正文足够长但来源协议不合法的旧文章。".repeat(3)), headers: { "content-type": "application/octet-stream" },
+  });
+  check("旧文章原链接只接受合法网址", invalidArticle.response.status === 400);
+
   const originalNote = note.value.noteItems[0];
   const editedNote = await call(base, "/api/workspace/note/edit", { method: "POST", body: { path: book.notePath, index: originalNote.index, stamp: originalNote.stamp, body: "更新后的本地批注" } });
   assert.equal(editedNote.response.status, 200);
@@ -404,6 +428,34 @@ try {
   check("知识库来源把归类和可写性分开报，两个维度互不冒充", knowledgeSources.value.sources.length >= 1
     && knowledgeSources.value.sources.every((item) => item.sourceKind && item.writable)
     && knowledgeSources.value.totals.documents >= 1);
+
+  const bookDocumentId = bookDoc.replace(/^bookdoc:/, "");
+  const rejectCandidate = workspace.domain.actions.propose({
+    actionType: "entry.create", targetId: bookDocumentId,
+    payload: { kind: "wiki.ingest", sourceId: bookDocumentId, title: "本地资料", entries: [], definitions: [], facts: [], relations: [], contradictions: [], rejected: [] },
+    proposedBy: "ai", now: new Date(),
+  });
+  workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,candidate_id,run_at) VALUES (?,'proposed',?,?)")
+    .run(bookDocumentId, rejectCandidate.id, new Date().toISOString());
+  const rejected = await call(base, `/api/workspace/knowledge/candidates/${rejectCandidate.id}`, { method: "POST", body: { action: "reject" } });
+  check("拒绝提炼候选后来源明确变为已拒绝，不再冒充待审阅", rejected.value.rejected === true
+    && workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id=?").get(bookDocumentId).status === "rejected");
+
+  const applyCandidate = workspace.domain.actions.propose({
+    actionType: "entry.create", targetId: bookDocumentId,
+    payload: {
+      kind: "wiki.ingest", sourceId: bookDocumentId, title: "本地资料", sourceLocator: "本地资料 · 第 1 节",
+      sourceContentSha256: "c".repeat(64), existing: [{ id: conceptId, name: "四段式提示词" }],
+      entries: [], definitions: [], facts: [{ entry: "四段式提示词", statement: "更新后的正文可以继续支撑词条。", quote: "更新后的正文" }],
+      relations: [], contradictions: [], rejected: [],
+    },
+    proposedBy: "ai", now: new Date(),
+  });
+  workspace.db.prepare("UPDATE source_ingests SET status='proposed',candidate_id=? WHERE source_entity_id=?").run(applyCandidate.id, bookDocumentId);
+  const appliedCandidate = await call(base, `/api/workspace/knowledge/candidates/${applyCandidate.id}`, { method: "POST", body: { action: "accept", include: ["facts:0"] } });
+  check("接受所选候选会持久化原文证据，并把来源状态闭环为已应用", appliedCandidate.value.applied.facts === 1
+    && workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id=?").get(bookDocumentId).status === "applied"
+    && workspace.db.prepare("SELECT source_quote AS quote FROM entry_facts WHERE source_entity_id=? ORDER BY created_at DESC LIMIT 1").get(bookDocumentId).quote === "更新后的正文");
 
   const lint = await call(base, "/api/workspace/knowledge/lint");
   check("体检把孤儿和待判定的同题事实作为查询返回", Array.isArray(lint.value.orphans) && Array.isArray(lint.value.pendingPairs));

@@ -75,6 +75,7 @@ export function Reader({
   format = "markdown",
   baseDir = "",
   highlights,       // 可选：[{ text, color }]，画在正文里
+  evidenceQuote = "", // 从词条跳入时，用逐字依据定位并强调所在段落
   actions = ACTIONS, // 可选：这个源支持哪些划词动作
   onSelect,
   onOutline,
@@ -184,6 +185,30 @@ export function Reader({
       }
     }
   }, [html, content, highlights]);
+
+  useLayoutEffect(() => {
+    const root = proseRef.current;
+    if (!root) return;
+    root.querySelectorAll(".evidence-hit").forEach((element) => element.classList.remove("evidence-hit"));
+    const needle = String(evidenceQuote || "").split(/\s*(?:\.{3,}|。{3,}|…+)\s*/)[0]?.trim();
+    if (!needle || needle.length < 8) return;
+    const visible = root.textContent || "";
+    const at = visible.indexOf(needle);
+    if (at < 0) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      const end = offset + node.nodeValue.length;
+      if (at >= offset && at < end) {
+        const target = node.parentElement?.closest("p, li, blockquote, h1, h2, h3") || node.parentElement;
+        target?.classList.add("evidence-hit");
+        requestAnimationFrame(() => target?.scrollIntoView({ block: "center" }));
+        break;
+      }
+      offset = end;
+    }
+  }, [html, content, evidenceQuote]);
 
   return (
     <div className="reader" ref={bodyRef} onMouseUp={handleMouseUp}>

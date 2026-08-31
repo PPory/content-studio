@@ -146,7 +146,7 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
   );
 
   const openDoc = useCallback(
-    (b, entry, { resume = false, detail = true } = {}) => {
+    (b, entry, { resume = false, detail = true, evidenceQuote = "" } = {}) => {
       const saved = readingOf(b.dir);
       const item = {
         key: `${b.dir}::${entry.path}`,
@@ -175,6 +175,7 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
         entry,
         detail,   // 关掉阅读区之后退回哪一层：书详情，还是直接回书架
         initialScroll: resume && saved?.docPath === entry.path ? saved.scrollTop : 0,
+        evidenceQuote,
       });
       setDoc(null);
       setOutline([]);
@@ -247,9 +248,10 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
     if (back) { const [label, hash] = back.split("|"); setReturnTo({ label, hash }); }
     const want = takeOpenTarget("shelf");
     if (want) {
+      const path = typeof want === "string" ? want : want.path;
       const book = all.find((b) => b.dir === state) || target?.book;
-      const chapter = book && docsOf(book).find((c) => c.path === want);
-      if (book && chapter) return openDoc(book, chapter, { detail: book.chapterCount > 1 });
+      const chapter = book && docsOf(book).find((c) => c.path === path);
+      if (book && chapter) return openDoc(book, chapter, { detail: book.chapterCount > 1, evidenceQuote: typeof want === "object" ? want.quote : "" });
     }
     const entry = target && resumeEntry(target.book, target.reading);
     if (entry) openDoc(target.book, entry, { resume: true, detail: target.book.chapterCount > 1 });
@@ -585,6 +587,7 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
           error={docError}
           baseDir={book?.dir}
           initialScroll={reading.initialScroll}
+          evidenceQuote={reading.evidenceQuote}
           onProgress={onProgress}
           backLabel={returnTo?.label || (entries.length > 1 ? "返回目录" : "返回书架")}
           cover={book?.cover ? api.imageUrl(book.cover) : ""}

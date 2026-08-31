@@ -7,13 +7,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Note } from "../components/ui.jsx";
+import { ErrorNote, Loading, Note } from "../components/ui.jsx";
 import { IngestReview } from "../components/IngestReview.jsx";
 
 export function Entries({ onGo }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [lint, setLint] = useState(null);
+  const [lintBusy, setLintBusy] = useState("");
 
   const load = () => api.entries().then(setData).catch(setError);
   useEffect(() => { load(); }, []);
@@ -33,6 +36,20 @@ export function Entries({ onGo }) {
   }, [data, query]);
 
   if (error) return <ErrorNote error={error} what="词条" />;
+  if (!data) return <Loading rows={6} />;
+
+  const openHealth = async () => {
+    setHealthOpen((value) => !value);
+    if (!lint) api.knowledgeLint().then(setLint).catch(setError);
+  };
+  const runLint = async (mode) => {
+    setLintBusy(mode);
+    try {
+      const result = await api.runKnowledgeLint(mode, 5);
+      setLint((current) => ({ ...(current || {}), notice: `已排队 ${result.queued} 个词条；结果会回到本页顶部等待确认。` }));
+    } catch (failure) { setError(failure); }
+    finally { setLintBusy(""); }
+  };
 
   const health = data?.health;
   const empty = data && !data.entries.length;
@@ -73,11 +90,26 @@ export function Entries({ onGo }) {
             * 第二次用户就不再点了。所以候选只说「组同题事实待判定」，
             * 而「冲突」这个词只留给真的判过的。
             */}
-          <div className="field-hint">
+          <button type="button" className="entry-health" onClick={openHealth} aria-expanded={healthOpen}>
             {health.orphans ? `${health.orphans} 个词条还没有任何关系` : "没有孤立词条"}
             {health.disputed ? ` · ${health.disputed} 条已判定冲突` : ""}
             {health.pendingPairs ? ` · ${health.pendingPairs} 组同题事实待判定` : ""}
-          </div>
+            <span>{healthOpen ? "收起" : "查看与体检"}</span>
+          </button>
+          {healthOpen ? (
+            <div className="entry-health-panel">
+              {lint?.notice ? <p role="status">{lint.notice}</p> : null}
+              <div>
+                <b>孤立词条</b><span>{lint ? `${lint.orphans.length} 个` : "读取中…"}</span>
+                <button type="button" className="btn btn-sm" disabled={!!lintBusy || !health.orphans} onClick={() => runLint("orphan")}>{lintBusy === "orphan" ? "检查中…" : "生成补链建议（最多 5 个）"}</button>
+              </div>
+              <div>
+                <b>同题事实</b><span>{lint ? `${lint.pendingPairs.length} 组` : "读取中…"}</span>
+                <button type="button" className="btn btn-sm" disabled={!!lintBusy || !health.pendingPairs} onClick={() => runLint("tension")}>{lintBusy === "tension" ? "检查中…" : "判断真实张力（最多 5 个词条）"}</button>
+              </div>
+              <small>体检只生成建议，不会直接改事实状态或关系。</small>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -14,6 +14,7 @@ const ACTION_LABELS = {
   workspace_powershell: ["在授权工作区执行命令", "确认执行"],
   save_knowledge_card: ["保存为 Markdown 知识卡", "确认保存"],
   knowledge_source_add: ["收进知识库", "抓取并入库"],
+  knowledge_update: ["沉淀到知识库", "确认沉淀"],
 };
 
 export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalLength = 0 }) {
@@ -46,10 +47,15 @@ export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalL
     // 收资料这张卡上最该看的是**地址和理由**：地址决定你信不信这个来源，
     // 理由决定它值不值得占知识库的位置。两者都比「已由服务端校验范围」有用。
     : result.type === "knowledge_source_add" ? [result.title, result.url, result.why].filter(Boolean).join(" · ")
+    : result.type === "knowledge_update" ? [
+      { new_entry: "新词条", fact: "追加事实", definition: "更新定义" }[result.change],
+      `「${result.entry}」：${result.text}`, `原文：${result.quote}`, result.sourceTitle ? `来源：${result.sourceTitle}` : "", result.why,
+    ].filter(Boolean).join(" · ")
     : result.path || result.command?.slice(0, 120) || "已由服务端校验范围";
   return <section className="assistant-action-card" data-status={result.status}>
     <div><small>{applied ? "已执行" : rejected ? "已拒绝" : "等待你确认"}</small><b>{title}</b><p>{detail}</p></div>
-    {applied ? (result.result?.projectId ? <button type="button" onClick={() => { window.location.hash = `#/project/${result.result.projectId}`; }}>打开内容</button> : <span>已完成</span>)
+    {applied ? (result.result?.projectId ? <button type="button" onClick={() => { window.location.hash = `#/project/${result.result.projectId}`; }}>打开内容</button>
+      : result.result?.entryId ? <button type="button" onClick={() => { window.location.hash = `#/entries/${result.result.entryId}`; }}>打开词条</button> : <span>已完成</span>)
       : rejected ? <span>不会执行</span>
         : <div className="assistant-action-card__actions"><button type="button" onClick={() => onReject(result.id)}>拒绝</button><button type="button" className="is-primary" onClick={() => onApply(result.id)}>{button}</button></div>}
   </section>;

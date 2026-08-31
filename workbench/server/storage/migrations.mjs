@@ -9,6 +9,7 @@ const seriesEntriesSql = fs.readFileSync(new URL("./migrations/0005-series-entri
 const wikiSql = fs.readFileSync(new URL("./migrations/0006-wiki.sql", import.meta.url), "utf8");
 const sourceKindSql = fs.readFileSync(new URL("./migrations/0007-source-kind.sql", import.meta.url), "utf8");
 const sourceIngestsSql = fs.readFileSync(new URL("./migrations/0008-source-ingests.sql", import.meta.url), "utf8");
+const wikiEvidenceSql = fs.readFileSync(new URL("./migrations/0009-wiki-evidence.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -58,6 +59,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "source-ingests",
     sql: sourceIngestsSql,
     checksum: crypto.createHash("sha256").update(sourceIngestsSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 9,
+    name: "wiki-evidence",
+    sql: wikiEvidenceSql,
+    checksum: crypto.createHash("sha256").update(wikiEvidenceSql).digest("hex"),
   }),
 ]);
 

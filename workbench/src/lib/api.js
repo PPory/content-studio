@@ -81,8 +81,10 @@ export const api = {
   knowledgeSources: () => req("/api/workspace/knowledge/sources"),
   knowledgeSourceDocs: (id) => req(`/api/workspace/knowledge/sources/${encodeURIComponent(id)}`),
   knowledgeLint: () => req("/api/workspace/knowledge/lint"),
+  runKnowledgeLint: (mode, limit = 5) => postJson("/api/workspace/knowledge/lint/run", { mode, limit }),
+  queueKnowledgeIngest: (body) => postJson("/api/workspace/knowledge/ingest", body),
   knowledgeCandidates: () => req("/api/workspace/knowledge/candidates"),
-  knowledgeCandidateDecide: (id, action) => postJson(`/api/workspace/knowledge/candidates/${encodeURIComponent(id)}`, { action }),
+  knowledgeCandidateDecide: (id, action, include) => postJson(`/api/workspace/knowledge/candidates/${encodeURIComponent(id)}`, { action, include }),
   knowledgeRecall: (text, limit = 6) => postJson("/api/workspace/knowledge/recall", { text, limit }),
   // 种子响应携带领域层的反应清单，前端不复制业务规则。
   seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),
@@ -132,12 +134,15 @@ export const api = {
 
   // 导入书：整个文件原样 POST 过去，解析在服务端做。
   // 不在浏览器里解 epub/pdf——那要往前端包里塞两个解析器，而本机就有 Node。
-  importBook: (file, name = "") =>
-    req(`/api/workspace/books/import?filename=${encodeURIComponent(file.name)}&name=${encodeURIComponent(name)}`, {
+  importBook: (file, name = "", options = {}) => {
+    const params = new URLSearchParams({ filename: file.name, name });
+    for (const [key, value] of Object.entries(options)) if (value !== "" && value != null && value !== false) params.set(key, value === true ? "1" : String(value));
+    return req(`/api/workspace/books/import?${params}`, {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: file,
-    }),
+    });
+  },
 
   // 下架进入当前工作区回收站，可由恢复入口找回。
   trashBook: (dir) => postJson("/api/workspace/books/trash", { dir }),

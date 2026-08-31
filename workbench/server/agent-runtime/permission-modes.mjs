@@ -24,6 +24,8 @@ const COMMON_TOOLS = [
   // 收资料进知识库。放在日常档：它本身只产候选，网页也是公开的；
   // 抓取和写库都发生在用户点确认之后。
   "propose_knowledge_source",
+  // 把对话中的认识沉淀为带逐字证据的候选；确认后才写词条、事实或定义。
+  "propose_knowledge_update",
   "submit_expert_report",
 ];
 

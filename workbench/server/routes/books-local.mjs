@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import path from "node:path";
 import { fail, json, readJsonBody, readRawBody } from "../lib/http.mjs";
 import { parseEpub, parsePdf, safeName, SUPPORTED } from "../lib/books.mjs";
@@ -7,6 +8,32 @@ const iso = (value = new Date()) => new Date(value).toISOString();
 const parseJson = (value, fallback = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
 const bookIdOf = (value) => String(value || "").replace(/^book(?:notes)?:/, "").split(":")[0];
 const documentIdOf = (value) => String(value || "").replace(/^bookdoc:/, "").replace(/\.highlights\.md$/i, "");
+
+function canonicalHttpUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let parsed;
+  try { parsed = new URL(raw); }
+  catch { throw Object.assign(new Error("原文链接不是有效网址"), { status: 400 }); }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw Object.assign(new Error("原文链接只接受 http 或 https 网址"), { status: 400 });
+  }
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+const contentFingerprint = (chapters) => crypto.createHash("sha256")
+  .update(chapters.map((item) => String(item.text || "").trim()).join("\n\n"))
+  .digest("hex");
+
+function duplicateSource(workspace, { sourceUrl = "", chapters = [], contentSha256 = "" } = {}) {
+  const body = chapters.map((item) => String(item.text || "").trim()).join("\n\n");
+  return sourceUrl
+    ? workspace.db.prepare("SELECT id, title FROM books WHERE source_url = ?").get(sourceUrl)
+    : body.trim().length >= 20
+      ? workspace.db.prepare("SELECT id, title FROM books WHERE content_sha256 = ? AND content_sha256 <> ''").get(contentSha256 || contentFingerprint(chapters))
+      : null;
+}
 
 async function ready(source) {
   const workspace = await source;
@@ -47,6 +74,10 @@ function bookDto(workspace, row) {
     tags: Array.isArray(metadata.tags) ? metadata.tags : [],
     importedAt: metadata.importedAt || String(row.created_at || "").slice(0, 10),
     excerpt: chapters[0]?.body_markdown?.slice(0, 160) || "",
+    sourceUrl: row.source_url || "",
+    publishedAt: row.published_at || "",
+    platform: row.platform || "",
+    userAuthored: metadata.userAuthored === true,
   };
 }
 
@@ -116,15 +147,25 @@ async function parsedBook(fileName, bytes) {
   return parseText(new TextDecoder("utf-8").decode(bytes));
 }
 
-export async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceKind = "书籍", sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10) }) {
+export async function createBookRecord(workspace, { title, author = "", kind = "资料", sourceKind = "书籍",
+  sourceAssetId = null, coverAssetId = null, chapters = [], importedAt = iso().slice(0, 10),
+  sourceUrl = "", publishedAt = "", platform = "", sourceOriginEntityId = null, userAuthored = false,
+  sourceContentSha256 = "" } = {}) {
   const id = createUlid();
   const stamp = new Date();
   const normalized = chapters.length ? chapters : [{ title, text: "" }];
+  const canonicalUrl = canonicalHttpUrl(sourceUrl);
+  const combinedBody = normalized.map((item) => String(item.text || "").trim()).join("\n\n");
+  const contentSha256 = sourceContentSha256 || contentFingerprint(normalized);
+  const duplicate = duplicateSource(workspace, { sourceUrl: canonicalUrl, chapters: normalized, contentSha256 });
+  if (duplicate) throw Object.assign(new Error(`这份来源已经以「${duplicate.title}」入库`), { status: 409, sourceId: duplicate.id });
   workspace.repository.transaction(() => {
     workspace.repository.createEntity({ id, type: "book", now: stamp });
-    workspace.db.prepare("INSERT INTO books(id,title,author,reading_status,source_asset_id,metadata_json,source_kind) VALUES (?,?,?,?,?,?,?)")
-      .run(id, title, author, "在读", sourceAssetId, JSON.stringify({ kind, coverAssetId, tags: [], importedAt }), sourceKind);
-    workspace.repository.setEntityText(id, { title, body: normalized.map((item) => item.text).join("\n\n"), now: stamp });
+    workspace.db.prepare(`INSERT INTO books(id,title,author,reading_status,source_asset_id,metadata_json,source_kind,
+      source_url,published_at,platform,source_origin_entity_id,content_sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, title, author, "在读", sourceAssetId, JSON.stringify({ kind, coverAssetId, tags: [], importedAt, userAuthored }), sourceKind,
+        canonicalUrl, publishedAt ? iso(publishedAt) : "", platform, sourceOriginEntityId, contentSha256);
+    workspace.repository.setEntityText(id, { title, body: combinedBody, now: stamp });
     normalized.forEach((chapter, index) => {
       const documentId = createUlid();
       const chapterTitle = safeName(chapter.title || (normalized.length === 1 ? title : `第 ${index + 1} 节`), 100) || title;
@@ -161,15 +202,38 @@ export const localBookRoutes = [
   { method: "POST", path: "/api/workspace/books/import", handler: guard(async ({ workspace, req, res, url }) => {
     const fileName = url.searchParams.get("filename") || ""; const bytes = await readRawBody(req); if (!bytes.length) throw new Error("文件是空的");
     const parsed = await parsedBook(fileName, bytes); const title = safeName(url.searchParams.get("name") || parsed.title || path.basename(fileName, path.extname(fileName)), 100); if (!title) throw new Error("书名不能为空");
+    const sourceUrl = canonicalHttpUrl(url.searchParams.get("sourceUrl") || "");
+    const sourceChapters = parsed.chapters?.length ? parsed.chapters : [{ title, text: parsed.text || "" }];
+    const sourceContentSha256 = contentFingerprint(sourceChapters);
+    const duplicate = duplicateSource(workspace, { sourceUrl, chapters: sourceChapters, contentSha256: sourceContentSha256 });
+    if (duplicate) throw Object.assign(new Error(`这份来源已经以「${duplicate.title}」入库`), { status: 409, sourceId: duplicate.id });
     const source = await workspace.assets.importBuffer({ bytes, type: "book", originalName: fileName, mimeType: mimeOf(fileName) });
     const imageUris = new Map();
     for (const image of parsed.images || []) { const asset = await workspace.assets.importBuffer({ bytes: image.bytes, type: "image", originalName: image.name, mimeType: mimeOf(image.name) }); imageUris.set(image.name, asset.uri); }
     let coverAssetId = null;
     if (parsed.cover?.bytes) coverAssetId = (await workspace.assets.importBuffer({ bytes: parsed.cover.bytes, type: "image", originalName: parsed.cover.name || "cover.jpg", mimeType: mimeOf(parsed.cover.name || "cover.jpg") })).id;
-    const sourceChapters = parsed.chapters?.length ? parsed.chapters : [{ title, text: parsed.text || "" }];
     const chapters = sourceChapters.map((chapter) => ({ ...chapter, text: [...imageUris].reduce((text, [name, uri]) => String(text).split(name).join(uri), String(chapter.text || "")) }));
-    const book = await createBookRecord(workspace, { title, author: parsed.author || "", kind: "藏书", sourceAssetId: source.id, coverAssetId, chapters });
-    json(res, { ok: true, book, supported: SUPPORTED });
+    const sourceKind = ["书籍", "课程", "文档", "文章"].includes(url.searchParams.get("sourceKind")) ? url.searchParams.get("sourceKind") : "书籍";
+    const userAuthored = sourceKind === "文章" && url.searchParams.get("userAuthored") === "1";
+    const book = await createBookRecord(workspace, {
+      title, author: safeName(url.searchParams.get("author") || parsed.author || "", 120),
+      kind: url.searchParams.get("kind") === "资料" ? "资料" : "藏书", sourceKind,
+      sourceAssetId: source.id, coverAssetId, chapters, sourceUrl,
+      publishedAt: url.searchParams.get("publishedAt") || "", platform: safeName(url.searchParams.get("platform") || "", 80),
+      userAuthored, sourceContentSha256,
+    });
+    let queuedForDistill = 0;
+    if (url.searchParams.get("distill") === "1") {
+      const documents = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ? ORDER BY document_order").all(book.id);
+      const stamp = iso();
+      for (const document of documents.slice(0, 20)) {
+        workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)
+          ON CONFLICT(source_entity_id) DO UPDATE SET status='queued', candidate_id=NULL, error='', run_at=excluded.run_at`).run(document.id, stamp);
+        workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}:${Date.now()}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
+        queuedForDistill += 1;
+      }
+    }
+    json(res, { ok: true, book, queuedForDistill, supported: SUPPORTED });
   }) },
   { method: "POST", path: "/api/workspace/books/kind", handler: guard(async ({ workspace, req, res }) => {
     const body = await readJsonBody(req); if (!["资料", "藏书"].includes(body.kind)) throw new Error("类型只能是资料或藏书"); const id = bookIdOf(body.dir); const row = getBook(workspace, id); const metadata = { ...parseJson(row.metadata_json), kind: body.kind };

@@ -9,6 +9,7 @@ import { listProjects, projectDto } from "../workspace/workspace-view.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
 import { fetchBoards } from "../lib/sixty.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
+import { ENTRY_KINDS } from "../domain/values.mjs";
 import { agentAccess, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import {
   assertModeTool,
@@ -189,6 +190,29 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return appendAction(actionsFile, { type: "knowledge_source_add", url: target.href, title: clean(title, 200), why: clean(why, 500) });
   }));
 
+  tools.push(tool("propose_knowledge_update", "准备知识沉淀候选", "把本地来源中有逐字证据的一条认识，作为新词条、事实或定义更新候选。只生成待确认动作，不直接写入知识库。", Type.Object({
+    change: Type.String({ maxLength: 20 }),
+    entry: Type.String({ maxLength: 160 }),
+    kind: Type.Optional(Type.String({ maxLength: 40 })),
+    text: Type.String({ maxLength: 2_000 }),
+    sourceId: Type.String({ maxLength: 160 }),
+    sourceTitle: Type.Optional(Type.String({ maxLength: 300 })),
+    quote: Type.String({ maxLength: 2_000 }),
+    why: Type.String({ maxLength: 500 }),
+  }), async ({ change, entry, kind = "concept", text: proposedText, sourceId, sourceTitle = "", quote, why }) => {
+    allowed("propose_knowledge_update");
+    const mode = clean(change, 20);
+    if (!["new_entry", "fact", "definition"].includes(mode)) throw new Error("知识候选类型只能是 new_entry、fact 或 definition");
+    if (!clean(entry, 160) || !clean(proposedText, 2_000)) throw new Error("知识候选必须包含词条名和要沉淀的内容");
+    if (!clean(sourceId, 160) || !clean(quote, 2_000)) throw new Error("知识候选必须带本地来源 ID 和逐字原文");
+    if (!clean(why, 500)) throw new Error("要说明为什么值得沉淀");
+    if (mode === "new_entry" && !ENTRY_KINDS.includes(clean(kind, 40))) throw new Error("新词条类型不合法");
+    return appendAction(actionsFile, {
+      type: "knowledge_update", change: mode, entry: clean(entry, 160), kind: clean(kind, 40),
+      text: clean(proposedText, 2_000), sourceId: clean(sourceId, 160), sourceTitle: clean(sourceTitle, 300),
+      quote: clean(quote, 2_000), why: clean(why, 500),
+    });
+  }));
   tools.push(tool("propose_body_rewrite", "准备全文整理候选", "提交整篇正文的替换候选，交给用户在正文里逐处审阅。不直接改写正文。", Type.Object({
     reason: Type.String({ maxLength: 500 }),
     body: Type.String({ maxLength: 200_000 }),

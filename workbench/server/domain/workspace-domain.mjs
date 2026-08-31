@@ -33,6 +33,24 @@ function contentHash(title, body) {
   return crypto.createHash("sha256").update(`${title}\u0000${body}`).digest("hex");
 }
 
+function recallTerms(value) {
+  const normalized = String(value || "").normalize("NFKC").toLowerCase();
+  const terms = new Set(normalized.match(/[a-z0-9][a-z0-9_-]{2,}/g) || []);
+  const han = normalized.replace(/[^\p{Script=Han}]/gu, "");
+  for (let index = 0; index < han.length - 1; index += 1) terms.add(han.slice(index, index + 2));
+  for (let index = 0; index < han.length - 2; index += 1) terms.add(han.slice(index, index + 3));
+  return terms;
+}
+
+function recallSimilarity(query, candidate) {
+  const queryTerms = recallTerms(query);
+  const candidateTerms = recallTerms(candidate);
+  if (!queryTerms.size || !candidateTerms.size) return { score: 0, shared: 0 };
+  let shared = 0;
+  for (const term of queryTerms) if (candidateTerms.has(term)) shared += 1;
+  return { score: shared / Math.sqrt(queryTerms.size * candidateTerms.size), shared };
+}
+
 export class WorkspaceDomain {
   constructor({ db, repository }) {
     this.db = db;
@@ -236,10 +254,12 @@ export class WorkspaceDomain {
     });
   }
 
-  createEntry({ id = createUlid(), name, kind, definition = "", definitionSourceId = null, now, ...auth } = {}) {
+  createEntry({ id = createUlid(), name, kind, definition = "", definitionSourceId = null,
+    definitionQuote = "", definitionLocator = "", definitionSourceSha256 = "", now, ...auth } = {}) {
     const canonicalName = required(name, "词条名");
     const canonicalDefinition = normalizeStoredText(definition);
-    const payload = { name: canonicalName, kind, definition: canonicalDefinition, definitionSourceId };
+    const payload = { name: canonicalName, kind, definition: canonicalDefinition, definitionSourceId,
+      definitionQuote: clean(definitionQuote), definitionLocator: clean(definitionLocator), definitionSourceSha256 };
     const authorization = this.authorizeMutation("entry.create", definitionSourceId, payload, auth);
     if (authorization.replay) return authorization.result?.id;
     if (!ENTRY_KIND_SET.has(kind)) throw new TypeError("词条类型不合法");
@@ -258,12 +278,44 @@ export class WorkspaceDomain {
       this.repository.createEntity({ id, type: "entry", now });
       // 建出来就是孤儿，直到有人链它或它链别人。**不在这里硬拦**：
       // 批量入库时第一个词条无处可链，硬拦会让整批卡死。孤儿是一个队列，不是一道门。
-      this.db.prepare("INSERT INTO entries(id, name, entry_kind, definition, definition_source_id, orphan_since) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(id, canonicalName, kind, canonicalDefinition, definitionSourceId, isoNow(now));
+      const stamp = isoNow(now);
+      this.db.prepare(`INSERT INTO entries(id, name, entry_kind, definition, definition_source_id, orphan_since,
+        definition_quote, definition_locator, definition_source_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(id, canonicalName, kind, canonicalDefinition, definitionSourceId, stamp, clean(definitionQuote), clean(definitionLocator), definitionSourceSha256 || "");
+      this.db.prepare(`INSERT INTO entry_definition_revisions(id, entry_id, definition, source_entity_id, source_quote,
+        source_locator, source_content_sha256, reason, is_current, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '首次提炼', 1, ?)`)
+        .run(createUlid(), id, canonicalDefinition, definitionSourceId, clean(definitionQuote), clean(definitionLocator), definitionSourceSha256 || "", stamp);
       this.refreshEntryText(id, now);
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
       this.audit("entry.created", id, { kind, definitionSourceId }, now);
       return id;
+    });
+  }
+
+  reviseEntryDefinition(entryId, { definition, sourceEntityId, sourceQuote = "", sourceLocator = "",
+    sourceContentSha256 = "", reason = "", now, ...auth } = {}) {
+    const canonicalDefinition = normalizeStoredText(definition);
+    const payload = { definition: canonicalDefinition, sourceEntityId, sourceQuote, sourceLocator, sourceContentSha256, reason };
+    const authorization = this.authorizeMutation("entry.create", sourceEntityId, payload, auth);
+    if (authorization.replay) return authorization.result?.id;
+    if (!canonicalDefinition) throw new TypeError("词条定义不能为空");
+    if (!sourceEntityId) throw new TypeError("词条定义必须注明来源实体");
+    return this.repository.transaction(() => {
+      const entry = this.entryRow(entryId);
+      this.entity(sourceEntityId);
+      if (entry.definition === canonicalDefinition) return entryId;
+      const stamp = isoNow(now);
+      this.db.prepare("UPDATE entry_definition_revisions SET is_current = 0 WHERE entry_id = ? AND is_current = 1").run(entryId);
+      this.db.prepare(`INSERT INTO entry_definition_revisions(id, entry_id, definition, source_entity_id, source_quote,
+        source_locator, source_content_sha256, reason, is_current, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+        .run(createUlid(), entryId, canonicalDefinition, sourceEntityId, clean(sourceQuote), clean(sourceLocator), sourceContentSha256 || "", clean(reason), stamp);
+      this.db.prepare(`UPDATE entries SET definition = ?, definition_source_id = ?, definition_quote = ?,
+        definition_locator = ?, definition_source_sha256 = ? WHERE id = ?`)
+        .run(canonicalDefinition, sourceEntityId, clean(sourceQuote), clean(sourceLocator), sourceContentSha256 || "", entryId);
+      this.refreshEntryText(entryId, now);
+      this.touch(entryId, now);
+      this.audit("entry.definition_revised", entryId, { sourceEntityId, previousDefinition: entry.definition, reason: clean(reason) }, now);
+      return entryId;
     });
   }
 
@@ -274,9 +326,10 @@ export class WorkspaceDomain {
    * ⚠️ 对导入的书籍章节来说那是**入库时间**而不是成书时间，过期检测在这类来源上
    * 会偏松；需要精确时间的调用方要自己传。
    */
-  addEntryFact({ id = createUlid(), entryId, statement, sourceEntityId, sourceLocator = "", assertedAt = "", now, ...auth } = {}) {
+  addEntryFact({ id = createUlid(), entryId, statement, sourceEntityId, sourceLocator = "", sourceQuote = "",
+    sourceContentSha256 = "", assertedAt = "", now, ...auth } = {}) {
     const canonicalStatement = required(statement, "事实内容");
-    const payload = { entryId, statement: canonicalStatement, sourceEntityId, sourceLocator, assertedAt };
+    const payload = { entryId, statement: canonicalStatement, sourceEntityId, sourceLocator, sourceQuote, sourceContentSha256, assertedAt };
     const authorization = this.authorizeMutation("entry.fact.add", entryId, payload, auth);
     if (authorization.replay) return authorization.result?.id;
     // 硬闸：没有来源的事实进不来。表上是 NOT NULL，这里先给一句人话的错误。
@@ -286,9 +339,9 @@ export class WorkspaceDomain {
       this.entryRow(entryId);
       const source = this.entity(sourceEntityId);
       const stamp = isoNow(now);
-      this.db.prepare(`INSERT INTO entry_facts(id, entry_id, statement, source_entity_id, source_locator, asserted_at, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
-        .run(id, entryId, canonicalStatement, sourceEntityId, clean(sourceLocator), assertedAt ? requiredIso(assertedAt, "事实时间") : source.createdAt, stamp, stamp);
+      this.db.prepare(`INSERT INTO entry_facts(id, entry_id, statement, source_entity_id, source_locator, source_quote,
+        source_content_sha256, asserted_at, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
+        .run(id, entryId, canonicalStatement, sourceEntityId, clean(sourceLocator), clean(sourceQuote), sourceContentSha256 || "", assertedAt ? requiredIso(assertedAt, "事实时间") : source.createdAt, stamp, stamp);
       this.refreshEntryText(entryId, now);
       this.touch(entryId, now);
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: { id }, now });
@@ -354,7 +407,8 @@ export class WorkspaceDomain {
    * 一次查询，免费且不会和正向不同步。参照的那套实现要专门跑一条 lint 去查
    * 「回链补全了没有」，那是 markdown 和飞书文档链接才需要的账。
    */
-  linkEntries(fromId, toId, relationType, { now, ...auth } = {}) {
+  linkEntries(fromId, toId, relationType, { sourceEntityId = null, sourceQuote = "", sourceLocator = "",
+    sourceContentSha256 = "", why = "", now, ...auth } = {}) {
     const payload = { toId, relationType };
     const authorization = this.authorizeMutation("entry.link", fromId, payload, auth);
     if (authorization.replay) return authorization.result?.linked;
@@ -364,6 +418,14 @@ export class WorkspaceDomain {
       this.entryRow(fromId);
       this.entryRow(toId);
       this.repository.relate(fromId, toId, relationType, { now });
+      if (sourceEntityId) {
+        this.entity(sourceEntityId);
+        this.db.prepare(`INSERT INTO entry_relation_evidence(from_id, to_id, relation_type, source_entity_id,
+          source_quote, source_locator, source_content_sha256, why, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(from_id, to_id, relation_type, source_entity_id) DO UPDATE SET source_quote=excluded.source_quote,
+          source_locator=excluded.source_locator, source_content_sha256=excluded.source_content_sha256, why=excluded.why`)
+          .run(fromId, toId, relationType, sourceEntityId, clean(sourceQuote), clean(sourceLocator), sourceContentSha256 || "", clean(why), isoNow(now));
+      }
       // 两端都不再是孤儿——被链接和链接别人一样算「接上了」。
       this.db.prepare("UPDATE entries SET orphan_since = NULL WHERE id IN (?, ?)").run(fromId, toId);
       this.touch(fromId, now);
@@ -468,15 +530,28 @@ export class WorkspaceDomain {
   recallEntries(text, { limit = 6 } = {}) {
     const haystack = String(text || "");
     if (haystack.trim().length < 10) return [];
-    const all = this.db.prepare(`SELECT e.id, e.name, e.entry_kind AS kind, e.definition
-      FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL`).all();
+    const all = this.db.prepare(`SELECT e.id, e.name, e.entry_kind AS kind, e.definition,
+        COALESCE(t.body, '') AS searchText
+      FROM entries e JOIN entities en ON en.id = e.id AND en.deleted_at IS NULL
+      LEFT JOIN entity_text t ON t.entity_id = e.id`).all();
     const direct = all
       .filter((entry) => entry.name.length >= 2 && haystack.includes(entry.name))
       .sort((left, right) => right.name.length - left.name.length);
 
     const picked = new Map();
     for (const entry of direct.slice(0, limit)) picked.set(entry.id, { ...entry, why: "正文里提到了" });
-    for (const entry of direct.slice(0, limit)) {
+
+    const semantic = all
+      .filter((entry) => !picked.has(entry.id))
+      .map((entry) => ({ ...entry, ...recallSimilarity(haystack, `${entry.name}\n${entry.searchText}`) }))
+      .filter((entry) => entry.shared >= 3 && entry.score >= 0.055)
+      .sort((left, right) => right.score - left.score || right.shared - left.shared);
+    for (const entry of semantic) {
+      if (picked.size >= limit) break;
+      picked.set(entry.id, { ...entry, why: "正文和词条里有多处相近表达" });
+    }
+
+    for (const entry of [...picked.values()]) {
       if (picked.size >= limit) break;
       const neighbors = this.entryNeighbors(entry.id);
       for (const neighbor of [...neighbors.outgoing, ...neighbors.incoming]) {
@@ -486,14 +561,13 @@ export class WorkspaceDomain {
         if (full) picked.set(neighbor.id, { ...full, why: `连着「${entry.name}」`, via: entry.name, relationType: neighbor.relationType });
       }
     }
-    return [...picked.values()].map((entry) => ({
+    return [...picked.values()].map(({ searchText, score, shared, ...entry }) => ({
       ...entry,
       facts: this.db.prepare(`SELECT f.id, f.statement, f.status, COALESCE(t.title, '') AS sourceTitle
         FROM entry_facts f LEFT JOIN entity_text t ON t.entity_id = f.source_entity_id
         WHERE f.entry_id = ? AND f.status <> 'superseded' ORDER BY f.created_at LIMIT 4`).all(entry.id),
     }));
   }
-
   /** 词条的双向邻居。正向存在表里，反向是索引上的一次查询。 */
   entryNeighbors(entryId) {
     return {
@@ -1017,17 +1091,34 @@ export class WorkspaceDomain {
       if (draft.workflow_status !== DRAFT_WORKFLOW.READY) throw new Error("只有待发布稿件可以发布");
       const targetPlatform = payload.platform || draft.platform;
       if (!PLATFORMS.includes(targetPlatform)) throw new TypeError("发布平台不合法");
-      const revision = this.db.prepare("SELECT id, content_sha256 AS contentSha256 FROM revisions WHERE entity_id = ? ORDER BY revision_no DESC LIMIT 1").get(draftId);
+      const revision = this.db.prepare("SELECT id, title, body_markdown AS bodyMarkdown, content_sha256 AS contentSha256 FROM revisions WHERE entity_id = ? ORDER BY revision_no DESC LIMIT 1").get(draftId);
       if (!revision) throw new Error("发布稿缺少可追溯修订版本");
       const publicationId = createUlid();
       this.repository.createEntity({ id: publicationId, type: "publication", now });
       this.db.prepare("INSERT INTO publication_records(id, draft_id, revision_id, content_sha256, platform, title, published_url, published_at, idempotency_key, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .run(publicationId, draftId, revision.id, revision.contentSha256, targetPlatform, payload.title || draft.title, payload.publishedUrl, payload.publishedAt, key, json(metadata));
+      const sourceBookId = createUlid();
+      const sourceDocumentId = createUlid();
+      const sourceTitle = payload.title || draft.title;
+      const importedAt = payload.publishedAt.slice(0, 10);
+      this.repository.createEntity({ id: sourceBookId, type: "book", now });
+      this.db.prepare(`INSERT INTO books(id, title, author, reading_status, metadata_json, source_kind,
+        source_url, published_at, platform, source_origin_entity_id, content_sha256)
+        VALUES (?, ?, '本人', '读完', ?, '文章', ?, ?, ?, ?, ?)`)
+        .run(sourceBookId, sourceTitle, json({ kind: "资料", tags: [], importedAt, userAuthored: true }),
+          payload.publishedUrl, payload.publishedAt, targetPlatform, publicationId, revision.contentSha256);
+      this.repository.setEntityText(sourceBookId, { title: sourceTitle, body: revision.bodyMarkdown, now });
+      this.repository.createEntity({ id: sourceDocumentId, type: "book_document", now });
+      this.db.prepare("INSERT INTO book_documents(id, book_id, title, body_markdown, document_order) VALUES (?, ?, ?, ?, 1)")
+        .run(sourceDocumentId, sourceBookId, sourceTitle, revision.bodyMarkdown);
+      this.repository.setEntityText(sourceDocumentId, { title: sourceTitle, body: revision.bodyMarkdown, now });
+      this.saveRevision(sourceDocumentId, { title: sourceTitle, bodyMarkdown: revision.bodyMarkdown, authorKind: "import", reason: "published snapshot", now });
+
       this.db.prepare("UPDATE drafts SET workflow_status = ?, publication_status = ?, platform = ? WHERE id = ?")
         .run(DRAFT_WORKFLOW.PUBLISHED, PUBLICATION_STATUS.PUBLISHED, targetPlatform, draftId);
       this.touch(draftId, now);
       this.touch(draft.project_id, now);
-      const response = { publicationId, draftId };
+      const response = { publicationId, draftId, knowledgeSourceId: sourceBookId, knowledgeSourceDocumentId: sourceDocumentId };
       this.db.prepare("INSERT INTO idempotency_records(key, operation, request_sha256, response_json, created_at) VALUES (?, 'publication.create', ?, ?, ?)")
         .run(key, requestHash, json(response), isoNow(now));
       if (auth.candidateId) this.actions.markApplied(auth.candidateId, { result: response, now });

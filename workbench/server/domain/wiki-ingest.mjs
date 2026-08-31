@@ -14,6 +14,7 @@
 // 要求它附上一段原文、再用 `sourceContainsVerbatim` 去源文档里核对，
 // 才是硬的：对不上的直接丢，并计入 `rejected_ungrounded`。
 
+import crypto from "node:crypto";
 import { ENTRY_KINDS, ENTRY_RELATION_TYPES } from "./values.mjs";
 import { completeJson } from "../lib/model-json.mjs";
 
@@ -101,7 +102,7 @@ export const INGEST_SYSTEM_PROMPT = [
   "",
   "硬性规则：",
   "1. 只使用给定资料里的信息。资料里没有的，不要写，也不要用常识补全。",
-  "2. 每一条定义和事实都必须附一段【逐字摘自资料原文】的 quote。服务端会回原文核对，对不上的会被丢弃。quote 至少 12 个字，要能支撑那条陈述。",
+  "2. 每一条定义、事实、矛盾和关系都必须附一段【逐字摘自资料原文】的 quote。服务端会回原文核对，对不上的会被丢弃。quote 至少 12 个字，要能支撑那条陈述。",
   "3. 已有词条优先。如果一个概念已经在「已有词条」里，不要新建同义词条，把新事实挂到它上面。",
   "4. 如果资料里的说法和某条已有事实冲突，写进 contradictions，不要直接覆盖。判断 supersede（资料更新、明确取代旧说法）还是 dispute（两说并存、各有依据）。",
   "5. 关系必须具体。只能用给定的类型，不许输出「相关」这种没有信息的关系。",
@@ -112,8 +113,9 @@ export const INGEST_SYSTEM_PROMPT = [
   "只输出 JSON，不要解释。结构：",
   JSON.stringify({
     entries: [{ name: "词条名", kind: `${ENTRY_KINDS.join("|")}`, definition: "一句话定义", quote: "逐字原文" }],
+    definitions: [{ entry: "已有词条名", definition: "吸收本资料后的新定义", quote: "逐字原文", why: "为什么值得更新" }],
     facts: [{ entry: "词条名", statement: "一条事实", quote: "逐字原文" }],
-    relations: [{ from: "词条名", to: "词条名", type: `${ENTRY_RELATION_TYPES.join("|")}`, why: "关系说明" }],
+    relations: [{ from: "词条名", to: "词条名", type: `${ENTRY_RELATION_TYPES.join("|")}`, why: "关系说明", quote: "逐字原文" }],
     contradictions: [{ entry: "词条名", existingFactId: "已有事实的 id", statement: "资料里的新说法", quote: "逐字原文", verdict: "supersede|dispute", why: "理由" }],
   }, null, 0),
 ].join("\n");
@@ -168,7 +170,7 @@ const inList = (value, list) => list.includes(String(value || ""));
 /**
  * 逐字校验并归一化模型的提案。
  *
- * 返回 `{ entries, facts, relations, contradictions, rejected }`——
+ * 返回 `{ entries, definitions, facts, relations, contradictions, rejected }`——
  * `rejected` 是被丢掉的条目和原因，**要报给用户看**：它是判断这个模型能不能用的依据。
  */
 export function validateProposal(proposal, { sourceText, existing = [] }) {
@@ -204,6 +206,16 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
     entries.push({ name, kind: item.kind, definition, quote: clean(item.quote, 1_000) });
   }
 
+  const definitions = [];
+  for (const item of Array.isArray(proposal?.definitions) ? proposal.definitions : []) {
+    const entry = clean(item?.entry, 120);
+    const definition = clean(item?.definition, 500);
+    if (!known.has(entry)) { rejected.push({ what: `定义更新（${entry}）`, why: "只能更新本轮召回到的已有词条" }); continue; }
+    if (!definition || definition === known.get(entry)?.definition) continue;
+    if (!grounded(item?.quote, `「${entry}」的新定义`)) continue;
+    definitions.push({ entry, definition, quote: clean(item.quote, 1_000), why: clean(item?.why, 300) });
+  }
+
   const proposedNames = new Set([...known.keys(), ...entries.map((entry) => entry.name)]);
   const facts = [];
   for (const item of Array.isArray(proposal?.facts) ? proposal.facts : []) {
@@ -222,7 +234,8 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
     if (!proposedNames.has(from) || !proposedNames.has(to)) { rejected.push({ what: `关系 ${from}→${to}`, why: "两端必须都是已有或本次提议的词条" }); continue; }
     if (from === to) { rejected.push({ what: `关系 ${from}`, why: "词条不能链接到自己" }); continue; }
     if (!inList(item?.type, ENTRY_RELATION_TYPES)) { rejected.push({ what: `关系 ${from}→${to}`, why: `关系类型不合法：${clean(item?.type, 40)}` }); continue; }
-    relations.push({ from, to, type: item.type, why: clean(item?.why, 300) });
+    if (!grounded(item?.quote, `关系 ${from}→${to}`)) continue;
+    relations.push({ from, to, type: item.type, why: clean(item?.why, 300), quote: clean(item?.quote, 1_000) });
   }
 
   const knownFactIds = new Set(existing.flatMap((entry) => entry.facts.map((fact) => fact.id)));
@@ -238,13 +251,16 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
     contradictions.push({ entry, existingFactId, statement, quote: clean(item.quote, 1_000), verdict: item.verdict, why: clean(item?.why, 300) });
   }
 
-  return { entries, facts, relations, contradictions, rejected };
+  return { entries, definitions, facts, relations, contradictions, rejected };
 }
 
 /** 读一份来源，产出一份**已经过逐字校验**的提案。不写库。 */
 export async function proposeFromSource(workspace, env, { sourceId, model = "", signal } = {}) {
-  const source = workspace.db.prepare(`SELECT d.id, d.title, d.body_markdown AS body FROM book_documents d
-    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL WHERE d.id = ?`).get(sourceId);
+  const source = workspace.db.prepare(`SELECT d.id, d.title, d.body_markdown AS body,
+      b.published_at AS publishedAt, b.source_url AS sourceUrl, b.platform
+    FROM book_documents d
+    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
+    JOIN books b ON b.id = d.book_id WHERE d.id = ?`).get(sourceId);
   if (!source) throw new Error("来源文档不存在");
   const sourceText = clean(source.body, 60_000);
   if (sourceText.length < 200) return { sourceId, empty: true, reason: "正文太短，没有可沉淀的内容", model: "" };
@@ -256,7 +272,17 @@ export async function proposeFromSource(workspace, env, { sourceId, model = "", 
     model,
     signal,
   });
-  return { sourceId, title: source.title, model: usedModel, usage, existing, ...validateProposal(data, { sourceText, existing }) };
+  const validated = validateProposal(data, { sourceText, existing });
+  const empty = ["entries", "definitions", "facts", "relations", "contradictions"]
+    .every((key) => !validated[key].length);
+  return {
+    sourceId, title: source.title, model: usedModel, usage, existing, empty,
+    reason: empty ? "没有通过真实性校验的可沉淀内容" : "",
+    sourceLocator: [source.title, source.platform, source.publishedAt?.slice(0, 10)].filter(Boolean).join(" · "),
+    sourceContentSha256: crypto.createHash("sha256").update(source.body).digest("hex"),
+    assertedAt: source.publishedAt || "",
+    ...validated,
+  };
 }
 
 /**
@@ -270,33 +296,55 @@ export async function proposeFromSource(workspace, env, { sourceId, model = "", 
  */
 export function applyProposal(workspace, { sourceId, sourceTitle = "", proposal, actor = "user", now = new Date() }) {
   const byName = new Map((proposal.existing || []).map((entry) => [entry.name, entry.id]));
-  const applied = { entries: 0, merged: 0, facts: 0, relations: 0, contradictions: 0 };
+  const locator = proposal.sourceLocator || sourceTitle;
+  const sourceContentSha256 = proposal.sourceContentSha256 || "";
+  const assertedAt = proposal.assertedAt || "";
+  const applied = { entries: 0, definitions: 0, merged: 0, facts: 0, relations: 0, contradictions: 0 };
   workspace.repository.transaction(() => {
     for (const item of proposal.entries || []) {
       const existing = workspace.domain.findEntryByName(item.name);
       if (existing) { byName.set(item.name, existing.id); applied.merged += 1; continue; }
       byName.set(item.name, workspace.domain.createEntry({
-        name: item.name, kind: item.kind, definition: item.definition, definitionSourceId: sourceId, actor, now,
+        name: item.name, kind: item.kind, definition: item.definition, definitionSourceId: sourceId,
+        definitionQuote: item.quote, definitionLocator: locator, definitionSourceSha256: sourceContentSha256, actor, now,
       }));
       applied.entries += 1;
+    }
+    for (const item of proposal.definitions || []) {
+      const entryId = byName.get(item.entry) || workspace.domain.findEntryByName(item.entry)?.id;
+      if (!entryId) continue;
+      workspace.domain.reviseEntryDefinition(entryId, {
+        definition: item.definition, sourceEntityId: sourceId, sourceQuote: item.quote,
+        sourceLocator: locator, sourceContentSha256, reason: item.why, actor, now,
+      });
+      applied.definitions += 1;
     }
     for (const fact of proposal.facts || []) {
       const entryId = byName.get(fact.entry);
       if (!entryId) continue;
-      workspace.domain.addEntryFact({ entryId, statement: fact.statement, sourceEntityId: sourceId, sourceLocator: sourceTitle, actor, now });
+      workspace.domain.addEntryFact({
+        entryId, statement: fact.statement, sourceEntityId: sourceId, sourceLocator: locator,
+        sourceQuote: fact.quote, sourceContentSha256, assertedAt, actor, now,
+      });
       applied.facts += 1;
     }
     for (const relation of proposal.relations || []) {
       const from = byName.get(relation.from);
       const to = byName.get(relation.to);
       if (!from || !to || from === to) continue;
-      workspace.domain.linkEntries(from, to, relation.type, { actor, now });
+      workspace.domain.linkEntries(from, to, relation.type, {
+        sourceEntityId: sourceId, sourceQuote: relation.quote, sourceLocator: locator,
+        sourceContentSha256, why: relation.why, actor, now,
+      });
       applied.relations += 1;
     }
     for (const conflict of proposal.contradictions || []) {
       const entryId = byName.get(conflict.entry);
       if (!entryId) continue;
-      const factId = workspace.domain.addEntryFact({ entryId, statement: conflict.statement, sourceEntityId: sourceId, sourceLocator: sourceTitle, actor, now });
+      const factId = workspace.domain.addEntryFact({
+        entryId, statement: conflict.statement, sourceEntityId: sourceId, sourceLocator: locator,
+        sourceQuote: conflict.quote, sourceContentSha256, assertedAt, actor, now,
+      });
       if (conflict.verdict === "supersede") workspace.domain.supersedeEntryFact(conflict.existingFactId, { supersededBy: factId, actor, now });
       else workspace.domain.disputeEntryFacts(conflict.existingFactId, factId, { actor, now });
       applied.contradictions += 1;

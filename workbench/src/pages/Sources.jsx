@@ -19,8 +19,16 @@ const KIND_HINT = {
   书籍: "别人写的书",
   课程: "成体系的课，按节读",
   文档: "单篇资料",
-  文章: "自己写的",
+  文章: "自己写的历史文章与已发布版本",
 };
+
+const FILTERS = [
+  ["all", "全部"],
+  ["undistilled", "未提炼"],
+  ["queued", "排队中"],
+  ["proposed", "待审阅"],
+  ["failed", "失败"],
+];
 
 const number = (value) => Number(value || 0).toLocaleString();
 
@@ -31,21 +39,39 @@ const number = (value) => Number(value || 0).toLocaleString();
 function distillState(source) {
   if (!source.documents) return { tone: "idle", label: "空" };
   if (source.failed) return { tone: "warn", label: `${source.failed} 节失败` };
+  if (source.proposed) return { tone: "busy", label: `${source.proposed} 节待审阅` };
+  if (source.queued) return { tone: "busy", label: `${source.queued} 节排队中` };
+  if (source.rejected) return { tone: "idle", label: `${source.rejected} 节已拒绝` };
   if (!source.distilled) return { tone: "idle", label: "未提炼" };
   if (source.distilled < source.documents) return { tone: "busy", label: `${source.distilled}/${source.documents} 节` };
   return { tone: "done", label: "已提炼" };
+}
+
+function matchesFilter(source, filter) {
+  if (filter === "undistilled") return source.distilled < source.documents && !source.queued && !source.proposed;
+  if (filter === "queued") return source.queued > 0;
+  if (filter === "proposed") return source.proposed > 0;
+  if (filter === "failed") return source.failed > 0;
+  return true;
 }
 
 export function Sources({ onOpen }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(() => new Set());
   const [docs, setDocs] = useState(() => ({}));
+  const [selected, setSelected] = useState(() => new Set());
+  const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [importForm, setImportForm] = useState({
+    file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true,
+  });
 
-  useEffect(() => {
-    api.knowledgeSources().then(setData).catch(setError);
-  }, []);
+  const load = useCallback(() => api.knowledgeSources().then(setData).catch(setError), []);
+  useEffect(() => { load(); }, [load]);
 
   // 章节按需拉。一次把 1389 节全取回来，为的只是「万一你想展开某一本」。
   const toggle = useCallback((source) => {
@@ -57,8 +83,9 @@ export function Sources({ onOpen }) {
         setDocs((loaded) => {
           if (!loaded[source.id]) {
             api.knowledgeSourceDocs(source.id)
-              .then((result) => setDocs((cur) => ({ ...cur, [source.id]: result.documents })))
-              .catch(() => setDocs((cur) => ({ ...cur, [source.id]: [] })));
+              .then((result) => setDocs((cur) => ({ ...cur, [source.id]: { items: result.documents, error: null } })))
+              .catch((failure) => setDocs((cur) => ({ ...cur, [source.id]: { items: [], error: failure } })));
+            return { ...loaded, [source.id]: { items: null, error: null } };
           }
           return loaded;
         });
@@ -69,13 +96,52 @@ export function Sources({ onOpen }) {
 
   const groups = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const matched = (data?.sources || []).filter((item) => !term || item.title.toLowerCase().includes(term));
+    const matched = (data?.sources || []).filter((item) => matchesFilter(item, filter)
+      && (!term || `${item.title} ${item.author || ""} ${item.platform || ""}`.toLowerCase().includes(term)));
     return KIND_ORDER
       .map((kind) => ({ kind, items: matched.filter((item) => (item.sourceKind || "书籍") === kind) }))
       .filter((group) => group.items.length);
-  }, [data, query]);
+  }, [data, query, filter]);
 
-  if (error) return <ErrorNote error={error} what="资料" />;
+  const selectedSources = (data?.sources || []).filter((source) => selected.has(source.id));
+  const selectedChars = selectedSources.reduce((sum, source) => sum + source.chars, 0);
+  const toggleSelected = (id) => setSelected((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const queue = async ({ bookIds = [], documentIds = [], retry = false, key = "batch" }) => {
+    setBusy(key); setNotice("");
+    try {
+      const result = await api.queueKnowledgeIngest({ bookIds, documentIds, retry });
+      setNotice(result.queued
+        ? `已排队 ${result.queued} 节（约 ${number(result.chars)} 字）${result.capped ? "；单批最多 20 节，其余请下一批继续" : ""}`
+        : `没有重复排队；已跳过 ${result.skipped} 节`);
+      setSelected(new Set()); setDocs({}); await load();
+    } catch (failure) { setError(failure); }
+    finally { setBusy(""); }
+  };
+
+  const submitImport = async (event) => {
+    event.preventDefault();
+    if (!importForm.file) return;
+    setBusy("import"); setError(null);
+    try {
+      const result = await api.importBook(importForm.file, importForm.name, {
+        sourceKind: importForm.sourceKind, kind: "藏书", author: importForm.author, platform: importForm.platform,
+        publishedAt: importForm.publishedAt ? new Date(importForm.publishedAt).toISOString() : "",
+        sourceUrl: importForm.sourceUrl, userAuthored: importForm.sourceKind === "文章", distill: importForm.distill,
+      });
+      setNotice(`已导入「${result.book.title}」${result.queuedForDistill ? `，并排队提炼 ${result.queuedForDistill} 节` : ""}`);
+      setShowImport(false);
+      setImportForm({ file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true });
+      await load();
+    } catch (failure) { setError(failure); }
+    finally { setBusy(""); }
+  };
+
+  if (error && !data) return <ErrorNote error={error} what="资料" onRetry={load} />;
   if (!data) return <Loading rows={6} />;
 
   const totals = data.totals;
@@ -83,12 +149,43 @@ export function Sources({ onOpen }) {
   return (
     <div className="view-body">
       <div className="src-top">
-        <p className="src-lead">
-          {number(totals.sources)} 份资料 · {number(totals.documents)} 节 · {number(totals.chars)} 字
-          {totals.citedFacts ? <> · 已支撑 <b>{number(totals.citedFacts)}</b> 条事实</> : null}
-        </p>
-        <SearchBox value={query} onChange={setQuery} placeholder="搜资料名" ariaLabel="搜索资料" />
+        <div>
+          <p className="src-lead">
+            {number(totals.sources)} 份资料 · {number(totals.documents)} 节 · {number(totals.chars)} 字
+            {totals.citedFacts ? <> · 已支撑 <b>{number(totals.citedFacts)}</b> 条事实</> : null}
+          </p>
+          <p className="field-hint">提炼会调用当前模型；每批最多 20 节，先生成候选，确认后才进入正式词条。</p>
+        </div>
+        <div className="row-actions">
+          <button type="button" className="btn btn-sm" onClick={() => setShowImport((value) => !value)}>导入旧文章 / 资料</button>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜名称、作者或平台" ariaLabel="搜索资料" />
+        </div>
       </div>
+
+      {showImport ? (
+        <form className="src-import" onSubmit={submitImport}>
+          <div className="drawer-title">导入一份可追溯来源</div>
+          <label className="field"><span>文件</span><input type="file" accept=".md,.markdown,.txt,.pdf,.epub" required onChange={(event) => setImportForm((form) => ({ ...form, file: event.target.files?.[0] || null }))} /></label>
+          <label className="field"><span>显示名称</span><input value={importForm.name} onChange={(event) => setImportForm((form) => ({ ...form, name: event.target.value }))} placeholder="留空则使用文件名" /></label>
+          <label className="field"><span>来源类型</span><select value={importForm.sourceKind} onChange={(event) => setImportForm((form) => ({ ...form, sourceKind: event.target.value }))}><option>文章</option><option>文档</option><option>课程</option><option>书籍</option></select></label>
+          <label className="field"><span>作者</span><input value={importForm.author} onChange={(event) => setImportForm((form) => ({ ...form, author: event.target.value }))} /></label>
+          <label className="field"><span>平台</span><input value={importForm.platform} onChange={(event) => setImportForm((form) => ({ ...form, platform: event.target.value }))} placeholder="公众号 / 知乎 / 小红书…" /></label>
+          <label className="field"><span>发布时间</span><input type="datetime-local" value={importForm.publishedAt} onChange={(event) => setImportForm((form) => ({ ...form, publishedAt: event.target.value }))} /></label>
+          <label className="field src-import__wide"><span>原文链接</span><input type="url" value={importForm.sourceUrl} onChange={(event) => setImportForm((form) => ({ ...form, sourceUrl: event.target.value }))} placeholder="可选；用于去重和回溯" /></label>
+          <label className="src-import__check"><input type="checkbox" checked={importForm.distill} onChange={(event) => setImportForm((form) => ({ ...form, distill: event.target.checked }))} />导入后立即排队提炼</label>
+          <div className="row-actions"><button className="btn btn-primary btn-sm" type="submit" disabled={busy === "import" || !importForm.file}>{busy === "import" ? "导入中…" : "确认导入"}</button><button className="btn btn-sm" type="button" onClick={() => setShowImport(false)}>取消</button></div>
+        </form>
+      ) : null}
+
+      <div className="src-controls">
+        <div className="segmented" aria-label="筛选提炼状态">{FILTERS.map(([value, label]) => <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}</div>
+        <div className="row-actions">
+          {selected.size ? <span className="field-hint">已选 {selected.size} 份 · 约 {number(selectedChars)} 字</span> : null}
+          <button type="button" className="btn btn-primary btn-sm" disabled={!selected.size || !!busy} onClick={() => queue({ bookIds: [...selected] })}>{busy === "batch" ? "排队中…" : "提炼所选"}</button>
+        </div>
+      </div>
+      {notice ? <p className="src-notice" role="status">{notice}</p> : null}
+      {error ? <ErrorNote error={error} what="来源操作" onRetry={() => setError(null)} /> : null}
 
       {!groups.length ? (
         <Empty icon={IconSearch}>没有匹配「{query}」的资料。</Empty>
@@ -102,10 +199,11 @@ export function Sources({ onOpen }) {
             <em>{KIND_HINT[group.kind]}</em>
           </h3>
 
-          <div className="src-table" role="table">
+          <div className="src-table src-table--select" role="table">
             {/* ⚠️ 表头不画底色也不加边框。设计系统那条「不要框里画框」——
                 外壳已经是白框，这里再套一层盒子，屏幕上最响的就成了那圈线。 */}
             <div className="src-row src-row--head" role="row">
+              <span role="columnheader" aria-label="选择" />
               <span role="columnheader">名称</span>
               <span role="columnheader">节数</span>
               <span role="columnheader">字数</span>
@@ -116,10 +214,11 @@ export function Sources({ onOpen }) {
             {group.items.map((source) => {
               const state = distillState(source);
               const expanded = open.has(source.id);
-              const chapters = docs[source.id];
+              const loaded = docs[source.id];
               return (
                 <div key={source.id} className="src-item">
                   <div className="src-row" role="row">
+                    <span><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span>
                     <button
                       type="button"
                       className="src-name"
@@ -141,20 +240,25 @@ export function Sources({ onOpen }) {
 
                   {expanded ? (
                     <div className="src-children">
-                      {!chapters ? <Loading rows={2} /> : chapters.length ? chapters.map((doc) => (
+                      {!loaded || loaded.items === null ? <Loading rows={2} /> : loaded.error ? <ErrorNote error={loaded.error} what="章节" /> : loaded.items.length ? loaded.items.map((doc) => (
                         <div key={doc.id} className="src-row src-row--child" role="row">
+                          <span />
                           <button type="button" className="src-name src-name--child" onClick={() => onOpen?.(source, doc)}>
                             <span className="clamp">{doc.title}</span>
                           </button>
                           <span className="src-num" />
                           <span className="src-num">{number(doc.chars)}</span>
-                          <span className={`src-state src-state--${doc.ingestStatus === "failed" ? "warn" : doc.ingestStatus ? "done" : "idle"}`}
-                            title={doc.ingestError || undefined}>
-                            {doc.ingestStatus === "applied" ? "已提炼"
-                              : doc.ingestStatus === "proposed" ? "待审阅"
-                              : doc.ingestStatus === "empty" ? "无可沉淀"
-                              : doc.ingestStatus === "failed" ? "失败"
-                              : "未提炼"}
+                          <span className="src-doc-action">
+                            <span className={`src-state src-state--${doc.ingestStatus === "failed" ? "warn" : ["queued", "proposed"].includes(doc.ingestStatus) ? "busy" : doc.ingestStatus === "applied" ? "done" : "idle"}`} title={doc.ingestError || undefined}>
+                              {doc.ingestStatus === "applied" ? "已提炼"
+                                : doc.ingestStatus === "queued" ? "排队中"
+                                : doc.ingestStatus === "proposed" ? "待审阅"
+                                : doc.ingestStatus === "empty" ? "无可沉淀"
+                                : doc.ingestStatus === "rejected" ? "已拒绝"
+                                : doc.ingestStatus === "failed" ? "失败"
+                                : "未提炼"}
+                            </span>
+                            {["", "failed", "rejected"].includes(doc.ingestStatus) ? <button type="button" className="link-btn" disabled={!!busy} onClick={() => queue({ documentIds: [doc.id], retry: doc.ingestStatus !== "", key: doc.id })}>{busy === doc.id ? "排队…" : doc.ingestStatus ? "重试" : "提炼"}</button> : null}
                           </span>
                           <span className="src-num src-num--strong">{doc.citedFacts ? number(doc.citedFacts) : "—"}</span>
                         </div>

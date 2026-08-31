@@ -7,6 +7,8 @@ import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 import { readArticle } from "../lib/article.mjs";
 import { parsePdf } from "../lib/books.mjs";
 import { createBookRecord } from "../routes/books-local.mjs";
+import { quoteGrounded } from "../domain/wiki-ingest.mjs";
+import { ENTRY_KINDS } from "../domain/values.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
 import { projectDto } from "../workspace/workspace-view.mjs";
@@ -652,6 +654,7 @@ function contentPrompt(input, context, model) {
     // ⚠️ 这条是为了让「整理全文」落在正文里，而不是把四千字倒进对话栏。
     // 用户在那条窄栏里读不完一整篇，也没法在里面逐处比对——比对要在正文区做。
     "用户要求整理、清理、重排、精简或改写**整篇**正文时，必须调用 propose_body_rewrite 提交完整的新正文，并在 reason 里一句话说明改了什么。**不要把整篇正文写在回复里**——回复只写你做了什么判断，候选会送进正文区让用户逐处审阅。只改其中一段时不要用它，按用户点名的范围给候选就行。",
+    "用户明确要求把一条认识沉淀、记住或加入知识库时，先用 knowledge_search 找到 SQLite 本地原始来源；只有拿到来源 ID 和至少 12 字的逐字原文后，才调用 propose_knowledge_update 提交一条原子候选。普通问答不要擅自沉淀；公开网页要先用 propose_knowledge_source 收为本地来源，不能把搜索摘要当证据。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
@@ -675,6 +678,7 @@ function generalPrompt(input, context, model) {
     "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮 SQLite 工作区检索 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
+    "用户明确要求把一条认识沉淀、记住或加入知识库时，先用 knowledge_search 找到 SQLite 本地原始来源；只有拿到来源 ID 和至少 12 字的逐字原文后，才调用 propose_knowledge_update 提交一条原子候选。普通问答不要擅自沉淀；公开网页要先收为本地来源，不能把搜索摘要当证据。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
     assistantReferencePrompt(context),
@@ -699,6 +703,7 @@ const TOOL_LABELS = {
   submit_expert_report: "正在整理专家结论",
   propose_content_create: "正在准备工作台新建内容候选",
   propose_body_rewrite: "正在整理全文",
+  propose_knowledge_update: "正在准备知识沉淀候选",
 };
 
 /** 只给测试用：确认每个 propose_* 工具的动作类型都登记过了。 */
@@ -730,6 +735,13 @@ function normalizeProposedAction(item, permissionMode) {
     title: clean(item.title, 200),
     why: clean(item.why, 500),
   };
+  if (item.type === "knowledge_update") return {
+    ...base,
+    change: ["new_entry", "fact", "definition"].includes(item.change) ? item.change : "fact",
+    entry: clean(item.entry, 160), kind: clean(item.kind, 40), text: clean(item.text, 2_000),
+    sourceId: clean(item.sourceId, 160), sourceTitle: clean(item.sourceTitle, 300),
+    quote: clean(item.quote, 2_000), why: clean(item.why, 500),
+  };
   if (["document_create", "document_update", "annotation_append", "reference_insert", "workspace_write", "workspace_edit", "workspace_powershell", "project_write", "project_edit", "powershell"].includes(item.type)) {
     return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
   }
@@ -745,6 +757,67 @@ function normalizeProposedAction(item, permissionMode) {
   return null;
 }
 
+export function applyKnowledgeUpdate(workspace, action, at = new Date()) {
+  if (!workspace?.db?.open) throw new Error("本地工作区尚未就绪");
+  const change = clean(action?.change, 20);
+  const entryName = clean(action?.entry, 160);
+  const proposedText = clean(action?.text, 2_000);
+  const sourceId = clean(action?.sourceId, 160);
+  const quote = clean(action?.quote, 2_000);
+  if (!["new_entry", "fact", "definition"].includes(change)) throw new TypeError("知识候选类型不合法");
+  if (!entryName || !proposedText || !sourceId || !quote) throw new TypeError("知识候选缺少词条、内容或来源证据");
+
+  const source = workspace.db.prepare(`SELECT e.id, e.entity_type AS type, e.created_at AS createdAt, t.title, t.body,
+      d.title AS documentTitle, b.title AS bookTitle, b.published_at AS publishedAt
+    FROM entities e JOIN entity_text t ON t.entity_id=e.id
+    LEFT JOIN book_documents d ON d.id=e.id
+    LEFT JOIN books b ON b.id=d.book_id
+    WHERE e.id=? AND e.deleted_at IS NULL`).get(sourceId);
+  if (!source) throw Object.assign(new Error("候选引用的本地来源已经不存在"), { status: 409 });
+  if (source.type === "entry") throw Object.assign(new Error("词条不能引用另一个词条作为原始证据"), { status: 422 });
+  if (!quoteGrounded(source.body, quote)) {
+    throw Object.assign(new Error("候选里的逐字原文无法在本地来源中找到"), { status: 422, hint: "请重新检索来源并复制一段至少 12 字的连续原文。" });
+  }
+
+  const nowValue = new Date(at);
+  const sourceLocator = [source.bookTitle, source.documentTitle].filter(Boolean).join(" · ") || source.title || clean(action.sourceTitle, 300);
+  const sourceContentSha256 = crypto.createHash("sha256").update(String(source.body || "")).digest("hex");
+  const existing = workspace.db.prepare(`SELECT e.id, e.definition FROM entries e
+    JOIN entities en ON en.id=e.id AND en.deleted_at IS NULL WHERE e.name=?`).get(entryName);
+  let entryId;
+  let factId = "";
+
+  if (change === "new_entry") {
+    if (existing) throw Object.assign(new Error(`词条「${entryName}」已经存在，请改为追加事实或更新定义`), { status: 409 });
+    const kind = clean(action.kind, 40);
+    if (!ENTRY_KINDS.includes(kind)) throw new TypeError("新词条类型不合法");
+    entryId = workspace.domain.createEntry({
+      name: entryName, kind, definition: proposedText, definitionSourceId: sourceId,
+      definitionQuote: quote, definitionLocator: sourceLocator, definitionSourceSha256: sourceContentSha256,
+      actor: "user", now: nowValue,
+    });
+  } else {
+    if (!existing) throw Object.assign(new Error(`词条「${entryName}」不存在，请改为新建词条候选`), { status: 409 });
+    entryId = existing.id;
+    if (change === "definition") {
+      workspace.domain.reviseEntryDefinition(entryId, {
+        definition: proposedText, sourceEntityId: sourceId, sourceQuote: quote,
+        sourceLocator, sourceContentSha256, reason: clean(action.why, 500), actor: "user", now: nowValue,
+      });
+    } else {
+      const duplicate = workspace.db.prepare("SELECT id FROM entry_facts WHERE entry_id=? AND statement=? AND status <> 'superseded'").get(entryId, proposedText);
+      if (duplicate) throw Object.assign(new Error("这条事实已经在词条里"), { status: 409 });
+      factId = workspace.domain.addEntryFact({
+        entryId, statement: proposedText, sourceEntityId: sourceId, sourceQuote: quote,
+        sourceLocator, sourceContentSha256, assertedAt: source.publishedAt || source.createdAt,
+        actor: "user", now: nowValue,
+      });
+    }
+  }
+  const result = { change, entryId, factId, name: entryName, sourceId, sourceLocator };
+  workspace.domain.audit("assistant.knowledge_update_applied", entryId, { actionId: action.id || "", ...result }, nowValue);
+  return result;
+}
 export function assistantPermissionModes() {
   return { items: permissionModeCatalog(), defaultMode: DEFAULT_PERMISSION_MODE };
 }
@@ -1140,6 +1213,9 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     const draftId = workspace.domain.createDraft({projectId,title:action.title,bodyMarkdown:action.body,platform:action.platform,actor:"user",now:stamp});
     workspace.domain.setPrimaryDraft(projectId,draftId,{actor:"user",now:stamp});
     result = {projectId,draftId,title:action.title};
+  } else if (action.type === "knowledge_update") {
+    // 动作卡的确认只是授权；真正写入前仍重新读取 SQLite 来源并通过逐字证据闸门。
+    result = applyKnowledgeUpdate(currentWorkspace(), action, new Date());
   } else if (action.type === "knowledge_source_add") {
     /**
      * 抓取发生在**这里**，不在提候选的时候。
@@ -1156,15 +1232,14 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     }
     const workspace = currentWorkspace();
     const title = clean(action.title, 100) || clean(article.title, 100) || new URL(action.url).hostname;
-    const existing = workspace.db.prepare("SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.title = ?").get(title);
+    const canonicalUrl = new URL(action.url).toString();
+    const existing = workspace.db.prepare("SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.source_url = ? OR b.title = ?").get(canonicalUrl, title);
     if (existing) throw Object.assign(new Error(`知识库里已经有「${title}」了`), { status: 409, hint: "换个标题，或者直接去「知识 → 来源」里看那一份。" });
     // 网页收进来是**只读的文档**：事实要引用它，正文能随手改的话引用就不可信。
     const book = await createBookRecord(workspace, {
       title, author: clean(article.byline, 120), kind: "藏书", sourceKind: "文档",
-      chapters: [{ title, text: `${body}
-
----
-来源：${action.url}` }],
+      sourceUrl: canonicalUrl, publishedAt: article.publishedAt || "",
+      chapters: [{ title, text: body }],
     });
     /**
      * 入库之后**自动排一次提炼**，不用你再去点一次。
@@ -1177,6 +1252,7 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
      */
     const documents = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ? ORDER BY document_order").all(book.id);
     for (const document of documents) {
+      workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(document.id, new Date().toISOString());
       workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
     }
     result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability", queuedForDistill: documents.length };

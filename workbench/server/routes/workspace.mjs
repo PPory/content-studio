@@ -335,7 +335,21 @@ export const workspaceRoutes = [
     workspace.domain.updateDraft(params.id, { title: body.title, bodyMarkdown: body.body, reason: "autosave", actor, now: now() });
     const fresh = workspace.repository.getEntity(params.id);
     json(res, { ok: true, version: fresh.version, updatedAt: fresh.updatedAt, project: projectDto(workspace, draft.projectId) });
-  }) },  { method: "POST", path: "/api/workspace/publications", handler: guarded(async ({ workspace,req,res }) => { const body=await readJsonBody(req); const publishedAt=new Date(body.publishedAt||Date.now()).toISOString(); const key=`ui:${body.draftId}:${publishedAt}:${clean(body.url)}`; const result=workspace.domain.publishDraft(body.draftId,{title:body.title,platform:body.platform,publishedUrl:body.url,publishedAt,idempotencyKey:key,metadata:{source:"workbench"},actor,now:now()}); const metricNames=["views","likes","comments","collects","shares"]; if(metricNames.some((name)=>body[name]!==""&&body[name]!=null)) workspace.domain.recordMetrics(result.publicationId,{capturedAt:publishedAt,...Object.fromEntries(metricNames.map((name)=>[name,body[name]])),actor,now:now()}); json(res,{ok:true,publicationId:result.publicationId,record:{id:result.publicationId,draftId:body.draftId,title:body.title,platform:body.platform,url:body.url,publishedAt}}); }) },
+  }) },  { method: "POST", path: "/api/workspace/publications", handler: guarded(async ({ workspace,req,res }) => {
+    const body=await readJsonBody(req);
+    const publishedAt=new Date(body.publishedAt||Date.now()).toISOString();
+    const key=`ui:${body.draftId}:${publishedAt}:${clean(body.url)}`;
+    const result=workspace.domain.publishDraft(body.draftId,{title:body.title,platform:body.platform,publishedUrl:body.url,publishedAt,idempotencyKey:key,metadata:{source:"workbench"},actor,now:now()});
+    const metricNames=["views","likes","comments","collects","shares"];
+    if(metricNames.some((name)=>body[name]!==""&&body[name]!=null)) workspace.domain.recordMetrics(result.publicationId,{capturedAt:publishedAt,...Object.fromEntries(metricNames.map((name)=>[name,body[name]])),actor,now:now()});
+    if (result.knowledgeSourceDocumentId) {
+      const queuedAt = now().toISOString();
+      workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)
+        ON CONFLICT(source_entity_id) DO UPDATE SET status='queued', candidate_id=NULL, error='', run_at=excluded.run_at`).run(result.knowledgeSourceDocumentId, queuedAt);
+      workspace.jobs.enqueue({idempotencyKey:`wiki.ingest:published:${result.publicationId}`,kind:"wiki.ingest",payload:{sourceId:result.knowledgeSourceDocumentId}});
+    }
+    json(res,{ok:true,publicationId:result.publicationId,knowledgeQueued:!!result.knowledgeSourceDocumentId,record:{id:result.publicationId,draftId:body.draftId,title:body.title,platform:body.platform,url:body.url,publishedAt}});
+  }) },
   { method: "GET", path: "/api/workspace/publications", handler: guarded(async ({ workspace,res }) => json(res,{ok:true,platforms:CONTENT_PLATFORMS,rows:publicationRows(workspace)})) },
   { method: "POST", path: "/api/workspace/external-publications", handler: guarded(async ({ workspace, req, res }) => {
     const body = await readJsonBody(req);

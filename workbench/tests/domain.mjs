@@ -134,6 +134,13 @@ try {
   const productEntryId = domain.createEntry({ name: "Seedance", kind: "product", definition: "一个视频生成模型。", definitionSourceId: sourceB, actor, now });
   assert.throws(() => domain.createEntry({ name: "结构化提示词", kind: "concept", definition: "重复建的", definitionSourceId: sourceA, actor, now }), (error) => error.code === "ENTRY_NAME_TAKEN");
   check("重名词条被挡下并提示去追加或合并，而不是抛 UNIQUE", domain.findEntryByName("结构化提示词").id === methodEntryId);
+  domain.reviseEntryDefinition(methodEntryId, {
+    definition: "把观点按角色、任务、约束与示例分层组织。", sourceEntityId: sourceB,
+    sourceQuote: "对四段式的反驳", sourceLocator: "资料 B", sourceContentSha256: "a".repeat(64),
+    reason: "新资料补充", actor, now,
+  });
+  check("词条定义更新保留现行版本和历史证据", db.prepare("SELECT COUNT(*) AS count FROM entry_definition_revisions WHERE entry_id = ?").get(methodEntryId).count === 2
+    && db.prepare("SELECT definition_quote AS quote FROM entries WHERE id = ?").get(methodEntryId).quote === "对四段式的反驳");
   check("新建的词条先进孤儿队列", domain.entryOrphans().length === 2);
   assert.throws(() => domain.linkEntries(methodEntryId, methodEntryId, "based_on", { actor, now }), /不能链接到自己/);
   assert.throws(() => domain.linkEntries(productEntryId, methodEntryId, "相关", { actor, now }), /关系类型不合法/);
@@ -144,9 +151,11 @@ try {
     && domain.entryNeighbors(productEntryId).outgoing.at(0)?.relationType === "based_on");
 
   assert.throws(() => domain.addEntryFact({ entryId: methodEntryId, statement: "没来源的事实", actor, now }), /必须注明来源/);
-  const factFromA = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里效果更好。", sourceEntityId: sourceA, actor, now });
+  const factFromA = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里效果更好。", sourceEntityId: sourceA, sourceQuote: "四段式提示词的说明", sourceContentSha256: "b".repeat(64), actor, now });
   const factFromB = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里反而更差。", sourceEntityId: sourceB, actor, now });
   check("事实进 FTS，写作时能靠正文召回而不只靠标题", workspace.repository.search("长视频提示").some((row) => row.id === methodEntryId));
+  check("事实逐字摘录和来源内容指纹被持久保存", db.prepare("SELECT source_quote AS quote, source_content_sha256 AS hash FROM entry_facts WHERE id = ?").get(factFromA).quote === "四段式提示词的说明");
+  check("近义表达不含词条名时也能本地召回", domain.recallEntries("把观点按照角色、任务、约束和示例分层组织起来。").some((entry) => entry.id === methodEntryId));
   check("同词条不同来源的两条事实被机械配成待判定候选，不靠模型遍历全库", domain.entryFactPairs().length === 1);
   assert.throws(() => domain.disputeEntryFacts(factFromA, factFromA, { actor, now }), /不能和自己冲突/);
   domain.disputeEntryFacts(factFromA, factFromB, { actor, now });
@@ -234,6 +243,10 @@ try {
   const replay = domain.publishDraft(draftId, publicationInput);
   const publicationRow = db.prepare("SELECT revision_id AS revisionId, content_sha256 AS hash FROM publication_records WHERE id = ?").get(publication.publicationId);
   check("发布幂等重放不会重复写且固定到实际修订哈希", publication.publicationId === replay.publicationId && publicationRow.revisionId && publicationRow.hash.length === 64);
+  const publishedSource = db.prepare("SELECT source_kind AS kind, source_origin_entity_id AS originId, content_sha256 AS hash FROM books WHERE id = ?").get(publication.knowledgeSourceId);
+  check("正式发布会生成一次不可变的文章来源快照供后续提炼", publishedSource.kind === "文章"
+    && publishedSource.originId === publication.publicationId && publishedSource.hash === publicationRow.hash
+    && replay.knowledgeSourceId === publication.knowledgeSourceId);
   assert.throws(() => domain.publishDraft(draftId, { ...publicationInput, title: "不同内容" }), /不同发布内容/);
   check("发布后项目进入待复盘", domain.projectStage(projectId).stage === "待复盘");
   domain.softDeleteEntity(draftId, { actor, now });

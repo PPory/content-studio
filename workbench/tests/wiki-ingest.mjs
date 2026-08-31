@@ -47,14 +47,18 @@ const proposal = {
     { name: "主题K", kind: "concept", definition: "作者简写里的变体。", quote: "所以我说如何应对情绪呢？一个做法就是用一个新的行为来干扰这个链接。" },
     { name: "概念笔记", kind: "method", definition: "容纳某个概念相关信息的笔记。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。" },
   ],
+  definitions: [
+    { entry: "神经元链接", definition: "场景与情绪反应会形成可被新行为干扰的链接。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。", why: "吸收了干扰机制" },
+    { entry: "不存在的词条", definition: "不能更新。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。", why: "" },
+  ],
   facts: [
     { entry: "第三者干扰", statement: "用新行为干扰旧链接。", quote: "一个做法就是用一个新的行为来干扰这个链接" },
     { entry: "不存在的词条", statement: "挂在空气上。", quote: "比如情绪，就是一种典型的神经元链接：场景-情绪反应。" },
   ],
   relations: [
-    { from: "第三者干扰", to: "神经元链接", type: "based_on", why: "作用在链接上" },
-    { from: "第三者干扰", to: "第三者干扰", type: "based_on", why: "自链" },
-    { from: "第三者干扰", to: "神经元链接", type: "相关", why: "零信息关系" },
+    { from: "第三者干扰", to: "神经元链接", type: "based_on", why: "作用在链接上", quote: "一个做法就是用一个新的行为来干扰这个链接" },
+    { from: "第三者干扰", to: "第三者干扰", type: "based_on", why: "自链", quote: "一个做法就是用一个新的行为来干扰这个链接" },
+    { from: "第三者干扰", to: "神经元链接", type: "相关", why: "零信息关系", quote: "一个做法就是用一个新的行为来干扰这个链接" },
   ],
   contradictions: [
     { entry: "神经元链接", existingFactId: "FACT1", statement: "旧链接不会被削弱。", quote: "他的结论（广为人知的遗忘曲线）针对的是无意义音节的机械重复", verdict: "dispute", why: "说法相反" },
@@ -77,6 +81,7 @@ check("尾巴上粘着缩写字母的变体名被挡下，引导去归并", !res
 // ⚠️ 反面：不能用「包含」当判据，否则「概念笔记」会被「概念」误杀。
 check("真概念不因为名字包含已有词条就被误杀", result.entries.some((item) => item.name === "概念笔记"));
 check("挂在不存在词条上的事实丢掉，不会凭空造一个词条出来", result.facts.length === 1 && result.facts[0].entry === "第三者干扰");
+check("已有词条可产生有原文依据的定义更新，不存在的词条不能被更新", result.definitions.length === 1 && result.definitions[0].entry === "神经元链接");
 check("自链和零信息关系都被拦下，只留下有语义的那条", result.relations.length === 1 && result.relations[0].type === "based_on");
 check("指向不存在的已有事实的矛盾丢掉", result.contradictions.length === 1 && result.contradictions[0].existingFactId === "FACT1");
 check("被丢掉的条目都带着原因，能用来判断这个模型能不能用", result.rejected.length >= 6 && result.rejected.every((item) => item.what && item.why));

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { createServer } from "vite";
+import { createBookRecord } from "../server/routes/books-local.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-ui-local-"));
@@ -77,6 +78,19 @@ try {
     }),
   });
   const projectId = created.project.id;
+
+  const workspace = await server.xenhoWorkspace;
+  const evidenceQuote = "知识来源跳转必须打开准确章节，并高亮用户正在核对的逐字原文。";
+  const evidenceBook = await createBookRecord(workspace, {
+    title: "UI 证据来源", kind: "藏书", sourceKind: "文章",
+    chapters: [{ title: "证据章节", text: `# 证据章节\n\n${evidenceQuote}\n\n这是隔离浏览器测试的后续段落。` }],
+  });
+  const evidenceDocId = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id=?").get(evidenceBook.id).id;
+  workspace.domain.createEntry({
+    name: "来源精准跳转", kind: "method", definition: "词条证据应跳回准确章节和原文。",
+    definitionSourceId: evidenceDocId, definitionQuote: evidenceQuote, definitionLocator: "UI 证据来源 · 证据章节",
+    definitionSourceSha256: "b".repeat(64), actor: "user", now: new Date(),
+  });
 
   const { chromium } = playwright();
   browser = await chromium.launch();
@@ -339,6 +353,14 @@ try {
   const settingsText = await page.getByRole("dialog", { name: "设置" }).innerText();
   check("设置只展示本地工作区和本机能力", settingsText.includes("工作区") && settingsText.includes("模型") && !settingsText.includes("流水线") && !settingsText.includes("飞书"));
   await page.keyboard.press("Escape");
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/entries`);
+  await page.getByRole("button", { name: /来源精准跳转/ }).click();
+  await page.getByRole("button", { name: "UI 证据来源 · 证据章节" }).click();
+  const evidenceHit = page.locator(".evidence-hit");
+  await evidenceHit.waitFor();
+  check("词条来源会打开准确章节并高亮逐字原文", page.url().endsWith("#/shelf")
+    && (await evidenceHit.innerText()).includes("知识来源跳转必须打开准确章节"));
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}`);

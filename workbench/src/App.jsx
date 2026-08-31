@@ -790,7 +790,7 @@ export function App() {
                      */
                     onOpenSource={(fact) => {
                       if (!fact?.sourceBookId) return;
-                      setOpenTarget("shelf", `bookdoc:${fact.sourceId}`);
+                      setOpenTarget("shelf", { path: `bookdoc:${fact.sourceId}`, quote: fact.sourceQuote || "" });
                       // 写下「从哪儿来的」：阅读器的返回按钮要回到这条词条，不是书架
                       setOpenTarget("shelf-return", `返回词条|#/entries/${route.state}`);
                       go("shelf", `book:${fact.sourceBookId}`);

@@ -69,6 +69,7 @@ export function ReaderOverlay({
   backLabel,         // 返回按钮上写什么。默认「返回列表」
   baseDir = "",      // 正文里相对图片路径的基准目录
   initialScroll = 0, // 回到上次读到的位置
+  evidenceQuote = "", // 从词条来源跳入时定位到逐字依据
   onProgress,        // ({ progress, scrollTop }) => void，书架用它记进度
   extra,             // 正文动作条**上方**再挂一块（素材的核验面板、选题的「去看成稿」）
   actionsExtra,      // 正文动作条**里面**再加个按钮（稿件的「记录发布」）
@@ -135,13 +136,14 @@ export function ReaderOverlay({
     restoredFor.current = item.key;
     const el = scrollRef.current;
     if (!el) return;
+    if (evidenceQuote) return;
     const target = initialScroll > 0 ? initialScroll : 0;
     requestAnimationFrame(() => {
       el.scrollTo({ top: target });
       const max = el.scrollHeight - el.clientHeight;
       setProgress(max > 0 ? Math.min(1, target / max) : 0);
     });
-  }, [item.key, doc, initialScroll]);
+  }, [item.key, doc, initialScroll, evidenceQuote]);
 
   /**
    * 阅读区开着的时候**锁住下面那一层的滚动**。
@@ -320,6 +322,7 @@ export function ReaderOverlay({
                 item={item}
                 doc={doc}
                 baseDir={baseDir}
+                evidenceQuote={evidenceQuote}
                 highlights={highlights}
                 actions={actions}
                 onSelect={onSelect}
@@ -382,7 +385,7 @@ export function docPath(item) {
 
 // 正文：读模式 / 编辑模式。编辑是整篇 Markdown 改一遍再整体存回去——
 // 块级编辑要维护块 id 映射和并发，复杂度高一个量级，而这里的场景就是「改一遍稿子」。
-function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, actionsExtra, onCaptureExperience, onDiscuss }) {
+function DocView({ source, item, doc, baseDir, evidenceQuote, highlights, actions, onSelect, onSaved, onStatus, onCover, onTypeset, onDelete, onOutline, extra, actionsExtra, onCaptureExperience, onDiscuss }) {
   const [copied, setCopied] = useState(false);
   /**
    * 真实性告警**默认收着**。它是「待确认项」不是「错误」：一篇 2000 字的稿子，
@@ -525,6 +528,7 @@ function DocView({ source, item, doc, baseDir, highlights, actions, onSelect, on
       format={doc.format}
       baseDir={baseDir}
       highlights={highlights}
+      evidenceQuote={evidenceQuote}
       actions={actions}
       onSelect={onSelect}
       onOutline={onOutline}

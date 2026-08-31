@@ -25,19 +25,21 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
   if (error) return <ErrorNote error={error} what="词条" />;
   if (!data) return <Loading rows={6} />;
 
-  const { entry, facts, neighbors, kindLabels, relationLabels } = data;
+  const { entry, definitionHistory = [], facts, neighbors, relationEvidence = [], kindLabels, relationLabels } = data;
   const sorted = [...facts].sort((left, right) => (STATUS_ORDER[left.status] ?? 3) - (STATUS_ORDER[right.status] ?? 3));
   const disputed = sorted.filter((fact) => fact.status === "disputed");
   const active = sorted.filter((fact) => fact.status === "active");
   const superseded = sorted.filter((fact) => fact.status === "superseded");
-  const sources = new Set(facts.map((fact) => fact.sourceId));
+  const sources = new Set([...facts.map((fact) => fact.sourceId), entry.definitionSourceId].filter(Boolean));
+  const currentDefinition = definitionHistory.find((item) => item.isCurrent) || definitionHistory[0];
 
   const factLine = (fact) => (
     <li key={fact.id} className="fact">
       <p className="fact__text">{fact.statement}</p>
-      <button type="button" className="fact__src" onClick={() => onOpenSource?.(fact)} title={fact.sourceBookId ? "打开来源" : "这条事实的来源不是书架上的文档，没有可跳的落点"}
+      {fact.sourceQuote ? <details className="fact__evidence"><summary>查看原文依据</summary><blockquote>{fact.sourceQuote}</blockquote></details> : <small className="fact__legacy">旧数据没有保存原文摘录</small>}
+      <button type="button" className="fact__src" onClick={() => onOpenSource?.(fact)} title={fact.sourceBookId ? "打开并定位到原文" : "这条事实的来源不是书架上的文档，没有可跳的落点"}
         disabled={!fact.sourceBookId}>
-        {fact.sourceTitle || "未记录来源"}
+        {fact.locator || fact.sourceTitle || "未记录来源"}
       </button>
     </li>
   );
@@ -53,11 +55,28 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
         <span className="entry-kind">{kindLabels?.[entry.kind] || entry.kind}</span>
       </header>
       <p className="entry-def">{entry.definition}</p>
+      {currentDefinition ? (
+        <div className="entry-definition-source">
+          {currentDefinition.sourceQuote ? <details><summary>这一定义的原文依据</summary><blockquote>{currentDefinition.sourceQuote}</blockquote></details> : <small>这是迁移前的定义，当时没有保存原文摘录。</small>}
+          <button type="button" className="fact__src" disabled={!currentDefinition.sourceBookId} onClick={() => onOpenSource?.({ ...currentDefinition, sourceId: currentDefinition.sourceId, sourceQuote: currentDefinition.sourceQuote })}>
+            {currentDefinition.locator || currentDefinition.sourceTitle || "未记录来源"}
+          </button>
+        </div>
+      ) : null}
       <p className="entry-meta">
         {active.length} 条事实 · {sources.size} 个来源
         {disputed.length ? <> · <b>{disputed.length} 条有冲突</b></> : null}
         {superseded.length ? ` · ${superseded.length} 条已被推翻` : ""}
       </p>
+
+      {definitionHistory.length > 1 ? (
+        <section className="entry-block">
+          <h3 className="entry-block__head">定义演化</h3>
+          <ol className="definition-history">
+            {definitionHistory.map((revision) => <li key={revision.id}><b>{revision.definition}</b><span>{revision.reason || "由新资料更新"} · {revision.locator || revision.sourceTitle}</span></li>)}
+          </ol>
+        </section>
+      ) : null}
 
       {/* ⚠️ **冲突排在最前面，而且不折叠。** 它是这个词条上最需要你处理的东西；
           藏进「更多」里等于当它不存在，而那正是知识库慢慢烂掉的方式。 */}
@@ -103,6 +122,17 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
             ))}
           </ul>
         ) : <p className="entry-empty">还没有接上任何词条。孤立的词条写作时几乎不会被想起来。</p>}
+        {relationEvidence.length ? (
+          <div className="relation-evidence">
+            {relationEvidence.map((evidence, index) => (
+              <details key={`${evidence.fromId}-${evidence.toId}-${evidence.relationType}-${index}`}>
+                <summary>{evidence.why || "查看关系依据"}</summary>
+                {evidence.sourceQuote ? <blockquote>{evidence.sourceQuote}</blockquote> : null}
+                <button type="button" className="fact__src" disabled={!evidence.sourceBookId} onClick={() => onOpenSource?.(evidence)}>{evidence.locator || evidence.sourceTitle}</button>
+              </details>
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );
