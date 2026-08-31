@@ -140,6 +140,21 @@ export const SETTINGS = [
     placeholder: "留空则跟随上面的模型 ID",
   },
   {
+    // 地址和密钥也能单独换：助手那条通道断配额时，提炼可以整条挪到别处继续跑，
+    // 不必动助手的配置（那样会把正在用的会话也一起搬走）。
+    key: "AGENT_INGEST_BASE_URL",
+    group: "agent",
+    label: "提炼接口地址",
+    placeholder: "留空则跟随上面的接口地址",
+  },
+  {
+    key: "AGENT_INGEST_API_KEY",
+    group: "agent",
+    label: "提炼密钥",
+    secret: true,
+    placeholder: "留空则跟随上面的密钥",
+  },
+  {
     key: "AGENT_LLM_PROTOCOL",
     group: "agent",
     label: "接口协议",

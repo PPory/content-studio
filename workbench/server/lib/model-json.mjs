@@ -18,6 +18,24 @@ export function ingestModelId(env = {}) {
 }
 
 /**
+ * 提炼走哪个端点。**可以整条换掉，不只是换模型名。**
+ *
+ * 助手那条通道的配额会断（实测一整批里七份挂在 `auth_unavailable` 上），
+ * 而提炼是长跑。留一个独立的地址位，就能在不动助手配置的前提下把它整条挪走——
+ * 比如指向本机跑着的 OpenAI 兼容代理，用另一个账号或另一个模型继续跑。
+ *
+ * ⚠️ 只留 base_url + key 这一个口子，不去调 codex 这类 CLI 的子进程：
+ * 那会为**每一份资料**起一个带沙箱和审批的完整 agent，而这里要的只是一次
+ * JSON 补全。工具用错了不会报错，只会慢十倍并且难以排查。
+ */
+export function ingestEndpoint(env = {}) {
+  return {
+    base: (clean(env.AGENT_INGEST_BASE_URL, 2_000) || clean(env.AGENT_LLM_BASE_URL, 2_000)).replace(/\/+$/, ""),
+    key: clean(env.AGENT_INGEST_API_KEY, 4_000) || clean(env.AGENT_LLM_API_KEY, 4_000),
+  };
+}
+
+/**
  * 从模型回复里取出 JSON。
  *
  * 模型经常把 JSON 包在 ```json 围栏里，或者在前面加一句「好的，以下是……」。
@@ -42,8 +60,7 @@ export function extractJson(text) {
 }
 
 export async function completeJson(env, { system, user, model = "", maxTokens = 8_000, signal } = {}) {
-  const base = clean(env.AGENT_LLM_BASE_URL, 2_000).replace(/\/+$/, "");
-  const key = clean(env.AGENT_LLM_API_KEY, 4_000);
+  const { base, key } = ingestEndpoint(env);
   const modelId = clean(model, 240) || ingestModelId(env);
   if (!base || !key || !modelId) throw Object.assign(new Error("模型尚未配置"), { status: 400, hint: "到 设置 → AI 助手 填写模型地址、模型名和密钥。" });
 
