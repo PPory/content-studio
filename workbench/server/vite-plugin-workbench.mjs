@@ -18,7 +18,7 @@ export async function startLocalWorkspaceRuntime(env = {}) {
   const pendingRestore = await applyPendingWorkspaceRestore({ xenhoHome });
   const workspace = await openWorkspace({ xenhoHome });
   try {
-    const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace) });
+    const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace, env) });
     const automaticBackup = ensureAutomaticWorkspaceBackup(workspace).catch((error) => {
       console.warn(`[backup] 自动备份失败：${error instanceof Error ? error.message : String(error)}`);
       return { created: false, error: error instanceof Error ? error.message : String(error) };

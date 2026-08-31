@@ -65,7 +65,7 @@ export function Entries({ onGo }) {
           {/* 孤儿和矛盾是**查询出来的**，不是定期巡检出来的，所以这里可以一直显示真值 */}
           <div className="field-hint">
             {health.orphans ? `${health.orphans} 个词条还没有任何关系` : "没有孤立词条"}
-            {health.contradictions ? ` · ${health.contradictions} 处待判定的矛盾` : ""}
+            {health.contradictions ? ` · ${health.contradictions} 组说法待核对` : ""}
             {health.disputed ? ` · ${health.disputed} 条已标记冲突的事实` : ""}
           </div>
         </div>

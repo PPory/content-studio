@@ -125,6 +125,21 @@ export const SETTINGS = [
     check: "agent",
   },
   {
+    /**
+     * 提炼知识库用的模型。**和助手的模型分开一位**：助手那个是你随手换着用的，
+     * 而提炼要跑上百份资料、产出会成为以后写作的依据——它的质量取舍是另一个决定，
+     * 不该被顺手改掉。留空就跟随 `AGENT_LLM_MODEL`。
+     *
+     * 挑模型看**逐字校验丢弃率**（`scripts/wiki-ingest.mjs` 每轮会报）：
+     * 实测同一份资料上 gpt-5.6-terra 0–21%、claude-sonnet-4-6 64%——
+     * 后者内容并不差，是它倾向改写引文，而改写过的引文没法回原文核对。
+     */
+    key: "AGENT_INGEST_MODEL",
+    group: "agent",
+    label: "知识库提炼模型",
+    placeholder: "留空则跟随上面的模型 ID",
+  },
+  {
     key: "AGENT_LLM_PROTOCOL",
     group: "agent",
     label: "接口协议",
