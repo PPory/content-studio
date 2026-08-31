@@ -406,7 +406,7 @@ try {
     && knowledgeSources.value.totals.documents >= 1);
 
   const lint = await call(base, "/api/workspace/knowledge/lint");
-  check("体检把孤儿和矛盾候选作为查询返回", Array.isArray(lint.value.orphans) && Array.isArray(lint.value.contradictions));
+  check("体检把孤儿和待判定的同题事实作为查询返回", Array.isArray(lint.value.orphans) && Array.isArray(lint.value.pendingPairs));
 
   check("隔离工作区数据库完整性检查通过", workspace.check().ok);
 

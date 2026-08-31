@@ -147,12 +147,12 @@ try {
   const factFromA = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里效果更好。", sourceEntityId: sourceA, actor, now });
   const factFromB = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式在长视频提示里反而更差。", sourceEntityId: sourceB, actor, now });
   check("事实进 FTS，写作时能靠正文召回而不只靠标题", workspace.repository.search("长视频提示").some((row) => row.id === methodEntryId));
-  check("同词条不同来源的两条事实被机械筛成矛盾候选，不靠模型遍历全库", domain.entryContradictionCandidates().length === 1);
+  check("同词条不同来源的两条事实被机械配成待判定候选，不靠模型遍历全库", domain.entryFactPairs().length === 1);
   assert.throws(() => domain.disputeEntryFacts(factFromA, factFromA, { actor, now }), /不能和自己冲突/);
   domain.disputeEntryFacts(factFromA, factFromB, { actor, now });
   check("标记冲突后两条都还在、互相指认，不是二选一覆盖", db.prepare("SELECT COUNT(*) AS count FROM entry_facts WHERE entry_id = ? AND status = 'disputed'").get(methodEntryId).count === 2
     && db.prepare("SELECT conflicts_with AS other FROM entry_facts WHERE id = ?").get(factFromA).other === factFromB
-    && domain.entryContradictionCandidates().length === 0);
+    && domain.entryFactPairs().length === 0);
 
   const supersedingFact = domain.addEntryFact({ entryId: methodEntryId, statement: "四段式已被六段式取代。", sourceEntityId: sourceB, actor, now });
   assert.throws(() => domain.supersedeEntryFact(supersedingFact, { supersededBy: supersedingFact, actor, now }), /不能推翻自己/);

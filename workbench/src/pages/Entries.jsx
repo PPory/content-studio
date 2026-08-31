@@ -62,11 +62,18 @@ export function Entries({ onGo }) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder={`在 ${health.total} 个词条里找`}
           />
-          {/* 孤儿和矛盾是**查询出来的**，不是定期巡检出来的，所以这里可以一直显示真值 */}
+          {/**
+            * 孤儿是**查询出来的**（不是巡检），所以这里一直是真值。
+            *
+            * ⚠️ **已判定的冲突和待判定的候选分开说。** 候选（同词条、不同来源的两条事实）
+            * 绝大多数是互补说法而不是矛盾——把它当成「N 处矛盾」报出来，点开全是噪音，
+            * 第二次用户就不再点了。所以候选只说「组同题事实待判定」，
+            * 而「冲突」这个词只留给真的判过的。
+            */}
           <div className="field-hint">
             {health.orphans ? `${health.orphans} 个词条还没有任何关系` : "没有孤立词条"}
-            {health.contradictions ? ` · ${health.contradictions} 组说法待核对` : ""}
-            {health.disputed ? ` · ${health.disputed} 条已标记冲突的事实` : ""}
+            {health.disputed ? ` · ${health.disputed} 条已判定冲突` : ""}
+            {health.pendingPairs ? ` · ${health.pendingPairs} 组同题事实待判定` : ""}
           </div>
         </div>
       ) : null}

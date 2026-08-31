@@ -425,47 +425,20 @@ export class WorkspaceDomain {
   }
 
   /**
-   * 矛盾候选：同一词条下、来自**不同来源**、都还 active 的事实两两配对。
+   * 待判定的同题事实：同一词条下、来自不同来源、都还 active 的两条。
    *
-   * ⚠️ 这个方法是整个词条层的理由。在 markdown 里「找矛盾」等于让模型读全库然后祈祷，
-   * 库一大就必然漏。这里数据库先把搜索空间缩到几十对，AI 只判断这几十对——
-   * 于是 lint 的成本随「同词条多来源事实」的数量增长，而不是随全库大小增长。
+   * ⚠️ **这不是「矛盾」，别在界面上这么叫。** 它是**候选**——绝大多数是互补或
+   * 同义重述，真矛盾要靠语义判断才认得出来。
+   *
+   * ⚠️ **不要用字符重合度当闸门。** 我试过（阈值 0.22），实测 98 对里最高只有 0.19，
+   * 等于全部拦掉；而且方向是反的——真矛盾（「A 提高记忆」对「A 没有效果」）
+   * **共享的词反而更少**，重合度量的是话题相似度，不是冲突。那道闸门滤掉噪音的同时
+   * 也滤掉了信号。
+   *
+   * 判断留给 lint：把**一个词条的全部事实**一次交给模型看有没有张力——
+   * 单位对了，成本也从 O(事实²) 降到 O(词条)。这里只负责把范围机械缩到
+   * 「同词条 + 不同来源」，那已经把全库比对变成了几十对。
    */
-  entryContradictionCandidates({ limit = 50, minOverlap = 0.22 } = {}) {
-    /**
-     * ⚠️ **只按「同词条 + 不同来源」配对是不够的。**
-     *
-     * 实测 26 条事实就配出 19 对，而其中没有一对是真冲突——它们只是同一个词条下
-     * 互相补充的说法（「储存强度指信息能保留多久」和「储存强度的影响因素是投入量」）。
-     * 这个数一旦端到界面上，用户看到的是「19 处矛盾」，而点开全是噪音；
-     * 更糟的是它按 O(事实²) 增长，几百条事实之后这份清单就彻底没法看了。
-     *
-     * 所以再机械收一道：两条陈述得**在说同一件具体的事**才可能互相矛盾。
-     * 用字符二元组的 Jaccard 重合度判断——中文不需要分词器，而互补的说法只共享
-     * 词条名本身（重合度很低），针对同一论断的正反两说才会高。
-     *
-     * 这是**拿召回换精确**。漏掉的那些留给 lint 的语义判断，而这份清单必须
-     * 短到值得一条条看——一份没人看的清单等于没有。
-     */
-    const bigrams = (value) => {
-      const text = String(value || "").replace(/\s+/g, "");
-      const set = new Set();
-      for (let index = 0; index + 1 < text.length; index += 1) set.add(text.slice(index, index + 2));
-      return set;
-    };
-    const overlap = (left, right) => {
-      const a = bigrams(left);
-      const b = bigrams(right);
-      if (!a.size || !b.size) return 0;
-      let shared = 0;
-      for (const gram of a) if (b.has(gram)) shared += 1;
-      return shared / (a.size + b.size - shared);
-    };
-    const pairs = this.entryFactPairs({ limit: Math.max(limit * 20, 400) });
-    return pairs.filter((pair) => overlap(pair.leftStatement, pair.rightStatement) >= minOverlap).slice(0, limit);
-  }
-
-  /** 同词条、不同来源、都还 active 的事实两两配对。矛盾判断在上面那层再收一道。 */
   entryFactPairs({ limit = 400 } = {}) {
     return this.db.prepare(`SELECT a.entry_id AS entryId, e.name AS entryName,
         a.id AS leftFactId, a.statement AS leftStatement, a.source_entity_id AS leftSourceId, a.asserted_at AS leftAssertedAt,

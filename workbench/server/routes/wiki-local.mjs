@@ -82,8 +82,11 @@ export const wikiRoutes = [
       health: {
         total: entries.length,
         orphans: workspace.domain.entryOrphans({ limit: 500 }).length,
-        contradictions: workspace.domain.entryContradictionCandidates({ limit: 200 }).length,
+        // ⚠️ **`disputed` 是已经判定过的冲突，`pendingPairs` 只是待判定的候选。**
+        // 两者绝不能合成一个数报出去：候选里绝大多数是互补说法，把它当成
+        // 「N 处矛盾」端到界面上，点开全是噪音，第二次用户就不再点了。
         disputed: entries.reduce((sum, entry) => sum + entry.disputedFacts, 0),
+        pendingPairs: workspace.domain.entryFactPairs({ limit: 2_000 }).length,
       },
     });
   }) },
@@ -133,7 +136,7 @@ export const wikiRoutes = [
     json(res, {
       ok: true,
       orphans: workspace.domain.entryOrphans({ limit: 100 }),
-      contradictions: workspace.domain.entryContradictionCandidates({ limit: 50 }),
+      pendingPairs: workspace.domain.entryFactPairs({ limit: 200 }),
     });
   }) },
 ];
