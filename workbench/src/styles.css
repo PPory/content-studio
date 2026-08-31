@@ -6870,6 +6870,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-import__check { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .src-notice { margin: -8px 0 16px; color: var(--ok); font-size: var(--fs-sm); }
 .src-table--select { --src-cols: 30px minmax(0, 1fr) 68px 92px 132px 88px; }
+.src-table--select .src-row--head > :nth-child(2) { text-align: left; }
 .src-row > span:first-child input { width: 15px; height: 15px; accent-color: var(--accent); }
 .src-doc-action { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .src-doc-action .link-btn { flex: none; font-size: var(--fs-2xs); }

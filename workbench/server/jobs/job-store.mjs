@@ -56,6 +56,7 @@ export class JobStore {
       INSERT INTO local_jobs(id, idempotency_key, kind, payload_json, max_attempts, due_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, key, String(kind).trim(), json(payload), attempts, isoNow(dueAt || now), stamp, stamp);
+    queueMicrotask(() => this.onEnqueue?.());
     return { created: true, job: this.get(id) };
   }
 

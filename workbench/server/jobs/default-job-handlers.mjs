@@ -36,9 +36,9 @@ async function ingestOne(workspace, env, sourceId) {
   }
 }
 
-async function lintOne(workspace, env, job) {
-  const entryId = String(job?.payload?.entryId || "");
-  const mode = String(job?.payload?.mode || "");
+async function lintOne(workspace, env, payload) {
+  const entryId = String(payload?.entryId || "");
+  const mode = String(payload?.mode || "");
   if (!entryId || !["tension", "orphan"].includes(mode)) throw new Error("wiki.lint 需要 entryId 和合法 mode");
   const judged = mode === "tension"
     ? await judgeTension(workspace, env, { entryId })
@@ -53,16 +53,39 @@ async function lintOne(workspace, env, job) {
   });
   return { entryId, mode, candidateId: candidate.id, findings: findings.length };
 }
+/**
+ * 旧版本曾把任务参数读错，任务耗尽重试后 `source_ingests` 仍会停在 queued。
+ * 启动时只恢复「没有存活任务」的排队记录，已有 queued/retry/running 任务不重复创建。
+ */
+export function recoverQueuedWikiIngests(workspace, { now = new Date() } = {}) {
+  const queued = workspace.db.prepare("SELECT source_entity_id AS sourceId FROM source_ingests WHERE status = 'queued'").all();
+  let recovered = 0;
+  for (const item of queued) {
+    const live = workspace.db.prepare(`SELECT 1 FROM local_jobs
+      WHERE deleted_at IS NULL AND kind = 'wiki.ingest' AND status IN ('queued', 'retry', 'running')
+        AND json_extract(payload_json, '$.sourceId') = ? LIMIT 1`).get(item.sourceId);
+    if (live) continue;
+    const result = workspace.jobs.enqueue({
+      idempotencyKey: `wiki.ingest:recovery:${item.sourceId}:${new Date(now).toISOString()}`,
+      kind: "wiki.ingest",
+      payload: { sourceId: item.sourceId },
+      dueAt: now,
+      now,
+    });
+    if (result.created) recovered += 1;
+  }
+  return recovered;
+}
 export function createDefaultJobHandlers(workspace, env = {}) {
   return {
     /** 提炼一份来源。payload.sourceId 指定读哪一份。 */
-    "wiki.ingest": async (job) => {
-      const sourceId = String(job?.payload?.sourceId || "");
+    "wiki.ingest": async (payload) => {
+      const sourceId = String(payload?.sourceId || "");
       if (!sourceId) throw new Error("wiki.ingest 需要 sourceId");
       return ingestOne(workspace, env, sourceId);
     },
 
-    "wiki.lint": async (job) => lintOne(workspace, env, job),
+    "wiki.lint": async (payload) => lintOne(workspace, env, payload),
 
     "pipeline.dispatch": async () => {
       const captures = workspace.db.prepare(`SELECT c.id FROM captures c

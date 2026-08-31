@@ -22,6 +22,8 @@ export class WorkspaceJobRuntime {
     this.currentTick = null;
     this.lastError = null;
     this.lastResult = null;
+    this.previousOnEnqueue = null;
+    this.enqueueWake = null;
   }
 
   async tick() {
@@ -49,6 +51,12 @@ export class WorkspaceJobRuntime {
 
   start() {
     if (this.timer) return this;
+    this.previousOnEnqueue = this.workspace.jobs.onEnqueue || null;
+    this.enqueueWake = () => {
+      this.previousOnEnqueue?.();
+      this.tick().catch(() => {});
+    };
+    this.workspace.jobs.onEnqueue = this.enqueueWake;
     registerDefaultSchedules(this.workspace.db, { schedules: this.schedules, now: this.now() });
     this.ready = this.tick();
     this.ready.catch(() => {});
@@ -60,6 +68,9 @@ export class WorkspaceJobRuntime {
   async stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.workspace.jobs.onEnqueue === this.enqueueWake) this.workspace.jobs.onEnqueue = this.previousOnEnqueue;
+    this.previousOnEnqueue = null;
+    this.enqueueWake = null;
     if (this.currentTick) await this.currentTick.catch(() => {});
   }
 }

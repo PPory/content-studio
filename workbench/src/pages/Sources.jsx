@@ -9,7 +9,7 @@
 // 它区分「读过并且沉淀下来了」和「导进来放着」，而这两者在任何文件列表里
 // 都长得一模一样。
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, SearchBox } from "../components/ui.jsx";
 import { IconChevronRight, IconSearch } from "../components/icons.jsx";
@@ -55,6 +55,23 @@ function matchesFilter(source, filter) {
   return true;
 }
 
+function GroupSelectAll({ kind, items, selected, onToggle }) {
+  const input = useRef(null);
+  const selectedCount = items.reduce((count, item) => count + Number(selected.has(item.id)), 0);
+  const checked = items.length > 0 && selectedCount === items.length;
+  useEffect(() => {
+    if (input.current) input.current.indeterminate = selectedCount > 0 && !checked;
+  }, [checked, selectedCount]);
+  return (
+    <input
+      ref={input}
+      type="checkbox"
+      aria-label={`全选${kind}`}
+      checked={checked}
+      onChange={() => onToggle(items, !checked)}
+    />
+  );
+}
 export function Sources({ onOpen }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -70,8 +87,27 @@ export function Sources({ onOpen }) {
     file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true,
   });
 
-  const load = useCallback(() => api.knowledgeSources().then(setData).catch(setError), []);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const result = await api.knowledgeSources();
+      setData(result);
+      if (!silent) setError(null);
+      return result;
+    } catch (failure) {
+      if (!silent) setError(failure);
+      return null;
+    }
+  }, []);
   useEffect(() => { load(); }, [load]);
+
+  const loadDocuments = useCallback(async (sourceId) => {
+    try {
+      const result = await api.knowledgeSourceDocs(sourceId);
+      setDocs((current) => ({ ...current, [sourceId]: { items: result.documents, error: null } }));
+    } catch (failure) {
+      setDocs((current) => ({ ...current, [sourceId]: { items: [], error: failure } }));
+    }
+  }, []);
 
   // 章节按需拉。一次把 1389 节全取回来，为的只是「万一你想展开某一本」。
   const toggle = useCallback((source) => {
@@ -82,9 +118,7 @@ export function Sources({ onOpen }) {
         next.add(source.id);
         setDocs((loaded) => {
           if (!loaded[source.id]) {
-            api.knowledgeSourceDocs(source.id)
-              .then((result) => setDocs((cur) => ({ ...cur, [source.id]: { items: result.documents, error: null } })))
-              .catch((failure) => setDocs((cur) => ({ ...cur, [source.id]: { items: [], error: failure } })));
+            loadDocuments(source.id);
             return { ...loaded, [source.id]: { items: null, error: null } };
           }
           return loaded;
@@ -92,7 +126,18 @@ export function Sources({ onOpen }) {
       }
       return next;
     });
-  }, []);
+  }, [loadDocuments]);
+
+  const hasQueued = (data?.sources || []).some((source) => source.queued > 0);
+  useEffect(() => {
+    if (!hasQueued) return undefined;
+    const poll = () => {
+      load({ silent: true });
+      for (const sourceId of open) loadDocuments(sourceId);
+    };
+    const timer = window.setInterval(poll, 2_000);
+    return () => window.clearInterval(timer);
+  }, [hasQueued, load, loadDocuments, open]);
 
   const groups = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -111,6 +156,14 @@ export function Sources({ onOpen }) {
     return next;
   });
 
+  const toggleGroup = (items, checked) => setSelected((current) => {
+    const next = new Set(current);
+    for (const item of items) {
+      if (checked) next.add(item.id); else next.delete(item.id);
+    }
+    return next;
+  });
+
   const queue = async ({ bookIds = [], documentIds = [], retry = false, key = "batch" }) => {
     setBusy(key); setNotice("");
     try {
@@ -118,7 +171,9 @@ export function Sources({ onOpen }) {
       setNotice(result.queued
         ? `已排队 ${result.queued} 节（约 ${number(result.chars)} 字）${result.capped ? "；单批最多 20 节，其余请下一批继续" : ""}`
         : `没有重复排队；已跳过 ${result.skipped} 节`);
-      setSelected(new Set()); setDocs({}); await load();
+      setSelected(new Set());
+      await load();
+      await Promise.all([...open].map((sourceId) => loadDocuments(sourceId)));
     } catch (failure) { setError(failure); }
     finally { setBusy(""); }
   };
@@ -203,7 +258,7 @@ export function Sources({ onOpen }) {
             {/* ⚠️ 表头不画底色也不加边框。设计系统那条「不要框里画框」——
                 外壳已经是白框，这里再套一层盒子，屏幕上最响的就成了那圈线。 */}
             <div className="src-row src-row--head" role="row">
-              <span role="columnheader" aria-label="选择" />
+              <span role="columnheader"><GroupSelectAll kind={group.kind} items={group.items} selected={selected} onToggle={toggleGroup} /></span>
               <span role="columnheader">名称</span>
               <span role="columnheader">节数</span>
               <span role="columnheader">字数</span>

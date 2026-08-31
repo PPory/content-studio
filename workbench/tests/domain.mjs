@@ -6,6 +6,7 @@ import { LocalJobRunner } from "../server/jobs/local-job-runner.mjs";
 import { startWorkspaceRuntime } from "../server/jobs/workspace-runtime.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { startLocalWorkspaceRuntime } from "../server/vite-plugin-workbench.mjs";
+import { createBookRecord } from "../server/routes/books-local.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-domain-"));
 let workspace;
@@ -359,11 +360,39 @@ try {
   await runtime.stop();
   runtime = null;
 
-  const productionRuntime = await startLocalWorkspaceRuntime({ XENHO_HOME: path.join(root, "ProductionRuntime") });
+  const productionHome = path.join(root, "ProductionRuntime");
+  const staleWorkspace = await openWorkspace({ xenhoHome: productionHome, now });
+  const staleBook = await createBookRecord(staleWorkspace, {
+    title: "旧版卡住的提炼", sourceKind: "文档", chapters: [{ title: "短资料", text: "不足两百字的隔离测试资料。" }],
+  });
+  const staleSourceId = staleWorkspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ?").get(staleBook.id).id;
+  staleWorkspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(staleSourceId, now.toISOString());
+  const staleJob = staleWorkspace.jobs.enqueue({ idempotencyKey: "wiki.ingest:stale", kind: "wiki.ingest", payload: { sourceId: staleSourceId }, now }).job;
+  const staleClaim = staleWorkspace.jobs.claim({ leaseOwner: "old-buggy-runner", now });
+  staleWorkspace.jobs.fail(staleJob.id, { leaseOwner: "old-buggy-runner", leaseToken: staleClaim.leaseToken, error: "旧版参数读取失败", retry: false, now });
+  staleWorkspace.close();
+
+  const productionRuntime = await startLocalWorkspaceRuntime({ XENHO_HOME: productionHome });
   const productionReady = await productionRuntime.runtime.ready;
+  const startupScans = productionReady.results.filter((job) => job.result?.mode === "candidate-input-scan");
   check("真实 Vite 启动入口会打开隔离工作区并执行默认候选扫描", productionReady.startupJobs.length === 2
-    && productionReady.results.every((job) => job.status === "done" && job.result?.mode === "candidate-input-scan"));
+    && startupScans.length === 2 && startupScans.every((job) => job.status === "done"));
+  check("旧版耗尽重试后卡住的提炼会在启动时恢复并读到正确来源", productionRuntime.recoveredWikiJobs === 1
+    && productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(staleSourceId).status === "empty");
+
+  const liveBook = await createBookRecord(productionRuntime.workspace, {
+    title: "运行中提炼唤醒", sourceKind: "文档", chapters: [{ title: "立即处理", text: "同样不足两百字，不调用模型。" }],
+  });
+  const liveSourceId = productionRuntime.workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ?").get(liveBook.id).id;
+  productionRuntime.workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(liveSourceId, now.toISOString());
+  productionRuntime.workspace.jobs.enqueue({ idempotencyKey: "wiki.ingest:live-wake", kind: "wiki.ingest", payload: { sourceId: liveSourceId }, now: new Date() });
+  const wakeDeadline = Date.now() + 2_000;
+  while (Date.now() < wakeDeadline && productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(liveSourceId).status === "queued") {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  check("运行中新增的提炼会立即唤醒任务处理器", productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(liveSourceId).status === "empty");
   await productionRuntime.runtime.stop();
+  await productionRuntime.automaticBackup;
   productionRuntime.workspace.close();
   check("数据库完整性和外键仍通过", workspace.check().ok);
   console.log("\n ✓ 本地域规则、确认边界、发布追溯、复盘事务与持久任务全部通过");

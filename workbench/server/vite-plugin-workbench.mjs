@@ -6,7 +6,7 @@
 
 import { createApi } from "./api.mjs";
 import { applyPendingWorkspaceRestore, ensureAutomaticWorkspaceBackup } from "./backup/workspace-backup.mjs";
-import { createDefaultJobHandlers } from "./jobs/default-job-handlers.mjs";
+import { createDefaultJobHandlers, recoverQueuedWikiIngests } from "./jobs/default-job-handlers.mjs";
 import { startWorkspaceRuntime } from "./jobs/workspace-runtime.mjs";
 import { installAutoExit } from "./lib/auto-exit.mjs";
 import { serveTypeset } from "./routes/tools.mjs";
@@ -18,12 +18,13 @@ export async function startLocalWorkspaceRuntime(env = {}) {
   const pendingRestore = await applyPendingWorkspaceRestore({ xenhoHome });
   const workspace = await openWorkspace({ xenhoHome });
   try {
+    const recoveredWikiJobs = recoverQueuedWikiIngests(workspace);
     const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace, env) });
     const automaticBackup = ensureAutomaticWorkspaceBackup(workspace).catch((error) => {
       console.warn(`[backup] 自动备份失败：${error instanceof Error ? error.message : String(error)}`);
       return { created: false, error: error instanceof Error ? error.message : String(error) };
     });
-    return { workspace, runtime, automaticBackup, pendingRestore };
+    return { workspace, runtime, automaticBackup, pendingRestore, recoveredWikiJobs };
   } catch (error) {
     workspace.close();
     throw error;

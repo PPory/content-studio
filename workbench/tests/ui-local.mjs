@@ -355,6 +355,28 @@ try {
   await page.keyboard.press("Escape");
 
   await page.goto(`http://127.0.0.1:${PORT}/#/entries`);
+  await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
+  const sourceName = page.getByRole("button", { name: "UI 证据来源", exact: true });
+  await sourceName.waitFor();
+  const sourceHeaderBox = await page.getByRole("columnheader", { name: "名称" }).boundingBox();
+  const sourceNameBox = await sourceName.boundingBox();
+  check("来源表头名称与内容名称处在同一列", sourceHeaderBox && sourceNameBox && Math.abs(sourceHeaderBox.x - sourceNameBox.x) < 2);
+
+  const selectAllArticles = page.getByRole("checkbox", { name: "全选文章" });
+  await selectAllArticles.click();
+  check("来源表头可全选当前分组", await selectAllArticles.isChecked()
+    && (await page.getByText(/已选 1 份/).count()) === 1);
+  await selectAllArticles.click();
+
+  await sourceName.click();
+  await page.getByRole("button", { name: "证据章节", exact: true }).click();
+  const returnToSources = page.getByRole("button", { name: "返回来源" });
+  await returnToSources.waitFor();
+  await returnToSources.click();
+  await page.waitForURL((url) => url.hash === "#/sources");
+  check("从来源打开正文后会返回来源页", page.url().endsWith("#/sources"));
+
+  await page.goto("http://127.0.0.1:" + PORT + "/#/entries");
   await page.getByRole("button", { name: /来源精准跳转/ }).click();
   await page.getByRole("button", { name: "UI 证据来源 · 证据章节" }).click();
   const evidenceHit = page.locator(".evidence-hit");

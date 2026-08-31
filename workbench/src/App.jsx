@@ -774,7 +774,11 @@ export function App() {
               ) : route.view === "sources" ? (
                 // 资料是**表格**不是封面墙：课程章节和文档导出没有封面，
                 // 摆成墙就是一屏「加封面」占位框。阅读仍然走书架那个阅读器。
-                <Sources onOpen={(source, doc) => { setOpenTarget("shelf", `bookdoc:${doc.id}`); go("shelf", `book:${source.id}`); }} />
+                <Sources onOpen={(source, doc) => {
+                  setOpenTarget("shelf", `bookdoc:${doc.id}`);
+                  setOpenTarget("shelf-return", "返回来源|#/sources");
+                  go("shelf", `book:${source.id}`);
+                }} />
               ) : route.view === "entries" ? (
                 // `#/entries/<id>` 是同一条路由的第二段，不另开一个 view——
                 // 词条详情是列表的下一层，不是并列的另一页。
