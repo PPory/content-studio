@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../lib/api.js";
-import { documentVersion } from "../lib/document-version.js";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import { AssistantOrb } from "./assistant/AssistantOrb.jsx";
 import { ProjectContextPanel } from "./ProjectContextPanel.jsx";
-import { ProjectReportReview } from "./ProjectReportReview.jsx";
-import { expertKindDisplayName } from "../lib/expert-kinds.js";
-import { IconChevronDown, IconFileText, IconLayoutSidebarRight, IconRefresh, IconShieldCheck, IconX } from "./icons.jsx";
+import { IconChevronDown, IconFileText, IconLayoutSidebarRight, IconX } from "./icons.jsx";
 
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, onReveal, handoffRequest = null, reviewingCandidate = false, children }) {
-  const [runs, setRuns] = useState([]);
-  const [reportError, setReportError] = useState(null);
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, children }) {
   const [contextOpen, setContextOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [reviewRun, setReviewRun] = useState(null);
-  const [dismissedRuns, setDismissedRuns] = useState(() => new Set());
   const railRef = useRef(null);
   const contextTriggerRef = useRef(null);
 
@@ -27,28 +19,6 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   }, []);
   useAssistantSummonTarget("project", focusAssistant);
 
-  const loadRuns = async () => {
-    try { setRuns((await api.expertRuns(scopeId)).runs || []); setReportError(null); }
-    catch (error) { setReportError(error); }
-  };
-  useEffect(() => { loadRuns(); }, [scopeId]);
-  useEffect(() => {
-    if (!runs.some((item) => ["queued", "running"].includes(item.status))) return undefined;
-    const timer = setInterval(loadRuns, 1_200);
-    return () => clearInterval(timer);
-  }, [runs, scopeId]);
-
-  const startRun = async (kind, force = false) => {
-    setReportError(null);
-    try {
-      const result = await api.startExpertRun({ kind, scopeId, document, documentVersion: documentVersion(document), force });
-      setRuns((current) => [result.run, ...current.filter((item) => item.id !== result.run.id)]);
-    } catch (error) { setReportError(error); }
-  };
-  const retry = async (run) => {
-    setReviewRun(null);
-    await startRun(run.kind, true);
-  };
   const closeContext = useCallback((restoreFocus = false) => {
     setContextOpen(false);
     if (restoreFocus) requestAnimationFrame(() => contextTriggerRef.current?.focus({ preventScroll: true }));
@@ -82,22 +52,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
     };
   }, [contextOpen, materialsOpen, closeContext]);
   const visibleMaterials = useMemo(() => materials.slice(0, 10), [materials]);
-  /**
-   * 头上那颗检查状态芯片。
-   *
-   * ⚠️ **它只在有话说的时候出现。** 检查是按需跑一次的事，一年跑不了几回；
-   * 常驻一排「按需运行」的按钮等于把最低频的动作摆在最显眼的位置——
-   * 那正是「项目检查」原来占着上下文面板半屏的问题。
-   * 现在起任务走输入框的 `@`（和其他专家同一个入口），这里只负责回答两件事：
-   * 「还在跑吗」和「报告好了，去看」。看过之后它自己消失。
-   */
-  const activeRun = useMemo(() => {
-    const running = runs.find((item) => ["queued", "running"].includes(item.status));
-    if (running) return running;
-    return runs.find((item) => item.report && !dismissedRuns.has(item.id)) || null;
-  }, [runs, dismissedRuns]);
-  const dismissRun = (id) => setDismissedRuns((current) => new Set(current).add(id));
-  const reviewOpen = Boolean(reviewRun || reviewingCandidate);
+  const reviewOpen = Boolean(reviewingCandidate);
 
   const context = <div className="project-assistant__context-anchor">
     <button
@@ -121,17 +76,6 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       <IconFileText aria-hidden="true" />
       <span><b>{document?.title?.trim() || "未命名稿件"}</b></span><IconChevronDown aria-hidden="true" />
     </button>
-    {/* ⚠️ **芯片上只写状态，检查名字放 title。** 这一行要和标题芯片并排塞进 336px 的栏，
-        写全名会把整行挤到换行——一变两行，输入框跟着往上顶。
-        名字反正在报告里第一眼就看见。 */}
-    {activeRun ? activeRun.report
-      ? <button className="project-assistant__run-chip" type="button" data-state="ready" title={`查看${expertKindDisplayName(activeRun.kind)}报告`} onClick={() => { setReviewRun(activeRun); dismissRun(activeRun.id); }}>
-          <IconShieldCheck aria-hidden="true" /><span>报告就绪</span>
-        </button>
-      : <span className="project-assistant__run-chip" data-state="running" role="status" title={`${expertKindDisplayName(activeRun.kind)}正在运行`}>
-          <IconRefresh className="spinning" aria-hidden="true" /><span>检查中{activeRun.percent ? ` ${activeRun.percent}%` : ""}</span>
-        </span>
-      : null}
     <ProjectContextPanel
       open={contextOpen}
       openedByKeyboard={openedByKeyboard}
@@ -145,7 +89,6 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       <header><strong>项目素材</strong><button type="button" onClick={() => { setMaterialsOpen(false); contextTriggerRef.current?.focus(); }} aria-label="关闭项目素材"><IconX aria-hidden="true" /></button></header>
       <div>{children}</div>
     </section> : null}
-    {reportError ? <div className="assistant-error project-assistant__report-error" role="alert"><span><b>{reportError.message}</b>{reportError.hint ? <small>{reportError.hint}</small> : null}</span></div> : null}
   </div>;
 
   return <>
@@ -180,7 +123,6 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
         profile={profile}
         projectContext={context}
         handoffRequest={handoffRequest}
-        onExpertRun={startRun}
         onCollapse={() => { setContextOpen(false); setMaterialsOpen(false); setCollapsed(true); }}
       />}
     </aside>
@@ -189,21 +131,5 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       * 挂在里面等于画了个看不见的东西——而且这类错不报错，只是「按钮没出现」。
       */}
     {collapsed && !reviewOpen ? <AssistantOrb label="聊聊这篇稿件" onOpen={focusAssistant} /> : null}
-    {reviewRun ? <ProjectReportReview
-      run={reviewRun}
-      document={document}
-      onClose={() => setReviewRun(null)}
-      onRetry={retry}
-      onGenerateCandidate={(finding, block) => {
-        target.actions.revise({ mode: "rewrite", label: "按报告生成候选", instruction: finding.direction || finding.suggestion || finding.risk || finding.gap || findingTitle(finding), selection: { from: block.from, to: block.to, text: document.body.slice(block.from, block.to), targetKind: block.text.length > 800 ? "section" : "paragraph" } });
-        setReviewRun(null);
-      }}
-      onReveal={(block) => { onReveal?.({ text: block.text.replace(/^#{1,6}\s*/, ""), nonce: Date.now() }); setReviewRun(null); }}
-      onVerify={() => { window.location.hash = "#/materials/需核验"; }}
-    /> : null}
   </>;
-}
-
-function findingTitle(item) {
-  return item.finding || item.quote || item.need || "报告发现";
 }

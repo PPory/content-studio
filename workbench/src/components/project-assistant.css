@@ -538,6 +538,36 @@
 .assistant-working .t-think { min-width: 0; max-width: 100%; }
 .assistant-working .t-think-sizer { overflow: hidden; text-overflow: ellipsis; }
 
+/* 专家协作不是模型的“思考过程”，而是可以核对的真实后台任务。
+   用紧凑台账而不是聊天气泡：名字、状态和完成数始终在同一位置。 */
+.assistant-experts {
+  width: 100%; max-width: var(--asst-measure); margin: var(--sp-4) auto;
+  padding: var(--sp-4) var(--sp-5);
+  border-block: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+.assistant-message > .assistant-experts { margin: 0 0 var(--sp-6); }
+.assistant-experts > header,
+.assistant-experts > header > span { display: flex; align-items: center; }
+.assistant-experts > header { justify-content: space-between; gap: var(--sp-4); }
+.assistant-experts > header > span { gap: var(--sp-2); }
+.assistant-experts > header svg { width: 14px; height: 14px; color: var(--text-2); }
+.assistant-experts > header b { font-size: var(--fs-sm); font-weight: 650; }
+.assistant-experts > header small { color: var(--text-3); font-size: var(--fs-2xs); }
+.assistant-experts ul { display: grid; gap: var(--sp-2); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
+.assistant-experts li {
+  display: grid; grid-template-columns: 16px minmax(72px, auto) minmax(0, 1fr);
+  align-items: center; gap: var(--sp-2);
+}
+.assistant-experts li > span { display: grid; place-items: center; color: var(--text-3); }
+.assistant-experts li > span svg { width: 13px; height: 13px; }
+.assistant-experts li[data-status="done"] > span { color: var(--ok); }
+.assistant-experts li[data-status="failed"] > span,
+.assistant-experts li[data-status="cancelled"] > span { color: var(--st-urgent-ink); }
+.assistant-experts li b { overflow: hidden; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-experts li small { overflow: hidden; color: var(--text-3); font-size: var(--fs-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.assistant-experts > p { margin: var(--sp-3) 0 0; color: var(--text-3); font-size: var(--fs-2xs); }
+
 /* --------------------------------------------------------------------------
    思考态：微光 + 换行（transitions.dev / Thinking states）
    --------------------------------------------------------------------------
@@ -1009,10 +1039,7 @@
      而 `100vw - 32px` 是给窄窗口的兜底——**不要写 `min(…, 100%)`**，
      `100%` 在这里量的是那颗 28px 的圆按钮。 */
   width: min(280px, calc(100vw - var(--sp-10)));
-  /* ⚠️ **480 不是随手写的：专家那一级有两组共七行 + 两个组名 + 搜索框 ≈ 460px。**
-     上一版 320 把第二组「跑一次检查，出报告」压到可视区外——而那一组正是
-     这个菜单里唯一有后果的东西，看不见等于没有。文章那一级仍然会滚，那没关系：
-     长列表本来就该滚，而它每一行的后果都一样。 */
+  /* 专家、Skill 和文章都共用这个浮层；文章可能很多，所以保留统一的滚动上限。 */
   max-height: min(480px, 62vh); overflow-y: auto; overscroll-behavior: contain;
   padding: var(--sp-2);
   border: 1px solid var(--border); border-radius: var(--r-md);
@@ -1634,27 +1661,6 @@
 .project-assistant__context-trigger > span { min-width: 0; overflow: hidden; }
 .project-assistant__context-trigger b { display: block; overflow: hidden; font-size: var(--fs-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .project-assistant__context-trigger svg { width: 12px; height: 12px; flex: none; color: var(--text-3); }
-/* 检查状态芯片：**只在跑着或报告刚好了的时候出现**，看过就没了。
-   它和「当前稿件」并排在同一条 header 上，所以密度必须一致——同样 24px、
-   同样 --fs-2xs，不能因为它偶尔出现就长得比常驻的那颗还重。 */
-.project-assistant__run-chip {
-  flex: none; display: inline-flex; align-items: center; gap: var(--sp-2); height: 24px;
-  border: 0; border-radius: var(--r-ctl); padding: 0 var(--sp-3);
-  background: var(--surface-2); color: var(--text-2);
-  font: inherit; font-size: var(--fs-2xs); white-space: nowrap;
-}
-.project-assistant__run-chip svg { width: 12px; height: 12px; flex: none; color: var(--text-3); }
-.project-assistant__run-chip[data-state="ready"] { color: var(--text-1); cursor: pointer; }
-.project-assistant__run-chip[data-state="ready"]:hover { background: var(--border); }
-.project-assistant__run-chip[data-state="ready"] svg { color: var(--ok); }
-
-/* 报告失败提示挂在同一个锚点里。它现在住在 header 这条 44px 的行里，
-   必须浮出来——否则一条两行的报错会把整条 header 撑开，把下面的对话往下顶。 */
-.project-assistant__report-error {
-  position: absolute; z-index: 8; left: var(--sp-3); right: var(--sp-3); bottom: calc(100% + var(--sp-2));
-  margin: 0; border-radius: var(--r-md); box-shadow: var(--shadow-lg);
-}
-
 .project-context-panel,
 .project-materials-popover,
 .project-assistant-history {

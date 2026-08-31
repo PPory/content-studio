@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { RunningMark } from "./loaders.jsx";
 import { IconArrowsExchange, IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
+import { ExpertActivity } from "./ExpertActivity.jsx";
 
 const REFERENCE_ICONS = { expert: IconUserStar, skill: IconSparkles };
 
@@ -35,6 +36,7 @@ export const AssistantMessage = memo(function AssistantMessage({ item, attachmen
   const sentReferences = assistant ? [] : (item.references || []);
   if (assistant && !item.text && item.pending) return null;
   return <article className={`assistant-message assistant-message--${assistant ? "assistant" : "user"}`}>
+    {assistant ? <ExpertActivity items={item.expertActivity || []} /> : null}
     {/* ⚠️ **自己那条不写「你」。** 靠右 + 深色气泡已经把「谁说的」说完了，
         再挂一行标签是同一件事说两遍；而助手那条要标模型和耗时，标签必须留。 */}
     {/**

@@ -29,28 +29,6 @@ const EXPERTS = [
 
 const PROJECT_EXPERTS = new Set(["writing-coach", ...EXPERT_KINDS.map((item) => item.expertId)]);
 
-/**
- * 「跑一次检查，出一份报告」——和「选一个专家」**不是同一件事，所以不共用同一行**。
- *
- * ⚠️ **这条来回过三版，第三版的教训写在这儿。**
- *  1. 它曾经是上下文面板里一排常驻按钮：那块面板回答的是「这一轮 AI 读到什么」，
- *     而检查是「去做一件新的事」，结果一年跑不了几回的动作占着最显眼的半屏。
- *  2. 于是并进专家列表，靠一行小灰字「跑一次出报告」区分。
- *     **在 336px 的侧栏里那行字会被 `ellipsis` 截掉**，而它是整行唯一说明后果的地方——
- *     用户点「审稿顾问」以为是加个视角，屏幕上直接跳出「检查中 34%」。
- *  3. 现在：**单独一组，组名就是后果**。上面那组选中 = 这轮带上它的视角，
- *     下面这组选中 = 现在就跑。两种后果两组标题，不靠读小字、不靠记。
- *
- * 名字用 `displayName`（素材查缺 / Xenho 品控九问 / 事实核查）而不是专家名：
- * 这一组列的是**要做的事**，不是要找的人。
- */
-const EXPERT_RUNS = EXPERT_KINDS.map((item) => ({
-  id: item.id,
-  label: item.displayName,
-  // 事实核查那一条的任务名和专家名一模一样，「事实核查 · 由事实核查执行」是句废话。
-  hint: item.displayName === item.expertName ? "跑完出一份可逐条处理的报告" : `由${item.expertName}执行`,
-}));
-
 const ASSISTANT_MODEL_STORAGE_KEY = "xenho-assistant-model";
 
 function rejectedActionIds(scopeId, conversationId) {
@@ -114,7 +92,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onExpertRun = null, onCollapse }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -137,6 +115,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState("");
+  const [expertActivity, setExpertActivity] = useState([]);
   const [turnStartedAt, setTurnStartedAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -263,10 +242,12 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     if (running) {
       setBusy(true);
       setActivity(conversation.activeTurn.stage || "正在处理");
+      setExpertActivity(conversation.activeTurn.experts || []);
       setTurnStartedAt(conversation.activeTurn.startedAt || "");
     } else if (!activeRequestRef.current) {
       setBusy(false);
       setActivity("");
+      setExpertActivity([]);
       setTurnStartedAt("");
     }
     if (conversation?.lastTurn?.status === "interrupted") {
@@ -413,7 +394,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     activeRequestRef.current = requestId;
     // 引用**发出去就清空**：它说的是「这一句带了什么」，不是会话级设置。
     // 留着的话下一句会莫名其妙再带一遍同样的全文，而屏幕上那行芯片看着毫无变化。
-    setInput(""); setMenu(""); setReferences([]); closeAdd(); setBusy(true); setActivity("正在读取上下文"); setTurnStartedAt(new Date().toISOString()); setError(null); setUploadError("");
+    setInput(""); setMenu(""); setReferences([]); closeAdd(); setBusy(true); setActivity("正在读取上下文"); setExpertActivity([]); setTurnStartedAt(new Date().toISOString()); setError(null); setUploadError("");
     try {
       const result = await api.assistantChatStream(
         { scopeId, conversationId, startNew: !conversationId, message, references: sentReferences, document, documentVersion: currentVersion, materials, style: policy.capabilities.writingStyle ? style : null, model, permissionMode, mode: policy.requestMode },
@@ -426,6 +407,18 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
             refreshHistory().catch(() => {});
           }
           if (event.type === "status") setActivity(event.stage || "Pi 正在继续处理");
+          if (event.type === "expert" && event.kind) {
+            setExpertActivity((current) => [...current.filter((item) => item.kind !== event.kind), {
+              id: event.id,
+              batchId: event.batchId,
+              kind: event.kind,
+              expertName: event.expertName,
+              status: event.status,
+              stageLabel: event.stageLabel,
+              percent: event.percent,
+              error: event.error,
+            }]);
+          }
           if (event.type === "text" && event.text) {
             setActivity("正在生成回答");
             queueStream(streamingId, event.text);
@@ -506,8 +499,8 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     finally { setUploading(false); }
   };
 
-  // 专家一律只是引用：选中 = 这一轮带上它的指令，和文章、Skill 完全一致。
-  // 起任务的那三个在下面 `EXPERT_RUNS` 里单独成组，见那儿的注释。
+  // 专家仍以结构化引用跟随本轮消息；素材、品控和事实三类由服务端确定性启动
+  // 子 Agent，写作/选题/风格类则继续作为主会话的方法约束。
   const experts = (expertPresets.length ? expertPresets : EXPERTS)
     .filter((item) => policy.capabilities.allExperts || PROJECT_EXPERTS.has(item.id));
   const modelItems = model && !models.some((item) => item.id === model) ? [{ id: model, name: model, remembered: true }, ...models] : models;
@@ -535,9 +528,6 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const groups = [];
     if (addLevel === "articles" || addLevel === "mention") groups.push({ key: "articles", label: "文章", items: pick("article", articles || []) });
     if (addLevel === "experts" || addLevel === "mention") groups.push({ key: "experts", label: "专家", items: pick("expert", experts) });
-    // ⚠️ **只在专家二级里出现，`@` 里不出现。** `@` 的语义是「提及」——
-    // 一个打字打到一半的人不该因为多打了一个字就起一个后台任务。
-    if (addLevel === "experts" && onExpertRun) groups.push({ key: "expert-runs", label: "跑一次检查，出报告", items: EXPERT_RUNS.map((item) => ({ ...item, kind: "expert-run" })).filter(match) });
     if (addLevel === "skills") groups.push({ key: "skills", label: "Skill", items: pick("skill", skills) });
     return groups.filter((group) => group.items.length);
   })();
@@ -580,8 +570,6 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     if (!item) return;
     dropCommandText();
     closeAdd();
-    // 「跑一次检查」是这个菜单里唯一有后果的一项，所以它自己单独一组、组名写着后果。
-    if (item.kind === "expert-run" && onExpertRun) { onExpertRun(item.id); requestAnimationFrame(() => inputRef.current?.focus()); return; }
     setReferences((current) => current.some((entry) => entry.kind === item.kind && entry.id === item.id)
       ? current
       : [...current, { kind: item.kind, id: item.id, title: item.label, hint: item.hint || "" }]);
@@ -1024,7 +1012,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
     <AssistantThread
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
-      error={error} activity={activity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
+      error={error} activity={activity} expertActivity={expertActivity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
       policy={policy} target={target} currentVersion={currentVersion} documentLength={String(document.body || "").length}
       onPrompt={send} onPrefill={prefill} onRegenerate={() => rewind(false)}
       onEdit={() => rewind(true)} onApplyAction={applyAction} onRejectAction={rejectAction}

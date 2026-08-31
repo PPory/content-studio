@@ -15,8 +15,11 @@ import {
   assistantSkills,
   configureAssistantWorkspace,
   createAssistantConversation,
+  expertTargetDocument,
   manageAssistantConversation,
+  requestedExpertKinds,
   resolveAssistantReferences,
+  runAssistantTurn,
 } from "../server/agent-runtime/assistant-runner.mjs";
 import { XENHO_QUALITY_NINE } from "../server/lib/quality-nine.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
@@ -80,6 +83,7 @@ try {
   ]);
   const byKind = (kind) => references.filter((item) => item.kind === kind);
   assert.equal(byKind("article")[0].body, "本地正文", "引用的文章必须带上 SQLite 里的真实正文");
+  assert.equal(byKind("article")[0].delegationBody, "本地正文", "专家委派必须拿到未截断的真实正文");
   assert.equal(byKind("article")[0].title, "隔离 Pi 项目", "标题以库里的为准，不采信前端传来的那份");
   assert(byKind("expert")[0].body.includes("写作教练"), "引用的专家必须带上完整指令");
   assert(byKind("skill").find((item) => item.id === "material-gap")?.body.includes("material-gap"), "引用的 Skill 必须真读到 SKILL.md");
@@ -96,6 +100,11 @@ try {
   assert.match(delegatedReferenceText, /【本轮指定专家子 Agent】/);
   assert.match(delegatedReferenceText, /"fact-check"/);
   assert.match(delegatedReferenceText, /【本轮调用专家：写作教练】/, "非审查型专家仍应保留在主会话");
+  assert.deepEqual(requestedExpertKinds("请三位分别检查", [{ kind: "expert", id: "fact-checker" }, { kind: "expert", id: "quality-reviewer" }]), ["fact-check", "quality-review"]);
+  assert.deepEqual(requestedExpertKinds("请素材顾问、审稿顾问和事实核查分别独立检查全文"), ["material-research", "quality-review", "fact-check"]);
+  assert.deepEqual(requestedExpertKinds("事实核查是什么意思"), [], "普通询问专家名称不能误启动子 Agent");
+  assert.equal(expertTargetDocument({ project: {}, references }).body, "本地正文", "全局助手必须把唯一文章引用作为专家检查目标");
+  assert.throws(() => expertTargetDocument({ project: {}, references: [byKind("article")[0], { ...byKind("article")[0], id: "other" }] }, { required: true }), /只能检查一篇明确文章/);
 
   await assert.rejects(() => resolveProjectPath("../outside.txt", { write: true }), /路径越界/);
   await assert.rejects(() => resolveProjectPath("node_modules/blocked.txt", { write: true }), /依赖目录/);
@@ -301,6 +310,44 @@ try {
     { type: queued[2].type, reason: queued[2].reason, body: queued[2].body },
     { type: "rewrite_body", reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" },
   );
+
+  const orchestrationEvents = [];
+  let orchestrationInput;
+  const globalExpertTurn = await runAssistantTurn(dailyEnv, {
+    scopeId: "global:assistant-test",
+    message: "请素材顾问、审稿顾问和事实核查分别独立检查全文，最后汇总",
+    references: [{ kind: "article", id: projectId, title: "隔离 Pi 项目" }],
+    document: {},
+    materials: [],
+    model: "test-model",
+    permissionMode: "daily",
+    mode: "general",
+  }, {
+    onEvent: (event) => orchestrationEvents.push(event),
+    runExperts: async (input) => {
+      orchestrationInput = input;
+      const results = input.kinds.map((kind, index) => {
+        const task = { "material-research": "素材顾问", "quality-review": "审稿顾问", "fact-check": "事实核查" }[kind];
+        input.onEvent?.({ type: "expert", id: `run-${kind}`, batchId: "batch-global-test", kind, expertName: task, status: "running", stageLabel: "正在独立检查", percent: 40 });
+        input.onEvent?.({ type: "expert", id: `run-${kind}`, batchId: "batch-global-test", kind, expertName: task, status: "done", stageLabel: "检查完成", percent: 100 });
+        return { id: `run-${kind}`, kind, expertName: task, status: "done", report: { kind, summary: `报告 ${index + 1}` } };
+      });
+      return { batchId: "batch-global-test", requested: results.length, completed: results.length, failed: 0, results };
+    },
+    createRun: async (input) => {
+      assert.match(input.prompt, /服务端真实专家协作记录/);
+      assert.match(input.prompt, /batch-global-test/);
+      assert.match(input.prompt, /run-fact-check/);
+      assert.equal(typeof input.context.delegateExperts, "undefined", "确定性委派完成后不能让主助手重复调用");
+      input.onSession?.({ abort: async () => {}, dispose: () => {} }, { sessionId: "parent-global-test", sessionFile: "" });
+      return { result: { finalResponse: "已根据三份真实专家报告完成汇总。" }, piSessionId: "parent-global-test", piSessionFile: "", permissionMode: "daily" };
+    },
+  });
+  assert.deepEqual(orchestrationInput.kinds, ["material-research", "quality-review", "fact-check"]);
+  assert.equal(orchestrationInput.context.project.body, "本地正文", "全局页面必须把引用文章全文交给子 Agent");
+  assert.equal(globalExpertTurn.message.expertActivity.length, 3, "完成回复必须保留三位专家的真实状态");
+  assert.equal(globalExpertTurn.conversation.lastTurn.expertBatchId, "batch-global-test");
+  assert(orchestrationEvents.filter((event) => event.type === "expert" && event.status === "done").length === 3);
 
   const scope = `draft:${draftId}`;
   const first = await createAssistantConversation(scope);

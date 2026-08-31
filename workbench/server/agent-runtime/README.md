@@ -8,7 +8,7 @@
 - `permission-modes.mjs` 固定 daily、creative、developer 三种服务端权限白名单。
 - `agent-access.mjs` 只允许当前工作区和用户明确授权的本地挂载；每次访问都重新检查路径越界与链接逃逸。
 - `pi-tools.mjs` 注册只读能力和待确认动作。正文、发布、删除、业务状态、文件写入和 PowerShell 不能由模型静默执行。
-- `delegate_experts` 只在有正文的内容会话中出现；最多并行委派三位预设专家。子 Agent 固定为只读日常模式，使用对应 Runtime Skill，不能继续委派。
+- 选择素材、品控或事实专家时，服务端会确定性启动对应子 Agent；具体内容会话使用当前正文，独立助手使用本轮唯一的文章引用。最多同时运行三位，只读、使用对应 Runtime Skill，且不能继续委派。
 - `assistant-runner.mjs` 保存本地对话、附件、候选动作和 Pi session 标识；对话不依赖任何远程业务数据库。
 - `.agents/skills/` 由产品运行时发现；开发期 UI Skill 不得放入这里。
 

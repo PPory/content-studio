@@ -4,6 +4,7 @@ import { IconDatabase, IconFileText, IconSearch, IconShieldCheck, IconSparkles }
 import { ActionCard } from "./ActionCard.jsx";
 import { AssistantMessage } from "./AssistantMessage.jsx";
 import { ThinkingLine } from "./ThinkingLine.jsx";
+import { ExpertActivity } from "./ExpertActivity.jsx";
 
 function elapsedSeconds(startedAt) {
   const value = Date.parse(startedAt || "");
@@ -161,6 +162,7 @@ export function AssistantThread({
   loading,
   error,
   activity,
+  expertActivity = [],
   turnStartedAt,
   scope,
   showRuntime = true,
@@ -187,6 +189,7 @@ export function AssistantThread({
     {!messages.length && !busy && !loading ? <><EmptyAssistant scope={scope} />{starters}</> : null}
     {loading ? <Working label="正在打开对话" /> : null}
     {messages.map((item) => <div className="assistant-turn" key={item.id}><AssistantMessage item={item} attachments={attachments} currentVersion={currentVersion} capabilities={policy.capabilities} onRevise={(advice) => target.actions?.revise({ mode: "rewrite", label: "按建议改写", instruction: advice.slice(0, 2_000), selection: target.selection })} onInsert={(text) => target.actions?.insert(text, { ai: true, kind: "AI 助手候选", resultKind: "candidate", rerun: onRegenerate })} onReplaceBody={(text) => target.actions?.replaceBody(text, { kind: "AI 全文整理" })} onRegenerate={onRegenerate} onEdit={onEdit} latestAssistant={item.id === latestAssistantId} latestUser={item.id === latestUserId} working={busy && item.pending && !!item.text} activity={activity} showRuntime={showRuntime} />{dedupeConsecutiveActionIds(item.actionIds, actions).map((id) => <ActionCard key={id} action={actions.find((action) => action.id === id)} onApply={onApplyAction} onReject={onRejectAction} onOpenRewrite={(rewrite) => target.actions?.replaceBody(rewrite.body, { kind: "AI 全文整理" })} originalLength={documentLength} />)}</div>)}
+    {busy && expertActivity.length ? <ExpertActivity items={expertActivity} live /> : null}
     {busy && !messages.some((item) => item.pending && item.text) ? <Working detail={activity} startedAt={turnStartedAt} /> : null}
     {error ? <div className="assistant-error" role="alert"><span><b>{error.message || "AI 助手没有完成"}</b>{error.hint ? <small>{error.hint}</small> : null}</span><button onClick={onRetry}>重试</button></div> : null}
     <div ref={endRef} className="assistant-thread__end" aria-hidden="true" />

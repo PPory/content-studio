@@ -91,7 +91,7 @@ function recoverInterruptedRuns(workspace) {
   for (const row of rows) {
     let run;
     try { run = JSON.parse(row.value_json); } catch { continue; }
-    if (run?.status !== "running" || activeRunIds.has(run.id)) continue;
+    if (!["queued", "running"].includes(run?.status) || activeRunIds.has(run.id)) continue;
     persist(workspace, {
       ...run,
       status: "failed",
@@ -120,7 +120,7 @@ function localSources(workspace, context, document) {
   return result;
 }
 
-async function runOne({ env, workspace, context, parentDir, scopeId, conversationId, model, kind, instruction, signal, batchId, executeRun }) {
+async function runOne({ env, workspace, context, parentDir, scopeId, conversationId, model, kind, instruction, signal, batchId, executeRun, onEvent }) {
   const task = EXPERT_TASKS[kind];
   const document = documentFromContext(context);
   const version = documentVersion(document);
@@ -135,10 +135,10 @@ async function runOne({ env, workspace, context, parentDir, scopeId, conversatio
     parentConversationId: conversationId,
     delegated: true,
     documentVersion: version,
-    status: "running",
-    stage: "expert-run",
-    stageLabel: `${task.expertName}正在独立检查`,
-    percent: 24,
+    status: "queued",
+    stage: "queued",
+    stageLabel: "等待专家检查",
+    percent: 2,
     localSourceCount: sources.length,
     piSessionId: crypto.randomUUID(),
     piSessionFile: "",
@@ -146,12 +146,16 @@ async function runOne({ env, workspace, context, parentDir, scopeId, conversatio
   });
   let session;
   let releaseSlot = () => {};
+  const notify = (event) => onEvent?.({ type: "expert", batchId, id, kind, expertName: task.expertName, ...event });
+  notify({ status: run.status, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent });
   const abort = () => session?.abort().catch(() => {});
   signal?.addEventListener("abort", abort, { once: true });
   try {
     await fs.mkdir(runDir, { recursive: true });
     await fs.writeFile(path.join(runDir, "context.json"), JSON.stringify({ document, sources, instruction: clean(instruction, 2_000) }, null, 2), "utf8");
     releaseSlot = await acquireExpertSlot(signal);
+    run = persist(workspace, { ...run, status: "running", stage: "expert-run", stageLabel: `${task.expertName}正在独立检查`, percent: 24 });
+    notify({ status: run.status, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent });
     const result = await executeRun({
       env,
       runDir,
@@ -177,16 +181,22 @@ async function runOne({ env, workspace, context, parentDir, scopeId, conversatio
         run = persist(workspace, { ...run, piSessionId: meta.sessionId, piSessionFile: meta.sessionFile });
         if (signal?.aborted) abort();
       },
+      onEvent(event) {
+        if (event?.type === "status" && event.stage) notify({ status: "running", stage: "expert-run", stageLabel: clean(event.stage, 240), percent: 58 });
+      },
     });
     const report = validateExpertReport(kind, JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8")));
     run = persist(workspace, { ...run, piSessionId: result.piSessionId, piSessionFile: result.piSessionFile, status: "done", stage: "done", stageLabel: "检查完成", percent: 100, report, finishedAt: now() });
+    notify({ status: run.status, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent });
     return { id, kind, expertName: task.expertName, skillId: task.skillId, status: "done", documentVersion: version, report };
   } catch (error) {
     if (signal?.aborted) {
-      persist(workspace, { ...run, status: "cancelled", stage: "cancelled", stageLabel: "已中止", error: "", hint: "正文和已保存内容不受影响。", finishedAt: now() });
+      run = persist(workspace, { ...run, status: "cancelled", stage: "cancelled", stageLabel: "已中止", error: "", hint: "正文和已保存内容不受影响。", finishedAt: now() });
+      notify({ status: run.status, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent });
       throw signal.reason || Object.assign(new Error("专家委派已取消"), { name: "AbortError" });
     }
     run = persist(workspace, { ...run, status: "failed", stage: "failed", stageLabel: "检查未完成", error: clean(error.message, 1_000), hint: clean(error.hint, 1_000) || "正文和已保存内容不受影响。", finishedAt: now() });
+    notify({ status: run.status, stage: run.stage, stageLabel: run.stageLabel, percent: run.percent, error: run.error });
     return { id, kind, expertName: task.expertName, skillId: task.skillId, status: "failed", documentVersion: version, error: run.error, hint: run.hint };
   } finally {
     signal?.removeEventListener("abort", abort);
@@ -196,7 +206,7 @@ async function runOne({ env, workspace, context, parentDir, scopeId, conversatio
   }
 }
 
-export async function runExpertSubagents({ env, workspace, context, parentDir, scopeId, conversationId, model, kinds, instruction = "", signal, executeRun = createPiRun }) {
+export async function runExpertSubagents({ env, workspace, context, parentDir, scopeId, conversationId, model, kinds, instruction = "", signal, executeRun = createPiRun, onEvent }) {
   if (!workspace?.db?.open) throw new Error("本地工作区尚未就绪");
   recoverInterruptedRuns(workspace);
   const document = documentFromContext(context);
@@ -206,7 +216,7 @@ export async function runExpertSubagents({ env, workspace, context, parentDir, s
     throw Object.assign(new Error("请选择 1 到 3 位可用的只读专家"), { status: 400 });
   }
   const batchId = `batch-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
-  const settled = await Promise.allSettled(selected.map((kind) => runOne({ env, workspace, context, parentDir, scopeId, conversationId, model, kind, instruction, signal, batchId, executeRun })));
+  const settled = await Promise.allSettled(selected.map((kind) => runOne({ env, workspace, context, parentDir, scopeId, conversationId, model, kind, instruction, signal, batchId, executeRun, onEvent })));
   const rejected = settled.find((item) => item.status === "rejected");
   if (rejected) throw rejected.reason;
   const results = settled.map((item) => item.value);

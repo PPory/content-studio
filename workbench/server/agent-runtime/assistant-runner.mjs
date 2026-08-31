@@ -79,6 +79,7 @@ function summaryOf(item) {
       stage: clean(item.activeTurn.stage, 240),
       startedAt: item.activeTurn.startedAt,
       stageUpdatedAt: item.activeTurn.stageUpdatedAt,
+      experts: Array.isArray(item.activeTurn.experts) ? item.activeTurn.experts.slice(0, 3) : [],
     } : null,
   };
 }
@@ -474,7 +475,8 @@ export async function resolveAssistantReferences(workspace, list) {
     if (kind === "article") {
       const project = workspace.db?.open ? projectDto(workspace, id) : null;
       if (!project) { resolved.push({ kind, id, title, missing: true }); continue; }
-      resolved.push({ kind, id, title: project.title, stage: project.stage, body: clean(project.masterDraft?.body, 20_000) });
+      const fullBody = String(project.masterDraft?.body ?? "");
+      resolved.push({ kind, id, title: project.title, stage: project.stage, body: clean(fullBody, 20_000), delegationBody: fullBody });
     } else if (kind === "expert") {
       const expert = WRITING_EXPERTS.find((entry) => entry.enabled && entry.id === id);
       if (!expert) { resolved.push({ kind, id, title, missing: true }); continue; }
@@ -488,6 +490,60 @@ export async function resolveAssistantReferences(workspace, list) {
   return resolved;
 }
 
+const expertKindForId = (id) => DELEGATABLE_EXPERT_KINDS.find((kind) => EXPERT_TASKS[kind].expertId === id) || "";
+
+export function requestedExpertKinds(message = "", references = []) {
+  const structured = (Array.isArray(references) ? references : [])
+    .filter((item) => item?.kind === "expert" && !item.missing)
+    .map((item) => expertKindForId(item.id))
+    .filter(Boolean);
+  if (structured.length) return [...new Set(structured)];
+  const value = String(message || "");
+  const directive = /(?:请|让|交给|分别|联合|一起|帮我)/u.test(value)
+    || /(?:检查|审阅|评审|审稿|核查|查缺)(?:一下|全文|这篇|文章|正文|内容)/u.test(value);
+  if (!directive) return [];
+  return DELEGATABLE_EXPERT_KINDS.filter((kind) => {
+    const task = EXPERT_TASKS[kind];
+    return [task.expertName, task.displayName].some((name) => value.includes(name));
+  });
+}
+
+export function expertTargetDocument(context = {}, { required = false } = {}) {
+  const project = context.project || {};
+  if (project.body || project.selection?.text) return project;
+  const articles = (context.references || []).filter((item) => item.kind === "article" && !item.missing && (item.delegationBody || item.body));
+  if (articles.length === 1) {
+    const article = articles[0];
+    return { id: article.id, title: article.title, body: article.delegationBody || article.body, platform: "", audience: "", selection: null };
+  }
+  if (required && articles.length > 1) {
+    throw Object.assign(new Error("一次专家协作只能检查一篇明确文章"), { status: 400, hint: "这一轮只保留一篇文章引用后再发送。" });
+  }
+  if (required) {
+    throw Object.assign(new Error("专家需要一篇明确的文章作为检查对象"), { status: 400, hint: "请先引用一篇有正文的文章，或在具体文章项目中调用专家。" });
+  }
+  return null;
+}
+
+function expertDelegationPrompt(context) {
+  const batch = context.expertDelegation;
+  if (!batch?.results?.length) return "";
+  const payload = batch.results.map((item) => ({
+    runId: item.id,
+    kind: item.kind,
+    expertName: item.expertName,
+    status: item.status,
+    report: item.report,
+    error: item.error,
+    hint: item.hint,
+  }));
+  return [
+    `【服务端真实专家协作记录】批次 ${batch.batchId}；请求 ${batch.requested} 位，完成 ${batch.completed} 位，失败 ${batch.failed} 位。`,
+    "下面每一项都来自真实、独立的子 Agent 运行记录。只能把 status=done 的项目说成已经完成；failed 或 cancelled 必须照实说明。不要虚构未列出的专家、工具调用或结论。",
+    boundedText(JSON.stringify(payload), 400_000),
+  ].join("\n");
+}
+
 export function assistantReferencePrompt(context) {
   const items = context.references || [];
   if (!items.length) return "";
@@ -496,7 +552,8 @@ export function assistantReferencePrompt(context) {
   const blocks = items.filter((item) => !item.missing).map((item) => {
     if (item.kind === "article") return `【本轮引用的文章：${item.title}${item.stage ? `（${item.stage}）` : ""}】\n${item.body || "这篇目前还没有正文。"}`;
     if (item.kind === "expert") {
-      const kind = DELEGATABLE_EXPERT_KINDS.find((candidate) => EXPERT_TASKS[candidate].expertId === item.id);
+      const kind = expertKindForId(item.id);
+      if (kind && context.expertDelegation?.results?.some((result) => result.kind === kind)) return "";
       if (kind && typeof context.delegateExperts === "function") {
         delegated.push({ kind, title: item.title });
         return "";
@@ -597,6 +654,7 @@ function contentPrompt(input, context, model) {
     runtimeModelInstruction(model),
     retrievalPrompt(context),
     assistantReferencePrompt(context),
+    expertDelegationPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
@@ -618,6 +676,7 @@ function generalPrompt(input, context, model) {
     runtimeModelInstruction(model),
     retrievalPrompt(context),
     assistantReferencePrompt(context),
+    expertDelegationPrompt(context),
     expertInstruction(input, context),
     input.replayHistory ? `【为重新生成恢复的前文对话】\n${input.replayHistory}` : "",
     `【可读取附件】${context.attachments.map((item) => `${item.id}：${item.name}（${item.characters || 0} 字符）`).join("；") || "无"}`,
@@ -770,6 +829,26 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   let lastStageWriteAt = 0;
   const emit = (event) => {
     options.onEvent?.(event);
+    if (event?.type === "expert" && event.kind) {
+      stageWrite = stageWrite.then(async () => {
+        const latest = await readConversationRecord(scopeId, record.id).catch(() => null);
+        if (!latest?.activeTurn || latest.activeTurn.id !== turnId) return;
+        const status = {
+          id: clean(event.id, 160),
+          batchId: clean(event.batchId, 160),
+          kind: clean(event.kind, 60),
+          expertName: clean(event.expertName, 120),
+          status: clean(event.status, 40),
+          stageLabel: clean(event.stageLabel, 240),
+          percent: Math.max(0, Math.min(100, Number(event.percent) || 0)),
+          error: clean(event.error, 1_000),
+        };
+        const experts = [...(latest.activeTurn.experts || []).filter((item) => item.kind !== status.kind), status].slice(0, 3);
+        latest.activeTurn = { ...latest.activeTurn, experts, stage: "正在请专家分别检查", stageUpdatedAt: now() };
+        await writeConversationRecord(scopeId, latest);
+      }).catch(() => {});
+      return;
+    }
     if (event?.type !== "status" || !event.stage) return;
     const timestamp = Date.now();
     if (timestamp - lastStageWriteAt < 1_200) return;
@@ -800,15 +879,18 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     await writeConversationRecord(scopeId, record);
     emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(runtimeEnv, input, record);
-    if (input.mode !== "general" && (context.project.body || context.project.selection?.text)) {
+    const selectedExpertKinds = requestedExpertKinds(message, context.references);
+    const expertDocument = expertTargetDocument(context, { required: selectedExpertKinds.length > 0 });
+    if (expertDocument) {
       Object.defineProperty(context, "delegateExperts", {
         enumerable: false,
+        configurable: true,
         value: ({ kinds, instruction, signal }) => {
           const combinedSignal = signal ? AbortSignal.any([signal, expertAbort.signal]) : expertAbort.signal;
-          const delegated = runExpertSubagents({
+          const delegated = (options.runExperts || runExpertSubagents)({
             env: runtimeEnv,
             workspace: currentWorkspace(),
-            context,
+            context: { ...context, project: expertDocument },
             parentDir: dir,
             scopeId,
             conversationId: record.id,
@@ -816,12 +898,23 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
             kinds,
             instruction,
             signal: combinedSignal,
+            onEvent: emit,
           });
-          delegatedRuns.add(delegated);
-          void delegated.finally(() => delegatedRuns.delete(delegated)).catch(() => {});
-          return delegated;
+          const tracked = delegated.then((batch) => {
+            context.expertDelegation = batch;
+            return batch;
+          });
+          delegatedRuns.add(tracked);
+          void tracked.finally(() => delegatedRuns.delete(tracked)).catch(() => {});
+          return tracked;
         },
       });
+    }
+    if (selectedExpertKinds.length) {
+      emit({ type: "status", stage: `正在启动 ${selectedExpertKinds.length} 位专家` });
+      context.expertDelegation = await context.delegateExperts({ kinds: selectedExpertKinds, instruction: message, signal: expertAbort.signal });
+      delete context.delegateExperts;
+      emit({ type: "status", stage: "专家检查完成，正在汇总" });
     }
     await fs.writeFile(path.join(dir, "context.json"), JSON.stringify({ document: input.document || {}, ...context }, null, 2), "utf8");
     // ⚠️ 阶段文案里不写「Pi」：这几句直接画在等待那一屏上，
@@ -846,7 +939,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.AGENT_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
     let timeout;
     if (runState.cancelled) throw Object.assign(new Error("本轮已停止"), { code: "ASSISTANT_CANCELLED" });
-    const runPromise = createPiRun({
+    const runPromise = (options.createRun || createPiRun)({
       env: runtimeEnv,
       runDir: dir,
       kind: "assistant-chat",
@@ -891,7 +984,16 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
       const lines = (await fs.readFile(actionsFile, "utf8")).split(/\r?\n/).filter(Boolean);
       proposed = lines.map((line) => normalizeProposedAction(JSON.parse(line), record.permissionMode)).filter(Boolean).slice(0, 8);
     } catch {}
-    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "Pi Agent SDK", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id) };
+    const expertActivity = (context.expertDelegation?.results || []).map((item) => ({
+      id: item.id,
+      batchId: context.expertDelegation.batchId,
+      kind: item.kind,
+      expertName: item.expertName,
+      status: item.status,
+      stageLabel: item.status === "done" ? "检查完成" : (item.hint || item.error || "检查未完成"),
+      percent: item.status === "done" ? 100 : 0,
+    }));
+    const assistantMessage = { id: `assistant-${Date.now().toString(36)}`, role: "assistant", text, createdAt: now(), engine: "Pi Agent SDK", model: record.model, durationMs: Date.now() - startedAt, retrievalMode: context.retrievalMode, documentVersion: clean(input.documentVersion, 120) || documentVersion(input.document), actionIds: proposed.map((item) => item.id), expertActivity };
     latest.messages = [...latest.messages, assistantMessage];
     latest.actions = [...(latest.actions || []), ...proposed];
     latest.attachments = (latest.attachments || []).map((item) => pendingAttachments.some((attachment) => attachment.id === item.id) ? { ...item, usedAt: now() } : item);
@@ -899,7 +1001,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     latest.piSessionId = result.piSessionId;
     latest.piSessionFile = result.piSessionFile;
     latest.permissionMode = result.permissionMode;
-    latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs };
+    latest.lastTurn = { id: turnId, status: "done", startedAt: record.activeTurn?.startedAt, finishedAt: now(), durationMs: assistantMessage.durationMs, expertBatchId: clean(context.expertDelegation?.batchId, 160) };
     latest.activeTurn = null;
     latest.replayHistory = false;
     const saved = await writeConversationRecord(scopeId, latest);
