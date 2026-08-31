@@ -43,12 +43,32 @@ function sourceRows(workspace) {
   return workspace.db.prepare(`
     SELECT b.id, b.title, b.source_kind AS sourceKind, b.reading_status AS status,
       json_extract(b.metadata_json, '$.kind') AS writable,
+      e.updated_at AS updatedAt,
       (SELECT COUNT(*) FROM book_documents d JOIN entities de ON de.id = d.id AND de.deleted_at IS NULL WHERE d.book_id = b.id) AS documents,
       (SELECT COALESCE(SUM(LENGTH(d.body_markdown)), 0) FROM book_documents d WHERE d.book_id = b.id) AS chars,
-      (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts
+      -- 这份资料**养活了多少条事实**。知识库特有的那一列：它区分「读过并用上了」
+      -- 和「导进来放着」，而后者在任何文件列表里都长得和前者一模一样。
+      (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts,
+      (SELECT COUNT(*) FROM source_ingests s JOIN book_documents d ON d.id = s.source_entity_id
+        WHERE d.book_id = b.id AND s.status IN ('applied', 'proposed', 'empty')) AS distilled,
+      (SELECT COUNT(*) FROM source_ingests s JOIN book_documents d ON d.id = s.source_entity_id
+        WHERE d.book_id = b.id AND s.status = 'failed') AS failed
     FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL
     ORDER BY b.source_kind, b.title
   `).all();
+}
+
+/** 一份来源里的章节，供表格展开。带上每一节自己的提炼状态。 */
+function sourceDocuments(workspace, bookId) {
+  return workspace.db.prepare(`
+    SELECT d.id, d.title, d.document_order AS position, LENGTH(d.body_markdown) AS chars,
+      COALESCE(s.status, '') AS ingestStatus, COALESCE(s.error, '') AS ingestError,
+      (SELECT COUNT(*) FROM entry_facts f WHERE f.source_entity_id = d.id) AS citedFacts
+    FROM book_documents d
+    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
+    LEFT JOIN source_ingests s ON s.source_entity_id = d.id
+    WHERE d.book_id = ? ORDER BY d.document_order
+  `).all(bookId);
 }
 
 export const wikiRoutes = [
@@ -98,8 +118,14 @@ export const wikiRoutes = [
         sources: sources.length,
         documents: sources.reduce((sum, item) => sum + item.documents, 0),
         chars: sources.reduce((sum, item) => sum + item.chars, 0),
+        distilled: sources.reduce((sum, item) => sum + item.distilled, 0),
+        citedFacts: sources.reduce((sum, item) => sum + item.citedFacts, 0),
       },
     });
+  }) },
+
+  { method: "GET", path: "/api/workspace/knowledge/sources/:id", handler: guard(async ({ workspace, res, params }) => {
+    json(res, { ok: true, documents: sourceDocuments(workspace, params.id) });
   }) },
 
   /** 体检。孤儿和矛盾候选都是查询，不是 AI 巡检出来的。 */

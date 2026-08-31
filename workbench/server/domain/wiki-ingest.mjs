@@ -22,6 +22,14 @@ const clean = (value, max = 2_000) => String(value ?? "").trim().slice(0, max);
 const MIN_QUOTE_CHARS = 12;
 /** 拼接引用里单独一段的下限。**比整串的下限低但不能取消**——否则「的」也算一段。 */
 const MIN_SPAN_CHARS = 8;
+/**
+ * 词条名的下限。
+ *
+ * ⚠️ 实测跑出过叫「N」和「P」的词条——模型把 INKP 这个缩写拆成了四个字母，
+ * 每个字母建一个词条。这种名字你永远不会去搜，也永远不会在写作时想起来，
+ * 它们只会让词条列表变长。**一个字的词条名一律不收。**
+ */
+const MIN_ENTRY_NAME_CHARS = 2;
 
 /**
  * 引用里的省略号。模型引两处相关原文时会写成 `前一段……后一段`，这是**正当的引用方式**，
@@ -81,6 +89,7 @@ export const INGEST_SYSTEM_PROMPT = [
   "4. 如果资料里的说法和某条已有事实冲突，写进 contradictions，不要直接覆盖。判断 supersede（资料更新、明确取代旧说法）还是 dispute（两说并存、各有依据）。",
   "5. 关系必须具体。只能用给定的类型，不许输出「相关」这种没有信息的关系。",
   "6. 宁缺毋滥。一份资料提炼出 3 到 8 个词条通常就够了；目录、致谢、纯代码清单这类没有可沉淀观点的资料，返回空数组。",
+  "7. 词条名要是一个你以后会去搜的说法。不要把缩写拆成单个字母各建一条（INKP 是一个词条，不是 I、N、K、P 四个）。",
   "",
   "只输出 JSON，不要解释。结构：",
   JSON.stringify({
@@ -168,6 +177,7 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
     const name = clean(item?.name, 120);
     const definition = clean(item?.definition, 500);
     if (!name || !definition) { rejected.push({ what: `词条 ${name || "(无名)"}`, why: "缺名字或定义" }); continue; }
+    if (name.length < MIN_ENTRY_NAME_CHARS) { rejected.push({ what: `词条 ${name}`, why: "名字太短，缩写里的单个字母不该单独成条" }); continue; }
     if (known.has(name)) { rejected.push({ what: `词条 ${name}`, why: "已存在，应作为归并处理" }); continue; }
     if (!inList(item?.kind, ENTRY_KINDS)) { rejected.push({ what: `词条 ${name}`, why: `类型不合法：${clean(item?.kind, 40)}` }); continue; }
     if (!grounded(item?.quote, `词条 ${name} 的定义`)) continue;

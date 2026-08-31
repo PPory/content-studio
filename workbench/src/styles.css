@@ -6763,3 +6763,153 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* 自己的保存按钮：这一段写的是 Worker 的库，不跟着底部那条「写入 .env」走 */
 .set-models__foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
 .set-models__foot .field-hint { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ==========================================================================
+   资料表（知识库）
+   ==========================================================================
+   ⚠️ **不画表格外框。** 设计系统那条「不要框里画框」：外壳已经是白框，
+   工作区是它里面的浅灰；再给表格套一圈边框，屏幕上最响的就成了那圈线。
+   列之间靠 grid 对齐，行之间靠 1px 分隔，够了。
+
+   ⚠️ 列宽写死在一处（`--src-cols`），表头、父行、子行共用。
+   分开写的话迟早出现「表头和内容错开一格」，而那不报错。 */
+
+.src-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.src-lead { color: var(--text-2); margin: 0; }
+.src-lead b { color: var(--text-1); font-weight: 600; }
+
+.src-group { margin-bottom: 28px; }
+.src-group__head {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
+  margin: 0 0 6px;
+}
+.src-group__count {
+  font-weight: 500; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.src-group__head em { font-style: normal; font-weight: 400; color: var(--text-3); }
+
+.src-table { --src-cols: minmax(0, 1fr) 68px 92px 96px 88px; }
+
+.src-row {
+  display: grid; grid-template-columns: var(--src-cols);
+  align-items: center; gap: 12px;
+  padding: 0 8px; min-height: 40px;
+  border-top: 1px solid var(--border);
+}
+.src-item:first-child > .src-row { border-top-color: var(--border-strong); }
+
+.src-row--head {
+  border-top: 0; min-height: 28px;
+  font-size: var(--fs-sm); color: var(--text-3);
+}
+/* 数字列右对齐，标题列左对齐——数字左对齐的表读不出量级差别 */
+.src-row--head > :not(:first-child) { text-align: right; }
+
+.src-item > .src-row:hover { background: var(--surface-2); }
+
+.src-name {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  border: 0; background: transparent; padding: 0;
+  color: var(--text-1); text-align: left; font: inherit; cursor: pointer;
+}
+.src-name svg { flex: none; color: var(--text-3); transition: transform 120ms ease; }
+.src-name svg[data-open] { transform: rotate(90deg); }
+.src-name:hover { color: var(--accent); }
+.src-name .clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.src-tag {
+  flex: none; font-style: normal; font-size: 11px; color: var(--text-3);
+  border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; line-height: 16px;
+}
+
+.src-num {
+  text-align: right; color: var(--text-3);
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
+.src-num--strong { color: var(--text-1); font-weight: 500; }
+
+/* 状态用文字加一颗点，不用整块色底：一屏几十行的话，色块会盖过内容本身 */
+.src-state {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+  font-size: var(--fs-sm); color: var(--text-3);
+}
+.src-state::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--text-3);
+}
+.src-state--done { color: var(--text-2); }
+.src-state--done::before { background: var(--ok); }
+.src-state--busy::before { background: var(--warn); }
+.src-state--warn { color: var(--warn); }
+.src-state--warn::before { background: var(--warn); }
+.src-state--idle::before { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+.src-children { padding-bottom: 4px; }
+.src-row--child { min-height: 34px; border-top: 1px dashed var(--border); }
+.src-row--child:hover { background: var(--surface-2); }
+.src-name--child { padding-left: 22px; color: var(--text-2); font-size: var(--fs-sm); }
+.src-empty { color: var(--text-3); font-size: var(--fs-sm); padding: 8px 30px; margin: 0; }
+
+@media (max-width: 900px) {
+  /* 窄屏先丢字数——它是四列里最不影响决策的一个 */
+  .src-table { --src-cols: minmax(0, 1fr) 56px 88px 76px; }
+  .src-row > :nth-child(3) { display: none; }
+}
+
+/* ==========================================================================
+   词条详情
+   ==========================================================================
+   整页白、不画卡（「不要框里画框」）。分区靠留白和一道 1px 线。 */
+
+.entry-page { max-width: 760px; }
+.entry-back { margin-bottom: 18px; }
+
+.entry-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; }
+.entry-head h2 { margin: 0; font-size: 24px; font-weight: 600; color: var(--text-1); }
+.entry-kind {
+  font-size: 11px; color: var(--text-3);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+}
+.entry-def { margin: 0 0 8px; color: var(--text-1); font-size: 15px; line-height: 1.6; }
+.entry-meta { margin: 0 0 28px; color: var(--text-3); font-size: var(--fs-sm); }
+.entry-meta b { color: var(--warn); font-weight: 600; }
+
+.entry-block { margin-bottom: 28px; }
+.entry-block__head {
+  margin: 0 0 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
+}
+.entry-block__head--warn { color: var(--warn); }
+.entry-block__head--muted { color: var(--text-3); }
+.entry-block__lead { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.6; }
+.entry-empty { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+
+.facts { list-style: none; margin: 0; padding: 0; }
+.fact { border-top: 1px solid var(--border); padding: 12px 0; }
+.fact:first-child { border-top: 0; padding-top: 4px; }
+.fact__text { margin: 0 0 4px; color: var(--text-1); line-height: 1.65; }
+/* 来源不是装饰：一条事实的价值等于它能不能被追回原文。所以它永远可点。 */
+.fact__src {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: var(--text-3);
+  text-decoration: underline; text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.fact__src:hover { color: var(--accent); text-decoration-color: currentColor; }
+.facts--muted .fact__text { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+
+.rels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rels li { display: flex; align-items: center; gap: 6px; min-height: 30px; font-size: var(--fs-sm); }
+.rels em { font-style: normal; color: var(--text-3); flex: none; }
+.rels svg { color: var(--border-strong); flex: none; }
+.rels button {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; color: var(--text-1); font-weight: 500;
+}
+.rels button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+/* 入链的方向反过来读：「组块 属于 本词条」，而不是「本词条 属于 组块」 */
+.rels__in em:last-child { color: var(--text-3); }

@@ -79,6 +79,7 @@ export const api = {
   entries: () => req("/api/workspace/entries"),
   entry: (id) => req(`/api/workspace/entries/${encodeURIComponent(id)}`),
   knowledgeSources: () => req("/api/workspace/knowledge/sources"),
+  knowledgeSourceDocs: (id) => req(`/api/workspace/knowledge/sources/${encodeURIComponent(id)}`),
   knowledgeLint: () => req("/api/workspace/knowledge/lint"),
   // 种子响应携带领域层的反应清单，前端不复制业务规则。
   seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),

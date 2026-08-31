@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api.js";
 import { NAV_LABELS } from "./lib/views.js";
 import { PIPELINE, SOURCES } from "./lib/sources.js";
-import { normalizeMaterialRoute } from "./lib/open-target.js";
+import { normalizeMaterialRoute, setOpenTarget } from "./lib/open-target.js";
 import { ViewSlots } from "./lib/view-slots.js";
 import { NAV_ICONS, IconInbox, IconLayoutSidebar, IconSearch, IconSettings, IconChevronDown, IconSparkles, BrandMark } from "./components/icons.jsx";
 import { Overview } from "./pages/Overview.jsx";
@@ -19,6 +19,8 @@ import { Seeds } from "./pages/Seeds.jsx";
 import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
 import { Studio } from "./pages/Studio.jsx";
 import { Entries } from "./pages/Entries.jsx";
+import { EntryDetail } from "./pages/EntryDetail.jsx";
+import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
@@ -44,7 +46,6 @@ const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
 const KNOWLEDGE_VIEWS = new Set(["knowledge", "entries", "shelf", "sources"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
-const SOURCE_KINDS = Object.freeze(["课程", "文档", "文章"]);
 // ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
 // 留在这儿的话点进去侧栏会同时亮两处。
 const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]);
@@ -117,7 +118,17 @@ const NAV = [
     children: [
       { to: "entries", label: "词条" },
       { to: "shelf", label: "书架" },
-      { to: "sources", label: "资料" },
+      /**
+       * ⚠️ **「来源」列全部，包括书架里那 15 本。**
+       * 一开始按归类把书排除在外，两栏正好互斥、看着很整齐——但那样就再也看不到
+       * 「《平凡的世界》170 节、未提炼」这类事实，而书占了全库 90% 的章节。
+       * 这张表回答的是「我有什么、读到哪儿了、哪些真被用上了」，
+       * 排除掉最大的那部分就等于不回答。
+       *
+       * 书架不因此多余：它是**读**的地方（封面、进度、划词、批注），
+       * 而这里是**清点**的地方。两件事，两个界面。
+       */
+      { to: "sources", label: "来源" },
     ],
   },
   /**
@@ -761,9 +772,26 @@ export function App() {
                 // 否则 15 本藏书会被上百节导入的讲义淹掉。
                 <Shelf onIntake={setIntake} state={route.state} sourceKinds={SHELF_KINDS} />
               ) : route.view === "sources" ? (
-                <Shelf onIntake={setIntake} state={route.state} sourceKinds={SOURCE_KINDS} catalogOnly />
+                // 资料是**表格**不是封面墙：课程章节和文档导出没有封面，
+                // 摆成墙就是一屏「加封面」占位框。阅读仍然走书架那个阅读器。
+                <Sources onOpen={(source, doc) => { setOpenTarget("shelf", `bookdoc:${doc.id}`); go("shelf", `book:${source.id}`); }} />
               ) : route.view === "entries" ? (
-                <Entries onGo={go} />
+                // `#/entries/<id>` 是同一条路由的第二段，不另开一个 view——
+                // 词条详情是列表的下一层，不是并列的另一页。
+                route.state ? (
+                  <EntryDetail
+                    entryId={route.state}
+                    onBack={() => go("entries")}
+                    onGo={(target) => go("entries", String(target).split("/")[1] || "")}
+                    onOpenSource={(sourceId) => { setOpenTarget("shelf", `bookdoc:${sourceId}`); go("shelf", "resume"); }}
+                  />
+                ) : (
+                  <Entries onGo={(target) => {
+                    const value = String(target);
+                    if (value.startsWith("entries/")) go("entries", value.slice("entries/".length));
+                    else go(value);
+                  }} />
+                )
               ) : STUDIO.has(route.view) ? (
                 <Studio
                   sourceKey={route.view === "materials" ? "material-workspace" : route.view}
