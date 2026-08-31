@@ -5,6 +5,7 @@ Xenho OS 的现役本地应用。React 界面、本地 API、SQLite、资产库�
 ## 先看哪里
 
 - 产品流程：[`../docs/工作流.md`](../docs/工作流.md)
+- 知识库（词条层、提炼、体检、召回）：[`../docs/知识库.md`](../docs/知识库.md)
 - 架构与存储：[`docs/design.md`](docs/design.md)
 - AI 协作：[`docs/ai-experience-redesign.md`](docs/ai-experience-redesign.md)
 - 视觉与交互：[`docs/design-system.md`](docs/design-system.md)

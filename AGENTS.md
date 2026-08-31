@@ -2,7 +2,7 @@
 
 个人、本地优先、单工作区的 AI 内容创作工作台。
 
-产品流程见 [`docs/工作流.md`](docs/工作流.md)，迁移边界见 [`docs/local-first-migration-handoff.md`](docs/local-first-migration-handoff.md)。
+产品流程见 [`docs/工作流.md`](docs/工作流.md)，知识库见 [`docs/知识库.md`](docs/知识库.md)，迁移边界见 [`docs/local-first-migration-handoff.md`](docs/local-first-migration-handoff.md)。
 
 ## 现役结构
 
