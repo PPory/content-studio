@@ -258,3 +258,49 @@ export async function proposeFromSource(workspace, env, { sourceId, model = "", 
   });
   return { sourceId, title: source.title, model: usedModel, usage, existing, ...validateProposal(data, { sourceText, existing }) };
 }
+
+/**
+ * 把一份**已经过逐字校验**的提案写成正式词条。
+ *
+ * ⚠️ 这里是唯一的落地路径：CLI 和界面上的审阅卡都调它。分成两份实现的话，
+ * 迟早出现「命令行接受和点按钮接受写出来的东西不一样」，而那不会报错。
+ *
+ * 重名一律当**归并**：召回再准也会漏（模型看不见的词条它当然会重提），
+ * 而那时正确的动作恰恰是把事实挂到已有词条上，不是中断整批。
+ */
+export function applyProposal(workspace, { sourceId, sourceTitle = "", proposal, actor = "user", now = new Date() }) {
+  const byName = new Map((proposal.existing || []).map((entry) => [entry.name, entry.id]));
+  const applied = { entries: 0, merged: 0, facts: 0, relations: 0, contradictions: 0 };
+  workspace.repository.transaction(() => {
+    for (const item of proposal.entries || []) {
+      const existing = workspace.domain.findEntryByName(item.name);
+      if (existing) { byName.set(item.name, existing.id); applied.merged += 1; continue; }
+      byName.set(item.name, workspace.domain.createEntry({
+        name: item.name, kind: item.kind, definition: item.definition, definitionSourceId: sourceId, actor, now,
+      }));
+      applied.entries += 1;
+    }
+    for (const fact of proposal.facts || []) {
+      const entryId = byName.get(fact.entry);
+      if (!entryId) continue;
+      workspace.domain.addEntryFact({ entryId, statement: fact.statement, sourceEntityId: sourceId, sourceLocator: sourceTitle, actor, now });
+      applied.facts += 1;
+    }
+    for (const relation of proposal.relations || []) {
+      const from = byName.get(relation.from);
+      const to = byName.get(relation.to);
+      if (!from || !to || from === to) continue;
+      workspace.domain.linkEntries(from, to, relation.type, { actor, now });
+      applied.relations += 1;
+    }
+    for (const conflict of proposal.contradictions || []) {
+      const entryId = byName.get(conflict.entry);
+      if (!entryId) continue;
+      const factId = workspace.domain.addEntryFact({ entryId, statement: conflict.statement, sourceEntityId: sourceId, sourceLocator: sourceTitle, actor, now });
+      if (conflict.verdict === "supersede") workspace.domain.supersedeEntryFact(conflict.existingFactId, { supersededBy: factId, actor, now });
+      else workspace.domain.disputeEntryFacts(conflict.existingFactId, factId, { actor, now });
+      applied.contradictions += 1;
+    }
+  });
+  return applied;
+}

@@ -8,15 +8,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "../components/ui.jsx";
+import { IngestReview } from "../components/IngestReview.jsx";
 
 export function Entries({ onGo }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    api.entries().then(setData).catch(setError);
-  }, []);
+  const load = () => api.entries().then(setData).catch(setError);
+  useEffect(() => { load(); }, []);
 
   const groups = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -39,6 +39,9 @@ export function Entries({ onGo }) {
 
   return (
     <div className="view-body">
+      {/* ⚠️ 排在最上面：这一页上唯一**等着你动手**的东西。
+          接受之后重新拉词条列表，数字立刻对上——不让用户怀疑「点了到底有没有生效」。 */}
+      <IngestReview onDone={load} />
       {/**
         * ⚠️ **空态不写「暂无数据」。** 词条现在是空的，是因为提炼那一步还没跑，
         * 不是因为你没存东西——资料已经在库里了。空态要说清楚这一点，

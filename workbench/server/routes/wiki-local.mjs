@@ -7,6 +7,7 @@
 
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { ENTRY_KIND_LABELS, ENTRY_RELATION_LABELS } from "../domain/values.mjs";
+import { applyProposal } from "../domain/wiki-ingest.mjs";
 
 function guard(handler) {
   return async (context) => {
@@ -142,6 +143,56 @@ export const wikiRoutes = [
       relationLabels: ENTRY_RELATION_LABELS,
       kindLabels: ENTRY_KIND_LABELS,
     });
+  }) },
+
+  /**
+   * 待审阅的提炼提案。
+   *
+   * ⚠️ **提炼是自动排的，写入不是。** 收一份资料会自动读它，但读出来的词条要在这儿
+   * 过一眼才落库——AGENTS.md 第 4 条。这一页就是那个「一次手势」的地方。
+   */
+  { method: "GET", path: "/api/workspace/knowledge/candidates", handler: guard(async ({ workspace, res }) => {
+    const rows = workspace.db.prepare(`
+      SELECT c.id, c.target_id AS sourceId, c.payload_json AS payloadJson, c.proposed_at AS proposedAt,
+        COALESCE(t.title, '') AS sourceTitle, COALESCE(b.title, '') AS bookTitle
+      FROM action_candidates c
+      LEFT JOIN entity_text t ON t.entity_id = c.target_id
+      LEFT JOIN book_documents d ON d.id = c.target_id
+      LEFT JOIN books b ON b.id = d.book_id
+      WHERE c.status = 'proposed' AND c.action_type = 'entry.create'
+      ORDER BY c.proposed_at DESC LIMIT 50
+    `).all();
+    const candidates = [];
+    for (const row of rows) {
+      let payload;
+      try { payload = JSON.parse(row.payloadJson); } catch { continue; }
+      if (payload?.kind !== "wiki.ingest") continue;
+      candidates.push({
+        id: row.id, sourceId: row.sourceId, sourceTitle: row.sourceTitle, bookTitle: row.bookTitle, proposedAt: row.proposedAt,
+        entries: payload.entries || [], facts: payload.facts || [], relations: payload.relations || [],
+        contradictions: payload.contradictions || [], rejected: payload.rejected || [],
+      });
+    }
+    json(res, { ok: true, candidates, kindLabels: ENTRY_KIND_LABELS, relationLabels: ENTRY_RELATION_LABELS });
+  }) },
+
+  { method: "POST", path: "/api/workspace/knowledge/candidates/:id", handler: guard(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    const candidate = workspace.domain.actions.get(params.id);
+    if (!candidate || candidate.status !== "proposed") throw Object.assign(new Error("这条提案已经处理过了"), { status: 409 });
+    if (body.action === "reject") {
+      workspace.domain.actions.reject(params.id);
+      return json(res, { ok: true, rejected: true });
+    }
+    // ⚠️ `actions.get()` **已经解析过** payload 了（`payloadJson` 被它置成 undefined）。
+    // 再 JSON.parse 一次会报 `"undefined" is not valid JSON`——错在解析，读起来却像候选坏了。
+    const payload = candidate.payload;
+    const now = new Date();
+    // 先确认再落地：`markApplied` 要求候选处于 confirmed，这一步就是「用户点了接受」。
+    workspace.domain.actions.confirm(params.id, { now });
+    const applied = applyProposal(workspace, { sourceId: payload.sourceId, sourceTitle: payload.title || "", proposal: payload, actor: "user", now });
+    workspace.domain.actions.markApplied(params.id, { result: applied, now });
+    json(res, { ok: true, applied });
   }) },
 
   /** 体检。孤儿和矛盾候选都是查询，不是 AI 巡检出来的。 */

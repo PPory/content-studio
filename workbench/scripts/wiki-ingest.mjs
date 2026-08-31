@@ -12,7 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { envFilePath, parseEnv } from "../server/lib/env-file.mjs";
 import { ingestModelId } from "../server/lib/model-json.mjs";
-import { proposeFromSource } from "../server/domain/wiki-ingest.mjs";
+import { applyProposal, proposeFromSource } from "../server/domain/wiki-ingest.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -67,46 +67,6 @@ function recordIngest(source, proposal, status, error = "") {
     String(error || "").slice(0, 2_000), new Date().toISOString());
 }
 
-/** 把校验过的提案写成正式词条。名字对不上的一律跳过，不猜。 */
-function applyProposal(source, proposal) {
-  const now = new Date();
-  const byName = new Map();
-  for (const entry of proposal.existing) byName.set(entry.name, entry.id);
-  return workspace.repository.transaction(() => {
-    for (const item of proposal.entries) {
-      // ⚠️ **重名当成归并，不当成错误。**
-      // 召回再准也会漏（模型看不到的词条它当然会重提），而这种时候正确的动作
-      // 恰恰就是错误消息里写的那句：追加事实到已有词条上。为此把整批中断，
-      // 等于让一次可预期的重名毁掉前面十几份资料的成果。
-      const existing = workspace.domain.findEntryByName(item.name);
-      if (existing) { byName.set(item.name, existing.id); continue; }
-      const id = workspace.domain.createEntry({
-        name: item.name, kind: item.kind, definition: item.definition, definitionSourceId: source.id, actor, now,
-      });
-      byName.set(item.name, id);
-    }
-    for (const fact of proposal.facts) {
-      const entryId = byName.get(fact.entry);
-      if (!entryId) continue;
-      workspace.domain.addEntryFact({ entryId, statement: fact.statement, sourceEntityId: source.id, sourceLocator: source.title, actor, now });
-    }
-    for (const relation of proposal.relations) {
-      const from = byName.get(relation.from);
-      const to = byName.get(relation.to);
-      if (!from || !to || from === to) continue;
-      workspace.domain.linkEntries(from, to, relation.type, { actor, now });
-    }
-    for (const conflict of proposal.contradictions) {
-      const entryId = byName.get(conflict.entry);
-      if (!entryId) continue;
-      const factId = workspace.domain.addEntryFact({ entryId, statement: conflict.statement, sourceEntityId: source.id, sourceLocator: source.title, actor, now });
-      if (conflict.verdict === "supersede") workspace.domain.supersedeEntryFact(conflict.existingFactId, { supersededBy: factId, actor, now });
-      else workspace.domain.disputeEntryFacts(conflict.existingFactId, factId, { actor, now });
-    }
-    return true;
-  });
-}
-
 try {
   const sources = pendingSources(bookName, limit);
   if (!sources.length) {
@@ -146,7 +106,7 @@ try {
     if (commit) {
       // 一份资料写失败不该带走整批——前面那些已经花过钱了。
       try {
-        applyProposal(source, proposal);
+        applyProposal(workspace, { sourceId: source.id, sourceTitle: source.title, proposal, actor });
         recordIngest(source, proposal, "applied");
       } catch (error) {
         console.log(`   写入失败：${error.message}`);

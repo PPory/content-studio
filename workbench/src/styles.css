@@ -6917,44 +6917,93 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* ==========================================================================
    写作现场的相关词条
    ==========================================================================
-   右栏窄，所以不画卡（「白底容器里的条目不画白底 + 边框的卡」）——
-   靠一道 1px 线和缩进分条。 */
+   ⚠️ **它是提示，不是板块。** 一条一行，定义和事实点开才出来；
+   没命中时组件整块不画。上一版一条占四行、还给整块加了下边框，
+   于是右栏上半屏被它吃掉，标题也和下面「协作」那条叠在一起打架。 */
 
-/* ⚠️ **要封顶，而且要能滚。** 不封顶的话它会把下面的助手挤出可视区——
-   实测四条词条就已经压住「协作」那行标题了。这一栏是**旁边的提示**，
-   不是主角：给它一块固定的地盘，撑不下的自己滚。 */
-.rel {
-  margin-bottom: 0; padding: 12px 16px;
-  max-height: 38vh; overflow-y: auto;
-  border-bottom: 1px solid var(--border); flex: none;
+.rel { flex: none; padding: 10px 16px 8px; max-height: 34vh; overflow-y: auto; }
+.rel__label {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 0 2px; font-size: 11px; font-weight: 500;
+  color: var(--text-3); letter-spacing: .02em;
 }
-.rel__item { border-top: 1px solid var(--border); padding: 8px 0; }
-.rel__item:first-of-type { border-top: 0; }
-.rel__head {
+.rel__label span { font-variant-numeric: tabular-nums; }
+
+.rel__list { list-style: none; margin: 0; padding: 0; }
+.rel__row > button {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
-  border: 0; background: transparent; padding: 0; cursor: pointer;
+  border: 0; background: transparent; padding: 3px 0; cursor: pointer;
   font: inherit; text-align: left;
 }
-.rel__head b { color: var(--text-1); font-weight: 600; }
-/* 「为什么它在这儿」永远可见，不藏在展开里——不解释自己的推荐没人会看第二次 */
-.rel__head em {
+.rel__row > button b {
+  color: var(--text-2); font-weight: 500; font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rel__row:hover > button b, .rel__row[data-open] > button b { color: var(--text-1); }
+/* 「因为连着谁」写出来；直接提到的只给一颗点——噪音留给真正需要解释的那一半 */
+.rel__row em {
   font-style: normal; margin-left: auto; flex: none;
   font-size: 11px; color: var(--text-3);
+  max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.rel__head:hover b { color: var(--accent); }
-.rel__def {
-  margin: 2px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.rel__row i {
+  margin-left: auto; flex: none; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--border-strong);
 }
-.rel__facts { list-style: none; margin: 8px 0 2px; padding: 0 0 0 10px; border-left: 2px solid var(--border); }
-.rel__facts li { margin-bottom: 8px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
-.rel__facts li span { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
+
+.rel__body { padding: 2px 0 8px; }
+.rel__body > p { margin: 0 0 6px; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
+.rel__body ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 9px; border-left: 2px solid var(--border); }
+.rel__body ul li { margin-bottom: 6px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; }
+.rel__body ul li span { display: block; color: var(--text-3); font-size: 11px; margin-top: 1px; }
 /* 有冲突的事实要看得出来：引用一条正在打架的说法，比引用不到更糟 */
-.rel__facts li[data-disputed] { border-left: 2px solid var(--warn); margin-left: -12px; padding-left: 10px; }
-.rel__more { margin-bottom: 0 !important; }
-.rel__more button {
+.rel__body ul li[data-disputed] { border-left: 2px solid var(--warn); margin-left: -11px; padding-left: 9px; }
+.rel__open {
   border: 0; background: transparent; padding: 0; cursor: pointer;
-  font: inherit; font-size: var(--fs-sm); color: var(--text-2);
+  font: inherit; font-size: var(--fs-sm); color: var(--text-3);
   text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong);
 }
-.rel__more button:hover { color: var(--accent); }
+.rel__open:hover { color: var(--accent); }
+
+/* ==========================================================================
+   提炼审阅卡
+   ==========================================================================
+   ⚠️ 它是这一页**最需要你动手**的东西，所以排在最上面、且不折叠标题。
+   但仍然不画卡——外壳已经是白框（「不要框里画框」），靠一道 1px 线分条。 */
+
+.ing { margin-bottom: 24px; }
+.ing__head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
+}
+.ing__head em { font-style: normal; font-weight: 400; color: var(--text-3); }
+
+.ing__item { border-top: 1px solid var(--border); }
+.ing__item:last-child { border-bottom: 1px solid var(--border); }
+.ing__row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.ing__title {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto;
+  border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; text-align: left;
+}
+.ing__title b { color: var(--text-1); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ing__title span { color: var(--text-3); font-size: var(--fs-sm); flex: none; }
+.ing__title:hover b { color: var(--accent); }
+.ing__counts { flex: none; color: var(--text-3); font-size: var(--fs-sm); }
+.ing__actions { display: flex; gap: 6px; flex: none; }
+.ing__actions button {
+  border: 1px solid var(--border); border-radius: var(--r-sm, 8px); background: var(--surface);
+  padding: 3px 10px; cursor: pointer; font: inherit; font-size: var(--fs-sm); color: var(--text-2);
+}
+.ing__actions button:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-1); }
+.ing__actions .is-primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ing__actions button:disabled { opacity: .5; cursor: default; }
+
+.ing__body { padding: 0 0 12px; }
+.ing__body p {
+  display: flex; gap: 8px; margin: 0 0 5px;
+  color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55;
+}
+.ing__body i { font-style: normal; flex: none; color: var(--text-3); font-size: 11px; width: 34px; padding-top: 2px; }
+.ing__body b { font-weight: 500; color: var(--text-1); flex: none; margin-right: 2px; }
+.ing__body .is-warn i, .ing__body .is-warn b { color: var(--warn); }
+.ing__dropped { color: var(--text-3) !important; font-size: 11px !important; margin-top: 8px !important; }
