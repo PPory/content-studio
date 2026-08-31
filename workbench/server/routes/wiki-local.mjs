@@ -52,7 +52,8 @@ function sourceRows(workspace) {
       COALESCE(json_extract(b.metadata_json, '$.userAuthored'), 0) AS userAuthored,
       e.updated_at AS updatedAt,
       (SELECT COUNT(*) FROM book_documents d JOIN entities de ON de.id = d.id AND de.deleted_at IS NULL WHERE d.book_id = b.id) AS documents,
-      (SELECT COALESCE(SUM(LENGTH(d.body_markdown)), 0) FROM book_documents d WHERE d.book_id = b.id) AS chars,
+      (SELECT COALESCE(SUM(LENGTH(d.body_markdown)), 0) FROM book_documents d
+        JOIN entities de ON de.id = d.id AND de.deleted_at IS NULL WHERE d.book_id = b.id) AS chars,
       -- 这份资料**养活了多少条事实**。知识库特有的那一列：它区分「读过并用上了」
       -- 和「导进来放着」，而后者在任何文件列表里都长得和前者一模一样。
       (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts,

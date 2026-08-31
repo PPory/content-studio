@@ -176,13 +176,13 @@ export function readFeishuArchive(bytes, { fileName = "" } = {}) {
 }
 
 /**
- * 一份来源文件 → 若干章节。清洗、去死链、切块都在这儿一次做完，
- * 调用方拿到的就是可以直接写进 `book_documents` 的东西。
+ * 一份来源文件 → 一个章节。文件内部的标题是本章结构，不是新的课程章节。
+ * splitDocument 仍可供显式的模型分窗使用，但不能改变用户看到的来源边界。
  */
 export function planDocument({ title, text, order = 1 }) {
   const cleaned = stripDeadFeishuImages(cleanFeishuMarkdown(text));
   const dead = findDeadFeishuImages(text).length;
-  const sections = splitDocument(title, cleaned);
+  const sections = cleaned ? [{ title, text: cleaned }] : [];
   return { title, order, dead, sections };
 }
 

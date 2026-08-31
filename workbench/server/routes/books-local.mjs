@@ -136,7 +136,7 @@ function parseText(text) {
   const source = String(text || "");
   const matches = [...source.matchAll(/^#\s+(.+)$/gm)];
   if (matches.length < 3) return { text: source };
-  return { chapters: matches.map((match, index) => ({ title: match[1].trim(), text: source.slice(match.index + match[0].length, matches[index + 1]?.index ?? source.length).trim() })) };
+  return { text: source, chapters: matches.map((match, index) => ({ title: match[1].trim(), text: source.slice(match.index + match[0].length, matches[index + 1]?.index ?? source.length).trim() })) };
 }
 
 async function parsedBook(fileName, bytes) {
@@ -202,8 +202,14 @@ export const localBookRoutes = [
   { method: "POST", path: "/api/workspace/books/import", handler: guard(async ({ workspace, req, res, url }) => {
     const fileName = url.searchParams.get("filename") || ""; const bytes = await readRawBody(req); if (!bytes.length) throw new Error("文件是空的");
     const parsed = await parsedBook(fileName, bytes); const title = safeName(url.searchParams.get("name") || parsed.title || path.basename(fileName, path.extname(fileName)), 100); if (!title) throw new Error("书名不能为空");
+    const sourceKind = ["书籍", "课程", "文档", "文章"].includes(url.searchParams.get("sourceKind")) ? url.searchParams.get("sourceKind") : "书籍";
+    const userAuthored = sourceKind === "文章" && url.searchParams.get("userAuthored") === "1";
     const sourceUrl = canonicalHttpUrl(url.searchParams.get("sourceUrl") || "");
-    const sourceChapters = parsed.chapters?.length ? parsed.chapters : [{ title, text: parsed.text || "" }];
+    // 只有书籍格式可以把文件内部目录映射成多章。课程、文档和文章的文件本身就是最小来源单位，
+    // 内部标题只用于阅读导航，不能再变成多篇互相失去上下文的文档。
+    const sourceChapters = sourceKind === "书籍" && parsed.chapters?.length
+      ? parsed.chapters
+      : [{ title, text: parsed.text || parsed.chapters?.map((chapter) => "# " + chapter.title + "\n\n" + chapter.text).join("\n\n") || "" }];
     const sourceContentSha256 = contentFingerprint(sourceChapters);
     const duplicate = duplicateSource(workspace, { sourceUrl, chapters: sourceChapters, contentSha256: sourceContentSha256 });
     if (duplicate) throw Object.assign(new Error(`这份来源已经以「${duplicate.title}」入库`), { status: 409, sourceId: duplicate.id });
@@ -213,8 +219,7 @@ export const localBookRoutes = [
     let coverAssetId = null;
     if (parsed.cover?.bytes) coverAssetId = (await workspace.assets.importBuffer({ bytes: parsed.cover.bytes, type: "image", originalName: parsed.cover.name || "cover.jpg", mimeType: mimeOf(parsed.cover.name || "cover.jpg") })).id;
     const chapters = sourceChapters.map((chapter) => ({ ...chapter, text: [...imageUris].reduce((text, [name, uri]) => String(text).split(name).join(uri), String(chapter.text || "")) }));
-    const sourceKind = ["书籍", "课程", "文档", "文章"].includes(url.searchParams.get("sourceKind")) ? url.searchParams.get("sourceKind") : "书籍";
-    const userAuthored = sourceKind === "文章" && url.searchParams.get("userAuthored") === "1";
+
     const book = await createBookRecord(workspace, {
       title, author: safeName(url.searchParams.get("author") || parsed.author || "", 120),
       kind: url.searchParams.get("kind") === "资料" ? "资料" : "藏书", sourceKind,

@@ -2,9 +2,13 @@
 // 所以这里一个数据库都不开——跑得快，也不会碰到用户的库。
 
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { zipSync, strToU8 } from "fflate";
 import { cleanFeishuMarkdown, cleanHeadingTitle, findDeadFeishuImages, planDocument, readFeishuArchive, sortSourceNames, splitDocument, stripDeadFeishuImages } from "../server/lib/corpus.mjs";
 import { stripInlineData, stripNavigationLines } from "../server/lib/article.mjs";
+import { buildCorpusBook, scanCorpusRoot } from "../server/lib/corpus-sources.mjs";
 
 function check(name, value) {
   assert(value, name);
@@ -56,9 +60,23 @@ assert.throws(() => readFeishuArchive(zipSync({ "只有图.png": new Uint8Array(
 check("没有正文的压缩包明确报错，而不是导入一本空书", true);
 
 const planned = planDocument({ title: "提示词工程", text: read.text });
-check("planDocument 一次做完清洗、去死链和切块", planned.sections.length === 1 && planned.sections[0].text.includes("**重点**"));
+check("planDocument 一次做完清洗和去死链，且一份源文件始终只形成一章", planned.sections.length === 1 && planned.sections[0].text.includes("**重点**"));
+const longCourseChapter = ["# 构建知识库", ...Array.from({ length: 20 }, (unused, index) => "## 小节 " + (index + 1) + "\n\n" + "课程正文。".repeat(180))].join("\n\n");
+check("课程文件再长、内部标题再多也不会被拆成多篇文档", planDocument({ title: "第1节. 构建知识库", text: longCourseChapter }).sections.length === 1);
 
 check("目录内文件按数字前缀排序，课程顺序不会乱", sortSourceNames(["10-第十课.md", "2-第二课.md", "1-第一课.md"]).at(0) === "1-第一课.md");
+const corpusRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-corpus-"));
+try {
+  const nested = path.join(corpusRoot, "LangChain课程", "第1节. 构建知识库");
+  await fs.mkdir(nested, { recursive: true });
+  await fs.writeFile(path.join(nested, "第1节. 构建知识库.md"), longCourseChapter, "utf8");
+  const scanned = await scanCorpusRoot(corpusRoot);
+  const built = await buildCorpusBook(scanned[0]);
+  check("课程目录会递归找到嵌套章节文件", scanned.length === 1 && scanned[0].sources.length === 1);
+  check("嵌套的一份课程文件只生成一章并保留完整正文", built.chapters.length === 1 && built.chapters[0].text.includes("## 小节 20"));
+} finally {
+  await fs.rm(corpusRoot, { recursive: true, force: true });
+}
 
 
 // ————— 网页抓取的清洗。实测某文档站抓回 1047 行里 787 行是导航。—————
@@ -80,4 +98,4 @@ check("正文行保留", kept.includes("这是一段真正的正文"));
 // ⚠️ 反面：正文里偶尔一个链接不算导航，误删的话文章会被切碎
 check("含少量内联链接的正文行不被误删", kept.includes("但整行主要还是正文"));
 
-console.log("\n ✓ 语料清洗、切块与飞书导出解析全部通过");
+console.log("\n ✓ 语料清洗、来源边界与飞书导出解析全部通过");

@@ -4,6 +4,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createApi, requestAllowed } from "../server/api.mjs";
+import { applyExistingCourseRepair, planExistingCourseRepair } from "../server/lib/corpus-repair.mjs";
+import { createBookRecord } from "../server/routes/books-local.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-workspace-api-"));
@@ -338,7 +340,7 @@ try {
   const marks = await call(base, `/api/workspace/book-marks?dir=${encodeURIComponent(book.dir)}`);
   check("书籍、高亮和批注全部写入隔离 SQLite", marks.value.total === 2 && workspace.db.prepare("SELECT COUNT(*) AS count FROM book_marks").get().count === 2);
 
-  const articleText = Buffer.from("# 我过去的文章\n\n这是我过去发布过的一篇文章，内容足够用于来源去重和后续知识提炼。", "utf8");
+  const articleText = Buffer.from("# 我过去的文章\n\n这是开头。\n\n# 第二部分\n\n这是完整上下文的中段。\n\n# 第三部分\n\n这是结尾，多个一级标题也仍然是一篇文章。", "utf8");
   const articleQuery = new URLSearchParams({
     filename: "old-post.md", name: "我过去的文章", sourceKind: "文章", author: "本人",
     platform: "公众号", publishedAt: "2025-01-02T03:04:05.000Z", sourceUrl: "https://example.com/old-post",
@@ -347,9 +349,11 @@ try {
     method: "POST", body: articleText, headers: { "content-type": "application/octet-stream" },
   });
   const articleRow = workspace.db.prepare("SELECT source_kind AS sourceKind, author, platform, published_at AS publishedAt, source_url AS sourceUrl FROM books WHERE id=?").get(importedArticle.value.book.id);
+  const articleDocuments = workspace.db.prepare("SELECT COUNT(*) AS count FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=?").get(importedArticle.value.book.id).count;
   check("旧文章导入保留作者、平台、发布时间和原链接", importedArticle.response.status === 200
     && articleRow.sourceKind === "文章" && articleRow.author === "本人" && articleRow.platform === "公众号"
-    && articleRow.publishedAt.startsWith("2025-01-02") && articleRow.sourceUrl === "https://example.com/old-post");
+    && articleRow.publishedAt.startsWith("2025-01-02") && articleRow.sourceUrl === "https://example.com/old-post"
+    && articleDocuments === 1);
   const articleAssetsAfterFirst = workspace.db.prepare("SELECT COUNT(*) AS count FROM assets").get().count;
   const duplicateArticle = await call(base, `/api/workspace/books/import?${articleQuery}`, {
     method: "POST", body: articleText, headers: { "content-type": "application/octet-stream" },
@@ -361,6 +365,31 @@ try {
     method: "POST", body: Buffer.from("这是一篇正文足够长但来源协议不合法的旧文章。".repeat(3)), headers: { "content-type": "application/octet-stream" },
   });
   check("旧文章原链接只接受合法网址", invalidArticle.response.status === 400);
+  const splitCourse = await createBookRecord(workspace, {
+    title: "历史误拆课程", kind: "藏书", sourceKind: "课程",
+    chapters: [
+      { title: "第1节 · 向量化", text: "被误拆的第一段" },
+      { title: "第1节 · 检索器", text: "被误拆的第二段" },
+      { title: "第1节 · 总结", text: "被误拆的第三段" },
+    ],
+  });
+  const repairPlan = planExistingCourseRepair(workspace, splitCourse, [
+    { title: "第1节", text: "# 第1节\n\n被恢复的完整课程正文\n\n## 向量化\n\n## 检索器\n\n## 总结" },
+  ]);
+  check("历史误拆课程可预演为三篇合回一章", repairPlan.current.length === 3 && repairPlan.wanted.length === 1 && repairPlan.removed.length === 2 && !repairPlan.blocked);
+  applyExistingCourseRepair(workspace, splitCourse, repairPlan);
+  const repairedCourse = workspace.db.prepare("SELECT COUNT(*) AS count,MAX(body_markdown) AS body FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=?").get(splitCourse.id);
+  check("无引用的历史误拆课程会合回完整一章", repairedCourse.count === 1 && repairedCourse.body.includes("## 总结"));
+
+  const protectedCourse = await createBookRecord(workspace, {
+    title: "已有引用课程", kind: "藏书", sourceKind: "课程",
+    chapters: [{ title: "一 · A", text: "A" }, { title: "一 · B", text: "B" }],
+  });
+  const protectedDocument = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id=? ORDER BY document_order LIMIT 1").get(protectedCourse.id);
+  workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(protectedDocument.id, new Date().toISOString());
+  const blockedRepair = planExistingCourseRepair(workspace, protectedCourse, [{ title: "一", text: "完整正文" }]);
+  check("已有提炼记录的课程修复会被硬性阻止", blockedRepair.blocked && blockedRepair.references["提炼记录"] === 1);
+  assert.throws(() => applyExistingCourseRepair(workspace, protectedCourse, blockedRepair), /不能自动覆盖/);
 
   const originalNote = note.value.noteItems[0];
   const editedNote = await call(base, "/api/workspace/note/edit", { method: "POST", body: { path: book.notePath, index: originalNote.index, stamp: originalNote.stamp, body: "更新后的本地批注" } });
