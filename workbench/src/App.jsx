@@ -56,28 +56,10 @@ const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
   { key: "assistant", to: "assistant", match: (v) => v === "assistant" },
   {
-    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
+    key: "content", to: "bridge", match: (v) => CONTENT_VIEWS.has(v),
     children: [
-      /**
-       * ⚠️ **顺序就是流程**：还没有想写的 → 找题；挑定这一篇 → 选题；
-       * 开始写 → 创作；发布后 → 复盘。
-       *
-       * ⚠️ **「选题」和「稿件」都从导航里拿掉了**（路由和页面都留着，深链仍然有效）。
-       * 两者都是**同一批东西的第二个入口**：`getContentProject` 以 topic 为项目根，
-       * 所以每个选题就是一个项目；`listContentProjects` 连**孤立稿件**也会包成
-       * `draft:<id>` 项目。**没有任何一行会因此看不到。**
-       *
-       * ⚠️ **拿掉「选题」等于封存了自动成稿那条路**：任务3 只领
-       * `topics.status = 撰写中`，而改成那个状态的唯一界面入口就在那一页
-       *（`sources.js` 的 `askPlatformsOn`）。这是**有意的**——
-       * 新模型下你是从种子开始自己写，或者走素材/访谈起稿，那两条都是你在场的；
-       * 而查库时那条路一次都没跑过（选题全是「已成稿」、0 个「撰写中」）。
-       * cron 照跑，只是永远领不到东西。要它回来就得先把那道会花钱的闸门搬进项目页。
-       *
-       * 丢掉的另一样是「按平台横着看全部稿子」，需要时走 Ctrl+K。
-       */
-      { to: "ideas", label: "找题" },
-      { to: "seeds", label: "选题" },
+      /** 实验导航只表达新主路径；Ideas / Seeds 的数据、深链和 Ctrl+K 入口继续保留。 */
+      { to: "bridge", label: "内容机会" },
       { to: "content", label: "创作" },
       // 「待复盘」本来就是项目的一个阶段，所以它在这一栏而不是单开一级
       { to: "review", label: "复盘" },

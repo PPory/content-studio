@@ -149,6 +149,24 @@ export function CommandPalette({ open, onClose, onGo }) {
     }
     for (const x of resume.opened) out.push({ kind: "recent", ...x, typeLabel: x.typeLabel || "最近打开" });
     for (const s of resume.queries) out.push({ kind: "query", id: `q:${s}`, type: "recent", typeLabel: "搜过", title: s });
+    out.push(
+      {
+        kind: "legacy-route",
+        type: "topics",
+        typeLabel: "兼容入口",
+        id: "route:ideas",
+        title: "找题（旧版）",
+        go: { view: "ideas", state: "" },
+      },
+      {
+        kind: "legacy-route",
+        type: "inbox",
+        typeLabel: "兼容入口",
+        id: "route:seeds",
+        title: "选题 / 种子（旧版）",
+        go: { view: "seeds", state: "" },
+      },
+    );
     return out;
   }, [q, data, resume]);
 
@@ -333,5 +351,6 @@ function groupsOfResume(resume) {
   push("接着读", resume.reading.length);
   push("最近打开", resume.opened.length);
   push("最近搜过", resume.queries.length);
+  push("旧入口", 2);
   return out;
 }
