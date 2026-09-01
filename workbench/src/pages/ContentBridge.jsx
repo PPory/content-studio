@@ -50,9 +50,10 @@ function dateLabel(value) {
 
 function initialIds(value) {
   const text = String(value || "");
-  if (text.startsWith("wiki:")) return { wikiId: text.slice(5), problemId: "" };
-  if (text.startsWith("problem:")) return { wikiId: "", problemId: text.slice(8) };
-  return { wikiId: "", problemId: "" };
+  if (text.startsWith("wiki:")) return { wikiId: text.slice(5), problemId: "", opportunityId: "" };
+  if (text.startsWith("problem:")) return { wikiId: "", problemId: text.slice(8), opportunityId: "" };
+  if (text.startsWith("opportunity:")) return { wikiId: "", problemId: "", opportunityId: text.slice(12) };
+  return { wikiId: "", problemId: "", opportunityId: "" };
 }
 
 function SourceCount({ count }) {
@@ -116,6 +117,7 @@ export function ContentBridge({ state = "", onGo }) {
   const [manualSummary, setManualSummary] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [savedOpportunity, setSavedOpportunity] = useState(null);
+  const [projectBusy, setProjectBusy] = useState(false);
   const evidenceRef = useRef(null);
   const counterRef = useRef(null);
 
@@ -123,16 +125,40 @@ export function ContentBridge({ state = "", onGo }) {
     setLoading(true);
     setError(null);
     try {
-      const [wiki, problemData, agendaData, insightData] = await Promise.all([
+      const [wiki, problemData, agendaData, insightData, opportunityData] = await Promise.all([
         api.wiki(),
         api.audienceProblems(),
         api.agendas(),
         api.workspaceInsights(),
+        initial.opportunityId ? api.contentOpportunity(initial.opportunityId) : Promise.resolve(null),
       ]);
       setWikiData(wiki);
       setProblems(problemData.problems || []);
       setAgendas(agendaData.agendas || []);
       setInsights(insightData.reports || []);
+      const stored = opportunityData?.opportunity;
+      if (stored) {
+        const storedProblem = (problemData.problems || []).find((item) => item.id === stored.audienceProblemId);
+        const storedAgenda = (agendaData.agendas || []).find((item) => item.id === stored.agendaId);
+        setWikiId(stored.wikiPageId);
+        setProblemId(stored.audienceProblemId);
+        setAgendaId(stored.agendaId || "");
+        setPreview({
+          fit: stored.fit,
+          fitReason: stored.fitReason,
+          audienceProblem: { surface: storedProblem?.statement || "已保存的用户问题", underlying: storedProblem?.statement || "已保存的用户问题" },
+          knowledgeExplanation: stored.knowledgeExplanation,
+          coreClaim: stored.coreClaim,
+          cognitiveGap: stored.cognitiveGap,
+          dominantAction: stored.dominantAction,
+          construction: stored.construction,
+          agendaFit: {
+            status: stored.agendaId ? "strong" : "none",
+            reason: storedAgenda?.desiredJudgment || "这条机会暂未关联长期议程。",
+          },
+        });
+        setSavedOpportunity(stored);
+      }
       if (initial.wikiId && !(wiki.pages || []).some((item) => item.id === initial.wikiId)) setWikiId("");
       if (initial.problemId && !(problemData.problems || []).some((item) => item.id === initial.problemId)) setProblemId("");
     } catch (failure) {
@@ -217,6 +243,23 @@ export function ContentBridge({ state = "", onGo }) {
       setPreviewError(failure);
     } finally {
       setSaveBusy(false);
+    }
+  };
+
+  const createProject = async () => {
+    if (!savedOpportunity) return;
+    setProjectBusy(true);
+    setPreviewError(null);
+    try {
+      const result = await api.createProjectFromOpportunity(savedOpportunity.id, {
+        title: savedOpportunity.coreClaim,
+        confirmed: true,
+      });
+      onGo?.("project", result.projectId);
+    } catch (failure) {
+      setPreviewError(failure);
+    } finally {
+      setProjectBusy(false);
     }
   };
 
@@ -457,9 +500,13 @@ export function ContentBridge({ state = "", onGo }) {
             ) : (
               <Note title="目前仍是候选">Preview 不会创建项目、修改 Wiki 或写入正文。只有你确认保存后，才会写入内容机会。</Note>
             )}
-            <button type="button" className="btn btn-primary" disabled={saveBusy || Boolean(savedOpportunity)} onClick={saveOpportunity}>
-              {saveBusy ? "正在保存…" : savedOpportunity ? "已保存为内容机会" : "保存为内容机会"}
-            </button>
+            {savedOpportunity ? (
+              <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>
+            ) : (
+              <button type="button" className="btn btn-primary" disabled={saveBusy} onClick={saveOpportunity}>
+                {saveBusy ? "正在保存…" : "保存为内容机会"}
+              </button>
+            )}
           </footer>
         </div>
       ) : null}

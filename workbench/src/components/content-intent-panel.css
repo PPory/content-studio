@@ -1,0 +1,97 @@
+.content-intent {
+  margin: 18px 20px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.content-intent > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.content-intent > header span,
+.content-intent__facts span {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.content-intent > header h2 {
+  margin: 3px 0 0;
+  font-size: var(--fs-md);
+}
+
+.content-intent button {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.content-intent button:hover { color: var(--text-1); }
+
+.content-intent__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 16px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.content-intent__facts > div {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 13px 14px;
+  background: var(--surface);
+}
+
+.content-intent__facts strong {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.content-intent__facts small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.content-intent__facts button { justify-self: start; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+
+.content-intent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.content-intent__actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+}
+
+.content-intent__actions button:hover { border-color: var(--border-strong); }
+
+@media (max-width: 900px) {
+  .content-intent__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .content-intent { margin-inline: 12px; padding: 15px; }
+  .content-intent > header { align-items: stretch; flex-direction: column; }
+  .content-intent > header > button { align-self: flex-start; padding: 0; }
+  .content-intent__facts { grid-template-columns: 1fr; }
+}

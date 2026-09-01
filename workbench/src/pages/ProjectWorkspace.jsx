@@ -6,6 +6,7 @@ import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
+import { ContentIntentPanel } from "../components/ContentIntentPanel.jsx";
 import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
@@ -729,6 +730,15 @@ ${(form.body || "").slice(0, 3000)}`);
         </div>
       </header>
       {blockedReason ? <p className="project-bar__blocked">{blockedReason}</p> : null}
+      <ContentIntentPanel
+        projectId={projectId}
+        onGo={onGo}
+        onAsk={(prompt) => {
+          setAssistantHandoff({ id: `intent-${Date.now()}`, prompt });
+          summonAssistant({ routeView: "project" });
+        }}
+      />
+
 
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (

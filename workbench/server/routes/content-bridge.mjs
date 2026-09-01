@@ -206,4 +206,43 @@ export const contentBridgeRoutes = [
       json(res, { ok: true, opportunity: workspace.contentBridge.opportunity(params.id) });
     }),
   },
+  {
+    method: "POST",
+    path: "/api/workspace/content-opportunities/:id/project",
+    handler: guard(async ({ workspace, req, res, params }) => {
+      const body = await readJsonBody(req);
+      const projectId = workspace.contentBridge.createProjectFromOpportunity(params.id, {
+        title: body.title,
+        briefMarkdown: body.briefMarkdown,
+        priority: body.priority,
+        primaryPlatform: body.primaryPlatform,
+        actor: "user",
+        confirmed: body.confirmed === true,
+        now: new Date(),
+      });
+      json(res, { ok: true, projectId });
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/workspace/projects/:id/content-intent",
+    handler: guard(async ({ workspace, res, params }) => {
+      workspace.domain.entity(params.id, "project");
+      const opportunity = workspace.contentBridge.projectOpportunity(params.id);
+      if (!opportunity) return json(res, { ok: true, intent: null });
+      const wiki = workspace.db.prepare("SELECT id,title,page_type AS pageType,summary FROM wiki_pages WHERE id=?").get(opportunity.wikiPageId);
+      const problem = workspace.contentBridge.audienceProblem(opportunity.audienceProblemId);
+      const agenda = opportunity.agendaId ? workspace.contentBridge.agenda(opportunity.agendaId) : null;
+      json(res, {
+        ok: true,
+        intent: {
+          opportunity,
+          wiki,
+          problem,
+          agenda,
+          evidenceGaps: opportunity.construction.evidence_gaps,
+        },
+      });
+    }),
+  },
 ];

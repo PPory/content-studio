@@ -130,6 +130,8 @@ export const api = {
   contentOpportunity: (id) => req(`/api/workspace/content-opportunities/${encodeURIComponent(id)}`),
   saveContentOpportunity: (body) => postJson("/api/workspace/content-opportunities", body),
   updateContentOpportunity: (id, body) => postJson(`/api/workspace/content-opportunities/${encodeURIComponent(id)}/update`, body),
+  createProjectFromOpportunity: (id, body) => postJson(`/api/workspace/content-opportunities/${encodeURIComponent(id)}/project`, body),
+  projectContentIntent: (projectId) => req(`/api/workspace/projects/${encodeURIComponent(projectId)}/content-intent`),
 
   // 洞察跑批。ready 回答「现在能不能跑、缺什么、上周挂了什么账」——
   // 这才是按钮真正省掉的事：以前要翻三个目录才能确认。

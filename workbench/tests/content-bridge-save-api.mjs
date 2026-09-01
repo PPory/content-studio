@@ -117,6 +117,34 @@ try {
     && detail.value.opportunity.audienceProblemId === audienceProblemId
     && detail.value.opportunity.agendaId === agendaId);
 
+
+  const unconfirmedProject = await call(base, `/api/workspace/content-opportunities/${opportunityId}/project`, {
+    method: "POST",
+    body: {},
+  });
+  check("未确认时不能从 Opportunity 建立项目", unconfirmedProject.response.status === 400
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count === 0);
+
+  const createdProject = await call(base, `/api/workspace/content-opportunities/${opportunityId}/project`, {
+    method: "POST",
+    body: { confirmed: true },
+  });
+  assert.equal(createdProject.response.status, 200, JSON.stringify(createdProject.value));
+  const projectId = createdProject.value.projectId;
+  const repeatedProject = await call(base, `/api/workspace/content-opportunities/${opportunityId}/project`, {
+    method: "POST",
+    body: { confirmed: true },
+  });
+  const contentIntent = await call(base, `/api/workspace/projects/${projectId}/content-intent`);
+  check("项目复用现有 Domain、幂等关联并可回溯创作意图", projectId
+    && repeatedProject.value.projectId === projectId
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count === 1
+    && contentIntent.value.intent.opportunity.id === opportunityId
+    && contentIntent.value.intent.wiki.id === wikiPageId
+    && contentIntent.value.intent.problem.id === audienceProblemId
+    && contentIntent.value.intent.agenda.id === agendaId
+    && contentIntent.value.intent.evidenceGaps.length === 0);
+
   const invalidConstruction = await call(base, "/api/workspace/content-opportunities", {
     method: "POST",
     body: { ...candidate, construction: { ...candidate.construction, relations: [{ from: "missing", to: "knowledge", type: "support" }] }, confirmed: true },
