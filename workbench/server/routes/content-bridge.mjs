@@ -1,5 +1,5 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { extractAudienceProblemCandidates } from "../domain/content-bridge-ai.mjs";
+import { extractAudienceProblemCandidates, previewContentOpportunity } from "../domain/content-bridge-ai.mjs";
 import { CONTENT_BRIDGE_VALUES } from "../domain/content-bridge.mjs";
 
 async function ready(source) {
@@ -132,6 +132,24 @@ export const contentBridgeRoutes = [
       if (!["archive", "restore"].includes(body.action)) throw new Error("用户问题更新动作不受支持");
       workspace.contentBridge.setAudienceProblemArchived(params.id, body.action === "archive", { actor: "user", confirmed: body.confirmed === true, now: new Date() });
       json(res, { ok: true, problem: workspace.contentBridge.audienceProblem(params.id) });
+    }),
+  },
+  {
+    method: "POST",
+    path: "/api/workspace/content-opportunities/preview",
+    handler: guard(async ({ env, workspace, req, res }) => {
+      const body = await readJsonBody(req);
+      const before = {
+        opportunities: workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count,
+        projects: workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count,
+      };
+      const result = await previewContentOpportunity(env, workspace, body);
+      const after = {
+        opportunities: workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count,
+        projects: workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count,
+      };
+      if (before.opportunities !== after.opportunities || before.projects !== after.projects) throw new Error("内容机会 Preview 产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
 ];
