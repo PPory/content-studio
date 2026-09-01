@@ -8,6 +8,7 @@ import { readArticle } from "../lib/article.mjs";
 import { parsePdf } from "../lib/books.mjs";
 import { createBookRecord } from "../routes/books-local.mjs";
 import { quoteGrounded } from "../domain/wiki-ingest.mjs";
+import { applyExplorationPage } from "../domain/wiki-pages.mjs";
 import { ENTRY_KINDS } from "../domain/values.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
@@ -654,7 +655,7 @@ function contentPrompt(input, context, model) {
     // ⚠️ 这条是为了让「整理全文」落在正文里，而不是把四千字倒进对话栏。
     // 用户在那条窄栏里读不完一整篇，也没法在里面逐处比对——比对要在正文区做。
     "用户要求整理、清理、重排、精简或改写**整篇**正文时，必须调用 propose_body_rewrite 提交完整的新正文，并在 reason 里一句话说明改了什么。**不要把整篇正文写在回复里**——回复只写你做了什么判断，候选会送进正文区让用户逐处审阅。只改其中一段时不要用它，按用户点名的范围给候选就行。",
-    "用户明确要求把一条认识沉淀、记住或加入知识库时，先用 knowledge_search 找到 SQLite 本地原始来源；只有拿到来源 ID 和至少 12 字的逐字原文后，才调用 propose_knowledge_update 提交一条原子候选。普通问答不要擅自沉淀；公开网页要先用 propose_knowledge_source 收为本地来源，不能把搜索摘要当证据。",
+    "knowledge_search 会优先返回持续维护的 Wiki 页面，需要核实时才回看 Raw。当回答形成可长期复用的比较、综合或新连接，并且已经基于至少一个 Wiki 页面时，用 propose_wiki_page 提出完整页面归档候选。禁止把知识拆成孤立事实或原子词条。归档只生成候选，不能声称已经写入。公开网页要先用 propose_knowledge_source 收为本地 Raw，不能把搜索摘要当证据。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
@@ -678,7 +679,7 @@ function generalPrompt(input, context, model) {
     "用户问工作台里是否有某篇文章、某本书、读到哪里、有没有笔记或批注时，必须以本轮 SQLite 工作区检索 的真实结果为准。当前内容项目为空不代表工作台为空，禁止因此回答没有检测到内容。",
     "不要因为工作台与内容创作有关，就把普通问候解释为确定选题、搭结构或开始写稿。只有用户明确提出写作任务时才进入创作流程。不要声称执行了未实际调用的工具或修改。",
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
-    "用户明确要求把一条认识沉淀、记住或加入知识库时，先用 knowledge_search 找到 SQLite 本地原始来源；只有拿到来源 ID 和至少 12 字的逐字原文后，才调用 propose_knowledge_update 提交一条原子候选。普通问答不要擅自沉淀；公开网页要先收为本地来源，不能把搜索摘要当证据。",
+    "knowledge_search 会优先返回持续维护的 Wiki 页面，需要核实时才回看 Raw。当回答形成可长期复用的比较、综合或新连接，并且已经基于至少一个 Wiki 页面时，用 propose_wiki_page 提出完整页面归档候选。禁止把知识拆成孤立事实或原子词条。归档只生成候选，不能声称已经写入。公开网页要先收为本地 Raw，不能把搜索摘要当证据。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
     assistantReferencePrompt(context),
@@ -703,7 +704,7 @@ const TOOL_LABELS = {
   submit_expert_report: "正在整理专家结论",
   propose_content_create: "正在准备工作台新建内容候选",
   propose_body_rewrite: "正在整理全文",
-  propose_knowledge_update: "正在准备知识沉淀候选",
+  propose_wiki_page: "正在准备 Wiki 页面归档",
 };
 
 /** 只给测试用：确认每个 propose_* 工具的动作类型都登记过了。 */
@@ -741,6 +742,13 @@ function normalizeProposedAction(item, permissionMode) {
     entry: clean(item.entry, 160), kind: clean(item.kind, 40), text: clean(item.text, 2_000),
     sourceId: clean(item.sourceId, 160), sourceTitle: clean(item.sourceTitle, 300),
     quote: clean(item.quote, 2_000), why: clean(item.why, 500),
+  };
+  if (item.type === "wiki_page") return {
+    ...base,
+    title: clean(item.title, 160), pageType: clean(item.pageType, 40),
+    summary: clean(item.summary, 1_200), bodyMarkdown: clean(item.bodyMarkdown, 200_000),
+    basedOnPageIds: Array.isArray(item.basedOnPageIds) ? item.basedOnPageIds.map((id) => clean(id, 200)).filter(Boolean).slice(0, 20) : [],
+    why: clean(item.why, 1_000),
   };
   if (["document_create", "document_update", "annotation_append", "reference_insert", "workspace_write", "workspace_edit", "workspace_powershell", "project_write", "project_edit", "powershell"].includes(item.type)) {
     return { ...base, ...item, id: base.id, status: base.status, createdAt: base.createdAt, permissionMode: base.permissionMode };
@@ -1216,6 +1224,9 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
   } else if (action.type === "knowledge_update") {
     // 动作卡的确认只是授权；真正写入前仍重新读取 SQLite 来源并通过逐字证据闸门。
     result = applyKnowledgeUpdate(currentWorkspace(), action, new Date());
+  } else if (action.type === "wiki_page") {
+    const applied = applyExplorationPage(currentWorkspace(), action, { now: new Date() });
+    result = { ...applied, pageId: applied.pages?.[0]?.id || "" };
   } else if (action.type === "knowledge_source_add") {
     /**
      * 抓取发生在**这里**，不在提候选的时候。

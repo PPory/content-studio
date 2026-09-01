@@ -168,7 +168,7 @@ const TOOL_LABELS = {
   delegate_experts: "正在请专家分别检查",
   propose_content_create: "正在准备工作台新建内容候选",
   propose_body_rewrite: "正在整理全文",
-  propose_knowledge_update: "正在准备知识沉淀候选",
+  propose_wiki_page: "正在准备 Wiki 页面归档",
 };
 
 export async function createPiRun({

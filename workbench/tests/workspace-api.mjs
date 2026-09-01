@@ -6,6 +6,7 @@ import path from "node:path";
 import { createApi, requestAllowed } from "../server/api.mjs";
 import { applyExistingCourseRepair, planExistingCourseRepair } from "../server/lib/corpus-repair.mjs";
 import { createBookRecord } from "../server/routes/books-local.mjs";
+import { captureWikiSourceSnapshot } from "../server/domain/wiki-pages.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-workspace-api-"));
@@ -329,7 +330,7 @@ try {
   const book = createdBook.value.book;
   const bookDoc = book.bookPath;
   const readBook = await call(base, `/api/workspace/doc?path=${encodeURIComponent(bookDoc)}&notePath=${encodeURIComponent(book.notePath)}`);
-  const savedBook = await call(base, "/api/workspace/doc", { method: "POST", body: { path: bookDoc, content: "# 本地资料\n\n更新后的正文。", stamp: readBook.value.stamp } });
+  const savedBook = await call(base, "/api/workspace/doc", { method: "POST", body: { path: bookDoc, content: "# 本地资料\n\n更新后的正文可以继续支撑完整 Wiki 页面，并保留准确来源。", stamp: readBook.value.stamp } });
   assert.equal(savedBook.response.status, 200, JSON.stringify(savedBook.value));
   const staleBook = await call(base, "/api/workspace/doc", { method: "POST", body: { path: bookDoc, content: "过期覆盖", stamp: readBook.value.stamp } });
   check("本地书架正文使用 SQLite 版本冲突保护", staleBook.response.status === 409);
@@ -429,29 +430,10 @@ try {
   check("关闭重开后计划、读者偏好和修订历史仍存在", reopenedPlan.value.tasks[0]?.done === true && reopenedProfile.value.profile.audience === "隔离工作区读者" && (await call(base, `/api/revisions?scope=${encodeURIComponent(`${draftId}:published`)}`)).value.items.length === 1);
   const reopenedBook = await call(base, `/api/workspace/doc?path=${encodeURIComponent(bookDoc)}`);
   check("关闭重开后书籍正文、批注和恢复状态仍存在", reopenedBook.response.status === 200 && reopenedBook.value.content.includes("更新后的正文") && reopenedBook.value.noteItems[0]?.body === "更新后的本地批注");
-  // ————— 知识库：词条 + 来源 —————
-  const emptyEntries = await call(base, "/api/workspace/entries");
-  check("没有词条时知识库仍返回可用结构，而不是报错", emptyEntries.value.ok && emptyEntries.value.entries.length === 0
-    && emptyEntries.value.health.total === 0 && emptyEntries.value.kindLabels.stance === "我的主张");
-
-  const wikiSourceId = workspace.domain.createCapture({ kind: "article", title: "词条来源", bodyMarkdown: "四段式提示词。", actor: "user", now: new Date() });
-  const conceptId = workspace.domain.createEntry({ name: "四段式提示词", kind: "method", definition: "角色、任务、约束、示例。", definitionSourceId: wikiSourceId, actor: "user", now: new Date() });
-  const otherId = workspace.domain.createEntry({ name: "提示词工程", kind: "concept", definition: "写提示的方法总称。", definitionSourceId: wikiSourceId, actor: "user", now: new Date() });
-  workspace.domain.addEntryFact({ entryId: conceptId, statement: "四段式适合长视频提示。", sourceEntityId: wikiSourceId, actor: "user", now: new Date() });
-  const listed = await call(base, "/api/workspace/entries");
-  check("词条列表带出事实数、来源数、关系数和孤儿状态", listed.value.entries.length === 2
-    && listed.value.entries.find((item) => item.id === conceptId).activeFacts === 1
-    && listed.value.entries.find((item) => item.id === conceptId).sourceCount === 1
-    && listed.value.health.orphans === 2);
-  workspace.domain.linkEntries(conceptId, otherId, "part_of", { actor: "user", now: new Date() });
-  const linked = await call(base, "/api/workspace/entries");
-  check("建立关系后孤儿数归零，无需任何巡检", linked.value.health.orphans === 0);
-
-  const detail = await call(base, `/api/workspace/entries/${conceptId}`);
-  check("词条详情带出每条事实的来源标题和双向邻居", detail.value.entry.name === "四段式提示词"
-    && detail.value.facts[0].sourceTitle === "词条来源"
-    && detail.value.neighbors.outgoing[0]?.relationType === "part_of"
-    && detail.value.relationLabels.part_of === "属于");
+  // ————— Living Wiki：完整页面 + 来源 + 版本 + 连接 —————
+  const emptyWiki = await call(base, "/api/workspace/wiki");
+  check("没有页面时 Living Wiki 仍返回可用结构", emptyWiki.value.ok && emptyWiki.value.pages.length === 0
+    && emptyWiki.value.health.total === 0 && emptyWiki.value.typeLabels.stance === "我的理解");
 
   const knowledgeSources = await call(base, "/api/workspace/knowledge/sources");
   check("知识库来源把归类和可写性分开报，两个维度互不冒充", knowledgeSources.value.sources.length >= 1
@@ -459,35 +441,56 @@ try {
     && knowledgeSources.value.totals.documents >= 1);
 
   const bookDocumentId = bookDoc.replace(/^bookdoc:/, "");
+  const sourceSnapshot = captureWikiSourceSnapshot(workspace, bookDocumentId);
+  const wikiPayload = {
+    kind: "wiki.compile", sourceId: bookDocumentId, title: "本地资料", sourceLocator: "本地资料 · 本地资料",
+    sourceSnapshotId: sourceSnapshot.id, sourceContentSha256: sourceSnapshot.contentSha256,
+    compilationSummary: "建立来源资料卡和完整知识页面。", readMode: "full", chunksRead: 1,
+    pages: [
+      {
+        action: "create", title: "来源：本地资料", pageType: "source_summary",
+        summary: "记录本地资料对 Wiki 的贡献。",
+        bodyMarkdown: "# 来源：本地资料\n\n这份 Raw 说明更新后的正文可以继续支撑完整 Wiki 页面，并保留准确来源。",
+        changeSummary: "建立来源资料卡", citations: [{ quote: "更新后的正文可以继续支撑完整 Wiki 页面，并保留准确来源。", contribution: "支撑来源资料卡" }],
+        links: [{ toTitle: "完整 Wiki 页面", relation: "支撑", why: "原文直接说明完整页面要求" }],
+      },
+      {
+        action: "create", title: "完整 Wiki 页面", pageType: "concept",
+        summary: "以完整正文、来源、连接和版本承载持续演化的知识。",
+        bodyMarkdown: "# 完整 Wiki 页面\n\n更新后的正文可以继续支撑完整 Wiki 页面，并保留准确来源。\n\n## 当前认识\n\n知识不再拆成孤立事实。",
+        changeSummary: "建立完整知识页面", citations: [{ quote: "更新后的正文可以继续支撑完整 Wiki 页面，并保留准确来源。", contribution: "支撑页面核心判断" }],
+        links: [{ toTitle: "来源：本地资料", relation: "依据来自", why: "当前认识由该 Raw 支撑" }],
+      },
+    ], rejected: [],
+  };
   const rejectCandidate = workspace.domain.actions.propose({
-    actionType: "entry.create", targetId: bookDocumentId,
-    payload: { kind: "wiki.ingest", sourceId: bookDocumentId, title: "本地资料", entries: [], definitions: [], facts: [], relations: [], contradictions: [], rejected: [] },
+    actionType: "wiki.pages.apply", targetId: bookDocumentId, payload: wikiPayload,
     proposedBy: "ai", now: new Date(),
   });
   workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,candidate_id,run_at) VALUES (?,'proposed',?,?)")
     .run(bookDocumentId, rejectCandidate.id, new Date().toISOString());
   const rejected = await call(base, `/api/workspace/knowledge/candidates/${rejectCandidate.id}`, { method: "POST", body: { action: "reject" } });
-  check("拒绝提炼候选后来源明确变为已拒绝，不再冒充待审阅", rejected.value.rejected === true
+  check("拒绝 Wiki 编译候选后来源明确变为已拒绝", rejected.value.rejected === true
     && workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id=?").get(bookDocumentId).status === "rejected");
 
   const applyCandidate = workspace.domain.actions.propose({
-    actionType: "entry.create", targetId: bookDocumentId,
-    payload: {
-      kind: "wiki.ingest", sourceId: bookDocumentId, title: "本地资料", sourceLocator: "本地资料 · 第 1 节",
-      sourceContentSha256: "c".repeat(64), existing: [{ id: conceptId, name: "四段式提示词" }],
-      entries: [], definitions: [], facts: [{ entry: "四段式提示词", statement: "更新后的正文可以继续支撑词条。", quote: "更新后的正文" }],
-      relations: [], contradictions: [], rejected: [],
-    },
+    actionType: "wiki.pages.apply", targetId: bookDocumentId, payload: wikiPayload,
     proposedBy: "ai", now: new Date(),
   });
   workspace.db.prepare("UPDATE source_ingests SET status='proposed',candidate_id=? WHERE source_entity_id=?").run(applyCandidate.id, bookDocumentId);
-  const appliedCandidate = await call(base, `/api/workspace/knowledge/candidates/${applyCandidate.id}`, { method: "POST", body: { action: "accept", include: ["facts:0"] } });
-  check("接受所选候选会持久化原文证据，并把来源状态闭环为已应用", appliedCandidate.value.applied.facts === 1
+  const appliedCandidate = await call(base, `/api/workspace/knowledge/candidates/${applyCandidate.id}`, { method: "POST", body: { action: "accept", include: ["pages:0", "pages:1"] } });
+  const listedWiki = await call(base, "/api/workspace/wiki");
+  const conceptPage = listedWiki.value.pages.find((item) => item.title === "完整 Wiki 页面");
+  const wikiDetail = await call(base, `/api/workspace/wiki/${conceptPage.id}`);
+  check("接受候选会原子写入完整页面、来源、连接、版本和 Log", appliedCandidate.value.applied.created === 2
     && workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id=?").get(bookDocumentId).status === "applied"
-    && workspace.db.prepare("SELECT source_quote AS quote FROM entry_facts WHERE source_entity_id=? ORDER BY created_at DESC LIMIT 1").get(bookDocumentId).quote === "更新后的正文");
+    && wikiDetail.value.page.bodyMarkdown.includes("知识不再拆成孤立事实")
+    && wikiDetail.value.sources[0].quote.includes("保留准确来源")
+    && wikiDetail.value.links.outgoing.length === 1 && wikiDetail.value.revisions.length === 1
+    && listedWiki.value.log[0].operation === "ingest");
 
   const lint = await call(base, "/api/workspace/knowledge/lint");
-  check("体检把孤儿和待判定的同题事实作为查询返回", Array.isArray(lint.value.orphans) && Array.isArray(lint.value.pendingPairs));
+  check("体检返回 Wiki 网络的确定性健康状态", lint.value.wiki.total === 2 && lint.value.wiki.missingCitations === 0);
 
   check("隔离工作区数据库完整性检查通过", workspace.check().ok);
 

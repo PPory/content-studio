@@ -78,6 +78,8 @@ export const api = {
   intake: (body) => postJson("/api/workspace/intake", body),
   entries: () => req("/api/workspace/entries"),
   entry: (id) => req(`/api/workspace/entries/${encodeURIComponent(id)}`),
+  wiki: (query = "") => req(`/api/workspace/wiki${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+  wikiPage: (id) => req(`/api/workspace/wiki/${encodeURIComponent(id)}`),
   knowledgeSources: () => req("/api/workspace/knowledge/sources"),
   knowledgeSourceDocs: (id) => req(`/api/workspace/knowledge/sources/${encodeURIComponent(id)}`),
   knowledgeLint: () => req("/api/workspace/knowledge/lint"),

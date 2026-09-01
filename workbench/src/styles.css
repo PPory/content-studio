@@ -6831,6 +6831,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__compare span { color: var(--text-3); }
 .ing__compare small { grid-column: 2; color: var(--text-3); }
 .ing__dropped { margin: 10px 0 0 26px; color: var(--warn); font-size: var(--fs-xs); }
+.ing__page-change { display: grid; gap: 7px; margin-top: 7px; color: var(--text-3); font-size: var(--fs-xs); }
+.ing__page-change details { border-left: 2px solid var(--border); padding-left: 10px; }
+.ing__page-change summary { cursor: pointer; color: var(--text-2); }
+.ing__page-change pre { max-height: 280px; overflow: auto; white-space: pre-wrap; padding: 10px; background: var(--surface-2); color: var(--text-2); font: 12px/1.65 var(--font-mono); }
+.ing__page-change details > b { display: block; margin-top: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
 
 .entry-health { display: flex; width: 100%; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
 .entry-health span { color: var(--accent); }
@@ -6901,6 +6906,75 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .rels button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 /* 入链的方向反过来读：「组块 属于 本词条」，而不是「本词条 属于 组块」 */
 .rels__in em:last-child { color: var(--text-3); }
+
+/* ==========================================================================
+   Living Wiki
+   界面把“当前认识”放在中心，Raw 来源退到证据位置。风格接近一本持续修订的索引书，
+   不做卡片墙，也不靠动画制造层级。
+   ========================================================================== */
+
+.wiki-home { max-width: 1240px; }
+.wiki-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 36px; padding: 10px 0 28px; border-bottom: 1px solid var(--border-strong); }
+.wiki-kicker { margin: 0 0 8px; color: var(--brand); font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.wiki-hero h2 { margin: 0; font-size: clamp(30px, 3vw, 42px); font-weight: 650; letter-spacing: -.045em; }
+.wiki-hero p:last-child { max-width: 680px; margin: 10px 0 0; color: var(--text-2); line-height: 1.7; }
+.wiki-hero__actions { display: flex; flex: none; gap: 8px; }
+
+.wiki-pulse { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
+.wiki-pulse > div { display: flex; align-items: baseline; gap: 8px; min-height: 74px; padding: 18px 22px; border-left: 1px solid var(--border); }
+.wiki-pulse > div:first-child { padding-left: 0; border-left: 0; }
+.wiki-pulse b { font-family: "Literata", "Noto Sans SC", serif; font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.wiki-pulse span { color: var(--text-3); font-size: var(--fs-xs); }
+.wiki-pulse .is-warn b { color: var(--warn); }
+
+.wiki-toolbar { display: flex; align-items: center; gap: 24px; margin: 26px 0 22px; }
+.wiki-toolbar input { width: min(520px, 52%); }
+.wiki-toolbar p { margin: 0 0 0 auto; color: var(--text-3); font-size: var(--fs-xs); }
+.wiki-layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 56px; align-items: start; }
+.wiki-index { min-width: 0; }
+.wiki-section { margin-bottom: 34px; }
+.wiki-section__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.wiki-section__head h3 { font-size: var(--fs-sm); font-weight: 650; }
+.wiki-section__head span { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.wiki-page-list { border-top: 1px solid var(--border-strong); }
+.wiki-page-row { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(260px, 1.5fr) 170px; gap: 18px; align-items: baseline; width: 100%; min-height: 60px; padding: 13px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+.wiki-page-row:hover { background: var(--surface-2); }
+.wiki-page-row__title { font-weight: 600; }
+.wiki-page-row__summary { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
+.wiki-page-row__meta { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); text-align: right; }
+
+.wiki-log { position: sticky; top: 18px; padding-left: 22px; border-left: 1px solid var(--border); }
+.wiki-log ol { list-style: none; margin: 0; padding: 0; }
+.wiki-log li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.wiki-log time { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.wiki-log b { display: block; font-size: var(--fs-xs); }
+.wiki-log p { margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55; }
+
+.wiki-article { max-width: 1180px; }
+.wiki-article__head { max-width: 800px; padding-bottom: 28px; border-bottom: 1px solid var(--border-strong); }
+.wiki-article__head > p { margin: 0 0 8px; color: var(--brand); font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; }
+.wiki-article__head h2 { margin: 0; font-size: clamp(32px, 4vw, 48px); font-weight: 650; letter-spacing: -.045em; }
+.wiki-article__head > div { display: flex; gap: 14px; margin-top: 12px; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.wiki-article__head > blockquote { margin: 22px 0 0; padding-left: 18px; border-left: 3px solid var(--brand); color: var(--text-2); font-family: "Literata", "Noto Sans SC", serif; font-size: 18px; line-height: 1.75; }
+.wiki-article__layout { display: grid; grid-template-columns: minmax(0, 760px) 300px; gap: 68px; align-items: start; margin-top: 32px; }
+.wiki-article__body { font-family: "Literata", "Noto Sans SC", serif; font-size: 16px; line-height: 1.9; }
+.wiki-article__body > h1:first-child { display: none; }
+.wiki-article__body h2 { margin-top: 2.2em; font-family: var(--font); font-size: 20px; }
+.wiki-article__body h3 { margin-top: 1.8em; font-family: var(--font); font-size: 16px; }
+.wiki-article__rail { position: sticky; top: 18px; display: grid; gap: 30px; }
+.wiki-article__rail section { border-top: 1px solid var(--border-strong); padding-top: 10px; }
+.wiki-article__rail h3 { margin-bottom: 8px; font-size: var(--fs-xs); }
+.wiki-article__rail section > button { position: relative; display: grid; width: 100%; gap: 3px; padding: 10px 24px 10px 0; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+.wiki-article__rail section > button svg { position: absolute; top: 18px; right: 0; width: 14px; }
+.wiki-article__rail small, .wiki-article__rail span, .wiki-article__rail section > p { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.5; }
+.wiki-article__rail details { padding: 9px 0; border-top: 1px solid var(--border); color: var(--text-2); font-size: var(--fs-xs); }
+.wiki-article__rail summary { cursor: pointer; font-weight: 500; }
+.wiki-article__rail details p { color: var(--text-3); }
+.wiki-article__rail details blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--border-strong); color: var(--text-2); line-height: 1.6; }
+.wiki-revisions { list-style: none; margin: 0; padding: 0; }
+.wiki-revisions li { display: grid; gap: 3px; padding: 9px 0; border-top: 1px solid var(--border); font-size: var(--fs-xs); }
+.wiki-revisions span, .wiki-revisions time { color: var(--text-3); }
+.wiki-revisions time { font-family: var(--font-mono); font-size: var(--fs-2xs); }
 
 /* ==========================================================================
    写作现场的相关词条

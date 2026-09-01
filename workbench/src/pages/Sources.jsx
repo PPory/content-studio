@@ -5,7 +5,7 @@
 // 「加封面」按钮，屏幕上最显眼的东西全是噪音。
 //
 // 换成表格之后，每一列都在回答一个问题：这是什么、有多少、**读过没有**、
-// **有没有被用上**。最后那一列（贡献了几条事实）是知识库特有的：
+// **有没有被用上**。最后那一列（影响了几张 Wiki 页面）是知识库特有的：
 // 它区分「读过并且沉淀下来了」和「导进来放着」，而这两者在任何文件列表里
 // 都长得一模一样。
 
@@ -24,7 +24,7 @@ const KIND_HINT = {
 
 const FILTERS = [
   ["all", "全部"],
-  ["undistilled", "未提炼"],
+  ["undistilled", "未编译"],
   ["queued", "排队中"],
   ["proposed", "待审阅"],
   ["failed", "失败"],
@@ -33,7 +33,7 @@ const FILTERS = [
 const number = (value) => Number(value || 0).toLocaleString();
 
 /**
- * 提炼进度。**三种状态要分得开**：一份都没读过、读了一部分、全读完了。
+ * 编译进度。**三种状态要分得开**：一份都没读过、读了一部分、全读完了。
  * 只显示百分比的话「0%」和「还没开始」看起来一样，而它们要做的事不同。
  */
 function distillState(source) {
@@ -42,9 +42,9 @@ function distillState(source) {
   if (source.proposed) return { tone: "busy", label: `${source.proposed} 节待审阅` };
   if (source.queued) return { tone: "busy", label: `${source.queued} 节排队中` };
   if (source.rejected) return { tone: "idle", label: `${source.rejected} 节已拒绝` };
-  if (!source.distilled) return { tone: "idle", label: "未提炼" };
+  if (!source.distilled) return { tone: "idle", label: "未编译" };
   if (source.distilled < source.documents) return { tone: "busy", label: `${source.distilled}/${source.documents} 节` };
-  return { tone: "done", label: "已提炼" };
+  return { tone: "done", label: "已编译" };
 }
 
 function matchesFilter(source, filter) {
@@ -188,7 +188,7 @@ export function Sources({ onOpen }) {
         publishedAt: importForm.publishedAt ? new Date(importForm.publishedAt).toISOString() : "",
         sourceUrl: importForm.sourceUrl, userAuthored: importForm.sourceKind === "文章", distill: importForm.distill,
       });
-      setNotice(`已导入「${result.book.title}」${result.queuedForDistill ? `，并排队提炼 ${result.queuedForDistill} 节` : ""}`);
+      setNotice(`已导入「${result.book.title}」${result.queuedForDistill ? `，并排队编译 ${result.queuedForDistill} 节` : ""}`);
       setShowImport(false);
       setImportForm({ file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true });
       await load();
@@ -207,9 +207,9 @@ export function Sources({ onOpen }) {
         <div>
           <p className="src-lead">
             {number(totals.sources)} 份资料 · {number(totals.documents)} 节 · {number(totals.chars)} 字
-            {totals.citedFacts ? <> · 已支撑 <b>{number(totals.citedFacts)}</b> 条事实</> : null}
+            {totals.citedPages ? <> · 已影响 <b>{number(totals.citedPages)}</b> 张 Wiki 页面</> : null}
           </p>
-          <p className="field-hint">提炼会调用当前模型；每批最多 20 节，先生成候选，确认后才进入正式词条。</p>
+          <p className="field-hint">编译会阅读全文并对照现有 Wiki；每批最多 20 节，先生成多页变更集，确认后才写入。</p>
         </div>
         <div className="row-actions">
           <button type="button" className="btn btn-sm" onClick={() => setShowImport((value) => !value)}>导入旧文章 / 资料</button>
@@ -227,16 +227,16 @@ export function Sources({ onOpen }) {
           <label className="field"><span>平台</span><input value={importForm.platform} onChange={(event) => setImportForm((form) => ({ ...form, platform: event.target.value }))} placeholder="公众号 / 知乎 / 小红书…" /></label>
           <label className="field"><span>发布时间</span><input type="datetime-local" value={importForm.publishedAt} onChange={(event) => setImportForm((form) => ({ ...form, publishedAt: event.target.value }))} /></label>
           <label className="field src-import__wide"><span>原文链接</span><input type="url" value={importForm.sourceUrl} onChange={(event) => setImportForm((form) => ({ ...form, sourceUrl: event.target.value }))} placeholder="可选；用于去重和回溯" /></label>
-          <label className="src-import__check"><input type="checkbox" checked={importForm.distill} onChange={(event) => setImportForm((form) => ({ ...form, distill: event.target.checked }))} />导入后立即排队提炼</label>
+          <label className="src-import__check"><input type="checkbox" checked={importForm.distill} onChange={(event) => setImportForm((form) => ({ ...form, distill: event.target.checked }))} />导入后立即排队编译</label>
           <div className="row-actions"><button className="btn btn-primary btn-sm" type="submit" disabled={busy === "import" || !importForm.file}>{busy === "import" ? "导入中…" : "确认导入"}</button><button className="btn btn-sm" type="button" onClick={() => setShowImport(false)}>取消</button></div>
         </form>
       ) : null}
 
       <div className="src-controls">
-        <div className="segmented" aria-label="筛选提炼状态">{FILTERS.map(([value, label]) => <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}</div>
+        <div className="segmented" aria-label="筛选编译状态">{FILTERS.map(([value, label]) => <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}</div>
         <div className="row-actions">
           {selected.size ? <span className="field-hint">已选 {selected.size} 份 · 约 {number(selectedChars)} 字</span> : null}
-          <button type="button" className="btn btn-primary btn-sm" disabled={!selected.size || !!busy} onClick={() => queue({ bookIds: [...selected] })}>{busy === "batch" ? "排队中…" : "提炼所选"}</button>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!selected.size || !!busy} onClick={() => queue({ bookIds: [...selected] })}>{busy === "batch" ? "排队中…" : "编译所选"}</button>
         </div>
       </div>
       {notice ? <p className="src-notice" role="status">{notice}</p> : null}
@@ -262,8 +262,8 @@ export function Sources({ onOpen }) {
               <span role="columnheader">名称</span>
               <span role="columnheader">节数</span>
               <span role="columnheader">字数</span>
-              <span role="columnheader">提炼</span>
-              <span role="columnheader">支撑事实</span>
+              <span role="columnheader">Wiki 编译</span>
+              <span role="columnheader">影响页面</span>
             </div>
 
             {group.items.map((source) => {
@@ -290,7 +290,7 @@ export function Sources({ onOpen }) {
                     <span className="src-num">{number(source.documents)}</span>
                     <span className="src-num">{number(source.chars)}</span>
                     <span className={`src-state src-state--${state.tone}`}>{state.label}</span>
-                    <span className="src-num src-num--strong">{source.citedFacts ? number(source.citedFacts) : "—"}</span>
+                    <span className="src-num src-num--strong">{source.citedPages ? number(source.citedPages) : "—"}</span>
                   </div>
 
                   {expanded ? (
@@ -305,17 +305,17 @@ export function Sources({ onOpen }) {
                           <span className="src-num">{number(doc.chars)}</span>
                           <span className="src-doc-action">
                             <span className={`src-state src-state--${doc.ingestStatus === "failed" ? "warn" : ["queued", "proposed"].includes(doc.ingestStatus) ? "busy" : doc.ingestStatus === "applied" ? "done" : "idle"}`} title={doc.ingestError || undefined}>
-                              {doc.ingestStatus === "applied" ? "已提炼"
+                              {doc.ingestStatus === "applied" ? "已编译"
                                 : doc.ingestStatus === "queued" ? "排队中"
                                 : doc.ingestStatus === "proposed" ? "待审阅"
                                 : doc.ingestStatus === "empty" ? "无可沉淀"
                                 : doc.ingestStatus === "rejected" ? "已拒绝"
                                 : doc.ingestStatus === "failed" ? "失败"
-                                : "未提炼"}
+                                : "未编译"}
                             </span>
-                            {["", "failed", "rejected"].includes(doc.ingestStatus) ? <button type="button" className="link-btn" disabled={!!busy} onClick={() => queue({ documentIds: [doc.id], retry: doc.ingestStatus !== "", key: doc.id })}>{busy === doc.id ? "排队…" : doc.ingestStatus ? "重试" : "提炼"}</button> : null}
+                            {["", "failed", "rejected"].includes(doc.ingestStatus) ? <button type="button" className="link-btn" disabled={!!busy} onClick={() => queue({ documentIds: [doc.id], retry: doc.ingestStatus !== "", key: doc.id })}>{busy === doc.id ? "排队…" : doc.ingestStatus ? "重试" : "编译"}</button> : null}
                           </span>
-                          <span className="src-num src-num--strong">{doc.citedFacts ? number(doc.citedFacts) : "—"}</span>
+                          <span className="src-num src-num--strong">{doc.citedPages ? number(doc.citedPages) : "—"}</span>
                         </div>
                       )) : <p className="src-empty">这份资料没有章节。</p>}
                     </div>

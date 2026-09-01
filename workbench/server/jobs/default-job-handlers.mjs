@@ -1,5 +1,4 @@
-import { proposeFromSource } from "../domain/wiki-ingest.mjs";
-import { judgeOrphan, judgeTension } from "../domain/wiki-lint.mjs";
+import { compileSourceToWiki, lintWikiNetwork } from "../domain/wiki-pages.mjs";
 
 /**
  * 一次提炼一份来源。**队列在库里，不在内存**——工作台随时可能关掉，
@@ -9,27 +8,29 @@ async function ingestOne(workspace, env, sourceId) {
   const stamp = new Date().toISOString();
   const record = (status, proposal, error = "", candidateId = null) => workspace.db.prepare(`
     INSERT INTO source_ingests(source_entity_id, status, model, candidate_id, source_content_sha256,
-      entries_proposed, facts_proposed, relations_proposed, contradictions_found, rejected_ungrounded, error, run_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      entries_proposed, facts_proposed, relations_proposed, contradictions_found, rejected_ungrounded,
+      pages_proposed, page_links_proposed, error, run_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source_entity_id) DO UPDATE SET status = excluded.status, model = excluded.model,
       candidate_id = excluded.candidate_id, source_content_sha256 = excluded.source_content_sha256,
       entries_proposed = excluded.entries_proposed, facts_proposed = excluded.facts_proposed,
       relations_proposed = excluded.relations_proposed, contradictions_found = excluded.contradictions_found,
-      rejected_ungrounded = excluded.rejected_ungrounded, error = excluded.error, run_at = excluded.run_at
+      rejected_ungrounded = excluded.rejected_ungrounded, pages_proposed=excluded.pages_proposed,
+      page_links_proposed=excluded.page_links_proposed, error = excluded.error, run_at = excluded.run_at
   `).run(sourceId, status, proposal?.model || "", candidateId, proposal?.sourceContentSha256 || "",
-    (proposal?.entries?.length || 0) + (proposal?.definitions?.length || 0), proposal?.facts?.length || 0,
-    proposal?.relations?.length || 0, proposal?.contradictions?.length || 0, proposal?.rejected?.length || 0,
+    0, 0, 0, 0, proposal?.rejected?.length || 0, proposal?.pages?.length || 0,
+    (proposal?.pages || []).reduce((sum, page) => sum + (page.links?.length || 0), 0),
     String(error).slice(0, 2_000), stamp);
 
   try {
-    const proposal = await proposeFromSource(workspace, env, { sourceId });
+    const proposal = await compileSourceToWiki(workspace, env, { sourceId });
     if (proposal.empty) { record("empty", proposal); return { sourceId, empty: true }; }
     const candidate = workspace.domain.actions.propose({
-      actionType: "entry.create", targetId: sourceId,
-      payload: { kind: "wiki.ingest", sourceId, ...proposal }, proposedBy: "ai",
+      actionType: "wiki.pages.apply", targetId: sourceId,
+      payload: { kind: "wiki.compile", sourceId, ...proposal }, proposedBy: "ai",
     });
     record("proposed", proposal, "", candidate.id);
-    return { sourceId, candidateId: candidate.id, entries: proposal.entries.length, facts: proposal.facts.length };
+    return { sourceId, candidateId: candidate.id, pages: proposal.pages.length };
   } catch (error) {
     record("failed", null, error.message);
     return { sourceId, error: error.message };
@@ -37,21 +38,19 @@ async function ingestOne(workspace, env, sourceId) {
 }
 
 async function lintOne(workspace, env, payload) {
-  const entryId = String(payload?.entryId || "");
   const mode = String(payload?.mode || "");
-  if (!entryId || !["tension", "orphan"].includes(mode)) throw new Error("wiki.lint 需要 entryId 和合法 mode");
-  const judged = mode === "tension"
-    ? await judgeTension(workspace, env, { entryId })
-    : await judgeOrphan(workspace, env, { entryId });
-  const findings = mode === "tension" ? judged.tensions : judged.links;
-  if (!findings?.length) return { entryId, mode, empty: true };
+  if (mode !== "network") throw new Error("Wiki 只支持全库网络体检");
+  const judged = await lintWikiNetwork(workspace, env);
+  if (!judged.findings.length && !judged.deterministic.orphans && !judged.deterministic.missingCitations) {
+    return { mode, empty: true };
+  }
   const candidate = workspace.domain.actions.propose({
-    actionType: mode === "tension" ? "entry.fact.dispute" : "entry.link",
-    targetId: entryId,
-    payload: { kind: "wiki.lint", mode, ...judged },
+    actionType: "wiki.lint.review",
+    targetId: null,
+    payload: { kind: "wiki.lint.report", mode, ...judged },
     proposedBy: "ai",
   });
-  return { entryId, mode, candidateId: candidate.id, findings: findings.length };
+  return { mode, candidateId: candidate.id, findings: judged.findings.length };
 }
 /**
  * 旧版本曾把任务参数读错，任务耗尽重试后 `source_ingests` 仍会停在 queued。

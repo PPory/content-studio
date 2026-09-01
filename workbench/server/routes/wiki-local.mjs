@@ -1,14 +1,8 @@
-// 知识库的本地 API：词条、来源和体检。
-//
-// ⚠️ **索引和更新日志不在这里，因为它们不该是被维护出来的东西。**
-// 参照的那套飞书实现要人（其实是 AI）手写一份 A-Z 索引文档、再跑一条 lint 去查它
-// 和实际词条对不对得上——那是因为飞书没有全文检索。这里索引就是一次查询，
-// 日志就是 `audit_events`，两者都不会和事实不同步，也就没有「对账」这回事。
+// Living Wiki 的本地 API：完整页面、Raw 来源、追加式演化记录和全库体检。
 
 import crypto from "node:crypto";
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { ENTRY_KIND_LABELS, ENTRY_RELATION_LABELS } from "../domain/values.mjs";
-import { applyProposal } from "../domain/wiki-ingest.mjs";
+import { applyWikiCompile, wikiIndex, wikiPage, wikiHealth } from "../domain/wiki-pages.mjs";
 
 function guard(handler) {
   return async (context) => {
@@ -57,6 +51,8 @@ function sourceRows(workspace) {
       -- 这份资料**养活了多少条事实**。知识库特有的那一列：它区分「读过并用上了」
       -- 和「导进来放着」，而后者在任何文件列表里都长得和前者一模一样。
       (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts,
+      (SELECT COUNT(DISTINCT s.page_id) FROM wiki_page_sources s JOIN book_documents d ON d.id=s.source_entity_id
+        WHERE d.book_id=b.id) AS citedPages,
       (SELECT COUNT(*) FROM source_ingests s JOIN book_documents d ON d.id = s.source_entity_id
         WHERE d.book_id = b.id AND s.status IN ('applied', 'proposed', 'empty')) AS distilled,
       (SELECT COUNT(*) FROM source_ingests s JOIN book_documents d ON d.id = s.source_entity_id
@@ -78,6 +74,7 @@ function sourceDocuments(workspace, bookId) {
     SELECT d.id, d.title, d.document_order AS position, LENGTH(d.body_markdown) AS chars,
       COALESCE(s.status, '') AS ingestStatus, COALESCE(s.error, '') AS ingestError,
       (SELECT COUNT(*) FROM entry_facts f WHERE f.source_entity_id = d.id) AS citedFacts
+      ,(SELECT COUNT(DISTINCT s.page_id) FROM wiki_page_sources s WHERE s.source_entity_id=d.id) AS citedPages
     FROM book_documents d
     JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
     LEFT JOIN source_ingests s ON s.source_entity_id = d.id
@@ -96,6 +93,7 @@ function selectedProposal(payload, include) {
     facts: take("facts"),
     relations: take("relations"),
     contradictions: take("contradictions"),
+    pages: take("pages"),
   };
 }
 
@@ -127,6 +125,15 @@ function queueIngest(workspace, documents, { retry = false } = {}) {
 }
 
 export const wikiRoutes = [
+  { method: "GET", path: "/api/workspace/wiki", handler: guard(async ({ workspace, req, res }) => {
+    const url = new URL(req.url, "http://127.0.0.1");
+    json(res, { ok: true, ...wikiIndex(workspace, { query: url.searchParams.get("q") || "" }) });
+  }) },
+
+  { method: "GET", path: "/api/workspace/wiki/:id", handler: guard(async ({ workspace, res, params }) => {
+    json(res, { ok: true, ...wikiPage(workspace, params.id) });
+  }) },
+
   { method: "GET", path: "/api/workspace/entries", handler: guard(async ({ workspace, res }) => {
     const entries = entryRows(workspace);
     json(res, {
@@ -203,6 +210,7 @@ export const wikiRoutes = [
         chars: sources.reduce((sum, item) => sum + item.chars, 0),
         distilled: sources.reduce((sum, item) => sum + item.distilled, 0),
         citedFacts: sources.reduce((sum, item) => sum + item.citedFacts, 0),
+        citedPages: sources.reduce((sum, item) => sum + item.citedPages, 0),
       },
     });
   }) },
@@ -255,33 +263,30 @@ export const wikiRoutes = [
       LEFT JOIN entity_text t ON t.entity_id = c.target_id
       LEFT JOIN book_documents d ON d.id = c.target_id
       LEFT JOIN books b ON b.id = d.book_id
-      WHERE c.status = 'proposed' AND c.action_type IN ('entry.create','entry.fact.dispute','entry.link')
+      WHERE c.status = 'proposed' AND c.action_type IN ('wiki.pages.apply','wiki.lint.review')
       ORDER BY c.proposed_at DESC LIMIT 50
     `).all();
     const candidates = [];
     for (const row of rows) {
       let payload;
       try { payload = JSON.parse(row.payloadJson); } catch { continue; }
-      if (!["wiki.ingest", "wiki.lint"].includes(payload?.kind)) continue;
-      if (payload.kind === "wiki.ingest") {
-        const contradictions = (payload.contradictions || []).map((item) => ({
-          ...item,
-          existingStatement: workspace.db.prepare("SELECT statement FROM entry_facts WHERE id = ?").get(item.existingFactId)?.statement || "",
-        }));
+      if (!["wiki.compile", "wiki.lint.report"].includes(payload?.kind)) continue;
+      if (payload.kind === "wiki.compile") {
         candidates.push({
-          id: row.id, type: "ingest", sourceId: row.sourceId, sourceTitle: row.sourceTitle,
+          id: row.id, type: "compile", sourceId: row.sourceId, sourceTitle: row.sourceTitle,
           bookTitle: row.bookTitle, proposedAt: row.proposedAt, model: payload.model || "",
-          entries: payload.entries || [], definitions: payload.definitions || [], facts: payload.facts || [],
-          relations: payload.relations || [], contradictions, rejected: payload.rejected || [],
+          readMode: payload.readMode, chunksRead: payload.chunksRead || 1,
+          compilationSummary: payload.compilationSummary || "", pages: payload.pages || [],
+          rejected: payload.rejected || [],
         });
-      } else {
+      } else if (payload.kind === "wiki.lint.report") {
         candidates.push({
-          id: row.id, type: "lint", mode: payload.mode, sourceTitle: payload.name || row.sourceTitle,
-          proposedAt: row.proposedAt, tensions: payload.tensions || [], links: payload.links || [],
+          id: row.id, type: "wiki-lint", mode: "network", sourceTitle: "全库体检",
+          proposedAt: row.proposedAt, findings: payload.findings || [], deterministic: payload.deterministic || {},
         });
       }
     }
-    json(res, { ok: true, candidates, kindLabels: ENTRY_KIND_LABELS, relationLabels: ENTRY_RELATION_LABELS });
+    json(res, { ok: true, candidates });
   }) },
 
   { method: "POST", path: "/api/workspace/knowledge/candidates/:id", handler: guard(async ({ workspace, req, res, params }) => {
@@ -289,11 +294,11 @@ export const wikiRoutes = [
     const candidate = workspace.domain.actions.get(params.id);
     if (!candidate || candidate.status !== "proposed") throw Object.assign(new Error("这条提案已经处理过了"), { status: 409 });
     const payload = candidate.payload;
-    if (!["wiki.ingest", "wiki.lint"].includes(payload?.kind)) throw new Error("这不是知识库候选");
+    if (!["wiki.compile", "wiki.lint.report"].includes(payload?.kind)) throw new Error("这是旧版原子候选，请重新编译为完整 Wiki 页面");
     if (body.action === "reject") {
       workspace.repository.transaction(() => {
         workspace.domain.actions.reject(params.id);
-        if (payload.kind === "wiki.ingest") {
+        if (payload.kind === "wiki.compile") {
           workspace.db.prepare("UPDATE source_ingests SET status='rejected', candidate_id=? WHERE source_entity_id=?").run(params.id, payload.sourceId);
         }
         workspace.domain.audit("wiki.candidate_rejected", payload.sourceId || payload.entryId || candidate.targetId, {
@@ -307,34 +312,24 @@ export const wikiRoutes = [
     const now = new Date();
     const applied = workspace.repository.transaction(() => {
       let result;
-      if (payload.kind === "wiki.ingest") {
+      if (payload.kind === "wiki.compile") {
         const proposal = selectedProposal(payload, body.include);
-        const selectedCount = ["entries", "definitions", "facts", "relations", "contradictions"]
-          .reduce((sum, key) => sum + (proposal[key]?.length || 0), 0);
-        if (!selectedCount) throw new Error("至少保留一项再接受");
+        if (!proposal.pages?.length) throw new Error("至少保留一个页面变更");
         workspace.domain.actions.confirm(params.id, { now });
-        result = applyProposal(workspace, { sourceId: payload.sourceId, sourceTitle: payload.title || "", proposal, actor: "user", now });
+        result = applyWikiCompile(workspace, { proposal, candidateId: params.id, operation: "ingest", actor: "user", now });
         workspace.db.prepare("UPDATE source_ingests SET status='applied', candidate_id=?, error='' WHERE source_entity_id=?").run(params.id, payload.sourceId);
-      } else if (payload.mode === "tension") {
-        const allowed = Array.isArray(body.include) ? new Set(body.include.map(String)) : null;
-        const tensions = (payload.tensions || []).filter((_, index) => !allowed || allowed.has(`tensions:${index}`));
-        if (!tensions.length) throw new Error("至少保留一项再接受");
+      } else if (payload.kind === "wiki.lint.report") {
         workspace.domain.actions.confirm(params.id, { now });
-        for (const tension of tensions) {
-          if (tension.verdict === "supersede") {
-            const pair = workspace.db.prepare(`SELECT id, asserted_at AS assertedAt, created_at AS createdAt FROM entry_facts
-              WHERE id IN (?, ?) ORDER BY asserted_at, created_at, id`).all(tension.leftFactId, tension.rightFactId);
-            if (pair.length === 2) workspace.domain.supersedeEntryFact(pair[0].id, { supersededBy: pair[1].id, actor: "user", now });
-          } else workspace.domain.disputeEntryFacts(tension.leftFactId, tension.rightFactId, { actor: "user", now });
-        }
-        result = { tensions: tensions.length };
-      } else {
-        const allowed = Array.isArray(body.include) ? new Set(body.include.map(String)) : null;
-        const links = (payload.links || []).filter((_, index) => !allowed || allowed.has(`links:${index}`));
-        if (!links.length) throw new Error("至少保留一项再接受");
-        workspace.domain.actions.confirm(params.id, { now });
-        for (const link of links) workspace.domain.linkEntries(payload.entryId, link.toId, link.type, { why: link.why, actor: "user", now });
-        result = { links: links.length };
+        const stamp = now.toISOString();
+        const schemaVersion = workspace.db.prepare("SELECT version FROM wiki_schema_versions WHERE is_active=1").get().version;
+        const changeSetId = crypto.randomUUID();
+        workspace.db.prepare(`INSERT INTO wiki_change_sets(id,operation,candidate_id,title,summary,schema_version,status,created_at,applied_at)
+          VALUES (?,'lint',?,'全库体检',?,?,'applied',?,?)`)
+          .run(changeSetId, params.id, `发现 ${payload.findings?.length || 0} 项语义问题`, schemaVersion, stamp, stamp);
+        workspace.db.prepare(`INSERT INTO wiki_operation_log(id,change_set_id,operation,title,summary,created_at)
+          VALUES (? ,?,'lint','全库体检',?,?)`)
+          .run(crypto.randomUUID(), changeSetId, `发现 ${payload.findings?.length || 0} 项语义问题，报告已审阅`, stamp);
+        result = { findings: payload.findings?.length || 0, reviewed: true };
       }
       workspace.domain.actions.markApplied(params.id, { result, now });
       workspace.domain.audit("wiki.candidate_applied", payload.sourceId || payload.entryId || candidate.targetId, {
@@ -346,26 +341,20 @@ export const wikiRoutes = [
   }) },
   { method: "POST", path: "/api/workspace/knowledge/lint/run", handler: guard(async ({ workspace, req, res }) => {
     const body = await readJsonBody(req);
-    const mode = body.mode;
-    if (!["tension", "orphan"].includes(mode)) throw new Error("体检类型不合法");
-    const limit = Math.max(1, Math.min(10, Number(body.limit) || 5));
-    const entries = mode === "orphan"
-      ? workspace.domain.entryOrphans({ limit })
-      : [...new Map(workspace.domain.entryFactPairs({ limit: 2_000 }).map((item) => [item.entryId, { id: item.entryId }])).values()].slice(0, limit);
-    for (const entry of entries) workspace.jobs.enqueue({
-      idempotencyKey: `wiki.lint:${mode}:${entry.id}:${Date.now()}`,
+    if (body.mode !== "network") throw new Error("Wiki 只支持全库网络体检");
+    const queued = workspace.jobs.enqueue({
+      idempotencyKey: `wiki.lint:network:${Date.now()}`,
       kind: "wiki.lint",
-      payload: { entryId: entry.id, mode },
+      payload: { mode: "network" },
     });
-    json(res, { ok: true, queued: entries.length, mode, maxBatch: 10 });
+    json(res, { ok: true, queued: queued.created ? 1 : 0, mode: "network", maxBatch: 1 });
   }) },
 
   /** 体检。孤儿和矛盾候选都是查询，不是 AI 巡检出来的。 */
   { method: "GET", path: "/api/workspace/knowledge/lint", handler: guard(async ({ workspace, res }) => {
     json(res, {
       ok: true,
-      orphans: workspace.domain.entryOrphans({ limit: 100 }),
-      pendingPairs: workspace.domain.entryFactPairs({ limit: 200 }),
+      wiki: wikiHealth(workspace),
     });
   }) },
 ];

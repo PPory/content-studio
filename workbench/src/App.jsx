@@ -116,7 +116,7 @@ const NAV = [
      */
     key: "knowledge", to: "entries", match: (v) => KNOWLEDGE_VIEWS.has(v),
     children: [
-      { to: "entries", label: "词条" },
+      { to: "entries", label: "Wiki" },
       { to: "shelf", label: "书架" },
       /**
        * ⚠️ **「来源」列全部，包括书架里那 15 本。**
@@ -796,7 +796,7 @@ export function App() {
                       if (!fact?.sourceBookId) return;
                       setOpenTarget("shelf", { path: `bookdoc:${fact.sourceId}`, quote: fact.sourceQuote || "" });
                       // 写下「从哪儿来的」：阅读器的返回按钮要回到这条词条，不是书架
-                      setOpenTarget("shelf-return", `返回词条|#/entries/${route.state}`);
+                      setOpenTarget("shelf-return", `返回 Wiki|#/entries/${route.state}`);
                       go("shelf", `book:${fact.sourceBookId}`);
                     }}
                   />

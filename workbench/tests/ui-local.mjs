@@ -5,6 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { createServer } from "vite";
 import { createBookRecord } from "../server/routes/books-local.mjs";
+import { applyWikiCompile, captureWikiSourceSnapshot } from "../server/domain/wiki-pages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-ui-local-"));
@@ -14,6 +15,8 @@ const seriesShotFile = path.join(os.tmpdir(), "xenho-series-workspace.png");
 const seriesOutlineShotFile = path.join(os.tmpdir(), "xenho-series-outline.png");
 const seriesReadShotFile = path.join(os.tmpdir(), "xenho-series-read.png");
 const seriesListShotFile = path.join(os.tmpdir(), "xenho-series-list.png");
+const wikiHomeShotFile = path.join(os.tmpdir(), "xenho-wiki-home.png");
+const wikiArticleShotFile = path.join(os.tmpdir(), "xenho-wiki-article.png");
 const PORT = 5204;
 const oldHome = process.env.XENHO_HOME;
 const oldProxy = { HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
@@ -86,10 +89,32 @@ try {
     chapters: [{ title: "证据章节", text: `# 证据章节\n\n${evidenceQuote}\n\n这是隔离浏览器测试的后续段落。` }],
   });
   const evidenceDocId = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id=?").get(evidenceBook.id).id;
-  workspace.domain.createEntry({
-    name: "来源精准跳转", kind: "method", definition: "词条证据应跳回准确章节和原文。",
-    definitionSourceId: evidenceDocId, definitionQuote: evidenceQuote, definitionLocator: "UI 证据来源 · 证据章节",
-    definitionSourceSha256: "b".repeat(64), actor: "user", now: new Date(),
+  const evidenceSnapshot = captureWikiSourceSnapshot(workspace, evidenceDocId);
+  applyWikiCompile(workspace, {
+    proposal: {
+      sourceId: evidenceDocId,
+      sourceSnapshotId: evidenceSnapshot.id,
+      sourceContentSha256: evidenceSnapshot.contentSha256,
+      sourceLocator: "UI 证据来源 · 证据章节",
+      title: "编译 UI 证据来源",
+      compilationSummary: "建立来源资料卡，并把来源精准跳转编入可持续维护的 Wiki 页面。",
+      pages: [
+        {
+          action: "create", title: "来源：UI 证据来源 · 证据章节", pageType: "source_summary",
+          summary: "记录准确打开并核对 Raw 来源的测试资料。",
+          bodyMarkdown: `# 来源：UI 证据来源 · 证据章节\n\n${evidenceQuote}\n\n这份资料用于验证 Wiki 页面能够回到准确的原始章节。`,
+          changeSummary: "为 Raw 建立来源资料卡", citations: [{ quote: evidenceQuote, contribution: "支撑准确定位" }],
+          links: [{ toTitle: "来源精准跳转", relation: "支撑", why: "原文说明准确定位要求" }],
+        },
+        {
+          action: "create", title: "来源精准跳转", pageType: "method",
+          summary: "从 Wiki 页面回到准确 Raw 章节并高亮逐字证据的方法。",
+          bodyMarkdown: `# 来源精准跳转\n\nWiki 的结论必须能够回到 AI 当时读过的原文，而不是只显示一个模糊来源名。\n\n## 验收标准\n\n${evidenceQuote}\n\n返回时应回到刚才阅读的 Wiki 页面。`,
+          changeSummary: "把来源核对方式编成可复用页面", citations: [{ quote: evidenceQuote, contribution: "定义来源跳转要求" }],
+          links: [{ toTitle: "来源：UI 证据来源 · 证据章节", relation: "依据来自", why: "方法由该 Raw 支撑" }],
+        },
+      ],
+    },
   });
 
   const { chromium } = playwright();
@@ -377,15 +402,29 @@ try {
   check("从来源打开正文后会返回来源页", page.url().endsWith("#/sources"));
 
   await page.goto("http://127.0.0.1:" + PORT + "/#/entries");
+  await page.getByRole("heading", { name: "我的 Wiki" }).waitFor();
+  const wikiPulseValues = await page.locator(".wiki-pulse b").allTextContents();
+  check("Wiki 首页展示持续编译后的完整页面与知识连接", wikiPulseValues[0] === "2" && wikiPulseValues[2] === "2");
+  if (process.argv.includes("--shots")) await page.screenshot({ path: wikiHomeShotFile, fullPage: true });
   await page.getByRole("button", { name: /来源精准跳转/ }).click();
-  await page.getByRole("button", { name: "UI 证据来源 · 证据章节" }).click();
+  await page.locator(".wiki-article__body").waitFor();
+  check("Wiki 详情展示完整正文、连接、来源和演化版本", (await page.locator(".wiki-article").innerText()).includes("验收标准")
+    && (await page.getByRole("heading", { name: "连接" }).count()) === 1
+    && (await page.getByRole("heading", { name: "依据" }).count()) === 1
+    && (await page.getByRole("heading", { name: "演化" }).count()) === 1);
+  if (process.argv.includes("--shots")) await page.screenshot({ path: wikiArticleShotFile, fullPage: true });
+  await page.getByText("UI 证据来源 · 证据章节", { exact: true }).click();
+  await page.getByRole("button", { name: "打开并定位到 Raw" }).click();
   const evidenceHit = page.locator(".evidence-hit");
   await evidenceHit.waitFor();
-  check("词条来源会打开准确章节并高亮逐字原文", page.url().endsWith("#/shelf")
+  check("Wiki 来源会打开准确章节并高亮逐字原文", page.url().endsWith("#/shelf")
     && (await evidenceHit.innerText()).includes("知识来源跳转必须打开准确章节"));
+  await page.getByRole("button", { name: "返回 Wiki" }).click();
+  await page.waitForURL((url) => url.hash.startsWith("#/entries/"));
+  check("从 Raw 返回时回到刚才的 Wiki 页面", page.url().includes("#/entries/"));
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
-  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}`);
+  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}\n Wiki 首页：${wikiHomeShotFile}\n Wiki 页面：${wikiArticleShotFile}`);
   console.log("\n阶段 6 本地 UI 验证通过。");
 } finally {
   await browser?.close().catch(() => {});

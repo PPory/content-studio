@@ -9,7 +9,7 @@ import { listProjects, projectDto } from "../workspace/workspace-view.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
 import { fetchBoards } from "../lib/sixty.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
-import { ENTRY_KINDS } from "../domain/values.mjs";
+import { WIKI_PAGE_TYPES, wikiSearch } from "../domain/wiki-pages.mjs";
 import { agentAccess, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
 import {
   assertModeTool,
@@ -190,29 +190,27 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return appendAction(actionsFile, { type: "knowledge_source_add", url: target.href, title: clean(title, 200), why: clean(why, 500) });
   }));
 
-  tools.push(tool("propose_knowledge_update", "准备知识沉淀候选", "把本地来源中有逐字证据的一条认识，作为新词条、事实或定义更新候选。只生成待确认动作，不直接写入知识库。", Type.Object({
-    change: Type.String({ maxLength: 20 }),
-    entry: Type.String({ maxLength: 160 }),
-    kind: Type.Optional(Type.String({ maxLength: 40 })),
-    text: Type.String({ maxLength: 2_000 }),
-    sourceId: Type.String({ maxLength: 160 }),
-    sourceTitle: Type.Optional(Type.String({ maxLength: 300 })),
-    quote: Type.String({ maxLength: 2_000 }),
-    why: Type.String({ maxLength: 500 }),
-  }), async ({ change, entry, kind = "concept", text: proposedText, sourceId, sourceTitle = "", quote, why }) => {
-    allowed("propose_knowledge_update");
-    const mode = clean(change, 20);
-    if (!["new_entry", "fact", "definition"].includes(mode)) throw new Error("知识候选类型只能是 new_entry、fact 或 definition");
-    if (!clean(entry, 160) || !clean(proposedText, 2_000)) throw new Error("知识候选必须包含词条名和要沉淀的内容");
-    if (!clean(sourceId, 160) || !clean(quote, 2_000)) throw new Error("知识候选必须带本地来源 ID 和逐字原文");
-    if (!clean(why, 500)) throw new Error("要说明为什么值得沉淀");
-    if (mode === "new_entry" && !ENTRY_KINDS.includes(clean(kind, 40))) throw new Error("新词条类型不合法");
+  tools.push(tool("propose_wiki_page", "准备 Wiki 页面归档", "把本轮基于既有 Wiki 形成的可复用比较、综合或新连接，作为完整页面候选。只生成待确认动作，不直接写入。", Type.Object({
+    title: Type.String({ maxLength: 160 }),
+    pageType: Type.String({ maxLength: 40 }),
+    summary: Type.String({ maxLength: 1_200 }),
+    bodyMarkdown: Type.String({ maxLength: 200_000 }),
+    basedOnPageIds: Type.Array(Type.String({ maxLength: 200 }), { minItems: 1, maxItems: 20 }),
+    why: Type.String({ maxLength: 1_000 }),
+  }), async ({ title, pageType, summary, bodyMarkdown, basedOnPageIds, why }) => {
+    allowed("propose_wiki_page");
+    const type = clean(pageType, 40);
+    if (!WIKI_PAGE_TYPES.includes(type) || type === "source_summary") throw new Error("探索归档只能使用知识页面类型");
+    if (!clean(title, 160) || !clean(summary, 1_200) || clean(bodyMarkdown, 200_000).length < 80) throw new Error("Wiki 页面候选必须包含标题、摘要和完整正文");
+    if (!Array.isArray(basedOnPageIds) || !basedOnPageIds.length) throw new Error("Wiki 页面候选必须注明所依据的已有页面");
+    if (!clean(why, 1_000)) throw new Error("要说明这次探索为什么值得长期保留");
     return appendAction(actionsFile, {
-      type: "knowledge_update", change: mode, entry: clean(entry, 160), kind: clean(kind, 40),
-      text: clean(proposedText, 2_000), sourceId: clean(sourceId, 160), sourceTitle: clean(sourceTitle, 300),
-      quote: clean(quote, 2_000), why: clean(why, 500),
+      type: "wiki_page", title: clean(title, 160), pageType: type, summary: clean(summary, 1_200),
+      bodyMarkdown: clean(bodyMarkdown, 200_000), basedOnPageIds: basedOnPageIds.map((id) => clean(id, 200)),
+      why: clean(why, 1_000),
     });
   }));
+
   tools.push(tool("propose_body_rewrite", "准备全文整理候选", "提交整篇正文的替换候选，交给用户在正文里逐处审阅。不直接改写正文。", Type.Object({
     reason: Type.String({ maxLength: 500 }),
     body: Type.String({ maxLength: 200_000 }),
@@ -249,14 +247,20 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     const live = context.workspace?.db?.open && context.project?.id ? projectDto(context.workspace, context.project.id) : null;
     return text({ source:"SQLite workspace",publication:live?.publication||context.project?.publication||null,review:live?.review||context.project?.review||null });
   }));
-  tools.push(tool("knowledge_search", "检索本地知识", "实时检索 SQLite 工作区中的正文、素材、图书、附件文本和历史会话，并补充本轮明确授权的本地文件。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }, signal) => {
+  tools.push(tool("knowledge_search", "检索本地知识", "优先检索 AI 已编译的 Wiki 页面；不足时再返回 SQLite 中的 Raw 正文、素材和本轮授权文件。只读。", Type.Object({ query: Type.String({ maxLength: 300 }) }), async ({ query }, signal) => {
     allowed("knowledge_search");
     const needle = clean(query, 300);
     if (!context.workspace?.db?.open) throw new Error("本地工作区尚未就绪");
-    const indexed = context.workspace.repository.search(needle,{limit:16}).map((item)=>compactSource({id:item.id,type:item.type,title:item.title,source:"SQLite workspace",snippet:item.body,path:item.id}));
+    const wiki = wikiSearch(context.workspace, needle, { limit: 10 }).map((item) => compactSource({
+      id: item.id, type: `Wiki · ${item.pageType}`, title: item.title, source: "Living Wiki",
+      snippet: item.bodyMarkdown, path: `wiki:${item.id}`,
+    }));
+    const indexed = context.workspace.repository.search(needle,{limit:16})
+      .filter((item) => item.type !== "wiki_page")
+      .map((item)=>compactSource({id:item.id,type:item.type,title:item.title,source:"SQLite Raw / workspace",snippet:item.body,path:item.id}));
     const files = await workspaceFiles(env,"",needle,signal,8).catch(()=>[]);
-    const sources=[...indexed,...files.map((item)=>compactSource({id:`${item.mountId}:${item.path}`,type:"本地文件",title:path.basename(item.path),source:item.mount,snippet:item.excerpt,path:`${item.mountId}:${item.path}`}))].slice(0,20);
-    return text({query:needle,total:sources.length,sources});
+    const sources=[...wiki,...indexed,...files.map((item)=>compactSource({id:`${item.mountId}:${item.path}`,type:"本地文件",title:path.basename(item.path),source:item.mount,snippet:item.excerpt,path:`${item.mountId}:${item.path}`}))].slice(0,20);
+    return text({query:needle,total:sources.length,wikiFirst:true,wikiPages:wiki.length,sources});
   }));
   tools.push(tool("workspace_list", "查看已授权工作区", "列出 Agent 当前可访问的工作台与本轮对话明确指定的本地项目或文件。", Type.Object({
     mountId: Type.Optional(Type.String({ maxLength: 80 })),

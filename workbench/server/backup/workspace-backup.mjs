@@ -81,6 +81,8 @@ function workspaceHasUserData(summary) {
   const ignored = new Set([
     "schema_migrations",
     "workspace_metadata",
+    // 内置的运行时 Wiki 宪法和 migration 一样属于系统基线，不代表用户已经写入数据。
+    "wiki_schema_versions",
     "entity_fts",
     "entity_fts_config",
     "entity_fts_content",

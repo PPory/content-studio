@@ -49,18 +49,20 @@ assert(PERMISSION_MODES.daily.tools.includes("workbench_projects"));
 assert(PERMISSION_MODES.daily.tools.includes("delegate_experts"), "日常模式必须允许只读专家委派");
 // 收资料进知识库只产候选，抓取和写库都在用户确认之后，所以归日常档。
 assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_source"), "日常模式必须允许提出收资料候选");
-assert(PERMISSION_MODES.daily.tools.includes("propose_knowledge_update"), "日常模式必须允许提出带证据的知识沉淀候选");
+assert(PERMISSION_MODES.daily.tools.includes("propose_wiki_page"), "日常模式必须允许提出完整 Wiki 页面候选");
+assert(!PERMISSION_MODES.daily.tools.includes("propose_knowledge_update"), "新会话不能再绕过 Wiki 写原子词条");
 {
   const names = createPiTools({ env: {}, mode: "daily", context: {}, actionsFile: "" }).map((item) => item.name ?? item.spec?.name);
   assert(names.includes("propose_knowledge_source"), "日常模式的工具集里必须真的带上 propose_knowledge_source");
-  assert(names.includes("propose_knowledge_update"), "日常模式的工具集里必须真的带上 propose_knowledge_update");
+  assert(names.includes("propose_wiki_page"), "日常模式的工具集里必须真的带上 propose_wiki_page");
+  assert(!names.includes("propose_knowledge_update"), "日常模式不能暴露旧原子词条工具");
   /**
    * ⚠️ **每个 propose_* 工具产出的动作类型，都必须在 normalizeProposedAction 里登记。**
    * 漏登记不会报错——动作被静默丢掉，而工具、模型和界面**全都在报成功**。
    * 这条断言就是为了让下一个加工具的人立刻撞上去。
    */
   const { normalizeProposedActionForTest } = await import("../server/agent-runtime/assistant-runner.mjs");
-  for (const type of ["create_content", "rewrite_body", "knowledge_source_add", "knowledge_update"]) {
+  for (const type of ["create_content", "rewrite_body", "knowledge_source_add", "wiki_page"]) {
     assert(normalizeProposedActionForTest({ type, url: "https://example.com/a", title: "t", why: "w", body: "b", platform: "公众号" }, "daily"),
       `候选动作类型 ${type} 没有在 normalizeProposedAction 里登记，会被静默丢弃`);
   }
@@ -159,7 +161,7 @@ try {
   const creative = createPiTools({ env: dailyEnv, mode: "creative", context, actionsFile });
   const developer = createPiTools({ env: developerEnv, mode: "developer", context, actionsFile });
   const allNames = new Set(developer.map((item) => item.name));
-  for (const name of ["workbench_projects", "knowledge_search", "propose_knowledge_update", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "attachment_read", "web_search", "web_fetch"]) {
+  for (const name of ["workbench_projects", "knowledge_search", "propose_wiki_page", "workspace_list", "workspace_search", "workspace_read", "workspace_write", "workspace_edit", "workspace_powershell", "hotspot_search", "attachment_read", "web_search", "web_fetch"]) {
     assert(allNames.has(name), `缺少 Pi defineTool：${name}`);
   }
   for (const name of ["vault_list", "vault_read", "annotation_list", "document_create", "document_update", "annotation_append", "reference_insert"]) {
@@ -217,10 +219,12 @@ try {
   const knowledgeSourceId = workspace.domain.createCapture({
     kind: "article", title: "知识沉淀来源", bodyMarkdown: groundedQuote, actor: "user", now: new Date("2025-01-02T03:04:05.000Z"),
   });
-  await execute(daily, "propose_knowledge_update", {
-    change: "new_entry", entry: "知识沉淀原则", kind: "stance", text: "个人知识应保留证据并经确认后写入。",
-    sourceId: knowledgeSourceId, sourceTitle: "知识沉淀来源", quote: groundedQuote, why: "这是可长期复用的知识库边界。",
+  await execute(daily, "propose_wiki_page", {
+    title: "知识沉淀原则", pageType: "stance", summary: "解释个人知识为什么要以完整页面持续演化。",
+    bodyMarkdown: "# 知识沉淀原则\n\n个人知识不应被拆成孤立事实，而要形成带来源、连接和版本的完整页面，并在后续探索中继续修订。\n\n## 当前判断\n\n用户确认是正式写入前的最后一步。",
+    basedOnPageIds: ["wiki-base-page"], why: "这是可长期复用的知识库边界。",
   });
+  // 旧动作的执行器继续保留，只用于已经存在的历史动作；新会话已无法再生成它。
   const appliedKnowledge = applyKnowledgeUpdate(workspace, {
     id: "test-knowledge-action", change: "new_entry", entry: "知识沉淀原则", kind: "stance",
     text: "个人知识应保留证据并经确认后写入。", sourceId: knowledgeSourceId,
@@ -354,8 +358,8 @@ try {
     { type: "rewrite_body", reason: "删掉测试残留", body: "# 标题\n\n整理后的正文。" },
   );
   assert.deepEqual(
-    { type: queued[3].type, change: queued[3].change, entry: queued[3].entry, sourceId: queued[3].sourceId, quote: queued[3].quote },
-    { type: "knowledge_update", change: "new_entry", entry: "知识沉淀原则", sourceId: knowledgeSourceId, quote: groundedQuote },
+    { type: queued[3].type, title: queued[3].title, pageType: queued[3].pageType, basedOnPageIds: queued[3].basedOnPageIds },
+    { type: "wiki_page", title: "知识沉淀原则", pageType: "stance", basedOnPageIds: ["wiki-base-page"] },
   );
 
   const orchestrationEvents = [];

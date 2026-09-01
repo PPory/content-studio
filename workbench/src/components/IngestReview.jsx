@@ -1,13 +1,14 @@
-// 知识候选审阅：提炼和体检都只在这里等待用户确认。
+// 完整 Wiki 页面编译和全库体检都只在这里等待用户确认。
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
 
-const GROUPS = ["entries", "definitions", "facts", "relations", "contradictions", "tensions", "links"];
+const GROUPS = ["pages", "findings"];
 
 function keysOf(item) {
-  return GROUPS.flatMap((group) => (item[group] || []).map((_, index) => `${group}:${index}`));
+  const keys = GROUPS.flatMap((group) => (item[group] || []).map((_, index) => `${group}:${index}`));
+  return item.type === "wiki-lint" && !keys.length ? ["report:0"] : keys;
 }
 
 function Evidence({ quote }) {
@@ -85,21 +86,20 @@ export function IngestReview({ onDone }) {
         const expanded = openId === item.id;
         const allKeys = keysOf(item);
         const kept = selected[item.id]?.size ?? allKeys.length;
-        const counts = item.type === "lint"
-          ? [item.tensions?.length ? `${item.tensions.length} 处张力` : "", item.links?.length ? `${item.links.length} 条补链` : ""].filter(Boolean)
-          : [
-              item.entries?.length ? `${item.entries.length} 个新词条` : "",
-              item.definitions?.length ? `${item.definitions.length} 个定义更新` : "",
-              item.facts?.length ? `${item.facts.length} 条事实` : "",
-              item.relations?.length ? `${item.relations.length} 条关系` : "",
-              item.contradictions?.length ? `${item.contradictions.length} 处矛盾` : "",
-            ].filter(Boolean);
+        const counts = item.type === "compile"
+          ? [
+              item.pages?.filter((page) => page.action === "create").length ? `${item.pages.filter((page) => page.action === "create").length} 个新页面` : "",
+              item.pages?.filter((page) => page.action === "update").length ? `${item.pages.filter((page) => page.action === "update").length} 个页面更新` : "",
+            ].filter(Boolean)
+          : [item.findings?.length ? `${item.findings.length} 项语义问题` : "", item.deterministic?.orphans ? `${item.deterministic.orphans} 个孤页` : "", item.deterministic?.missingCitations ? `${item.deterministic.missingCitations} 页缺来源` : ""].filter(Boolean);
         return (
           <article key={item.id} className="ing__item">
             <div className="ing__row">
               <button type="button" className="ing__title" aria-expanded={expanded} onClick={() => setOpenId(expanded ? "" : item.id)}>
-                <b>{item.type === "lint" ? `体检 · ${item.sourceTitle}` : item.sourceTitle || "未命名资料"}</b>
-                <span>{item.type === "lint" ? (item.mode === "tension" ? "判断同题事实是否真正冲突" : "给孤立词条补关系") : item.bookTitle}</span>
+                <b>{item.type === "wiki-lint" ? `体检 · ${item.sourceTitle}` : item.sourceTitle || "未命名资料"}</b>
+                <span>{item.type === "compile"
+                  ? `已阅读全文（${item.chunksRead || 1} 段） · ${item.compilationSummary || item.bookTitle}`
+                  : "检查跨页矛盾、陈旧认识、缺页、缺链和知识空白"}</span>
               </button>
               <span className="ing__counts">{counts.join(" · ") || "没读出可沉淀的内容"}</span>
               <div className="ing__actions">
@@ -112,20 +112,20 @@ export function IngestReview({ onDone }) {
 
             {expanded ? (
               <div className="ing__body">
-                {(item.entries || []).map((entry, index) => line(item, "entries", index, "＋词条", entry.name, entry.definition, entry.quote))}
-                {(item.definitions || []).map((entry, index) => line(item, "definitions", index, "更新定义", entry.entry, entry.definition, entry.quote,
-                  entry.why ? <small className="ing__why">理由：{entry.why}</small> : null))}
-                {(item.facts || []).map((fact, index) => line(item, "facts", index, "事实", fact.entry, fact.statement, fact.quote))}
-                {(item.relations || []).map((relation, index) => line(item, "relations", index, "关系", "",
-                  `${relation.from} → ${data.relationLabels?.[relation.type] || relation.type} → ${relation.to}`, relation.quote,
-                  relation.why ? <small className="ing__why">理由：{relation.why}</small> : null))}
-                {(item.contradictions || []).map((conflict, index) => line(item, "contradictions", index, "矛盾", conflict.entry, conflict.statement, conflict.quote,
-                  <div className="ing__compare"><span>已有说法</span>{conflict.existingStatement || "未取到旧事实"}<small>{conflict.why}</small></div>))}
-                {(item.tensions || []).map((tension, index) => line(item, "tensions", index,
-                  tension.verdict === "supersede" ? "推翻" : "并存冲突", item.sourceTitle, tension.why, "",
-                  <div className="ing__compare"><span>A</span>{tension.left}<span>B</span>{tension.right}</div>))}
-                {(item.links || []).map((link, index) => line(item, "links", index, "补关系", item.sourceTitle,
-                  `→ ${data.relationLabels?.[link.type] || link.type} → ${link.to}`, "", <small className="ing__why">{link.why}</small>))}
+                {(item.pages || []).map((page, index) => line(item, "pages", index,
+                  page.action === "update" ? "更新页面" : "新建页面", page.title, page.summary, page.citations?.[0]?.quote,
+                  <div className="ing__page-change">
+                    <small className="ing__why">{page.changeSummary}</small>
+                    <details>
+                      <summary>查看完整新版本{page.beforeBodyMarkdown ? "与原版本" : ""}</summary>
+                      {page.beforeBodyMarkdown ? <><b>原版本</b><pre>{page.beforeBodyMarkdown}</pre></> : null}
+                      <b>新版本</b><pre>{page.bodyMarkdown}</pre>
+                    </details>
+                    <span>{page.citations?.length || 0} 处来源引用 · {page.links?.length || 0} 个页面连接</span>
+                  </div>))}
+                {(item.findings || []).map((finding, index) => line(item, "findings", index, "体检发现",
+                  (finding.pages || []).join("、") || "全库", finding.problem, "",
+                  <small className="ing__why">建议：{finding.suggestion}</small>))}
                 {item.rejected?.length ? (
                   <p className="ing__dropped">逐字校验丢弃 {item.rejected.length} 条；这些内容不会进入正式知识。</p>
                 ) : null}

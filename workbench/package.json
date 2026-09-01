@@ -9,7 +9,7 @@
     "test": "node tests/ui-local.mjs",
     "test:writing": "node tests/ui-local.mjs",
     "test:pi": "node tests/pi-runtime.mjs",
-    "test:unit": "node tests/storage.mjs && node tests/corpus.mjs && node tests/wiki-ingest.mjs && node tests/domain.mjs && node tests/workspace-api.mjs && node tests/workspace-backup.mjs",
+    "test:unit": "node tests/storage.mjs && node tests/corpus.mjs && node tests/wiki-ingest.mjs && node tests/wiki-pages.mjs && node tests/domain.mjs && node tests/workspace-api.mjs && node tests/workspace-backup.mjs",
     "test:backup": "node tests/workspace-backup.mjs",
     "test:workspace-api": "node tests/workspace-api.mjs",
     "test:storage": "node tests/storage.mjs",

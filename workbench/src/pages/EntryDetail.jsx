@@ -1,139 +1,85 @@
-// 一个词条。
-//
-// ⚠️ **这一页要显示的不是「一条笔记的内容」，是「这个说法立在什么上面」。**
-// 所以每条事实旁边永远挂着它的来源，点得开；被推翻的旧论断不删也不藏；
-// 互相冲突的两条并排放。一个知识库和一堆笔记的差别就在这儿——
-// 笔记只告诉你现在写着什么，词条还告诉你**它为什么是这样、以前是什么样**。
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading } from "../components/ui.jsx";
 import { IconArrowLeft, IconChevronRight } from "../components/icons.jsx";
+import { renderMarkdown } from "../lib/markdown.js";
 
-const STATUS_ORDER = { disputed: 0, active: 1, superseded: 2 };
+function dateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
 
 export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-
   useEffect(() => {
     setData(null);
     setError(null);
-    api.entry(entryId).then(setData).catch(setError);
+    api.wikiPage(entryId).then(setData).catch(setError);
   }, [entryId]);
+  const html = useMemo(() => renderMarkdown(data?.page?.bodyMarkdown || ""), [data?.page?.bodyMarkdown]);
 
-  if (error) return <ErrorNote error={error} what="词条" />;
-  if (!data) return <Loading rows={6} />;
-
-  const { entry, definitionHistory = [], facts, neighbors, relationEvidence = [], kindLabels, relationLabels } = data;
-  const sorted = [...facts].sort((left, right) => (STATUS_ORDER[left.status] ?? 3) - (STATUS_ORDER[right.status] ?? 3));
-  const disputed = sorted.filter((fact) => fact.status === "disputed");
-  const active = sorted.filter((fact) => fact.status === "active");
-  const superseded = sorted.filter((fact) => fact.status === "superseded");
-  const sources = new Set([...facts.map((fact) => fact.sourceId), entry.definitionSourceId].filter(Boolean));
-  const currentDefinition = definitionHistory.find((item) => item.isCurrent) || definitionHistory[0];
-
-  const factLine = (fact) => (
-    <li key={fact.id} className="fact">
-      <p className="fact__text">{fact.statement}</p>
-      {fact.sourceQuote ? <details className="fact__evidence"><summary>查看原文依据</summary><blockquote>{fact.sourceQuote}</blockquote></details> : <small className="fact__legacy">旧数据没有保存原文摘录</small>}
-      <button type="button" className="fact__src" onClick={() => onOpenSource?.(fact)} title={fact.sourceBookId ? "打开并定位到原文" : "这条事实的来源不是书架上的文档，没有可跳的落点"}
-        disabled={!fact.sourceBookId}>
-        {fact.locator || fact.sourceTitle || "未记录来源"}
-      </button>
-    </li>
-  );
+  if (error) return <ErrorNote error={error} what="Wiki 页面" />;
+  if (!data) return <Loading rows={8} />;
+  const { page, sources = [], links = { outgoing: [], incoming: [] }, revisions = [], typeLabels = {} } = data;
 
   return (
-    <div className="view-body entry-page">
+    <div className="view-body wiki-article">
       <button type="button" className="btn btn-sm entry-back" onClick={onBack}>
-        <IconArrowLeft aria-hidden="true" stroke={1.8} />返回词条
+        <IconArrowLeft aria-hidden="true" stroke={1.8} />返回 Wiki
       </button>
 
-      <header className="entry-head">
-        <h2>{entry.name}</h2>
-        <span className="entry-kind">{kindLabels?.[entry.kind] || entry.kind}</span>
+      <header className="wiki-article__head">
+        <p>{typeLabels[page.pageType] || page.pageType}</p>
+        <h2>{page.title}</h2>
+        <div><span>版本 {page.revision}</span><span>{sources.length} 个来源</span><span>{links.outgoing.length + links.incoming.length} 个连接</span><time>{dateTime(page.updatedAt)}</time></div>
+        <blockquote>{page.summary}</blockquote>
       </header>
-      <p className="entry-def">{entry.definition}</p>
-      {currentDefinition ? (
-        <div className="entry-definition-source">
-          {currentDefinition.sourceQuote ? <details><summary>这一定义的原文依据</summary><blockquote>{currentDefinition.sourceQuote}</blockquote></details> : <small>这是迁移前的定义，当时没有保存原文摘录。</small>}
-          <button type="button" className="fact__src" disabled={!currentDefinition.sourceBookId} onClick={() => onOpenSource?.({ ...currentDefinition, sourceId: currentDefinition.sourceId, sourceQuote: currentDefinition.sourceQuote })}>
-            {currentDefinition.locator || currentDefinition.sourceTitle || "未记录来源"}
-          </button>
-        </div>
-      ) : null}
-      <p className="entry-meta">
-        {active.length} 条事实 · {sources.size} 个来源
-        {disputed.length ? <> · <b>{disputed.length} 条有冲突</b></> : null}
-        {superseded.length ? ` · ${superseded.length} 条已被推翻` : ""}
-      </p>
 
-      {definitionHistory.length > 1 ? (
-        <section className="entry-block">
-          <h3 className="entry-block__head">定义演化</h3>
-          <ol className="definition-history">
-            {definitionHistory.map((revision) => <li key={revision.id}><b>{revision.definition}</b><span>{revision.reason || "由新资料更新"} · {revision.locator || revision.sourceTitle}</span></li>)}
-          </ol>
-        </section>
-      ) : null}
-
-      {/* ⚠️ **冲突排在最前面，而且不折叠。** 它是这个词条上最需要你处理的东西；
-          藏进「更多」里等于当它不存在，而那正是知识库慢慢烂掉的方式。 */}
-      {disputed.length ? (
-        <section className="entry-block">
-          <h3 className="entry-block__head entry-block__head--warn">有冲突的说法</h3>
-          <p className="entry-block__lead">两条都来自你的资料、互相打架。留着它们，比挑一条留下更诚实——认知变化本身常常就是选题。</p>
-          <ul className="facts">{disputed.map(factLine)}</ul>
-        </section>
-      ) : null}
-
-      <section className="entry-block">
-        <h3 className="entry-block__head">事实</h3>
-        {active.length ? <ul className="facts">{active.map(factLine)}</ul>
-          : <p className="entry-empty">还没有事实。词条只有定义时，写作时引用不了它。</p>}
-      </section>
-
-      {superseded.length ? (
-        <section className="entry-block">
-          <h3 className="entry-block__head entry-block__head--muted">已被推翻</h3>
-          <ul className="facts facts--muted">{superseded.map(factLine)}</ul>
-        </section>
-      ) : null}
-
-      <section className="entry-block">
-        <h3 className="entry-block__head">关系</h3>
-        {neighbors.outgoing.length || neighbors.incoming.length ? (
-          <ul className="rels">
-            {neighbors.outgoing.map((item) => (
-              <li key={`out-${item.id}-${item.relationType}`}>
-                <em>{relationLabels?.[item.relationType] || item.relationType}</em>
-                <IconChevronRight aria-hidden="true" stroke={1.8} />
-                <button type="button" onClick={() => onGo?.(`entries/${item.id}`)}>{item.name}</button>
-              </li>
+      <div className="wiki-article__layout">
+        <article className="wiki-article__body prose" dangerouslySetInnerHTML={{ __html: html }} />
+        <aside className="wiki-article__rail">
+          <section>
+            <h3>连接</h3>
+            {[...links.outgoing.map((item) => ({ ...item, direction: "out" })),
+              ...links.incoming.map((item) => ({ ...item, direction: "in" }))].map((item) => (
+              <button key={`${item.direction}-${item.id}-${item.relation}`} type="button" onClick={() => onGo?.(`entries/${item.id}`)}>
+                <small>{item.direction === "out" ? item.relation : `被关联 · ${item.relation}`}</small>
+                <b>{item.title}</b>
+                {item.why ? <span>{item.why}</span> : null}
+                <IconChevronRight aria-hidden="true" />
+              </button>
             ))}
-            {/* 反向链接不存表，是索引上的一次查询——所以它和正向永远不会不同步 */}
-            {neighbors.incoming.map((item) => (
-              <li key={`in-${item.id}-${item.relationType}`} className="rels__in">
-                <button type="button" onClick={() => onGo?.(`entries/${item.id}`)}>{item.name}</button>
-                <IconChevronRight aria-hidden="true" stroke={1.8} />
-                <em>{relationLabels?.[item.relationType] || item.relationType}　本词条</em>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="entry-empty">还没有接上任何词条。孤立的词条写作时几乎不会被想起来。</p>}
-        {relationEvidence.length ? (
-          <div className="relation-evidence">
-            {relationEvidence.map((evidence, index) => (
-              <details key={`${evidence.fromId}-${evidence.toId}-${evidence.relationType}-${index}`}>
-                <summary>{evidence.why || "查看关系依据"}</summary>
-                {evidence.sourceQuote ? <blockquote>{evidence.sourceQuote}</blockquote> : null}
-                <button type="button" className="fact__src" disabled={!evidence.sourceBookId} onClick={() => onOpenSource?.(evidence)}>{evidence.locator || evidence.sourceTitle}</button>
+            {!links.outgoing.length && !links.incoming.length ? <p>这个页面还没有接入知识网络。</p> : null}
+          </section>
+
+          <section>
+            <h3>依据</h3>
+            {sources.map((source, index) => (
+              <details key={`${source.sourceId}-${index}`}>
+                <summary>{source.locator || source.sourceTitle || "本地来源"}</summary>
+                {source.contribution ? <p>{source.contribution}</p> : null}
+                {source.quote ? <blockquote>{source.quote}</blockquote> : <p>历史迁移记录没有逐字摘录。</p>}
+                <button type="button" className="fact__src" disabled={!source.sourceBookId}
+                  onClick={() => onOpenSource?.({ sourceId: source.sourceId, sourceQuote: source.quote, sourceBookId: source.sourceBookId })}>
+                  {source.sourceBookId ? "打开并定位到 Raw" : "没有可打开的原文落点"}
+                </button>
               </details>
             ))}
-          </div>
-        ) : null}
-      </section>
+          </section>
+
+          <section>
+            <h3>演化</h3>
+            <ol className="wiki-revisions">
+              {revisions.map((revision) => (
+                <li key={revision.id}><b>v{revision.revision} · {revision.changeTitle}</b><span>{revision.reason || revision.changeSummary}</span><time>{dateTime(revision.createdAt)}</time></li>
+              ))}
+            </ol>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }

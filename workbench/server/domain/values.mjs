@@ -95,6 +95,8 @@ export const MUTATING_ACTIONS = Object.freeze([
   "entry.fact.dispute",
   "entry.link",
   "entry.merge",
+  "wiki.pages.apply",
+  "wiki.lint.review",
   "draft.create",
   "draft.update",
   "draft.transition",
