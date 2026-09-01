@@ -236,7 +236,13 @@
 .bridge-checks li span,
 .bridge-checks p { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.6; }
 .bridge-checks > div:focus { outline: 2px solid var(--text-1); outline-offset: 4px; }
-.bridge-result-footer { padding-top: var(--sp-4); }
+.bridge-result-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding-top: var(--sp-5);
+}
 
 @media (max-width: 980px) {
   .content-bridge { padding-inline: var(--sp-7); }
@@ -257,6 +263,7 @@
   .bridge-result-section { grid-template-columns: 32px minmax(0, 1fr); gap: var(--sp-3); }
   .bridge-result-section blockquote { font-size: var(--fs-lg); }
   .bridge-action-menu { width: 100%; overflow-x: auto; border-radius: var(--r-md); }
+  .bridge-result-footer { align-items: stretch; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

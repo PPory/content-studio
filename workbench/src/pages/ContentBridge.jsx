@@ -115,6 +115,7 @@ export function ContentBridge({ state = "", onGo }) {
   const [manualStatement, setManualStatement] = useState("");
   const [manualSummary, setManualSummary] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
+  const [savedOpportunity, setSavedOpportunity] = useState(null);
   const evidenceRef = useRef(null);
   const counterRef = useRef(null);
 
@@ -158,6 +159,7 @@ export function ContentBridge({ state = "", onGo }) {
     setPreview(null);
     setPreviewError(null);
     setEntryIndex(0);
+    setSavedOpportunity(null);
   };
 
   const selectWiki = (id) => {
@@ -170,15 +172,17 @@ export function ContentBridge({ state = "", onGo }) {
     resetPreview();
   };
 
-  const runPreview = async ({ dominantAction = "" } = {}) => {
+  const runPreview = async ({ dominantAction = "", agendaOverride } = {}) => {
     if (!wikiId || !problemId) return;
     setPreviewBusy(true);
     setPreviewError(null);
+    setSavedOpportunity(null);
+    const effectiveAgendaId = agendaOverride === undefined ? agendaId : agendaOverride;
     try {
       const result = await api.previewContentOpportunity({
         wikiPageId: wikiId,
         audienceProblemId: problemId,
-        agendaId: agendaId || undefined,
+        agendaId: effectiveAgendaId || undefined,
         dominantAction: dominantAction || undefined,
       });
       setPreview(result.candidate);
@@ -187,6 +191,32 @@ export function ContentBridge({ state = "", onGo }) {
       setPreviewError(failure);
     } finally {
       setPreviewBusy(false);
+    }
+  };
+
+  const saveOpportunity = async () => {
+    if (!preview || !wikiId || !problemId) return;
+    setSaveBusy(true);
+    setPreviewError(null);
+    try {
+      const result = await api.saveContentOpportunity({
+        wikiPageId: wikiId,
+        audienceProblemId: problemId,
+        agendaId: agendaId || undefined,
+        coreClaim: preview.coreClaim,
+        knowledgeExplanation: preview.knowledgeExplanation,
+        cognitiveGap: preview.cognitiveGap,
+        dominantAction: preview.dominantAction,
+        fit: preview.fit,
+        fitReason: preview.fitReason,
+        construction: preview.construction,
+        confirmed: true,
+      });
+      setSavedOpportunity(result.opportunity);
+    } catch (failure) {
+      setPreviewError(failure);
+    } finally {
+      setSaveBusy(false);
     }
   };
 
@@ -383,7 +413,7 @@ export function ContentBridge({ state = "", onGo }) {
           <ResultSection index={5} title="长期议程">
             <label className="bridge-agenda-field">
               <span>这条内容会继续强化什么长期判断</span>
-              <select value={agendaId} onChange={(event) => { setAgendaId(event.target.value); resetPreview(); }}>
+              <select value={agendaId} disabled={previewBusy} onChange={(event) => { const next = event.target.value; setAgendaId(next); runPreview({ agendaOverride: next }); }}>
                 <option value="">暂不关联议程</option>
                 {agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}
               </select>
@@ -422,7 +452,14 @@ export function ContentBridge({ state = "", onGo }) {
           </section>
 
           <footer className="bridge-result-footer">
-            <Note title="目前仍是候选">Preview 不会创建项目、修改 Wiki 或写入正文。保存内容机会将在确认后单独发生。</Note>
+            {savedOpportunity ? (
+              <Note title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
+            ) : (
+              <Note title="目前仍是候选">Preview 不会创建项目、修改 Wiki 或写入正文。只有你确认保存后，才会写入内容机会。</Note>
+            )}
+            <button type="button" className="btn btn-primary" disabled={saveBusy || Boolean(savedOpportunity)} onClick={saveOpportunity}>
+              {saveBusy ? "正在保存…" : savedOpportunity ? "已保存为内容机会" : "保存为内容机会"}
+            </button>
           </footer>
         </div>
       ) : null}

@@ -126,6 +126,10 @@ export const api = {
   createAudienceProblem: (body) => postJson("/api/workspace/audience-problems", body),
   updateAudienceProblem: (id, body) => postJson(`/api/workspace/audience-problems/${encodeURIComponent(id)}/update`, body),
   previewContentOpportunity: (body) => postJson("/api/workspace/content-opportunities/preview", body),
+  contentOpportunities: () => req("/api/workspace/content-opportunities"),
+  contentOpportunity: (id) => req(`/api/workspace/content-opportunities/${encodeURIComponent(id)}`),
+  saveContentOpportunity: (body) => postJson("/api/workspace/content-opportunities", body),
+  updateContentOpportunity: (id, body) => postJson(`/api/workspace/content-opportunities/${encodeURIComponent(id)}/update`, body),
 
   // 洞察跑批。ready 回答「现在能不能跑、缺什么、上周挂了什么账」——
   // 这才是按钮真正省掉的事：以前要翻三个目录才能确认。

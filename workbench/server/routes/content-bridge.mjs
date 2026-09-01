@@ -152,4 +152,58 @@ export const contentBridgeRoutes = [
       json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
+  {
+    method: "GET",
+    path: "/api/workspace/content-opportunities",
+    handler: guard(async ({ workspace, res, url }) => {
+      json(res, {
+        ok: true,
+        opportunities: workspace.contentBridge.opportunities({ includeArchived: url.searchParams.get("archived") === "1" }),
+      });
+    }),
+  },
+  {
+    method: "POST",
+    path: "/api/workspace/content-opportunities",
+    handler: guard(async ({ workspace, req, res }) => {
+      const body = await readJsonBody(req);
+      const id = workspace.contentBridge.saveOpportunity({
+        wikiPageId: body.wikiPageId,
+        audienceProblemId: body.audienceProblemId,
+        agendaId: body.agendaId || null,
+        coreClaim: body.coreClaim,
+        knowledgeExplanation: body.knowledgeExplanation,
+        cognitiveGap: body.cognitiveGap,
+        dominantAction: body.dominantAction,
+        fit: body.fit,
+        fitReason: body.fitReason,
+        construction: body.construction,
+        actor: "user",
+        confirmed: body.confirmed === true,
+        now: new Date(),
+      });
+      json(res, { ok: true, opportunity: workspace.contentBridge.opportunity(id) });
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/workspace/content-opportunities/:id",
+    handler: guard(async ({ workspace, res, params }) => {
+      json(res, { ok: true, opportunity: workspace.contentBridge.opportunity(params.id) });
+    }),
+  },
+  {
+    method: "POST",
+    path: "/api/workspace/content-opportunities/:id/update",
+    handler: guard(async ({ workspace, req, res, params }) => {
+      const body = await readJsonBody(req);
+      if (!["archive", "restore"].includes(body.action)) throw new Error("内容机会更新动作不受支持");
+      workspace.contentBridge.setOpportunityArchived(params.id, body.action === "archive", {
+        actor: "user",
+        confirmed: body.confirmed === true,
+        now: new Date(),
+      });
+      json(res, { ok: true, opportunity: workspace.contentBridge.opportunity(params.id) });
+    }),
+  },
 ];
