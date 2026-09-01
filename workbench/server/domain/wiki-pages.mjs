@@ -404,9 +404,12 @@ export function applyWikiCompile(workspace, {
         change_set_id,reason,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
         .run(revisionId, pageId, revision, page.title, page.pageType, page.summary, page.bodyMarkdown,
           changeSetId, page.changeSummary || "", stamp);
+      const revisionCitationKeys = new Set();
       for (const citation of page.citations || []) {
         const sourceId = citation.sourceId || proposal.sourceId;
         if (!sourceId) continue;
+        const sourceQuote = citation.quote || "";
+        const citationKey = JSON.stringify([sourceId, sourceQuote]);
         const sourceContentSha256 = citation.sourceContentSha256 || proposal.sourceContentSha256 || "";
         const sourceSnapshotId = citation.sourceSnapshotId || (sourceId === proposal.sourceId ? proposal.sourceSnapshotId : "")
           || workspace.db.prepare(`SELECT id FROM wiki_source_snapshots
@@ -416,13 +419,18 @@ export function applyWikiCompile(workspace, {
           ON CONFLICT(page_id,source_entity_id,source_quote) DO UPDATE SET
           source_snapshot_id=excluded.source_snapshot_id,source_locator=excluded.source_locator,source_content_sha256=excluded.source_content_sha256,
           contribution=excluded.contribution`)
-          .run(pageId, sourceId, sourceSnapshotId, citation.quote || "", citation.locator || proposal.sourceLocator || "",
+          .run(pageId, sourceId, sourceSnapshotId, sourceQuote, citation.locator || proposal.sourceLocator || "",
             sourceContentSha256, citation.contribution || "", stamp);
         workspace.db.prepare(`INSERT INTO wiki_revision_sources(revision_id,source_entity_id,source_snapshot_id,source_quote,
-          source_locator,contribution,created_at) VALUES (?,?,?,?,?,?,?)`)
-          .run(revisionId, sourceId, sourceSnapshotId, citation.quote || "", citation.locator || proposal.sourceLocator || "",
+          source_locator,contribution,created_at) VALUES (?,?,?,?,?,?,?)
+          ON CONFLICT(revision_id,source_entity_id,source_quote) DO UPDATE SET
+          source_snapshot_id=excluded.source_snapshot_id,source_locator=excluded.source_locator,contribution=excluded.contribution`)
+          .run(revisionId, sourceId, sourceSnapshotId, sourceQuote, citation.locator || proposal.sourceLocator || "",
             citation.contribution || "", stamp);
-        applied.citations += 1;
+        if (!revisionCitationKeys.has(citationKey)) {
+          revisionCitationKeys.add(citationKey);
+          applied.citations += 1;
+        }
       }
       idsByTitle.set(normalize(page.title), pageId);
       applied.pages.push({ id: pageId, title: page.title, action: page.action, revision });

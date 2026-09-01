@@ -261,12 +261,21 @@ try {
   modelServer = null;
   const lintApplied = applyWikiCompile(workspace, {
     operation: "lint",
-    proposal: { kind: "wiki.repair", title: "全库体检修订", repairSummary: validatedRepair.repairSummary, pages: validatedRepair.pages },
+    proposal: {
+      kind: "wiki.repair", title: "全库体检修订", repairSummary: validatedRepair.repairSummary,
+      pages: validatedRepair.pages.map((page) => ({
+        ...page,
+        citations: [...page.citations, { ...page.citations[0], contribution: "重复出现但属于同一段来源证据" }],
+      })),
+    },
     now: new Date(now.getTime() + 2_500),
   });
   check("确认体检修订后才原子写入页面新版本与体检 Log", lintApplied.updated === 1
     && wikiPage(workspace, concept.id).page.revision === 3 && wikiIndex(workspace).log[0].operation === "lint"
     && wikiIndex(workspace).log[0].summary.includes("补齐知识页面"));
+  check("同一修订重复引用相同 Raw 原文时会合并而不会触发唯一约束", lintApplied.citations === lintEvidence.length
+    && workspace.db.prepare(`SELECT COUNT(*) AS count FROM wiki_revision_sources s
+      JOIN wiki_page_revisions r ON r.id=s.revision_id WHERE r.change_set_id=?`).get(lintApplied.changeSetId).count === lintEvidence.length);
 
   const exploration = applyExplorationPage(workspace, {
     title: "持久状态与知识复利", pageType: "synthesis",
