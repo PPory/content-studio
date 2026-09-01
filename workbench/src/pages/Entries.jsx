@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note } from "../components/ui.jsx";
+import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
 import { IngestReview } from "../components/IngestReview.jsx";
 
 const TYPE_ORDER = ["overview", "topic", "synthesis", "comparison", "concept", "method", "person", "organization", "work", "stance", "source_summary"];
@@ -17,7 +17,7 @@ export function Entries({ onGo }) {
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
   const [lintBusy, setLintBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(null);
 
   const load = () => api.wiki().then(setData).catch(setError);
   useEffect(() => { load(); }, []);
@@ -35,10 +35,13 @@ export function Entries({ onGo }) {
 
   const runLint = async () => {
     setLintBusy(true);
-    setNotice("");
+    setNotice(null);
     try {
       const result = await api.runKnowledgeLint("network", 1);
-      setNotice(result.queued ? "全库体检已开始；完成后会出现一份可审阅报告。" : "体检任务已经在队列中。");
+      setNotice({
+        title: result.queued ? "体检已加入队列" : "体检任务已在队列中",
+        detail: "完成后会在这里生成诊断报告，不会自动修改 Wiki。",
+      });
     } catch (failure) {
       setError(failure);
     } finally {
@@ -73,11 +76,15 @@ export function Entries({ onGo }) {
         <div className={health.pendingSources ? "is-warn" : ""}><b>{health.pendingSources}</b><span>篇 Raw 尚未编译</span></div>
       </section>
 
+      {notice ? (
+        <div className="wiki-notice" role="status" aria-live="polite">
+          <Note tone="default" title={notice.title}>{notice.detail}</Note>
+        </div>
+      ) : null}
       <IngestReview onDone={load} />
-      {notice ? <Note>{notice}</Note> : null}
 
       <div className="wiki-toolbar">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索当前认识、主题或来源资料卡" />
+        <SearchBox value={query} onChange={setQuery} placeholder="搜索页面、主题或来源" ariaLabel="搜索 Wiki" />
         <p>
           {health.orphans ? `${health.orphans} 个孤立页面` : "页面连接正常"}
           {health.missingCitations ? ` · ${health.missingCitations} 页缺少来源` : ""}
@@ -92,7 +99,9 @@ export function Entries({ onGo }) {
       ) : (
         <div className="wiki-layout">
           <main className="wiki-index">
-            {groups.map((group) => (
+            {!groups.length && query.trim() ? (
+              <div className="wiki-search-empty">没有找到“{query.trim()}”相关的知识页面。</div>
+            ) : groups.map((group) => (
               <section key={group.type} className="wiki-section">
                 <div className="wiki-section__head">
                   <h3>{group.label}</h3>

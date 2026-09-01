@@ -19,7 +19,10 @@ export async function startLocalWorkspaceRuntime(env = {}) {
   const workspace = await openWorkspace({ xenhoHome });
   try {
     const recoveredWikiJobs = recoverQueuedWikiIngests(workspace);
-    const runtime = startWorkspaceRuntime(workspace, { handlers: createDefaultJobHandlers(workspace, env) });
+    const runtime = startWorkspaceRuntime(workspace, {
+      handlers: createDefaultJobHandlers(workspace, env),
+      maintenance: (now) => ({ recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }) }),
+    });
     const automaticBackup = ensureAutomaticWorkspaceBackup(workspace).catch((error) => {
       console.warn(`[backup] 自动备份失败：${error instanceof Error ? error.message : String(error)}`);
       return { created: false, error: error instanceof Error ? error.message : String(error) };

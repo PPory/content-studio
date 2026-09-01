@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -439,6 +440,27 @@ try {
   check("知识库来源把归类和可写性分开报，两个维度互不冒充", knowledgeSources.value.sources.length >= 1
     && knowledgeSources.value.sources.every((item) => item.sourceKind && item.writable)
     && knowledgeSources.value.totals.documents >= 1);
+
+  const retryBook = await createBookRecord(workspace, {
+    title: "失败后重新编译", sourceKind: "文档",
+    chapters: [{ title: "重试章节", text: "这是一份用于验证失败任务可以真正重新进入队列的隔离资料。" }],
+  });
+  const retryDocument = workspace.db.prepare("SELECT id,body_markdown AS body FROM book_documents WHERE book_id=?").get(retryBook.id);
+  const retryHash = crypto.createHash("sha256").update(retryDocument.body).digest("hex");
+  const retryBaseKey = `wiki.ingest:${retryDocument.id}:${retryHash}`;
+  const terminalJob = workspace.jobs.enqueue({ idempotencyKey: retryBaseKey, kind: "wiki.ingest", payload: { sourceId: retryDocument.id } }).job;
+  workspace.db.prepare("UPDATE local_jobs SET status='failed',finished_at=?,updated_at=? WHERE id=?")
+    .run(new Date().toISOString(), new Date().toISOString(), terminalJob.id);
+  workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,source_content_sha256,run_at) VALUES (?,'failed',?,?)")
+    .run(retryDocument.id, retryHash, new Date().toISOString());
+  const requeued = await call(base, "/api/workspace/knowledge/ingest", { method: "POST", body: { bookIds: [retryBook.id] } });
+  const retryJobs = workspace.db.prepare("SELECT status FROM local_jobs WHERE idempotency_key=? OR idempotency_key LIKE ? ORDER BY created_at")
+    .all(retryBaseKey, `${retryBaseKey}:%`);
+  check("旧失败任务不会再把来源伪装成排队中", requeued.value.queued === 1 && retryJobs.length === 2
+    && retryJobs.some((job) => ["queued", "retry", "running"].includes(job.status)));
+  const duplicateQueue = await call(base, "/api/workspace/knowledge/ingest", { method: "POST", body: { bookIds: [retryBook.id] } });
+  check("已有存活任务时重复点击不会再建一条任务", duplicateQueue.value.skipped === 1
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM local_jobs WHERE idempotency_key=? OR idempotency_key LIKE ?").get(retryBaseKey, `${retryBaseKey}:%`).count === 2);
 
   const bookDocumentId = bookDoc.replace(/^bookdoc:/, "");
   const sourceSnapshot = captureWikiSourceSnapshot(workspace, bookDocumentId);

@@ -105,19 +105,34 @@ function queueIngest(workspace, documents, { retry = false } = {}) {
   for (const document of documents.slice(0, 20)) {
     const hash = crypto.createHash("sha256").update(document.body || "").digest("hex");
     const previous = workspace.db.prepare("SELECT status, source_content_sha256 AS hash FROM source_ingests WHERE source_entity_id = ?").get(document.id);
-    if (!retry && previous && ["queued", "proposed", "applied", "empty"].includes(previous.status) && (!previous.hash || previous.hash === hash)) {
+    const liveJob = workspace.db.prepare(`SELECT 1 FROM local_jobs
+      WHERE deleted_at IS NULL AND kind='wiki.ingest' AND status IN ('queued','retry','running')
+        AND json_extract(payload_json, '$.sourceId')=? LIMIT 1`).get(document.id);
+    const unchanged = previous && (!previous.hash || previous.hash === hash);
+    if (liveJob || (!retry && unchanged && ["proposed", "applied", "empty"].includes(previous.status))) {
       skipped += 1;
       continue;
+    }
+    const baseKey = `wiki.ingest:${document.id}:${hash}`;
+    let enqueued = workspace.jobs.enqueue({
+      idempotencyKey: retry ? `${baseKey}:${crypto.randomUUID()}` : baseKey,
+      kind: "wiki.ingest",
+      payload: { sourceId: document.id },
+    });
+    if (!enqueued.created && !["queued", "retry", "running"].includes(enqueued.job.status)) {
+      enqueued = workspace.jobs.enqueue({
+        idempotencyKey: `${baseKey}:${crypto.randomUUID()}`,
+        kind: "wiki.ingest",
+        payload: { sourceId: document.id },
+      });
+    }
+    if (!enqueued.created && !["queued", "retry", "running"].includes(enqueued.job.status)) {
+      throw new Error(`来源 ${document.id} 未能进入编译队列`);
     }
     workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,source_content_sha256,run_at)
       VALUES (?,'queued',?,?) ON CONFLICT(source_entity_id) DO UPDATE SET status='queued',
       candidate_id=NULL, source_content_sha256=excluded.source_content_sha256, error='', run_at=excluded.run_at`)
       .run(document.id, hash, stamp);
-    workspace.jobs.enqueue({
-      idempotencyKey: `wiki.ingest:${document.id}:${hash}${retry ? `:${Date.now()}` : ""}`,
-      kind: "wiki.ingest",
-      payload: { sourceId: document.id },
-    });
     queued += 1;
     chars += String(document.body || "").length;
   }

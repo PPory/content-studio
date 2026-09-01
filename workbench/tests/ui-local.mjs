@@ -116,6 +116,21 @@ try {
       ],
     },
   });
+  const wikiPagesBeforeReview = workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count;
+  workspace.domain.actions.propose({
+    actionType: "wiki.lint.review", targetId: null, proposedBy: "ai",
+    payload: {
+      kind: "wiki.lint.report", mode: "network", model: "ui-test",
+      deterministic: { orphans: 0, missingCitations: 0 },
+      findings: [
+        {
+          type: "missing_link", pages: ["来源精准跳转", "来源：UI 证据来源 · 证据章节"],
+          problem: "两个页面共同描述来源核对流程，但缺少明确的双向导航。",
+          suggestion: "后续生成具体页面修订候选，再由用户确认是否写入。",
+        },
+      ],
+    },
+  });
 
   const { chromium } = playwright();
   browser = await chromium.launch();
@@ -405,7 +420,28 @@ try {
   await page.getByRole("heading", { name: "我的 Wiki" }).waitFor();
   const wikiPulseValues = await page.locator(".wiki-pulse b").allTextContents();
   check("Wiki 首页展示持续编译后的完整页面与知识连接", wikiPulseValues[0] === "2" && wikiPulseValues[2] === "2");
+  check("Wiki 搜索复用统一搜索框并提供清空能力", await page.getByLabel("搜索 Wiki").count() === 1);
+  await page.getByLabel("搜索 Wiki").fill("不存在的页面");
+  check("Wiki 搜索没有结果时给出明确反馈", await page.getByText(/没有找到“不存在的页面”/).count() === 1);
+  await page.getByRole("button", { name: "清空搜索" }).click();
+  await page.getByRole("button", { name: /全库体检报告/ }).click();
+  check("体检报告把问题、影响页面和建议分开呈现", await page.locator(".ing__finding").count() === 1
+    && (await page.locator(".ing__finding").innerText()).includes("可选优化")
+    && (await page.locator(".ing__finding").innerText()).includes("建议"));
+  check("体检报告不再冒充可写入的修改", await page.getByRole("button", { name: "全部接受" }).count() === 0
+    && await page.getByRole("button", { name: "标记已阅" }).count() === 1
+    && await page.locator(".ing__item--lint input[type=checkbox]").count() === 0);
+  await page.route("**/api/workspace/knowledge/lint/run", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, mode: "network" }),
+  }));
+  await page.getByRole("button", { name: "全库体检", exact: true }).click();
+  check("体检提示只说明已入队并明确不会自动修改", await page.getByText("体检已加入队列", { exact: true }).count() === 1
+    && await page.getByText("完成后会在这里生成诊断报告，不会自动修改 Wiki。", { exact: true }).count() === 1);
+  await page.unroute("**/api/workspace/knowledge/lint/run");
   if (process.argv.includes("--shots")) await page.screenshot({ path: wikiHomeShotFile, fullPage: true });
+  await page.getByRole("button", { name: "标记已阅" }).click();
+  await page.getByRole("button", { name: "标记已阅" }).waitFor({ state: "detached" });
+  check("标记体检报告已阅不会改动 Wiki 页面", workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count === wikiPagesBeforeReview);
   await page.getByRole("button", { name: /来源精准跳转/ }).click();
   await page.locator(".wiki-article__body").waitFor();
   check("Wiki 详情展示完整正文、连接、来源和演化版本", (await page.locator(".wiki-article").innerText()).includes("验收标准")

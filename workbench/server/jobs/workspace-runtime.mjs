@@ -7,6 +7,7 @@ export class WorkspaceJobRuntime {
     schedules = DEFAULT_LOCAL_SCHEDULES,
     leaseOwner = `workspace-${process.pid}`,
     pollIntervalMs = 30_000,
+    maintenance,
     now,
   } = {}) {
     const allowed = new Set(Object.keys(handlers));
@@ -17,6 +18,7 @@ export class WorkspaceJobRuntime {
     this.leaseOwner = leaseOwner;
     this.pollIntervalMs = Math.max(1_000, Number(pollIntervalMs) || 30_000);
     this.now = typeof now === "function" ? now : () => now ? new Date(now) : new Date();
+    this.maintenance = typeof maintenance === "function" ? maintenance : null;
     this.runner = new LocalJobRunner(workspace.jobs, { handlers });
     this.timer = null;
     this.currentTick = null;
@@ -30,6 +32,7 @@ export class WorkspaceJobRuntime {
     if (this.currentTick) return this.currentTick;
     this.currentTick = (async () => {
       const current = this.now();
+      const maintenance = this.maintenance ? await this.maintenance(current) : null;
       const startupJobs = enqueueStartupCatchup(this.workspace.db, this.workspace.jobs, { now: current });
       const results = [];
       while (true) {
@@ -37,7 +40,7 @@ export class WorkspaceJobRuntime {
         if (!result) break;
         results.push(result);
       }
-      this.lastResult = { startupJobs, results };
+      this.lastResult = { maintenance, startupJobs, results };
       this.lastError = null;
       return this.lastResult;
     })().catch((error) => {

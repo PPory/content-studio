@@ -391,6 +391,14 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   check("运行中新增的提炼会立即唤醒任务处理器", productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(liveSourceId).status === "empty");
+  const orphanBook = await createBookRecord(productionRuntime.workspace, {
+    title: "运行中孤儿排队", sourceKind: "文档", chapters: [{ title: "自动恢复", text: "运行中产生的孤儿任务也应该自动恢复。" }],
+  });
+  const orphanSourceId = productionRuntime.workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ?").get(orphanBook.id).id;
+  productionRuntime.workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(orphanSourceId, new Date().toISOString());
+  const healedRun = await productionRuntime.runtime.tick();
+  check("运行期间出现的孤儿排队会在下一轮自动恢复", healedRun.maintenance?.recoveredWikiJobs === 1
+    && productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(orphanSourceId).status === "empty");
   await productionRuntime.runtime.stop();
   await productionRuntime.automaticBackup;
   productionRuntime.workspace.close();

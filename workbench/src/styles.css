@@ -6836,6 +6836,20 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__page-change summary { cursor: pointer; color: var(--text-2); }
 .ing__page-change pre { max-height: 280px; overflow: auto; white-space: pre-wrap; padding: 10px; background: var(--surface-2); color: var(--text-2); font: 12px/1.65 var(--font-mono); }
 .ing__page-change details > b { display: block; margin-top: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
+.ing__item--lint .ing__row { grid-template-columns: minmax(320px, 1fr) auto auto; }
+.ing__item--lint .ing__body { padding-top: 0; }
+.ing__findings { list-style: none; margin: 0; padding: 0; }
+.ing__finding { display: grid; gap: 7px; padding: 15px 0; border-top: 1px dashed var(--border); }
+.ing__finding-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ing__finding-head b { font-size: var(--fs-sm); }
+.ing__finding-level { flex: none; padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 650; }
+.ing__finding-level.is-risk { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.ing__finding-level.is-suggest { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
+.ing__finding-level.is-optional { background: var(--surface-2); color: var(--text-3); }
+.ing__finding-pages { margin-left: auto; overflow: hidden; color: var(--text-3); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.ing__finding p { max-width: 980px; margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+.ing__finding .ing__finding-suggestion { color: var(--text-3); }
+.ing__finding-suggestion span { margin-right: 8px; color: var(--text-2); font-weight: 600; }
 
 .entry-health { display: flex; width: 100%; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
 .entry-health span { color: var(--accent); }
@@ -6927,9 +6941,12 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-pulse span { color: var(--text-3); font-size: var(--fs-xs); }
 .wiki-pulse .is-warn b { color: var(--warn); }
 
+.wiki-notice { max-width: 620px; margin: 16px 0 0; }
+.wiki-notice .note { margin: 0; }
 .wiki-toolbar { display: flex; align-items: center; gap: 24px; margin: 26px 0 22px; }
-.wiki-toolbar input { width: min(520px, 52%); }
+.wiki-toolbar .search-box { flex: 0 1 520px; width: min(520px, 100%); }
 .wiki-toolbar p { margin: 0 0 0 auto; color: var(--text-3); font-size: var(--fs-xs); }
+.wiki-search-empty { padding: 28px 2px; border-top: 1px solid var(--border-strong); color: var(--text-3); font-size: var(--fs-sm); }
 .wiki-layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 56px; align-items: start; }
 .wiki-index { min-width: 0; }
 .wiki-section { margin-bottom: 34px; }
