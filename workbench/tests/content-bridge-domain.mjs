@@ -1,0 +1,185 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { openWorkspace } from "../server/storage/workspace.mjs";
+import { createUlid } from "../server/storage/ids.mjs";
+import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
+
+const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-bridge-domain-"));
+const xenhoHome = path.join(root, "Xenho");
+const now = new Date("2026-09-01T08:00:00.000Z");
+let workspace;
+
+function check(name, value) {
+  assert(value, name);
+  console.log(` ✓ ${name}`);
+}
+
+function createWikiPage(target, { title = "认知卸载", summary = "把部分认知任务交给外部工具。", body = "# 认知卸载\n\n认知卸载帮助解释人如何把认知任务交给工具。" } = {}) {
+  const id = createUlid();
+  const stamp = now.toISOString();
+  target.repository.transaction(() => {
+    target.repository.createEntity({ id, type: "wiki_page", now });
+    target.db.prepare(`INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,current_revision,schema_version,created_at,updated_at)
+      VALUES (?, ?, 'concept', ?, ?, 1, 1, ?, ?)`)
+      .run(id, title, summary, body, stamp, stamp);
+    target.repository.setEntityText(id, { title, body, now });
+  });
+  return id;
+}
+
+try {
+  workspace = await openWorkspace({ xenhoHome, now });
+  const { db, contentBridge } = workspace;
+
+  check("Content Bridge migration 已创建五张增量表", [
+    "content_agendas",
+    "audience_problems",
+    "audience_problem_sources",
+    "content_opportunities",
+    "content_project_opportunities",
+  ].every((name) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)));
+  check("工作区 Schema 已升级到 Content Bridge 版本", WORKSPACE_SCHEMA_VERSION === 11);
+
+  assert.throws(() => contentBridge.createAgenda({ title: "判断权", desiredJudgment: "人应保留判断权", actor: "user", now }), /明确确认/);
+  const agendaId = contentBridge.createAgenda({
+    title: "保留人的判断权",
+    audience: "高频使用 AI 的创作者",
+    problemSpace: "怎样分配人与 AI 的判断责任",
+    desiredJudgment: "高质量使用 AI 的核心是保留人的判断权",
+    valueCommitment: "帮助用户建立可执行的判断边界",
+    confirmed: true,
+    actor: "user",
+    now,
+  });
+  contentBridge.updateAgenda(agendaId, {
+    title: "保留人的判断权",
+    audience: "高频使用 AI 的知识工作者",
+    problemSpace: "怎样分配人与 AI 的判断责任",
+    desiredJudgment: "高质量使用 AI 的核心是保留人的判断权",
+    valueCommitment: "帮助用户建立可执行的判断边界",
+    confirmed: true,
+    actor: "user",
+    now: new Date(now.getTime() + 1_000),
+  });
+  check("Agenda 创建与更新保留核心判断", contentBridge.agenda(agendaId).audience.includes("知识工作者"));
+  contentBridge.setAgendaArchived(agendaId, true, { confirmed: true, actor: "user", now: new Date(now.getTime() + 2_000) });
+  check("Agenda 支持软归档且默认列表隐藏", contentBridge.agendas().length === 0 && contentBridge.agendas({ includeArchived: true })[0].status === "archived");
+  contentBridge.setAgendaArchived(agendaId, false, { confirmed: true, actor: "user", now: new Date(now.getTime() + 3_000) });
+
+  assert.throws(() => contentBridge.createAudienceProblem({ statement: "没有来源的问题", actor: "user", confirmed: true, now }), /至少需要一个/);
+  const problemId = contentBridge.createAudienceProblem({
+    statement: "AI 越用越方便，为什么我越来越不愿意自己想？",
+    summary: "用户担心把越来越多判断任务交给 AI。",
+    pattern: "knowledge_gap",
+    sources: [{
+      sourceKind: "comment",
+      sourceId: "comment:ai-dependence:1",
+      evidenceText: "现在遇到任何选择我都先问 AI，感觉自己懒得判断了。",
+      observedAt: now,
+    }],
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  const problem = contentBridge.audienceProblem(problemId);
+  check("Audience Problem 保存来源关系与逐字证据", problem.sources.length === 1 && problem.sources[0].evidenceText.includes("先问 AI"));
+
+  const wikiPageId = createWikiPage(workspace);
+  const invalidConstruction = {
+    elements: [{ id: "knowledge", type: "concept", label: "认知卸载" }],
+    relations: [{ from: "knowledge", to: "missing", type: "causal" }],
+  };
+  assert.throws(() => contentBridge.saveOpportunity({
+    wikiPageId,
+    audienceProblemId: problemId,
+    agendaId,
+    coreClaim: "AI 正从信息工具进入人的判断链",
+    knowledgeExplanation: "认知卸载解释了人如何把认知任务交给外部工具。",
+    cognitiveGap: "会用 AI 不等于应该把所有判断都交给 AI。",
+    dominantAction: "judgment",
+    fit: "strong",
+    fitReason: "该知识能直接解释问题背后的机制。",
+    construction: invalidConstruction,
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /两个不同的现有要素/);
+  assert.throws(() => contentBridge.saveOpportunity({
+    wikiPageId,
+    audienceProblemId: problemId,
+    coreClaim: "虚构经历",
+    knowledgeExplanation: "解释",
+    cognitiveGap: "差异",
+    dominantAction: "experience",
+    fit: "medium",
+    fitReason: "测试",
+    construction: { elements: [{ id: "story", type: "experience", label: "我最近发现自己什么都问 AI" }] },
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /真实来源/);
+
+  const opportunityId = contentBridge.saveOpportunity({
+    wikiPageId,
+    audienceProblemId: problemId,
+    agendaId,
+    coreClaim: "AI 最值得关注的变化之一，是从信息工具进入人的判断链",
+    knowledgeExplanation: "认知卸载解释了人如何把认知任务交给外部工具。",
+    cognitiveGap: "多数人把会用 AI 理解为尽量多交给 AI，但关键是判断权如何分配。",
+    dominantAction: "judgment",
+    fit: "strong",
+    fitReason: "用户问题与知识解释之间存在直接机制关系。",
+    construction: {
+      elements: [
+        { id: "problem", type: "problem", label: "为什么我越来越依赖 AI 判断", source_kind: "comment", source_id: "comment:ai-dependence:1" },
+        { id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiPageId },
+        { id: "claim", type: "judgment", label: "需要重新分配判断权" },
+      ],
+      relations: [
+        { from: "problem", to: "knowledge", type: "problem_to_mechanism", explanation: "知识解释问题机制" },
+        { from: "knowledge", to: "claim", type: "support", explanation: "机制支撑核心判断" },
+      ],
+      entry_options: [{ text: "AI 越用越方便，为什么我越来越不愿意自己想？", scope_check: { status: "supported", reason: "正文能够解释依赖判断的机制" } }],
+      evidence_gaps: [{ claim: "高频使用 AI 会削弱判断能力", needed: "需要直接研究证据" }],
+      counterarguments: [{ claim: "把判断交给 AI 也可能释放精力", response: "需要区分低风险选择与关键判断" }],
+    },
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  check("Opportunity 保存受校验的结构与三档 fit", contentBridge.opportunity(opportunityId).construction.relations.length === 2);
+
+  const projectId = contentBridge.createProjectFromOpportunity(opportunityId, { actor: "user", confirmed: true, now });
+  const replayProjectId = contentBridge.createProjectFromOpportunity(opportunityId, { actor: "user", confirmed: true, now });
+  check("Opportunity 复用现有 Domain 创建项目且幂等建立关系", projectId === replayProjectId
+    && db.prepare("SELECT COUNT(*) AS count FROM content_project_opportunities WHERE opportunity_id=?").get(opportunityId).count === 1
+    && workspace.domain.projectStage(projectId).stage === "策划中");
+
+  contentBridge.setOpportunityArchived(opportunityId, true, { actor: "user", confirmed: true, now: new Date(now.getTime() + 4_000) });
+  check("Opportunity 支持归档并保留 Project Link", contentBridge.opportunities().length === 0
+    && db.prepare("SELECT COUNT(*) AS count FROM content_project_opportunities WHERE opportunity_id=?").get(opportunityId).count === 1);
+  contentBridge.setOpportunityArchived(opportunityId, false, { actor: "user", confirmed: true, now: new Date(now.getTime() + 5_000) });
+
+  workspace.domain.softDeleteEntity(opportunityId, { actor: "user", now });
+  assert.throws(() => contentBridge.opportunity(opportunityId), /不存在/);
+  workspace.domain.restoreEntity(opportunityId, { actor: "user", now });
+  check("Content Bridge 实体继续使用现有回收站机制", contentBridge.opportunity(opportunityId).id === opportunityId);
+
+  workspace.close();
+  workspace = await openWorkspace({ xenhoHome });
+  check("关闭重开后 Agenda、Problem、Opportunity 与 Project Link 仍存在",
+    workspace.contentBridge.agenda(agendaId).id === agendaId
+    && workspace.contentBridge.audienceProblem(problemId).sources.length === 1
+    && workspace.contentBridge.opportunity(opportunityId).id === opportunityId
+    && workspace.contentBridge.projectOpportunity(projectId).id === opportunityId);
+  check("重复打开 migration 幂等", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === WORKSPACE_SCHEMA_VERSION);
+  check("Content Bridge 写操作均进入现有审计", workspace.db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type LIKE 'content_%' OR event_type LIKE 'audience_problem.%'").get().count >= 6);
+  check("数据库完整性与外键检查通过", workspace.check().ok);
+} finally {
+  workspace?.close();
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+console.log("\nContent Bridge 领域与 SQLite 测试通过。\n");
