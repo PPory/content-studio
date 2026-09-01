@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "check": "node scripts/check.mjs",
-    "test": "node tests/ui-local.mjs",
+    "test": "node tests/ui-local.mjs && node tests/content-bridge-ui.mjs",
     "test:writing": "node tests/ui-local.mjs",
     "test:pi": "node tests/pi-runtime.mjs",
     "test:unit": "node tests/storage.mjs && node tests/corpus.mjs && node tests/wiki-ingest.mjs && node tests/wiki-pages.mjs && node tests/domain.mjs && node tests/content-bridge-domain.mjs && node tests/content-bridge-api.mjs && node tests/content-bridge-preview.mjs && node tests/content-bridge-save-api.mjs && node tests/workspace-api.mjs && node tests/workspace-backup.mjs",
@@ -17,7 +17,7 @@
     "test:domain": "node tests/domain.mjs && node tests/content-bridge-domain.mjs",
     "test:extension": "node tests/extension-local.mjs",
     "test:app-exit": "node tests/auto-exit.mjs",
-    "shots": "node tests/ui-local.mjs --shots",
+    "shots": "node tests/ui-local.mjs --shots && node tests/content-bridge-ui.mjs --shots",
     "app:icon": "node scripts/make-icon.mjs",
     "app:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
     "app:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1"

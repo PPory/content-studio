@@ -1,0 +1,340 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { createServer } from "vite";
+import { createBookRecord } from "../server/routes/books-local.mjs";
+import { applyWikiCompile, captureWikiSourceSnapshot } from "../server/domain/wiki-pages.mjs";
+
+const ROOT = path.resolve(import.meta.dirname, "..");
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-bridge-ui-"));
+const xenhoHome = path.join(tempRoot, "Xenho");
+const shotDir = path.join(ROOT, "output", "playwright");
+const PORT = 5206;
+const oldHome = process.env.XENHO_HOME;
+const oldProxy = { HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
+const oldLifecycle = { WB_LAUNCHER: process.env.WB_LAUNCHER, WB_KEEP_ALIVE: process.env.WB_KEEP_ALIVE };
+process.env.XENHO_HOME = xenhoHome;
+process.env.WB_KEEP_ALIVE = "1";
+process.env.HTTP_PROXY = "http://127.0.0.1:9";
+process.env.HTTPS_PROXY = "http://127.0.0.1:9";
+process.env.NO_PROXY = "127.0.0.1,localhost";
+
+function playwright() {
+  const require = createRequire(import.meta.url);
+  const roots = [ROOT, "C:/Users/Lenovo", process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules") : ""];
+  for (const root of roots.filter(Boolean)) {
+    try {
+      return require(require.resolve("playwright", { paths: [root] }));
+    } catch {}
+  }
+  throw new Error("找不到 playwright");
+}
+
+const check = (name, pass, detail = "") => {
+  assert(pass, detail || name);
+  console.log(` ✓ ${name}`);
+};
+
+async function request(pathname, options = {}) {
+  const response = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
+    ...options,
+    headers: { ...(options.body ? { "content-type": "application/json" } : {}), ...options.headers },
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
+function strongCandidate({ dominantAction = "judgment", agendaId = "" } = {}) {
+  const experience = dominantAction === "experience";
+  return {
+    fit: "strong",
+    fitReason: "这个用户问题正好需要认知卸载提供的机制解释。",
+    audienceProblem: {
+      surface: "AI 越用越方便，却越来越不愿意自己想。",
+      underlying: "我应该把哪些判断交给 AI，又该保留哪些判断权？",
+    },
+    knowledgeExplanation: "认知卸载解释了人如何把认知任务交给外部工具，也提醒我们区分省力与放弃判断。",
+    coreClaim: "AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。",
+    cognitiveGap: "大多数人把会用 AI 理解成尽量多交给 AI，但真正需要设计的是判断权如何分配。",
+    dominantAction,
+    experience: experience
+      ? { available: false, reason: "工作区没有可回溯的个人经历，只能给出条件式入口。", sourceRefs: [] }
+      : { available: false, reason: "当前表达不依赖个人经历。", sourceRefs: [] },
+    construction: {
+      elements: [
+        { id: "problem", type: "problem", label: "AI 使用中的判断依赖", source_kind: "audience_problem", source_id: "problem-source" },
+        { id: "concept", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: "wiki-source" },
+        { id: "claim", type: "judgment", label: "保留人的判断权", source_kind: "", source_id: "" },
+      ],
+      relations: [
+        { from: "problem", to: "concept", type: "problem_to_mechanism", explanation: "用认知卸载解释判断为何被外包。" },
+        { from: "concept", to: "claim", type: "support", explanation: "机制解释支撑保留判断权的主张。" },
+      ],
+      entry_options: experience
+        ? [{ text: "如果你确实有把选择交给 AI 的真实经历，可以从那次具体选择进入。", scope_check: { status: "supported", reason: "条件式表达没有虚构经历。" } }]
+        : [
+            { text: "为什么 AI 越用越方便，我们却越来越不愿意自己判断？", scope_check: { status: "supported", reason: "正文能够用认知卸载解释并给出判断边界。" } },
+            { text: "AI 会不会让所有人彻底失去思考能力？", scope_check: { status: "too_broad", reason: "现有知识只能解释判断任务被外包，无法证明所有人会彻底失去思考能力。" } },
+          ],
+      evidence_gaps: [{ claim: "频繁使用 AI 会削弱独立判断", needed: "需要纵向研究或可核对的行为证据。", source_refs: [] }],
+      counterarguments: [{ claim: "把低价值判断交给 AI 反而能释放注意力。", response: "需要区分可卸载任务和不可放弃的价值判断。" }],
+    },
+    agendaFit: agendaId
+      ? { status: "strong", reason: "这条内容会强化高质量使用 AI 必须保留人的判断权。" }
+      : { status: "none", reason: "可以暂不关联议程，先验证连接本身。" },
+  };
+}
+
+function weakCandidate() {
+  return {
+    fit: "weak",
+    fitReason: "CSS 网格布局无法自然解释退休账户风险，两者目前没有足够自然的连接。",
+    audienceProblem: { surface: "如何判断退休账户风险？", underlying: "我需要理解资产配置和风险承受能力。" },
+    knowledgeExplanation: "这页知识只解释网页布局，不提供金融风险判断。",
+    coreClaim: "当前没有足够依据形成值得写的核心判断。",
+    cognitiveGap: "两边属于不同的问题空间，强行类比会误导读者。",
+    dominantAction: "knowledge",
+    experience: { available: false, reason: "不适用。", sourceRefs: [] },
+    construction: {
+      elements: [
+        { id: "problem", type: "problem", label: "退休账户风险", source_kind: "audience_problem", source_id: "weak-problem-source" },
+        { id: "method", type: "method", label: "CSS 网格布局", source_kind: "wiki_page", source_id: "weak-wiki-source" },
+      ],
+      relations: [],
+      entry_options: [],
+      evidence_gaps: [{ claim: "CSS 布局知识可以解释金融风险", needed: "目前没有任何直接证据。", source_refs: [] }],
+      counterarguments: [{ claim: "表面上的网格类比不能替代真实金融知识。", response: "应更换知识或用户问题。" }],
+    },
+    agendaFit: { status: "weak", reason: "与当前议程不匹配。" },
+  };
+}
+
+let server;
+let browser;
+try {
+  server = await createServer({
+    root: ROOT,
+    configFile: path.join(ROOT, "vite.config.mjs"),
+    server: { port: PORT, strictPort: true, open: false },
+    logLevel: "error",
+  });
+  await server.listen();
+
+  const status = await request("/api/workspace/status");
+  check("Content Bridge 使用隔离 SQLite 工作区", status.ready && path.resolve(xenhoHome).startsWith(path.resolve(os.tmpdir())));
+
+  const workspace = await server.xenhoWorkspace;
+  const cognitiveQuote = "认知卸载是把一部分认知任务交给外部工具，但价值判断仍需要由人承担。";
+  const layoutQuote = "CSS 网格用于安排网页中的行列关系，不提供任何金融风险判断。";
+  const source = await createBookRecord(workspace, {
+    title: "Content Bridge UI 验收资料",
+    kind: "藏书",
+    sourceKind: "文档",
+    chapters: [{ title: "知识原文", text: `# 知识原文\n\n${cognitiveQuote}\n\n${layoutQuote}` }],
+  });
+  const sourceId = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id=?").get(source.id).id;
+  const snapshot = captureWikiSourceSnapshot(workspace, sourceId);
+  applyWikiCompile(workspace, {
+    proposal: {
+      sourceId,
+      sourceSnapshotId: snapshot.id,
+      sourceContentSha256: snapshot.contentSha256,
+      sourceLocator: "Content Bridge UI 验收资料 · 知识原文",
+      title: "编译内容桥接验收知识",
+      compilationSummary: "生成两条用于验证自然连接与弱连接的 Wiki 知识。",
+      pages: [
+        {
+          action: "create",
+          title: "认知卸载",
+          pageType: "concept",
+          summary: "人会把认知任务交给外部工具，但不应同时交出价值判断。",
+          bodyMarkdown: `# 认知卸载\n\n${cognitiveQuote}`,
+          changeSummary: "建立认知卸载概念页",
+          citations: [{ quote: cognitiveQuote, contribution: "定义认知卸载及判断边界" }],
+          links: [],
+        },
+        {
+          action: "create",
+          title: "CSS 网格布局",
+          pageType: "method",
+          summary: "用行列关系组织网页布局的方法。",
+          bodyMarkdown: `# CSS 网格布局\n\n${layoutQuote}`,
+          changeSummary: "建立无关知识用于弱连接验收",
+          citations: [{ quote: layoutQuote, contribution: "限定这条知识的适用范围" }],
+          links: [],
+        },
+      ],
+    },
+  });
+  const cognitiveWiki = workspace.db.prepare("SELECT id FROM wiki_pages WHERE title='认知卸载'").get();
+  const weakWiki = workspace.db.prepare("SELECT id FROM wiki_pages WHERE title='CSS 网格布局'").get();
+  const now = new Date("2026-09-01T08:00:00.000Z");
+  const agendaId = workspace.contentBridge.createAgenda({
+    title: "保留人的判断权",
+    audience: "正在把 AI 用进日常工作的创作者",
+    problemSpace: "AI 进入判断链后，人如何保留必要的判断权",
+    desiredJudgment: "高质量使用 AI，核心是保留人的判断权。",
+    valueCommitment: "帮助用户区分可以卸载的任务与必须自己承担的判断。",
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  const problemId = workspace.contentBridge.createAudienceProblem({
+    statement: "AI 越用越方便，为什么我越来越不愿意自己想？",
+    summary: "用户担心效率提高的同时，自己逐渐退出判断过程。",
+    sourceKind: "feedback",
+    pattern: "knowledge_gap",
+    sources: [{
+      sourceKind: "feedback",
+      sourceId: "feedback:bridge-ui:1",
+      evidenceText: "我现在遇到选择就先问 AI，感觉自己越来越不愿意先想一遍。",
+      observedAt: now,
+    }],
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  const weakProblemId = workspace.contentBridge.createAudienceProblem({
+    statement: "如何判断退休账户风险？",
+    summary: "用户需要资产配置和风险承受能力方面的可靠解释。",
+    sourceKind: "feedback",
+    pattern: "feedback",
+    sources: [{
+      sourceKind: "feedback",
+      sourceId: "feedback:bridge-ui:2",
+      evidenceText: "我不知道自己的退休账户风险是不是太高。",
+      observedAt: now,
+    }],
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+
+  const { chromium } = playwright();
+  browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.route("**/api/workspace/content-opportunities/preview", async (route) => {
+    const payload = route.request().postDataJSON();
+    const candidate = payload.wikiPageId === weakWiki.id || payload.audienceProblemId === weakProblemId
+      ? weakCandidate()
+      : strongCandidate({ dominantAction: payload.dominantAction || "judgment", agendaId: payload.agendaId || "" });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, candidate }) });
+  });
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
+  check("主导航以内容机会作为内容入口", await page.getByRole("button", { name: "内容机会", exact: true }).count() === 1);
+  await page.getByRole("button", { name: "选择知识：认知卸载" }).click();
+  await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？" }).click();
+  check("Wiki 与用户问题均可选择", await page.getByRole("button", { name: "选择知识：认知卸载", pressed: true }).count() === 1
+    && await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).count() === 1);
+
+  await page.getByRole("button", { name: "看看怎么连接" }).click();
+  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  const resultHeadings = await page.locator(".bridge-result-section h3").allTextContents();
+  check("连接结果先呈现问题、解释、认知差和判断", resultHeadings.slice(0, 4).join("|") === "用户真正的问题|我的知识能提供什么解释|最大的认知差|核心判断");
+  check("Preview 明确保持候选且不产生写入", await page.getByText("目前仍是候选", { exact: true }).count() === 1
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 0);
+
+  await page.getByRole("button", { name: "换一个大众入口" }).click();
+  check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-storyline").innerText()).includes("范围过大")
+    && (await page.locator(".bridge-storyline").innerText()).includes("无法证明所有人会彻底失去思考能力"));
+
+  await page.getByRole("button", { name: "经历型" }).click();
+  await page.getByRole("button", { name: "经历型", pressed: true }).waitFor();
+  const bridgeText = await page.locator(".bridge-result").innerText();
+  check("没有经历来源时只给条件式入口", bridgeText.includes("如果你确实有") && !bridgeText.includes("我最近发现"));
+
+  await page.locator(".bridge-agenda-field select").selectOption(agendaId);
+  await page.getByText("高质量使用 AI，核心是保留人的判断权。", { exact: true }).waitFor();
+  check("用户可选择长期议程并看到长期判断", await page.locator(".bridge-agenda-field select").inputValue() === agendaId);
+
+  await page.getByRole("button", { name: "找证据缺口" }).click();
+  check("证据缺口操作把焦点送到可读结果", await page.locator(".bridge-checks > div").first().evaluate((element) => element === document.activeElement));
+  await page.getByRole("button", { name: "看反方" }).click();
+  check("反方操作把焦点送到可读结果", await page.locator(".bridge-checks > div").nth(1).evaluate((element) => element === document.activeElement));
+
+  await page.getByRole("button", { name: "保存为内容机会" }).click();
+  await page.getByText("内容机会已保存", { exact: true }).waitFor();
+  const saved = workspace.db.prepare("SELECT id,agenda_id AS agendaId,dominant_action AS dominantAction FROM content_opportunities").get();
+  check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "experience");
+  if (process.argv.includes("--shots")) {
+    await fs.mkdir(shotDir, { recursive: true });
+    await page.screenshot({ path: path.join(shotDir, "content-bridge-desktop.png"), fullPage: true });
+  }
+
+  await page.getByRole("button", { name: "建立内容项目" }).click();
+  await page.getByRole("heading", { name: "先守住这条内容为什么值得写" }).waitFor();
+  const link = workspace.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=?").get(saved.id);
+  check("已保存机会复用现有项目并显示创作意图", Boolean(link?.projectId)
+    && (await page.locator(".content-intent").innerText()).includes("认知卸载")
+    && (await page.locator(".content-intent").innerText()).includes("保留人的判断权"));
+  check("项目优先提供挑战判断、证据和入口操作", await page.getByRole("button", { name: "挑战核心判断" }).count() === 1
+    && await page.getByRole("button", { name: "找证据" }).count() === 1
+    && await page.getByRole("button", { name: "换大众入口" }).count() === 1);
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-project.png"), fullPage: true });
+
+  await page.reload();
+  await page.getByRole("heading", { name: "先守住这条内容为什么值得写" }).waitFor();
+  check("重载后项目与内容机会关系仍然存在", (await page.locator(".content-intent").innerText()).includes("AI 正从信息工具进入人的判断链"));
+  await page.getByRole("button", { name: "回到 Wiki" }).click();
+  await page.getByRole("heading", { name: "认知卸载", exact: true }).waitFor();
+  check("项目可以回到支撑 Wiki", page.url().includes(`#/entries/${cognitiveWiki.id}`));
+  await page.goto(`http://127.0.0.1:${PORT}/#/project/${link.projectId}`);
+  await page.getByRole("button", { name: "查看来源" }).click();
+  await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).waitFor();
+  check("项目可以回到用户问题及其来源", page.url().includes(encodeURIComponent(`problem:${problemId}`)));
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("button", { name: "选择知识：CSS 网格布局" }).click();
+  await page.getByRole("button", { name: "选择用户问题：如何判断退休账户风险？" }).click();
+  await page.getByRole("button", { name: "看看怎么连接" }).click();
+  await page.getByText("不建议硬做内容", { exact: true }).waitFor();
+  check("无自然连接时明确建议更换，而不是硬生成文章", (await page.locator(".bridge-result").innerText()).includes("两者目前没有足够自然的连接"));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge/${encodeURIComponent(`opportunity:${saved.id}`)}`);
+  await page.reload();
+  await page.getByText("内容机会已保存", { exact: true }).waitFor();
+  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflowNodes = await page.evaluate(() => [...document.querySelectorAll("body *")]
+    .map((element) => ({ tag: element.tagName, className: String(element.className || ""), text: String(element.textContent || "").trim().slice(0, 60), right: element.getBoundingClientRect().right }))
+    .filter((item) => item.right > window.innerWidth + 2)
+    .slice(0, 8));
+  const projectButtonCount = await page.getByRole("button", { name: "建立内容项目" }).count();
+  check("小屏和减少动态效果模式下仍可完整阅读", overflow <= 2 && projectButtonCount === 1,
+    `横向溢出 ${overflow}px；项目按钮 ${projectButtonCount}；越界元素 ${JSON.stringify(overflowNodes)}`);
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-bridge-mobile.png"), fullPage: true });
+
+  await page.keyboard.press("Control+K");
+  await page.getByText("找题（旧版）", { exact: true }).waitFor();
+  check("旧找题与种子路由仍可由快捷入口访问", await page.getByText("选题 / 种子（旧版）", { exact: true }).count() === 1);
+  await page.keyboard.press("Escape");
+
+  check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
+  if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);
+  console.log("\nContent Bridge 本地 UI 验证通过。");
+} finally {
+  await browser?.close().catch(() => {});
+  await server?.close().catch(() => {});
+  await server?.xenhoClose?.().catch(() => {});
+  if (oldHome == null) delete process.env.XENHO_HOME;
+  else process.env.XENHO_HOME = oldHome;
+  for (const [key, value] of Object.entries(oldProxy)) {
+    if (value == null) delete process.env[key];
+    else process.env[key] = value;
+  }
+  for (const [key, value] of Object.entries(oldLifecycle)) {
+    if (value == null) delete process.env[key];
+    else process.env[key] = value;
+  }
+  if (process.env.XENHO_KEEP_TEST_TEMP !== "1") await fs.rm(tempRoot, { recursive: true, force: true });
+}

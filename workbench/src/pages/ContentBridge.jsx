@@ -456,7 +456,7 @@ export function ContentBridge({ state = "", onGo }) {
           <ResultSection index={5} title="长期议程">
             <label className="bridge-agenda-field">
               <span>这条内容会继续强化什么长期判断</span>
-              <select value={agendaId} disabled={previewBusy} onChange={(event) => { const next = event.target.value; setAgendaId(next); runPreview({ agendaOverride: next }); }}>
+              <select value={agendaId} disabled={previewBusy} onChange={(event) => { const next = event.target.value; setAgendaId(next); runPreview({ agendaOverride: next, dominantAction: preview.dominantAction }); }}>
                 <option value="">暂不关联议程</option>
                 {agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}
               </select>

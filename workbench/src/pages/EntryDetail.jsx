@@ -49,10 +49,10 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
     <div className="view-body wiki-article">
       <div className="wiki-article__actions">
         <button type="button" className="btn btn-sm entry-back" onClick={onBack}>
+          <IconArrowLeft aria-hidden="true" stroke={1.8} />返回 Wiki
+        </button>
         <button type="button" className="btn btn-sm" onClick={() => onBridge?.(page.id)}>
           看看它能解决哪些用户问题
-        </button>
-          <IconArrowLeft aria-hidden="true" stroke={1.8} />返回 Wiki
         </button>
         <button type="button" className="btn btn-sm btn-quiet" onClick={() => setConfirmDelete(true)}>
           <IconTrash aria-hidden="true" stroke={1.8} />删除页面
