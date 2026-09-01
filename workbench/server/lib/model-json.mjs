@@ -14,7 +14,7 @@ const clean = (value, max) => String(value ?? "").trim().slice(0, max);
 export function ingestModelId(env = {}) {
   // 提炼有自己的模型位。**和助手的模型分开**：助手那个是你随手换着用的，
   // 而提炼要跑一百多份资料，它的质量/成本取舍是另一个决定，不该被顺手改掉。
-  return clean(env.AGENT_INGEST_MODEL, 240) || clean(env.AGENT_LLM_MODEL, 240);
+  return clean(env.AGENT_INGEST_MODEL, 240) || "gemini-3.7-flash-high";
 }
 
 /**

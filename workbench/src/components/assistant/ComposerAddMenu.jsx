@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { IconAt, IconFileText, IconLoader2, IconPaperclip, IconPlus, IconSparkles, IconUserStar } from "../icons.jsx";
+import { IconAt, IconDatabase, IconFileText, IconLoader2, IconPaperclip, IconPlus, IconSparkles, IconUserStar } from "../icons.jsx";
 
 /**
  * 输入框左下角那颗 `+`：**这一栏唯一的「往这轮对话里加东西」入口。**
@@ -21,7 +21,7 @@ const ROOT_ITEMS = [
   { level: "skills", icon: IconSparkles, label: "Skill" },
 ];
 
-const KIND_ICONS = { article: IconFileText, expert: IconUserStar, skill: IconSparkles };
+const KIND_ICONS = { article: IconFileText, expert: IconUserStar, skill: IconSparkles, knowledge: IconDatabase };
 
 const LEVEL_PLACEHOLDER = { articles: "搜索文章…", experts: "搜索专家…", skills: "搜索 Skill…", mention: "搜索…" };
 

@@ -80,8 +80,10 @@ export const api = {
   entry: (id) => req(`/api/workspace/entries/${encodeURIComponent(id)}`),
   wiki: (query = "") => req(`/api/workspace/wiki${query ? `?q=${encodeURIComponent(query)}` : ""}`),
   wikiPage: (id) => req(`/api/workspace/wiki/${encodeURIComponent(id)}`),
+  trashWikiPage: (id) => postJson(`/api/workspace/wiki/${encodeURIComponent(id)}/trash`, {}),
   knowledgeSources: () => req("/api/workspace/knowledge/sources"),
   knowledgeSourceDocs: (id) => req(`/api/workspace/knowledge/sources/${encodeURIComponent(id)}`),
+  importKnowledgeSource: (body) => postJson("/api/workspace/knowledge/sources/import", body),
   knowledgeLint: () => req("/api/workspace/knowledge/lint"),
   runKnowledgeLint: (mode, limit = 5) => postJson("/api/workspace/knowledge/lint/run", { mode, limit }),
   queueKnowledgeIngest: (body) => postJson("/api/workspace/knowledge/ingest", body),
@@ -309,6 +311,7 @@ export const api = {
   cancelAssistant: (scopeId, conversationId = "") => postJson("/api/assistant/cancel", { scopeId, conversationId }),
   rewindAssistant: (scopeId, conversationId) => postJson("/api/assistant/rewind", { scopeId, conversationId }),
   applyAssistantAction: (scopeId, conversationId, actionId) => postJson("/api/assistant/action", { scopeId, conversationId, actionId }),
+  proposeAssistantWikiPage: (body) => postJson("/api/assistant/wiki-candidate", body),
   // 正文里那次问答搬进右栏（不重新生成），返回带着这一轮的新对话
   adoptAssistantExchange: (body) => postJson("/api/assistant/adopt", body),
   newAssistantConversation: (scopeId, model = "", permissionMode = "daily") => postJson("/api/assistant/new", { scopeId, model, permissionMode }),

@@ -8,7 +8,7 @@ import { readArticle } from "../lib/article.mjs";
 import { parsePdf } from "../lib/books.mjs";
 import { createBookRecord } from "../routes/books-local.mjs";
 import { quoteGrounded } from "../domain/wiki-ingest.mjs";
-import { applyExplorationPage } from "../domain/wiki-pages.mjs";
+import { applyExplorationPage, wikiIndex, wikiSearch } from "../domain/wiki-pages.mjs";
 import { ENTRY_KINDS } from "../domain/values.mjs";
 import { WRITING_EXPERTS } from "../lib/writing-presets.mjs";
 import { documentVersion } from "../../src/lib/document-version.js";
@@ -289,6 +289,42 @@ export async function assistantConversation(scopeId, conversationId = "") {
   return recoverInterruptedConversation(scopeId, await ensureConversation(scopeId, conversationId));
 }
 
+/**
+ * 把已经展示给用户的对话整理成一张 `wiki_page` 待确认动作。
+ * 这里只把候选挂回原对话；真正写入仍统一走 `applyAssistantAction`，并再次校验所依据的 Wiki 页面。
+ */
+export async function proposeAssistantWikiPage(scopeId, conversationId, input = {}) {
+  const record = await ensureConversation(scopeId, conversationId);
+  assertConversationIdle(active, activeKey(scopeId, record.id));
+  const basedOnPageIds = Array.isArray(input.basedOnPageIds) ? input.basedOnPageIds : [];
+  const action = normalizeProposedAction({
+    type: "wiki_page",
+    title: input.title,
+    pageType: input.pageType || "synthesis",
+    summary: input.summary,
+    bodyMarkdown: input.bodyMarkdown,
+    basedOnPageIds,
+    why: input.why || "把本轮对话中形成的可复用理解沉淀为持续维护的 Wiki 页面。",
+    model: record.model,
+  }, record.permissionMode);
+  if (!action.title || !action.summary || action.bodyMarkdown.length < 80) {
+    throw Object.assign(new Error("Wiki 候选需要完整标题、摘要和正文"), { status: 400, hint: "正文至少保留一段完整判断后再生成候选。" });
+  }
+  if (!action.basedOnPageIds.length) {
+    throw Object.assign(new Error("请选择至少一个作为依据的 Wiki 页面"), { status: 400, hint: "先用 @知识库 检索相关页面，再从预览中选择依据。" });
+  }
+  const latestAssistantIndex = record.messages.findLastIndex((item) => item.role === "assistant" && clean(item.text, 10));
+  if (latestAssistantIndex < 0) throw Object.assign(new Error("这段对话还没有可归档的 AI 回答"), { status: 400 });
+  const duplicate = (record.actions || []).find((item) => item.status === "pending" && item.type === "wiki_page"
+    && item.title === action.title && item.bodyMarkdown === action.bodyMarkdown);
+  if (duplicate) return { conversation: record, action: duplicate };
+  record.actions = [...(record.actions || []), action].slice(-40);
+  const message = record.messages[latestAssistantIndex];
+  record.messages[latestAssistantIndex] = { ...message, actionIds: [...new Set([...(message.actionIds || []), action.id])] };
+  const saved = await writeConversationRecord(scopeId, record);
+  return { conversation: saved, action };
+}
+
 export async function assistantModels(env, extraIds = [], options = {}) {
   const configured = clean(env.AGENT_LLM_MODEL, 240);
   const base = clean(env.AGENT_LLM_BASE_URL, 1_000).replace(/\/+$/, "");
@@ -429,13 +465,17 @@ export async function updateAssistantConversationModel(scopeId, conversationId, 
 }
 
 export function assistantSearchQueries(input) {
-  const text = `${input.document?.title || ""}\n${input.message || ""}\n${input.document?.selection?.text || ""}`;
+  const text = `${input.document?.title || ""}\n${input.message || ""}\n${input.document?.selection?.text || ""}`.replaceAll("@知识库", " ");
   const articleTitles = [...text.matchAll(/(?:有一篇|这篇|那篇|一篇)\s*[《“"]?(.{2,40}?)[》”"]?\s*(?:的)?(?:文章|稿件)/g)].map((match) => match[1].replace(/的$/u, "").trim());
   const bookTitles = [...text.matchAll(/(?:^|[\n，。！？])\s*[《“"]?([^\n，。！？《》“”"]{2,40}?)[》”"]?(?:里面|里)(?=[^\n，。！？]{0,8}(?:笔记|批注|高亮|标注|内容))/g)].map((match) => match[1].trim());
   const quoted = [...text.matchAll(/[“"《]([^”"》]{2,30})[”"》]/g)].map((match) => match[1]);
   const latin = text.match(/[A-Za-z][A-Za-z0-9._-]{2,36}/g) || [];
   const chinese = text.match(/[\u4e00-\u9fff]{2,12}/g) || [];
   return [...new Set([...articleTitles, ...bookTitles, ...quoted, ...latin, ...chinese, clean(input.document?.title, 36)])].filter((item) => item && item.length > 1).slice(0, 3);
+}
+
+export function assistantWikiMentioned(input = {}) {
+  return /(?:^|\s)@知识库(?=\s|$|[，。！？、：；])/u.test(String(input.message || ""));
 }
 
 export function assistantRetrievalRequested(input = {}) {
@@ -578,8 +618,36 @@ export function assistantReferencePrompt(context) {
 async function localContext(env, input, record) {
   const asksForSources = assistantRetrievalRequested(input);
   const queries = asksForSources ? assistantSearchQueries(input) : [];
+  const wikiMentioned = assistantWikiMentioned(input);
   const sources = [];
   const seen = new Set();
+  if (wikiMentioned) {
+    const searchQueries = queries.length ? queries : [clean(input.message, 300).replaceAll("@知识库", " ").trim()].filter(Boolean);
+    for (const query of searchQueries) {
+      for (const page of wikiSearch(currentWorkspace(), query, { limit: 8 })) {
+        if (seen.has(page.id)) continue;
+        seen.add(page.id);
+        sources.push({ id: page.id, type: "wiki_page", typeLabel: "Wiki", title: page.title, snippet: clean(page.summary || page.bodyMarkdown, 1_500), path: `wiki:${page.id}`, matchedQuery: query });
+        if (sources.length >= 16) break;
+      }
+      if (sources.length >= 16) break;
+    }
+    // 自然问题通常比页面标题长得多，逐字搜索可能因为多了“如何、为什么”而没有命中。
+    // 显式 @ 时再用当前 Wiki 索引做一次标题覆盖匹配；仍只读取 SQLite 的真实页面。
+    if (!sources.length) {
+      const compact = clean(input.message, 1_000).replaceAll("@知识库", "").replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+      const ranked = wikiIndex(currentWorkspace()).pages.map((page) => {
+        const title = String(page.title || "").replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+        const covered = [...new Set(title)].filter((char) => compact.includes(char)).length;
+        return { page, score: title && compact.includes(title) ? 100 : covered / Math.max(1, new Set(title).size) };
+      }).filter((item) => item.score >= 0.6).sort((a, b) => b.score - a.score).slice(0, 8);
+      for (const { page } of ranked) {
+        const bodyMarkdown = currentWorkspace().db.prepare("SELECT body_markdown AS bodyMarkdown FROM wiki_pages WHERE id=?").get(page.id)?.bodyMarkdown || "";
+        seen.add(page.id);
+        sources.push({ id: page.id, type: "wiki_page", typeLabel: "Wiki", title: page.title, snippet: clean(page.summary || bodyMarkdown, 1_500), path: `wiki:${page.id}`, matchedQuery: "@知识库" });
+      }
+    }
+  }
   for (const item of await matchingBookSources(env, input, queries)) {
     seen.add(item.id);
     sources.push(item);
@@ -602,7 +670,8 @@ async function localContext(env, input, record) {
     queries,
     localSources: sources.slice(0, 40),
     references: await resolveAssistantReferences(workspace, input.references),
-    retrievalMode: asksForSources ? "按需检索" : "未检索",
+    retrievalMode: wikiMentioned ? "@知识库强制检索" : asksForSources ? "按需检索" : "未检索",
+    wikiMentioned,
     attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
       id: clean(input.document?.id, 160),
@@ -628,6 +697,12 @@ function retrievalPrompt(context) {
     return `- ${detail}`;
   });
   return `【本轮工作台检索】查询：${(context.queries || []).join(" / ") || "无"}\n${candidates.length ? candidates.join("\n") : "没有命中。只能说本轮检索未命中，不能把它说成工作台没有内容。"}`;
+}
+
+function wikiMentionPrompt(context) {
+  if (!context.wikiMentioned) return "";
+  const count = (context.localSources || []).filter((item) => item.type === "wiki_page").length;
+  return `【@知识库】服务端已强制检索当前 Wiki，本轮命中 ${count} 个页面。回答、提问澄清和操作规划都必须以这些真实检索结果为依据；未命中时要明确说明。@知识库只是只读调用，不得自动新建、改写或删除 Wiki。`;
 }
 /**
  * 手打 `@专家名` 的兜底。**结构化引用优先**——用户从菜单里选的那个已经由
@@ -659,6 +734,7 @@ function contentPrompt(input, context, model) {
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
+    wikiMentionPrompt(context),
     assistantReferencePrompt(context),
     expertDelegationPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
@@ -682,6 +758,7 @@ function generalPrompt(input, context, model) {
     "knowledge_search 会优先返回持续维护的 Wiki 页面，需要核实时才回看 Raw。当回答形成可长期复用的比较、综合或新连接，并且已经基于至少一个 Wiki 页面时，用 propose_wiki_page 提出完整页面归档候选。禁止把知识拆成孤立事实或原子词条。归档只生成候选，不能声称已经写入。公开网页要先收为本地 Raw，不能把搜索摘要当证据。",
     runtimeModelInstruction(model),
     retrievalPrompt(context),
+    wikiMentionPrompt(context),
     assistantReferencePrompt(context),
     expertDelegationPrompt(context),
     expertInstruction(input, context),

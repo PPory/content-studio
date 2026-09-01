@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import { fail, json, readJsonBody } from "../lib/http.mjs";
+import { readArticle } from "../lib/article.mjs";
 import { createBookRecord } from "./books-local.mjs";
 import {
   applyWikiCompile,
@@ -9,6 +10,7 @@ import {
   wikiIndex,
   wikiPage,
   wikiHealth,
+  trashWikiPage,
 } from "../domain/wiki-pages.mjs";
 
 function guard(handler) {
@@ -147,6 +149,11 @@ function queueIngest(workspace, documents, { retry = false } = {}) {
   return { queued, skipped, chars, capped: documents.length > 20 };
 }
 
+function pastedTitle(text) {
+  const line = String(text || "").split(String.fromCharCode(10)).map((item) => item.trim()).find(Boolean) || "";
+  return line.replace(/^#{1,6} +/, "").replace(/^[-*>] +/, "").slice(0, 100) || "粘贴的文字";
+}
+
 async function importResearchSources(workspace, payload, include) {
   const proposal = selectedProposal(payload, include);
   if (!proposal.sources?.length) throw new Error("至少选择一份来源");
@@ -189,6 +196,10 @@ export const wikiRoutes = [
 
   { method: "GET", path: "/api/workspace/wiki/:id", handler: guard(async ({ workspace, res, params }) => {
     json(res, { ok: true, ...wikiPage(workspace, params.id) });
+  }) },
+
+  { method: "POST", path: "/api/workspace/wiki/:id/trash", handler: guard(async ({ workspace, res, params }) => {
+    json(res, { ok: true, page: trashWikiPage(workspace, params.id) });
   }) },
 
   { method: "GET", path: "/api/workspace/entries", handler: guard(async ({ workspace, res }) => {
@@ -274,6 +285,45 @@ export const wikiRoutes = [
 
   { method: "GET", path: "/api/workspace/knowledge/sources/:id", handler: guard(async ({ workspace, res, params }) => {
     json(res, { ok: true, documents: sourceDocuments(workspace, params.id) });
+  }) },
+
+  { method: "POST", path: "/api/workspace/knowledge/sources/import", handler: guard(async ({ workspace, env, req, res }) => {
+    const body = await readJsonBody(req);
+    const mode = String(body.mode || "");
+    let source;
+    if (mode === "url") {
+      const article = await readArticle(String(body.url || ""), env);
+      source = {
+        title: article.title || article.url,
+        author: article.byline || "",
+        sourceUrl: article.url,
+        platform: article.siteName || "",
+        text: article.markdown || "",
+      };
+    } else if (mode === "text") {
+      const text = String(body.text || "").trim();
+      if (text.length < 20) throw new Error("粘贴的文字太短，至少需要 20 个字符");
+      source = { title: pastedTitle(text), author: "", sourceUrl: "", platform: "", text };
+    } else {
+      throw new Error("请选择粘贴链接或粘贴文字");
+    }
+    if (!source.text.trim()) throw new Error("没有读取到可导入的正文");
+    const book = await createBookRecord(workspace, {
+      title: source.title,
+      author: source.author,
+      kind: "资料",
+      sourceKind: "文档",
+      sourceUrl: source.sourceUrl,
+      platform: source.platform,
+      chapters: [{ title: source.title, text: source.text }],
+    });
+    let queuedForDistill = 0;
+    if (body.distill !== false) {
+      const documents = workspace.db.prepare(`SELECT d.id,d.body_markdown AS body FROM book_documents d
+        JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=? ORDER BY d.document_order`).all(book.id);
+      queuedForDistill = queueIngest(workspace, documents).queued;
+    }
+    json(res, { ok: true, book, queuedForDistill });
   }) },
 
   { method: "POST", path: "/api/workspace/knowledge/ingest", handler: guard(async ({ workspace, req, res }) => {

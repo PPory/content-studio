@@ -5700,6 +5700,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .modal__lead b { color: var(--text-1); }
 .modal__hint { font-size: var(--fs-xs); color: var(--text-3); margin-right: auto; }
 .modal__foot .row-actions { margin-left: auto; }
+.wiki-article__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.wiki-article__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.wiki-delete-dialog { width: min(520px, 100%); }
 
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .pick {
@@ -6796,8 +6799,14 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .segmented { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-ctl); background: var(--surface-2); }
 .segmented button { min-height: 30px; padding: 0 10px; border: 0; border-radius: calc(var(--r-ctl) - 2px); background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 .segmented button.active { background: var(--surface); color: var(--text-1); box-shadow: var(--shadow-sm); }
-.src-import { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; padding: 16px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); }
-.src-import > .drawer-title, .src-import__wide, .src-import > .row-actions { grid-column: 1 / -1; }
+.src-import { display: grid; gap: 16px; margin: 0 0 18px; padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); }
+.src-import__intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.src-import__intro p { margin: 5px 0 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
+.src-import__body { width: min(860px, 100%); }
+.src-import__body .field { display: grid; gap: 8px; }
+.src-import__body textarea { width: 100%; resize: vertical; min-height: 180px; }
+.src-import__body small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.src-import > .row-actions { justify-content: flex-start; }
 .src-import__check { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .src-notice { margin: -8px 0 16px; color: var(--ok); font-size: var(--fs-sm); }
 .src-table--select { --src-cols: 30px minmax(0, 1fr) 68px 92px 132px 88px; }

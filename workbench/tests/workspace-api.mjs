@@ -441,6 +441,22 @@ try {
     && knowledgeSources.value.sources.every((item) => item.sourceKind && item.writable)
     && knowledgeSources.value.totals.documents >= 1);
 
+  const pastedSource = await call(base, "/api/workspace/knowledge/sources/import", {
+    method: "POST",
+    body: { mode: "text", text: "# 一份完整粘贴来源\n\n这段正文会作为一个完整文档保存，不按内部标题拆成多篇。", distill: false },
+  });
+  const pastedDocuments = await call(base, "/api/workspace/knowledge/sources/" + pastedSource.value.book.id);
+  check("粘贴文字会自动取首行标题并保存为一份完整 Raw", pastedSource.response.status === 200
+    && pastedSource.value.book.title === "一份完整粘贴来源"
+    && pastedDocuments.value.documents.length === 1);
+  const blockedPrivateUrl = await call(base, "/api/workspace/knowledge/sources/import", {
+    method: "POST",
+    body: { mode: "url", url: "http://127.0.0.1/internal", distill: false },
+  });
+  assert.equal(blockedPrivateUrl.response.status, 400, JSON.stringify(blockedPrivateUrl.value));
+  assert.match(blockedPrivateUrl.value.error, /不能读取本机、内网/);
+  check("链接导入不会访问本机或内网地址", true);
+
   const retryBook = await createBookRecord(workspace, {
     title: "失败后重新编译", sourceKind: "文档",
     chapters: [{ title: "重试章节", text: "这是一份用于验证失败任务可以真正重新进入队列的隔离资料。" }],

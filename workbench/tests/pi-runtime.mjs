@@ -12,12 +12,14 @@ import {
   assistantConversations,
   assistantExperts,
   assistantReferencePrompt,
+  assistantWikiMentioned,
   assistantSkills,
   applyKnowledgeUpdate,
   configureAssistantWorkspace,
   createAssistantConversation,
   expertTargetDocument,
   manageAssistantConversation,
+  proposeAssistantWikiPage,
   requestedExpertKinds,
   resolveAssistantReferences,
   runAssistantTurn,
@@ -73,6 +75,8 @@ assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "ide
 assert(skills.items.every((item) => item.source === ".agents/skills"));
 assert.equal(assistantExperts().items.length, 6);
 assert.notEqual(documentVersion({ title: "A", body: "第一版" }), documentVersion({ title: "A", body: "第二版" }));
+assert.equal(assistantWikiMentioned({ message: "请 @知识库 回答这个问题" }), true);
+assert.equal(assistantWikiMentioned({ message: "知识库是什么" }), false, "普通提到知识库不能冒充显式 @ 调用");
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-pi-runtime-"));
 const xenhoHome = path.join(tempRoot, "Xenho");
@@ -361,6 +365,41 @@ try {
     { type: queued[3].type, title: queued[3].title, pageType: queued[3].pageType, basedOnPageIds: queued[3].basedOnPageIds },
     { type: "wiki_page", title: "知识沉淀原则", pageType: "stance", basedOnPageIds: ["wiki-base-page"] },
   );
+
+  const wikiPageId = "wiki-assistant-mention-test";
+  const wikiStamp = new Date("2025-01-04T00:00:00.000Z");
+  workspace.repository.createEntity({ id: wikiPageId, type: "wiki_page", now: wikiStamp });
+  workspace.db.prepare(`INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,current_revision,schema_version,created_at,updated_at)
+    VALUES (?,?,?,?,?,1,1,?,?)`).run(wikiPageId, "批判性思维", "concept", "从证据、反例和边界审视判断。", "# 批判性思维\n\n从证据、反例和边界三个方面审视判断，避免把未经核对的结论当成事实。", wikiStamp.toISOString(), wikiStamp.toISOString());
+  workspace.repository.setEntityText(wikiPageId, { title: "批判性思维", body: "从证据、反例和边界三个方面审视判断。", now: wikiStamp });
+  workspace.db.prepare(`INSERT INTO wiki_page_sources(page_id,source_entity_id,source_quote,source_locator,contribution,created_at)
+    VALUES (?,?,?,?,?,?)`).run(wikiPageId, knowledgeSourceId, groundedQuote, "知识沉淀来源", "提供证据边界", wikiStamp.toISOString());
+
+  let wikiMentionPrompt = "";
+  const wikiMentionTurn = await runAssistantTurn(dailyEnv, {
+    scopeId: "global:wiki-mention-test",
+    message: "@知识库 批判性思维应该如何审视一个判断？",
+    document: {}, materials: [], model: "test-model", permissionMode: "daily", mode: "general",
+  }, {
+    createRun: async (input) => {
+      wikiMentionPrompt = input.prompt;
+      input.onSession?.({ abort: async () => {}, dispose: () => {} }, { sessionId: "wiki-mention-session", sessionFile: "" });
+      return { result: { finalResponse: "已依据当前 Wiki 回答。" }, piSessionId: "wiki-mention-session", piSessionFile: "", permissionMode: "daily" };
+    },
+  });
+  assert.match(wikiMentionPrompt, /【@知识库】服务端已强制检索当前 Wiki，本轮命中 1 个页面/);
+  assert.match(wikiMentionPrompt, /批判性思维/);
+  assert.equal(wikiMentionTurn.message.retrievalMode, "@知识库强制检索");
+
+  const wikiCandidate = await proposeAssistantWikiPage("global:wiki-mention-test", wikiMentionTurn.conversation.id, {
+    title: "批判性思维的审视框架", pageType: "synthesis", summary: "用证据、反例和适用边界审视一个判断。",
+    bodyMarkdown: "# 批判性思维的审视框架\n\n审视一个判断时，先核对证据是否真实，再主动寻找反例，最后说明结论的适用边界。这个过程用于形成可复核、可修订的当前认识，也要把仍然缺少证据的部分明确标记出来，等待后续资料继续更新。",
+    basedOnPageIds: [wikiPageId], why: "把本轮基于 Wiki 的分析作为可继续演化的综合页面候选。",
+  });
+  const pendingWiki = wikiCandidate.conversation.actions.find((item) => item.id === wikiCandidate.action.id);
+  assert.equal(pendingWiki.status, "pending", "存入 Wiki 只能生成待确认动作");
+  assert.equal(workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages WHERE title=?").get("批判性思维的审视框架").count, 0, "生成候选前不能写入正式 Wiki");
+  assert(wikiCandidate.conversation.messages.find((item) => item.id === wikiMentionTurn.message.id).actionIds.includes(wikiCandidate.action.id), "Wiki 候选必须回到产生它的助手回答下方");
 
   const orchestrationEvents = [];
   let orchestrationInput;

@@ -16,6 +16,8 @@
 
 import { Readability, isProbablyReaderable } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { proxyFetch } from "./fetch.mjs";
 import { xhtmlToMd } from "./books.mjs";
 
@@ -23,6 +25,55 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 const err = (message, hint, status = 502) => Object.assign(new Error(message), { hint, status });
+
+function privateAddress(address) {
+  const value = String(address || "").toLowerCase();
+  if (value === "::" || value === "::1" || value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe8")
+    || value.startsWith("fe9") || value.startsWith("fea") || value.startsWith("feb")) return true;
+  const mapped = value.startsWith("::ffff:") ? value.slice(7) : "";
+  const ipv4 = mapped || (isIP(value) === 4 ? value : "");
+  if (!ipv4) return false;
+  const [a, b] = ipv4.split(".").map(Number);
+  return a === 0 || a === 10 || a === 127 || a >= 224
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && (b === 0 || b === 168))
+    || (a === 198 && (b === 18 || b === 19));
+}
+
+export async function assertPublicArticleUrl(value) {
+  let target;
+  try { target = new URL(value); } catch { throw err("这不是一个合法的网址", "", 400); }
+  if (!/^https?:$/.test(target.protocol)) throw err("只支持 http/https 链接", "", 400);
+  const rawHost = target.hostname.toLowerCase();
+  const host = rawHost.endsWith(".") ? rawHost.slice(0, -1) : rawHost;
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host === "metadata.google.internal") {
+    throw err("不能读取本机、内网或云元数据地址", "请粘贴公开网页链接", 400);
+  }
+  let addresses;
+  try {
+    addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true, verbatim: true });
+  } catch {
+    throw err("无法解析这个网址", "检查链接是否完整，或稍后重试", 400);
+  }
+  if (!addresses.length || addresses.some((item) => privateAddress(item.address))) {
+    throw err("不能读取本机、内网或云元数据地址", "请粘贴公开网页链接", 400);
+  }
+  return target;
+}
+
+async function fetchPublicArticle(url, options) {
+  let target = await assertPublicArticleUrl(url);
+  for (let redirects = 0; redirects <= 5; redirects += 1) {
+    const response = await proxyFetch(target.href, { ...options, redirect: "manual" });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) return response;
+    target = await assertPublicArticleUrl(new URL(location, target).href);
+  }
+  throw err("网页重定向次数过多", "请粘贴最终文章链接", 400);
+}
 
 /**
  * 抓不到时**说清楚是哪一类抓不到**。
@@ -285,16 +336,7 @@ const hostOf = (u) => {
 };
 
 export async function readArticle(url, env = {}) {
-  let target;
-  try {
-    target = new URL(url);
-  } catch {
-    throw err("这不是一个合法的网址", "回热点列表点「打开原文」看看链接对不对", 400);
-  }
-  // 只放行 http(s)：这个端点会拿服务端的身份去请求，file:// 之类不能碰
-  if (!/^https?:$/.test(target.protocol)) {
-    throw err("只支持 http/https 链接", "", 400);
-  }
+  const target = await assertPublicArticleUrl(url);
 
   /**
    * 抓不动就交给 Firecrawl（配了才有）。**顺序不能反**：先试直取 + Readability，
@@ -328,9 +370,8 @@ export async function readArticle(url, env = {}) {
 
   let res;
   try {
-    res = await proxyFetch(target.href, {
+    res = await fetchPublicArticle(target.href, {
       headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
-      redirect: "follow",
     });
   } catch (e) {
     return fallback(err(`打不开这个网页：${e.message}`, "多半是网络或代理的问题，可以直接开原网页看"));

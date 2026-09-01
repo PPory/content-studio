@@ -84,7 +84,7 @@ export function Sources({ onOpen, onReview }) {
   const [notice, setNotice] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [importForm, setImportForm] = useState({
-    file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true,
+    mode: "file", file: null, url: "", text: "", distill: true,
   });
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -180,17 +180,17 @@ export function Sources({ onOpen, onReview }) {
 
   const submitImport = async (event) => {
     event.preventDefault();
-    if (!importForm.file) return;
+    if (importForm.mode === "file" && !importForm.file) return;
+    if (importForm.mode === "url" && !importForm.url.trim()) return;
+    if (importForm.mode === "text" && !importForm.text.trim()) return;
     setBusy("import"); setError(null);
     try {
-      const result = await api.importBook(importForm.file, importForm.name, {
-        sourceKind: importForm.sourceKind, kind: "藏书", author: importForm.author, platform: importForm.platform,
-        publishedAt: importForm.publishedAt ? new Date(importForm.publishedAt).toISOString() : "",
-        sourceUrl: importForm.sourceUrl, userAuthored: importForm.sourceKind === "文章", distill: importForm.distill,
-      });
+      const result = importForm.mode === "file"
+        ? await api.importBook(importForm.file, "", { sourceKind: "文档", kind: "资料", distill: importForm.distill })
+        : await api.importKnowledgeSource({ mode: importForm.mode, url: importForm.url, text: importForm.text, distill: importForm.distill });
       setNotice(`已导入「${result.book.title}」${result.queuedForDistill ? `，并排队编译 ${result.queuedForDistill} 节` : ""}`);
       setShowImport(false);
-      setImportForm({ file: null, name: "", author: "本人", sourceKind: "文章", platform: "", publishedAt: "", sourceUrl: "", distill: true });
+      setImportForm({ mode: "file", file: null, url: "", text: "", distill: true });
       await load();
     } catch (failure) { setError(failure); }
     finally { setBusy(""); }
@@ -212,23 +212,34 @@ export function Sources({ onOpen, onReview }) {
           <p className="field-hint">编译会阅读全文并对照现有 Wiki；每批最多 20 节，先生成多页变更集，确认后才写入。</p>
         </div>
         <div className="row-actions">
-          <button type="button" className="btn btn-sm" onClick={() => setShowImport((value) => !value)}>导入旧文章 / 资料</button>
-          <SearchBox value={query} onChange={setQuery} placeholder="搜名称、作者或平台" ariaLabel="搜索资料" />
+          <button type="button" className="btn btn-sm" onClick={() => setShowImport((value) => !value)}>添加来源</button>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜资料名称或来源" ariaLabel="搜索资料" />
         </div>
       </div>
 
       {showImport ? (
         <form className="src-import" onSubmit={submitImport}>
-          <div className="drawer-title">导入一份可追溯来源</div>
-          <label className="field"><span>文件</span><input type="file" accept=".md,.markdown,.txt,.pdf,.epub" required onChange={(event) => setImportForm((form) => ({ ...form, file: event.target.files?.[0] || null }))} /></label>
-          <label className="field"><span>显示名称</span><input value={importForm.name} onChange={(event) => setImportForm((form) => ({ ...form, name: event.target.value }))} placeholder="留空则使用文件名" /></label>
-          <label className="field"><span>来源类型</span><select value={importForm.sourceKind} onChange={(event) => setImportForm((form) => ({ ...form, sourceKind: event.target.value }))}><option>文章</option><option>文档</option><option>课程</option><option>书籍</option></select></label>
-          <label className="field"><span>作者</span><input value={importForm.author} onChange={(event) => setImportForm((form) => ({ ...form, author: event.target.value }))} /></label>
-          <label className="field"><span>平台</span><input value={importForm.platform} onChange={(event) => setImportForm((form) => ({ ...form, platform: event.target.value }))} placeholder="公众号 / 知乎 / 小红书…" /></label>
-          <label className="field"><span>发布时间</span><input type="datetime-local" value={importForm.publishedAt} onChange={(event) => setImportForm((form) => ({ ...form, publishedAt: event.target.value }))} /></label>
-          <label className="field src-import__wide"><span>原文链接</span><input type="url" value={importForm.sourceUrl} onChange={(event) => setImportForm((form) => ({ ...form, sourceUrl: event.target.value }))} placeholder="可选；用于去重和回溯" /></label>
+          <div className="src-import__intro">
+            <div><div className="drawer-title">添加一份 Raw 来源</div><p>系统会自动识别标题与来源信息；正式写入 Wiki 前仍需审阅变更。</p></div>
+            <div className="segmented" aria-label="选择导入方式">
+              {[["file", "上传文件"], ["url", "粘贴链接"], ["text", "粘贴文字"]].map(([value, label]) => (
+                <button key={value} type="button" className={importForm.mode === value ? "active" : ""} onClick={() => setImportForm((form) => ({ ...form, mode: value }))}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="src-import__body">
+            {importForm.mode === "file" ? (
+              <label className="field"><span>选择文件</span><input type="file" accept=".md,.markdown,.txt,.pdf" required onChange={(event) => setImportForm((form) => ({ ...form, file: event.target.files?.[0] || null }))} /><small>支持 PDF、Markdown、TXT；书籍请从书架导入。</small></label>
+            ) : null}
+            {importForm.mode === "url" ? (
+              <label className="field"><span>网页链接</span><input type="url" autoFocus value={importForm.url} onChange={(event) => setImportForm((form) => ({ ...form, url: event.target.value }))} placeholder="https://…" required /><small>会自动读取网页正文、标题与站点信息；抓取受限时会明确提示。</small></label>
+            ) : null}
+            {importForm.mode === "text" ? (
+              <label className="field"><span>原文内容</span><textarea autoFocus rows={9} value={importForm.text} onChange={(event) => setImportForm((form) => ({ ...form, text: event.target.value }))} placeholder="粘贴文章、笔记或课程章节全文…" required /><small>首个非空行会作为来源标题，正文保持为一份完整来源。</small></label>
+            ) : null}
+          </div>
           <label className="src-import__check"><input type="checkbox" checked={importForm.distill} onChange={(event) => setImportForm((form) => ({ ...form, distill: event.target.checked }))} />导入后立即排队编译</label>
-          <div className="row-actions"><button className="btn btn-primary btn-sm" type="submit" disabled={busy === "import" || !importForm.file}>{busy === "import" ? "导入中…" : "确认导入"}</button><button className="btn btn-sm" type="button" onClick={() => setShowImport(false)}>取消</button></div>
+          <div className="row-actions"><button className="btn btn-primary btn-sm" type="submit" disabled={busy === "import" || (importForm.mode === "file" ? !importForm.file : importForm.mode === "url" ? !importForm.url.trim() : !importForm.text.trim())}>{busy === "import" ? (importForm.mode === "url" ? "正在读取网页…" : "正在导入…") : "添加到 Raw"}</button><button className="btn btn-sm" type="button" onClick={() => setShowImport(false)}>取消</button></div>
         </form>
       ) : null}
 

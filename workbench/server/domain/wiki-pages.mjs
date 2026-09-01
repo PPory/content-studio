@@ -108,13 +108,13 @@ export const WIKI_COMPILER_SYSTEM_PROMPT = [
   "你的产物不是关键词、事实碎片或孤立摘要，而是一组完整、连贯、可长期阅读的 Wiki 页面新版本。",
   "",
   "硬性规则：",
-  "1. 先为当前 Raw 建立或更新一张来源资料卡；再判断它改变了哪些已有页面、需要新建哪些概念/人物/组织/方法/主题/比较/总览/综合页面。",
+  "1. Raw 是只读证据层，不是 Wiki 页面。禁止为当前来源建立来源资料卡或以‘来源：’开头的摘要页；只创建或更新有长期认知价值的概念/人物/组织/方法/主题/比较/总览/综合页面。",
   "2. 优先更新已有页面，禁止为同一概念另建同义页面。更新时输出整页的新正文，不是补丁；保留仍然成立的旧内容。",
   "3. 每个被改变的页面必须带当前来源中的逐字引用。引用至少 12 字，服务端会回 Raw 核对。",
   "4. 新旧资料冲突时，正文必须明确写出双方说法、来源和当前是未决还是已被新资料取代；不得静默覆盖。",
   "5. 页面正文用 Markdown，应该像百科文章：先给当前综合认识，再组织要点、关系、分歧和未决问题。不要写任务状态或 JSON。",
   "6. 页面之间建立有含义的链接。链接目标只能来自全库目录或本轮新建页面。",
-  "7. 一份有内容的来源通常会影响多页，但不为了凑数量制造空页面。目录、致谢等可只更新来源资料卡。",
+  "7. 一份有内容的来源通常会影响多页，但不为了凑数量制造空页面。目录、致谢等没有知识增量时，可以返回空 pages。",
   "8. 只输出 JSON，不要解释。",
   "",
   "JSON 结构：",
@@ -221,6 +221,10 @@ export function validateWikiCompile(proposal, { source, catalog, existingPages }
     const summary = clean(item?.summary, 1_200);
     let bodyMarkdown = clean(item?.bodyMarkdown, 200_000);
     const existing = pageId ? existingById.get(pageId) : null;
+    if (pageType === "source_summary" || /^来源[：:]/.test(title)) {
+      rejected.push({ what: title || "来源资料卡", why: "Raw 已保存在来源层，不能再生成重复的来源 Wiki 页面" });
+      continue;
+    }
     if (!title || !summary || bodyMarkdown.length < 80 || !WIKI_PAGE_TYPES.includes(pageType)) {
       rejected.push({ what: title || "(无标题页面)", why: "页面缺标题、摘要、完整正文或合法类型" });
       continue;
@@ -277,8 +281,6 @@ export function validateWikiCompile(proposal, { source, catalog, existingPages }
     });
   }
 
-  const sourceSummary = pages.find((page) => page.pageType === "source_summary");
-  if (!sourceSummary) rejected.push({ what: "来源资料卡", why: "每次编译必须创建或更新来源资料卡" });
   const availableTitles = new Set([...catalog.map((page) => normalize(page.title)), ...pages.map((page) => normalize(page.title))]);
   for (const page of pages) {
     page.links = page.links.filter((link) => {
@@ -296,19 +298,13 @@ export async function compileSourceToWiki(workspace, env, { sourceId, model = ""
   if (source.body.trim().length < 200) return { sourceId, empty: true, reason: "正文太短，没有可编译内容", model: "" };
   const snapshot = captureWikiSourceSnapshot(workspace, sourceId);
   const schema = activeWikiSchema(workspace);
-  const catalog = wikiPageCatalog(workspace);
-  const relevant = relevantWikiPages(workspace, source.body);
-  const existingSourcePage = workspace.db.prepare(`SELECT id, title, page_type AS pageType, summary,
-      body_markdown AS bodyMarkdown, current_revision AS revision FROM wiki_pages
-    WHERE source_entity_id=? AND page_type='source_summary'`).get(sourceId);
-  if (existingSourcePage && !relevant.some((page) => page.id === existingSourcePage.id)) relevant.unshift(existingSourcePage);
+  const catalog = wikiPageCatalog(workspace).filter((page) => page.pageType !== "source_summary");
+  const relevant = relevantWikiPages(workspace, source.body).filter((page) => page.pageType !== "source_summary");
   const read = await readAllSource(workspace, env, source, { model, signal });
-  const sourceSummaryTitle = existingSourcePage?.title || `来源：${source.bookTitle === source.title ? source.title : `${source.bookTitle} · ${source.title}`}`;
   const result = await completeJson(env, {
     system: `${WIKI_COMPILER_SYSTEM_PROMPT}\n\n当前运行时 Schema：\n${schema.rules}`,
     user: [
       `当前来源 ID：${source.id}`,
-      `来源资料卡标题必须使用：${sourceSummaryTitle}`,
       `来源信息：${JSON.stringify({ title: source.title, bookTitle: source.bookTitle, publishedAt: source.publishedAt, sourceUrl: source.sourceUrl, platform: source.platform })}`,
       `全库目录（用于避免重复和建立链接）：\n${JSON.stringify(catalog)}`,
       `已读取完整正文的相关页面（更新只能从这里选）：\n${JSON.stringify(relevant)}`,
@@ -476,7 +472,8 @@ export function wikiHealth(workspace) {
   }
   const pendingSources = workspace.db.prepare(`SELECT COUNT(*) AS count FROM book_documents d
     JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL
-    WHERE NOT EXISTS (SELECT 1 FROM wiki_pages p WHERE p.source_entity_id=d.id AND p.page_type='source_summary')`).get().count;
+    LEFT JOIN source_ingests i ON i.source_entity_id=d.id
+    WHERE COALESCE(i.status,'') NOT IN ('applied','empty')`).get().count;
   return { total, orphans, missingCitations, staleCitations: stalePages.size, pendingSources };
 }
 
@@ -518,14 +515,24 @@ export function wikiPage(workspace, pageId) {
     LEFT JOIN book_documents d ON d.id=s.source_entity_id WHERE s.page_id=?
     ORDER BY s.created_at DESC`).all(pageId);
   const outgoing = workspace.db.prepare(`SELECT p.id,p.title,p.page_type AS pageType,l.relation,l.why
-    FROM wiki_page_links l JOIN wiki_pages p ON p.id=l.to_page_id WHERE l.from_page_id=? ORDER BY p.title`).all(pageId);
+    FROM wiki_page_links l JOIN wiki_pages p ON p.id=l.to_page_id
+    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE l.from_page_id=? ORDER BY p.title`).all(pageId);
   const incoming = workspace.db.prepare(`SELECT p.id,p.title,p.page_type AS pageType,l.relation,l.why
-    FROM wiki_page_links l JOIN wiki_pages p ON p.id=l.from_page_id WHERE l.to_page_id=? ORDER BY p.title`).all(pageId);
+    FROM wiki_page_links l JOIN wiki_pages p ON p.id=l.from_page_id
+    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE l.to_page_id=? ORDER BY p.title`).all(pageId);
   const revisions = workspace.db.prepare(`SELECT r.id,r.revision,r.reason,r.created_at AS createdAt,
       c.operation,c.title AS changeTitle,c.summary AS changeSummary
     FROM wiki_page_revisions r JOIN wiki_change_sets c ON c.id=r.change_set_id
     WHERE r.page_id=? ORDER BY r.revision DESC LIMIT 30`).all(pageId);
   return { page, sources, links: { outgoing, incoming }, revisions, typeLabels: WIKI_PAGE_TYPE_LABELS };
+}
+
+export function trashWikiPage(workspace, pageId, { now = new Date() } = {}) {
+  const page = workspace.db.prepare(`SELECT p.id,p.title FROM wiki_pages p
+    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(pageId);
+  if (!page) throw Object.assign(new Error("Wiki 页面不存在或已经移入回收站"), { status: 404 });
+  workspace.domain.softDeleteEntity(pageId, { actor: "user", now });
+  return { id: page.id, title: page.title, recoverable: true };
 }
 
 export function wikiSearch(workspace, query, { limit = 12 } = {}) {
@@ -542,10 +549,12 @@ export function applyExplorationPage(workspace, action, { now = new Date() } = {
   const basedOn = [...new Set((action.basedOnPageIds || []).map(String).filter(Boolean))];
   if (!basedOn.length) throw new TypeError("探索归档至少要基于一个已有 Wiki 页面");
   const placeholders = basedOn.map(() => "?").join(",");
-  const bases = workspace.db.prepare(`SELECT id,title FROM wiki_pages WHERE id IN (${placeholders})`).all(...basedOn);
+  const bases = workspace.db.prepare(`SELECT p.id,p.title FROM wiki_pages p
+    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id IN (${placeholders})`).all(...basedOn);
   if (bases.length !== basedOn.length) throw Object.assign(new Error("探索引用的 Wiki 页面已经不存在"), { status: 409 });
-  const existing = workspace.db.prepare(`SELECT id,title,page_type AS pageType,summary,body_markdown AS bodyMarkdown,
-    current_revision AS revision FROM wiki_pages WHERE title=? COLLATE NOCASE`).get(action.title);
+  const existing = workspace.db.prepare(`SELECT p.id,p.title,p.page_type AS pageType,p.summary,p.body_markdown AS bodyMarkdown,
+    p.current_revision AS revision FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL
+    WHERE p.title=? COLLATE NOCASE`).get(action.title);
   const inherited = workspace.db.prepare(`SELECT DISTINCT source_entity_id AS sourceId,source_quote AS quote,
       source_snapshot_id AS sourceSnapshotId,source_locator AS locator,source_content_sha256 AS sourceContentSha256
     FROM wiki_page_sources WHERE page_id IN (${placeholders}) LIMIT 40`).all(...basedOn);

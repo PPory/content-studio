@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { createBookRecord } from "../server/routes/books-local.mjs";
 import { createDefaultJobHandlers } from "../server/jobs/default-job-handlers.mjs";
-import { completeJson } from "../server/lib/model-json.mjs";
+import { completeJson, ingestModelId } from "../server/lib/model-json.mjs";
+import { assertPublicArticleUrl } from "../server/lib/article.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import {
   applyExplorationPage,
@@ -17,6 +18,7 @@ import {
   wikiIndex,
   wikiPage,
   wikiSearch,
+  trashWikiPage,
 } from "../server/domain/wiki-pages.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-wiki-pages-"));
@@ -141,6 +143,17 @@ try {
     citations: [{ quote: "这句话完全不在原始来源里面，而且是模型自行编造的。" }],
   }] }, { source: { body: sourceB.body }, catalog: wikiIndex(workspace).pages, existingPages: [] });
   check("完整 Wiki 页面仍必须通过 Raw 逐字证据硬闸", bad.pages.length === 0 && bad.rejected.length >= 1);
+  const redundantSourcePage = validateWikiCompile({ pages: [{
+    title: "来源：不应生成", pageType: "source_summary", summary: "重复 Raw 的来源摘要。",
+    bodyMarkdown: "# 来源：不应生成\n\n" + rawQuoteB + "\n\n这张页面只是在 Wiki 里复制 Raw。",
+    citations: [{ quote: rawQuoteB }],
+  }] }, { source: { body: sourceB.body }, catalog: wikiIndex(workspace).pages, existingPages: [] });
+  check("编译校验会拒绝来源资料卡和来源前缀页面", redundantSourcePage.pages.length === 0
+    && redundantSourcePage.rejected.some((item) => item.why.includes("Raw 已保存在来源层")));
+  check("知识编译留空时默认使用 gemini-3.7-flash-high", ingestModelId({ AGENT_LLM_MODEL: "other-model" }) === "gemini-3.7-flash-high");
+  await assert.rejects(() => assertPublicArticleUrl("http://127.0.0.1/private"), /不能读取本机、内网或云元数据地址/);
+  await assert.rejects(() => assertPublicArticleUrl("http://169.254.169.254/latest/meta-data"), /不能读取本机、内网或云元数据地址/);
+  check("网页读取会在发请求前拒绝本机、内网和云元数据地址", true);
 
   const currentConcept = wikiPage(workspace, concept.id);
   const lintEvidence = workspace.db.prepare(`SELECT s.source_entity_id AS sourceId,s.source_snapshot_id AS sourceSnapshotId,
@@ -265,6 +278,12 @@ try {
   check("有价值的探索经确认后能归档为综合页面并继承来源", exploration.created === 1
     && wikiPage(workspace, exploration.pages[0].id).sources.length === 2);
   check("查询能优先复用持久 Wiki 正文", wikiSearch(workspace, "知识复利").some((page) => page.title === "持久状态与知识复利"));
+  const rawBeforeTrash = workspace.db.prepare("SELECT body_markdown AS body FROM book_documents WHERE id=?").get(sourceA.id).body;
+  const trashed = trashWikiPage(workspace, exploration.pages[0].id, { now: new Date(now.getTime() + 3_500) });
+  check("删除 Wiki 页面会移入回收站并保留 Raw 与历史数据", trashed.recoverable
+    && !wikiIndex(workspace).pages.some((page) => page.id === exploration.pages[0].id)
+    && workspace.db.prepare("SELECT body_markdown AS body FROM book_documents WHERE id=?").get(sourceA.id).body === rawBeforeTrash
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_page_revisions WHERE page_id=?").get(exploration.pages[0].id).count === 1);
   check("隔离工作区数据库完整性仍通过", workspace.check().ok);
   console.log("\n ✓ LLM Wiki 页面、增量编译、版本、引用、连接和探索复利全部通过");
 } finally {

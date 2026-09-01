@@ -526,6 +526,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       .filter((item) => !taken.has(`${kind}:${item.id}`) && match(item))
       .slice(0, 40);
     const groups = [];
+    if (addLevel === "mention") {
+      const knowledge = { id: "knowledge-base", label: "知识库", hint: "检索持续维护的 Wiki 页面", kind: "knowledge" };
+      if (match(knowledge)) groups.push({ key: "knowledge", label: "知识库", items: [knowledge] });
+    }
     if (addLevel === "articles" || addLevel === "mention") groups.push({ key: "articles", label: "文章", items: pick("article", articles || []) });
     if (addLevel === "experts" || addLevel === "mention") groups.push({ key: "experts", label: "专家", items: pick("expert", experts) });
     if (addLevel === "skills") groups.push({ key: "skills", label: "Skill", items: pick("skill", skills) });
@@ -558,16 +562,22 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   }
 
   /** 选中之后把用户为了唤出菜单打的那半截 `@…` / `/…` 抹掉——留着的话下一句话会莫名带上它。 */
-  function dropCommandText() {
+  function dropCommandText(replacement = "") {
     const range = commandRange;
     if (!range) return;
-    const next = `${input.slice(0, range.from)}${input.slice(range.to)}`;
+    const next = `${input.slice(0, range.from)}${replacement}${input.slice(range.to)}`;
     setInput(next);
-    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(range.from, range.from); });
+    const cursor = range.from + replacement.length;
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(cursor, cursor); });
   }
 
   function chooseAddItem(item) {
     if (!item) return;
+    if (item.kind === "knowledge") {
+      dropCommandText("@知识库 ");
+      closeAdd();
+      return;
+    }
     dropCommandText();
     closeAdd();
     setReferences((current) => current.some((entry) => entry.kind === item.kind && entry.id === item.id)
@@ -910,7 +920,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
               而它并不比另外两颗更常用。说明留在 `title` 和 `aria-label` 里。
               ⚠️ 带 `<span>` 的话还会被 `.assistant-context-actions button:not(:has(span))`
               那条排除在 28px 之外，三颗高矮不齐——这是那条后代选择器的又一次现场。 */}
-          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="存为知识卡：预览后确认，保存到当前本地工作区" aria-label="存为知识卡"><IconArchive aria-hidden="true" /></button> : null}
+          {canArchive && surface !== "page" ? <button type="button" onClick={() => setCardOpen(true)} title="存入 Wiki：先生成候选，再确认归档" aria-label="存入 Wiki"><IconArchive aria-hidden="true" /></button> : null}
           {/* ⚠️ **侧栏里没有「历史对话」入口——全局侧栏和项目协作栏都没有。**
               这一栏是「现在这段对话」的地方，翻旧会话是另一件事：完整 AI 工作区那边
               有带搜索和时间分组的历史栏，比在 420px 里塞一个抽屉好用得多。
@@ -949,10 +959,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
                     type="button"
                     role="menuitem"
                     onClick={() => { setMoreOpen(false); setCardOpen(true); }}
-                    title="预览后确认，保存到当前本地工作区"
+                    title="先生成候选，再确认归档到 Wiki"
                   >
                     <IconArchive aria-hidden="true" />
-                    存为知识卡
+                    存入 Wiki
                   </button>
                 </div>
               ) : null}
@@ -1053,7 +1063,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       context={composerContext}
     />
     {surface === "page" ? starters : null}
-    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} />
+    <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} scopeId={scopeId} conversationId={conversationId} onConversation={applyConversation} />
   </div>;
 
   return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>

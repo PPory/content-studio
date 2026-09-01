@@ -10,6 +10,7 @@ import {
   cancelAssistantTurn,
   createAssistantConversation,
   manageAssistantConversation,
+  proposeAssistantWikiPage,
   applyAssistantAction,
   rewindAssistantConversation,
   runAssistantTurn,
@@ -184,6 +185,18 @@ export const assistantRoutes = [
       try {
         const body = await readJsonBody(req);
         json(res, { ok: true, ...(await applyAssistantAction(env, body.scopeId, body.conversationId, body.actionId)) });
+      } catch (error) {
+        fail(res, error.message, { status: error.status || 500, hint: error.hint });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/assistant/wiki-candidate",
+    async handler({ req, res }) {
+      try {
+        const body = await readJsonBody(req);
+        json(res, { ok: true, ...(await proposeAssistantWikiPage(body.scopeId, body.conversationId, body)) });
       } catch (error) {
         fail(res, error.message, { status: error.status || 500, hint: error.hint });
       }

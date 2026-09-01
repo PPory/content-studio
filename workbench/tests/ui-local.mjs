@@ -441,6 +441,20 @@ try {
   await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
   const sourceName = page.getByRole("button", { name: "UI 证据来源", exact: true });
   await sourceName.waitFor();
+  await page.getByRole("button", { name: "添加来源", exact: true }).click();
+  const importPanel = page.locator(".src-import");
+  await importPanel.waitFor();
+  check("来源面板只保留文件、链接和文字三种入口", await importPanel.getByRole("button", { name: "上传文件", exact: true }).count() === 1
+    && await importPanel.getByRole("button", { name: "粘贴链接", exact: true }).count() === 1
+    && await importPanel.getByRole("button", { name: "粘贴文字", exact: true }).count() === 1
+    && !/作者|平台|发布时间|显示名称/.test(await importPanel.innerText()));
+  await importPanel.getByRole("button", { name: "粘贴链接", exact: true }).click();
+  check("粘贴链接会进入自动读取网页正文的单一输入", await importPanel.getByPlaceholder("https://…").count() === 1
+    && (await importPanel.innerText()).includes("自动读取网页正文"));
+  await importPanel.getByRole("button", { name: "粘贴文字", exact: true }).click();
+  check("粘贴文字明确保持为一份完整来源", await importPanel.getByPlaceholder("粘贴文章、笔记或课程章节全文…").count() === 1
+    && (await importPanel.innerText()).includes("正文保持为一份完整来源"));
+  await page.getByRole("button", { name: "添加来源", exact: true }).click();
   const sourceHeaderBox = await page.getByRole("columnheader", { name: "名称" }).boundingBox();
   const sourceNameBox = await sourceName.boundingBox();
   check("来源表头名称与内容名称处在同一列", sourceHeaderBox && sourceNameBox && Math.abs(sourceHeaderBox.x - sourceNameBox.x) < 2);
@@ -526,6 +540,12 @@ try {
     && (await page.getByRole("heading", { name: "连接" }).count()) === 1
     && (await page.getByRole("heading", { name: "依据" }).count()) === 1
     && (await page.getByRole("heading", { name: "演化" }).count()) === 1);
+  await page.getByRole("button", { name: "删除页面", exact: true }).click();
+  const deleteDialog = page.getByRole("dialog", { name: /删除“?「?来源精准跳转/ });
+  await deleteDialog.waitFor();
+  check("删除 Wiki 必须二次确认并明确不删除 Raw", (await deleteDialog.innerText()).includes("Raw 来源不会被删除")
+    && await deleteDialog.getByRole("button", { name: "移入回收站" }).count() === 1);
+  await deleteDialog.getByRole("button", { name: "取消" }).click();
   if (process.argv.includes("--shots")) await page.screenshot({ path: wikiArticleShotFile, fullPage: true });
   await page.getByText("UI 证据来源 · 证据章节", { exact: true }).click();
   await page.getByRole("button", { name: "打开并定位到 Raw" }).click();
@@ -536,6 +556,15 @@ try {
   await page.getByRole("button", { name: "返回 Wiki" }).click();
   await page.waitForURL((url) => url.hash.startsWith("#/entries/"));
   check("从 Raw 返回时回到刚才的 Wiki 页面", page.url().includes("#/entries/"));
+
+  await page.goto("http://127.0.0.1:" + PORT + "/#/assistant");
+  const assistantInput = page.getByPlaceholder("问任何问题，或直接输入本地项目路径");
+  await assistantInput.waitFor();
+  await assistantInput.fill("@");
+  const knowledgeMention = page.getByRole("menuitem", { name: /知识库.*检索持续维护的 Wiki 页面/ });
+  await knowledgeMention.waitFor();
+  await knowledgeMention.click();
+  check("AI 助手可从 @ 菜单显式调用知识库", await assistantInput.inputValue() === "@知识库 ");
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}\n Wiki 首页：${wikiHomeShotFile}\n Wiki 页面：${wikiArticleShotFile}`);
