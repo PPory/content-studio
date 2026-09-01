@@ -13,7 +13,7 @@ function dateTime(value) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
+export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -49,6 +49,9 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
     <div className="view-body wiki-article">
       <div className="wiki-article__actions">
         <button type="button" className="btn btn-sm entry-back" onClick={onBack}>
+        <button type="button" className="btn btn-sm" onClick={() => onBridge?.(page.id)}>
+          看看它能解决哪些用户问题
+        </button>
           <IconArrowLeft aria-hidden="true" stroke={1.8} />返回 Wiki
         </button>
         <button type="button" className="btn btn-sm btn-quiet" onClick={() => setConfirmDelete(true)}>

@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, Note, FilterHeader, ViewTabs, Toast, relTime } from "../components/ui.jsx";
+import "./hotspot-bridge.css";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
 import {
@@ -68,8 +69,14 @@ const boardIcon = (id) => BOARD_ICONS[id] || IconNews;
 const CN_NUM = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
 const cnNum = (n) => (Number.isInteger(n) && n >= 0 && n <= 10 ? CN_NUM[n] : String(n));
 
-export function Hotspots({ onIntake }) {
+export function Hotspots({ onIntake, onGo }) {
   const [tab, setTab] = useState("boards");
+  const [audienceProblems, setAudienceProblems] = useState([]);
+  useEffect(() => {
+    let active = true;
+    api.audienceProblems().then((result) => { if (active) setAudienceProblems(result.problems || []); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   /**
    * 种子：这条链的新起点（`docs/工作流.md`）。
    * ⚠️ **反应清单从 Worker 来**（`api.seeds()` 的响应里带 `reactionGroups`），前端不写死。
@@ -151,6 +158,22 @@ export function Hotspots({ onIntake }) {
           <ViewTabs items={TABS} value={tab} onChange={setTab} label="看哪个视角" />
         }
       />
+
+      {audienceProblems.length ? (
+        <section className="radar-problems" aria-labelledby="radar-problems-title">
+          <header>
+            <h2 id="radar-problems-title">从洞察确认的用户问题</h2>
+            <span>这些不是热点标题，均保留来源</span>
+          </header>
+          <div className="radar-problems__list">
+            {audienceProblems.slice(0, 3).map((problem) => (
+              <button key={problem.id} type="button" onClick={() => onGo?.("bridge", `problem:${problem.id}`)}>
+                <strong>{problem.statement}</strong><span>看看我的知识能不能解释</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {tab === "boards" ? (
         <BoardsPanel stored={stored} onCollect={collect} trace={trace} onTrace={askTrace} />

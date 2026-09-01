@@ -767,7 +767,7 @@ export function App() {
                   onSettings={() => setSettings(true)}
                 />
               ) : route.view === "hot" ? (
-                <Hotspots onIntake={setIntake} />
+                <Hotspots onIntake={setIntake} onGo={go} />
               ) : route.view === "typeset" ? (
                 <Typeset onGo={go} />
               ) : route.view === "shelf" ? (
@@ -790,6 +790,7 @@ export function App() {
                     entryId={route.state}
                     onBack={() => go("entries")}
                     onGo={(target) => go("entries", String(target).split("/")[1] || "")}
+                    onBridge={(wikiId) => go("bridge", `wiki:${wikiId}`)}
                     /**
                      * ⚠️ **要跳到来源所在的那本书，不是「继续读上次那本」。**
                      * 上一版第二个参数写的是 `"resume"`，于是点任何一条事实的来源
