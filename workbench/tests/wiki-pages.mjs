@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createBookRecord } from "../server/routes/books-local.mjs";
 import { createDefaultJobHandlers } from "../server/jobs/default-job-handlers.mjs";
+import { completeJson } from "../server/lib/model-json.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import {
   applyExplorationPage,
@@ -171,6 +172,7 @@ try {
     && validatedRepair.pages[0].citations[0].sourceSnapshotId === lintEvidence[0].sourceSnapshotId);
   const badRepair = validateWikiLintRepair({ ...lintRawProposal, pages: [{ ...lintRawProposal.pages[0], evidenceIds: ["unknown"] }] }, { context: lintContext, findingIndexes: [0] });
   check("体检修订不能引用模型自行编造的证据编号", badRepair.pages.length === 0 && badRepair.rejected.length === 1);
+  workspace.db.prepare("UPDATE wiki_page_sources SET source_snapshot_id=NULL, source_quote='' WHERE page_id=?").run(currentConcept.page.id);
   modelServer = http.createServer((request, response) => {
     request.resume();
     response.writeHead(200, { "content-type": "application/json" });
@@ -189,9 +191,59 @@ try {
     AGENT_INGEST_API_KEY: "local-test-key", AGENT_INGEST_MODEL: "local-test-model",
   })["wiki.lint.repair"]({ reportCandidateId: reportCandidate.id, findingIndexes: [0] });
   const generatedRepair = workspace.domain.actions.get(repairResult.candidateId);
-  check("体检修订任务完成后关闭原报告并留下可审阅候选", workspace.domain.actions.get(reportCandidate.id).status === "applied"
+  check("旧 Wiki 引用缺少快照时会从当前 Raw 重新定位逐字证据", generatedRepair.payload.pages.length === 1
+    && generatedRepair.payload.pages[0].citations.every((citation) => citation.sourceSnapshotId && citation.quote));
+  check("生成修订候选后保留原报告，便于继续处理其余问题", workspace.domain.actions.get(reportCandidate.id).status === "proposed"
     && generatedRepair.status === "proposed" && generatedRepair.payload.kind === "wiki.repair");
+  for (const evidence of lintEvidence) {
+    workspace.db.prepare(`UPDATE wiki_page_sources SET source_snapshot_id=?,source_quote=?
+      WHERE page_id=? AND source_entity_id=?`).run(
+      evidence.sourceSnapshotId, evidence.quote, currentConcept.page.id, evidence.sourceId,
+    );
+  }
   workspace.domain.actions.reject(generatedRepair.id);
+  await new Promise((resolve) => modelServer.close(resolve));
+  modelServer = null;
+  const sourceGapReport = workspace.domain.actions.propose({
+    actionType: "wiki.lint.review", targetId: null, proposedBy: "ai",
+    payload: {
+      kind: "wiki.lint.report", mode: "network", deterministic: {},
+      findings: [{
+        type: "source_gap", pages: [currentConcept.page.title],
+        problem: "这段私人诊断不应发送给搜索服务", suggestion: "补充一份可核验的新来源",
+      }],
+    },
+  });
+  let researchQuery = "";
+  const researchResult = await createDefaultJobHandlers(workspace, {}, {
+    searchWebFn: async (_env, { query }) => {
+      researchQuery = query;
+      return { provider: "test", query, sources: [{ url: "https://example.com/new-source", title: "新的官方资料" }] };
+    },
+    readArticleFn: async (url) => ({
+      title: "新的官方资料", byline: "测试作者", siteName: "Example",
+      url, markdown: "# 新的官方资料\n\n这是一段用于隔离测试、可由用户确认后导入 Raw 的公开资料正文。".repeat(3), words: 120,
+    }),
+  })["wiki.lint.research"]({ reportCandidateId: sourceGapReport.id, findingIndexes: [0] });
+  const researchCandidate = workspace.domain.actions.get(researchResult.candidateId);
+  check("来源搜索只发送页面名称，不外发 Wiki 正文和私人诊断", researchQuery.includes(currentConcept.page.title)
+    && !researchQuery.includes("私人诊断") && researchCandidate.payload.kind === "wiki.research");
+  check("搜索结果先形成待确认来源候选，不会自动导入 Raw", researchCandidate.status === "proposed"
+    && researchCandidate.payload.sources[0].bodyMarkdown.includes("公开资料正文")
+    && !workspace.db.prepare("SELECT 1 FROM books WHERE source_url=?").get("https://example.com/new-source"));
+  workspace.domain.actions.reject(researchCandidate.id);
+  workspace.domain.actions.reject(sourceGapReport.id);
+  modelServer = http.createServer((request, response) => {
+    request.resume();
+    response.writeHead(524, { "content-type": "text/html" });
+    response.end("<!doctype html><title>timeout</title>");
+  });
+  await new Promise((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
+  await assert.rejects(() => completeJson({
+    AGENT_INGEST_BASE_URL: `http://127.0.0.1:${modelServer.address().port}`,
+    AGENT_INGEST_API_KEY: "local-test-key", AGENT_INGEST_MODEL: "local-test-model",
+  }, { system: "test", user: "test" }), /知识编译模型服务超时.*资料没有损坏/);
+  check("524 错误不再显示 HTML，而是说明上游超时且 Raw 未损坏", true);
   await new Promise((resolve) => modelServer.close(resolve));
   modelServer = null;
   const lintApplied = applyWikiCompile(workspace, {

@@ -6,7 +6,11 @@
 
 import { createApi } from "./api.mjs";
 import { applyPendingWorkspaceRestore, ensureAutomaticWorkspaceBackup } from "./backup/workspace-backup.mjs";
-import { createDefaultJobHandlers, recoverQueuedWikiIngests } from "./jobs/default-job-handlers.mjs";
+import {
+  createDefaultJobHandlers,
+  reconcileWikiIngestCandidates,
+  recoverQueuedWikiIngests,
+} from "./jobs/default-job-handlers.mjs";
 import { startWorkspaceRuntime } from "./jobs/workspace-runtime.mjs";
 import { installAutoExit } from "./lib/auto-exit.mjs";
 import { serveTypeset } from "./routes/tools.mjs";
@@ -19,15 +23,19 @@ export async function startLocalWorkspaceRuntime(env = {}) {
   const workspace = await openWorkspace({ xenhoHome });
   try {
     const recoveredWikiJobs = recoverQueuedWikiIngests(workspace);
+    const reconciledWikiCandidates = reconcileWikiIngestCandidates(workspace);
     const runtime = startWorkspaceRuntime(workspace, {
       handlers: createDefaultJobHandlers(workspace, env),
-      maintenance: (now) => ({ recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }) }),
+      maintenance: (now) => ({
+        recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
+        reconciledWikiCandidates: reconcileWikiIngestCandidates(workspace, { now }),
+      }),
     });
     const automaticBackup = ensureAutomaticWorkspaceBackup(workspace).catch((error) => {
       console.warn(`[backup] 自动备份失败：${error instanceof Error ? error.message : String(error)}`);
       return { created: false, error: error instanceof Error ? error.message : String(error) };
     });
-    return { workspace, runtime, automaticBackup, pendingRestore, recoveredWikiJobs };
+    return { workspace, runtime, automaticBackup, pendingRestore, recoveredWikiJobs, reconciledWikiCandidates };
   } catch (error) {
     workspace.close();
     throw error;

@@ -6863,6 +6863,24 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__finding .ing__finding-reason { color: var(--warn); font-size: var(--fs-xs); }
 .ing__repair-status { margin: -1px 0 0; padding: 10px 4px; border-top: 1px dashed var(--border); color: var(--text-3); font-size: var(--fs-xs); }
 .ing__repair-status.is-error { color: var(--danger); }
+.ing__notice { margin: 0; padding: 12px 4px; border-bottom: 1px solid var(--border); color: var(--text-2); font-size: var(--fs-sm); }
+.ing__notice.is-success { color: var(--success); }
+.ing__missing { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 4px; border-bottom: 1px solid var(--border); }
+.ing__missing div { display: grid; gap: 3px; }
+.ing__missing b { font-size: var(--fs-sm); }
+.ing__missing span { color: var(--text-3); font-size: var(--fs-xs); }
+.ing__missing a { flex: none; min-height: 34px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); color: var(--text-2); text-decoration: none; }
+.ing__sources { display: grid; }
+.ing__source { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 16px 0; border-top: 1px dashed var(--border); cursor: pointer; }
+.ing__source.is-off { opacity: .48; }
+.ing__source > input { margin-top: 4px; accent-color: var(--accent); }
+.ing__source > span { display: grid; gap: 7px; max-width: 1100px; }
+.ing__source-head { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; }
+.ing__source-head b { font-size: var(--fs-sm); }
+.ing__source-head a { flex: none; color: var(--accent); font-size: var(--fs-xs); text-decoration: none; }
+.ing__source-head a:hover { text-decoration: underline; }
+.ing__source small, .ing__source em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; }
+.ing__source p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
 
 .entry-health { display: flex; width: 100%; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
 .entry-health span { color: var(--accent); }

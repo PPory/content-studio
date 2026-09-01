@@ -4,6 +4,8 @@ import {
   lintWikiNetwork,
   proposeWikiLintRepair,
 } from "../domain/wiki-pages.mjs";
+import { readArticle } from "../lib/article.mjs";
+import { searchWeb } from "../lib/web-search.mjs";
 
 /**
  * 一次提炼一份来源。**队列在库里，不在内存**——工作台随时可能关掉，
@@ -61,7 +63,7 @@ async function lintOne(workspace, env, payload) {
 async function repairLintReport(workspace, env, payload) {
   const reportCandidateId = String(payload?.reportCandidateId || "");
   const findingIndexes = [...new Set((payload?.findingIndexes || []).map(Number)
-    .filter((index) => Number.isInteger(index) && index >= 0))].slice(0, 5);
+    .filter((index) => Number.isInteger(index) && index >= 0))].slice(0, 10);
   if (!reportCandidateId || !findingIndexes.length) throw new Error("体检修订需要报告和所选问题");
   const report = workspace.domain.actions.get(reportCandidateId);
   if (!report || report.status !== "proposed" || report.payload?.kind !== "wiki.lint.report") {
@@ -83,17 +85,78 @@ async function repairLintReport(workspace, env, payload) {
       proposedBy: "ai",
     });
     const now = new Date();
-    workspace.domain.actions.confirm(reportCandidateId, { now });
-    workspace.domain.actions.markApplied(reportCandidateId, {
-      result: { repairCandidateId: candidate.id, pages: proposal.pages.length },
-      now,
-    });
     workspace.domain.audit("wiki.lint_repair_proposed", null, {
       reportCandidateId, repairCandidateId: candidate.id,
       findingIndexes, pages: proposal.pages.length,
     }, now);
     return { reportCandidateId, candidateId: candidate.id, pages: proposal.pages.length };
   });
+}
+
+async function researchLintReport(workspace, env, payload, { searchWebFn = searchWeb, readArticleFn = readArticle } = {}) {
+  const reportCandidateId = String(payload?.reportCandidateId || "");
+  const findingIndexes = [...new Set((payload?.findingIndexes || []).map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0))].slice(0, 5);
+  if (!reportCandidateId || !findingIndexes.length) throw new Error("补充来源需要报告和所选问题");
+  const report = workspace.domain.actions.get(reportCandidateId);
+  if (!report || report.status !== "proposed" || report.payload?.kind !== "wiki.lint.report") {
+    return { canceled: true, reason: "体检报告已经处理或不存在" };
+  }
+  const findings = findingIndexes.map((index) => report.payload.findings?.[index]).filter(Boolean);
+  if (findings.length !== findingIndexes.length || findings.some((finding) => !lintFindingRepairability(finding).researchable)) {
+    throw new Error("所选项目中包含不需要搜索补充来源的问题");
+  }
+
+  const collected = [];
+  const seen = new Set();
+  const failures = [];
+  for (let offset = 0; offset < findings.length; offset += 1) {
+    const finding = findings[offset];
+    // 用户点击搜索按钮后，只发送页面名称和通用检索词；不外发 Wiki 正文、问题描述或私人笔记。
+    const query = [...(finding.pages || []), finding.type === "stale" ? "最新 官方资料" : "官方资料 来源"].join(" ").slice(0, 300);
+    const result = await searchWebFn(env, { query, maxResults: 4 });
+    for (const source of result.sources || []) {
+      if (!source?.url || seen.has(source.url) || collected.length >= 8) continue;
+      seen.add(source.url);
+      try {
+        const article = await readArticleFn(source.url, env);
+        if (!article?.markdown || article.markdown.trim().length < 80) continue;
+        collected.push({
+          sourceKey: `source:${collected.length}`,
+          findingIndexes: [findingIndexes[offset]],
+          title: article.title || source.title || source.url,
+          url: article.url || source.url,
+          author: article.byline || "",
+          siteName: article.siteName || "",
+          publishedAt: source.publishedAt || "",
+          excerpt: article.markdown.replace(/\s+/g, " ").trim().slice(0, 560),
+          bodyMarkdown: article.markdown.slice(0, 300_000),
+          words: Number(article.words) || article.markdown.length,
+          why: finding.suggestion,
+        });
+      } catch (error) {
+        failures.push({ url: source.url, error: String(error?.message || error).slice(0, 240) });
+      }
+    }
+  }
+  if (!collected.length) throw new Error(failures.length
+    ? "搜索到了结果，但正文均未能读取；请稍后重试或检查网页抓取设置"
+    : "没有搜索到可供确认的新来源");
+  const candidate = workspace.domain.actions.propose({
+    actionType: "wiki.sources.import",
+    targetId: null,
+    payload: {
+      kind: "wiki.research", title: "体检补充来源", reportCandidateId,
+      selectedFindingIndexes: findingIndexes, selectedFindings: findings,
+      sources: collected, failures,
+    },
+    proposedBy: "ai",
+  });
+  workspace.domain.audit("wiki.lint_research_proposed", null, {
+    reportCandidateId, researchCandidateId: candidate.id,
+    findingIndexes, sources: collected.length, unreadable: failures.length,
+  }, new Date());
+  return { reportCandidateId, candidateId: candidate.id, sources: collected.length, unreadable: failures.length };
 }
 /**
  * 旧版本曾把任务参数读错，任务耗尽重试后 `source_ingests` 仍会停在 queued。
@@ -118,7 +181,22 @@ export function recoverQueuedWikiIngests(workspace, { now = new Date() } = {}) {
   }
   return recovered;
 }
-export function createDefaultJobHandlers(workspace, env = {}) {
+
+export function reconcileWikiIngestCandidates(workspace, { now = new Date() } = {}) {
+  const result = workspace.db.prepare(`UPDATE source_ingests
+    SET status='failed', candidate_id=NULL,
+      error='待审阅候选已失效，请重新编译这份来源', run_at=?
+    WHERE status='proposed' AND (
+      candidate_id IS NULL OR NOT EXISTS (
+        SELECT 1 FROM action_candidates c
+        WHERE c.id=source_ingests.candidate_id AND c.status='proposed'
+          AND c.action_type='wiki.pages.apply' AND json_extract(c.payload_json, '$.kind')='wiki.compile'
+      )
+    )`).run(new Date(now).toISOString());
+  return result.changes;
+}
+
+export function createDefaultJobHandlers(workspace, env = {}, dependencies = {}) {
   return {
     /** 提炼一份来源。payload.sourceId 指定读哪一份。 */
     "wiki.ingest": async (payload) => {
@@ -130,6 +208,8 @@ export function createDefaultJobHandlers(workspace, env = {}) {
     "wiki.lint": async (payload) => lintOne(workspace, env, payload),
 
     "wiki.lint.repair": async (payload) => repairLintReport(workspace, env, payload),
+
+    "wiki.lint.research": async (payload) => researchLintReport(workspace, env, payload, dependencies),
 
     "pipeline.dispatch": async () => {
       const captures = workspace.db.prepare(`SELECT c.id FROM captures c

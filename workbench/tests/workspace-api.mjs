@@ -533,7 +533,8 @@ try {
   const listedReport = candidates.value.candidates.find((item) => item.id === lintCandidate.id);
   check("来源待审阅候选带有准确的文档和书籍落点", listedCompile?.sourceId === bookDocumentId && listedCompile?.sourceBookId);
   check("体检报告区分可生成修订和必须补来源的问题", listedReport?.findings[0].repairable === true
-    && listedReport?.findings[1].repairable === false && listedReport?.findings[1].reason.includes("可靠来源"));
+    && listedReport?.findings[1].repairable === false && listedReport?.findings[1].researchable === true
+    && listedReport?.findings[1].reason.includes("可靠来源"));
   const blockedLintRepair = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}/repair`, {
     method: "POST", body: { include: ["findings:1"] },
   });
@@ -552,6 +553,36 @@ try {
   const repairJobs = workspace.db.prepare(`SELECT COUNT(*) AS count FROM local_jobs
     WHERE kind='wiki.lint.repair' AND json_extract(payload_json, '$.reportCandidateId')=?`).get(lintCandidate.id).count;
   check("体检修订进入持久队列且重复点击不会重复排队", queuedRepair.value.ok && duplicateRepair.value.ok && repairJobs === 1);
+
+  const queuedResearch = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}/research`, {
+    method: "POST", body: { include: ["findings:1"] },
+  });
+  const researchJobs = workspace.db.prepare(`SELECT COUNT(*) AS count FROM local_jobs
+    WHERE kind='wiki.lint.research' AND json_extract(payload_json, '$.reportCandidateId')=?`).get(lintCandidate.id).count;
+  check("来源不足问题只在用户明确点击后进入搜索队列", queuedResearch.value.ok && researchJobs === 1);
+
+  const researchCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.sources.import", targetId: null, proposedBy: "ai", now: new Date(),
+    payload: {
+      kind: "wiki.research", reportCandidateId: lintCandidate.id,
+      selectedFindingIndexes: [1], selectedFindings: [lintCandidate.payload.findings[1]],
+      sources: [{
+        sourceKey: "source:0", findingIndexes: [1], title: "人工确认的新来源",
+        url: "https://example.com/wiki-confirmed-source", author: "测试作者", siteName: "Example",
+        publishedAt: "2026-08-31", excerpt: "候选摘要",
+        bodyMarkdown: "# 人工确认的新来源\n\n只有用户确认后，这份公开资料才会进入 Raw 并等待正常 Wiki 编译。",
+        words: 48, why: "补充最新可靠来源",
+      }],
+    },
+  });
+  const importedResearch = await call(base, `/api/workspace/knowledge/candidates/${researchCandidate.id}`, {
+    method: "POST", body: { action: "accept", include: ["sources:0"] },
+  });
+  const importedBook = workspace.db.prepare("SELECT id FROM books WHERE source_url=?").get("https://example.com/wiki-confirmed-source");
+  const importedDocument = importedBook && workspace.db.prepare("SELECT id FROM book_documents WHERE book_id=?").get(importedBook.id);
+  check("确认来源后才导入 Raw 并进入标准 Wiki 编译队列", importedResearch.value.applied.imported === 1
+    && importedResearch.value.applied.selected === 1 && importedDocument
+    && workspace.db.prepare("SELECT 1 FROM source_ingests WHERE source_entity_id=?").get(importedDocument.id));
 
   check("隔离工作区数据库完整性检查通过", workspace.check().ok);
 

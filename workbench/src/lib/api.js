@@ -88,6 +88,7 @@ export const api = {
   knowledgeCandidates: () => req("/api/workspace/knowledge/candidates"),
   knowledgeCandidateDecide: (id, action, include) => postJson(`/api/workspace/knowledge/candidates/${encodeURIComponent(id)}`, { action, include }),
   knowledgeCandidateRepair: (id, include) => postJson(`/api/workspace/knowledge/candidates/${encodeURIComponent(id)}/repair`, { include }),
+  knowledgeCandidateResearch: (id, include) => postJson(`/api/workspace/knowledge/candidates/${encodeURIComponent(id)}/research`, { include }),
   knowledgeRecall: (text, limit = 6) => postJson("/api/workspace/knowledge/recall", { text, limit }),
   // 种子响应携带领域层的反应清单，前端不复制业务规则。
   seeds: (status = "") => req(`/api/workspace/seeds${status ? `?status=${encodeURIComponent(status)}` : ""}`),

@@ -76,7 +76,13 @@ export async function completeJson(env, { system, user, model = "", maxTokens = 
     signal,
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(`模型调用失败（HTTP ${response.status}）：${clean(text, 300)}`);
+  if (!response.ok) {
+    if ([502, 503, 504, 524].includes(response.status)) {
+      throw new Error(`知识编译模型服务超时（HTTP ${response.status}），资料没有损坏；可以稍后重试，或在设置中切换知识编译地址/模型`);
+    }
+    const detail = /<\s*!doctype|<\s*html/i.test(text) ? "上游返回了错误页面" : clean(text, 300);
+    throw new Error(`模型调用失败（HTTP ${response.status}）：${detail}`);
+  }
   let payload;
   try { payload = JSON.parse(text); } catch { throw new Error(`模型响应不是 JSON：${clean(text, 300)}`); }
   const content = payload?.choices?.[0]?.message?.content;

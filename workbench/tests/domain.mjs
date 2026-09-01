@@ -370,6 +370,12 @@ try {
   const staleJob = staleWorkspace.jobs.enqueue({ idempotencyKey: "wiki.ingest:stale", kind: "wiki.ingest", payload: { sourceId: staleSourceId }, now }).job;
   const staleClaim = staleWorkspace.jobs.claim({ leaseOwner: "old-buggy-runner", now });
   staleWorkspace.jobs.fail(staleJob.id, { leaseOwner: "old-buggy-runner", leaseToken: staleClaim.leaseToken, error: "旧版参数读取失败", retry: false, now });
+  const lostCandidateBook = await createBookRecord(staleWorkspace, {
+    title: "候选已经丢失的来源", sourceKind: "文档", chapters: [{ title: "待审阅假状态", text: "候选不存在时不能继续显示待审阅。" }],
+  });
+  const lostCandidateSourceId = staleWorkspace.db.prepare("SELECT id FROM book_documents WHERE book_id=?").get(lostCandidateBook.id).id;
+  staleWorkspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,candidate_id,run_at) VALUES (?,'proposed',NULL,?)")
+    .run(lostCandidateSourceId, now.toISOString());
   staleWorkspace.close();
 
   const productionRuntime = await startLocalWorkspaceRuntime({ XENHO_HOME: productionHome });
@@ -379,6 +385,9 @@ try {
     && startupScans.length === 2 && startupScans.every((job) => job.status === "done"));
   check("旧版耗尽重试后卡住的提炼会在启动时恢复并读到正确来源", productionRuntime.recoveredWikiJobs === 1
     && productionRuntime.workspace.db.prepare("SELECT status FROM source_ingests WHERE source_entity_id = ?").get(staleSourceId).status === "empty");
+  const reconciled = productionRuntime.workspace.db.prepare("SELECT status,error FROM source_ingests WHERE source_entity_id=?").get(lostCandidateSourceId);
+  check("待审阅候选已丢失时启动会改成可重试失败状态", productionRuntime.reconciledWikiCandidates === 1
+    && reconciled.status === "failed" && reconciled.error.includes("候选已失效"));
 
   const liveBook = await createBookRecord(productionRuntime.workspace, {
     title: "运行中提炼唤醒", sourceKind: "文档", chapters: [{ title: "立即处理", text: "同样不足两百字，不调用模型。" }],

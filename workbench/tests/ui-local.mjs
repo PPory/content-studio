@@ -159,6 +159,21 @@ try {
       ],
     },
   });
+  const researchReviewCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.sources.import", targetId: null, proposedBy: "ai",
+    payload: {
+      kind: "wiki.research", reportCandidateId: "", selectedFindingIndexes: [1],
+      selectedFindings: [{ type: "source_gap", pages: ["来源精准跳转"], suggestion: "补充可靠的新来源" }],
+      sources: [{
+        sourceKey: "source:0", findingIndexes: [1], title: "来源精准跳转官方说明",
+        url: "https://example.com/wiki-source", author: "示例作者", siteName: "Example",
+        publishedAt: "2026-09-01", words: 680, excerpt: "这是一份等待人工确认的公开网页摘要，确认前不会进入 Raw，也不会修改 Wiki。",
+        bodyMarkdown: "# 来源精准跳转官方说明\n\n完整公开网页正文。",
+        why: "补充可靠的新来源",
+      }],
+      failures: [],
+    },
+  });
 
   const { chromium } = playwright();
   browser = await chromium.launch();
@@ -461,25 +476,46 @@ try {
   await page.getByLabel("搜索 Wiki").fill("不存在的页面");
   check("Wiki 搜索没有结果时给出明确反馈", await page.getByText(/没有找到“不存在的页面”/).count() === 1);
   await page.getByRole("button", { name: "清空搜索" }).click();
+  const researchCandidateCard = page.locator(`[id="knowledge-candidate-${researchReviewCandidate.id}"]`);
+  await researchCandidateCard.getByRole("button", { name: /补充来源候选/ }).click();
+  check("搜索结果以可核对来源卡片展示，确认前不会写入", await researchCandidateCard.getByText("来源精准跳转官方说明", { exact: true }).count() === 1
+    && await researchCandidateCard.getByRole("link", { name: "查看原文" }).count() === 1
+    && await researchCandidateCard.getByRole("button", { name: "导入所选并开始编译（1）" }).count() === 1
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM books WHERE source_url=?").get("https://example.com/wiki-source").count === 0);
   await page.getByRole("button", { name: /全库体检报告/ }).click();
   check("体检报告把问题、影响页面和建议分开呈现", await page.locator(".ing__finding").count() === 2
     && (await page.locator(".ing__findings").innerText()).includes("可选优化")
     && (await page.locator(".ing__findings").innerText()).includes("建议"));
-  check("可处理问题能生成修订，缺来源问题不会让 AI 凭空修改", await page.getByRole("button", { name: "生成所选修订（1）" }).count() === 1
-    && await page.locator(".ing__item--lint input[type=checkbox]").count() === 1
-    && (await page.locator(".ing__finding.is-blocked").innerText()).includes("需补来源"));
+  check("直接修订与搜索补充来源是两个明确动作", await page.getByRole("button", { name: "生成页面修订（1）" }).count() === 1
+    && await page.getByRole("button", { name: "同意发送页面名称并搜索（1）" }).count() === 1
+    && await page.locator(".ing__item--lint input[type=checkbox]").count() === 2
+    && (await page.locator(".ing__findings").innerText()).includes("先查来源"));
+  await page.route("**/api/workspace/knowledge/candidates/*/research", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, selected: 1, status: "queued" }),
+  }));
+  await page.getByRole("button", { name: "同意发送页面名称并搜索（1）" }).click();
+  check("搜索操作明确显示只生成待确认来源候选", await page.getByRole("button", { name: "正在搜索来源…" }).count() === 1
+    && await page.getByText(/完成后会出现来源卡片，未经确认不会导入/).count() === 1);
+  await page.unroute("**/api/workspace/knowledge/candidates/*/research");
+  await page.reload();
+  await page.getByRole("button", { name: /全库体检报告/ }).click();
   await page.route("**/api/workspace/knowledge/candidates/*/repair", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, selected: 1, status: "queued" }),
   }));
-  await page.getByRole("button", { name: "生成所选修订（1）" }).click();
+  await page.getByRole("button", { name: "生成页面修订（1）" }).click();
   check("生成修订后会显示真实进行状态并说明完成后仍需确认", await page.getByRole("button", { name: "正在生成修订…" }).count() === 1
     && await page.getByText(/完成后这里会出现可逐页确认的候选/).count() === 1);
   check("生成体检修订候选不会直接改动 Wiki 页面", workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count === wikiPagesBeforeReview);
   await page.unroute("**/api/workspace/knowledge/candidates/*/repair");
+  await page.goto(`http://127.0.0.1:${PORT}/#/entries/review:missing-candidate`);
+  check("审阅候选不存在时给出原因和返回来源入口", await page.getByText("这份来源当前没有可审阅内容", { exact: true }).count() === 1
+    && await page.getByRole("link", { name: "返回来源" }).count() === 1);
+  await page.goto("http://127.0.0.1:" + PORT + "/#/entries");
   await page.route("**/api/workspace/knowledge/lint/run", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, mode: "network" }),
   }));
   await page.getByRole("button", { name: "全库体检", exact: true }).click();
+  await page.getByText("体检已加入队列", { exact: true }).waitFor();
   check("体检提示只说明已入队并明确不会自动修改", await page.getByText("体检已加入队列", { exact: true }).count() === 1
     && await page.getByText("完成后会在这里生成诊断报告，不会自动修改 Wiki。", { exact: true }).count() === 1);
   await page.unroute("**/api/workspace/knowledge/lint/run");

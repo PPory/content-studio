@@ -591,15 +591,15 @@ export const WIKI_REPAIRABLE_FINDING_TYPES = Object.freeze([
 
 export function lintFindingRepairability(finding) {
   if (["source_gap", "stale"].includes(finding?.type)) {
-    return { repairable: false, reason: "需要先补充新的可靠来源，不能仅凭体检判断改写事实" };
+    return { repairable: false, researchable: true, action: "research", reason: "需要先搜索新的可靠来源，确认导入后再编译 Wiki" };
   }
   if (!WIKI_REPAIRABLE_FINDING_TYPES.includes(finding?.type)) {
-    return { repairable: false, reason: "这类问题暂不支持自动生成修订" };
+    return { repairable: false, researchable: false, action: "none", reason: "这类问题暂不支持自动生成修订" };
   }
   if (!Array.isArray(finding?.pages) || !finding.pages.length) {
-    return { repairable: false, reason: "没有定位到可作为依据的 Wiki 页面" };
+    return { repairable: false, researchable: false, action: "none", reason: "没有定位到可作为依据的 Wiki 页面" };
   }
-  return { repairable: true, reason: "" };
+  return { repairable: true, researchable: false, action: "repair", reason: "" };
 }
 
 export const WIKI_LINT_REPAIR_SYSTEM_PROMPT = [
@@ -620,6 +620,38 @@ export const WIKI_LINT_REPAIR_SYSTEM_PROMPT = [
   }),
 ].join("\n");
 
+function sourceQuoteSegments(body) {
+  const segments = [];
+  for (const paragraph of String(body || "").split(/\n\s*\n|\n(?=#{1,6}\s)/)) {
+    const text = paragraph.trim();
+    if (text.length < 12) continue;
+    if (text.length <= 900) {
+      segments.push(text);
+      continue;
+    }
+    for (let offset = 0; offset < text.length; offset += 700) {
+      const piece = text.slice(offset, offset + 800).trim();
+      if (piece.length >= 12) segments.push(piece);
+    }
+  }
+  return segments;
+}
+
+function bestSourceQuotes(body, focus, title, limit = 2) {
+  const focusGrams = grams(focus);
+  const normalizedTitle = normalize(title);
+  return sourceQuoteSegments(body).map((quote) => {
+    const quoteGrams = grams(quote);
+    let overlap = 0;
+    for (const gram of quoteGrams) if (focusGrams.has(gram)) overlap += 1;
+    const denominator = Math.max(1, Math.min(quoteGrams.size, focusGrams.size));
+    const direct = normalizedTitle.length >= 2 && normalize(quote).includes(normalizedTitle) ? 180 : 0;
+    return { quote, score: direct + overlap + (overlap / denominator) * 80 };
+  }).filter((item) => item.score >= 8)
+    .sort((left, right) => right.score - left.score || right.quote.length - left.quote.length)
+    .slice(0, limit).map((item) => item.quote);
+}
+
 function wikiLintRepairContext(workspace, findings) {
   const catalog = wikiPageCatalog(workspace);
   const catalogByTitle = new Map(catalog.map((page) => [normalize(page.title), page]));
@@ -631,7 +663,7 @@ function wikiLintRepairContext(workspace, findings) {
     }
   }
   const related = relevantWikiPages(workspace, findings.map((item) => `${item.problem}\n${item.suggestion}`).join("\n"), { limit: 16 });
-  const ids = [...new Set([...exactIds, ...related.map((page) => page.id)])].slice(0, 24);
+  const ids = [...new Set([...exactIds, ...related.map((page) => page.id)])].slice(0, 60);
   if (!ids.length) return { catalog, pages: [], evidence: [] };
   const placeholders = ids.map(() => "?").join(",");
   const pages = workspace.db.prepare(`SELECT p.id,p.title,p.page_type AS pageType,p.summary,p.body_markdown AS bodyMarkdown,
@@ -643,13 +675,51 @@ function wikiLintRepairContext(workspace, findings) {
     .map(({ toTitle, relation, why }) => ({ toTitle, relation, why }));
   const rows = workspace.db.prepare(`SELECT s.page_id AS pageId,s.source_entity_id AS sourceId,
       s.source_snapshot_id AS sourceSnapshotId,s.source_quote AS quote,s.source_locator AS locator,
-      s.contribution,snap.content_sha256 AS sourceContentSha256,snap.body_markdown AS snapshotBody
-    FROM wiki_page_sources s JOIN wiki_source_snapshots snap ON snap.id=s.source_snapshot_id
+      s.contribution,snap.content_sha256 AS sourceContentSha256,snap.body_markdown AS snapshotBody,
+      d.body_markdown AS currentBody,d.title AS currentTitle
+    FROM wiki_page_sources s LEFT JOIN wiki_source_snapshots snap ON snap.id=s.source_snapshot_id
       AND snap.source_entity_id=s.source_entity_id
+    LEFT JOIN book_documents d ON d.id=s.source_entity_id
     WHERE s.page_id IN (${placeholders}) ORDER BY s.page_id,s.created_at`).all(...ids);
-  const evidence = rows.filter((item) => quoteGrounded(item.snapshotBody, item.quote)).slice(0, 80)
-    .map((item, index) => ({ ...item, evidenceId: `e${index + 1}`, snapshotBody: undefined }));
-  return { catalog, pages, evidence };
+  const evidenceRows = [];
+  const snapshots = new Map();
+  for (const row of rows) {
+    if (quoteGrounded(row.snapshotBody, row.quote)) {
+      evidenceRows.push(row);
+      continue;
+    }
+    if (!row.currentBody) continue;
+    const page = pages.find((item) => item.id === row.pageId);
+    if (!page) continue;
+    const relevantFindings = findings.filter((finding) => (finding.pages || [])
+      .some((title) => normalize(title) === normalize(page.title)));
+    const focus = [page.title, page.summary, page.bodyMarkdown,
+      ...relevantFindings.flatMap((finding) => [finding.problem, finding.suggestion])].join("\n");
+    const quotes = bestSourceQuotes(row.currentBody, focus, page.title);
+    if (!quotes.length) continue;
+    let snapshot = snapshots.get(row.sourceId);
+    if (!snapshot) {
+      snapshot = captureWikiSourceSnapshot(workspace, row.sourceId);
+      snapshots.set(row.sourceId, snapshot);
+    }
+    for (const quote of quotes) evidenceRows.push({
+      ...row,
+      sourceSnapshotId: snapshot.id,
+      sourceContentSha256: snapshot.contentSha256,
+      snapshotBody: snapshot.bodyMarkdown,
+      quote,
+      locator: snapshot.locator,
+      contribution: "从旧 Wiki 来源中重新定位并核验的原文",
+      recovered: true,
+    });
+  }
+  const evidence = evidenceRows.filter((item) => quoteGrounded(item.snapshotBody, item.quote)).slice(0, 120)
+    .map((item, index) => ({
+      pageId: item.pageId, sourceId: item.sourceId, sourceSnapshotId: item.sourceSnapshotId,
+      sourceContentSha256: item.sourceContentSha256, quote: item.quote, locator: item.locator,
+      contribution: item.contribution, recovered: Boolean(item.recovered), evidenceId: `e${index + 1}`,
+    }));
+  return { catalog, pages, evidence, recoveredEvidenceCount: evidence.filter((item) => item.recovered).length };
 }
 
 export function validateWikiLintRepair(proposal, { context, findingIndexes = [] } = {}) {
