@@ -118,6 +118,14 @@ export const api = {
   // 洞察报告清单直接读取当前 SQLite 工作区。
   workspaceInsights: () => req("/api/workspace/insights"),
   workspaceInsight: (id) => req(`/api/workspace/insights/${encodeURIComponent(id)}`),
+  agendas: () => req("/api/workspace/agendas"),
+  createAgenda: (body) => postJson("/api/workspace/agendas", body),
+  updateAgenda: (id, body) => postJson(`/api/workspace/agendas/${encodeURIComponent(id)}/update`, body),
+  audienceProblems: () => req("/api/workspace/audience-problems"),
+  extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
+  createAudienceProblem: (body) => postJson("/api/workspace/audience-problems", body),
+  updateAudienceProblem: (id, body) => postJson(`/api/workspace/audience-problems/${encodeURIComponent(id)}/update`, body),
+  previewContentOpportunity: (body) => postJson("/api/workspace/content-opportunities/preview", body),
 
   // 洞察跑批。ready 回答「现在能不能跑、缺什么、上周挂了什么账」——
   // 这才是按钮真正省掉的事：以前要翻三个目录才能确认。

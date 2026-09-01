@@ -11,6 +11,7 @@ import { NAV_ICONS, IconInbox, IconLayoutSidebar, IconSearch, IconSettings, Icon
 import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
+import { ContentBridge } from "./pages/ContentBridge.jsx";
 import { Content } from "./pages/Content.jsx";
 import { Series } from "./pages/Series.jsx";
 import { SeriesWorkspace } from "./pages/SeriesWorkspace.jsx";
@@ -39,7 +40,7 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
-const CONTENT_VIEWS = new Set(["ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "review"]);
+const CONTENT_VIEWS = new Set(["bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "review"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
 // 知识库：词条（提炼出来的）+ 来源（书架和其他资料）
@@ -159,7 +160,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "assistant", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -722,6 +723,8 @@ export function App() {
                 />
               ) : route.view === "assistant" ? (
                 <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
+              ) : route.view === "bridge" ? (
+                <ContentBridge state={route.state} onGo={go} />
               ) : route.view === "ideas" ? (
                 <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
               ) : route.view === "seeds" ? (
