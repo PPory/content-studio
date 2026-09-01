@@ -475,7 +475,8 @@ export function assistantSearchQueries(input) {
 }
 
 export function assistantWikiMentioned(input = {}) {
-  return /(?:^|\s)@知识库(?=\s|$|[，。！？、：；])/u.test(String(input.message || ""));
+  return (Array.isArray(input.references) && input.references.some((item) => item?.kind === "knowledge" && item?.id === "knowledge-base"))
+    || /(?:^|\s)@知识库(?=\s|$|[，。！？、：；])/u.test(String(input.message || ""));
 }
 
 export function assistantRetrievalRequested(input = {}) {
@@ -530,6 +531,8 @@ export async function resolveAssistantReferences(workspace, list) {
       const source = await readSkillSource(id);
       if (!source) { resolved.push({ kind, id, title, missing: true }); continue; }
       resolved.push({ kind, id, title: title || id, body: clean(source, 20_000) });
+    } else if (kind === "knowledge" && id === "knowledge-base") {
+      resolved.push({ kind, id, title: title || "知识库" });
     }
   }
   return resolved;
@@ -596,6 +599,7 @@ export function assistantReferencePrompt(context) {
   const delegated = [];
   const blocks = items.filter((item) => !item.missing).map((item) => {
     if (item.kind === "article") return `【本轮引用的文章：${item.title}${item.stage ? `（${item.stage}）` : ""}】\n${item.body || "这篇目前还没有正文。"}`;
+    if (item.kind === "knowledge") return "";
     if (item.kind === "expert") {
       const kind = expertKindForId(item.id);
       if (kind && context.expertDelegation?.results?.some((result) => result.kind === kind)) return "";
@@ -670,7 +674,7 @@ async function localContext(env, input, record) {
     queries,
     localSources: sources.slice(0, 40),
     references: await resolveAssistantReferences(workspace, input.references),
-    retrievalMode: wikiMentioned ? "@知识库强制检索" : asksForSources ? "按需检索" : "未检索",
+    retrievalMode: wikiMentioned ? "知识库强制检索" : asksForSources ? "按需检索" : "未检索",
     wikiMentioned,
     attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
@@ -702,7 +706,7 @@ function retrievalPrompt(context) {
 function wikiMentionPrompt(context) {
   if (!context.wikiMentioned) return "";
   const count = (context.localSources || []).filter((item) => item.type === "wiki_page").length;
-  return `【@知识库】服务端已强制检索当前 Wiki，本轮命中 ${count} 个页面。回答、提问澄清和操作规划都必须以这些真实检索结果为依据；未命中时要明确说明。@知识库只是只读调用，不得自动新建、改写或删除 Wiki。`;
+  return `【本轮调用知识库】服务端已强制检索当前 Wiki，本轮命中 ${count} 个页面。回答、提问澄清和操作规划都必须以这些真实检索结果为依据；未命中时要明确说明。知识库调用只读，不得自动新建、改写或删除 Wiki。`;
 }
 /**
  * 手打 `@专家名` 的兜底。**结构化引用优先**——用户从菜单里选的那个已经由

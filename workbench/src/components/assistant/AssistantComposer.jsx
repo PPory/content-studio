@@ -1,5 +1,5 @@
 import {
-  IconCheck, IconChevronDown, IconCornerDownLeft, IconFileText, IconPlayerStopFilled, IconShieldCheck, IconSparkles, IconUserStar, IconX,
+  IconCheck, IconChevronDown, IconCornerDownLeft, IconDatabase, IconFileText, IconPlayerStopFilled, IconShieldCheck, IconSparkles, IconUserStar, IconX,
   IconModelAnthropic, IconModelDeepseek, IconModelGeneric, IconModelGoogle, IconModelMeta,
   IconModelMinimax, IconModelMistral, IconModelMoonshot, IconModelOpenai, IconModelQwen,
   IconModelXai, IconModelZhipu,
@@ -112,7 +112,7 @@ export function AssistantComposer({
       * 用户唯一的撤销手段是清空重来。
       */}
     {references.length ? <div className="assistant-references">{references.map((item) => {
-      const Icon = item.kind === "expert" ? IconUserStar : item.kind === "skill" ? IconSparkles : IconFileText;
+      const Icon = item.kind === "expert" ? IconUserStar : item.kind === "skill" ? IconSparkles : item.kind === "knowledge" ? IconDatabase : IconFileText;
       return <span key={`${item.kind}:${item.id}`}>
         <Icon aria-hidden="true" />
         <span>{item.title}</span>

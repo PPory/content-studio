@@ -1,10 +1,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { RunningMark } from "./loaders.jsx";
-import { IconArrowsExchange, IconCheck, IconCopy, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
+import { IconArrowsExchange, IconCheck, IconCopy, IconDatabase, IconFileText, IconPlus, IconPencil, IconRefresh, IconSparkles, IconUserStar, IconWand } from "../icons.jsx";
 import { ExpertActivity } from "./ExpertActivity.jsx";
 
-const REFERENCE_ICONS = { expert: IconUserStar, skill: IconSparkles };
+const REFERENCE_ICONS = { expert: IconUserStar, skill: IconSparkles, knowledge: IconDatabase };
 
 /**
  * 复制按钮：**点完必须看得见它成功了。**

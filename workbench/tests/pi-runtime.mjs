@@ -76,6 +76,8 @@ assert(skills.items.every((item) => item.source === ".agents/skills"));
 assert.equal(assistantExperts().items.length, 6);
 assert.notEqual(documentVersion({ title: "A", body: "第一版" }), documentVersion({ title: "A", body: "第二版" }));
 assert.equal(assistantWikiMentioned({ message: "请 @知识库 回答这个问题" }), true);
+assert.equal(assistantWikiMentioned({ message: "回答这个问题", references: [{ kind: "knowledge", id: "knowledge-base" }] }), true,
+  "从 + 菜单加入的结构化知识库引用必须触发真实 Wiki 检索");
 assert.equal(assistantWikiMentioned({ message: "知识库是什么" }), false, "普通提到知识库不能冒充显式 @ 调用");
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-pi-runtime-"));
@@ -103,6 +105,7 @@ try {
     { kind: "article", id: projectId, title: "用户看到的标题" },
     { kind: "expert", id: "writing-coach", title: "写作教练" },
     { kind: "skill", id: "material-gap", title: "material-gap" },
+    { kind: "knowledge", id: "knowledge-base", title: "知识库" },
     { kind: "article", id: "01NOTAREALPROJECTID0000000", title: "已经删掉的文章" },
     { kind: "skill", id: "../../../etc/passwd", title: "越界" },
   ]);
@@ -114,6 +117,7 @@ try {
   assert(byKind("skill").find((item) => item.id === "material-gap")?.body.includes("material-gap"), "引用的 Skill 必须真读到 SKILL.md");
   assert.equal(byKind("article")[1].missing, true, "找不到的引用必须标成失效，不能静默丢掉");
   assert.equal(byKind("skill").find((item) => item.id === "../../../etc/passwd")?.missing, true, "Skill id 必须挡住路径穿越");
+  assert.equal(byKind("knowledge")[0].missing, undefined, "知识库结构化引用必须被服务端识别，不能静默丢失");
   const referenceText = assistantReferencePrompt({ references });
   assert.match(referenceText, /【本轮引用的文章：隔离 Pi 项目/);
   assert.match(referenceText, /本地正文/);
@@ -387,9 +391,26 @@ try {
       return { result: { finalResponse: "已依据当前 Wiki 回答。" }, piSessionId: "wiki-mention-session", piSessionFile: "", permissionMode: "daily" };
     },
   });
-  assert.match(wikiMentionPrompt, /【@知识库】服务端已强制检索当前 Wiki，本轮命中 1 个页面/);
+  assert.match(wikiMentionPrompt, /【本轮调用知识库】服务端已强制检索当前 Wiki，本轮命中 1 个页面/);
   assert.match(wikiMentionPrompt, /批判性思维/);
-  assert.equal(wikiMentionTurn.message.retrievalMode, "@知识库强制检索");
+  assert.equal(wikiMentionTurn.message.retrievalMode, "知识库强制检索");
+
+  let structuredWikiPrompt = "";
+  const structuredWikiTurn = await runAssistantTurn(dailyEnv, {
+    scopeId: "global:wiki-reference-test",
+    message: "批判性思维应该如何审视一个判断？",
+    references: [{ kind: "knowledge", id: "knowledge-base", title: "知识库" }],
+    document: {}, materials: [], model: "test-model", permissionMode: "daily", mode: "general",
+  }, {
+    createRun: async (input) => {
+      structuredWikiPrompt = input.prompt;
+      input.onSession?.({ abort: async () => {}, dispose: () => {} }, { sessionId: "wiki-reference-session", sessionFile: "" });
+      return { result: { finalResponse: "已依据知识库引用回答。" }, piSessionId: "wiki-reference-session", piSessionFile: "", permissionMode: "daily" };
+    },
+  });
+  assert.match(structuredWikiPrompt, /【本轮调用知识库】服务端已强制检索当前 Wiki，本轮命中 1 个页面/);
+  const structuredWikiUserMessage = structuredWikiTurn.conversation.messages.find((item) => item.role === "user" && item.references?.length);
+  assert.equal(structuredWikiUserMessage.references[0].kind, "knowledge", "知识库引用发送后必须像专家引用一样留在消息记录中");
 
   const wikiCandidate = await proposeAssistantWikiPage("global:wiki-mention-test", wikiMentionTurn.conversation.id, {
     title: "批判性思维的审视框架", pageType: "synthesis", summary: "用证据、反例和适用边界审视一个判断。",

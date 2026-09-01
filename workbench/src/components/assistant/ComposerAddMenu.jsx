@@ -8,7 +8,7 @@ import { IconAt, IconDatabase, IconFileText, IconLoader2, IconPaperclip, IconPlu
  * 两个记号各是一套语义，而屏幕上没有任何东西说过它们存在；`+` 自己只开文件选择器。
  * 结果是三个能力里有两个只有知道的人才用得上，而知道的人也得先记住哪个记号对应哪个。
  *
- * 现在四件事排成一列：附件、提及文章、专家、Skill。**`@` 仍然能打**，
+ * 现在五件事排成一列：附件、知识库、提及文章、专家、Skill。**`@` 仍然能打**，
  * 但它只剩一个语义（提及），唤起的是同一个浮层——快捷键和入口指向同一个东西，
  * 不是两套并行的交互。
  */
@@ -16,6 +16,7 @@ import { IconAt, IconDatabase, IconFileText, IconLoader2, IconPaperclip, IconPlu
 /** 一级那四行。`kind: "attach"` 直接开文件选择器，其余进二级。 */
 const ROOT_ITEMS = [
   { level: "attach", icon: IconPaperclip, label: "添加图片、PDF 或文件" },
+  { level: "knowledge", kind: "knowledge", id: "knowledge-base", icon: IconDatabase, label: "知识库", hint: "检索持续维护的 Wiki 页面" },
   { level: "articles", icon: IconAt, label: "提及文章" },
   { level: "experts", icon: IconUserStar, label: "专家" },
   { level: "skills", icon: IconSparkles, label: "Skill" },
@@ -73,6 +74,7 @@ export function ComposerAddMenu({
 
   function chooseRoot(item) {
     if (item.level === "attach") { onClose(); onAttach(); return; }
+    if (item.kind) { onChoose(item); return; }
     onLevel(item.level);
   }
 
@@ -107,8 +109,8 @@ export function ComposerAddMenu({
       type="button"
       ref={triggerRef}
       className="assistant-composer__attach"
-      title={uploading ? "正在读取附件" : "添加附件、文章、专家或 Skill"}
-      aria-label={uploading ? "正在读取附件" : "添加附件、文章、专家或 Skill"}
+      title={uploading ? "正在读取附件" : "添加附件、知识库、文章、专家或 Skill"}
+      aria-label={uploading ? "正在读取附件" : "添加附件、知识库、文章、专家或 Skill"}
       aria-haspopup="menu"
       aria-expanded={open}
       disabled={disabled || uploading}
@@ -131,7 +133,7 @@ export function ComposerAddMenu({
           aria-current={position === index ? "true" : undefined}
           onMouseEnter={() => onIndex(position)}
           onClick={() => chooseRoot(item)}
-        ><Icon aria-hidden="true" /><span>{item.label}</span></button>;
+        ><Icon aria-hidden="true" /><span><b>{item.label}</b>{item.hint ? <small>{item.hint}</small> : null}</span></button>;
       }) : <>
         {/* 打字唤起时不画搜索框：要搜的字用户正打在 textarea 里，
             再给一个空搜索框等于问「你刚才打的不算数吗」。 */}

@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, SearchBox } from "../components/ui.jsx";
-import { IconChevronRight, IconSearch } from "../components/icons.jsx";
+import { IconChevronRight, IconSearch, IconTrash, IconX } from "../components/icons.jsx";
+import { ScrollToTop } from "../components/ScrollToTop.jsx";
+import { useDialog } from "../lib/use-dialog.js";
 
 const KIND_ORDER = ["书籍", "课程", "文档", "文章"];
 const KIND_HINT = {
@@ -82,6 +84,9 @@ export function Sources({ onOpen, onReview }) {
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [deleteSource, setDeleteSource] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const deleteDialogRef = useDialog(Boolean(deleteSource), () => setDeleteSource(null));
   const [showImport, setShowImport] = useState(false);
   const [importForm, setImportForm] = useState({
     mode: "file", file: null, url: "", text: "", distill: true,
@@ -196,6 +201,21 @@ export function Sources({ onOpen, onReview }) {
     finally { setBusy(""); }
   };
 
+  const trashSource = async () => {
+    if (!deleteSource || deleting) return;
+    setDeleting(true); setError(null); setNotice("");
+    try {
+      await api.trashBook(`book:${deleteSource.id}`);
+      setSelected((current) => { const next = new Set(current); next.delete(deleteSource.id); return next; });
+      setOpen((current) => { const next = new Set(current); next.delete(deleteSource.id); return next; });
+      setDocs((current) => { const next = { ...current }; delete next[deleteSource.id]; return next; });
+      setNotice(`已将「${deleteSource.title}」移入回收站`);
+      setDeleteSource(null);
+      await load();
+    } catch (failure) { setError(failure); }
+    finally { setDeleting(false); }
+  };
+
   if (error && !data) return <ErrorNote error={error} what="资料" onRetry={load} />;
   if (!data) return <Loading rows={6} />;
 
@@ -285,19 +305,23 @@ export function Sources({ onOpen, onReview }) {
                 <div key={source.id} className="src-item">
                   <div className="src-row" role="row">
                     <span><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span>
-                    <button
-                      type="button"
-                      className="src-name"
-                      aria-expanded={expanded}
-                      onClick={() => toggle(source)}
-                      title={expanded ? "收起章节" : "展开章节"}
-                    >
-                      <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />
-                      <span className="clamp">{source.title}</span>
-                      {/* 可写性和归类是两件事，所以只在「能改正文」时标出来——
-                          默认只读，标注例外比标注常态省一屏的字 */}
-                      {source.writable === "资料" ? <em className="src-tag">可改</em> : null}
-                    </button>
+                    <span className="src-name-cell">
+                      <button
+                        type="button"
+                        className="src-name"
+                        aria-expanded={expanded}
+                        onClick={() => toggle(source)}
+                        title={expanded ? "收起章节" : "展开章节"}
+                      >
+                        <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />
+                        <span className="clamp">{source.title}</span>
+                        {/* 可写性和归类是两件事，所以只在「能改正文」时标出来——
+                            默认只读，标注例外比标注常态省一屏的字 */}
+                        {source.writable === "资料" ? <em className="src-tag">可改</em> : null}
+                      </button>
+                      <button type="button" className="src-delete" aria-label={`删除来源 ${source.title}`} title="移入回收站"
+                        onClick={() => setDeleteSource(source)}><IconTrash aria-hidden="true" stroke={1.8} /></button>
+                    </span>
                     <span className="src-num">{number(source.documents)}</span>
                     <span className="src-num">{number(source.chars)}</span>
                     {source.proposed ? (
@@ -342,6 +366,25 @@ export function Sources({ onOpen, onReview }) {
           </div>
         </section>
       ))}
+      <ScrollToTop label="返回来源顶部" />
+      {deleteSource ? (
+        <div className="scrim scrim--center" onMouseDown={(event) => event.target === event.currentTarget && setDeleteSource(null)}>
+          <section className="modal wiki-delete-dialog" ref={deleteDialogRef} role="dialog" aria-modal="true" aria-labelledby="source-delete-title">
+            <header className="modal__head">
+              <div><span className="eyebrow">RAW</span><h2 id="source-delete-title">删除「{deleteSource.title}」？</h2></div>
+              <button type="button" className="icon-btn" onClick={() => setDeleteSource(null)} aria-label="关闭"><IconX aria-hidden="true" /></button>
+            </header>
+            <p className="modal__lead">这份来源及其章节、批注和高亮会从来源与书架中隐藏，之后仍可从回收站恢复。</p>
+            <footer className="modal__foot">
+              <span className="modal__hint">已有 Wiki 页面不会被删除；历史证据快照会保留。</span>
+              <div className="row-actions">
+                <button type="button" className="btn btn-sm" onClick={() => setDeleteSource(null)} disabled={deleting}>取消</button>
+                <button type="button" className="btn btn-sm btn-danger" onClick={trashSource} disabled={deleting}>{deleting ? "正在移入…" : "移入回收站"}</button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

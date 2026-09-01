@@ -528,7 +528,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     const groups = [];
     if (addLevel === "mention") {
       const knowledge = { id: "knowledge-base", label: "知识库", hint: "检索持续维护的 Wiki 页面", kind: "knowledge" };
-      if (match(knowledge)) groups.push({ key: "knowledge", label: "知识库", items: [knowledge] });
+      if (!taken.has("knowledge:knowledge-base") && match(knowledge)) groups.push({ key: "knowledge", label: "知识库", items: [knowledge] });
     }
     if (addLevel === "articles" || addLevel === "mention") groups.push({ key: "articles", label: "文章", items: pick("article", articles || []) });
     if (addLevel === "experts" || addLevel === "mention") groups.push({ key: "experts", label: "专家", items: pick("expert", experts) });
@@ -573,11 +573,6 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
 
   function chooseAddItem(item) {
     if (!item) return;
-    if (item.kind === "knowledge") {
-      dropCommandText("@知识库 ");
-      closeAdd();
-      return;
-    }
     dropCommandText();
     closeAdd();
     setReferences((current) => current.some((entry) => entry.kind === item.kind && entry.id === item.id)

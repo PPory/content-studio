@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
 import { IngestReview } from "../components/IngestReview.jsx";
+import { ScrollToTop } from "../components/ScrollToTop.jsx";
 
 const TYPE_ORDER = ["overview", "topic", "synthesis", "comparison", "concept", "method", "person", "organization", "work", "stance", "source_summary"];
 
@@ -135,6 +136,7 @@ export function Entries({ onGo, focusSourceId = "" }) {
           </aside>
         </div>
       )}
+      <ScrollToTop label="返回 Wiki 顶部" />
     </div>
   );
 }

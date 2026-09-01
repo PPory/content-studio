@@ -437,6 +437,8 @@ try {
   check("设置只展示本地工作区和本机能力", settingsText.includes("工作区") && settingsText.includes("模型") && !settingsText.includes("流水线") && !settingsText.includes("飞书"));
   await page.keyboard.press("Escape");
 
+  // 后半段用常见的 1600×640 桌面窗口验收长列表；默认测试窗口下样本来源太少，页面没有滚动空间。
+  await page.setViewportSize({ width: 1600, height: 640 });
   await page.goto(`http://127.0.0.1:${PORT}/#/entries`);
   await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
   const sourceName = page.getByRole("button", { name: "UI 证据来源", exact: true });
@@ -458,6 +460,20 @@ try {
   const sourceHeaderBox = await page.getByRole("columnheader", { name: "名称" }).boundingBox();
   const sourceNameBox = await sourceName.boundingBox();
   check("来源表头名称与内容名称处在同一列", sourceHeaderBox && sourceNameBox && Math.abs(sourceHeaderBox.x - sourceNameBox.x) < 2);
+  await page.getByRole("button", { name: "删除来源 UI 证据来源" }).click();
+  const sourceDeleteDialog = page.getByRole("dialog", { name: /删除.*UI 证据来源/ });
+  await sourceDeleteDialog.waitFor();
+  check("来源删除必须二次确认并说明 Wiki 与证据保留", (await sourceDeleteDialog.innerText()).includes("已有 Wiki 页面不会被删除")
+    && (await sourceDeleteDialog.innerText()).includes("历史证据快照会保留"));
+  await sourceDeleteDialog.getByRole("button", { name: "取消" }).click();
+  await page.getByRole("button", { name: "添加来源", exact: true }).click();
+  await page.locator(".main").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  const sourceToTop = page.getByRole("button", { name: "返回来源顶部" });
+  await sourceToTop.waitFor();
+  await sourceToTop.click();
+  await page.waitForFunction(() => document.querySelector(".main")?.scrollTop < 10);
+  check("来源列表滚动后提供悬浮返回顶部按钮", await sourceToTop.count() === 0);
+  await page.getByRole("button", { name: "添加来源", exact: true }).click();
 
   const selectAllArticles = page.getByRole("checkbox", { name: "全选文章" });
   await selectAllArticles.click();
@@ -540,6 +556,12 @@ try {
     && (await page.getByRole("heading", { name: "连接" }).count()) === 1
     && (await page.getByRole("heading", { name: "依据" }).count()) === 1
     && (await page.getByRole("heading", { name: "演化" }).count()) === 1);
+  await page.locator(".main").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  const wikiToTop = page.getByRole("button", { name: "返回 Wiki 页面顶部" });
+  await wikiToTop.waitFor();
+  await wikiToTop.click();
+  await page.waitForFunction(() => document.querySelector(".main")?.scrollTop < 10);
+  check("Wiki 页面滚动后提供悬浮返回顶部按钮", await wikiToTop.count() === 0);
   await page.getByRole("button", { name: "删除页面", exact: true }).click();
   const deleteDialog = page.getByRole("dialog", { name: /删除“?「?来源精准跳转/ });
   await deleteDialog.waitFor();
@@ -560,11 +582,14 @@ try {
   await page.goto("http://127.0.0.1:" + PORT + "/#/assistant");
   const assistantInput = page.getByPlaceholder("问任何问题，或直接输入本地项目路径");
   await assistantInput.waitFor();
-  await assistantInput.fill("@");
-  const knowledgeMention = page.getByRole("menuitem", { name: /知识库.*检索持续维护的 Wiki 页面/ });
-  await knowledgeMention.waitFor();
-  await knowledgeMention.click();
-  check("AI 助手可从 @ 菜单显式调用知识库", await assistantInput.inputValue() === "@知识库 ");
+  await page.getByRole("button", { name: "添加附件、知识库、文章、专家或 Skill" }).click();
+  const knowledgeMenuItem = page.getByRole("menuitem", { name: /知识库.*检索持续维护的 Wiki 页面/ });
+  await knowledgeMenuItem.waitFor();
+  await knowledgeMenuItem.click();
+  const knowledgeReference = page.locator(".assistant-references").getByText("知识库", { exact: true });
+  check("AI 助手可从 + 菜单调用知识库并像专家一样显示引用标签", await knowledgeReference.count() === 1
+    && await page.getByRole("button", { name: "移除引用 知识库" }).count() === 1
+    && await assistantInput.inputValue() === "");
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}\n Wiki 首页：${wikiHomeShotFile}\n Wiki 页面：${wikiArticleShotFile}`);

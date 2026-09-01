@@ -4,6 +4,7 @@ import { ErrorNote, Loading } from "../components/ui.jsx";
 import { IconArrowLeft, IconChevronRight, IconTrash, IconX } from "../components/icons.jsx";
 import { renderMarkdown } from "../lib/markdown.js";
 import { useDialog } from "../lib/use-dialog.js";
+import { ScrollToTop } from "../components/ScrollToTop.jsx";
 
 function dateTime(value) {
   if (!value) return "";
@@ -122,6 +123,7 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource }) {
           </section>
         </div>
       ) : null}
+      <ScrollToTop label="返回 Wiki 页面顶部" />
     </div>
   );
 }
