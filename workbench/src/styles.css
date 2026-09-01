@@ -6805,20 +6805,23 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-row > span:first-child input { width: 15px; height: 15px; accent-color: var(--accent); }
 .src-doc-action { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .src-doc-action .link-btn { flex: none; font-size: var(--fs-2xs); }
+.src-review-link { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: var(--fs-xs); cursor: pointer; }
+.src-review-link:hover > span:last-child { text-decoration: underline; }
 
-.ing { margin: 0 0 20px; border-top: 2px solid var(--accent); background: var(--surface); }
-.ing__head { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 12px 4px; font-size: var(--fs-base); }
+.ing { margin: 0 0 24px; border-top: 1px solid var(--border-strong); background: transparent; }
+.ing__head { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 14px 4px 10px; font-size: var(--fs-base); }
 .ing__head em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-weight: 400; }
 .ing__item { border-top: 1px solid var(--border); }
-.ing__row { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(180px, auto) auto; gap: 16px; align-items: center; min-height: 54px; }
-.ing__title { min-width: 0; padding: 8px 4px; border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+.ing__row { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, auto) auto; gap: 20px; align-items: center; min-height: 66px; }
+.ing__title { min-width: 0; padding: 10px 4px; border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
 .ing__title b, .ing__title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ing__title b { margin-bottom: 3px; font-size: var(--fs-base); }
 .ing__title span, .ing__counts { color: var(--text-3); font-size: var(--fs-xs); }
 .ing__actions { display: flex; gap: 6px; }
-.ing__actions button { min-height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.ing__actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
 .ing__actions .is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .ing__actions button:disabled { opacity: .5; cursor: not-allowed; }
-.ing__body { padding: 4px 4px 14px; }
+.ing__body { padding: 0 4px 16px; }
 .ing__choice { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px; padding: 10px 0; border-top: 1px dashed var(--border); cursor: pointer; }
 .ing__choice.is-off { opacity: .48; }
 .ing__choice input { margin-top: 3px; accent-color: var(--accent); }
@@ -6836,10 +6839,16 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__page-change summary { cursor: pointer; color: var(--text-2); }
 .ing__page-change pre { max-height: 280px; overflow: auto; white-space: pre-wrap; padding: 10px; background: var(--surface-2); color: var(--text-2); font: 12px/1.65 var(--font-mono); }
 .ing__page-change details > b { display: block; margin-top: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
-.ing__item--lint .ing__row { grid-template-columns: minmax(320px, 1fr) auto auto; }
+.ing__item--lint .ing__row { grid-template-columns: minmax(360px, 1fr) auto auto; }
 .ing__item--lint .ing__body { padding-top: 0; }
 .ing__findings { list-style: none; margin: 0; padding: 0; }
-.ing__finding { display: grid; gap: 7px; padding: 15px 0; border-top: 1px dashed var(--border); }
+.ing__finding { padding: 0; border-top: 1px dashed var(--border); }
+.ing__finding > label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 16px 0; cursor: pointer; }
+.ing__finding > label > input { margin-top: 3px; accent-color: var(--accent); }
+.ing__finding > label > span, .ing__finding-static { display: grid; gap: 7px; }
+.ing__finding.is-off { opacity: .48; }
+.ing__finding.is-blocked { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+.ing__finding-static { padding: 16px 12px; }
 .ing__finding-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ing__finding-head b { font-size: var(--fs-sm); }
 .ing__finding-level { flex: none; padding: 2px 7px; border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 650; }
@@ -6850,6 +6859,10 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__finding p { max-width: 980px; margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
 .ing__finding .ing__finding-suggestion { color: var(--text-3); }
 .ing__finding-suggestion span { margin-right: 8px; color: var(--text-2); font-weight: 600; }
+.ing__finding-blocked { flex: none; padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--r-pill); color: var(--text-3); font-size: var(--fs-2xs); }
+.ing__finding .ing__finding-reason { color: var(--warn); font-size: var(--fs-xs); }
+.ing__repair-status { margin: -1px 0 0; padding: 10px 4px; border-top: 1px dashed var(--border); color: var(--text-3); font-size: var(--fs-xs); }
+.ing__repair-status.is-error { color: var(--danger); }
 
 .entry-health { display: flex; width: 100%; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
 .entry-health span { color: var(--accent); }
@@ -6941,8 +6954,10 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-pulse span { color: var(--text-3); font-size: var(--fs-xs); }
 .wiki-pulse .is-warn b { color: var(--warn); }
 
-.wiki-notice { max-width: 620px; margin: 16px 0 0; }
-.wiki-notice .note { margin: 0; }
+.wiki-notice { max-width: 760px; margin: 14px 0 0; }
+.wiki-notice .note { margin: 0; padding: 2px 0 2px 12px; border: 0; border-left: 2px solid var(--border-strong); border-radius: 0; background: transparent; }
+.wiki-notice .note-title { font-size: var(--fs-sm); }
+.wiki-notice .note-hint { margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); }
 .wiki-toolbar { display: flex; align-items: center; gap: 24px; margin: 26px 0 22px; }
 .wiki-toolbar .search-box { flex: 0 1 520px; width: min(520px, 100%); }
 .wiki-toolbar p { margin: 0 0 0 auto; color: var(--text-3); font-size: var(--fs-xs); }

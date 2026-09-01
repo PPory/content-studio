@@ -778,11 +778,11 @@ export function App() {
                   setOpenTarget("shelf", `bookdoc:${doc.id}`);
                   setOpenTarget("shelf-return", "返回来源|#/sources");
                   go("shelf", `book:${source.id}`);
-                }} />
+                }} onReview={(sourceId) => go("entries", `review:${sourceId}`)} />
               ) : route.view === "entries" ? (
                 // `#/entries/<id>` 是同一条路由的第二段，不另开一个 view——
                 // 词条详情是列表的下一层，不是并列的另一页。
-                route.state ? (
+                route.state && !route.state.startsWith("review:") ? (
                   <EntryDetail
                     entryId={route.state}
                     onBack={() => go("entries")}
@@ -801,7 +801,7 @@ export function App() {
                     }}
                   />
                 ) : (
-                  <Entries onGo={(target) => {
+                  <Entries focusSourceId={String(route.state || "").startsWith("review:") ? route.state.slice("review:".length) : ""} onGo={(target) => {
                     const value = String(target);
                     if (value.startsWith("entries/")) go("entries", value.slice("entries/".length));
                     else go(value);

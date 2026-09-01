@@ -1,4 +1,9 @@
-import { compileSourceToWiki, lintWikiNetwork } from "../domain/wiki-pages.mjs";
+import {
+  compileSourceToWiki,
+  lintFindingRepairability,
+  lintWikiNetwork,
+  proposeWikiLintRepair,
+} from "../domain/wiki-pages.mjs";
 
 /**
  * 一次提炼一份来源。**队列在库里，不在内存**——工作台随时可能关掉，
@@ -52,6 +57,44 @@ async function lintOne(workspace, env, payload) {
   });
   return { mode, candidateId: candidate.id, findings: judged.findings.length };
 }
+
+async function repairLintReport(workspace, env, payload) {
+  const reportCandidateId = String(payload?.reportCandidateId || "");
+  const findingIndexes = [...new Set((payload?.findingIndexes || []).map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0))].slice(0, 5);
+  if (!reportCandidateId || !findingIndexes.length) throw new Error("体检修订需要报告和所选问题");
+  const report = workspace.domain.actions.get(reportCandidateId);
+  if (!report || report.status !== "proposed" || report.payload?.kind !== "wiki.lint.report") {
+    return { canceled: true, reason: "体检报告已经处理或不存在" };
+  }
+  const findings = findingIndexes.map((index) => report.payload.findings?.[index]).filter(Boolean);
+  if (findings.length !== findingIndexes.length || findings.some((finding) => !lintFindingRepairability(finding).repairable)) {
+    throw new Error("所选体检问题中包含不能直接生成修订的项目");
+  }
+  const proposal = await proposeWikiLintRepair(workspace, env, { findings, findingIndexes });
+  if (proposal.empty) throw new Error("没有生成通过证据校验的页面修订，请缩小范围后重试");
+  return workspace.repository.transaction(() => {
+    const current = workspace.domain.actions.get(reportCandidateId);
+    if (!current || current.status !== "proposed") return { canceled: true, reason: "体检报告已经处理" };
+    const candidate = workspace.domain.actions.propose({
+      actionType: "wiki.pages.apply",
+      targetId: null,
+      payload: { ...proposal, reportCandidateId },
+      proposedBy: "ai",
+    });
+    const now = new Date();
+    workspace.domain.actions.confirm(reportCandidateId, { now });
+    workspace.domain.actions.markApplied(reportCandidateId, {
+      result: { repairCandidateId: candidate.id, pages: proposal.pages.length },
+      now,
+    });
+    workspace.domain.audit("wiki.lint_repair_proposed", null, {
+      reportCandidateId, repairCandidateId: candidate.id,
+      findingIndexes, pages: proposal.pages.length,
+    }, now);
+    return { reportCandidateId, candidateId: candidate.id, pages: proposal.pages.length };
+  });
+}
 /**
  * 旧版本曾把任务参数读错，任务耗尽重试后 `source_ingests` 仍会停在 queued。
  * 启动时只恢复「没有存活任务」的排队记录，已有 queued/retry/running 任务不重复创建。
@@ -85,6 +128,8 @@ export function createDefaultJobHandlers(workspace, env = {}) {
     },
 
     "wiki.lint": async (payload) => lintOne(workspace, env, payload),
+
+    "wiki.lint.repair": async (payload) => repairLintReport(workspace, env, payload),
 
     "pipeline.dispatch": async () => {
       const captures = workspace.db.prepare(`SELECT c.id FROM captures c

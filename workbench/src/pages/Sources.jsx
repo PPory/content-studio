@@ -72,7 +72,7 @@ function GroupSelectAll({ kind, items, selected, onToggle }) {
     />
   );
 }
-export function Sources({ onOpen }) {
+export function Sources({ onOpen, onReview }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
@@ -289,7 +289,11 @@ export function Sources({ onOpen }) {
                     </button>
                     <span className="src-num">{number(source.documents)}</span>
                     <span className="src-num">{number(source.chars)}</span>
-                    <span className={`src-state src-state--${state.tone}`}>{state.label}</span>
+                    {source.proposed ? (
+                      <button type="button" className="src-review-link" onClick={() => onReview?.(source.id)} aria-label={`审阅 ${source.title} 的 Wiki 编译候选`}>
+                        <span className={`src-state src-state--${state.tone}`}>{state.label}</span><span>去审阅</span>
+                      </button>
+                    ) : <span className={`src-state src-state--${state.tone}`}>{state.label}</span>}
                     <span className="src-num src-num--strong">{source.citedPages ? number(source.citedPages) : "—"}</span>
                   </div>
 
@@ -314,6 +318,7 @@ export function Sources({ onOpen }) {
                                 : "未编译"}
                             </span>
                             {["", "failed", "rejected"].includes(doc.ingestStatus) ? <button type="button" className="link-btn" disabled={!!busy} onClick={() => queue({ documentIds: [doc.id], retry: doc.ingestStatus !== "", key: doc.id })}>{busy === doc.id ? "排队…" : doc.ingestStatus ? "重试" : "编译"}</button> : null}
+                            {doc.ingestStatus === "proposed" ? <button type="button" className="link-btn" onClick={() => onReview?.(doc.id)}>去审阅</button> : null}
                           </span>
                           <span className="src-num src-num--strong">{doc.citedPages ? number(doc.citedPages) : "—"}</span>
                         </div>

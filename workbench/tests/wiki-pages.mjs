@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createBookRecord } from "../server/routes/books-local.mjs";
+import { createDefaultJobHandlers } from "../server/jobs/default-job-handlers.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import {
   applyExplorationPage,
   applyWikiCompile,
   captureWikiSourceSnapshot,
   splitSourceForReading,
+  validateWikiLintRepair,
   validateWikiCompile,
   wikiIndex,
   wikiPage,
@@ -17,6 +20,7 @@ import {
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-wiki-pages-"));
 let workspace;
+let modelServer;
 const check = (name, value) => {
   assert(value, name);
   console.log(` ✓ ${name}`);
@@ -137,6 +141,68 @@ try {
   }] }, { source: { body: sourceB.body }, catalog: wikiIndex(workspace).pages, existingPages: [] });
   check("完整 Wiki 页面仍必须通过 Raw 逐字证据硬闸", bad.pages.length === 0 && bad.rejected.length >= 1);
 
+  const currentConcept = wikiPage(workspace, concept.id);
+  const lintEvidence = workspace.db.prepare(`SELECT s.source_entity_id AS sourceId,s.source_snapshot_id AS sourceSnapshotId,
+      s.source_quote AS quote,s.source_locator AS locator,s.contribution,snap.content_sha256 AS sourceContentSha256
+    FROM wiki_page_sources s JOIN wiki_source_snapshots snap ON snap.id=s.source_snapshot_id
+    WHERE s.page_id=? ORDER BY s.created_at`).all(concept.id);
+  const lintContext = {
+    catalog: wikiIndex(workspace).pages,
+    pages: [{
+      id: concept.id, title: currentConcept.page.title, pageType: currentConcept.page.pageType,
+      summary: currentConcept.page.summary, bodyMarkdown: currentConcept.page.bodyMarkdown,
+      revision: currentConcept.page.revision, links: [],
+    }],
+    evidence: lintEvidence.map((evidence, index) => ({ evidenceId: `e${index + 1}`, pageId: concept.id, ...evidence })),
+  };
+  const lintBody = `${currentConcept.page.bodyMarkdown}\n\n## 与来源资料卡的连接\n\n体检补充了从当前认识返回原始证据的明确导航，已有判断保持不变。`;
+  const lintRawProposal = {
+    repairSummary: "补齐知识页面与来源资料卡之间的连接。",
+    pages: [{
+      findingIndexes: [0], pageId: concept.id, title: currentConcept.page.title,
+      pageType: currentConcept.page.pageType, summary: currentConcept.page.summary,
+      bodyMarkdown: lintBody, changeSummary: "补齐来源导航",
+      evidenceIds: lintEvidence.map((_, index) => `e${index + 1}`),
+      links: [{ toTitle: "来源：持续编译 · 知识为什么会复利", relation: "依据来自", why: "让当前认识可回到 Raw 证据" }],
+    }],
+  };
+  const validatedRepair = validateWikiLintRepair(lintRawProposal, { context: lintContext, findingIndexes: [0] });
+  check("体检建议只能生成带现有来源证据的整页修订", validatedRepair.pages.length === 1
+    && validatedRepair.pages[0].citations[0].sourceSnapshotId === lintEvidence[0].sourceSnapshotId);
+  const badRepair = validateWikiLintRepair({ ...lintRawProposal, pages: [{ ...lintRawProposal.pages[0], evidenceIds: ["unknown"] }] }, { context: lintContext, findingIndexes: [0] });
+  check("体检修订不能引用模型自行编造的证据编号", badRepair.pages.length === 0 && badRepair.rejected.length === 1);
+  modelServer = http.createServer((request, response) => {
+    request.resume();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(lintRawProposal) } }] }));
+  });
+  await new Promise((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
+  const reportCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.lint.review", targetId: null, proposedBy: "ai",
+    payload: {
+      kind: "wiki.lint.report", mode: "network", deterministic: {},
+      findings: [{ type: "missing_link", pages: [currentConcept.page.title], problem: "页面缺少返回来源的连接", suggestion: "补充可核验的来源导航" }],
+    },
+  });
+  const repairResult = await createDefaultJobHandlers(workspace, {
+    AGENT_INGEST_BASE_URL: `http://127.0.0.1:${modelServer.address().port}`,
+    AGENT_INGEST_API_KEY: "local-test-key", AGENT_INGEST_MODEL: "local-test-model",
+  })["wiki.lint.repair"]({ reportCandidateId: reportCandidate.id, findingIndexes: [0] });
+  const generatedRepair = workspace.domain.actions.get(repairResult.candidateId);
+  check("体检修订任务完成后关闭原报告并留下可审阅候选", workspace.domain.actions.get(reportCandidate.id).status === "applied"
+    && generatedRepair.status === "proposed" && generatedRepair.payload.kind === "wiki.repair");
+  workspace.domain.actions.reject(generatedRepair.id);
+  await new Promise((resolve) => modelServer.close(resolve));
+  modelServer = null;
+  const lintApplied = applyWikiCompile(workspace, {
+    operation: "lint",
+    proposal: { kind: "wiki.repair", title: "全库体检修订", repairSummary: validatedRepair.repairSummary, pages: validatedRepair.pages },
+    now: new Date(now.getTime() + 2_500),
+  });
+  check("确认体检修订后才原子写入页面新版本与体检 Log", lintApplied.updated === 1
+    && wikiPage(workspace, concept.id).page.revision === 3 && wikiIndex(workspace).log[0].operation === "lint"
+    && wikiIndex(workspace).log[0].summary.includes("补齐知识页面"));
+
   const exploration = applyExplorationPage(workspace, {
     title: "持久状态与知识复利", pageType: "synthesis",
     summary: "综合说明状态保存和知识编译为何必须同时存在。",
@@ -150,6 +216,7 @@ try {
   check("隔离工作区数据库完整性仍通过", workspace.check().ok);
   console.log("\n ✓ LLM Wiki 页面、增量编译、版本、引用、连接和探索复利全部通过");
 } finally {
+  if (modelServer) await new Promise((resolve) => modelServer.close(resolve));
   workspace?.close();
   await fs.rm(root, { recursive: true, force: true });
 }

@@ -2,7 +2,13 @@
 
 import crypto from "node:crypto";
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { applyWikiCompile, wikiIndex, wikiPage, wikiHealth } from "../domain/wiki-pages.mjs";
+import {
+  applyWikiCompile,
+  lintFindingRepairability,
+  wikiIndex,
+  wikiPage,
+  wikiHealth,
+} from "../domain/wiki-pages.mjs";
 
 function guard(handler) {
   return async (context) => {
@@ -273,7 +279,7 @@ export const wikiRoutes = [
   { method: "GET", path: "/api/workspace/knowledge/candidates", handler: guard(async ({ workspace, res }) => {
     const rows = workspace.db.prepare(`
       SELECT c.id, c.action_type AS actionType, c.target_id AS sourceId, c.payload_json AS payloadJson, c.proposed_at AS proposedAt,
-        COALESCE(t.title, '') AS sourceTitle, COALESCE(b.title, '') AS bookTitle
+        COALESCE(t.title, '') AS sourceTitle, COALESCE(b.title, '') AS bookTitle, COALESCE(d.book_id, '') AS sourceBookId
       FROM action_candidates c
       LEFT JOIN entity_text t ON t.entity_id = c.target_id
       LEFT JOIN book_documents d ON d.id = c.target_id
@@ -285,23 +291,71 @@ export const wikiRoutes = [
     for (const row of rows) {
       let payload;
       try { payload = JSON.parse(row.payloadJson); } catch { continue; }
-      if (!["wiki.compile", "wiki.lint.report"].includes(payload?.kind)) continue;
+      if (!["wiki.compile", "wiki.lint.report", "wiki.repair"].includes(payload?.kind)) continue;
       if (payload.kind === "wiki.compile") {
         candidates.push({
-          id: row.id, type: "compile", sourceId: row.sourceId, sourceTitle: row.sourceTitle,
+          id: row.id, type: "compile", sourceId: row.sourceId, sourceBookId: row.sourceBookId, sourceTitle: row.sourceTitle,
           bookTitle: row.bookTitle, proposedAt: row.proposedAt, model: payload.model || "",
           readMode: payload.readMode, chunksRead: payload.chunksRead || 1,
           compilationSummary: payload.compilationSummary || "", pages: payload.pages || [],
           rejected: payload.rejected || [],
         });
       } else if (payload.kind === "wiki.lint.report") {
+        const repairJob = workspace.db.prepare(`SELECT status,last_error AS error FROM local_jobs
+          WHERE deleted_at IS NULL AND kind='wiki.lint.repair'
+            AND json_extract(payload_json, '$.reportCandidateId')=?
+          ORDER BY created_at DESC LIMIT 1`).get(row.id);
         candidates.push({
           id: row.id, type: "wiki-lint", mode: "network", sourceTitle: "全库体检",
-          proposedAt: row.proposedAt, findings: payload.findings || [], deterministic: payload.deterministic || {},
+          proposedAt: row.proposedAt,
+          findings: (payload.findings || []).map((finding) => ({ ...finding, ...lintFindingRepairability(finding) })),
+          deterministic: payload.deterministic || {}, repairStatus: repairJob?.status || "", repairError: repairJob?.error || "",
+        });
+      } else if (payload.kind === "wiki.repair") {
+        candidates.push({
+          id: row.id, type: "repair", sourceTitle: "体检修订候选", proposedAt: row.proposedAt,
+          model: payload.model || "", repairSummary: payload.repairSummary || "",
+          reportCandidateId: payload.reportCandidateId || "", selectedFindings: payload.selectedFindings || [],
+          pages: payload.pages || [], rejected: payload.rejected || [], unresolved: payload.unresolved || [],
         });
       }
     }
     json(res, { ok: true, candidates });
+  }) },
+
+  { method: "POST", path: "/api/workspace/knowledge/candidates/:id/repair", handler: guard(async ({ workspace, req, res, params }) => {
+    const body = await readJsonBody(req);
+    const candidate = workspace.domain.actions.get(params.id);
+    if (!candidate || candidate.status !== "proposed" || candidate.payload?.kind !== "wiki.lint.report") {
+      throw Object.assign(new Error("这份体检报告已经处理过了"), { status: 409 });
+    }
+    const findingIndexes = [...new Set((body.include || []).map(String)
+      .filter((key) => key.startsWith("findings:"))
+      .map((key) => Number(key.slice("findings:".length)))
+      .filter((index) => Number.isInteger(index) && index >= 0 && candidate.payload.findings?.[index]))].slice(0, 5);
+    if (!findingIndexes.length) throw new Error("请先选择要处理的体检问题");
+    const blocked = findingIndexes.map((index) => ({ index, ...lintFindingRepairability(candidate.payload.findings[index]) }))
+      .filter((item) => !item.repairable);
+    if (blocked.length) throw new Error(blocked[0].reason);
+    const live = workspace.db.prepare(`SELECT id,status,last_error AS error FROM local_jobs
+      WHERE deleted_at IS NULL AND kind='wiki.lint.repair' AND status IN ('queued','retry','running')
+        AND json_extract(payload_json, '$.reportCandidateId')=? ORDER BY created_at DESC LIMIT 1`).get(params.id);
+    if (live) return json(res, { ok: true, queued: 0, selected: findingIndexes.length, status: live.status });
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify(findingIndexes)).digest("hex").slice(0, 16);
+    const baseKey = `wiki.lint.repair:${params.id}:${fingerprint}`;
+    let queued = workspace.jobs.enqueue({
+      idempotencyKey: baseKey,
+      kind: "wiki.lint.repair",
+      payload: { reportCandidateId: params.id, findingIndexes },
+    });
+    if (!queued.created && !["queued", "retry", "running"].includes(queued.job.status)) {
+      queued = workspace.jobs.enqueue({
+        idempotencyKey: `${baseKey}:${crypto.randomUUID()}`,
+        kind: "wiki.lint.repair",
+        payload: { reportCandidateId: params.id, findingIndexes },
+      });
+    }
+    json(res, { ok: true, queued: queued.created ? 1 : 0, selected: findingIndexes.length, status: queued.job.status });
   }) },
 
   { method: "POST", path: "/api/workspace/knowledge/candidates/:id", handler: guard(async ({ workspace, req, res, params }) => {
@@ -309,7 +363,7 @@ export const wikiRoutes = [
     const candidate = workspace.domain.actions.get(params.id);
     if (!candidate || candidate.status !== "proposed") throw Object.assign(new Error("这条提案已经处理过了"), { status: 409 });
     const payload = candidate.payload;
-    if (!["wiki.compile", "wiki.lint.report"].includes(payload?.kind)) throw new Error("这是旧版原子候选，请重新编译为完整 Wiki 页面");
+    if (!["wiki.compile", "wiki.lint.report", "wiki.repair"].includes(payload?.kind)) throw new Error("这是旧版原子候选，请重新编译为完整 Wiki 页面");
     if (body.action === "reject") {
       workspace.repository.transaction(() => {
         workspace.domain.actions.reject(params.id);
@@ -323,28 +377,23 @@ export const wikiRoutes = [
       return json(res, { ok: true, rejected: true });
     }
     if (body.action !== "accept") throw new Error("处理方式只能是 accept 或 reject");
+    if (payload.kind === "wiki.lint.report") throw new Error("体检报告不能直接写入 Wiki，请先生成修订候选");
 
     const now = new Date();
     const applied = workspace.repository.transaction(() => {
       let result;
-      if (payload.kind === "wiki.compile") {
+      if (["wiki.compile", "wiki.repair"].includes(payload.kind)) {
         const proposal = selectedProposal(payload, body.include);
         if (!proposal.pages?.length) throw new Error("至少保留一个页面变更");
         workspace.domain.actions.confirm(params.id, { now });
-        result = applyWikiCompile(workspace, { proposal, candidateId: params.id, operation: "ingest", actor: "user", now });
-        workspace.db.prepare("UPDATE source_ingests SET status='applied', candidate_id=?, error='' WHERE source_entity_id=?").run(params.id, payload.sourceId);
-      } else if (payload.kind === "wiki.lint.report") {
-        workspace.domain.actions.confirm(params.id, { now });
-        const stamp = now.toISOString();
-        const schemaVersion = workspace.db.prepare("SELECT version FROM wiki_schema_versions WHERE is_active=1").get().version;
-        const changeSetId = crypto.randomUUID();
-        workspace.db.prepare(`INSERT INTO wiki_change_sets(id,operation,candidate_id,title,summary,schema_version,status,created_at,applied_at)
-          VALUES (?,'lint',?,'全库体检',?,?,'applied',?,?)`)
-          .run(changeSetId, params.id, `发现 ${payload.findings?.length || 0} 项语义问题`, schemaVersion, stamp, stamp);
-        workspace.db.prepare(`INSERT INTO wiki_operation_log(id,change_set_id,operation,title,summary,created_at)
-          VALUES (? ,?,'lint','全库体检',?,?)`)
-          .run(crypto.randomUUID(), changeSetId, `发现 ${payload.findings?.length || 0} 项语义问题，报告已审阅`, stamp);
-        result = { findings: payload.findings?.length || 0, reviewed: true };
+        result = applyWikiCompile(workspace, {
+          proposal, candidateId: params.id,
+          operation: payload.kind === "wiki.compile" ? "ingest" : "lint",
+          actor: "user", now,
+        });
+        if (payload.kind === "wiki.compile") {
+          workspace.db.prepare("UPDATE source_ingests SET status='applied', candidate_id=?, error='' WHERE source_entity_id=?").run(params.id, payload.sourceId);
+        }
       }
       workspace.domain.actions.markApplied(params.id, { result, now });
       workspace.domain.audit("wiki.candidate_applied", payload.sourceId || payload.entryId || candidate.targetId, {

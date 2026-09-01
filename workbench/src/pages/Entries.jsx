@@ -12,7 +12,7 @@ function when(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }
 
-export function Entries({ onGo }) {
+export function Entries({ onGo, focusSourceId = "" }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
@@ -81,7 +81,7 @@ export function Entries({ onGo }) {
           <Note tone="default" title={notice.title}>{notice.detail}</Note>
         </div>
       ) : null}
-      <IngestReview onDone={load} />
+      <IngestReview onDone={load} focusSourceId={focusSourceId} />
 
       <div className="wiki-toolbar">
         <SearchBox value={query} onChange={setQuery} placeholder="搜索页面、主题或来源" ariaLabel="搜索 Wiki" />

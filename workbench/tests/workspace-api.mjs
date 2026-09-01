@@ -514,6 +514,45 @@ try {
   const lint = await call(base, "/api/workspace/knowledge/lint");
   check("体检返回 Wiki 网络的确定性健康状态", lint.value.wiki.total === 2 && lint.value.wiki.missingCitations === 0);
 
+  const reviewCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.pages.apply", targetId: bookDocumentId, payload: wikiPayload,
+    proposedBy: "ai", now: new Date(),
+  });
+  const lintCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.lint.review", targetId: null, proposedBy: "ai", now: new Date(),
+    payload: {
+      kind: "wiki.lint.report", mode: "network", deterministic: { orphans: 0, missingCitations: 0 },
+      findings: [
+        { type: "missing_link", pages: ["完整 Wiki 页面", "来源：本地资料"], problem: "两个相关页面缺少返回连接", suggestion: "建立双向导航" },
+        { type: "source_gap", pages: ["完整 Wiki 页面"], problem: "一项时效性判断缺少新证据", suggestion: "补充最新可靠来源" },
+      ],
+    },
+  });
+  const candidates = await call(base, "/api/workspace/knowledge/candidates");
+  const listedCompile = candidates.value.candidates.find((item) => item.id === reviewCandidate.id);
+  const listedReport = candidates.value.candidates.find((item) => item.id === lintCandidate.id);
+  check("来源待审阅候选带有准确的文档和书籍落点", listedCompile?.sourceId === bookDocumentId && listedCompile?.sourceBookId);
+  check("体检报告区分可生成修订和必须补来源的问题", listedReport?.findings[0].repairable === true
+    && listedReport?.findings[1].repairable === false && listedReport?.findings[1].reason.includes("可靠来源"));
+  const blockedLintRepair = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}/repair`, {
+    method: "POST", body: { include: ["findings:1"] },
+  });
+  check("来源不足的问题不能绕过证据硬闸直接生成修订", blockedLintRepair.response.status === 400);
+  const directApplyReport = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}`, {
+    method: "POST", body: { action: "accept" },
+  });
+  check("体检报告不能冒充修改直接写入 Wiki", directApplyReport.response.status === 400
+    && workspace.domain.actions.get(lintCandidate.id).status === "proposed");
+  const queuedRepair = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}/repair`, {
+    method: "POST", body: { include: ["findings:0"] },
+  });
+  const duplicateRepair = await call(base, `/api/workspace/knowledge/candidates/${lintCandidate.id}/repair`, {
+    method: "POST", body: { include: ["findings:0"] },
+  });
+  const repairJobs = workspace.db.prepare(`SELECT COUNT(*) AS count FROM local_jobs
+    WHERE kind='wiki.lint.repair' AND json_extract(payload_json, '$.reportCandidateId')=?`).get(lintCandidate.id).count;
+  check("体检修订进入持久队列且重复点击不会重复排队", queuedRepair.value.ok && duplicateRepair.value.ok && repairJobs === 1);
+
   check("隔离工作区数据库完整性检查通过", workspace.check().ok);
 
   console.log("\n ✓ 阶段 3 本地工作区 API、并发保存、资源字节和扩展幂等全部通过");

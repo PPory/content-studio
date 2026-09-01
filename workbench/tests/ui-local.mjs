@@ -116,6 +116,29 @@ try {
       ],
     },
   });
+  const reviewPage = workspace.db.prepare(`SELECT id,title,page_type AS pageType,summary,body_markdown AS bodyMarkdown,current_revision AS revision
+    FROM wiki_pages WHERE title='来源精准跳转'`).get();
+  const sourceReviewCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.pages.apply", targetId: evidenceDocId, proposedBy: "ai",
+    payload: {
+      kind: "wiki.compile", sourceId: evidenceDocId, sourceSnapshotId: evidenceSnapshot.id,
+      sourceContentSha256: evidenceSnapshot.contentSha256, sourceLocator: "UI 证据来源 · 证据章节",
+      title: "编译 UI 证据来源", compilationSummary: "把新的来源导航建议编入既有页面。",
+      readMode: "full", chunksRead: 1, model: "ui-test",
+      pages: [{
+        pageId: reviewPage.id, expectedRevision: reviewPage.revision, action: "update",
+        title: reviewPage.title, pageType: reviewPage.pageType, summary: reviewPage.summary,
+        bodyMarkdown: `${reviewPage.bodyMarkdown}\n\n## 审阅候选\n\n这段内容只有确认后才会进入页面。`,
+        beforeBodyMarkdown: reviewPage.bodyMarkdown, changeSummary: "验证来源页可以直达对应审阅候选",
+        citations: [{ sourceId: evidenceDocId, sourceSnapshotId: evidenceSnapshot.id, sourceContentSha256: evidenceSnapshot.contentSha256, quote: evidenceQuote, contribution: "支撑准确定位" }],
+        links: [{ toTitle: "来源：UI 证据来源 · 证据章节", relation: "依据来自", why: "方法由该 Raw 支撑" }],
+      }], rejected: [],
+    },
+  });
+  workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,candidate_id,source_content_sha256,run_at)
+    VALUES (?,'proposed',?,?,?) ON CONFLICT(source_entity_id) DO UPDATE SET status='proposed',candidate_id=excluded.candidate_id,
+      source_content_sha256=excluded.source_content_sha256,error='',run_at=excluded.run_at`)
+    .run(evidenceDocId, sourceReviewCandidate.id, evidenceSnapshot.contentSha256, new Date().toISOString());
   const wikiPagesBeforeReview = workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count;
   workspace.domain.actions.propose({
     actionType: "wiki.lint.review", targetId: null, proposedBy: "ai",
@@ -127,6 +150,11 @@ try {
           type: "missing_link", pages: ["来源精准跳转", "来源：UI 证据来源 · 证据章节"],
           problem: "两个页面共同描述来源核对流程，但缺少明确的双向导航。",
           suggestion: "后续生成具体页面修订候选，再由用户确认是否写入。",
+        },
+        {
+          type: "source_gap", pages: ["来源精准跳转"],
+          problem: "一项可能随版本变化的能力描述缺少新的官方依据。",
+          suggestion: "补充可靠的新来源后再修订页面。",
         },
       ],
     },
@@ -408,6 +436,15 @@ try {
     && (await page.getByText(/已选 1 份/).count()) === 1);
   await selectAllArticles.click();
 
+  await page.getByRole("button", { name: "审阅 UI 证据来源 的 Wiki 编译候选" }).click();
+  await page.waitForURL((url) => decodeURIComponent(url.hash) === `#/entries/review:${evidenceBook.id}`);
+  const focusedCandidate = page.locator(`[id="knowledge-candidate-${sourceReviewCandidate.id}"]`);
+  await focusedCandidate.waitFor();
+  await focusedCandidate.locator(".ing__body").waitFor();
+  check("来源的待审阅状态可以直达并展开对应候选", await focusedCandidate.locator(".ing__title").getAttribute("aria-expanded") === "true");
+  await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
+  await sourceName.waitFor();
+
   await sourceName.click();
   await page.getByRole("button", { name: "证据章节", exact: true }).click();
   const returnToSources = page.getByRole("button", { name: "返回来源" });
@@ -425,12 +462,20 @@ try {
   check("Wiki 搜索没有结果时给出明确反馈", await page.getByText(/没有找到“不存在的页面”/).count() === 1);
   await page.getByRole("button", { name: "清空搜索" }).click();
   await page.getByRole("button", { name: /全库体检报告/ }).click();
-  check("体检报告把问题、影响页面和建议分开呈现", await page.locator(".ing__finding").count() === 1
-    && (await page.locator(".ing__finding").innerText()).includes("可选优化")
-    && (await page.locator(".ing__finding").innerText()).includes("建议"));
-  check("体检报告不再冒充可写入的修改", await page.getByRole("button", { name: "全部接受" }).count() === 0
-    && await page.getByRole("button", { name: "标记已阅" }).count() === 1
-    && await page.locator(".ing__item--lint input[type=checkbox]").count() === 0);
+  check("体检报告把问题、影响页面和建议分开呈现", await page.locator(".ing__finding").count() === 2
+    && (await page.locator(".ing__findings").innerText()).includes("可选优化")
+    && (await page.locator(".ing__findings").innerText()).includes("建议"));
+  check("可处理问题能生成修订，缺来源问题不会让 AI 凭空修改", await page.getByRole("button", { name: "生成所选修订（1）" }).count() === 1
+    && await page.locator(".ing__item--lint input[type=checkbox]").count() === 1
+    && (await page.locator(".ing__finding.is-blocked").innerText()).includes("需补来源"));
+  await page.route("**/api/workspace/knowledge/candidates/*/repair", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, selected: 1, status: "queued" }),
+  }));
+  await page.getByRole("button", { name: "生成所选修订（1）" }).click();
+  check("生成修订后会显示真实进行状态并说明完成后仍需确认", await page.getByRole("button", { name: "正在生成修订…" }).count() === 1
+    && await page.getByText(/完成后这里会出现可逐页确认的候选/).count() === 1);
+  check("生成体检修订候选不会直接改动 Wiki 页面", workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count === wikiPagesBeforeReview);
+  await page.unroute("**/api/workspace/knowledge/candidates/*/repair");
   await page.route("**/api/workspace/knowledge/lint/run", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, queued: 1, mode: "network" }),
   }));
@@ -439,9 +484,6 @@ try {
     && await page.getByText("完成后会在这里生成诊断报告，不会自动修改 Wiki。", { exact: true }).count() === 1);
   await page.unroute("**/api/workspace/knowledge/lint/run");
   if (process.argv.includes("--shots")) await page.screenshot({ path: wikiHomeShotFile, fullPage: true });
-  await page.getByRole("button", { name: "标记已阅" }).click();
-  await page.getByRole("button", { name: "标记已阅" }).waitFor({ state: "detached" });
-  check("标记体检报告已阅不会改动 Wiki 页面", workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count === wikiPagesBeforeReview);
   await page.getByRole("button", { name: /来源精准跳转/ }).click();
   await page.locator(".wiki-article__body").waitFor();
   check("Wiki 详情展示完整正文、连接、来源和演化版本", (await page.locator(".wiki-article").innerText()).includes("验收标准")
