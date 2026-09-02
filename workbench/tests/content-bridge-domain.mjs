@@ -42,7 +42,9 @@ try {
     "content_opportunities",
     "content_project_opportunities",
   ].every((name) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)));
-  check("工作区 Schema 已升级到当前版本", WORKSPACE_SCHEMA_VERSION === 14);
+  // ⚠️ 用 >= 不用 ==：这条断言说的是「Content Bridge 的 migration 跑过了」，
+  // 写成等于的话，以后每加一个不相干的 migration 都会在这里假报警。
+  check("工作区 Schema 至少到 Content Bridge 版本", WORKSPACE_SCHEMA_VERSION >= 14);
 
   assert.throws(() => contentBridge.createAgenda({ title: "判断权", desiredJudgment: "人应保留判断权", actor: "user", now }), /明确确认/);
   const agendaId = contentBridge.createAgenda({

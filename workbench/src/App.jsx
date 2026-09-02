@@ -29,6 +29,7 @@ import { Metrics, DATA_TABS } from "./pages/Metrics.jsx";
 import { Review } from "./pages/Review.jsx";
 import { IntakeDrawer } from "./components/IntakeDrawer.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
+import { VoiceCapture } from "./components/VoiceCapture.jsx";
 import { SettingsOverlay } from "./components/SettingsOverlay.jsx";
 import { QuickAssistant } from "./components/QuickAssistant.jsx";
 import { assistantSummonDestination, summonAssistant } from "./lib/assistant-summoner.js";
@@ -250,6 +251,11 @@ export function App() {
     [headLead, headCenter, headEnd, frameOverlay]
   );
   const [finder, setFinder] = useState(false); // 全局检索（Ctrl/⌘ + K）
+  /**
+   * 记录用户声音。**挂在外壳上而不是内容页里**：现实里的原话哪一页都可能想起来记，
+   * 而要求先跳到某一页再记，就等于要求人先记住去哪儿记——那种入口不会被用。
+   */
+  const [voice, setVoice] = useState(null);
   const [settings, setSettings] = useState(false); // 设置面板
   const [quickAssistantOpen, setQuickAssistantOpen] = useState(false);
   const [globalConversationId, setGlobalConversationId] = useState("");
@@ -845,7 +851,19 @@ export function App() {
         </div>
       </div>
 
-      <CommandPalette open={finder} onClose={() => setFinder(false)} onGo={go} />
+      <CommandPalette
+        open={finder}
+        onClose={() => setFinder(false)}
+        onGo={go}
+        onCaptureVoice={(term) => setVoice({ term })}
+      />
+
+      <VoiceCapture
+        open={Boolean(voice)}
+        preset={voice}
+        onClose={() => setVoice(null)}
+        onGo={go}
+      />
 
       <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={refreshStatus} />
 

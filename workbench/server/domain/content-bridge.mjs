@@ -1,5 +1,6 @@
 import { createUlid } from "../storage/ids.mjs";
 import { assertContentBridgeFreshness, buildContentBridgeContext } from "./content-bridge-context.mjs";
+import { assertRawSourceEvidence, isRawSourceRef } from "./audience-raw.mjs";
 
 const SOURCE_KINDS = new Set(["hotspot", "insight_report", "social_post", "comment", "feedback", "manual"]);
 const PROBLEM_PATTERNS = new Set(["trend", "frequency", "knowledge_gap", "feedback"]);
@@ -325,10 +326,19 @@ export class ContentBridgeDomain {
       const item = record(source, `用户问题来源 ${index + 1}`);
       const kind = required(item.sourceKind || item.source_kind, `用户问题来源 ${index + 1} 类型`, 80);
       if (!SOURCE_KINDS.has(kind)) throw new TypeError(`用户问题来源 ${index + 1} 类型不受支持`);
+      const sourceId = required(item.sourceId || item.source_id, `用户问题来源 ${index + 1} 标识`, 500);
+      const evidenceText = required(item.evidenceText || item.evidence_text, `用户问题来源 ${index + 1} 证据`, 8000);
+      /**
+       * ⚠️ **指向原始用户声音的证据，在写库这一刻重新逐字校验一次。**
+       * 提取时校验过一次，但那是模型返回的那一瞬；候选可能在界面上停留很久，
+       * 也可能被别的调用方直接构造。真实性硬闸要挡的正是「中间有人改了引用」，
+       * 所以校验必须发生在**写入的那一次**，不能只信上游做过。
+       */
+      if (isRawSourceRef(sourceId)) assertRawSourceEvidence(this.db, sourceId, evidenceText, `用户问题来源 ${index + 1}`);
       return {
         sourceKind: kind,
-        sourceId: required(item.sourceId || item.source_id, `用户问题来源 ${index + 1} 标识`, 500),
-        evidenceText: required(item.evidenceText || item.evidence_text, `用户问题来源 ${index + 1} 证据`, 8000),
+        sourceId,
+        evidenceText,
         observedAt: isoNow(item.observedAt || item.observed_at || now),
       };
     });

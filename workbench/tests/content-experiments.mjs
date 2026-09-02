@@ -20,7 +20,7 @@ const workspace = await openWorkspace({ xenhoHome });
 const { domain, experiments, contentBridge } = workspace;
 
 try {
-  check("工作区 Schema 已升级到内容实验版本", WORKSPACE_SCHEMA_VERSION === 14);
+  check("工作区 Schema 至少到内容实验版本", WORKSPACE_SCHEMA_VERSION >= 14);
 
   const projectId = domain.createProject({ title: "为什么我越写越不敢下判断", confirmed: true, actor, now });
   const draftId = domain.createDraft({ projectId, title: "主稿", actor, now });

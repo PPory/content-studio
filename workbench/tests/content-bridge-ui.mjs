@@ -454,22 +454,51 @@ try {
   await page.keyboard.press("Control+K");
   await page.getByText("找题（旧版）", { exact: true }).waitFor();
   check("旧找题与种子路由仍可由快捷入口访问", await page.getByText("选题 / 种子（旧版）", { exact: true }).count() === 1);
-  check("Ctrl+K 空态就能看到记一个用户问题", await page.getByText("记一个用户问题", { exact: true }).count() === 1);
+  check("Ctrl+K 空态就能看到记录用户原话", await page.getByText("记录一段用户原话", { exact: true }).count() === 1);
   await page.keyboard.press("Escape");
 
-  // 10b：听到一句真实困惑，Ctrl+K 打进去就存下来，不用先走到内容机会页。
+  /**
+   * 10b：听到一句真实困惑，Ctrl+K 打进去就存下来，不用先走到内容机会页。
+   *
+   * ⚠️ **这一行原来直接建了一条 `origin=observed` 的用户问题**，并且把刚打的那行字
+   * 同时当成「问题」和「逐字证据」。那条证据只是把 statement 复制了一遍，
+   * 等于把人工记录写成观察。现在它只把**原话**收进不可变证据层，
+   * 问题由 AI 之后从原话里读，而且读出来仍然只是候选。
+   */
   const heard = "为什么我改完稿子反而更不确定了";
+  const problemsBefore = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
   await page.keyboard.press("Control+K");
   await page.getByLabel("搜索").fill(heard);
-  const captureRow = page.getByRole("button", { name: new RegExp(`记成用户问题：${heard}`) });
+  const captureRow = page.getByRole("button", { name: new RegExp(`记成用户原话：${heard}`) });
   await captureRow.waitFor();
-  check("记下来这一行排在结果之后，不抢走 Enter", await page.locator(".cmdk__row").last().innerText().then((text) => text.includes("记成用户问题")));
+  check("记下来这一行排在结果之后，不抢走 Enter", await page.locator(".cmdk__row").last().innerText().then((text) => text.includes("记成用户原话")));
   await captureRow.click();
-  await page.getByRole("button", { name: `选择用户问题：${heard}`, pressed: true }).waitFor();
-  const captured = workspace.db.prepare("SELECT origin, source_kind AS sourceKind FROM audience_problems WHERE statement=?").get(heard);
-  check("Ctrl+K 打一句就记下用户问题，并落到那条问题上", captured?.origin === "observed"
-    && captured.sourceKind === "manual"
-    && page.url().includes(encodeURIComponent("problem:")));
+  const voiceDialog = page.getByRole("dialog", { name: "记录用户声音" });
+  await voiceDialog.waitFor();
+  check("打进去的那句不用再打一遍", await voiceDialog.getByLabel("原话").inputValue() === heard);
+  check("只要一个输入框，不问问题名称和为什么值得关注",
+    await voiceDialog.getByLabel("为什么值得关注").count() === 0);
+
+  const pasted = [
+    "小林：AI 工具每周都在出新的，我到底该学哪个？",
+    "阿泽：我也是，收藏夹里躺了二十个教程，一个都没打开。",
+    "小林：感觉不学就落后，学了又用不上，挺焦虑的。",
+  ].join("\n");
+  await voiceDialog.getByLabel("原话").fill(pasted);
+  check("按粘进来的样子先替你选了种类", await voiceDialog.getByRole("button", { name: "群聊", pressed: true }).count() === 1);
+  await voiceDialog.getByRole("button", { name: "记下这段原话" }).click();
+  await voiceDialog.getByText("已经记下来了").waitFor();
+
+  const rawRow = workspace.db.prepare("SELECT kind, body FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1").get();
+  check("原话逐字进入不可变证据层", rawRow?.kind === "group_chat" && rawRow.body === pasted);
+  check("记原话不再顺手伪造一条「观察到的」用户问题",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBefore);
+  assert.throws(
+    () => workspace.db.prepare("UPDATE audience_raw_sources SET body='改过的' WHERE id=(SELECT id FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1)").run(),
+    /不可变证据/,
+  );
+  check("存进去的原话在真实运行时也改不了", true);
+  await voiceDialog.getByRole("button", { name: "完成" }).click();
 
   check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);

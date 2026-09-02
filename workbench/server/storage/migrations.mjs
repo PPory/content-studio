@@ -15,6 +15,7 @@ const llmWikiPagesSql = fs.readFileSync(new URL("./migrations/0010-llm-wiki-page
 const contentBridgeSql = fs.readFileSync(new URL("./migrations/0011-content-bridge.sql", import.meta.url), "utf8");
 const audienceProblemOriginSql = fs.readFileSync(new URL("./migrations/0013-audience-problem-origin.sql", import.meta.url), "utf8");
 const contentExperimentsSql = fs.readFileSync(new URL("./migrations/0014-content-experiments.sql", import.meta.url), "utf8");
+const audienceRawSourcesSql = fs.readFileSync(new URL("./migrations/0015-audience-raw-sources.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -100,6 +101,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "content-experiments",
     sql: contentExperimentsSql,
     checksum: crypto.createHash("sha256").update(contentExperimentsSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 15,
+    name: "audience-raw-sources",
+    sql: audienceRawSourcesSql,
+    checksum: crypto.createHash("sha256").update(audienceRawSourcesSql).digest("hex"),
   }),
 ]);
 

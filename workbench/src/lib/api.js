@@ -122,6 +122,10 @@ export const api = {
   createAgenda: (body) => postJson("/api/workspace/agendas", body),
   updateAgenda: (id, body) => postJson(`/api/workspace/agendas/${encodeURIComponent(id)}/update`, body),
   audienceProblems: () => req("/api/workspace/audience-problems"),
+  // 原始用户声音：只记录和读取，没有修改接口——证据一旦可改就不再证明任何事。
+  audienceVoices: (query = "") => req(`/api/workspace/audience-voices${query}`),
+  audienceVoice: (id) => req(`/api/workspace/audience-voices/${encodeURIComponent(id)}`),
+  recordAudienceVoice: (body) => postJson("/api/workspace/audience-voices", body),
   extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
   agendaProblemCandidates: (agendaId) => postJson("/api/workspace/audience-problems/from-agenda", { agendaId }),
   positioning: () => req("/api/workspace/positioning"),

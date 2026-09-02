@@ -54,13 +54,12 @@ const TYPE_ICONS = {
 
 const DEBOUNCE = 180; // 中文输入法一个词要敲好几下，太短会把没打完的拼音也搜一遍
 
-export function CommandPalette({ open, onClose, onGo }) {
+export function CommandPalette({ open, onClose, onGo, onCaptureVoice }) {
   const [q, setQ] = useState("");
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [cursor, setCursor] = useState(0);
-  const [capturing, setCapturing] = useState(false);
   const [resume, setResume] = useState({ opened: [], reading: [], queries: [] });
   const inputRef = useRef(null);
   // 焦点陷阱 + 背景 inert + 关闭后焦点归位。**Esc 不交给它**：这个面板的 Esc
@@ -145,9 +144,9 @@ export function CommandPalette({ open, onClose, onGo }) {
     kind: "capture",
     type: "inbox",
     typeLabel: "记下来",
-    id: "capture:problem",
-    title: term ? `记成用户问题：${term}` : "记一个用户问题",
-    snippet: term ? "保存后直接跳到内容机会，接着看哪块知识能解释它" : "去内容机会手动记一条",
+    id: "capture:voice",
+    title: term ? `记成用户原话：${term}` : "记录一段用户原话",
+    snippet: "粘群聊、评论、私信或访谈原话。不用先想它是什么问题，提炼交给系统。",
     term,
   });
 
@@ -208,24 +207,18 @@ export function CommandPalette({ open, onClose, onGo }) {
         return;
       }
       if (row.kind === "capture") {
-        // 空查询时没有可保存的正文，交给内容机会页的手记表单。
-        if (!row.term) {
-          onGo("bridge", "capture");
-          onClose();
-          return;
-        }
-        setCapturing(true);
-        api.createAudienceProblem({
-          statement: row.term,
-          sourceKind: "manual",
-          pattern: "feedback",
-          sources: [{ sourceKind: "manual", sourceId: `manual:${Date.now()}`, evidenceText: row.term, observedAt: new Date().toISOString() }],
-          confirmed: true,
-        })
-          // 存完直接跳到那条问题上：既是保存成功的回执，也已经站在下一步的位置。
-          .then((result) => { onGo("bridge", `problem:${result.problem.id}`); onClose(); })
-          .catch((failure) => setError(failure))
-          .finally(() => setCapturing(false));
+        /**
+         * ⚠️ **这里原来直接建了一条 `origin=observed` 的用户问题，
+         * 并且把用户刚打的那行字同时当成「问题」和「逐字证据」。**
+         * 那条证据除了把 statement 复制一遍什么也没说明——真实库里那条唯一的
+         * 「观察」就是这么来的。观察和推断一旦混在一个字段里，后面所有
+         * 「有多少人真的这样问过」的判断都不再可信。
+         *
+         * 现在这一行只负责把**原话**收进不可变证据层，问题由 AI 之后从原话里读，
+         * 而且读出来的仍然只是候选。
+         */
+        onCaptureVoice?.(row.term || "");
+        onClose();
         return;
       }
       noteQuery(q);
@@ -244,7 +237,7 @@ export function CommandPalette({ open, onClose, onGo }) {
       }
       if (row.url) window.open(row.url, "_blank", "noopener,noreferrer");
     },
-    [onGo, onClose, q]
+    [onGo, onClose, onCaptureVoice, q]
   );
 
   useEffect(() => {
@@ -308,7 +301,7 @@ export function CommandPalette({ open, onClose, onGo }) {
           placeholder="搜书、素材、选题、稿件、洞察、已发布作品…"
             aria-label="搜索"
           />
-          {capturing ? <span className="cmdk__busy">正在保存…</span> : busy ? <span className="cmdk__busy">搜索中…</span> : null}
+          {busy ? <span className="cmdk__busy">搜索中…</span> : null}
           {q ? (
             <button
               type="button"
