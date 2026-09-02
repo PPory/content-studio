@@ -147,6 +147,9 @@ export const api = {
   recordHypothesis: (body) => postJson("/api/workspace/experiments", body),
   updateHypothesis: (id, body) => postJson(`/api/workspace/experiments/${encodeURIComponent(id)}/update`, body),
   settleExperiment: (id, body) => postJson(`/api/workspace/experiments/${encodeURIComponent(id)}/settle`, body),
+  // 实验 AI：发布前先提假设候选，发布后给结算预览。两个都只产候选。
+  hypothesisCandidates: (projectId) => postJson(`/api/workspace/projects/${encodeURIComponent(projectId)}/hypothesis-candidates`, {}),
+  settlementPreview: (id, feedbackText = "") => postJson(`/api/workspace/experiments/${encodeURIComponent(id)}/settlement-preview`, { feedbackText }),
   experimentProblemCandidates: (id, body) => postJson(`/api/workspace/experiments/${encodeURIComponent(id)}/problem-candidates`, body),
   linkExperimentProblem: (id, body) => postJson(`/api/workspace/experiments/${encodeURIComponent(id)}/link-problem`, body),
   createAudienceProblem: (body) => postJson("/api/workspace/audience-problems", body),

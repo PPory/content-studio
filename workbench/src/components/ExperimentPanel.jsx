@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
+import { IconSparkles } from "./icons.jsx";
 import "./experiment-panel.css";
 
 const VERDICTS = [
@@ -33,6 +34,12 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
   const [learning, setLearning] = useState("");
   const [verdict, setVerdict] = useState("mixed");
   const [feedbackFor, setFeedbackFor] = useState("");
+  /** 发布前的假设候选。AI 先提，用户挑一条或者自己写。 */
+  const [hypotheses, setHypotheses] = useState([]);
+  const [proposing, setProposing] = useState(false);
+  /** 发布后的结算预览：观察 / 推断 / 学习候选三段分开。 */
+  const [settlement, setSettlement] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [candidates, setCandidates] = useState([]);
   const [candidateNote, setCandidateNote] = useState("");
@@ -60,6 +67,45 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
       load();
     } catch (failure) { setError(failure); } finally { setBusy(false); }
   };
+
+  const proposeHypotheses = useCallback(async () => {
+    setProposing(true);
+    setError(null);
+    try {
+      const result = await api.hypothesisCandidates(projectId);
+      setHypotheses(result.hypotheses || []);
+    } catch (failure) { setError(failure); } finally { setProposing(false); }
+  }, [projectId]);
+
+  const recordCandidate = async (text) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.recordHypothesis({ projectId, hypothesis: text, confirmed: true });
+      setHypotheses([]);
+      setOpen(false);
+      load();
+    } catch (failure) { setError(failure); } finally { setBusy(false); }
+  };
+
+  /**
+   * 结算预览：观察 / 推断 / 学习候选三段分开。
+   *
+   * ⚠️ 它不结算，只提候选。真实数据不够时服务端连模型都不跑，直接说还差什么。
+   */
+  const previewSettlement = useCallback(async (id) => {
+    setPreviewing(true);
+    setError(null);
+    try {
+      const result = await api.settlementPreview(id, feedbackText);
+      setSettlement({ id, ...result });
+      if (result.verdict) setVerdict(result.verdict);
+      if (result.learningCandidate) setLearning(result.learningCandidate);
+      if (result.observations?.length) {
+        setOutcome(result.observations.map((item) => item.text).join("\n"));
+      }
+    } catch (failure) { setError(failure); } finally { setPreviewing(false); }
+  }, [feedbackText]);
 
   const settle = async (id) => {
     if (!outcome.trim() || !learning.trim()) return;
@@ -124,6 +170,28 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
           </Note>
         ) : (
           <div className="experiment-record">
+            {/*
+              ⚠️ **这里原来是一个空白输入框**（「你为什么认为这一篇会有效？」）。
+              而这一篇的入口、讲法、主导动作和长期议程系统全都知道——
+              那个框最常见的结果是随手写一句和策略无关的愿望。
+              先由 AI 提，用户挑一条或者改一改；「自己写」退成次级，但一直在。
+            */}
+            {hypotheses.length ? (
+              <div className="experiment-candidates" aria-label="待确认的假设候选">
+                {hypotheses.map((item) => (
+                  <article key={item.hypothesis}>
+                    <strong>{item.hypothesis}</strong>
+                    <span>{item.why}</span>
+                    {/* 说不出「什么算不成立」的假设一定会被判成成立。 */}
+                    <small>怎么算成立：{item.signal}</small>
+                    <div className="experiment-actions">
+                      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => recordCandidate(item.hypothesis)}>就验证这条</button>
+                      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { setHypothesis(item.hypothesis); setOpen(true); }}>改一改</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             {open ? (
               <>
                 <label>
@@ -143,8 +211,15 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
                 </div>
               </>
             ) : (
-              <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>发布前，先写下你的假设</button>
+              <div className="experiment-actions">
+                <button type="button" className="btn btn-primary btn-sm" disabled={proposing} onClick={proposeHypotheses}>
+                  <IconSparkles aria-hidden="true" />
+                  {proposing ? "正在想…" : hypotheses.length ? "换几条" : "这一篇最值得验证什么？"}
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>自己写一条</button>
+              </div>
             )}
+            {proposing ? <p className="experiment-note" aria-live="polite">正在按这一篇的入口、讲法和长期议程想…</p> : null}
           </div>
         )
       ) : null}
@@ -156,6 +231,73 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
           {published ? (
             settling === openExperiment.id ? (
               <div className="experiment-settle">
+                {/*
+                  ⚠️ **这三个框原来都是空的。** 真实库里那条唯一结算过的实验，
+                  「发生了什么」写的是「数据比之前好点」，「更新了什么判断」写的是
+                  「下次可以继续这样尝试」——两句都不能被任何人复核。
+                  所以先让 AI 把**能被复核的事实**和**它自己的解释**分开摆出来。
+                */}
+                {!settlement || settlement.id !== openExperiment.id ? (
+                  <div className="experiment-actions">
+                    <button type="button" className="btn btn-primary btn-sm" disabled={previewing} onClick={() => previewSettlement(openExperiment.id)}>
+                      <IconSparkles aria-hidden="true" />
+                      {previewing ? "正在读结果…" : "帮我看看这次发生了什么"}
+                    </button>
+                    <span className="experiment-note">也可以直接自己写。</span>
+                  </div>
+                ) : null}
+
+                {settlement && settlement.id === openExperiment.id ? (
+                  <div className="settlement">
+                    {settlement.observations.length ? (
+                      <section>
+                        <h4>观察到的<em>能被复核的事实</em></h4>
+                        <ul>
+                          {settlement.observations.map((item, index) => (
+                            <li key={`${item.text}:${index}`}>
+                              {item.text}
+                              <small>
+                                {item.basisKind === "metric"
+                                  ? `依据：${item.metricLabel} ${item.value}${item.baseline != null ? `（同平台中位数 ${item.baseline}）` : ""}`
+                                  : `依据原话：「${item.quote}」`}
+                              </small>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : (
+                      <section>
+                        <h4>观察到的</h4>
+                        <p className="settlement-empty">
+                          {settlement.note || "这次没有能被复核的事实。"}
+                          {settlement.missing?.length ? <><br />还差：{settlement.missing.join("；")}</> : null}
+                        </p>
+                      </section>
+                    )}
+
+                    {settlement.inferences.length ? (
+                      <section>
+                        {/* ⚠️ 标签是硬要求：推断和观察长得一样的时候，人会把它当成事实记住。 */}
+                        <h4>AI 的推断<em>不是事实，是解释</em></h4>
+                        <ul>{settlement.inferences.map((item, index) => <li key={`${item}:${index}`}>{item}</li>)}</ul>
+                      </section>
+                    ) : null}
+
+                    {settlement.verdictReason ? (
+                      <section>
+                        <h4>这条假设成立吗</h4>
+                        <p>{settlement.verdictReason}</p>
+                      </section>
+                    ) : null}
+                    {settlement.nextExperiment ? (
+                      <section>
+                        <h4>下一次值得试什么</h4>
+                        <p>{settlement.nextExperiment}</p>
+                      </section>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <label>发生了什么<textarea rows={2} value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="数据、评论、私信里实际观察到的" /></label>
                 <label>我更新了什么判断<textarea rows={2} value={learning} onChange={(event) => setLearning(event.target.value)} placeholder="下一次会因此改变什么" /></label>
                 <div className="experiment-verdicts" role="group" aria-label="这条假设成立吗">
@@ -163,9 +305,13 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
                     <button key={item.key} type="button" aria-pressed={verdict === item.key} title={item.hint} onClick={() => setVerdict(item.key)}>{item.label}</button>
                   ))}
                 </div>
+                <label>
+                  把收到的评论、私信或群里的原话贴进来（可选）
+                  <textarea rows={3} value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="逐字粘贴。有原话，AI 才敢说读者在讨论什么；只有数字时它只能谈数字。" />
+                </label>
                 <div className="experiment-actions">
                   <button type="button" className="btn btn-primary btn-sm" disabled={!outcome.trim() || !learning.trim() || busy} onClick={() => settle(openExperiment.id)}>
-                    {busy ? "正在结算…" : "结算这次实验"}
+                    {busy ? "正在结算…" : settlement?.id === openExperiment.id ? "确认这条判断并结算" : "结算这次实验"}
                   </button>
                   <button type="button" className="btn btn-sm" onClick={() => setSettling("")}>取消</button>
                 </div>

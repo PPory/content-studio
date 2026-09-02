@@ -537,7 +537,13 @@ export class ContentBridgeDomain {
 
   opportunities({ includeArchived = false } = {}) {
     return this.db.prepare(`SELECT o.*,p.statement AS audience_problem_statement,w.title AS wiki_title,
+      /**
+       * ⚠️ **项目是软删除的，而这条链接不会跟着消失。**
+       * 不核实一遍的话，一条项目已经进回收站的机会仍然显示「已建立项目」，
+       * 点进去是「项目不存在」——真实库里就存着这样一条链接。
+       */
       (SELECT link.project_id FROM content_project_opportunities link
+       JOIN entities pe ON pe.id=link.project_id AND pe.deleted_at IS NULL
        WHERE link.opportunity_id=o.id AND link.role='primary' LIMIT 1) AS project_id
       FROM content_opportunities o
       JOIN audience_problems p ON p.id=o.audience_problem_id

@@ -1,6 +1,7 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { CONTENT_EXPERIMENT_VALUES } from "../domain/content-experiments.mjs";
-import { extractExperimentProblemCandidates } from "../domain/content-experiments-ai.mjs";
+import { extractExperimentProblemCandidates, previewExperimentSettlement, proposeExperimentHypotheses } from "../domain/content-experiments-ai.mjs";
+import { hypothesisContext, settlementContext } from "../domain/content-experiment-context.mjs";
 import { observePositioning } from "../domain/positioning.mjs";
 
 async function ready(source) {
@@ -27,6 +28,54 @@ export const contentExperimentRoutes = [
     method: "GET",
     path: "/api/workspace/positioning",
     handler: guard(async ({ workspace, res }) => json(res, { ok: true, positioning: observePositioning(workspace) })),
+  },
+  {
+    /**
+     * 发布前：这一篇最值得验证什么。
+     *
+     * ⚠️ 只产候选，不建实验。用户确认哪一条，才走 `POST /experiments` 记下来——
+     * 而那一步仍然要求 `confirmed: true`。
+     */
+    method: "POST",
+    path: "/api/workspace/projects/:id/hypothesis-candidates",
+    handler: guard(async ({ env, workspace, res, params }) => {
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_experiments").get().count;
+      const context = hypothesisContext(workspace, params.id);
+      const result = await proposeExperimentHypotheses(env, workspace, context);
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_experiments").get().count;
+      if (before !== after) throw new Error("提假设候选产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
+    }),
+  },
+  {
+    /**
+     * 发布后：这次到底发生了什么。
+     *
+     * ⚠️ 观察 / 推断 / 学习候选三段分开回，学习要用户确认之后才走 settle。
+     * 这条端点一个字都不写库——真实数据不够时它甚至不跑模型。
+     */
+    method: "POST",
+    path: "/api/workspace/experiments/:id/settlement-preview",
+    handler: guard(async ({ env, workspace, req, res, params }) => {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_experiments WHERE verdict <> 'open'").get().count;
+      const context = settlementContext(workspace, { experimentId: params.id, feedbackText: body.feedbackText });
+      const result = await previewExperimentSettlement(env, workspace, context);
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_experiments WHERE verdict <> 'open'").get().count;
+      if (before !== after) throw new Error("结算预览产生了不应有的写入");
+      json(res, {
+        ok: true,
+        candidateOnly: true,
+        evidence: {
+          publication: context.publication,
+          metrics: context.metrics,
+          metricLabels: context.metricLabels,
+          baseline: context.baseline,
+          hasEvidence: context.hasEvidence,
+        },
+        ...result,
+      });
+    }),
   },
   {
     method: "GET",

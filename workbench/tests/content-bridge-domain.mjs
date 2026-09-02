@@ -323,6 +323,17 @@ try {
     && workspace.contentBridge.projectOpportunity(projectId).id === opportunityId);
   check("重复打开 migration 幂等", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === WORKSPACE_SCHEMA_VERSION);
   check("Content Bridge 写操作均进入现有审计", workspace.db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type LIKE 'content_%' OR event_type LIKE 'audience_problem.%'").get().count >= 6);
+  /**
+   * ⚠️ 项目是软删除的，而 `content_project_opportunities` 那条链接不会跟着消失。
+   * 不核实一遍的话，机会列表仍然显示「已建立项目」，点进去是「项目不存在」——
+   * 真实库里就存着这样一条链接。
+   */
+  check("建了项目的机会会显示已建立项目",
+    workspace.contentBridge.opportunities().find((item) => item.id === opportunityId)?.hasProject === true);
+  workspace.domain.softDeleteEntity(projectId, { actor: "user", now });
+  check("项目进了回收站之后，机会不再声称已建立项目",
+    workspace.contentBridge.opportunities().find((item) => item.id === opportunityId)?.hasProject === false);
+
   check("数据库完整性与外键检查通过", workspace.check().ok);
 } finally {
   workspace?.close();

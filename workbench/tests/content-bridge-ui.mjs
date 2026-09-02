@@ -824,6 +824,82 @@ try {
     savedConstruction.elements.some((item) => item.source_id === weakWiki.id)
     && savedConstruction.elements.some((item) => item.source_id === cognitiveWiki.id));
 
+  /**
+   * 14：实验 AI。
+   *
+   * ⚠️ **这两处原来都是空白输入框。** 真实库里那条唯一结算过的实验，
+   * 「发生了什么」写的是「数据比之前好点」——那句话没有任何人能复核，
+   * 而它当时被记在了「观察」的位置上。
+   */
+  let hypothesisCalls = 0;
+  let settlementCalls = 0;
+  await page.route("**/api/workspace/projects/*/hypothesis-candidates", async (route) => {
+    hypothesisCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, model: "test-experiment",
+      hypotheses: [
+        { hypothesis: "用真实问题当入口，会比直接讲概念更容易被收藏。", why: "这一篇最大的策略变化就是问题入口。", signal: "收藏高于同平台中位数算成立；持平或更低算不成立。" },
+        { hypothesis: "先承认反方再给标准，会更少引来抬杠。", why: "这条讲法把反方放在最前面。", signal: "评论里讨论标准而非否定立场的比例上升算成立。" },
+      ],
+    }) });
+  });
+  await page.route("**/api/workspace/experiments/*/settlement-preview", async (route) => {
+    settlementCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, model: "test-experiment",
+      evidence: { hasEvidence: true },
+      observations: [
+        { text: "收藏 61，高于同平台过去 3 篇的中位数 19。", basisKind: "metric", metric: "collects", metricLabel: "收藏", value: 61, baseline: 19 },
+        { text: "有读者说这篇让他想清楚了先定任务再挑工具。", basisKind: "feedback", quote: "这篇让我第一次想清楚该先定任务再挑工具。" },
+      ],
+      inferences: ["问题入口可能确实比概念入口更容易被收藏。", "读者普遍觉得这篇更实用。"],
+      demoted: [{ text: "读者普遍觉得这篇更实用。", reason: "这句原话在反馈里逐字找不到" }],
+      verdict: "supported",
+      verdictReason: "收藏显著高于中位数，且有原话指向判断被接受。",
+      learningCandidate: "下一篇继续用真实问题当入口，并在开头就把标准点出来。",
+      nextExperiment: "验证把标准提到前三段会不会进一步提高收藏。",
+      note: "",
+      missing: [],
+    }) });
+  });
+
+  /**
+   * ⚠️ 假设那一栏长在**待发布**那一屏的右栏里——它要写在发布之前，
+   * 所以它挨着发布动作，而不是正文上方。先把这个项目推到待发布。
+   */
+  // ⚠️ 用项目已有的主稿，不要另建一篇：`project_primary_drafts` 是 INSERT OR IGNORE，
+  // 新建的那篇不会成为主稿，项目也就永远到不了「待发布」。
+  const experimentDraft = workspace.db.prepare("SELECT draft_id AS id FROM project_primary_drafts WHERE project_id=?").get(link.projectId).id;
+  workspace.domain.saveDraftRelease(experimentDraft, {
+    title: "判断权", bodyMarkdown: "# 判断权' + BS + 'n' + BS + 'n正文足够长，可以进入待发布。", summary: "摘要",
+    actor: "user", confirmed: true,
+  });
+  workspace.domain.transitionDraft(experimentDraft, "finish-writing", { actor: "user", confirmed: true });
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/project/${link.projectId}`);
+  await page.getByRole("heading", { name: "这一篇在验证什么" }).waitFor({ timeout: 30_000 });
+  check("发布前不再从空白框开始，先问「这一篇最值得验证什么」",
+    await page.getByRole("button", { name: "这一篇最值得验证什么？" }).count() === 1
+    && await page.getByRole("button", { name: "自己写一条" }).count() === 1
+    && await page.locator(".experiment-record textarea").count() === 0);
+
+  await page.getByRole("button", { name: "这一篇最值得验证什么？" }).click();
+  await page.locator(".experiment-candidates article").first().waitFor();
+  check("给了几条可以被否掉的假设", hypothesisCalls === 1
+    && await page.locator(".experiment-candidates article").count() === 2);
+  check("每条都说清怎么算成立",
+    (await page.locator(".experiment-candidates").innerText()).includes("怎么算成立"));
+
+  const experimentsBefore = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_experiments").get().count;
+  check("提候选不建实验", experimentsBefore === 0);
+  await page.locator(".experiment-candidates article").first().getByRole("button", { name: "就验证这条" }).click();
+  await page.getByText("用真实问题当入口，会比直接讲概念更容易被收藏。").first().waitFor();
+  const recorded = workspace.db.prepare("SELECT id, hypothesis_markdown AS hypothesis, verdict FROM content_experiments").get();
+  check("确认之后才记下这条假设", recorded?.verdict === "open"
+    && recorded.hypothesis.includes("用真实问题当入口"));
+
+  console.log(" ·  实验 AI 的结算预览需要一条发布记录，这里只验到假设那一步");
+
   check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);
   console.log("\nContent Bridge 本地 UI 验证通过。");

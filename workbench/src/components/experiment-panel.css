@@ -86,3 +86,38 @@
   padding: 0;
   border: 0;
 }
+
+/*
+ * 结算预览：观察 / 推断 / 学习候选。
+ *
+ * ⚠️ **观察和推断必须一眼分得开。** 它们长得一样的时候，人会把推断当事实记住——
+ * 而复盘的全部价值就在于「哪些是真的发生了」和「我认为那说明什么」不是一回事。
+ */
+.settlement { display: grid; gap: var(--sp-5); padding: var(--sp-5); border-radius: var(--r-md); background: var(--surface-2); }
+.settlement section { display: grid; gap: var(--sp-3); }
+.settlement h4 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.settlement h4 em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-weight: 400; }
+.settlement ul { display: grid; gap: var(--sp-3); margin: 0; padding-left: 1.1em; }
+.settlement li { color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+/* 依据挂在观察下面：一条不给依据的「观察」就是推断。 */
+.settlement li small { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); }
+.settlement p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.settlement-empty { color: var(--text-2); }
+
+.experiment-candidates { display: grid; gap: var(--sp-4); }
+.experiment-candidates article {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+}
+.experiment-candidates strong { font-size: var(--fs-sm); line-height: 1.6; }
+.experiment-candidates span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.experiment-candidates small { color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
