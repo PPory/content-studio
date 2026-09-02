@@ -501,9 +501,16 @@ try {
   check("从来源打开正文后会返回来源页", page.url().endsWith("#/sources"));
 
   await page.goto("http://127.0.0.1:" + PORT + "/#/entries");
-  await page.getByRole("heading", { name: "我的 Wiki" }).waitFor();
-  const wikiPulseValues = await page.locator(".wiki-pulse b").allTextContents();
-  check("Wiki 首页展示持续编译后的完整页面与知识连接", wikiPulseValues[0] === "2" && wikiPulseValues[2] === "2");
+  /**
+   * ⚠️ **不再等「我的 Wiki」那个大标题——它连同整块 hero 一起撤了。**
+   * 页名由外壳页头给（「知识 / Wiki」），页面数进页头的计数位，
+   * 其余数字退成索引上方那一行注脚（`.wiki-bar__facts`）。
+   * 这里量的仍然是同一件事：**编译之后页面数和连接数都真的涨了**。
+   */
+  await page.locator(".wiki-bar").waitFor();
+  check("Wiki 页面数进外壳页头的计数位", (await page.locator(".view-head__count").innerText()).includes("2 张页面"));
+  const wikiFacts = await page.locator(".wiki-bar__facts").innerText();
+  check("Wiki 首页展示持续编译后的完整页面与知识连接", /2\s*条连接/.test(wikiFacts));
   check("Wiki 搜索复用统一搜索框并提供清空能力", await page.getByLabel("搜索 Wiki").count() === 1);
   await page.getByLabel("搜索 Wiki").fill("不存在的页面");
   check("Wiki 搜索没有结果时给出明确反馈", await page.getByText(/没有找到“不存在的页面”/).count() === 1);

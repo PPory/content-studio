@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
+import { Empty, ErrorNote, Loading, Note, PageHeader, SearchBox } from "../components/ui.jsx";
+import { IconNotebook } from "../components/icons.jsx";
 import { IngestReview } from "../components/IngestReview.jsx";
 import { ScrollToTop } from "../components/ScrollToTop.jsx";
 
@@ -65,26 +66,28 @@ export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
   const { totals, health, log = [] } = data;
   return (
     <div className="view-body wiki-home">
-      <header className="wiki-hero">
-        <div>
-          <p className="wiki-kicker">持续编译的知识</p>
-          <h2>我的 Wiki</h2>
-          <p>这里不是原文仓库，而是 AI 根据你读过的资料持续维护的当前认识。</p>
-        </div>
-        <div className="wiki-hero__actions">
-          <button type="button" className="btn" onClick={() => onGo?.("sources")}>查看 Raw 来源</button>
+      {/**
+        * ⚠️ **那块 hero 撤了，别加回来**（绿色眉标「持续编译的知识」+ 42px 的
+        * 「我的 Wiki」+ 一句说明 + 两颗按钮）。它把第一条真内容压到了 470px 以下，
+        * 而页名「知识 / Wiki」在外壳页头里已经写着了。
+        * 那句说明搬进了空态——它是讲给第一次来的人听的，不该每天占着第一屏。
+        * 那枚绿眉标还是全站唯一一处拿 `--brand` 当装饰文字的地方，
+        * 而墨绿在这套配色里管的是「进展」，不是标签（见 styles.css 的 token 注释）。
+        *
+        * ⚠️ **「查看 Raw 来源」那颗按钮也撤了。** 它换的是整个页面，而换页归侧栏
+        *（知识 › 来源 一直在那儿）；真正需要顺手过去的时刻是「还有 N 篇没编译」，
+        * 那句话现在自己就是入口（见下面的 `.wiki-bar`）。
+        * 于是这一页只剩「全库体检」一颗主操作。
+        */}
+      <PageHeader
+        title="Wiki"
+        count={totals.pages ? `${totals.pages} 张页面` : ""}
+        aside={
           <button type="button" className="btn btn-primary" disabled={lintBusy || !totals.pages} onClick={runLint}>
             {lintBusy ? "正在启动…" : "全库体检"}
           </button>
-        </div>
-      </header>
-
-      <section className="wiki-pulse" aria-label="Wiki 状态">
-        <div><b>{totals.pages}</b><span>个知识页面</span></div>
-        <div><b>{totals.sources}</b><span>份来源被引用</span></div>
-        <div><b>{totals.links}</b><span>条页面连接</span></div>
-        <div className={health.pendingSources ? "is-warn" : ""}><b>{health.pendingSources}</b><span>篇 Raw 尚未编译</span></div>
-      </section>
+        }
+      />
 
       {notice ? (
         <div className="wiki-notice" role="status" aria-live="polite">
@@ -103,19 +106,46 @@ export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
         </div>
       ) : null}
 
-      <div className="wiki-toolbar">
+      {/**
+        * ⚠️ **顶上那四格大数字压成了这一行，别再摆回去。**
+        *
+        * 原来是 `.wiki-pulse`：四个 26px 衬线数字各占一格（95 页面 / 29 来源 /
+        * 216 连接 / 1262 篇 Raw 尚未编译），最后一格还是橙色的——**全屏最亮的数字，
+        * 而它是四个里唯一你可能想动手的那个，却也只是个数字，点不了。**
+        * 另外三个是虚荣指标：知道 216 条连接之后没有任何一件事会因此发生。
+        *
+        * 现在：**页面数进外壳页头的计数位**（和创作页「6 个内容项目」同一处），
+        * 其余退成列表的一行注脚——它们本来就是「这个库有多大、健不健康」，
+        * 是索引的注解，不是这一页的主角。
+        *
+        * ⚠️ **只有「还有 N 篇没编译」是个链接**，因为只有它对应一个动作
+        *（去来源页挑一份编译）。其余是事实，不假装可点。
+        */}
+      <div className="wiki-bar">
         <SearchBox value={query} onChange={setQuery} placeholder="搜索页面、主题或来源" ariaLabel="搜索 Wiki" />
-        <p>
-          {health.orphans ? `${health.orphans} 个孤立页面` : "页面连接正常"}
-          {health.missingCitations ? ` · ${health.missingCitations} 页缺少来源` : ""}
-          {health.staleCitations ? ` · ${health.staleCitations} 页的来源已变化` : ""}
+        <p className="wiki-bar__facts">
+          <span><b>{totals.sources}</b> 份来源</span>
+          <span><b>{totals.links}</b> 条连接</span>
+          <span>{health.orphans ? <><b>{health.orphans}</b> 个孤立页面</> : "页面连接正常"}</span>
+          {health.missingCitations ? <span><b>{health.missingCitations}</b> 页缺少来源</span> : null}
+          {health.staleCitations ? <span><b>{health.staleCitations}</b> 页的来源已变化</span> : null}
+          {health.pendingSources ? (
+            <button type="button" className="wiki-bar__todo" onClick={() => onGo?.("sources")}>
+              <b>{health.pendingSources}</b> 篇 Raw 待编译
+            </button>
+          ) : null}
         </p>
       </div>
 
       {!totals.pages ? (
-        <Note>
-          还没有 Wiki 页面。先从“来源”选择一份资料开始编译；一次编译会生成来源资料卡，并更新所有相关知识页面。
-        </Note>
+        /* ⚠️ 这一页唯一解释自己的地方，页头那句说明撤到了这里。
+           用 `Empty` 不用 `Note`：`Note` 默认是 warn 语气（带感叹号图标），
+           而「还没开始」不是警告——空态该说的是怎么开始。 */
+        <Empty icon={IconNotebook}>
+          这里不是原文仓库，而是 AI 根据你读过的资料持续维护的当前认识。
+          还没有 Wiki 页面——先从侧栏的「来源」挑一份资料开始编译，
+          一次编译会生成来源资料卡，并更新所有相关知识页面。
+        </Empty>
       ) : (
         <div className="wiki-layout">
           <main className="wiki-index">
