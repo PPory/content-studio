@@ -7,7 +7,8 @@
   border-bottom: 1px solid var(--border);
 }
 
-.experiment-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
+/* 标题和流程说明竖排：这块在右侧发布栏里只有 300px 宽，并排会挤成两行错位 */
+.experiment-panel > header { display: grid; gap: 4px; }
 .experiment-panel > header h2 { margin: 0; font-size: var(--fs-md); }
 .experiment-panel > header small { color: var(--text-3); font-size: var(--fs-xs); }
 

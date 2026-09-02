@@ -7225,3 +7225,33 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong);
 }
 .rel__open:hover { color: var(--accent); }
+
+/*
+ * 发布前的最后一道关：缺什么就在这儿补什么。
+ * ⚠️ 这块原来不存在，于是「进待发布要有摘要」和「摘要框只在待发布里」
+ * 互相锁死，新项目点「写完了，去发布」只会收到一句报错。
+ */
+.project-publish-gate {
+  display: grid;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+  padding: var(--sp-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.project-publish-gate__head { display: grid; gap: var(--sp-2); }
+.project-publish-gate__head strong { font-size: var(--fs-sm); }
+.project-publish-gate__head small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.project-publish-gate label { display: grid; gap: var(--sp-3); max-width: 640px; color: var(--text-2); font-size: var(--fs-sm); }
+.project-publish-gate textarea {
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+.project-publish-gate__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }

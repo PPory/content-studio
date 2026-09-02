@@ -200,6 +200,8 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
         onPublished={onPublished}
       />
       <small className="project-publish__truth">记录的是当前选中的平台版本；链接和时间齐全后，项目才会进入复盘。</small>
+      {/* 假设要写在发布之前，所以它长在发布动作旁边，而不是正文上方 */}
+      <ExperimentPanel projectId={project.id} publication={project.publication?.latest} />
     </aside>
   );
 }
@@ -208,6 +210,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [project, setProject] = useState(null);
   const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
+  const [publishGateOpen, setPublishGateOpen] = useState(false);
   const [form, setForm] = useState(() => releaseForm());
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -632,6 +635,41 @@ ${(form.body || "").slice(0, 3000)}`);
   const blockedReason = mainAction?.action === "finish-writing" && !String(form.body || "").trim()
     ? "正文还是空的，先写点东西再往发布走"
     : "";
+  /**
+   * ⚠️ **这里原来是个死锁。**
+   * 进入待发布要求发布包有摘要（`assertDraftReadyToFinish`），
+   * 而填摘要的那个输入框只在 `stage === "待发布"` 时才渲染——
+   * 于是任何新项目点「写完了，去发布」都只会收到一句「发布包缺少摘要」，
+   * 屏幕上却没有任何地方能填它。摘要要求本身是对的，缺的是入口。
+   */
+  const releaseMissing = mainAction?.action === "finish-writing" && !blockedReason
+    ? (draft?.release?.readiness?.missing || [])
+    : [];
+
+  async function finishWithRelease() {
+    if (busy || !draft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await api.saveProjectRelease(projectId, draft.id, {
+        ...releasePayload(form),
+        title: form.title.trim() || project.title,
+        body: form.body,
+        expectedVersion: draft.version,
+      });
+      acceptProject(saved.project, draft.id);
+      setSaved(true);
+      const result = await api.transitionProject(projectId, "finish-writing", {});
+      acceptProject(result.project);
+      promoteTemporaryProject();
+      setPublishGateOpen(false);
+      onChanged?.();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="project-workspace">
@@ -721,7 +759,7 @@ ${(form.body || "").slice(0, 3000)}`);
              */
             <button
               className="btn btn-primary"
-              onClick={() => transition(mainAction.action)}
+              onClick={() => (releaseMissing.length ? setPublishGateOpen(true) : transition(mainAction.action))}
               disabled={busy || blockedReason !== ""}
               title={blockedReason || undefined}
             >
@@ -731,6 +769,30 @@ ${(form.body || "").slice(0, 3000)}`);
         </div>
       </header>
       {blockedReason ? <p className="project-bar__blocked">{blockedReason}</p> : null}
+      {/* 缺什么就在这儿补什么，补完直接过去，而不是先报错再让人自己找输入框 */}
+      {publishGateOpen && releaseMissing.length ? (
+        <section className="project-publish-gate" aria-label="发布前还差的一件事">
+          <div className="project-publish-gate__head">
+            <strong>发布前还差{releaseMissing.join("、")}</strong>
+            <small>这是你去平台后台要粘贴的，工作台只替你记着，不会自动填过去。</small>
+          </div>
+          <label>
+            摘要
+            <textarea
+              rows={2}
+              value={form.summary}
+              onChange={(event) => changeForm("summary", event.target.value)}
+              placeholder="这篇内容给读者什么价值"
+            />
+          </label>
+          <div className="project-publish-gate__actions">
+            <button type="button" className="btn btn-primary btn-sm" disabled={!String(form.summary || "").trim() || busy} onClick={finishWithRelease}>
+              {busy ? "正在保存…" : "保存并去发布"}
+            </button>
+            <button type="button" className="btn btn-sm" onClick={() => setPublishGateOpen(false)}>回去继续写</button>
+          </div>
+        </section>
+      ) : null}
       <ContentIntentPanel
         projectId={projectId}
         onGo={onGo}
@@ -741,15 +803,17 @@ ${(form.body || "").slice(0, 3000)}`);
       />
 
 
-      {/*
-        学习闭环挂在项目上：假设写在发布之前，结算发生在发布之后，
-        两个时刻都在这一页，不用跳去别处。
-      */}
-      <ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} />
-
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (
-          <ProjectReviewStage project={project} busy={busy} onSave={saveReview} />
+          <>
+            {/*
+              ⚠️ 实验面板只在**该出现的时刻**出现，不常驻正文上方。
+              复盘阶段正文已经不是主体了，这里占主区没问题；
+              写作阶段它什么也不解决，只是把正文往下推。
+            */}
+            <ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} />
+            <ProjectReviewStage project={project} busy={busy} onSave={saveReview} />
+          </>
         ) : <>
         <main className="project-draft">
           {draft ? (
