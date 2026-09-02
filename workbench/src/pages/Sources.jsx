@@ -114,6 +114,22 @@ export function Sources({ onOpen, onReview }) {
     }
   }, []);
 
+  /**
+   * ⚠️ **只有一节的来源不给展开箭头。** 27 份资料里有 10 份是单篇（文档、文章），
+   * 展开只会得到一行同名、同字数、同状态的自己——一次零信息的点击。
+   * 这里直接进阅读器，章节先按需取一次。
+   */
+  const openSingle = useCallback(async (source) => {
+    try {
+      const cached = docs[source.id]?.items;
+      const items = cached || (await api.knowledgeSourceDocs(source.id)).documents;
+      if (!cached) setDocs((current) => ({ ...current, [source.id]: { items, error: null } }));
+      if (items[0]) onOpen?.(source, items[0]);
+    } catch (failure) {
+      setError(failure);
+    }
+  }, [docs, onOpen]);
+
   // 章节按需拉。一次把 1389 节全取回来，为的只是「万一你想展开某一本」。
   const toggle = useCallback((source) => {
     setOpen((current) => {
@@ -301,19 +317,21 @@ export function Sources({ onOpen, onReview }) {
               const state = distillState(source);
               const expanded = open.has(source.id);
               const loaded = docs[source.id];
+              const single = source.documents === 1;
               return (
-                <div key={source.id} className="src-item">
+                <div key={source.id} className="src-item" role="rowgroup">
                   <div className="src-row" role="row">
-                    <span><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span>
-                    <span className="src-name-cell">
+                    <span role="cell"><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span>
+                    <span className="src-name-cell" role="cell">
                       <button
                         type="button"
                         className="src-name"
-                        aria-expanded={expanded}
-                        onClick={() => toggle(source)}
-                        title={expanded ? "收起章节" : "展开章节"}
+                        aria-expanded={single ? undefined : expanded}
+                        disabled={!source.documents}
+                        onClick={() => (single ? openSingle(source) : toggle(source))}
+                        title={single ? "打开阅读" : expanded ? "收起章节" : "展开章节"}
                       >
-                        <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />
+                        {single ? null : <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />}
                         <span className="clamp">{source.title}</span>
                         {/* 可写性和归类是两件事，所以只在「能改正文」时标出来——
                             默认只读，标注例外比标注常态省一屏的字 */}
@@ -322,27 +340,31 @@ export function Sources({ onOpen, onReview }) {
                       <button type="button" className="src-delete" aria-label={`删除来源 ${source.title}`} title="移入回收站"
                         onClick={() => setDeleteSource(source)}><IconTrash aria-hidden="true" stroke={1.8} /></button>
                     </span>
-                    <span className="src-num">{number(source.documents)}</span>
-                    <span className="src-num">{number(source.chars)}</span>
-                    {source.proposed ? (
-                      <button type="button" className="src-review-link" onClick={() => onReview?.(source.id)} aria-label={`审阅 ${source.title} 的 Wiki 编译候选`}>
-                        <span className={`src-state src-state--${state.tone}`}>{state.label}</span><span>去审阅</span>
-                      </button>
-                    ) : <span className={`src-state src-state--${state.tone}`}>{state.label}</span>}
-                    <span className="src-num src-num--strong">{source.citedPages ? number(source.citedPages) : "—"}</span>
+                    <span className="src-num" role="cell">{number(source.documents)}</span>
+                    <span className="src-num" role="cell">{number(source.chars)}</span>
+                    <span className="src-cell-state" role="cell">
+                      {source.proposed ? (
+                        <button type="button" className="src-review-link" onClick={() => onReview?.(source.id)} aria-label={`审阅 ${source.title} 的 Wiki 编译候选`}>
+                          <span className={`src-state src-state--${state.tone}`}>{state.label}</span><span>去审阅</span>
+                        </button>
+                      ) : <span className={`src-state src-state--${state.tone}`}>{state.label}</span>}
+                    </span>
+                    <span className="src-num src-num--strong" role="cell">{source.citedPages ? number(source.citedPages) : "—"}</span>
                   </div>
 
                   {expanded ? (
-                    <div className="src-children">
+                    <div className="src-children" role="rowgroup">
                       {!loaded || loaded.items === null ? <Loading rows={2} /> : loaded.error ? <ErrorNote error={loaded.error} what="章节" /> : loaded.items.length ? loaded.items.map((doc) => (
                         <div key={doc.id} className="src-row src-row--child" role="row">
-                          <span />
-                          <button type="button" className="src-name src-name--child" onClick={() => onOpen?.(source, doc)}>
-                            <span className="clamp">{doc.title}</span>
-                          </button>
-                          <span className="src-num" />
-                          <span className="src-num">{number(doc.chars)}</span>
-                          <span className="src-doc-action">
+                          <span role="cell" />
+                          <span className="src-name-cell" role="cell">
+                            <button type="button" className="src-name src-name--child" onClick={() => onOpen?.(source, doc)}>
+                              <span className="clamp">{doc.title}</span>
+                            </button>
+                          </span>
+                          <span className="src-num" role="cell" />
+                          <span className="src-num" role="cell">{number(doc.chars)}</span>
+                          <span className="src-doc-action" role="cell">
                             <span className={`src-state src-state--${doc.ingestStatus === "failed" ? "warn" : ["queued", "proposed"].includes(doc.ingestStatus) ? "busy" : doc.ingestStatus === "applied" ? "done" : "idle"}`} title={doc.ingestError || undefined}>
                               {doc.ingestStatus === "applied" ? "已编译"
                                 : doc.ingestStatus === "queued" ? "排队中"

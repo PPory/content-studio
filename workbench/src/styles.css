@@ -6765,16 +6765,31 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-name svg { flex: none; color: var(--text-3); transition: transform 120ms ease; }
 .src-name svg[data-open] { transform: rotate(90deg); }
 .src-name:hover { color: var(--accent); }
+.src-name:disabled { color: var(--text-3); cursor: default; }
 .src-name .clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 单节来源没有展开箭头，标题得自己补上那 6px + 图标宽，否则和上下行差一格 */
+.src-name:not(:has(svg)) { padding-left: 22px; }
 .src-name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .src-name-cell .src-name { flex: 1 1 auto; }
+.src-cell-state { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+/**
+ * ⚠️ **删除钮平时不显形。** 27 行各挂一个垃圾桶，在名称列右端对齐成一竖列，
+ * 就成了屏幕中央最密的一组图标——而它是这一页最不该被先看见的动作。
+ * 用 `opacity` 不用 `display`：留着位子，行悬停时名称不会横跳一格。
+ * `:focus-within` 那条是给键盘的，Tab 到它时同样要看得见。
+ */
 .src-delete {
   display: grid; place-items: center; width: 28px; height: 28px; flex: none;
   border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-3); cursor: pointer;
+  opacity: 0;
 }
+.src-row:hover .src-delete,
+.src-row:focus-within .src-delete { opacity: 1; }
 .src-delete:hover { background: var(--surface); color: var(--danger); }
 .src-delete:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .src-delete svg { width: 15px; height: 15px; }
+/* 触屏没有 hover，藏起来就等于删不掉 */
+@media (hover: none) { .src-delete { opacity: 1; } }
 
 .src-tag {
   flex: none; font-style: normal; font-size: 11px; color: var(--text-3);
