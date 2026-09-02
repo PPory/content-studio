@@ -336,6 +336,18 @@ try {
     confirmed: true,
   });
 
+  /**
+   * ⚠️ 换一条议程保存，同样要被拦下。
+   * 真实跑第一轮就栽在这儿：路线是按「不关联议程」跑的，而界面随后默认选中了
+   * 最近那条议程，保存时带着一个 freshness 里没有的议程，当场 409——
+   * 用户什么都没改过。现在保存用的是**提路线时那条议程**，这条断言锁住它。
+   */
+  const wrongAgenda = await call(base, "/api/workspace/content-opportunities", {
+    ...savePayload(target, forRefine.data.freshness),
+    agendaId: undefined,
+  });
+  check("换掉议程再保存会被 freshness 拦下", wrongAgenda.status === 409 && /重新预览/.test(wrongAgenda.data.error));
+
   const wrongScope = await call(base, "/api/workspace/content-opportunities", savePayload(target, { ...forRefine.data.freshness, scope: "anchor" }));
   /**
    * ⚠️ 这里是 400 不是 409，而且是对的：scope 写在 freshness 里，保存时按它重建上下文，

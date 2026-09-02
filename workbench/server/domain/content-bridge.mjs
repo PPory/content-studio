@@ -364,17 +364,37 @@ export class ContentBridgeDomain {
         observedAt: isoNow(item.observedAt || item.observed_at || now),
       };
     });
+    /**
+     * ⚠️ **同一段原话里的多句证据，只能留一句。**
+     *
+     * `audience_problem_sources` 的主键是 `(problem_id, source_kind, source_id)`，
+     * 所以「同一段群聊里的两句话」写进去会直接撞主键——真实跑的时候，
+     * 用户看到的是一句原样吐出来的 SQL 报错，而他只是点了保存。
+     *
+     * 留第一句（模型按相关性排的），其余丢掉：留下的证据仍然逐字为真，
+     * 只是没那么全。⚠️ **这是权宜之计**：正确的修法是让这张表能装下同一来源的
+     * 多句引用，那要重建表，属于 schema 变更，得单独提出来。
+     */
+    const seenSources = new Set();
+    const droppedQuotes = [];
+    const dedupedSources = normalizedSources.filter((source) => {
+      const key = `${source.sourceKind} ${source.sourceId}`;
+      if (seenSources.has(key)) { droppedQuotes.push(source.evidenceText); return false; }
+      seenSources.add(key);
+      return true;
+    });
+
     let agendaId = null;
     if (hypothesis) {
       // 假设不能带观察证据。带了就说明调用方在把推导包装成观察。
-      if (normalizedSources.length) throw new Error("议程推导出的问题是假设，不能携带观察证据来源");
+      if (dedupedSources.length) throw new Error("议程推导出的问题是假设，不能携带观察证据来源");
       agendaId = required(originAgendaId, "议程推导所属议程", 120);
       if (this.agenda(agendaId).status !== "active") throw new Error("已归档议程不能继续推导用户问题");
-    } else if (!normalizedSources.length) {
+    } else if (!dedupedSources.length) {
       throw new Error("用户问题至少需要一个可回溯来源");
     }
     // 假设的主来源不接受调用方指定：它只能是那条议程，写成别的就是伪装出处。
-    const primaryKind = hypothesis ? "manual" : clean(sourceKind || normalizedSources[0].sourceKind);
+    const primaryKind = hypothesis ? "manual" : clean(sourceKind || dedupedSources[0].sourceKind);
     if (!SOURCE_KINDS.has(primaryKind)) throw new TypeError("用户问题主要来源类型不受支持");
     /**
      * 假设的 pattern 只能是 `knowledge_gap`。
@@ -387,7 +407,7 @@ export class ContentBridgeDomain {
       statement: required(statement, "用户问题", 500),
       summary: optional(summary, "用户问题说明", 2000),
       sourceKind: primaryKind,
-      sourceRef: hypothesis ? `agenda:${agendaId}` : required(sourceRef || normalizedSources[0].sourceId, "用户问题主要来源", 500),
+      sourceRef: hypothesis ? `agenda:${agendaId}` : required(sourceRef || dedupedSources[0].sourceId, "用户问题主要来源", 500),
       pattern: canonicalPattern,
       origin: canonicalOrigin,
       originAgendaId: agendaId,
@@ -400,12 +420,14 @@ export class ContentBridgeDomain {
         .run(id, problem.statement, problem.summary, problem.sourceKind, problem.sourceRef, problem.pattern, problem.origin, problem.originAgendaId, stamp, stamp);
       const insertSource = this.db.prepare(`INSERT INTO audience_problem_sources(problem_id,source_kind,source_id,evidence_text,observed_at)
         VALUES (?, ?, ?, ?, ?)`);
-      for (const source of normalizedSources) insertSource.run(id, source.sourceKind, source.sourceId, source.evidenceText, source.observedAt);
+      for (const source of dedupedSources) insertSource.run(id, source.sourceKind, source.sourceId, source.evidenceText, source.observedAt);
       this.repository.setEntityText(id, { title: problem.statement, body: problem.summary, now });
       this.workspaceDomain.audit("audience_problem.created", id, {
         origin: problem.origin,
         originAgendaId: problem.originAgendaId,
-        sourceCount: normalizedSources.length,
+        sourceCount: dedupedSources.length,
+        // 同一来源被丢掉的多余引用记进审计：将来要不要改表，看这个数。
+        droppedDuplicateQuotes: droppedQuotes.length,
       }, now);
       return id;
     });

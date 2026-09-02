@@ -136,7 +136,15 @@ export function ContentConstruction({ onGo }) {
   const [selectedId, setSelectedId] = useState(() => restored?.selectedId || "");
   const [freshness, setFreshness] = useState(() => restored?.freshness || null);
   const [agendas, setAgendas] = useState([]);
+  /**
+   * ⚠️ **议程读回来之前不能开跑。**
+   * 不等的话，第一次提路线用的是「不关联议程」，而下拉框随后默认选中了最近那条——
+   * 于是保存时带着一个 freshness 里没有的议程，当场 409「请重新预览」，
+   * 而用户什么都没改过。真实跑第一轮就是这么失败的。
+   */
+  const [agendasReady, setAgendasReady] = useState(false);
   const [agendaId, setAgendaId] = useState(() => restored?.agendaId || "");
+  const [routesAgendaId, setRoutesAgendaId] = useState(() => restored?.routesAgendaId || "");
   const [busy, setBusy] = useState(false);
   const [refining, setRefining] = useState(false);
   const [error, setError] = useState(null);
@@ -155,7 +163,7 @@ export function ContentConstruction({ onGo }) {
       setAgendas(result.agendas || []);
       // 恢复出来的会话已经有它自己的议程选择，别用「最近那条」把它盖掉。
       if (!restored) setAgendaId((result.agendas || [])[0]?.id || "");
-    }).catch(() => setAgendas([]));
+    }).catch(() => setAgendas([])).finally(() => setAgendasReady(true));
   }, [restored]);
 
   const propose = useCallback(async (currentAgendaId) => {
@@ -170,6 +178,8 @@ export function ContentConstruction({ onGo }) {
       setDropped(result.dropped || []);
       setExperienceAvailable(result.experienceAvailable !== false);
       setFreshness(result.freshness || null);
+      // 记下这批路线是按哪条议程跑的：保存时以它为准，和 freshness 保持一致。
+      setRoutesAgendaId(currentAgendaId || "");
       setSelectedId("");
       setHistory([]);
     } catch (failure) {
@@ -180,7 +190,10 @@ export function ContentConstruction({ onGo }) {
   }, [connection]);
 
   // 议程是可选的透镜：进来先按最近那条跑，换议程要用户自己点。
-  useEffect(() => { if (connection && agendas.length >= 0 && !routes.length && !busy && !error) propose(agendaId); }, [connection, agendaId]);
+  useEffect(() => {
+    if (!connection || !agendasReady || routes.length || busy || error) return;
+    propose(agendaId);
+  }, [connection, agendasReady, agendaId]);
 
   const refine = useCallback(async () => {
     const ask = instruction.trim();
@@ -188,7 +201,7 @@ export function ContentConstruction({ onGo }) {
     setRefining(true);
     setError(null);
     try {
-      const result = await api.refineConstructionRoute({ connection, route: selected, instruction: ask, agendaId: agendaId || undefined });
+      const result = await api.refineConstructionRoute({ connection, route: selected, instruction: ask, agendaId: routesAgendaId || undefined });
       setRoutes((items) => items.map((route) => (route.id === result.route.id ? result.route : route)));
       setFreshness(result.freshness || freshness);
       setHistory((items) => [...items, { ask, note: result.note }]);
@@ -199,7 +212,7 @@ export function ContentConstruction({ onGo }) {
       setRefining(false);
       askRef.current?.focus();
     }
-  }, [instruction, selected, refining, connection, agendaId, freshness]);
+  }, [instruction, selected, refining, connection, routesAgendaId, freshness]);
 
   const save = useCallback(async () => {
     if (!selected || !connection || saveBusy) return;
@@ -217,7 +230,8 @@ export function ContentConstruction({ onGo }) {
           originAgendaId: connection.problem.originAgendaId,
           evidence: connection.problem.evidence,
         },
-        agendaId: agendaId || undefined,
+        // ⚠️ 用提路线时那条议程，不是下拉框此刻的值：freshness 记的是前者。
+        agendaId: routesAgendaId || undefined,
         coreClaim: selected.coreClaim,
         knowledgeExplanation: selected.knowledgeExplanation,
         cognitiveGap: selected.cognitiveGap,
@@ -234,7 +248,7 @@ export function ContentConstruction({ onGo }) {
     } finally {
       setSaveBusy(false);
     }
-  }, [selected, connection, agendaId, freshness, saveBusy]);
+  }, [selected, connection, routesAgendaId, freshness, saveBusy]);
 
   /**
    * 把当前状态写回会话。⚠️ 每次变化都写，而不是离开时写——
@@ -242,8 +256,8 @@ export function ContentConstruction({ onGo }) {
    */
   useEffect(() => {
     if (!connection) return;
-    setConstructionSession({ routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId });
-  }, [connection, routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId]);
+    setConstructionSession({ routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId });
+  }, [connection, routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId]);
 
   if (!connection) {
     return (

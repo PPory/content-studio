@@ -1,0 +1,58 @@
+/*
+ * 开写前那一步。
+ *
+ * 它长在正文上方，所以必须**短**：正文才是这一页的主体，
+ * 而这一栏只在「还没开始写」的时候出现一次，写起来之后自己消失。
+ */
+
+.project-start {
+  display: grid;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-7);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.project-start > header { display: flex; align-items: flex-start; gap: var(--sp-5); flex-wrap: wrap; }
+.project-start > header > div:first-child { flex: 1; min-width: 0; }
+.project-start header span { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+.project-start header h2 { margin: 2px 0 0; font-size: var(--fs-md); letter-spacing: -.01em; }
+.project-start__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+
+/* 继承下来的意图：三行只读，不是表单。 */
+.project-start__intent { display: grid; gap: var(--sp-3); margin: 0; }
+.project-start__intent > div { display: grid; grid-template-columns: 7.5em 1fr; gap: var(--sp-4); align-items: baseline; }
+.project-start__intent dt { color: var(--text-3); font-size: var(--fs-xs); }
+.project-start__intent dd { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+.project-start__intent em { color: var(--text-3); font-style: normal; font-size: var(--fs-xs); }
+
+.project-start__pending { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.project-start__note { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+
+.project-start__outline { display: grid; gap: var(--sp-5); margin: 0; padding-left: 1.4em; }
+.project-start__outline > li { color: var(--text-1); }
+.project-start__outline strong { font-size: var(--fs-sm); }
+.project-start__outline p { margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.project-start__beats { margin: var(--sp-2) 0 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+/* 出处跟着材料走：看一眼就知道这一节踩在什么上面。 */
+.project-start__uses { color: var(--text-3); font-size: var(--fs-xs); }
+.project-start__uses--none { font-style: italic; }
+
+.project-start__unused,
+.project-start__gate {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 2px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+
+@media (max-width: 720px) {
+  .project-start { padding: var(--sp-5); }
+  .project-start__intent > div { grid-template-columns: 1fr; gap: 2px; }
+}
+
+.project-start__hint { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }

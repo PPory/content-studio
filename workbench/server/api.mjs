@@ -21,6 +21,7 @@ import { contentBridgeRoutes } from "./routes/content-bridge.mjs";
 import { audienceRawRoutes } from "./routes/audience-raw.mjs";
 import { contentDiscoveryRoutes } from "./routes/content-discovery.mjs";
 import { contentConstructionRoutes } from "./routes/content-construction.mjs";
+import { contentProjectRoutes } from "./routes/content-project.mjs";
 import { contentExperimentRoutes } from "./routes/content-experiments.mjs";
 
 const EXTENSION_ALIASES = {
@@ -75,6 +76,7 @@ const ROUTES = [
   ...audienceRawRoutes,
   ...contentDiscoveryRoutes,
   ...contentConstructionRoutes,
+  ...contentProjectRoutes,
   ...contentExperimentRoutes,
   ...localBookRoutes,
   ...wikiRoutes,

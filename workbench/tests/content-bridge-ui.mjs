@@ -349,9 +349,73 @@ try {
     await page.screenshot({ path: path.join(shotDir, "content-bridge-desktop.png"), fullPage: true });
   }
 
+  let outlineCalls = 0;
+  let draftCalls = 0;
+  await page.route("**/api/workspace/projects/*/outline", async (route) => {
+    outlineCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, model: "test-project",
+      outline: {
+        sections: [
+          { heading: "先承认：AI 确实该多用", purpose: "把最强的反方立起来。", uses: [{ id: "problem", label: "AI 使用中的判断依赖", typeLabel: "问题", origin: "用户原话" }], beats: [] },
+          { heading: "它什么时候不成立", purpose: "用认知卸载指出被交出去的是判断。", uses: [{ id: "concept", label: "认知卸载", typeLabel: "概念", origin: "Wiki · 认知卸载" }], beats: [] },
+        ],
+        note: "按选定的讲法排的。",
+        unused: [{ id: "claim", label: "保留人的判断权", typeLabel: "判断" }],
+      },
+      markdown: "## 先承认：AI 确实该多用\n\n> 把最强的反方立起来。\n\n## 它什么时候不成立\n\n> 用认知卸载指出被交出去的是判断。",
+      context: { empty: true },
+    }) });
+  });
+  await page.route("**/api/workspace/projects/*/draft-candidate", async (route) => {
+    draftCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, model: "test-project",
+      title: "把判断留下来",
+      body: "## 先承认：AI 确实该多用\n\n多数任务交出去是对的。\n\n## 它什么时候不成立\n\n认知卸载说明，被一起交出去的常常是判断。\n",
+      note: "按结构写了两节。",
+      context: { empty: true },
+    }) });
+  });
+
   await page.getByRole("button", { name: "建立内容项目" }).click();
   await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
   const link = workspace.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=?").get(saved.id);
+
+  /**
+   * 13：建了项目之后的第一步。
+   *
+   * ⚠️ **不自动生成全文。** 一上来给一篇完整的稿，人会本能地去改它，
+   * 而不是先想自己要讲什么；而那篇稿是照着「一般文章该怎么写」写的。
+   */
+  await page.getByRole("heading", { name: "先搭一个结构，再起稿" }).waitFor();
+  const draftBytes = () => workspace.db.prepare("SELECT COALESCE(SUM(length(body_markdown)),0) AS size FROM drafts WHERE project_id=?").get(link.projectId).size;
+  const emptyDraft = draftBytes();
+  check("建了项目不自动起稿，正文还是空的", outlineCalls === 0 && draftCalls === 0 && emptyDraft === 0);
+  check("这一步不问任何问题，继承来的意图是只读的",
+    (await page.locator(".project-start__intent").innerText()).includes("AI 正从信息工具进入人的判断链")
+    && await page.locator(".project-start input, .project-start textarea").count() === 0);
+
+  await page.getByRole("button", { name: /帮我搭一个结构/ }).click();
+  await page.locator(".project-start__outline").waitFor();
+  check("结构候选每一节都说清作用和用哪条材料",
+    (await page.locator(".project-start__outline").innerText()).includes("把最强的反方立起来")
+    && (await page.locator(".project-start__outline").innerText()).includes("认知卸载（Wiki · 认知卸载）"));
+  check("没被安排上的材料要说出来", (await page.locator(".project-start__unused").innerText()).includes("保留人的判断权"));
+  check("搭结构不写正文", draftBytes() === emptyDraft);
+  check("没有个人经历时说清这篇不会出现第一人称经历",
+    (await page.locator(".project-start__gate").innerText()).includes("个人经历"));
+
+  await page.getByRole("button", { name: "照这个结构起稿" }).click();
+  await page.locator(".md-candidate-focus, .cm-content").first().waitFor();
+  await page.waitForFunction(() => document.querySelector(".cm-content")?.innerText?.includes("认知卸载说明"), null, { timeout: 15_000 });
+  check("起稿以候选形式进正文，等你逐处采纳", draftCalls === 1);
+  check("起稿本身不写库，正文要等保存", draftBytes() === emptyDraft);
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "project-start-draft.png"), fullPage: true });
+
+  await page.reload();
+  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
+  check("没采纳就刷新，正文仍然是空的", draftBytes() === emptyDraft);
   check("创作意图默认折叠且正文保持视觉主体", Boolean(link?.projectId)
     && await page.getByRole("button", { name: "展开" }).count() === 1
     && !(await page.locator(".content-intent").innerText()).includes("认知卸载"));

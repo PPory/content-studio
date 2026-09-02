@@ -7,6 +7,7 @@ import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
 import { ContentIntentPanel } from "../components/ContentIntentPanel.jsx";
+import { ProjectStartPanel } from "../components/ProjectStartPanel.jsx";
 import { ExperimentPanel } from "../components/ExperimentPanel.jsx";
 import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
@@ -380,17 +381,21 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
     return () => window.clearTimeout(timer);
   }, [draft?.id, draftEditable, dirty, form.title, form.body]);
 
+  // ⚠️ 回执要说清成没成功：开写前那一步要「建好主稿之后接着把稿子放进去」，
+  // 拿不到结果就只能让用户再点一次。
   async function transition(action, input = {}) {
-    if (busy) return;
-    if (dirty && !(await saveDraft())) return;
+    if (busy) return false;
+    if (dirty && !(await saveDraft())) return false;
     setBusy(true); setError(null);
     try {
       const result = await api.transitionProject(projectId, action, input);
       acceptProject(result.project);
       promoteTemporaryProject();
       onChanged?.();
+      return true;
     } catch (e) {
       setError(e);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -813,6 +818,25 @@ ${(form.body || "").slice(0, 3000)}`);
           summonAssistant({ routeView: "project" });
         }}
       />
+
+      {/*
+        ⚠️ **它在正文之前，而且主稿还没建的时候也要在。**
+        从内容机会建出来的项目落在「策划中」，屏幕上原本只有一句
+        「点右上角建立主稿开始写」——那是一张白纸，而 Xenho 明明已经知道
+        这篇要回答什么问题、留下什么判断、沿哪条讲法。开写前那一步就发生在这儿。
+        正文一旦写起来它自己消失，不做成常驻面板去和正文抢屏幕。
+      */}
+      {["策划中", "写作中"].includes(project.stage) ? (
+        <ProjectStartPanel
+          projectId={projectId}
+          empty={!String(form.body || "").trim()}
+          needsDraft={!masterDraft}
+          busy={busy}
+          onGo={onGo}
+          onStartDraft={() => transition("start-writing")}
+          onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
+        />
+      ) : null}
 
 
       <div className="project-workspace__grid">

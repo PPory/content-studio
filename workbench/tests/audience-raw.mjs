@@ -134,6 +134,26 @@ try {
   });
   check("逐字对得上的引用可以入库", Boolean(problemId));
 
+  /**
+   * ⚠️ 同一段原话里的两句证据不能撞主键。
+   * 真实跑的时候用户点保存，屏幕上弹出的是一句原样的 SQLite 报错。
+   */
+  const twoQuoteId = contentBridge.createAudienceProblem({
+    statement: "收藏夹里的教程为什么打不开？",
+    sourceKind: problemSourceKindForRawKind("group_chat"),
+    pattern: "frequency",
+    sources: [
+      { sourceKind: "feedback", sourceId: rawSourceRef(first.id), evidenceText: quote, observedAt: now },
+      { sourceKind: "feedback", sourceId: rawSourceRef(first.id), evidenceText: "收藏夹里躺了二十个教程，一个都没打开。", observedAt: now },
+    ],
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  check("同一段原话里的两句证据不再撞主键", Boolean(twoQuoteId));
+  check("留下的那句仍然逐字为真", contentBridge.audienceProblem(twoQuoteId).sources.length === 1
+    && contentBridge.audienceProblem(twoQuoteId).sources[0].evidenceText === quote);
+
   const graded = gradeProblemEvidence(db, contentBridge.audienceProblem(problemId));
   check("有原话的问题被判为真实原话", graded.grade === EVIDENCE_GRADES.VERBATIM && graded.quotes.length === 1);
   check("证据里带得回原文和出处", graded.quotes[0].quote === quote && graded.quotes[0].sourceName === "读者群");
@@ -183,7 +203,7 @@ try {
   const base = await start();
   const list = await call(base, "/api/workspace/audience-voices");
   check("API 可以读出原话清单和种类", list.data.ok && list.data.voices.length === 2 && list.data.kinds.length === 7);
-  check("清单里带上被引用次数", list.data.voices.find((item) => item.id === first.id).citations === 1);
+  check("清单里带上被引用次数", list.data.voices.find((item) => item.id === first.id).citations === 2);
 
   const rejected = await call(base, "/api/workspace/audience-voices", { method: "POST", body: { kind: "comment", body: "没有确认的粘贴" } });
   check("未确认的记录被拒绝", rejected.status === 400 && /明确确认/.test(rejected.data.error));

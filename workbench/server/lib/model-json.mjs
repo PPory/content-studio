@@ -64,17 +64,33 @@ export async function completeJson(env, { system, user, model = "", maxTokens = 
   const modelId = clean(model, 240) || ingestModelId(env);
   if (!base || !key || !modelId) throw Object.assign(new Error("模型尚未配置"), { status: 400, hint: "到 设置 → AI 助手 填写模型地址、模型名和密钥。" });
 
-  const response = await proxyFetch(`${base}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: modelId,
-      messages: [{ role: "system", content: system }, { role: "user", content: user }],
-      max_tokens: maxTokens,
-      temperature: 0,
-    }),
-    signal,
-  });
+  let response;
+  try {
+    response = await proxyFetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_tokens: maxTokens,
+        temperature: 0,
+      }),
+      signal,
+    });
+  } catch (error) {
+    /**
+     * ⚠️ **连不上和「模型说不行」是两回事，界面上必须分得出来。**
+     * 上一版网络抖一下，用户看到的是「内容发现失败：fetch failed」加一句
+     * 「回终端看 npm run dev 的日志」——他既不知道自己的东西有没有被改，
+     * 也不知道该重试还是去改配置。真实跑的时候就这么撞上过一次。
+     */
+    if (error?.name === "AbortError") throw error;
+    throw Object.assign(new Error("连不上模型服务，你的知识、原话和已有内容都没有被改动"), {
+      status: 503,
+      hint: "多半是网络或代理抖了一下，可以直接重试；一直不通就到 设置 → AI 助手 检查地址和密钥。",
+      cause: error,
+    });
+  }
   const text = await response.text();
   if (!response.ok) {
     if ([502, 503, 504, 524].includes(response.status)) {

@@ -9,6 +9,7 @@ import { createApi } from "../server/api.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { createUlid } from "../server/storage/ids.mjs";
 import { buildDiscoveryContext, discoveryReadiness } from "../server/domain/content-discovery.mjs";
+import { completeJson } from "../server/lib/model-json.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-discovery-"));
 const xenhoHome = path.join(root, "Xenho");
@@ -181,6 +182,20 @@ try {
   const afterFailure = await call(base, "/api/workspace/content-discovery");
   check("失败不清空上次的结果", afterFailure.data.scan.connections.length === 1);
   check("失败不动任何业务数据", counts().problems === 0 && counts().opportunities === 0);
+
+  /**
+   * ⚠️ 连不上模型和「模型说不行」要分得出来。
+   * 真实跑的时候网络抖了一下，界面上是「内容发现失败：fetch failed」加一句
+   * 「回终端看日志」——用户既不知道自己的东西有没有被改，也不知道该不该重试。
+   * 这条直接打真正发请求的那一层（端口是关的），不走注入的假模型。
+   */
+  const offline = await completeJson(
+    { AGENT_INGEST_BASE_URL: "http://127.0.0.1:9", AGENT_INGEST_API_KEY: "x", AGENT_INGEST_MODEL: "m" },
+    { system: "s", user: "u" },
+  ).then(() => null, (error) => error);
+  check("连不上模型时不报一句 fetch failed", offline && !/fetch failed/.test(offline.message));
+  check("而是说清什么都没被改动，并给出下一步", /没有被改动/.test(offline.message)
+    && offline.status === 503 && /重试/.test(offline.hint || ""));
 
   // ── 一条都没找到时必须说得出原因 ──────────────────────────────────
   respond = () => ({ model: "test-discovery", data: { connections: [], nothing_found_reason: "这批原话讲的是排版工具，和现有知识没有自然连接。" } });
