@@ -264,6 +264,15 @@ try {
   check("Preview 明确保持候选且不产生写入", await page.getByText("目前仍是候选", { exact: true }).count() === 1
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 0);
 
+  // 有结果之后这一页从「选」切到「读和决定」：两栏塌成一行，结果不再被压到第二屏。
+  const resultTop = (await page.locator(".bridge-result").boundingBox()).y;
+  check("有结果时选择区塌成一行，结果落在第一屏", await page.locator(".bridge-picker").count() === 0
+    && await page.locator(".bridge-selection-bar").count() === 1
+    && resultTop < 700, `结果顶边 ${resultTop}px`);
+  await page.getByRole("button", { name: "重新选择" }).click();
+  check("重新选择把两栏放回来", await page.locator(".bridge-picker").count() === 1
+    && await page.getByRole("button", { name: "选择知识：认知卸载", pressed: true }).count() === 1);
+
   await page.getByRole("button", { name: "换一个大众入口" }).click();
   check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-storyline").innerText()).includes("范围过大")
     && (await page.locator(".bridge-storyline").innerText()).includes("无法证明所有人会彻底失去思考能力"));
@@ -354,7 +363,9 @@ try {
       }],
     }) });
   });
+  // 上一段留着一个弱连接结果，而结果在时选择区是塌起来的；这里要的是干净的选择态。
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.reload();
   await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
   check("议程入口长在第 02 栏，不必先跑一次 Preview", await page.getByLabel("选择长期议程").count() === 1
     && await page.getByRole("button", { name: "从议程拎问题" }).count() === 1);
@@ -408,7 +419,10 @@ try {
   await page.getByRole("button", { name: "选择知识：认知卸载" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？" }).click();
   await page.getByRole("button", { name: "看看怎么连接" }).click();
-  await page.getByRole("heading", { name: "长期议程" }).waitFor();
+  // 议程是结果里的一条控件带，不是编号段落，所以等的是那个字段而不是标题。
+  await page.locator(".bridge-result-agenda").waitFor();
+  check("议程不占编号位，仍作为结果里的决定项存在", await page.locator(".bridge-result-section h3").allTextContents()
+    .then((titles) => !titles.includes("长期议程")));
   check("无 Agenda 时仍可新建议程并继续构造", await page.getByRole("button", { name: "＋ 新建议程" }).count() === 1
     && await page.getByText("长期议程暂时无法读取，不影响继续构造和保存不关联议程的机会。").count() === 1);
   await page.getByRole("button", { name: "＋ 新建议程" }).click();
@@ -418,7 +432,22 @@ try {
   await page.keyboard.press("Control+K");
   await page.getByText("找题（旧版）", { exact: true }).waitFor();
   check("旧找题与种子路由仍可由快捷入口访问", await page.getByText("选题 / 种子（旧版）", { exact: true }).count() === 1);
+  check("Ctrl+K 空态就能看到记一个用户问题", await page.getByText("记一个用户问题", { exact: true }).count() === 1);
   await page.keyboard.press("Escape");
+
+  // 10b：听到一句真实困惑，Ctrl+K 打进去就存下来，不用先走到内容机会页。
+  const heard = "为什么我改完稿子反而更不确定了";
+  await page.keyboard.press("Control+K");
+  await page.getByLabel("搜索").fill(heard);
+  const captureRow = page.getByRole("button", { name: new RegExp(`记成用户问题：${heard}`) });
+  await captureRow.waitFor();
+  check("记下来这一行排在结果之后，不抢走 Enter", await page.locator(".cmdk__row").last().innerText().then((text) => text.includes("记成用户问题")));
+  await captureRow.click();
+  await page.getByRole("button", { name: `选择用户问题：${heard}`, pressed: true }).waitFor();
+  const captured = workspace.db.prepare("SELECT origin, source_kind AS sourceKind FROM audience_problems WHERE statement=?").get(heard);
+  check("Ctrl+K 打一句就记下用户问题，并落到那条问题上", captured?.origin === "observed"
+    && captured.sourceKind === "manual"
+    && page.url().includes(encodeURIComponent("problem:")));
 
   check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);

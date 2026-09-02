@@ -50,10 +50,11 @@ function dateLabel(value) {
 
 function initialIds(value) {
   const text = String(value || "");
-  if (text.startsWith("wiki:")) return { wikiId: text.slice(5), problemId: "", opportunityId: "" };
-  if (text.startsWith("problem:")) return { wikiId: "", problemId: text.slice(8), opportunityId: "" };
-  if (text.startsWith("opportunity:")) return { wikiId: "", problemId: "", opportunityId: text.slice(12) };
-  return { wikiId: "", problemId: "", opportunityId: "" };
+  if (text.startsWith("wiki:")) return { wikiId: text.slice(5), problemId: "", opportunityId: "", capture: false };
+  if (text.startsWith("problem:")) return { wikiId: "", problemId: text.slice(8), opportunityId: "", capture: false };
+  if (text.startsWith("opportunity:")) return { wikiId: "", problemId: "", opportunityId: text.slice(12), capture: false };
+  // Ctrl+K 里没打字就选「记一个用户问题」时的落点：直接把手记表单打开。
+  return { wikiId: "", problemId: "", opportunityId: "", capture: text === "capture" };
 }
 
 function SourceCount({ count }) {
@@ -140,6 +141,14 @@ export function ContentBridge({ state = "", onGo }) {
   const [savedOpportunity, setSavedOpportunity] = useState(null);
   const [projectBusy, setProjectBusy] = useState(false);
   const [extractionNote, setExtractionNote] = useState("");
+  /**
+   * 有结果时选择区塌成一行。
+   *
+   * ⚠️ 这不是「折叠一个次要区块」，是这一页有两种模式：还没连接时你在**选**，
+   * 选完之后你在**读和决定**。两栏选择区是 1000px，结果整个落在第二屏以下——
+   * 点完按钮要先滚过自己刚做完的事才看得见答案。塌起来之后结果直接顶到第一屏。
+   */
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [agendaFormOpen, setAgendaFormOpen] = useState(false);
   const [agendaFormAtPicker, setAgendaFormAtPicker] = useState(false);
   const [agendaTitle, setAgendaTitle] = useState("");
@@ -219,7 +228,7 @@ export function ContentBridge({ state = "", onGo }) {
     }
   };
 
-  useEffect(() => { load(initial); }, [state]);
+  useEffect(() => { load(initial); setManualOpen(initial.capture); }, [state]);
 
   const wikiPages = useMemo(() => {
     const term = wikiQuery.trim().toLowerCase();
@@ -264,6 +273,7 @@ export function ContentBridge({ state = "", onGo }) {
       });
       setPreview(result.candidate);
       setEntryIndex(0);
+      setPickerOpen(false);
     } catch (failure) {
       setPreviewError(failure);
     } finally {
@@ -477,6 +487,7 @@ export function ContentBridge({ state = "", onGo }) {
   const evidenceGaps = construction.evidence_gaps || [];
   const counterarguments = construction.counterarguments || [];
   const latestInsight = insights[0] || null;
+  const pickerCollapsed = Boolean(preview) && !pickerOpen;
 
   return (
     <div className="view-body content-bridge">
@@ -507,6 +518,15 @@ export function ContentBridge({ state = "", onGo }) {
         ) : null}
       </section>
 
+      {pickerCollapsed ? (
+        <div className="bridge-selection-bar">
+          <p><strong>{selectedWiki?.title}</strong><span aria-hidden="true">×</span><strong>{selectedProblem?.statement}</strong></p>
+          <button type="button" className="btn btn-sm" onClick={() => setPickerOpen(true)}>重新选择</button>
+        </div>
+      ) : null}
+
+      {pickerCollapsed ? null : (
+      <>
       <div className="bridge-picker" aria-label="选择知识和用户问题">
         <section className="bridge-side" aria-labelledby="bridge-wiki-title">
           <div className="bridge-side-head">
@@ -661,6 +681,8 @@ export function ContentBridge({ state = "", onGo }) {
           <p>从两边各选一个对象，系统才会判断它们是否真的能连接。</p>
         )}
       </section>
+      </>
+      )}
 
       {previewError ? <ErrorNote error={previewError} what="内容连接" onRetry={wikiId && problemId ? () => runPreview() : undefined} /> : null}
 
@@ -671,11 +693,23 @@ export function ContentBridge({ state = "", onGo }) {
             {preview.fit === "weak" ? <strong>不建议硬做内容</strong> : null}
           </div>
 
-          <ResultSection index={1} title="用户真正的问题"><p>{preview.audienceProblem.underlying}</p><small>表层表现：{preview.audienceProblem.surface}</small></ResultSection>
+          <ResultSection index={1} title="用户真正的问题">
+            <p>{preview.audienceProblem.underlying}</p>
+            {/* 从已保存机会还原时表层和深层都回落成同一句问题，重复显示会读成出错 */}
+            {preview.audienceProblem.surface && preview.audienceProblem.surface !== preview.audienceProblem.underlying
+              ? <small>表层表现：{preview.audienceProblem.surface}</small>
+              : null}
+          </ResultSection>
           <ResultSection index={2} title="我的知识能提供什么解释"><p>{preview.knowledgeExplanation}</p></ResultSection>
           <ResultSection index={3} title="最大的认知差"><p>{preview.cognitiveGap}</p></ResultSection>
           <ResultSection index={4} title="核心判断"><blockquote>{preview.coreClaim}</blockquote></ResultSection>
-          <ResultSection index={5} title="长期议程">
+          {/*
+            ⚠️ 议程不编号。01–04 是**读**的东西（问题 → 解释 → 认知差 → 判断，
+            这个顺序是产品原则，不要倒过来把标题提前），而这里是一个**决定**：
+            这条判断要归到哪条长期议程底下。混在编号流里，一个下拉框会被读成
+            「第 5 段正文」——整页就从文章退化成清单。
+          */}
+          <section className="bridge-result-agenda" aria-label="长期议程">
             <label className="bridge-agenda-field">
               <span>这条内容会继续强化什么长期判断</span>
               <select value={agendaId} disabled={previewBusy || agendaFitBusy} onChange={(event) => selectAgenda(event.target.value)}>
@@ -699,8 +733,8 @@ export function ContentBridge({ state = "", onGo }) {
                 onSubmit={createAgenda}
               />
             ) : null}
-          </ResultSection>
-          <ResultSection index={6} title="怎么讲">
+          </section>
+          <ResultSection index={5} title="怎么讲">
             <ol className="bridge-storyline">
               <li><span>①</span><div><b>从什么现实问题进入</b><p>{activeEntry?.text || preview.audienceProblem.surface}</p>{activeEntry?.scope_check?.status === "too_broad" ? <em>范围过大：{activeEntry.scope_check.reason}</em> : null}</div></li>
               <li><span>②</span><div><b>用什么知识解释</b><p>{preview.knowledgeExplanation}</p></div></li>
@@ -715,8 +749,14 @@ export function ContentBridge({ state = "", onGo }) {
               <span>换一种表达方式</span>
               {ACTIONS.map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
             </div>
-            <button type="button" onClick={() => focusSection(evidenceRef)}>查看证据缺口</button>
-            <button type="button" onClick={() => focusSection(counterRef)}>查看反方</button>
+            {/*
+              这两颗是**跳到本页下面某处**，上面两组是**改变候选**。
+              混在一条里读起来全是「按钮」，分不清哪个会重算、哪个只是滚动。
+            */}
+            <div className="bridge-action-jump">
+              <button type="button" onClick={() => focusSection(evidenceRef)}>查看证据缺口</button>
+              <button type="button" onClick={() => focusSection(counterRef)}>查看反方</button>
+            </div>
           </div>
 
           <section className="bridge-checks" aria-label="证据和反方">

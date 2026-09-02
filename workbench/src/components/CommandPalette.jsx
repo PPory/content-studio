@@ -60,6 +60,7 @@ export function CommandPalette({ open, onClose, onGo }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [cursor, setCursor] = useState(0);
+  const [capturing, setCapturing] = useState(false);
   const [resume, setResume] = useState({ opened: [], reading: [], queries: [] });
   const inputRef = useRef(null);
   // 焦点陷阱 + 背景 inert + 关闭后焦点归位。**Esc 不交给它**：这个面板的 Esc
@@ -132,8 +133,26 @@ export function CommandPalette({ open, onClose, onGo }) {
    * 把「结果」和「接着上次」摊成同一个扁平数组，键盘才有一条连续的线可以走。
    * 分组标题不进这个数组——上下键跳过标题是应该的，选中一个标题什么也做不了。
    */
+  /**
+   * 「记一个用户问题」这一行。
+   *
+   * ⚠️ **它排在最后，不排第一。** 排第一意味着打完字按回车就变成「新建」而不是
+   * 「打开搜到的第一条」——这个面板每天开几十次，把 Enter 的落点换掉的代价
+   * 远大于少按一次方向键。放在结果末尾还正好对上真实动作：搜了一圈没有，
+   * 所以它是新的。
+   */
+  const captureRow = (term) => ({
+    kind: "capture",
+    type: "inbox",
+    typeLabel: "记下来",
+    id: "capture:problem",
+    title: term ? `记成用户问题：${term}` : "记一个用户问题",
+    snippet: term ? "保存后直接跳到内容机会，接着看哪块知识能解释它" : "去内容机会手动记一条",
+    term,
+  });
+
   const rows = useMemo(() => {
-    if (q.trim()) return (data?.results || []).map((r) => ({ kind: "result", ...r }));
+    if (q.trim()) return [...(data?.results || []).map((r) => ({ kind: "result", ...r })), captureRow(q.trim())];
     const out = [];
     for (const x of resume.reading) {
       out.push({
@@ -149,6 +168,7 @@ export function CommandPalette({ open, onClose, onGo }) {
     }
     for (const x of resume.opened) out.push({ kind: "recent", ...x, typeLabel: x.typeLabel || "最近打开" });
     for (const s of resume.queries) out.push({ kind: "query", id: `q:${s}`, type: "recent", typeLabel: "搜过", title: s });
+    out.push(captureRow(""));
     out.push(
       {
         kind: "legacy-route",
@@ -185,6 +205,27 @@ export function CommandPalette({ open, onClose, onGo }) {
       if (row.kind === "query") {
         setQ(row.title);
         inputRef.current?.focus();
+        return;
+      }
+      if (row.kind === "capture") {
+        // 空查询时没有可保存的正文，交给内容机会页的手记表单。
+        if (!row.term) {
+          onGo("bridge", "capture");
+          onClose();
+          return;
+        }
+        setCapturing(true);
+        api.createAudienceProblem({
+          statement: row.term,
+          sourceKind: "manual",
+          pattern: "feedback",
+          sources: [{ sourceKind: "manual", sourceId: `manual:${Date.now()}`, evidenceText: row.term, observedAt: new Date().toISOString() }],
+          confirmed: true,
+        })
+          // 存完直接跳到那条问题上：既是保存成功的回执，也已经站在下一步的位置。
+          .then((result) => { onGo("bridge", `problem:${result.problem.id}`); onClose(); })
+          .catch((failure) => setError(failure))
+          .finally(() => setCapturing(false));
         return;
       }
       noteQuery(q);
@@ -234,9 +275,24 @@ export function CommandPalette({ open, onClose, onGo }) {
   if (!open) return null;
 
   const term = q.trim();
-  const groups = term
-    ? [{ label: data ? `${data.total} 条结果${data.total > rows.length ? `（显示前 ${rows.length} 条）` : ""}` : "搜索中…", from: 0, to: rows.length }]
-    : groupsOfResume(resume);
+  // 有查询词时最后一行是「记下来」，不算进结果计数里。
+  const resultCount = term ? Math.max(0, rows.length - 1) : rows.length;
+  const groups = (term
+    ? [
+      {
+        // ⚠️ 用**实际拿到几条**判断有没有结果，不用 data.total——有的来源不回这个字段，
+        // 那时候标题会变成「undefined 条结果」。
+        label: !data
+          ? "搜索中…"
+          : resultCount === 0
+            ? `没找到「${term}」`
+            : `${data.total ?? resultCount} 条结果${data.total > resultCount ? `（显示前 ${resultCount} 条）` : ""}`,
+        from: 0,
+        to: resultCount,
+      },
+      { label: "记下来", from: resultCount, to: rows.length },
+    ]
+    : groupsOfResume(resume)).filter((group) => group.to > group.from || group.label.startsWith("没找到") || group.label === "搜索中…");
 
   return (
     <div className="scrim scrim--top" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -252,7 +308,7 @@ export function CommandPalette({ open, onClose, onGo }) {
           placeholder="搜书、素材、选题、稿件、洞察、已发布作品…"
             aria-label="搜索"
           />
-          {busy ? <span className="cmdk__busy">搜索中…</span> : null}
+          {capturing ? <span className="cmdk__busy">正在保存…</span> : busy ? <span className="cmdk__busy">搜索中…</span> : null}
           {q ? (
             <button
               type="button"
@@ -351,6 +407,7 @@ function groupsOfResume(resume) {
   push("接着读", resume.reading.length);
   push("最近打开", resume.opened.length);
   push("最近搜过", resume.queries.length);
+  push("记下来", 1);
   push("旧入口", 2);
   return out;
 }

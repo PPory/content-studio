@@ -22,6 +22,8 @@
   font-size: var(--fs-2xl);
   line-height: 1.3;
   letter-spacing: -.025em;
+}
+
 .bridge-recent {
   margin-bottom: var(--sp-7);
   padding: var(--sp-5) 0;
@@ -66,7 +68,6 @@
 .bridge-recent-meta em { padding: 2px 7px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); font-style: normal; }
 .bridge-local-error { margin: var(--sp-3) 0; color: var(--emph); font-size: var(--fs-xs); line-height: 1.5; }
 .bridge-insight-source { margin: var(--sp-2) 0 0; }
-}
 
 .bridge-head > div > p:last-child {
   max-width: 680px;
@@ -75,6 +76,25 @@
   font-size: var(--fs-md);
   line-height: 1.7;
 }
+
+/*
+ * 有结果时选择区塌成这一行。这一页有两种模式：还没连接时你在**选**，
+ * 选完之后你在**读和决定**——两栏 1000px 摆在结果上面，等于每次都要先滚过
+ * 自己刚做完的事才看得见答案。
+ */
+.bridge-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.bridge-selection-bar p { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; margin: 0; }
+.bridge-selection-bar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.bridge-selection-bar span { flex: none; color: var(--text-3); }
+.bridge-selection-bar > button { flex: none; }
 
 .bridge-picker {
   display: grid;
@@ -265,6 +285,17 @@
 .bridge-result-section small { display: block; margin-top: var(--sp-3); color: var(--text-3); }
 .bridge-result-section blockquote { max-width: 920px; margin: 0; font-size: var(--fs-xl); line-height: 1.55; letter-spacing: -.015em; }
 
+/*
+ * 议程条：这里是**决定**（这条判断归到哪条长期议程），不是正文的第五段。
+ * 所以它不缩进到编号栏，底色也和阅读段落分开——一个下拉框长得像正文会被读成清单。
+ */
+.bridge-result-agenda {
+  padding: var(--sp-6) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.bridge-result-agenda > p { margin: 0 0 var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
+
 .bridge-agenda-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-4); }
 .bridge-agenda-create {
   display: grid;
@@ -302,8 +333,14 @@
 .bridge-storyline em { display: block; margin-top: var(--sp-3); color: var(--emph); font-style: normal; }
 
 .bridge-action-bar { flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-7) 0; border-bottom: 1px solid var(--border); }
+/* 跳转类动作靠右并单独成组，和左边会重算候选的动作分开 */
+.bridge-action-jump { display: flex; align-items: center; gap: var(--sp-3); margin-inline-start: auto; }
 .bridge-action-bar > button,
-.bridge-action-menu { min-height: 38px; padding: 0 var(--sp-4); background: var(--surface-2); }
+.bridge-action-jump > button,
+.bridge-action-menu { min-height: 38px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-md); background: var(--surface-2); }
+/* 跳转组只靠位置和这道竖线区分，不靠更重的描边——它不比左边的动作更重要 */
+.bridge-action-jump { padding-inline-start: var(--sp-4); border-inline-start: 1px solid var(--border); }
+.bridge-action-jump > button { color: var(--text-2); font-size: var(--fs-sm); }
 .bridge-action-bar button:hover:not(:disabled) { color: var(--text-1); background: var(--accent-wash); }
 .bridge-action-bar button:disabled { opacity: .45; cursor: not-allowed; }
 .bridge-action-menu { gap: var(--sp-2); border-radius: var(--r-pill); color: var(--text-3); font-size: var(--fs-sm); }
