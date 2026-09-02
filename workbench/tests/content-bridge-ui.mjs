@@ -48,7 +48,7 @@ async function request(pathname, options = {}) {
   return data;
 }
 
-function strongCandidate({ dominantAction = "judgment", agendaId = "", wikiId, problemId, freshness } = {}) {
+function strongCandidate({ dominantAction = "judgment", agendaId = "", wikiId, problemId, problemSource, freshness } = {}) {
   const experience = dominantAction === "experience";
   return {
     fit: "strong",
@@ -66,7 +66,7 @@ function strongCandidate({ dominantAction = "judgment", agendaId = "", wikiId, p
       : { available: false, reason: "当前表达不依赖个人经历。", sourceRefs: [] },
     construction: {
       elements: [
-        { id: "problem", type: "problem", label: "AI 使用中的判断依赖", source_kind: "audience_problem", source_id: problemId },
+        { id: "problem", type: "problem", label: "AI 使用中的判断依赖", source_kind: problemSource?.sourceKind || "audience_problem", source_id: problemSource?.sourceId || problemId },
         { id: "concept", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiId },
         { id: "claim", type: "judgment", label: "保留人的判断权", source_kind: "", source_id: "" },
       ],
@@ -230,11 +230,19 @@ try {
     const context = buildContentBridgeContext(workspace, {
       wikiPageId: payload.wikiPageId,
       audienceProblemId: payload.audienceProblemId,
+      problemCandidate: payload.problemCandidate || null,
       agendaId: payload.agendaId || null,
     });
+    /**
+     * 还没入库的候选没有 audience_problem id，所以问题要素引用的是**那段原话**。
+     * 这正是「发展这条不写库」在数据上的样子：证据是真的，问题还不是一条记录。
+     */
+    const problemSource = payload.problemCandidate
+      ? { sourceKind: "feedback", sourceId: `raw:${payload.problemCandidate.evidence[0].rawSourceId}` }
+      : { sourceKind: "audience_problem", sourceId: payload.audienceProblemId };
     const candidate = payload.wikiPageId === weakWiki.id || payload.audienceProblemId === weakProblemId
       ? weakCandidate({ wikiId: payload.wikiPageId, problemId: payload.audienceProblemId, freshness: context.freshness })
-      : strongCandidate({ dominantAction: payload.dominantAction || "judgment", agendaId: payload.agendaId || "", wikiId: payload.wikiPageId, problemId: payload.audienceProblemId, freshness: context.freshness });
+      : strongCandidate({ dominantAction: payload.dominantAction || "judgment", agendaId: payload.agendaId || "", wikiId: payload.wikiPageId, problemId: payload.audienceProblemId, problemSource, freshness: context.freshness });
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, candidate }) });
   });
   await page.route("**/api/workspace/content-opportunities/agenda-fit", async (route) => {
@@ -249,13 +257,25 @@ try {
     }) });
   });
 
+  /**
+   * ⚠️ **`#/bridge` 的第一屏是 AI 发现，不再是两栏选择器。**
+   * 手动挑两个东西连起来没有删，它退到 `#/bridge/manual`——
+   * 「我已经知道想连哪两个」是一条真实的路，只是不该是每天打开内容看到的第一件事。
+   */
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
-  check("主导航以内容机会作为内容入口", await page.getByRole("button", { name: "内容机会", exact: true }).count() === 1);
-  check("概览先回答「我该继续哪一条」，不上来就是选择器", await page.locator(".bridge-picker").count() === 0
-    && await page.getByRole("button", { name: "新建连接" }).count() >= 1);
-  await page.getByRole("button", { name: "新建连接" }).first().click();
+  await page.getByRole("heading", { name: "最近有什么值得讲", exact: true }).waitFor();
+  check("内容首页问的是「最近有什么值得讲」，不是让人先挑两个东西",
+    await page.locator(".bridge-picker").count() === 0
+    && await page.getByRole("button", { name: /帮我看看最近有什么值得讲/ }).count() === 1);
+  check("首页没有一排 Wiki / 问题筛选器",
+    await page.locator(".bridge-side-list").count() === 0
+    && await page.locator(".bridge-agenda-pick").count() === 0);
+  check("手动探索仍然在，只是退成次级入口",
+    await page.getByRole("button", { name: "手动探索" }).count() === 1);
+
+  await page.getByRole("button", { name: "手动探索" }).click();
   await page.locator(".bridge-picker").waitFor();
+  check("手动探索走 #/bridge/manual，老深链不受影响", page.url().endsWith("#/bridge/manual"));
   await page.getByRole("button", { name: "选择知识：认知卸载" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？" }).click();
   check("Wiki 与用户问题均可选择", await page.getByRole("button", { name: "选择知识：认知卸载", pressed: true }).count() === 1
@@ -282,10 +302,14 @@ try {
   check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-storyline").innerText()).includes("范围过大")
     && (await page.locator(".bridge-storyline").innerText()).includes("无法证明所有人会彻底失去思考能力"));
 
-  await page.getByRole("button", { name: "经历型" }).click();
-  await page.getByRole("button", { name: "经历型", pressed: true }).waitFor();
-  const bridgeText = await page.locator(".bridge-result").innerText();
-  check("没有经历来源时只给条件式入口", bridgeText.includes("如果你确实有") && !bridgeText.includes("我最近发现"));
+  /**
+   * ⚠️ **没有真实经历时，「经历型」这颗按钮根本不摆出来。**
+   * 上一版摆着它、点下去跑一次模型、返回一份「如果你确实有……」的条件式候选——
+   * 那是一份没有依据的空壳，用户读完选了它，写作时才发现没有故事可讲。
+   */
+  check("没有个人经历时不提供经历型这条路线",
+    await page.getByRole("button", { name: "经历型" }).count() === 0
+    && await page.getByRole("button", { name: "判断型" }).count() === 1);
 
   const claimBeforeAgenda = await page.locator(".bridge-result-section blockquote").textContent();
   const callsBeforeAgenda = previewCalls;
@@ -305,12 +329,16 @@ try {
   await page.getByRole("button", { name: "保存为内容机会" }).click();
   await page.getByText("内容机会已保存", { exact: true }).waitFor();
   const saved = workspace.db.prepare("SELECT id,agenda_id AS agendaId,dominant_action AS dominantAction FROM content_opportunities").get();
-  check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "experience");
-  await page.getByRole("button", { name: "← 内容机会" }).click();
+  // ⚠️ 这里是 judgment 而不是 experience：这个工作区一条个人经历都没有，
+  // 经历型那条路线现在压根不摆出来，自然也存不进一条标着经历型的机会。
+  check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "judgment");
+  // 退回内容首页：已保存的机会现在长在 AI 发现下面的「进行中」里
+  await page.getByRole("button", { name: "← 内容" }).click();
   await page.locator(".bridge-opp-list").waitFor();
-  check("保存后回到概览就能看到这一条", (await page.locator(".bridge-opp-list").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
-    && (await page.locator(".bridge-opp-list").innerText()).includes("认知卸载"));
-  // 从概览点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
+  check("保存后回到内容首页，这一条在「进行中」里", (await page.locator(".bridge-opp-list").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
+    && (await page.locator(".bridge-opp-list").innerText()).includes("认知卸载")
+    && (await page.locator(".discovery-saved").innerText()).includes("进行中"));
+  // 从首页点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
   await page.locator(".bridge-opp-list button").first().click();
   await page.getByRole("heading", { name: "核心判断" }).waitFor();
   check("从概览点进去能还原已保存的机会", await page.getByRole("button", { name: "建立内容项目" }).count() === 1
@@ -385,9 +413,9 @@ try {
     }) });
   });
   // 上一段留着一个弱连接结果，而结果在时选择区是塌起来的；这里要的是干净的选择态。
-  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge/manual`);
   await page.reload();
-  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
+  await page.locator(".bridge-picker").waitFor();
   check("议程入口长在问题库panel，不必先跑一次 Preview", await page.getByLabel("选择长期议程").count() === 1
     && await page.getByRole("button", { name: "从议程拎问题" }).count() === 1);
   await page.getByLabel("选择长期议程").selectOption(agendaId);
@@ -400,7 +428,6 @@ try {
   await page.getByText("议程推导 · 尚无真实观察").waitFor();
   check("议程候选明确标注没有真实观察", await page.locator(".bridge-candidates article").count() === 1);
   await page.getByRole("button", { name: "确认保存" }).click();
-  // 概览里的问题行不是「选中」态，它是通往工作台的入口
   await page.getByRole("button", { name: "选择用户问题：哪些事情可以交给 AI，哪些必须自己判断？" }).waitFor();
   const hypothesisRow = workspace.db.prepare("SELECT origin, origin_agenda_id AS agendaId, source_ref AS sourceRef FROM audience_problems WHERE statement=?")
     .get("哪些事情可以交给 AI，哪些必须自己判断？");
@@ -499,6 +526,108 @@ try {
   );
   check("存进去的原话在真实运行时也改不了", true);
   await voiceDialog.getByRole("button", { name: "完成" }).click();
+
+  /**
+   * 11：AI 发现的完整一轮。
+   *
+   * 上一段刚把一段真实群聊粘进了不可变证据层，这里验的就是这次重构的核心体感：
+   * **不用先挑 Wiki、也不用先维护用户问题**，点一次就能拿到几条有理由、有原话的连接；
+   * 「发展这条」仍然一个字都不写库，直到用户确认保存。
+   */
+  const rawVoice = workspace.db.prepare("SELECT id FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1").get();
+  const discoveryQuote = "AI 工具每周都在出新的，我到底该学哪个？";
+  let scanCalls = 0;
+  await page.route("**/api/workspace/content-discovery/scan", async (route) => {
+    scanCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true,
+      reused: false,
+      stale: false,
+      staleReason: "",
+      scan: {
+        scannedAt: new Date().toISOString(),
+        model: "test-discovery",
+        read: { wikiPages: 2, problems: 3, voices: 1, pendingVoices: 1, reusedVoices: 0, voiceChars: 120 },
+        nothingFoundReason: "",
+        missing: [],
+        connections: [{
+          problem: {
+            existingProblemId: null,
+            statement: "AI 工具每周都在出新的，我到底该学哪个？",
+            whyItMatters: "选择成本正在挤掉真正的学习时间。",
+            origin: "observed",
+            originAgendaId: null,
+            evidenceLabel: "1 段可逐字回溯的真实原话",
+            evidence: [{ rawSourceId: rawVoice.id, quote: discoveryQuote, kind: "group_chat", kindLabel: "群聊", sourceName: "", observedAt: new Date().toISOString() }],
+          },
+          knowledgeAnchors: [{ wikiPageId: cognitiveWiki.id, title: "认知卸载", pageType: "concept", summary: "", reason: "这条知识把问题从「选哪个」改写成「什么该自己判断」。" }],
+          fit: "strong",
+          fitReason: "问题问的是工具选择，而这条知识给的是判断边界。",
+          knowledgeExplanation: "认知卸载解释了人为什么倾向于把选择交出去。",
+          coreClaim: "学 AI 不该从工具清单开始，而该从自己真正要解决的问题开始。",
+          cognitiveGap: "大众把它当成工具选择题，其实是判断边界问题。",
+          agendaSuggestion: { agendaId: null, agendaTitle: "", status: "none", reason: "" },
+          evidenceGaps: ["还缺一个真实案例说明这个顺序确实更省时间。"],
+        }],
+      },
+    }) });
+  });
+
+  const problemsBeforeDiscovery = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("heading", { name: "最近有什么值得讲", exact: true }).waitFor();
+  check("进页面不自动烧模型", scanCalls === 0);
+  await page.getByRole("button", { name: /帮我看看最近有什么值得讲/ }).click();
+  await page.locator(".discovery-card").first().waitFor();
+
+  const cardText = await page.locator(".discovery-card").first().innerText();
+  check("卡片说清谁在困惑什么、用我的什么知识、可能留下什么判断",
+    cardText.includes("AI 工具每周都在出新的") && cardText.includes("认知卸载")
+    && cardText.includes("学 AI 不该从工具清单开始"));
+  check("证据说的是「可逐字回溯的真实原话」，不是笼统的「N 条反馈」",
+    cardText.includes("1 段可逐字回溯的真实原话"));
+  check("不显示分数、热度或爆款概率",
+    !/\d+\s*分|热度|爆款/.test(cardText) && cardText.includes("很自然"));
+  await page.getByRole("button", { name: "看原话" }).click();
+  check("原话可以当场展开核对", (await page.locator(".discovery-quotes").innerText()).includes(discoveryQuote));
+  check("扫描一条业务数据都没写",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 1);
+
+  await page.getByRole("button", { name: "发展这条" }).click();
+  /**
+   * ⚠️ **点完直接进构造，中间不再停在选择器上。**
+   * 用户已经在卡片上表达过「就看这一条」，再要求他点一次「看看怎么连接」
+   * 是把同一个意图问两遍。
+   */
+  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  check("发展这条仍然不写库",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
+  const developedTitle = await page.locator(".bridge-bar__title").innerText();
+  check("发展这条直接进构造，不用再自己挑一遍 Wiki 和问题",
+    developedTitle.includes("认知卸载") && developedTitle.includes("AI 工具每周都在出新的"));
+  /**
+   * ⚠️ **「还没保存」必须在顶栏里，不能只写在问题栏那张候选卡上。**
+   * 结果一出来选择区就整个塌起来，那张卡当场从屏幕上消失——
+   * 而这正是用户要按「保存为内容机会」的时刻。
+   */
+  check("要按保存的那一刻，「还没保存」仍然在顶栏里看得见", developedTitle.includes("用户问题还没保存"));
+
+  await page.getByRole("button", { name: "重新选择" }).click();
+  await page.locator(".bridge-side-candidate").waitFor();
+  check("展开选择区时，候选和已入库的问题长得不一样，并写明还没保存",
+    (await page.locator(".bridge-side-candidate").innerText()).includes("还没保存"));
+  await page.getByRole("button", { name: "收起选择" }).click();
+  await page.getByRole("button", { name: "保存为内容机会" }).click();
+  await page.getByText("内容机会已保存", { exact: true }).waitFor();
+  const fromDiscovery = workspace.db.prepare(`SELECT p.origin, s.source_id AS sourceId, s.evidence_text AS quote
+    FROM audience_problems p JOIN audience_problem_sources s ON s.problem_id = p.id
+    WHERE p.statement = ?`).get("AI 工具每周都在出新的，我到底该学哪个？");
+  check("确认保存那一刻，用户问题和它的原话才第一次入库",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery + 1
+    && fromDiscovery.origin === "observed"
+    && fromDiscovery.sourceId === `raw:${rawVoice.id}`
+    && fromDiscovery.quote === discoveryQuote);
 
   check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);

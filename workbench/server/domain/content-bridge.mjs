@@ -406,12 +406,33 @@ export class ContentBridgeDomain {
     return problemDto(row, this.db.prepare("SELECT * FROM audience_problem_sources WHERE problem_id=? ORDER BY observed_at DESC, source_kind, source_id").all(id).map(sourceDto));
   }
 
-  saveOpportunity({ id = createUlid(), wikiPageId, audienceProblemId, agendaId = null, coreClaim, knowledgeExplanation, cognitiveGap, dominantAction, fit, fitReason, construction = {}, freshness, actor, confirmed = false, now } = {}) {
+  /**
+   * 保存一条内容机会。
+   *
+   * ⚠️ **用户问题可以到这一刻才存在。** 从 Discovery 里发展出来的连接，它的用户问题
+   * 一路都只是候选；直到这里才和内容机会一起进同一个事务。放弃的候选一条都不落库，
+   * 问题库里因此不会堆满「看过一眼就算了」的东西。
+   */
+  saveOpportunity({ id = createUlid(), wikiPageId, audienceProblemId, problemCandidate = null, agendaId = null, coreClaim, knowledgeExplanation, cognitiveGap, dominantAction, fit, fitReason, construction = {}, freshness, actor, confirmed = false, now } = {}) {
     requireConfirmedUser({ actor, confirmed }, "保存内容机会");
-    const context = buildContentBridgeContext({ db: this.db, contentBridge: this }, { wikiPageId, audienceProblemId, agendaId, includeExperiences: true });
+    const workspaceView = { db: this.db, contentBridge: this };
+    const context = buildContentBridgeContext(workspaceView, { wikiPageId, audienceProblemId, problemCandidate, agendaId, includeExperiences: true });
     const normalizedFreshness = assertContentBridgeFreshness(freshness, context.freshness);
     const canonicalAction = clean(dominantAction);
     if (!DOMINANT_ACTIONS.has(canonicalAction)) throw new TypeError("主导表达动作不受支持");
+    /**
+     * ⚠️ **经历型必须有真实经历，这一条在保存时也要拦。**
+     * 原来只拦「伪造的 experience 要素」，于是真实库里存下过一条主导动作是经历型、
+     * 而整份构造里一个经历要素都没有的内容机会——工作区当时一条个人经历都没有。
+     * 一个标着「经历型」却没有任何经历的内容机会，等于给后面的写作发了一张
+     * 「这里该讲个人故事」的空头许可。
+     */
+    if (canonicalAction === "experience" && !context.experiences.length) {
+      throw Object.assign(new Error("工作区没有可核验的个人经历，不能保存经历型内容机会"), {
+        status: 409,
+        hint: "先把那段真实经历作为「个人经历」素材存进工作台，再回来沿这条路线构造。",
+      });
+    }
     const canonicalFit = clean(fit);
     if (!FITS.has(canonicalFit)) throw new TypeError("内容机会匹配度不受支持");
     const normalizedConstruction = validateContentConstruction(construction, { allowedSources: context.allowedSources });
@@ -427,18 +448,38 @@ export class ContentBridgeDomain {
     };
     const stamp = isoNow(now);
     return this.repository.transaction(() => {
+      // 候选问题和机会同生共死：机会存不下来的话，问题库里也不该多出一条孤儿问题。
+      const problemId = context.problemCandidate
+        ? this.createAudienceProblem({
+          statement: context.problemCandidate.statement,
+          summary: context.problemCandidate.summary,
+          sourceKind: context.problem.sources[0]?.sourceKind,
+          pattern: context.problem.pattern,
+          origin: context.problemCandidate.origin,
+          originAgendaId: context.problemCandidate.originAgendaId,
+          sources: context.problem.sources,
+          actor: "user",
+          confirmed: true,
+          now,
+        })
+        : audienceProblemId;
       this.repository.createEntity({ id, type: "content_opportunity", now });
       this.db.prepare(`INSERT INTO content_opportunities(
         id,wiki_page_id,audience_problem_id,agenda_id,core_claim,knowledge_explanation,cognitive_gap,dominant_action,fit,fit_reason,construction_json,preview_freshness_json,status,created_at,updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
-        .run(id, wikiPageId, audienceProblemId, agendaId || null, opportunity.coreClaim, opportunity.knowledgeExplanation, opportunity.cognitiveGap, opportunity.dominantAction, opportunity.fit, opportunity.fitReason, opportunity.constructionJson, opportunity.freshnessJson, stamp, stamp);
+        .run(id, wikiPageId, problemId, agendaId || null, opportunity.coreClaim, opportunity.knowledgeExplanation, opportunity.cognitiveGap, opportunity.dominantAction, opportunity.fit, opportunity.fitReason, opportunity.constructionJson, opportunity.freshnessJson, stamp, stamp);
       // 检索里这条机会叫「知识 × 问题」——那是你回想它时用的说法；论断留在正文里可搜。
       this.repository.setEntityText(id, {
         title: `${context.wiki.title} × ${context.problem.statement}`.slice(0, 200),
         body: `${opportunity.coreClaim}\n${opportunity.knowledgeExplanation}\n${opportunity.cognitiveGap}`,
         now,
       });
-      this.workspaceDomain.audit("content_opportunity.created", id, { wikiPageId, audienceProblemId, agendaId: agendaId || null }, now);
+      this.workspaceDomain.audit("content_opportunity.created", id, {
+        wikiPageId,
+        audienceProblemId: problemId,
+        agendaId: agendaId || null,
+        fromProblemCandidate: Boolean(context.problemCandidate),
+      }, now);
       return id;
     });
   }

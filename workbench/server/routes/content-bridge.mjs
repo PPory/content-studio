@@ -1,6 +1,7 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { extractAgendaProblemCandidates, extractAudienceProblemCandidates, previewContentOpportunity, previewContentOpportunityAgendaFit } from "../domain/content-bridge-ai.mjs";
 import { CONTENT_BRIDGE_VALUES } from "../domain/content-bridge.mjs";
+import { hasPersonalExperience } from "../domain/content-bridge-context.mjs";
 
 async function ready(source) {
   const workspace = await source;
@@ -83,6 +84,14 @@ export const contentBridgeRoutes = [
         problems: workspace.contentBridge.audienceProblems({ includeArchived: url.searchParams.get("archived") === "1" }),
         sourceKinds: CONTENT_BRIDGE_VALUES.sourceKinds,
         patterns: CONTENT_BRIDGE_VALUES.problemPatterns,
+        /**
+         * 经历型这条表达路线现在存不存在。
+         *
+         * ⚠️ **跟着词表走，不跟着某一次 Preview 走。** 它回答的是「这条路存不存在」，
+         * 而不是「这一份候选是不是经历型」——界面要在**摆出按钮之前**就知道答案，
+         * 否则就会出现一颗点下去必然报错的按钮。
+         */
+        experienceAvailable: hasPersonalExperience(workspace),
       });
     }),
   },
@@ -204,6 +213,8 @@ export const contentBridgeRoutes = [
       const id = workspace.contentBridge.saveOpportunity({
         wikiPageId: body.wikiPageId,
         audienceProblemId: body.audienceProblemId,
+        // 从 Discovery 发展过来的连接，用户问题到这一刻才第一次入库。
+        problemCandidate: body.problemCandidate || null,
         agendaId: body.agendaId || null,
         coreClaim: body.coreClaim,
         knowledgeExplanation: body.knowledgeExplanation,

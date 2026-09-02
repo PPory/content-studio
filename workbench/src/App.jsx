@@ -12,6 +12,7 @@ import { Overview } from "./pages/Overview.jsx";
 import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
 import { ContentBridge } from "./pages/ContentBridge.jsx";
+import { ContentDiscovery } from "./pages/ContentDiscovery.jsx";
 import { Content } from "./pages/Content.jsx";
 import { Series } from "./pages/Series.jsx";
 import { SeriesWorkspace } from "./pages/SeriesWorkspace.jsx";
@@ -728,7 +729,17 @@ export function App() {
               ) : route.view === "assistant" ? (
                 <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
               ) : route.view === "bridge" ? (
-                <ContentBridge state={route.state} onGo={go} />
+                /**
+                 * ⚠️ **`#/bridge` 的默认落点换成了 AI 发现。**
+                 * 双栏手动选择器没有删，它退到 `#/bridge/manual`——「我已经知道想连哪两个」
+                 * 仍然是一条真实的路，只是不该是每天打开内容时看到的第一件事。
+                 * `wiki:` / `problem:` / `opportunity:` 这些老深链照旧直接进工作台。
+                 */
+                route.state ? (
+                  <ContentBridge state={route.state} onGo={go} />
+                ) : (
+                  <ContentDiscovery onGo={go} onCaptureVoice={(term) => setVoice({ term })} />
+                )
               ) : route.view === "ideas" ? (
                 <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
               ) : route.view === "seeds" ? (

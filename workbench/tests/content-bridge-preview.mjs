@@ -220,11 +220,25 @@ try {
   check("证据不足与 Agenda 不匹配被结构化保留", evidence.value.candidate.construction.evidence_gaps.length === 1
     && evidence.value.candidate.agendaFit.status === "weak");
 
+  /**
+   * ⚠️ **没有真实经历时，经历型在跑模型之前就被拦下。**
+   * 上一版会照样跑一次模型，返回一份「条件式入口」的经历型候选——
+   * 那是一份没有任何依据的空壳：用户读完、选了它、写作时才发现没有故事可讲。
+   * 拦在前面还省下一次十几秒的调用。
+   */
   mode = "experience";
   const experience = await post(base, { ...input, dominantAction: "experience" });
-  check("没有真实经历时只能给条件式入口，不生成第一人称经历", experience.response.status === 200
-    && experience.value.candidate.experience.available === false
-    && !experience.value.candidate.construction.elements.some((item) => item.type === "experience"));
+  check("没有真实经历时经历型在跑模型之前就被拦下", experience.response.status === 409
+    && /没有可核验的个人经历/.test(experience.value.error));
+  check("并且告诉用户下一步该做什么，而不是只说不行", /个人经历.*素材/.test(experience.value.hint || ""));
+
+  // 有了真实经历之后，「模型编造经历要素」那条硬闸仍然照旧生效。
+  workspace.domain.createMaterial({
+    title: "一次真实的 AI 选择经历",
+    type: "个人经历",
+    bodyMarkdown: "我曾在一次真实选择中先问 AI，随后重新核对了自己的判断。",
+    actor: "user",
+  });
   mode = "fabricated-experience";
   const fabricated = await post(base, { ...input, dominantAction: "experience" });
   check("模型编造个人经历被服务端硬闸拒绝", fabricated.response.status === 400 && /来源/.test(fabricated.value.error));

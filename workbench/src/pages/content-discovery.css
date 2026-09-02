@@ -1,0 +1,133 @@
+/*
+ * 内容首页：AI 发现。
+ *
+ * 一屏只做一件事——把少数几条值得判断的连接摆清楚。所以这里没有筛选条、
+ * 没有侧栏、没有仪表盘，卡片之间留的空比卡片内部还大：它们是**并列的几个判断**，
+ * 不是一张列表里的几行。
+ */
+
+.content-discovery { max-width: 900px; }
+
+.discovery-list { display: grid; gap: var(--sp-8); }
+
+.discovery-card {
+  display: grid;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+/* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
+.discovery-card[data-fit="weak"] { opacity: .78; }
+
+.discovery-card__label {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.discovery-card__problem h3 {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+  letter-spacing: -.015em;
+}
+
+.discovery-evidence {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--brand-strong);
+  font-size: var(--fs-xs);
+}
+/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
+.discovery-evidence[data-origin="hypothesis"] { color: var(--text-3); font-style: italic; }
+.discovery-evidence button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.discovery-evidence button:hover { color: var(--text-1); }
+
+.discovery-quotes { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 0; padding: var(--sp-4) var(--sp-5); border-left: 2px solid var(--border); list-style: none; }
+.discovery-quotes q { display: block; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+.discovery-quotes small { display: block; margin-top: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
+
+.discovery-card__anchors ul { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.discovery-card__anchors li { display: grid; gap: 2px; }
+.discovery-card__anchors strong { font-size: var(--fs-sm); }
+.discovery-card__anchors span { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+
+.discovery-card__why p,
+.discovery-card__claim p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.75; }
+.discovery-card__claim p { font-weight: 600; }
+
+.discovery-card__gaps ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+
+.discovery-card__foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+.discovery-card__agenda { flex: 1; min-width: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.discovery-card__foot .btn { margin-left: auto; }
+
+.discovery-stale {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-7);
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.discovery-failed { margin-bottom: var(--sp-7); }
+.discovery-failed p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin: var(--sp-3) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+
+.discovery-empty { padding: var(--sp-10) var(--sp-6); text-align: center; }
+.discovery-empty h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-lg); letter-spacing: -.02em; }
+.discovery-empty p { max-width: 520px; margin: 0 auto var(--sp-7); color: var(--text-2); line-height: 1.7; }
+.discovery-empty__outs { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-3); }
+
+.discovery-saved { margin-top: var(--sp-11); }
+.discovery-saved h3 { margin: 0 0 var(--sp-4); }
+
+@media (max-width: 720px) {
+  .discovery-card { padding: var(--sp-6); gap: var(--sp-5); }
+  .discovery-card__foot .btn { margin-left: 0; }
+
+  /*
+   * ⚠️ **小屏上标题和那行「读了 95 条知识 · 1 段原话」不能挤在同一行。**
+   * 顶栏是 flex，而那行摘要会一直长；挤在一起的结果是标题被压到一个字一行
+   * （真机截图上就是竖着排的「最 近 有 什 么 值 得 讲」）。
+   */
+  .content-discovery .bridge-bar { flex-wrap: wrap; row-gap: var(--sp-3); }
+  .content-discovery .bridge-bar__title { flex-direction: column; align-items: flex-start; gap: var(--sp-2); width: 100%; }
+  .content-discovery .bridge-bar__title h2 { white-space: nowrap; }
+  .content-discovery .bridge-bar__actions { flex-wrap: wrap; }
+}

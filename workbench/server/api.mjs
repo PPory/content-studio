@@ -19,6 +19,7 @@ import { backupRoutes } from "./routes/backup.mjs";
 import { assistantRoutes } from "./routes/assistant.mjs";
 import { contentBridgeRoutes } from "./routes/content-bridge.mjs";
 import { audienceRawRoutes } from "./routes/audience-raw.mjs";
+import { contentDiscoveryRoutes } from "./routes/content-discovery.mjs";
 import { contentExperimentRoutes } from "./routes/content-experiments.mjs";
 
 const EXTENSION_ALIASES = {
@@ -71,6 +72,7 @@ const ROUTES = [
   ...workspaceRoutes,
   ...contentBridgeRoutes,
   ...audienceRawRoutes,
+  ...contentDiscoveryRoutes,
   ...contentExperimentRoutes,
   ...localBookRoutes,
   ...wikiRoutes,

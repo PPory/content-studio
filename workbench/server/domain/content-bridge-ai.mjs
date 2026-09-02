@@ -1,6 +1,6 @@
 import { completeJson } from "../lib/model-json.mjs";
 import { validateContentConstruction } from "./content-bridge.mjs";
-import { buildContentBridgeContext } from "./content-bridge-context.mjs";
+import { buildContentBridgeContext, hasPersonalExperience } from "./content-bridge-context.mjs";
 
 const clean = (value, max = 8_000) => String(value ?? "").trim().slice(0, max);
 const PROBLEM_PATTERNS = new Set(["trend", "frequency", "knowledge_gap", "feedback"]);
@@ -171,28 +171,53 @@ function normalizeBridgeCandidate(data, { hasExperience, allowedSources }) {
     ["认知差", candidate.cognitiveGap],
     ["议程匹配说明", candidate.agendaFit.reason],
   ]) if (!value) throw new Error(`模型返回缺少${label}`);
+  /**
+   * ⚠️ 没有真实经历时，**主导动作本身**就不许是经历型——不只是不许有经历要素。
+   * 一份标着「经历型」却没有任何经历依据的候选，等于给后面的写作发一张
+   * 「这里该讲个人故事」的空头许可，而那个故事只能是编的。
+   */
   if (!hasExperience && dominantAction === "experience") {
-    const fabricated = candidate.construction.elements.some((item) => item.type === "experience");
-    if (fabricated) throw new Error("当前没有真实个人经历来源，模型却生成了经历要素");
+    throw new Error("当前没有真实个人经历来源，不能返回经历型主导动作");
+  }
+  if (!hasExperience && candidate.construction.elements.some((item) => item.type === "experience")) {
+    throw new Error("当前没有真实个人经历来源，模型却生成了经历要素");
   }
   return candidate;
 }
 
-export async function previewContentOpportunity(env, workspace, { wikiPageId, audienceProblemId, agendaId = null, dominantAction = "" } = {}) {
+export async function previewContentOpportunity(env, workspace, { wikiPageId, audienceProblemId, problemCandidate = null, agendaId = null, dominantAction = "" } = {}) {
   const requestedAction = clean(dominantAction, 40);
   if (requestedAction && !ACTIONS.has(requestedAction)) throw Object.assign(new Error("主导表达动作不受支持"), { status: 400 });
+  /**
+   * ⚠️ **经历型这条路存不存在，要在跑模型之前就知道。**
+   * 原来这一位是 `experiences.length > 0`，而 experiences 只在用户明确点了
+   * 「经历型」时才去查——于是「有没有真实经历」和「这次要不要读经历正文」
+   * 被同一个变量表示了。真实工作区里一条个人经历都没有，却仍然能跑出一份
+   * 经历型候选、并且保存成功。
+   *
+   * 现在没有经历就**当场拒绝**，并说清楚下一步该做什么，而不是等保存时才报错，
+   * 更不是生成一份没有依据的经历型空壳让人先读一遍。
+   */
+  const hasExperience = hasPersonalExperience(workspace);
+  if (requestedAction === "experience" && !hasExperience) {
+    throw Object.assign(new Error("工作区没有可核验的个人经历，暂时不能走经历型"), {
+      status: 409,
+      hint: "如果你确实有一段相关的真实经历，先把它作为「个人经历」素材存进工作台，再回来沿这条路线构造。",
+    });
+  }
   const context = buildContentBridgeContext(workspace, {
-    wikiPageId, audienceProblemId, agendaId, includeExperiences: requestedAction === "experience",
+    wikiPageId, audienceProblemId, problemCandidate, agendaId, includeExperiences: requestedAction === "experience",
   });
   const { wiki, problem, agenda, experiences, allowedSources } = context;
-  const hasExperience = experiences.length > 0;
   const completion = await completionFor(env)(env, {
     system: [
       "你为 Content Studio 判断一份长期知识能否自然解释一个真实用户问题。",
       "先判断连接强弱；没有自然连接时必须返回 weak，不能为了产出文章硬连。",
       "先形成问题、解释、认知差和核心判断，不要先给标题。",
       "fit 只能 strong、medium、weak，不使用分数。",
-      "dominant_action 只能 knowledge、judgment、experience、demonstration。",
+      hasExperience
+        ? "dominant_action 只能 knowledge、judgment、experience、demonstration。"
+        : "dominant_action 只能 knowledge、judgment、demonstration。工作区没有任何真实个人经历，经历型这条路现在不存在，不要返回它。",
       "大众入口 entry_options 必须包含 scope_check.status=supported|too_broad 和 reason；不能承诺正文回答不了的问题。",
       "事实、数据、引用只能基于给出的 Wiki 与来源；证据不足要放进 evidence_gaps。",
       hasExperience
@@ -239,15 +264,23 @@ export async function previewContentOpportunity(env, workspace, { wikiPageId, au
     candidate: {
       ...normalizeBridgeCandidate(completion.data, { hasExperience, allowedSources }),
       freshness: context.freshness,
+      // 界面靠它决定要不要显示「经历型」那颗按钮：不能提供的路线不该摆在那儿等人点。
+      experienceAvailable: hasExperience,
+      problemView: {
+        id: problem.id,
+        statement: problem.statement,
+        origin: problem.origin,
+        sources: problem.sources,
+      },
     },
     model: completion.model || "",
   };
 }
 
 export async function previewContentOpportunityAgendaFit(env, workspace, {
-  wikiPageId, audienceProblemId, agendaId, candidate,
+  wikiPageId, audienceProblemId, problemCandidate = null, agendaId, candidate,
 } = {}) {
-  const context = buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId, agendaId });
+  const context = buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId, problemCandidate, agendaId });
   if (!context.agenda) throw Object.assign(new Error("请选择长期议程"), { status: 400 });
   const proposal = {
     coreClaim: clean(candidate?.coreClaim, 4_000),

@@ -187,7 +187,12 @@ try {
     confirmed: true,
     now,
   }), /两个不同的现有要素/);
-  assert.throws(() => contentBridge.saveOpportunity({
+  /**
+   * ⚠️ **工作区一条个人经历都没有时，经历型这条路本身就不成立。**
+   * 原来这里只挡「伪造的经历要素」，于是真实库里存下过一条主导动作是经历型、
+   * 而构造里一个经历要素都没有的内容机会。
+   */
+  const fakeExperiencePayload = {
     wikiPageId,
     audienceProblemId: problemId,
     coreClaim: "虚构经历",
@@ -201,7 +206,9 @@ try {
     confirmed: true,
     freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId }).freshness,
     now,
-  }), /真实来源/);
+  };
+  assert.throws(() => contentBridge.saveOpportunity(fakeExperiencePayload), /没有可核验的个人经历/);
+  check("工作区没有个人经历时，经历型主导动作本身就保存不了", true);
 
   const experiencePayload = (sourceId) => ({
     wikiPageId,
@@ -225,6 +232,11 @@ try {
     actor: "user",
     now,
   });
+  // 有了真实经历之后，原来那条「伪造 source_id」的硬闸仍然照旧生效。
+  assert.throws(() => contentBridge.saveOpportunity({
+    ...fakeExperiencePayload,
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId }).freshness,
+  }), /真实来源/);
   const experienceOpportunityId = contentBridge.saveOpportunity(experiencePayload(realExperienceId));
   check("真实存在的个人经历素材可以通过服务端真实性校验", contentBridge.opportunity(experienceOpportunityId).construction.elements[0].source_id === realExperienceId);
   contentBridge.setOpportunityArchived(experienceOpportunityId, true, { actor: "user", confirmed: true, now });

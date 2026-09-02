@@ -123,9 +123,14 @@ try {
     method: "POST",
     body: { ...candidate, dominantAction: "experience", construction: { elements: [{ id: "story", type: "experience", label: "伪造经历", source_kind: "material", source_id: "fake" }] }, confirmed: true },
   });
-  assert.equal(fakeExperience.response.status, 400, JSON.stringify(fakeExperience.value));
-  check("保存 API 拒绝伪造个人经历 source_id", fakeExperience.response.status === 400
-    && /真实来源/.test(fakeExperience.value.error));
+  /**
+   * ⚠️ 这个工作区一条个人经历都没有，所以现在先撞上更靠前的那道闸：
+   * **经历型这条路本身不存在**。伪造 source_id 那条硬闸没有被拿掉，
+   * 它在有真实经历的工作区里仍然生效（见 content-bridge-domain 的用例）。
+   */
+  assert.equal(fakeExperience.response.status, 409, JSON.stringify(fakeExperience.value));
+  check("保存 API 在没有任何真实经历时直接拒绝经历型", fakeExperience.response.status === 409
+    && /没有可核验的个人经历/.test(fakeExperience.value.error));
 
   const saved = await call(base, "/api/workspace/content-opportunities", {
     method: "POST",

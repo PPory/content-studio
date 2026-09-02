@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
+import { takeDiscoveryHandoff } from "../lib/discovery-handoff.js";
 import "./content-bridge.css";
 
 const WIKI_FILTERS = [
@@ -58,13 +59,13 @@ function dateLabel(value) {
  */
 function initialIds(value) {
   const text = String(value || "");
-  const workspace = { mode: "workspace", capture: false };
-  if (text.startsWith("wiki:")) return { ...workspace, wikiId: text.slice(5), problemId: "", opportunityId: "" };
-  if (text.startsWith("problem:")) return { ...workspace, wikiId: "", problemId: text.slice(8), opportunityId: "" };
-  if (text.startsWith("opportunity:")) return { ...workspace, wikiId: "", problemId: "", opportunityId: text.slice(12) };
-  if (text === "new") return { ...workspace, wikiId: "", problemId: "", opportunityId: "" };
-  // Ctrl+K 里没打字就选「记一个用户问题」时的落点：概览 + 手记表单直接展开。
-  return { mode: "overview", wikiId: "", problemId: "", opportunityId: "", capture: text === "capture" };
+  const workspace = { wikiId: "", problemId: "", opportunityId: "", develop: false };
+  if (text.startsWith("wiki:")) return { ...workspace, wikiId: text.slice(5) };
+  if (text.startsWith("problem:")) return { ...workspace, problemId: text.slice(8) };
+  if (text.startsWith("opportunity:")) return { ...workspace, opportunityId: text.slice(12) };
+  // 从 AI 发现「发展这条」过来：候选在内存交接里，不进 hash 也不进库。
+  if (text === "develop") return { ...workspace, develop: true };
+  return workspace;
 }
 
 function SourceCount({ count }) {
@@ -124,15 +125,24 @@ export function ContentBridge({ state = "", onGo }) {
   const initial = useMemo(() => initialIds(state), [state]);
   const [wikiData, setWikiData] = useState(null);
   const [problems, setProblems] = useState([]);
+  /** 工作区有没有可核验的个人经历。没有就不摆「经历型」那颗按钮。 */
+  const [experienceAvailable, setExperienceAvailable] = useState(false);
   const [agendas, setAgendas] = useState([]);
   const [insights, setInsights] = useState([]);
-  const [recentOpportunities, setRecentOpportunities] = useState([]);
   const [agendaError, setAgendaError] = useState(null);
   const [insightsError, setInsightsError] = useState(null);
-  const [recentError, setRecentError] = useState(null);
   const [agendaFitBusy, setAgendaFitBusy] = useState(false);
   const [wikiId, setWikiId] = useState(initial.wikiId);
   const [problemId, setProblemId] = useState(initial.problemId);
+  /**
+   * 从 AI 发现「发展这条」带过来的用户问题候选。
+   *
+   * ⚠️ **它还没有入库，而且在用户点「保存为内容机会」之前一直不会入库。**
+   * 先建 audience_problem 再谈连接，等于让每一次好奇心都在问题库里留一条垃圾。
+   */
+  const [problemCandidate, setProblemCandidate] = useState(null);
+  /** 「发展这条」进来之后自动跑一次预览：用户已经表达过要看这一条，不该再点一次。 */
+  const [autoPreview, setAutoPreview] = useState(false);
   const [agendaId, setAgendaId] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
   const [wikiFilter, setWikiFilter] = useState("recent");
@@ -173,13 +183,11 @@ export function ContentBridge({ state = "", onGo }) {
     setError(null);
     setAgendaError(null);
     setInsightsError(null);
-    setRecentError(null);
-    const [wikiResult, problemResult, agendaResult, insightResult, recentResult, opportunityResult] = await Promise.allSettled([
+    const [wikiResult, problemResult, agendaResult, insightResult, opportunityResult] = await Promise.allSettled([
       api.wiki(),
       api.audienceProblems(),
       api.agendas(),
       api.workspaceInsights(),
-      api.contentOpportunities(),
       requested.opportunityId ? api.contentOpportunity(requested.opportunityId) : Promise.resolve(null),
     ]);
     try {
@@ -193,12 +201,11 @@ export function ContentBridge({ state = "", onGo }) {
       const opportunityData = opportunityResult.value;
       setWikiData(wiki);
       setProblems(problemData.problems || []);
+      setExperienceAvailable(problemData.experienceAvailable === true);
       setAgendas(agendaData.agendas || []);
       setInsights(insightData.reports || []);
-      setRecentOpportunities(recentResult.status === "fulfilled" ? (recentResult.value.opportunities || []).slice(0, 50) : []);
       if (agendaResult.status === "rejected") setAgendaError(agendaResult.reason);
       if (insightResult.status === "rejected") setInsightsError(insightResult.reason);
-      if (recentResult.status === "rejected") setRecentError(recentResult.reason);
       const stored = opportunityData?.opportunity;
       if (stored) {
         const storedProblem = (problemData.problems || []).find((item) => item.id === stored.audienceProblemId);
@@ -222,9 +229,45 @@ export function ContentBridge({ state = "", onGo }) {
           freshness: stored.previewFreshness,
         });
         setSavedOpportunity(stored);
+      } else if (requested.develop) {
+        /**
+         * 从 AI 发现「发展这条」进来。
+         *
+         * ⚠️ **候选从内存交接里取，取完即清。** 它没有 id，也不该有——
+         * 用户可能看两眼就放弃，那种放弃不该在问题库里留下任何东西。
+         * 刷新页面候选就没了，这是对的：那时它已经不是「刚发现的这一条」了。
+         */
+        const handoff = takeDiscoveryHandoff();
+        if (!handoff) {
+          setWikiId("");
+          setProblemId("");
+          setProblemCandidate(null);
+          setPreview(null);
+          setSavedOpportunity(null);
+        } else {
+          const anchor = handoff.knowledgeAnchors?.[0]?.wikiPageId || "";
+          const candidate = handoff.problem.existingProblemId ? null : {
+            statement: handoff.problem.statement,
+            summary: handoff.problem.whyItMatters,
+            origin: handoff.problem.origin,
+            // ⚠️ 假设的来源议程由候选自己带过来，别在这里随手拿第一条顶上：
+            // 那会把「从 A 议程推导的假设」记成 B 议程推导的。
+            originAgendaId: handoff.problem.originAgendaId || "",
+            evidence: (handoff.problem.evidence || []).map((item) => ({ rawSourceId: item.rawSourceId, quote: item.quote })),
+          };
+          setWikiId(anchor);
+          setProblemId(handoff.problem.existingProblemId || "");
+          setProblemCandidate(candidate);
+          setAgendaId(handoff.agendaSuggestion?.agendaId || handoff.problem.originAgendaId || (agendaData.agendas || [])[0]?.id || "");
+          setPreview(null);
+          setSavedOpportunity(null);
+          setPickerOpen(false);
+          setAutoPreview(Boolean(anchor));
+        }
       } else {
         setWikiId(requested.wikiId);
         setProblemId(requested.problemId);
+        setProblemCandidate(null);
         /**
          * ⚠️ 默认选中最近更新的那条议程，不留空。
          * 留空的代价是「从议程拎问题」一进页面就是灰的，而灰掉的原因（还没选议程）
@@ -244,7 +287,8 @@ export function ContentBridge({ state = "", onGo }) {
     }
   };
 
-  useEffect(() => { load(initial); setManualOpen(initial.capture); }, [state]);
+  useEffect(() => { load(initial); }, [state]);
+
 
   const wikiPages = useMemo(() => {
     const term = wikiQuery.trim().toLowerCase();
@@ -255,6 +299,21 @@ export function ContentBridge({ state = "", onGo }) {
 
   const selectedWiki = (wikiData?.pages || []).find((item) => item.id === wikiId) || null;
   const selectedProblem = problems.find((item) => item.id === problemId) || null;
+  /** 已入库的问题和候选二选一，下面一律用这个统一读。 */
+  const activeProblem = selectedProblem || problemCandidate || null;
+  const hasProblem = Boolean(problemId || problemCandidate);
+
+  /**
+   * 「发展这条」进来之后自动跑一次预览。
+   *
+   * ⚠️ **必须排在 `hasProblem` 之后**：依赖数组是在渲染时求值的，
+   * 放在它前面会直接 TDZ 报错——真实浏览器里表现为整页白屏，而构建不报错。
+   */
+  useEffect(() => {
+    if (!autoPreview || previewBusy || preview || !wikiId || !hasProblem) return;
+    setAutoPreview(false);
+    runPreview();
+  }, [autoPreview, previewBusy, preview, wikiId, hasProblem]);
   const selectedAgenda = agendas.find((item) => item.id === agendaId) || null;
 
   const resetPreview = () => {
@@ -271,11 +330,12 @@ export function ContentBridge({ state = "", onGo }) {
 
   const selectProblem = (id) => {
     setProblemId(id);
+    setProblemCandidate(null);
     resetPreview();
   };
 
   const runPreview = async ({ dominantAction = "", agendaOverride } = {}) => {
-    if (!wikiId || !problemId) return;
+    if (!wikiId || !hasProblem) return;
     setPickerOpen(false);
     setPreviewBusy(true);
     setPreviewError(null);
@@ -284,7 +344,8 @@ export function ContentBridge({ state = "", onGo }) {
     try {
       const result = await api.previewContentOpportunity({
         wikiPageId: wikiId,
-        audienceProblemId: problemId,
+        audienceProblemId: problemId || undefined,
+        problemCandidate: problemCandidate || undefined,
         agendaId: effectiveAgendaId || undefined,
         dominantAction: dominantAction || undefined,
       });
@@ -314,7 +375,8 @@ export function ContentBridge({ state = "", onGo }) {
     try {
       const result = await api.previewContentOpportunityAgendaFit({
         wikiPageId: wikiId,
-        audienceProblemId: problemId,
+        audienceProblemId: problemId || undefined,
+        problemCandidate: problemCandidate || undefined,
         agendaId: nextAgendaId,
         candidate: {
           coreClaim: preview.coreClaim,
@@ -360,13 +422,15 @@ export function ContentBridge({ state = "", onGo }) {
 
 
   const saveOpportunity = async () => {
-    if (!preview || !wikiId || !problemId) return;
+    if (!preview || !wikiId || !hasProblem) return;
     setSaveBusy(true);
     setPreviewError(null);
     try {
       const result = await api.saveContentOpportunity({
         wikiPageId: wikiId,
-        audienceProblemId: problemId,
+        audienceProblemId: problemId || undefined,
+        // 保存这一刻，候选问题和内容机会一起进同一个事务。
+        problemCandidate: problemCandidate || undefined,
         agendaId: agendaId || undefined,
         coreClaim: preview.coreClaim,
         knowledgeExplanation: preview.knowledgeExplanation,
@@ -379,7 +443,11 @@ export function ContentBridge({ state = "", onGo }) {
         confirmed: true,
       });
       setSavedOpportunity(result.opportunity);
-      setRecentOpportunities((items) => [result.opportunity, ...items.filter((item) => item.id !== result.opportunity.id)].slice(0, 50));
+      // 候选已经落库，后面的动作都以库里那条为准。
+      if (problemCandidate) {
+        setProblemCandidate(null);
+        setProblemId(result.opportunity.audienceProblemId);
+      }
     } catch (failure) {
       setPreviewError(failure);
     } finally {
@@ -507,16 +575,6 @@ export function ContentBridge({ state = "", onGo }) {
   // 一开始判断就塌起来：等待提示要落在结果将要出现的地方，而不是被顶到折叠线以下。
   const pickerCollapsed = (Boolean(preview) || previewBusy) && !pickerOpen;
 
-  /**
-   * 概览 / 工作台。
-   *
-   * ⚠️ 这一页原来一屏干四件事：看已保存的机会、攒用户问题、选知识、读结果。
-   * 四件事的节奏完全不同——概览回答「我该继续哪一条」，工作台回答「这一条能不能连」。
-   * 挤在一起的代价是每次开新连接都要先滚过自己已经做完的东西，
-   * 而读结果时头顶还挂着一个跟当前无关的列表。拆开之后各自只回答一个问题。
-   */
-  const overview = initial.mode === "overview";
-
   const problemsPanel = (pickable) => (
     <section className="bridge-problems" aria-labelledby="bridge-problem-title">
       <div className="bridge-panel-head">
@@ -616,6 +674,23 @@ export function ContentBridge({ state = "", onGo }) {
             </div>
           ) : null}
           <div className="bridge-side-list bridge-side-list--problems">
+            {/*
+              ⚠️ 候选钉在最上面并且标明「还没保存」。
+              它看起来和下面已入库的问题一样可选，但它此刻还不在库里——
+              不说清楚的话，用户会以为自己已经把它记下来了。
+            */}
+            {problemCandidate ? (
+              <div className="bridge-side-candidate" aria-label="来自 AI 发现的用户问题候选">
+                <strong>{problemCandidate.statement}</strong>
+                {problemCandidate.summary ? <p>{problemCandidate.summary}</p> : null}
+                <small>
+                  {problemCandidate.origin === "hypothesis"
+                    ? "还没保存 · 你认为可能有人这样困惑，尚待验证"
+                    : `还没保存 · ${problemCandidate.evidence.length} 段真实原话`}
+                </small>
+                <button type="button" className="btn btn-sm" onClick={() => { setProblemCandidate(null); resetPreview(); }}>换一个问题</button>
+              </div>
+            ) : null}
             {!problems.length ? (
               <EmptySide>
                 {agendas.length
@@ -638,70 +713,26 @@ export function ContentBridge({ state = "", onGo }) {
     </section>
   );
 
-  if (overview) {
-    return (
-      <div className="view-body content-bridge content-bridge--overview">
-        <div className="bridge-bar">
-          <div className="bridge-bar__title">
-            <h2>内容机会</h2>
-            {recentOpportunities.length ? <small>{recentOpportunities.length} 条在做</small> : null}
-          </div>
-          <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "new")}>新建连接</button>
-        </div>
-
-        <div className="bridge-overview">
-          <section className="bridge-opportunities" aria-label="已保存的内容机会">
-            {recentError ? <p className="bridge-local-error">内容机会暂时无法读取。</p> : null}
-            {!recentError && !recentOpportunities.length ? (
-              <div className="bridge-blank">
-                {/* 说明文案只在这里出现：需要解释的是空态，不是每天用的工作区 */}
-                <h3>把你搞懂的，连接到用户正在困惑的</h3>
-                <p>不从找标题开始。先看看你的知识能不能真正解决一个用户问题。</p>
-                <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "new")}>新建连接</button>
-              </div>
-            ) : null}
-            {recentOpportunities.length ? (
-              <ul className="bridge-opp-list">
-                {recentOpportunities.map((item) => (
-                  <li key={item.id}>
-                    <button type="button" onClick={() => onGo?.("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}>
-                      <span className="bridge-opp-pair">
-                        <strong>{item.wikiTitle || "已删除的知识"}</strong>
-                        <em aria-hidden="true">×</em>
-                        <strong>{item.audienceProblemStatement}</strong>
-                      </span>
-                      <span className="bridge-opp-claim">{item.coreClaim}</span>
-                      <span className="bridge-opp-meta">
-                        <span className="bridge-fit" data-fit={item.fit}>{FIT_LABELS[item.fit] || item.fit}</span>
-                        <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
-                        <small>{dateLabel(item.updatedAt)}更新</small>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </section>
-
-          <aside className="bridge-aside">{problemsPanel(false)}</aside>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="view-body content-bridge">
       {/* 工作台的顶栏是常驻操作区：滚到结果哪一段，主动作都还在手边 */}
       <div className="bridge-bar bridge-bar--sticky">
-        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容</button>
         <div className="bridge-bar__title">
-          {selectedWiki || selectedProblem ? (
+          {selectedWiki || activeProblem ? (
             <h2>
               <span>{selectedWiki?.title || "选一个知识"}</span>
               <em aria-hidden="true">×</em>
-              <span>{selectedProblem?.statement || "选一个用户问题"}</span>
+              <span>{activeProblem?.statement || "选一个用户问题"}</span>
             </h2>
           ) : <h2>新建连接</h2>}
+          {/*
+            ⚠️ **「还没保存」要留在常驻顶栏里，不能只写在下面那张候选卡上。**
+            有结果之后选择区整个塌起来，那张卡就从屏幕上消失了——
+            而这正是用户要按「保存为内容机会」的时刻，他必须知道这条问题
+            此刻还不在问题库里，按下去才是它第一次入库。
+          */}
+          {problemCandidate ? <span className="bridge-bar__pending">用户问题还没保存</span> : null}
         </div>
         <div className="bridge-bar__actions">
           {preview ? <span className="bridge-fit" data-fit={preview.fit}>{FIT_LABELS[preview.fit] || preview.fit}</span> : null}
@@ -709,7 +740,7 @@ export function ContentBridge({ state = "", onGo }) {
             <button type="button" className="btn btn-sm" onClick={() => setPickerOpen((value) => !value)}>{pickerOpen ? "收起选择" : "重新选择"}</button>
           ) : null}
           {!preview ? (
-            <button type="button" className="btn btn-primary" disabled={previewBusy || !wikiId || !problemId} onClick={() => runPreview()}>
+            <button type="button" className="btn btn-primary" disabled={previewBusy || !wikiId || !hasProblem} onClick={() => runPreview()}>
               {previewBusy ? "正在判断连接…" : "看看怎么连接"}
             </button>
           ) : savedOpportunity ? (
@@ -756,7 +787,7 @@ export function ContentBridge({ state = "", onGo }) {
         </div>
       )}
 
-      {!pickerCollapsed && !(wikiId && problemId) ? (
+      {!pickerCollapsed && !(wikiId && hasProblem) ? (
         <p className="bridge-hint">从两边各选一个对象，系统才会判断它们是否真的能连接。</p>
       ) : null}
 
@@ -767,7 +798,7 @@ export function ContentBridge({ state = "", onGo }) {
         </div>
       ) : null}
 
-      {previewError ? <ErrorNote error={previewError} what="内容连接" onRetry={wikiId && problemId ? () => runPreview() : undefined} /> : null}
+      {previewError ? <ErrorNote error={previewError} what="内容连接" onRetry={wikiId && hasProblem ? () => runPreview() : undefined} /> : null}
 
       {preview ? (
         <div className="bridge-result" data-fit={preview.fit}>
@@ -836,7 +867,7 @@ export function ContentBridge({ state = "", onGo }) {
             >换一个大众入口</button>
             <div className="bridge-action-menu">
               <span>换一种表达方式</span>
-              {ACTIONS.map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
+              {ACTIONS.filter((action) => action.key !== "experience" || experienceAvailable).map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
             </div>
             {/*
               这两颗是**跳到本页下面某处**，上面两组是**改变候选**。

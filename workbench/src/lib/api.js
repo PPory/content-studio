@@ -126,6 +126,9 @@ export const api = {
   audienceVoices: (query = "") => req(`/api/workspace/audience-voices${query}`),
   audienceVoice: (id) => req(`/api/workspace/audience-voices/${encodeURIComponent(id)}`),
   recordAudienceVoice: (body) => postJson("/api/workspace/audience-voices", body),
+  // AI 发现：读一次缓存，扫描是显式动作——进页面不自动烧模型。
+  contentDiscovery: (query = "") => req(`/api/workspace/content-discovery${query}`),
+  scanContentDiscovery: (body) => postJson("/api/workspace/content-discovery/scan", body),
   extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
   agendaProblemCandidates: (agendaId) => postJson("/api/workspace/audience-problems/from-agenda", { agendaId }),
   positioning: () => req("/api/workspace/positioning"),

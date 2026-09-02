@@ -343,3 +343,41 @@
 @media (prefers-reduced-motion: reduce) {
   .content-bridge * { scroll-behavior: auto !important; }
 }
+
+/*
+ * 从 AI 发现带过来的用户问题候选。
+ *
+ * ⚠️ 它长得和下面已入库的问题**不一样**是故意的：虚线边框说的就是
+ * 「这条还不在库里」。做成一模一样的话，用户会以为自己已经记下来了。
+ */
+.bridge-side-candidate {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  border: 1px dashed var(--brand);
+  border-radius: var(--r-md);
+  background: var(--brand-wash);
+}
+.bridge-side-candidate strong { font-size: var(--fs-sm); line-height: 1.6; }
+.bridge-side-candidate p { margin: 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.bridge-side-candidate small { color: var(--brand-strong); font-size: var(--fs-xs); }
+.bridge-side-candidate .btn { justify-self: start; margin-top: var(--sp-2); }
+
+/* 顶栏里的「还没保存」。它挨着主动作，因为它要回答的正是「我按下去会发生什么」。 */
+.bridge-bar__pending {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px dashed var(--brand);
+  border-radius: var(--r-pill);
+  color: var(--brand-strong);
+  font-size: var(--fs-xs);
+}
+
+/*
+ * 顶栏「知识 × 问题」里，知识那一侧要留得住。
+ *
+ * ⚠️ 两个 span 平分空间，而用户问题常常是一整句话，于是知识名被压成「三…」——
+ * 屏幕上同时出现的两个东西，短的那个反而看不清了。给它一个下限；
+ * 问题那一侧读前半句就够认出是哪一条。
+ */
+.bridge-bar__title h2 span:first-child { flex: 0 1 auto; min-width: min(14ch, 38%); }
