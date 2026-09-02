@@ -152,6 +152,14 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   /** 最近在助手里聊过什么。⚠️ 只含你自己打的字：AI 的回答不是事实来源。 */
   const [research, setResearch] = useState([]);
   const [researchOpen, setResearchOpen] = useState(false);
+  /**
+   * 长期议程：现在够不够看出一条。
+   * ⚠️ 不够就说还差多少，并且**不跑模型**——那种情况下它只会把现有几条重新包装一遍。
+   */
+  const [agendaSignals, setAgendaSignals] = useState(null);
+  const [agendaCandidates, setAgendaCandidates] = useState(null);
+  const [agendaBusy, setAgendaBusy] = useState(false);
+  const [agendaKept, setAgendaKept] = useState([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -159,11 +167,13 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
       api.contentDiscovery(),
       api.contentOpportunities().catch(() => ({ opportunities: [] })),
       api.researchSignals().catch(() => ({ signals: [] })),
+      api.agendaSignals().catch(() => null),
     ])
-      .then(([discovery, saved, signals]) => {
+      .then(([discovery, saved, signals, agenda]) => {
         setData(discovery);
         setOpportunities(saved.opportunities || []);
         setResearch(signals.signals || []);
+        setAgendaSignals(agenda);
         setError(null);
       })
       .catch(setError)
@@ -359,6 +369,73 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
               </ul>
             </>
           ) : null}
+        </section>
+      ) : null}
+
+      {/*
+        ⚠️ **长期议程是观察出来的，不是填出来的**——和涌现定位同一条规矩。
+        数据不够时这一栏说的是「还差多少」，而不是画一个看起来很满的候选：
+        三条内容机会看不出「反复」，硬总结出来的那句话只是复述。
+      */}
+      {agendaSignals ? (
+        <section className="discovery-agenda" aria-label="长期议程">
+          {agendaSignals.ready ? (
+            <>
+              <div className="discovery-agenda__head">
+                <strong>你最近反复在强化某个判断吗</strong>
+                <button type="button" className="btn btn-sm" disabled={agendaBusy} onClick={async () => {
+                  setAgendaBusy(true);
+                  try {
+                    const result = await api.agendaCandidates();
+                    setAgendaCandidates(result);
+                  } catch (failure) { setScanError(failure); } finally { setAgendaBusy(false); }
+                }}>{agendaBusy ? "正在看…" : agendaCandidates ? "再看一遍" : "看看有没有一条长期议程"}</button>
+              </div>
+              {agendaCandidates && !agendaCandidates.agendas.length ? (
+                <p className="discovery-agenda__none">{agendaCandidates.nothingFoundReason}</p>
+              ) : null}
+              {(agendaCandidates?.agendas || []).map((candidate) => (
+                <article key={candidate.title} className="discovery-agenda__card">
+                  <strong>{candidate.title}</strong>
+                  <p>{candidate.desiredJudgment}</p>
+                  <span>{candidate.reason}</span>
+                  {/* 依据要摆出来：一条说不出「凭哪几条看出来」的议程，和自己写一句没区别。 */}
+                  <small>
+                    依据 {candidate.basis.length} 条 · 覆盖 {candidate.problemSpread} 个不同的用户问题
+                    <br />{candidate.basis.map((item) => item.label).join("；")}
+                  </small>
+                  {agendaKept.includes(candidate.title) ? (
+                    <em>已设为长期议程</em>
+                  ) : (
+                    <div className="row-actions">
+                      <button type="button" className="btn btn-sm" onClick={async () => {
+                        try {
+                          await api.createAgenda({
+                            title: candidate.title,
+                            desiredJudgment: candidate.desiredJudgment,
+                            audience: candidate.audience,
+                            problemSpace: candidate.problemSpace,
+                            confirmed: true,
+                          });
+                          setAgendaKept((items) => [...items, candidate.title]);
+                        } catch (failure) { setScanError(failure); }
+                      }}>设为长期议程</button>
+                      <button type="button" className="btn btn-sm" onClick={() => setAgendaCandidates((current) => ({
+                        ...current,
+                        agendas: current.agendas.filter((item) => item.title !== candidate.title),
+                      }))}>暂时不要</button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </>
+          ) : (
+            <p className="discovery-agenda__wait">
+              还看不出一条长期议程：{agendaSignals.missing.join("；")}。
+              {/* ⚠️ 措辞不要和顶栏那颗「手动探索」重名：一屏两个同名按钮，指的还不是同一件事。 */}
+              {" "}要现在就定一条，可以<button type="button" className="linkish" onClick={() => onGo("bridge", "manual")}>自己写一条</button>。
+            </p>
+          )}
         </section>
       ) : null}
 

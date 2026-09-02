@@ -178,3 +178,38 @@
 .discovery-research strong { font-size: var(--fs-sm); }
 .discovery-research span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
 .discovery-research .btn { justify-self: start; margin-top: var(--sp-2); }
+
+/*
+ * 长期议程。
+ *
+ * ⚠️ 数据不够时这一栏只有一句话，而且那句话带着数字——
+ * 「还差 2 条」是一件能完成的事，「数据不足」不是。
+ */
+.discovery-agenda { display: grid; gap: var(--sp-4); margin-top: var(--sp-9); }
+.discovery-agenda__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
+.discovery-agenda__head strong { font-size: var(--fs-sm); }
+.discovery-agenda__wait,
+.discovery-agenda__none {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 2px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+.discovery-agenda__card {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px dashed var(--brand);
+  border-radius: var(--r-md);
+  background: var(--brand-wash);
+}
+.discovery-agenda__card strong { font-size: var(--fs-sm); }
+.discovery-agenda__card p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.7; }
+.discovery-agenda__card span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.discovery-agenda__card small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.discovery-agenda__card em { color: var(--brand-strong); font-size: var(--fs-xs); font-style: normal; }
+.discovery-agenda__card .row-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-2); }
+/* 「去手动探索自己写」是句子里的一个词，不是一颗按钮。 */
+.linkish { padding: 0; border: 0; background: none; color: var(--brand-strong); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

@@ -120,6 +120,9 @@ export const api = {
   workspaceInsight: (id) => req(`/api/workspace/insights/${encodeURIComponent(id)}`),
   agendas: () => req("/api/workspace/agendas"),
   createAgenda: (body) => postJson("/api/workspace/agendas", body),
+  // 长期议程：先看够不够得着说话，够了才提候选。手工建议程那条路一直在。
+  agendaSignals: () => req("/api/workspace/agenda-signals"),
+  agendaCandidates: (body = {}) => postJson("/api/workspace/agenda-candidates", body),
   updateAgenda: (id, body) => postJson(`/api/workspace/agendas/${encodeURIComponent(id)}/update`, body),
   audienceProblems: () => req("/api/workspace/audience-problems"),
   // 原始用户声音：只记录和读取，没有修改接口——证据一旦可改就不再证明任何事。

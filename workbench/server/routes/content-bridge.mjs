@@ -2,6 +2,8 @@ import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { extractAgendaProblemCandidates, extractAudienceProblemCandidates, previewContentOpportunity, previewContentOpportunityAgendaFit } from "../domain/content-bridge-ai.mjs";
 import { CONTENT_BRIDGE_VALUES } from "../domain/content-bridge.mjs";
 import { hasPersonalExperience } from "../domain/content-bridge-context.mjs";
+import { observeAgendaSignals } from "../domain/content-agenda.mjs";
+import { proposeAgendaCandidates } from "../domain/content-agenda-ai.mjs";
 
 async function ready(source) {
   const workspace = await source;
@@ -31,6 +33,41 @@ export const contentBridgeRoutes = [
     path: "/api/workspace/agendas",
     handler: guard(async ({ workspace, res, url }) => {
       json(res, { ok: true, agendas: workspace.contentBridge.agendas({ includeArchived: url.searchParams.get("archived") === "1" }) });
+    }),
+  },
+  {
+    /**
+     * 现在够不够看出一条长期议程。
+     * ⚠️ **只读观察，不跑模型**：够不够得着说话是数出来的，不是问出来的。
+     */
+    method: "GET",
+    path: "/api/workspace/agenda-signals",
+    handler: guard(async ({ workspace, res }) => {
+      const signals = observeAgendaSignals(workspace);
+      json(res, {
+        ok: true,
+        ready: signals.ready,
+        threshold: signals.threshold,
+        counts: signals.counts,
+        missing: signals.missing,
+      });
+    }),
+  },
+  {
+    /**
+     * 长期议程候选。
+     * ⚠️ 数据不够时直接 409，连模型都不跑——那种情况下它只会把现有几条重新包装一遍。
+     * 确认走已有的 `POST /agendas`，那条路仍然要求用户明确确认。
+     */
+    method: "POST",
+    path: "/api/workspace/agenda-candidates",
+    handler: guard(async ({ env, workspace, req, res }) => {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_agendas").get().count;
+      const result = await proposeAgendaCandidates(env, workspace, observeAgendaSignals(workspace), { limit: body.limit });
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM content_agendas").get().count;
+      if (before !== after) throw new Error("议程候选产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
   {

@@ -688,6 +688,20 @@ try {
    * 不显示的话，用户会奇怪结果为什么偏向某个方向，也看不出系统把什么
    * 当成了「他最近在想的」——而这一段里**只有他自己打的字**。
    */
+  /**
+   * ⚠️ **长期议程是观察出来的，不是填出来的。**
+   * 数据不够时这一栏要说的是「还差多少」——带数字，因为「还差 3 条」
+   * 是一件能完成的事，「数据不足」不是。这也是这个工作区此刻的真实状态。
+   */
+  const agendaText = await page.locator(".discovery-agenda").innerText();
+  check("还看不出长期议程时如实说，而不是画一个候选",
+    agendaText.includes("还看不出一条长期议程"));
+  check("还差多少带着数字", /再攒 \d+ 条内容机会/.test(agendaText));
+  check("并且指出手工那条路一直在",
+    await page.locator(".discovery-agenda").getByRole("button", { name: "自己写一条" }).count() === 1);
+  check("不够的时候不给「看看有没有」那颗按钮",
+    await page.getByRole("button", { name: /看看有没有一条长期议程/ }).count() === 0);
+
   const assistantClaim = "研究已经证明认知卸载会让人的判断力永久下降。";
   const conversationId = `chat-${Date.now()}`;
   workspace.repository.transaction(() => {
