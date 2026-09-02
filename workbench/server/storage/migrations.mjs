@@ -16,6 +16,7 @@ const contentBridgeSql = fs.readFileSync(new URL("./migrations/0011-content-brid
 const audienceProblemOriginSql = fs.readFileSync(new URL("./migrations/0013-audience-problem-origin.sql", import.meta.url), "utf8");
 const contentExperimentsSql = fs.readFileSync(new URL("./migrations/0014-content-experiments.sql", import.meta.url), "utf8");
 const audienceRawSourcesSql = fs.readFileSync(new URL("./migrations/0015-audience-raw-sources.sql", import.meta.url), "utf8");
+const audienceProblemMultiQuoteSql = fs.readFileSync(new URL("./migrations/0016-audience-problem-multi-quote.sql", import.meta.url), "utf8");
 
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -107,6 +108,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "audience-raw-sources",
     sql: audienceRawSourcesSql,
     checksum: crypto.createHash("sha256").update(audienceRawSourcesSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 16,
+    name: "audience-problem-multi-quote",
+    sql: audienceProblemMultiQuoteSql,
+    checksum: crypto.createHash("sha256").update(audienceProblemMultiQuoteSql).digest("hex"),
   }),
 ]);
 

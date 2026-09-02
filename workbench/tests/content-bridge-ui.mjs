@@ -352,6 +352,11 @@ try {
   let outlineCalls = 0;
   let draftCalls = 0;
   await page.route("**/api/workspace/projects/*/outline", async (route) => {
+    // ⚠️ 同一个地址上 GET 是「把存着的结构接回来」，POST 才是「搭一个」。
+    // 不分的话，进页面读一次缓存就被算成跑了一次模型。
+    if (route.request().method() !== "POST") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, outline: null, markdown: "" }) });
+    }
     outlineCalls += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
       ok: true, candidateOnly: true, model: "test-project",
@@ -405,6 +410,15 @@ try {
   check("搭结构不写正文", draftBytes() === emptyDraft);
   check("没有个人经历时说清这篇不会出现第一人称经历",
     (await page.locator(".project-start__gate").innerText()).includes("个人经历"));
+
+  /**
+   * ⚠️ 顶栏那颗「建立主稿」和这一栏的「照这个结构起稿」当时是并排两颗实心黑，
+   * 而它们指向同一件事：开始写。这一栏亮着的时候，顶栏那颗退成次级。
+   */
+  check("开写前那一栏亮着时，一屏只有一颗主动作",
+    await page.locator(".project-bar .btn-primary").count() === 0
+    && await page.locator(".project-start .btn-primary").count() === 1
+    && await page.getByRole("button", { name: "建立主稿" }).count() === 1);
 
   await page.getByRole("button", { name: "照这个结构起稿" }).click();
   await page.locator(".md-candidate-focus, .cm-content").first().waitFor();

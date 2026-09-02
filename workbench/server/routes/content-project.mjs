@@ -8,6 +8,16 @@ import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { proposeProjectDraft, proposeProjectOutline } from "../domain/content-project-ai.mjs";
 import { projectCreativeContext } from "../domain/content-project.mjs";
 
+/**
+ * 结构候选的存放位置。
+ *
+ * ⚠️ **存进 `workspace_settings`，不进业务表。** 它仍然是候选：
+ * 没有被采纳之前，它不该出现在任何一条稿件或内容机会里。
+ * 但它也不该刷一下页面就没——搭一次要十几秒，而用户很可能先去翻一眼素材再回来。
+ * 和 AI 发现的扫描缓存同一个位置、同一条道理。
+ */
+const outlineKey = (projectId) => `project-outline:${projectId}`;
+
 async function ready(source) {
   const workspace = await source;
   if (!workspace?.db?.open) throw Object.assign(new Error("本地工作区尚未就绪"), { status: 503 });
@@ -59,13 +69,28 @@ export const contentProjectRoutes = [
     }),
   },
   {
+    method: "GET",
+    path: "/api/workspace/projects/:id/outline",
+    handler: guard(async ({ workspace, res, params }) => {
+      workspace.domain.entity(params.id, "project");
+      json(res, { ok: true, ...(workspace.repository.getSetting(outlineKey(params.id), null) || { outline: null, markdown: "" }) });
+    }),
+  },
+  {
     method: "POST",
     path: "/api/workspace/projects/:id/outline",
-    handler: guard(async ({ env, workspace, res, params }) => {
+    handler: guard(async ({ env, workspace, req, res, params }) => {
+      const body = await readJsonBody(req).catch(() => ({}));
+      // 「不用提纲，直接写」和「采用了」都走这儿把候选清掉，不留一份没人认的结构。
+      if (body.action === "forget") {
+        workspace.repository.setSetting(outlineKey(params.id), null);
+        return json(res, { ok: true, outline: null, markdown: "" });
+      }
       const before = draftBytes(workspace, params.id);
-      const result = await proposeProjectOutline(env, workspace, { projectId: params.id });
+      const result = await proposeProjectOutline(env, workspace, { projectId: params.id, instruction: body.instruction });
       const after = draftBytes(workspace, params.id);
       if (before.size !== after.size || before.count !== after.count) throw new Error("搭结构产生了不应有的正文写入");
+      workspace.repository.setSetting(outlineKey(params.id), { outline: result.outline, markdown: result.markdown, builtAt: new Date().toISOString() });
       json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
@@ -75,7 +100,7 @@ export const contentProjectRoutes = [
     handler: guard(async ({ env, workspace, req, res, params }) => {
       const body = await readJsonBody(req);
       const before = draftBytes(workspace, params.id);
-      const result = await proposeProjectDraft(env, workspace, { projectId: params.id, outline: body.outline });
+      const result = await proposeProjectDraft(env, workspace, { projectId: params.id, outline: body.outline, instruction: body.instruction });
       const after = draftBytes(workspace, params.id);
       if (before.size !== after.size || before.count !== after.count) throw new Error("起稿产生了不应有的正文写入");
       json(res, { ok: true, candidateOnly: true, ...result });

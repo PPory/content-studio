@@ -19,7 +19,7 @@ import { ErrorNote, Note } from "./ui.jsx";
 import { IconSparkles } from "./icons.jsx";
 import "./project-start-panel.css";
 
-export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: outerBusy = false, onInsert, onStartDraft, onGo }) {
+export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: outerBusy = false, onInsert, onStartDraft, onActiveChange, onGo }) {
   const [context, setContext] = useState(undefined);
   const [outline, setOutline] = useState(null);
   const [markdown, setMarkdown] = useState("");
@@ -28,24 +28,35 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(false);
   const [draftNote, setDraftNote] = useState("");
+  /** 「换一版，这样改」的那句话。搭结构和起稿共用一个输入框，按当前这一步发。 */
+  const [instruction, setInstruction] = useState("");
 
   useEffect(() => {
     let alive = true;
-    api.projectCreativeContext(projectId)
-      .then((result) => { if (alive) setContext(result.context); })
+    Promise.all([
+      api.projectCreativeContext(projectId),
+      // ⚠️ 搭一次要十几秒。刷一下页面就没，等于逼人再等一次十几秒。
+      api.projectOutlineCandidate(projectId).catch(() => ({ outline: null, markdown: "" })),
+    ])
+      .then(([result, stored]) => {
+        if (!alive) return;
+        setContext(result.context);
+        if (stored.outline) { setOutline(stored.outline); setMarkdown(stored.markdown || ""); }
+      })
       // 没有关联内容机会的老项目走原来的写法，这一栏不出现。
       .catch(() => { if (alive) setContext(null); });
     return () => { alive = false; };
   }, [projectId]);
 
-  const buildOutline = useCallback(async () => {
+  const buildOutline = useCallback(async (ask = "") => {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.projectOutline(projectId);
+      const result = await api.projectOutline(projectId, ask);
       setOutline(result.outline);
       setMarkdown(result.markdown);
       setDraftNote("");
+      setInstruction("");
     } catch (failure) {
       setError(failure);
     } finally {
@@ -64,14 +75,15 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
     return (await onStartDraft?.()) === true;
   }, [needsDraft, onStartDraft]);
 
-  const buildDraft = useCallback(async () => {
+  const buildDraft = useCallback(async (ask = "") => {
     if (!outline) return;
     if (!(await ensureDraft())) return;
     setDrafting(true);
     setError(null);
     try {
-      const result = await api.projectDraftCandidate(projectId, outline);
+      const result = await api.projectDraftCandidate(projectId, outline, ask);
       setDraftNote(result.note || "");
+      setInstruction("");
       // 整篇初稿走「整篇审阅」：它是正文的替换品，不是插在光标处的一段。
       onInsert?.({ text: result.body, scope: "document", resultKind: "candidate", title: result.title });
     } catch (failure) {
@@ -81,9 +93,10 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
     }
   }, [outline, projectId, onInsert, ensureDraft]);
 
-  if (!context || dismissed) return null;
-  // 正文已经写起来了就不再挡路——这一栏是「还没开始」时的那一步。
-  if (!empty && !outline) return null;
+  const active = Boolean(context) && !dismissed && (empty || Boolean(outline));
+  useEffect(() => { onActiveChange?.(active); }, [active, onActiveChange]);
+
+  if (!active) return null;
 
   return (
     <section className="project-start" aria-labelledby="project-start-title">
@@ -94,27 +107,27 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
         </div>
         <div className="project-start__actions">
           {!outline ? (
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={buildOutline}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => buildOutline()}>
               <IconSparkles aria-hidden="true" />
               {busy ? "正在搭…" : "基于这条构造，帮我搭一个结构"}
             </button>
           ) : (
             <>
-              <button type="button" className="btn btn-sm" disabled={busy || drafting} onClick={buildOutline}>
+              <button type="button" className="btn btn-sm" disabled={busy || drafting} onClick={() => buildOutline(instruction.trim())}>
                 {busy ? "正在重搭…" : "重搭一个"}
               </button>
               <button
                 type="button"
                 className="btn btn-sm"
                 disabled={busy || drafting || outerBusy}
-                onClick={async () => { if (!(await ensureDraft())) return; onInsert?.({ text: markdown }); setDismissed(true); }}
+                onClick={async () => { if (!(await ensureDraft())) return; onInsert?.({ text: markdown }); api.forgetProjectOutline(projectId).catch(() => {}); setDismissed(true); }}
               >采用这个结构</button>
-              <button type="button" className="btn btn-primary btn-sm" disabled={busy || drafting || outerBusy} onClick={buildDraft}>
-                {drafting ? "正在起稿…" : "照这个结构起稿"}
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy || drafting || outerBusy} onClick={() => buildDraft(instruction.trim())}>
+                {drafting ? "正在起稿…" : draftNote ? "再起一版" : "照这个结构起稿"}
               </button>
             </>
           )}
-          <button type="button" className="btn btn-sm" onClick={() => setDismissed(true)}>不用提纲，直接写</button>
+          <button type="button" className="btn btn-sm" onClick={() => { api.forgetProjectOutline(projectId).catch(() => {}); setDismissed(true); }}>不用提纲，直接写</button>
         </div>
       </header>
 
@@ -125,7 +138,7 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
         {context.route ? <div><dt>选定的讲法</dt><dd>{context.route.storyline}</dd></div> : null}
       </dl>
 
-      <ErrorNote error={error} what={outline ? "起稿" : "搭结构"} onRetry={outline ? buildDraft : buildOutline} />
+      <ErrorNote error={error} what={outline ? "起稿" : "搭结构"} onRetry={outline ? () => buildDraft() : () => buildOutline()} />
 
       {busy && !outline ? (
         <p className="project-start__pending" aria-live="polite">
@@ -164,6 +177,22 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
             </p>
           ) : null}
           {draftNote ? <Note title="初稿已经放进正文，等你逐处采纳">{draftNote}</Note> : null}
+          {/*
+            ⚠️ **不满意不该只能「再抽一次」。**
+            用户通常很清楚哪儿不对（太像科普、结论下得太早、开头绕），
+            让他说出来再重来一遍，比让他盲抽第二次有用得多。
+          */}
+          <div className="project-start__ask">
+            <label htmlFor="project-start-ask">{draftNote ? "这一版哪儿不对？说一句再起一版" : "这个结构哪儿不对？说一句再重搭"}</label>
+            <input
+              id="project-start-ask"
+              value={instruction}
+              disabled={busy || drafting}
+              onChange={(event) => setInstruction(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && instruction.trim()) (draftNote ? buildDraft : buildOutline)(instruction.trim()); }}
+              placeholder={draftNote ? "例如：太像科普了，多讲机制少讲现象" : "例如：第三节太散，合并成一节"}
+            />
+          </div>
           {!context.experienceCount ? (
             <p className="project-start__gate">
               工作区里没有个人经历，所以这篇不会出现任何第一人称经历。要讲那种故事，先把它作为「个人经历」素材存进来。

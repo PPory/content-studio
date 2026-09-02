@@ -58,6 +58,8 @@ try {
   const { db, audienceRaw, contentBridge } = workspace;
 
   check("工作区 Schema 至少到原始用户声音版本", WORKSPACE_SCHEMA_VERSION >= 15);
+  check("同来源多句引用的主键已经就位",
+    workspace.db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info(?) WHERE pk > 0").get("audience_problem_sources").c === 4);
   check("原始用户声音表已创建", Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='audience_raw_sources'").get()));
   check("不可变触发器已创建", Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='audience_raw_sources_immutable'").get()));
 
@@ -151,8 +153,29 @@ try {
     now,
   });
   check("同一段原话里的两句证据不再撞主键", Boolean(twoQuoteId));
-  check("留下的那句仍然逐字为真", contentBridge.audienceProblem(twoQuoteId).sources.length === 1
-    && contentBridge.audienceProblem(twoQuoteId).sources[0].evidenceText === quote);
+  /**
+   * ⚠️ 两句都要留下来。
+   * 一条问题有几句话撑着，是判断它有多硬的直接依据；上一版为了绕开主键冲突
+   * 丢掉第二句，等于悄悄把证据变弱了。
+   */
+  const twoQuote = contentBridge.audienceProblem(twoQuoteId);
+  check("同一段原话里的两句证据各占一行，不再被丢掉一句", twoQuote.sources.length === 2
+    && twoQuote.sources.some((item) => item.evidenceText === quote)
+    && twoQuote.sources.some((item) => item.evidenceText.includes("二十个教程")));
+  check("两句证据都能逐字回溯", gradeProblemEvidence(db, twoQuote).verbatimCount === 2);
+
+  // 完全一样的句子重复提交仍然只留一条——那种重复是错误，不是第二条证据。
+  const repeatedId = contentBridge.createAudienceProblem({
+    statement: "重复提交同一句",
+    sourceKind: problemSourceKindForRawKind("group_chat"),
+    pattern: "feedback",
+    sources: [
+      { sourceKind: "feedback", sourceId: rawSourceRef(first.id), evidenceText: quote, observedAt: now },
+      { sourceKind: "feedback", sourceId: rawSourceRef(first.id), evidenceText: quote, observedAt: now },
+    ],
+    actor: "user", confirmed: true, now,
+  });
+  check("一模一样的引用仍然只留一条", contentBridge.audienceProblem(repeatedId).sources.length === 1);
 
   const graded = gradeProblemEvidence(db, contentBridge.audienceProblem(problemId));
   check("有原话的问题被判为真实原话", graded.grade === EVIDENCE_GRADES.VERBATIM && graded.quotes.length === 1);
@@ -203,7 +226,7 @@ try {
   const base = await start();
   const list = await call(base, "/api/workspace/audience-voices");
   check("API 可以读出原话清单和种类", list.data.ok && list.data.voices.length === 2 && list.data.kinds.length === 7);
-  check("清单里带上被引用次数", list.data.voices.find((item) => item.id === first.id).citations === 2);
+  check("清单里带上被引用次数", list.data.voices.find((item) => item.id === first.id).citations >= 2);
 
   const rejected = await call(base, "/api/workspace/audience-voices", { method: "POST", body: { kind: "comment", body: "没有确认的粘贴" } });
   check("未确认的记录被拒绝", rejected.status === 400 && /明确确认/.test(rejected.data.error));

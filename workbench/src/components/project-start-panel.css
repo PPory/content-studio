@@ -56,3 +56,17 @@
 }
 
 .project-start__hint { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+
+/* 「说一句再来一版」。它是这一栏的收尾，不是主输入，所以贴着底、不占分量。 */
+.project-start__ask { display: grid; gap: var(--sp-2); }
+.project-start__ask label { color: var(--text-3); font-size: var(--fs-xs); }
+.project-start__ask input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}

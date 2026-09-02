@@ -134,8 +134,11 @@ export const api = {
   refineConstructionRoute: (body) => postJson("/api/workspace/content-construction/refine", body),
   // 项目 AI：默认继承内容机会、讲法和来源，先搭结构、再起稿；两个都只产候选。
   projectCreativeContext: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/creative-context`),
-  projectOutline: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/outline`, {}),
-  projectDraftCandidate: (id, outline) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/draft-candidate`, { outline }),
+  // 结构候选存在 workspace_settings 里：它还是候选，但刷一下页面不该就没。
+  projectOutlineCandidate: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/outline`),
+  projectOutline: (id, instruction = "") => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/outline`, { instruction }),
+  forgetProjectOutline: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/outline`, { action: "forget" }),
+  projectDraftCandidate: (id, outline, instruction = "") => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/draft-candidate`, { outline, instruction }),
   extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
   agendaProblemCandidates: (agendaId) => postJson("/api/workspace/audience-problems/from-agenda", { agendaId }),
   positioning: () => req("/api/workspace/positioning"),

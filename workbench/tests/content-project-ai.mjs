@@ -202,6 +202,18 @@ try {
   check("搭结构不写正文", draftBytes() === before);
   check("结构可以直接落成 Markdown", outlineResult.data.markdown.includes("## 先承认：追新工具确实有回报"));
 
+  // ⚠️ 搭一次要十几秒，刷一下页面就没等于逼人再等一次。
+  const stored = await call(base, `/api/workspace/projects/${projectId}/outline`);
+  // 存的是**最近一次**搭出来的那份（上面按标题回填那次），不是历史里的某一份。
+  check("结构候选存了下来，刷新还在", stored.data.outline?.sections?.length === 1
+    && stored.data.outline.sections[0].heading === "一节"
+    && stored.data.markdown.includes("## 一节"));
+  check("但它仍然只是候选，正文没被写", draftBytes() === before);
+
+  // 「不用提纲，直接写」和「采用了」都把它清掉，不留一份没人认的结构。
+  await call(base, `/api/workspace/projects/${projectId}/outline`, { method: "POST", body: { action: "forget" } });
+  check("放弃之后不留残留", (await call(base, `/api/workspace/projects/${projectId}/outline`)).data.outline === null);
+
   // ── 起稿必须先有结构 ──────────────────────────────────────────────
   const noOutline = await call(base, `/api/workspace/projects/${projectId}/draft-candidate`, { method: "POST", body: {} });
   check("没有结构不给起稿", noOutline.status === 400 && /先搭一个结构/.test(noOutline.data.error));
@@ -220,6 +232,18 @@ try {
     body: { outline: outlineResult.data.outline },
   });
   check("有结构之后可以起稿", draftResult.data.ok === true && draftResult.data.body.includes("## 一个真实对照"));
+
+  /**
+   * ⚠️ 起稿不能只有一次机会。
+   * 「不满意只能重来一遍」意味着唯一能表达不满的方式是再抽一次；
+   * 用户通常很清楚哪儿不对，说出来再起一版比盲抽有用得多。
+   */
+  respond = () => ({ model: "test-project", data: { title: "第二版", body_markdown: "## 先承认\n\n改过的第二版。\n", note: "按你说的收窄了。" } });
+  const secondPass = await call(base, `/api/workspace/projects/${projectId}/draft-candidate`, {
+    method: "POST",
+    body: { outline: outlineResult.data.outline, instruction: "太像科普了，多讲机制" },
+  });
+  check("可以说一句再起一版", secondPass.data.ok === true && secondPass.data.body.includes("改过的第二版"));
   check("起稿同样不写正文", draftBytes() === before);
   check("缺证据的地方留下待补标记，不编", draftResult.data.body.includes("【待补："));
 

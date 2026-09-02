@@ -365,20 +365,16 @@ export class ContentBridgeDomain {
       };
     });
     /**
-     * ⚠️ **同一段原话里的多句证据，只能留一句。**
+     * ⚠️ **同一段原话里的多句证据现在各占一行**（0016 重建了这张表）。
+     * 一条问题有几句话撑着，是判断它有多硬的直接依据；上一版为了绕开主键冲突
+     * 丢掉第二句，等于悄悄把证据变弱了。
      *
-     * `audience_problem_sources` 的主键是 `(problem_id, source_kind, source_id)`，
-     * 所以「同一段群聊里的两句话」写进去会直接撞主键——真实跑的时候，
-     * 用户看到的是一句原样吐出来的 SQL 报错，而他只是点了保存。
-     *
-     * 留第一句（模型按相关性排的），其余丢掉：留下的证据仍然逐字为真，
-     * 只是没那么全。⚠️ **这是权宜之计**：正确的修法是让这张表能装下同一来源的
-     * 多句引用，那要重建表，属于 schema 变更，得单独提出来。
+     * 这里只挡**一模一样**的重复提交——那种重复是错误，不是第二条证据。
      */
     const seenSources = new Set();
     const droppedQuotes = [];
     const dedupedSources = normalizedSources.filter((source) => {
-      const key = `${source.sourceKind} ${source.sourceId}`;
+      const key = `${source.sourceKind} ${source.sourceId} ${source.evidenceText}`;
       if (seenSources.has(key)) { droppedQuotes.push(source.evidenceText); return false; }
       seenSources.add(key);
       return true;
@@ -426,7 +422,7 @@ export class ContentBridgeDomain {
         origin: problem.origin,
         originAgendaId: problem.originAgendaId,
         sourceCount: dedupedSources.length,
-        // 同一来源被丢掉的多余引用记进审计：将来要不要改表，看这个数。
+        // 完全重复的引用被丢掉几条。正常应该是 0。
         droppedDuplicateQuotes: droppedQuotes.length,
       }, now);
       return id;

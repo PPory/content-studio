@@ -84,8 +84,9 @@ export function outlineToMarkdown(outline) {
     .join("\n\n");
 }
 
-export async function proposeProjectOutline(env, workspace, { projectId } = {}) {
+export async function proposeProjectOutline(env, workspace, { projectId, instruction = "" } = {}) {
   const context = projectCreativeContext(workspace, projectId);
+  const ask = clean(instruction, 1_000);
   const completion = await completionFor(env)(env, {
     system: [
       "你为一个创作者把已经定好的内容构造，落成一份可以照着写的文章结构。",
@@ -102,7 +103,10 @@ export async function proposeProjectOutline(env, workspace, { projectId } = {}) 
       "只输出 JSON。",
       JSON.stringify({ sections: [{ heading: "", purpose: "", uses: [""], beats: [""] }], note: "" }),
     ].filter(Boolean).join("\n"),
-    user: describeCreativeContext(context),
+    user: ask ? `${describeCreativeContext(context)}
+
+# 我对上一版结构的意见（这次要照着改）
+${ask}` : describeCreativeContext(context),
     maxTokens: 6_000,
   });
   const outline = normalizeOutline(completion.data, context);
@@ -134,8 +138,15 @@ function summarize(context) {
  * ⚠️ **必须先有结构。** 没有结构就起稿，等于回到「一上来给一篇完整的稿」——
  * 那正是这一步要避免的事。
  */
-export async function proposeProjectDraft(env, workspace, { projectId, outline } = {}) {
+export async function proposeProjectDraft(env, workspace, { projectId, outline, instruction = "" } = {}) {
   const context = projectCreativeContext(workspace, projectId);
+  /**
+   * ⚠️ **起稿不能只有一次机会。**
+   * 「不满意只能重来一遍」意味着用户唯一能表达不满的方式是再抽一次——
+   * 而他通常很清楚哪儿不对（太像科普、结论太早、开头绕）。带上这句话再起，
+   * 是把「重抽」换成「说一句」。
+   */
+  const ask = clean(instruction, 1_000);
   if (!outline || !Array.isArray(outline.sections) || !outline.sections.length) {
     throw Object.assign(new Error("先搭一个结构，再起稿"), {
       status: 400,

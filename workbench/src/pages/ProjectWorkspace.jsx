@@ -195,6 +195,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [publishGateOpen, setPublishGateOpen] = useState(false);
+  const [startPanelOn, setStartPanelOn] = useState(false);
   const [form, setForm] = useState(() => releaseForm());
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -604,6 +605,13 @@ ${(form.body || "").slice(0, 3000)}`);
 
   const mainAction = PRIMARY_ACTION[project.stage];
   /**
+   * ⚠️ **开写前那一栏亮着的时候，顶栏这颗要让位。**
+   * 「建立主稿」和「照这个结构起稿」当时是并排的两颗实心黑，而它们指向同一件事：
+   * 开始写。一屏两颗主动作，看到的人第一反应是去猜它们有什么区别。
+   * 那一栏自己会顺手建主稿，所以这颗退成次级——它仍然在，想要白纸就点它。
+   */
+  const startPanelActive = startPanelOn && ["策划中", "写作中"].includes(project.stage);
+  /**
    * 这篇文章属于哪些合集。**是个数组**——一篇可以同时进多个。
    *
    * ⚠️ 「上一篇 / 下一篇」**只在恰好属于一个合集时才有**（服务端就是这么给的）：
@@ -775,7 +783,7 @@ ${(form.body || "").slice(0, 3000)}`);
              * `title` 里写清原因，因为一颗灰按钮自己说不了话。
              */
             <button
-              className="btn btn-primary"
+              className={startPanelActive ? "btn" : "btn btn-primary"}
               onClick={() => (releaseMissing.length ? setPublishGateOpen(true) : transition(mainAction.action))}
               disabled={busy || blockedReason !== ""}
               title={blockedReason || undefined}
@@ -834,6 +842,7 @@ ${(form.body || "").slice(0, 3000)}`);
           busy={busy}
           onGo={onGo}
           onStartDraft={() => transition("start-writing")}
+          onActiveChange={setStartPanelOn}
           onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
         />
       ) : null}
