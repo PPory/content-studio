@@ -40,6 +40,30 @@ try {
   });
   check("假设记下来时还是开放状态", experiments.experiment(beforeId).verdict === "open" && experiments.experiment(beforeId).settledAt === null);
 
+  /**
+   * 发布链接可以为空：视频号、群发这类地方拿不到链接，
+   * 但「发出去了」这件事必须能登记，否则后面的实验和复盘全断在这儿。
+   */
+  const draftNoUrl = domain.createDraft({ projectId, title: "无链接平台版", actor, now });
+  domain.updateDraft(draftNoUrl, { title: "无链接平台版", bodyMarkdown: "# 正文" + String.fromCharCode(10, 10) + "一段足够长的正文。", reason: "user edit", actor, now });
+  domain.upsertReleasePackage(draftNoUrl, { summary: "摘要", actor, now });
+  domain.transitionDraft(draftNoUrl, "finish-writing", { actor, now });
+  const noUrl = domain.publishDraft(draftNoUrl, {
+    title: "没有链接的一次发布",
+    platform: "视频号",
+    publishedUrl: "",
+    publishedAt: "2026-09-02T09:00:00.000Z",
+    idempotencyKey: "publish:no-url:v1",
+    actor,
+    now: new Date("2026-09-02T09:00:00.000Z"),
+  });
+  check("没有链接也能登记发布", Boolean(noUrl.publicationId)
+    && workspace.db.prepare("SELECT published_url AS url FROM publication_records WHERE id=?").get(noUrl.publicationId).url === "");
+  assert.throws(() => domain.publishDraft(draftNoUrl, {
+    title: "坏链接", platform: "视频号", publishedUrl: "不是网址", publishedAt: "2026-09-02T09:00:00.000Z",
+    idempotencyKey: "publish:bad-url:v1", actor, now,
+  }), /必须是有效网址/);
+
   const publication = domain.publishDraft(draftId, {
     title: "为什么我越写越不敢下判断",
     platform: "公众号",

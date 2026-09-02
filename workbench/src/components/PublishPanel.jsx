@@ -10,7 +10,7 @@
  *
  * 现在按**两个不同的时刻**拆开，各自只问那一刻答得上来的东西：
  *
- *  - 还没发 →「记录发布」：只要链接和时间。
+ *  - 还没发 →「确认已发布」：只要发布时间；链接有就填，视频号这类拿不到链接的也能登记。
  *  - 已经发了 →「更新数据并复盘」：这时才出现五个指标，因为这时才有数。
  *
  * ⚠️ **指标不能从这里整个搬走。** 复盘判定（`evaluatePostPerformance`）和「表现突出就把
@@ -49,7 +49,7 @@ export function PublishPanel({ item, doc, onPublished, blocked, blockedTitle = "
         onClick={() => setOpen(true)}
         disabled={blocked}
         // 有真实性告警时不给点，但**要说清为什么**——灰着不解释的按钮只会让人以为坏了
-        title={blocked ? blockedTitle : published ? "补上表现数据，跑一次复盘" : "填发布链接和时间"}
+        title={blocked ? blockedTitle : published ? "补上表现数据，跑一次复盘" : "登记发布时间，链接可以空着"}
       >
         <IconCloudUpload aria-hidden="true" stroke={1.7} />
         {buttonLabel || (published ? "更新数据并复盘" : "记录发布")}
@@ -119,8 +119,9 @@ function PublishDrawer({ item, doc, published, onClose, onPublished }) {
         </div>
 
         <div className="field">
-          <label>发布链接</label>
-          <input type="url" data-autofocus="" value={form.url} onChange={set("url")} placeholder="https://…" required />
+          {/* 视频号、群发这些地方拿不到链接，没有也照样能登记「发出去了」 */}
+          <label>发布链接<small className="field__optional">可留空</small></label>
+          <input type="url" data-autofocus="" value={form.url} onChange={set("url")} placeholder="有就贴上，没有可以空着" />
         </div>
         <div className="field">
           <label>发布时间</label>
@@ -157,7 +158,7 @@ function PublishDrawer({ item, doc, published, onClose, onPublished }) {
 
         <div className="drawer-foot">
           <button type="button" className="btn" onClick={onClose}>{result ? "完成" : "取消"}</button>
-          <button className="btn btn-primary" type="submit" disabled={busy || !form.url || !form.publishedAt}>
+          <button className="btn btn-primary" type="submit" disabled={busy || !form.publishedAt}>
             <IconCloudUpload aria-hidden="true" stroke={1.8} />
             {busy ? "记录中…" : published ? "更新数据并复盘" : "确认已发布"}
           </button>

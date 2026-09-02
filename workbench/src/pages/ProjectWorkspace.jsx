@@ -78,7 +78,7 @@ function projectMaterialQuery(project, form) {
   return title && title !== "未命名" ? title : "";
 }
 
-function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, onPublished, cover, coverOpen, onCover }) {
+function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChange, onSelect, onAdd, onRemove, onSave, onTypeset, onCopy, cover, coverOpen, onCover }) {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
   const used = new Set(drafts.map((item) => item.platform));
@@ -181,25 +181,8 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
         </div>
       ) : null}
 
-      <PublishPanel
-        item={{
-          key: draft.id,
-          title: form.title,
-          raw: {
-            platform: draft.platform,
-            status: draft.publicationStatus,
-            publishedUrl: project.publication?.latest?.draftId === draft.id ? project.publication.latest.url : "",
-            publishedAt: project.publication?.latest?.draftId === draft.id ? project.publication.latest.publishedAt : "",
-          },
-        }}
-        doc={{ title: form.title, content: form.body }}
-        buttonClassName="btn project-publish__record"
-        buttonLabel="发布后记录链接"
-        blocked={dirty}
-        blockedTitle="先保存当前发布版本，再记录发布"
-        onPublished={onPublished}
-      />
-      <small className="project-publish__truth">记录的是当前选中的平台版本；链接和时间齐全后，项目才会进入复盘。</small>
+      {/* 确认发布这个动作在顶栏，这里不重复；这一栏只装你去平台后台要用的东西 */}
+      <small className="project-publish__truth">顶栏的「确认已发布」记录的是当前选中的平台版本，确认之后项目进入复盘。</small>
       {/* 假设要写在发布之前，所以它长在发布动作旁边，而不是正文上方 */}
       <ExperimentPanel projectId={project.id} publication={project.publication?.latest} />
     </aside>
@@ -749,7 +732,36 @@ ${(form.body || "").slice(0, 3000)}`);
           </div> : null}
           {draft && (draftEditable || releaseEditable) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
           {project.stage === "待发布" ? (
-            draft?.platform === "公众号" ? <button className="btn btn-primary" onClick={openTypeset}><IconBrandWechat aria-hidden="true" />去排版<IconArrowRight aria-hidden="true" /></button> : null
+            /**
+             * ⚠️ **主动作是「确认已发布」，不是「去排版」。**
+             * 排版是个工具：排完了这篇仍然停在待发布，项目一步没动
+             * （和侧栏里「工具不是阶段」是同一条理由）。真正让这一篇往前走的
+             * 是登记这次发布——它原来是右栏里第三颗同样大小的次级按钮，
+             * 名字还叫「发布后记录链接」，读起来像一件可做可不做的记账。
+             */
+            <>
+              {draft?.platform === "公众号" ? <button className="btn" onClick={openTypeset}><IconBrandWechat aria-hidden="true" />去排版</button> : null}
+              {draft ? (
+                <PublishPanel
+                  item={{
+                    key: draft.id,
+                    title: form.title,
+                    raw: {
+                      platform: draft.platform,
+                      status: draft.publicationStatus,
+                      publishedUrl: project.publication?.latest?.draftId === draft.id ? project.publication.latest.url : "",
+                      publishedAt: project.publication?.latest?.draftId === draft.id ? project.publication.latest.publishedAt : "",
+                    },
+                  }}
+                  doc={{ title: form.title, content: form.body }}
+                  buttonClassName="btn btn-primary"
+                  buttonLabel="确认已发布"
+                  blocked={dirty}
+                  blockedTitle="先保存当前发布版本，再确认发布"
+                  onPublished={handlePublished}
+                />
+              ) : null}
+            </>
           ) : mainAction ? (
             /**
              * ⚠️ **正文为空时这颗按钮必须点不动。**
@@ -897,7 +909,6 @@ ${(form.body || "").slice(0, 3000)}`);
             onSave={saveDraft}
             onTypeset={openTypeset}
             onCopy={copyRelease}
-            onPublished={handlePublished}
             cover={cover}
             coverOpen={coverOpen}
             onCover={runCover}

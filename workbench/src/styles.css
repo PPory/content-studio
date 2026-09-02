@@ -7255,3 +7255,6 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   resize: vertical;
 }
 .project-publish-gate__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+
+/* 「可留空」跟在字段名后面，别和标题连成一个词 */
+.field label .field__optional { margin-left: 6px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }

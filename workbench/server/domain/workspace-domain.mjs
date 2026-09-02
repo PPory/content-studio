@@ -1072,7 +1072,14 @@ export class WorkspaceDomain {
     const payload = {
       title: clean(title),
       platform: clean(platform),
-      publishedUrl: validHttpUrl(publishedUrl),
+      /**
+       * ⚠️ **发布链接可以为空。**
+       * 视频号、群发、朋友圈这些地方本来就拿不到一条可粘的链接，
+       * 而「发出去了」这件事和「有没有链接」是两回事——强制要链接
+       * 等于让一部分真实发布永远登记不进来，后面的复盘和实验也就跟着断了。
+       * 给了链接仍然照常按 http/https 校验。
+       */
+      publishedUrl: publishedUrl ? validHttpUrl(publishedUrl) : "",
       publishedAt: requiredIso(publishedAt, "发布时间"),
       idempotencyKey: key,
       metadata,
