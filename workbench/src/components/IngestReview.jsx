@@ -149,26 +149,37 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
   if (error) return <ErrorNote error={error} what="知识候选" onRetry={load} />;
   if (!candidates.length && !focusedMissing && !success) return null;
 
+  /**
+   * 一张待写入页面。**排版顺序就是判断顺序**：这是新建还是改已有 → 改的是哪一页 →
+   * 它以后会是什么 → 这次为什么改 → 凭哪句原文 → 要不要逐字对照。
+   *
+   * ⚠️ **不能整块包在 `<label>` 里。** 点 label 内任何东西都会切换那颗复选框，
+   * 于是「展开对照完整内容」会顺手把这一页从采纳列表里取消掉——而屏幕上只是
+   * 勾没了，不报错。只有标题那一行是 label，`<details>` 留在外面。
+   */
   const pageLine = (item, page, index) => {
     const key = `pages:${index}`;
     const checked = selected[item.id]?.has(key) !== false;
+    const inputId = `ing-page-${item.id}-${index}`;
     return (
-      <label key={key} className={`ing__choice${checked ? "" : " is-off"}`}>
-        <input type="checkbox" checked={checked} onChange={() => toggle(item.id, key)} />
-        <span className="ing__choice-body">
-          <span className="ing__choice-line"><i>{page.action === "update" ? "更新页面" : "新建页面"}</i><b>{page.title}</b>{page.summary}</span>
-          <div className="ing__page-change">
-            <small className="ing__why">{page.changeSummary}</small>
-            <details>
-              <summary>对照完整内容</summary>
-              {page.beforeBodyMarkdown ? <><b>修改前</b><pre>{page.beforeBodyMarkdown}</pre></> : null}
-              <b>修改后</b><pre>{page.bodyMarkdown}</pre>
-            </details>
-            <span>{page.citations?.length || 0} 处来源引用 · {page.links?.length || 0} 个页面连接</span>
-          </div>
+      <div key={key} className={`ing__choice${checked ? "" : " is-off"}`}>
+        <input id={inputId} type="checkbox" checked={checked} onChange={() => toggle(item.id, key)} />
+        <div className="ing__choice-body">
+          <label className="ing__choice-head" htmlFor={inputId}>
+            <i data-action={page.action}>{page.action === "update" ? "更新页面" : "新建页面"}</i>
+            <b>{page.title}</b>
+            <em>{page.citations?.length || 0} 处引用 · {page.links?.length || 0} 个连接</em>
+          </label>
+          <p className="ing__choice-summary">{page.summary}</p>
+          {page.changeSummary ? <p className="ing__why">{page.changeSummary}</p> : null}
           <Evidence quote={page.citations?.[0]?.quote} />
-        </span>
-      </label>
+          <details className="ing__diff">
+            <summary>对照完整内容</summary>
+            {page.beforeBodyMarkdown ? <><b>修改前</b><pre>{page.beforeBodyMarkdown}</pre></> : null}
+            <b>修改后</b><pre>{page.bodyMarkdown}</pre>
+          </details>
+        </div>
+      </div>
     );
   };
 
@@ -251,6 +262,13 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
 
             {expanded ? (
               <div className="ing__body">
+                {item.rejected?.length || item.unresolved?.length ? (
+                  <p className="ing__gate">
+                    {item.rejected?.length ? `证据校验已拦下 ${item.rejected.length} 条不可靠修改，它们不会进入正式知识。` : ""}
+                    {item.rejected?.length && item.unresolved?.length ? " " : ""}
+                    {item.unresolved?.length ? `另有 ${item.unresolved.length} 项建议未生成可用修订，仍保留为待处理问题。` : ""}
+                  </p>
+                ) : null}
                 {(item.pages || []).map((page, index) => pageLine(item, page, index))}
                 {isResearch ? (
                   <div className="ing__sources">
@@ -294,8 +312,6 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
                     })}
                   </ol>
                 ) : null}
-                {item.rejected?.length ? <p className="ing__dropped">证据校验已拦下 {item.rejected.length} 条不可靠修改，这些内容不会进入正式知识。</p> : null}
-                {item.unresolved?.length ? <p className="ing__dropped">另有 {item.unresolved.length} 项建议未生成可用修订，仍保留为待处理问题。</p> : null}
               </div>
             ) : null}
           </article>

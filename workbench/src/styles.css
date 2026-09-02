@@ -6895,24 +6895,65 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__actions .is-strong { border-color: var(--text-1); color: var(--text-1); font-weight: 500; }
 .ing__actions .is-strong:hover { background: var(--surface-2); }
 .ing__actions button:disabled { opacity: .5; cursor: not-allowed; }
-.ing__body { padding: 0 4px 16px; }
-.ing__choice { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px; padding: 10px 0; border-top: 1px dashed var(--border); cursor: pointer; }
+/**
+ * ⚠️ **展开的正文要缩进到标题那一列，并挂一条左线。**
+ * 以前它和折叠条目在同一条左边线上，四份候选连着排时看不出「这几页属于哪一份」——
+ * 上一条的正文和下一条的标题只隔一道虚线。不画卡（外面已经是白框），
+ * 缩进 28px 对齐标题文字 + 一条 1px 竖线就够。
+ */
+.ing__body { margin-left: 12px; padding: 2px 4px 18px 16px; border-left: 1px solid var(--border); }
+
+/**
+ * ⚠️ **展开后这一行吸顶。** 一份候选的正文可能有好几屏（每页还带完整 diff），
+ * 而「整份拒绝 / 全部接受」在最上面。读到哪儿都要能就地决定，不用滚回去找。
+ * 只在真的展开时吸——四条同时吸顶会互相盖。
+ */
+.ing__item:has(> .ing__body) > .ing__row {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2); box-shadow: 0 1px 0 var(--border);
+}
+
+/* 证据闸门的结果是**做决定之前**要看到的，不是列表末尾一行裸的橙字 */
+.ing__gate {
+  margin: 0 0 6px; padding: 9px 12px;
+  border-left: 2px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--text-2); font-size: var(--fs-xs); line-height: 1.65;
+}
+
+.ing__choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 10px; padding: 14px 0; border-top: 1px dashed var(--border); }
+.ing__choice:first-of-type { border-top: 0; }
 .ing__choice.is-off { opacity: .48; }
-.ing__choice input { margin-top: 3px; accent-color: var(--accent); }
-.ing__choice-line { display: flex; gap: 8px; align-items: baseline; line-height: 1.6; }
-.ing__choice-line i { flex: none; color: var(--accent); font-size: var(--fs-2xs); font-style: normal; font-weight: 700; }
-.ing__choice-line b { flex: none; }
+.ing__choice > input { margin-top: 3px; accent-color: var(--accent); }
+.ing__choice-body { display: grid; gap: 6px; min-width: 0; }
+
+/* 标签 + 页名 + 计数在同一行：三样都是「这是哪一页」，摘要另起一行才读得开 */
+.ing__choice-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; min-width: 0; cursor: pointer; }
+.ing__choice-head i {
+  flex: none; padding: 1px 7px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-2);
+  font-style: normal; font-size: var(--fs-2xs); font-weight: 600;
+}
+/* 新建页面和改已有页面是两种后果，标签要分得开 */
+.ing__choice-head i[data-action="create"] { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.ing__choice-head b { min-width: 0; font-size: var(--fs-base); }
+.ing__choice-head em { margin-left: auto; flex: none; color: var(--text-3); font-style: normal; font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.ing__choice-summary { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+
 .ing__quote, .fact__evidence blockquote, .entry-definition-source blockquote { margin: 8px 0 0; padding: 8px 12px; border-left: 2px solid var(--border-strong); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65; }
-.ing__why { display: block; margin-top: 4px; color: var(--text-3); }
+/* ⚠️ 引文和 diff 在这一页要用**白底**。共用的 `.ing__quote` 底色是 `--surface-2`，
+   而它和 `.main` 的底（#f4f4f5）是同一个值——摆在 Wiki 页上就是一块看不见的底。
+   只在这儿覆盖：那条规则在别处待的是白色表面，改了会反过来消失。 */
+.ing__choice-body .ing__quote { margin: 2px 0 0; background: var(--surface); }
+.ing__why { display: block; margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.65; }
+
+.ing__diff { margin-top: 2px; }
+.ing__diff > summary { width: fit-content; color: var(--text-3); font-size: var(--fs-xs); cursor: pointer; }
+.ing__diff > summary:hover { color: var(--text-1); }
+.ing__diff > b { display: block; margin-top: 10px; color: var(--text-3); font-size: var(--fs-2xs); }
+.ing__diff pre { max-height: 280px; overflow: auto; white-space: pre-wrap; margin: 4px 0 0; padding: 10px 12px; background: var(--surface); color: var(--text-2); font: 12px/1.65 var(--font-mono); }
 .ing__compare { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 4px 8px; margin-top: 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .ing__compare span { color: var(--text-3); }
 .ing__compare small { grid-column: 2; color: var(--text-3); }
-.ing__dropped { margin: 10px 0 0 26px; color: var(--warn); font-size: var(--fs-xs); }
-.ing__page-change { display: grid; gap: 7px; margin-top: 7px; color: var(--text-3); font-size: var(--fs-xs); }
-.ing__page-change details { border-left: 2px solid var(--border); padding-left: 10px; }
-.ing__page-change summary { cursor: pointer; color: var(--text-2); }
-.ing__page-change pre { max-height: 280px; overflow: auto; white-space: pre-wrap; padding: 10px; background: var(--surface-2); color: var(--text-2); font: 12px/1.65 var(--font-mono); }
-.ing__page-change details > b { display: block; margin-top: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
 .ing__item--lint .ing__row { grid-template-columns: minmax(360px, 1fr) auto auto; }
 .ing__item--lint .ing__body { padding-top: 0; }
 .ing__findings { list-style: none; margin: 0; padding: 0; }
