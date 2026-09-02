@@ -162,13 +162,15 @@ export function Hotspots({ onIntake, onGo }) {
       {audienceProblems.length ? (
         <section className="radar-problems" aria-labelledby="radar-problems-title">
           <header>
-            <h2 id="radar-problems-title">从洞察确认的用户问题</h2>
-            <span>这些不是热点标题，均保留来源</span>
+            {/* ⚠️ 标题不再写「从洞察确认」：问题也可以从长期议程推导出来，那种没有观察来源。 */}
+            <h2 id="radar-problems-title">已确认的用户问题</h2>
+            <span>这些不是热点标题，观察到的都保留来源</span>
           </header>
           <div className="radar-problems__list">
             {audienceProblems.slice(0, 3).map((problem) => (
               <button key={problem.id} type="button" onClick={() => onGo?.("bridge", `problem:${problem.id}`)}>
-                <strong>{problem.statement}</strong><span>看看我的知识能不能解释</span>
+                <strong>{problem.statement}</strong>
+                <span>{problem.origin === "hypothesis" ? "议程推导 · 待验证" : "看看我的知识能不能解释"}</span>
               </button>
             ))}
           </div>

@@ -127,6 +127,37 @@ try {
     && saved.value.problem.sourceKind === "insight_report"
     && (await call(base, "/api/workspace/audience-problems")).value.problems.length === 1);
 
+  const agendaId = createdAgenda.value.agenda.id;
+  const beforeDerive = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+  const derived = await call(base, "/api/workspace/audience-problems/from-agenda", {
+    method: "POST",
+    body: { agendaId },
+  });
+  const afterDerive = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+  assert.equal(derived.response.status, 200, JSON.stringify(derived.value));
+  const hypothesisCandidate = derived.value.problems[0];
+  check("议程推导返回的是不带来源的假设候选，且不产生副作用",
+    derived.value.candidateOnly === true
+    && hypothesisCandidate.origin === "hypothesis"
+    && hypothesisCandidate.originAgendaId === agendaId
+    && hypothesisCandidate.sources.length === 0
+    && hypothesisCandidate.pattern === "knowledge_gap"
+    && beforeDerive === afterDerive);
+
+  const missingAgenda = await call(base, "/api/workspace/audience-problems/from-agenda", {
+    method: "POST",
+    body: { agendaId: "missing-agenda" },
+  });
+  check("不存在的议程返回明确 404", missingAgenda.response.status === 404 && /不存在/.test(missingAgenda.value.error));
+
+  failModel = true;
+  const deriveFailure = await call(base, "/api/workspace/audience-problems/from-agenda", {
+    method: "POST",
+    body: { agendaId },
+  });
+  failModel = false;
+  check("议程推导模型失败不写入用户问题", deriveFailure.response.status === 503 && afterDerive === beforeDerive);
+
   const archived = await call(base, `/api/workspace/audience-problems/${saved.value.problem.id}/update`, {
     method: "POST",
     body: { action: "archive", confirmed: true },
@@ -134,6 +165,18 @@ try {
   check("Audience Problem API 支持可恢复归档", archived.value.problem.status === "archived"
     && (await call(base, "/api/workspace/audience-problems")).value.problems.length === 0
     && (await call(base, "/api/workspace/audience-problems?archived=1")).value.problems.length === 1);
+
+  // 放在归档断言之后，免得多出来的这条改掉上面那两个列表计数。
+  const savedHypothesis = await call(base, "/api/workspace/audience-problems", {
+    method: "POST",
+    body: { ...hypothesisCandidate, confirmed: true },
+  });
+  assert.equal(savedHypothesis.response.status, 200, JSON.stringify(savedHypothesis.value));
+  check("确认后保存的假设永久标注来历且没有来源",
+    savedHypothesis.value.problem.origin === "hypothesis"
+    && savedHypothesis.value.problem.originAgendaId === agendaId
+    && savedHypothesis.value.problem.sources.length === 0
+    && savedHypothesis.value.problem.sourceRef === `agenda:${agendaId}`);
 } finally {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   workspace.close();

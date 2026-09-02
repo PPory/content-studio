@@ -176,6 +176,19 @@
 .bridge-select-row small { color: var(--text-3); font-size: var(--fs-xs); }
 
 .bridge-side-actions { gap: var(--sp-3); flex-wrap: wrap; min-height: 38px; }
+/* 第 02 栏的议程选择器：和同一行的按钮等高，太长的议程名截断而不是把整行撑开 */
+.bridge-agenda-pick {
+  min-height: 38px;
+  max-width: 240px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.bridge-agenda-pick:disabled { opacity: .45; cursor: not-allowed; }
 .bridge-side-empty { padding: var(--sp-9) var(--sp-4); color: var(--text-2); text-align: center; }
 .bridge-side-empty p { margin: 0 0 var(--sp-5); line-height: 1.7; }
 

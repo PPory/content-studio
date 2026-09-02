@@ -84,6 +84,22 @@ function EmptySide({ children, action }) {
   );
 }
 
+/**
+ * 建议程的表单。第 02 栏（开始之前定议程）和结果第 5 段（写到一半想起要关联）共用一份。
+ *
+ * ⚠️ 这个表单原来只长在结果第 5 段里，也就是**必须先选 Wiki、选问题、跑完一次 AI**
+ * 才看得到。而议程按定义是开始之前就该定的东西——那个位置让它永远建不起来。
+ */
+function AgendaQuickForm({ title, judgment, onTitle, onJudgment, busy, onSubmit }) {
+  return (
+    <div className="bridge-agenda-create">
+      <label>名称<input value={title} onChange={(event) => onTitle(event.target.value)} placeholder="例如：保留人的判断权" /></label>
+      <label>希望用户最终形成什么判断<textarea rows={2} value={judgment} onChange={(event) => onJudgment(event.target.value)} placeholder="写出长期希望受众形成的稳定判断" /></label>
+      <button type="button" className="btn btn-primary btn-sm" disabled={!title.trim() || !judgment.trim() || busy} onClick={onSubmit}>{busy ? "正在创建…" : "确认创建"}</button>
+    </div>
+  );
+}
+
 function ResultSection({ index, title, children, id }) {
   return (
     <section className="bridge-result-section" id={id} tabIndex={id ? -1 : undefined}>
@@ -123,7 +139,9 @@ export function ContentBridge({ state = "", onGo }) {
   const [saveBusy, setSaveBusy] = useState(false);
   const [savedOpportunity, setSavedOpportunity] = useState(null);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [extractionNote, setExtractionNote] = useState("");
   const [agendaFormOpen, setAgendaFormOpen] = useState(false);
+  const [agendaFormAtPicker, setAgendaFormAtPicker] = useState(false);
   const [agendaTitle, setAgendaTitle] = useState("");
   const [agendaJudgment, setAgendaJudgment] = useState("");
   const [agendaCreateBusy, setAgendaCreateBusy] = useState(false);
@@ -302,6 +320,7 @@ export function ContentBridge({ state = "", onGo }) {
       setAgendas((items) => [result.agenda, ...items]);
       setAgendaError(null);
       setAgendaFormOpen(false);
+      setAgendaFormAtPicker(false);
       setAgendaTitle("");
       setAgendaJudgment("");
       await selectAgenda(result.agenda.id);
@@ -366,9 +385,35 @@ export function ContentBridge({ state = "", onGo }) {
     }
     setExtractBusy(true);
     setPreviewError(null);
+    setExtractionNote("");
     try {
       const result = await api.extractAudienceProblems(insight.id);
-      setExtraction(result.problems || []);
+      const problems = result.problems || [];
+      setExtraction(problems);
+      if (!problems.length) setExtractionNote("这份洞察里没有读出值得记的用户问题。");
+    } catch (failure) {
+      setPreviewError(failure);
+    } finally {
+      setExtractBusy(false);
+    }
+  };
+
+  /**
+   * 从议程「拎出一层」：这条议程覆盖的问题空间里，受众可能正在困惑什么。
+   *
+   * 产出的是**假设**，不是观察——它没有来源，保存时以 origin=hypothesis 永久标注。
+   * 这是问题库唯一不依赖外部抓取的供给路径。
+   */
+  const deriveProblems = async () => {
+    if (!agendaId) return;
+    setExtractBusy(true);
+    setPreviewError(null);
+    setExtractionNote("");
+    try {
+      const result = await api.agendaProblemCandidates(agendaId);
+      const problems = result.problems || [];
+      setExtraction(problems);
+      if (!problems.length) setExtractionNote("这个议程暂时没拎出值得记的问题。把议程写得更具体，或者自己记一个真实听到的问题。");
     } catch (failure) {
       setPreviewError(failure);
     } finally {
@@ -496,14 +541,61 @@ export function ContentBridge({ state = "", onGo }) {
         <section className="bridge-side" aria-labelledby="bridge-problem-title">
           <div className="bridge-side-head">
             <div><span>02</span><h3 id="bridge-problem-title">用户在困惑什么</h3></div>
-            <small>洞察 / 反馈</small>
+            <small>议程 / 洞察 / 反馈</small>
           </div>
+          {/*
+            ⚠️ 议程在这里，不在结果第 5 段里。
+            问题库空着的时候，用户此刻最该做的一件事是把议程拎成问题，
+            所以那颗按钮在这种状态下才是主动作；有问题可选之后它退级。
+          */}
           <div className="bridge-side-actions">
-            <button type="button" className="btn btn-sm" disabled={extractBusy || !insights.length} onClick={extractProblems}>
-              {extractBusy ? "正在提取…" : latestInsight ? `从《${latestInsight.title || latestInsight.week || "最近洞察"}》提取用户问题` : "暂无洞察可提取"}
-            </button>
+            {agendas.length ? (
+              <>
+                <select
+                  className="bridge-agenda-pick"
+                  aria-label="选择长期议程"
+                  value={agendaId}
+                  disabled={extractBusy}
+                  onChange={(event) => selectAgenda(event.target.value)}
+                >
+                  <option value="">选一个长期议程</option>
+                  {agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}
+                </select>
+                <button
+                  type="button"
+                  className={`btn btn-sm${problems.length ? "" : " btn-primary"}`}
+                  disabled={extractBusy || !agendaId}
+                  onClick={deriveProblems}
+                >
+                  {extractBusy ? "正在拎问题…" : "从议程拎问题"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`btn btn-sm${problems.length ? "" : " btn-primary"}`}
+                onClick={() => setAgendaFormAtPicker((value) => !value)}
+              >
+                先定一个议程
+              </button>
+            )}
+            {insights.length ? (
+              <button type="button" className="btn btn-sm" disabled={extractBusy} onClick={extractProblems}>
+                {extractBusy ? "正在提取…" : `从《${latestInsight?.title || latestInsight?.week || "最近洞察"}》提取`}
+              </button>
+            ) : null}
             <button type="button" className="btn btn-sm" onClick={() => setManualOpen((value) => !value)}>自己记一个问题</button>
           </div>
+          {agendaFormAtPicker ? (
+            <AgendaQuickForm
+              title={agendaTitle}
+              judgment={agendaJudgment}
+              onTitle={setAgendaTitle}
+              onJudgment={setAgendaJudgment}
+              busy={agendaCreateBusy}
+              onSubmit={createAgenda}
+            />
+          ) : null}
           {latestInsight ? <p className="bridge-insight-source">读取报告：{latestInsight.title || latestInsight.week || "最近洞察"}{latestInsight.generatedAt ? ` · ${dateLabel(latestInsight.generatedAt)}` : ""}</p> : null}
           {insightsError ? <p className="bridge-local-error">洞察报告暂时无法读取。你仍可选择已有问题或自己记录。</p> : null}
           {manualOpen ? (
@@ -513,14 +605,20 @@ export function ContentBridge({ state = "", onGo }) {
               <button type="button" className="btn btn-primary" disabled={!manualStatement.trim() || saveBusy} onClick={saveManual}>{saveBusy ? "正在保存…" : "确认保存"}</button>
             </div>
           ) : null}
+          {extractionNote ? <p className="bridge-insight-source">{extractionNote}</p> : null}
           {extraction.length ? (
             <div className="bridge-candidates" aria-label="待确认的用户问题候选">
               <p>一个可能的用户问题</p>
               {extraction.map((candidate) => (
-                <article key={`${candidate.statement}:${candidate.sources?.[0]?.sourceId}`}>
+                <article key={`${candidate.origin || "observed"}:${candidate.statement}`}>
                   <strong>{candidate.statement}</strong>
                   <span>{candidate.whyItMatters}</span>
-                  <small>来自最近洞察 · {PATTERN_LABELS[candidate.pattern] || candidate.pattern}</small>
+                  {/* 议程推导的候选没有来源，标注必须说清楚它还没被任何人真的问过。 */}
+                  <small>
+                    {candidate.origin === "hypothesis"
+                      ? "议程推导 · 尚无真实观察"
+                      : `来自最近洞察 · ${PATTERN_LABELS[candidate.pattern] || candidate.pattern}`}
+                  </small>
                   <button type="button" className="btn btn-sm" disabled={saveBusy} onClick={() => confirmCandidate(candidate)}>确认保存</button>
                 </article>
               ))}
@@ -529,13 +627,20 @@ export function ContentBridge({ state = "", onGo }) {
           <div className="bridge-side-list bridge-side-list--problems">
             {!problems.length ? (
               <EmptySide>
-                目前还没有整理出的用户问题。可以从最近洞察提取，或自己记一个问题。
+                {agendas.length
+                  ? "还没有用户问题。先选一个长期议程，把它覆盖的困惑拎出来。"
+                  : "还没有用户问题。先定一个长期议程——你希望受众最终形成什么判断，决定了他们的哪些困惑值得你回答。"}
               </EmptySide>
             ) : problems.map((problem) => (
               <SelectionRow key={problem.id} selected={problemId === problem.id} onClick={() => selectProblem(problem.id)} ariaLabel={`选择用户问题：${problem.statement}`}>
                 <strong>{problem.statement}</strong>
                 <p>{problem.summary || "这条问题还没有补充说明。"}</p>
-                <small><SourceCount count={problem.sources?.length} /> · {PATTERN_LABELS[problem.pattern] || "反馈"}</small>
+                {/* 假设没有来源，显示「0 个来源」会读成「来源丢了」，是两回事。 */}
+                <small>
+                  {problem.origin === "hypothesis"
+                    ? "议程推导 · 待验证"
+                    : <><SourceCount count={problem.sources?.length} /> · {PATTERN_LABELS[problem.pattern] || "反馈"}</>}
+                </small>
               </SelectionRow>
             ))}
           </div>
@@ -585,11 +690,14 @@ export function ContentBridge({ state = "", onGo }) {
               {agendaId ? <button type="button" className="btn btn-sm" disabled={previewBusy} onClick={() => runPreview({ agendaOverride: agendaId, dominantAction: preview.dominantAction })}>按这个议程重新构造</button> : null}
             </div>
             {agendaFormOpen ? (
-              <div className="bridge-agenda-create">
-                <label>名称<input value={agendaTitle} onChange={(event) => setAgendaTitle(event.target.value)} placeholder="例如：保留人的判断权" /></label>
-                <label>希望用户最终形成什么判断<textarea rows={2} value={agendaJudgment} onChange={(event) => setAgendaJudgment(event.target.value)} placeholder="写出长期希望受众形成的稳定判断" /></label>
-                <button type="button" className="btn btn-primary btn-sm" disabled={!agendaTitle.trim() || !agendaJudgment.trim() || agendaCreateBusy} onClick={createAgenda}>{agendaCreateBusy ? "正在创建…" : "确认创建"}</button>
-              </div>
+              <AgendaQuickForm
+                title={agendaTitle}
+                judgment={agendaJudgment}
+                onTitle={setAgendaTitle}
+                onJudgment={setAgendaJudgment}
+                busy={agendaCreateBusy}
+                onSubmit={createAgenda}
+              />
             ) : null}
           </ResultSection>
           <ResultSection index={6} title="怎么讲">

@@ -1,5 +1,5 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { extractAudienceProblemCandidates, previewContentOpportunity, previewContentOpportunityAgendaFit } from "../domain/content-bridge-ai.mjs";
+import { extractAgendaProblemCandidates, extractAudienceProblemCandidates, previewContentOpportunity, previewContentOpportunityAgendaFit } from "../domain/content-bridge-ai.mjs";
 import { CONTENT_BRIDGE_VALUES } from "../domain/content-bridge.mjs";
 
 async function ready(source) {
@@ -107,6 +107,18 @@ export const contentBridgeRoutes = [
   },
   {
     method: "POST",
+    path: "/api/workspace/audience-problems/from-agenda",
+    handler: guard(async ({ env, workspace, req, res }) => {
+      const body = await readJsonBody(req);
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+      const result = await extractAgendaProblemCandidates(env, workspace, { agendaId: body.agendaId });
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+      if (after !== before) throw new Error("议程推导产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
+    }),
+  },
+  {
+    method: "POST",
     path: "/api/workspace/audience-problems",
     handler: guard(async ({ workspace, req, res }) => {
       const body = await readJsonBody(req);
@@ -117,6 +129,8 @@ export const contentBridgeRoutes = [
         sourceRef: sourceRef(body),
         pattern: body.pattern,
         sources: body.sources,
+        origin: body.origin,
+        originAgendaId: body.originAgendaId,
         actor: "user",
         confirmed: body.confirmed === true,
         now: new Date(),

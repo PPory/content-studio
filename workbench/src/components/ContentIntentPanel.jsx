@@ -40,7 +40,8 @@ export function ContentIntentPanel({ projectId, onGo, onAsk }) {
           <span>创作意图</span><h2 id="content-intent-title">写作前先守住这三件事</h2>
         </div>
         <div className="content-intent__summary">
-          <div><span>用户问题</span><strong>{problem.statement}</strong></div>
+          {/* 假设型问题还没有任何人真的这样问过。写作时必须一眼看见，否则很容易当成已验证的需求。 */}
+          <div><span>用户问题{problem.origin === "hypothesis" ? " · 待验证" : ""}</span><strong>{problem.statement}</strong></div>
           <div><span>核心判断</span><strong>{opportunity.coreClaim}</strong></div>
           <div><span>长期议程</span><strong>{agenda?.title || "暂未关联"}</strong></div>
         </div>
@@ -53,7 +54,11 @@ export function ContentIntentPanel({ projectId, onGo, onAsk }) {
       {expanded ? (
         <div id="content-intent-details" className="content-intent__details">
           <div className="content-intent__facts">
-            <div><span>用户问题来源</span><strong>{problem.statement}</strong><button type="button" onClick={() => onGo?.("bridge", `problem:${problem.id}`)}>查看来源</button></div>
+            <div>
+              <span>用户问题来源</span>
+              <strong>{problem.origin === "hypothesis" ? "从长期议程推导的假设，尚无真实观察" : problem.statement}</strong>
+              <button type="button" onClick={() => onGo?.("bridge", `problem:${problem.id}`)}>查看来源</button>
+            </div>
             <div><span>支撑知识</span><strong>{wiki?.title || "知识库页面"}</strong>{wiki ? <button type="button" onClick={() => onGo?.("entries", wiki.id)}>回到知识库</button> : null}</div>
             <div><span>主导表达动作</span><strong>{ACTION_LABELS[opportunity.dominantAction] || opportunity.dominantAction}</strong></div>
             <div><span>当前证据缺口</span><strong>{evidenceGaps.length ? evidenceGaps.map((item) => item.claim).join("；") : "当前没有明确缺口"}</strong></div>

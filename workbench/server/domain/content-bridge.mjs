@@ -3,6 +3,14 @@ import { assertContentBridgeFreshness, buildContentBridgeContext } from "./conte
 
 const SOURCE_KINDS = new Set(["hotspot", "insight_report", "social_post", "comment", "feedback", "manual"]);
 const PROBLEM_PATTERNS = new Set(["trend", "frequency", "knowledge_gap", "feedback"]);
+/**
+ * 用户问题是**观察到的**还是**从自己的议程推导出来的假设**。
+ *
+ * ⚠️ 这和 `source_kind`（在哪看到的）是两个正交维度，不要合并。
+ * 假设没有观察证据，所以它一条 `audience_problem_sources` 都不写——
+ * 往那张表塞议程正文当「证据」，正是真实性硬闸要挡的伪造。
+ */
+const PROBLEM_ORIGINS = new Set(["observed", "hypothesis"]);
 const FITS = new Set(["strong", "medium", "weak"]);
 const DOMINANT_ACTIONS = new Set(["knowledge", "judgment", "experience", "demonstration"]);
 const ELEMENT_TYPES = new Set(["concept", "fact", "case", "experience", "judgment", "problem", "evidence", "method", "analogy", "conflict", "observation"]);
@@ -179,6 +187,8 @@ function problemDto(row, sources = []) {
     sourceKind: row.source_kind,
     sourceRef: row.source_ref,
     pattern: row.pattern,
+    origin: row.origin || "observed",
+    originAgendaId: row.origin_agenda_id || null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -280,8 +290,11 @@ export class ContentBridgeDomain {
     return agendaDto(row);
   }
 
-  createAudienceProblem({ id = createUlid(), statement, summary = "", sourceKind, sourceRef, pattern = "feedback", sources = [], actor, confirmed = false, now } = {}) {
+  createAudienceProblem({ id = createUlid(), statement, summary = "", sourceKind, sourceRef, pattern = "feedback", sources = [], origin = "observed", originAgendaId = null, actor, confirmed = false, now } = {}) {
     requireConfirmedUser({ actor, confirmed }, "保存用户问题");
+    const canonicalOrigin = clean(origin) || "observed";
+    if (!PROBLEM_ORIGINS.has(canonicalOrigin)) throw new TypeError("用户问题来历不受支持");
+    const hypothesis = canonicalOrigin === "hypothesis";
     const normalizedSources = array(sources, "用户问题来源", 50).map((source, index) => {
       const item = record(source, `用户问题来源 ${index + 1}`);
       const kind = required(item.sourceKind || item.source_kind, `用户问题来源 ${index + 1} 类型`, 80);
@@ -293,29 +306,49 @@ export class ContentBridgeDomain {
         observedAt: isoNow(item.observedAt || item.observed_at || now),
       };
     });
-    if (!normalizedSources.length) throw new Error("用户问题至少需要一个可回溯来源");
-    const primaryKind = clean(sourceKind || normalizedSources[0].sourceKind);
+    let agendaId = null;
+    if (hypothesis) {
+      // 假设不能带观察证据。带了就说明调用方在把推导包装成观察。
+      if (normalizedSources.length) throw new Error("议程推导出的问题是假设，不能携带观察证据来源");
+      agendaId = required(originAgendaId, "议程推导所属议程", 120);
+      if (this.agenda(agendaId).status !== "active") throw new Error("已归档议程不能继续推导用户问题");
+    } else if (!normalizedSources.length) {
+      throw new Error("用户问题至少需要一个可回溯来源");
+    }
+    // 假设的主来源不接受调用方指定：它只能是那条议程，写成别的就是伪装出处。
+    const primaryKind = hypothesis ? "manual" : clean(sourceKind || normalizedSources[0].sourceKind);
     if (!SOURCE_KINDS.has(primaryKind)) throw new TypeError("用户问题主要来源类型不受支持");
-    const canonicalPattern = clean(pattern);
+    /**
+     * 假设的 pattern 只能是 `knowledge_gap`。
+     * `trend` / `frequency` 是关于「多少人在问、问得多频繁」的事实断言，
+     * 议程推导拿不到这个信息，允许填就是允许编。
+     */
+    const canonicalPattern = hypothesis ? "knowledge_gap" : clean(pattern);
     if (!PROBLEM_PATTERNS.has(canonicalPattern)) throw new TypeError("用户问题模式不受支持");
     const problem = {
       statement: required(statement, "用户问题", 500),
       summary: optional(summary, "用户问题说明", 2000),
       sourceKind: primaryKind,
-      sourceRef: required(sourceRef || normalizedSources[0].sourceId, "用户问题主要来源", 500),
+      sourceRef: hypothesis ? `agenda:${agendaId}` : required(sourceRef || normalizedSources[0].sourceId, "用户问题主要来源", 500),
       pattern: canonicalPattern,
+      origin: canonicalOrigin,
+      originAgendaId: agendaId,
     };
     const stamp = isoNow(now);
     return this.repository.transaction(() => {
       this.repository.createEntity({ id, type: "audience_problem", now });
-      this.db.prepare(`INSERT INTO audience_problems(id,statement,summary,source_kind,source_ref,pattern,status,created_at,updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
-        .run(id, problem.statement, problem.summary, problem.sourceKind, problem.sourceRef, problem.pattern, stamp, stamp);
+      this.db.prepare(`INSERT INTO audience_problems(id,statement,summary,source_kind,source_ref,pattern,origin,origin_agenda_id,status,created_at,updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
+        .run(id, problem.statement, problem.summary, problem.sourceKind, problem.sourceRef, problem.pattern, problem.origin, problem.originAgendaId, stamp, stamp);
       const insertSource = this.db.prepare(`INSERT INTO audience_problem_sources(problem_id,source_kind,source_id,evidence_text,observed_at)
         VALUES (?, ?, ?, ?, ?)`);
       for (const source of normalizedSources) insertSource.run(id, source.sourceKind, source.sourceId, source.evidenceText, source.observedAt);
       this.repository.setEntityText(id, { title: problem.statement, body: problem.summary, now });
-      this.workspaceDomain.audit("audience_problem.created", id, { sourceCount: normalizedSources.length }, now);
+      this.workspaceDomain.audit("audience_problem.created", id, {
+        origin: problem.origin,
+        originAgendaId: problem.originAgendaId,
+        sourceCount: normalizedSources.length,
+      }, now);
       return id;
     });
   }
@@ -446,6 +479,7 @@ export class ContentBridgeDomain {
 export const CONTENT_BRIDGE_VALUES = Object.freeze({
   sourceKinds: [...SOURCE_KINDS],
   problemPatterns: [...PROBLEM_PATTERNS],
+  problemOrigins: [...PROBLEM_ORIGINS],
   fits: [...FITS],
   dominantActions: [...DOMINANT_ACTIONS],
   elementTypes: [...ELEMENT_TYPES],

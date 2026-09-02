@@ -72,6 +72,62 @@ export async function extractAudienceProblemCandidates(env, workspace, { insight
   };
 }
 
+/**
+ * 议程推导出的问题候选。
+ *
+ * ⚠️ 和 `normalizeProblemCandidates` 最关键的区别是**这里没有 evidence_quote**。
+ * 洞察提取必须逐字定位到报告原文，因为那是观察；议程推导没有可定位的东西，
+ * 它是创作者对受众的预测。强行要一段「证据」只会逼模型编。
+ * 真实性由别处保证：`origin='hypothesis'` 永久标注，且一条来源都不写。
+ */
+function normalizeAgendaProblemCandidates(data, agenda) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.problems)) throw new Error("模型没有返回 problems 数组");
+  return data.problems.slice(0, 12).map((item, index) => {
+    if (!item || typeof item !== "object") throw new Error(`第 ${index + 1} 个用户问题候选格式无效`);
+    const statement = clean(item.statement, 500);
+    const whyItMatters = clean(item.why_it_matters || item.whyItMatters, 2_000);
+    if (!statement || !whyItMatters) throw new Error(`第 ${index + 1} 个用户问题候选缺少问题或价值说明`);
+    return {
+      statement,
+      whyItMatters,
+      // pattern 与 origin 由服务端钉死，不进提示词也不接受模型返回值。
+      pattern: "knowledge_gap",
+      origin: "hypothesis",
+      originAgendaId: agenda.id,
+      sources: [],
+    };
+  });
+}
+
+export async function extractAgendaProblemCandidates(env, workspace, { agendaId } = {}) {
+  const agenda = workspace.contentBridge.agenda(clean(agendaId, 120));
+  if (agenda.status !== "active") throw Object.assign(new Error("已归档议程不能继续推导用户问题"), { status: 409 });
+  const existing = workspace.contentBridge.audienceProblems().map((item) => item.statement);
+  const completion = await completionFor(env)(env, {
+    system: [
+      "你帮内容创作者把一条长期议程展开成受众可能正在困惑的具体问题。",
+      "这些问题是**假设**，不是观察。你没有任何真实用户数据。",
+      "因此绝对不要写「很多人反映」「大家都在问」「普遍存在」这类关于人数或频率的断言。",
+      "每个 statement 写成一个具体的人会怎么把这个困惑说出口，用第一人称或日常口语，不要写成话题、领域或标题。",
+      "why_it_matters 说明这个困惑为什么值得被这条议程回答，不要复述 statement。",
+      "不要重复或改写已有问题列表里已经存在的问题。",
+      "宁可少给也不要凑数：这条议程如果撑不出值得记的问题，返回空数组，这是合格结果。",
+      "只输出 JSON，不要创建项目、写稿或修改知识库。",
+      '结构：{"problems":[{"statement":"...","why_it_matters":"..."}]}',
+    ].join("\n"),
+    user: [
+      `长期议程：\n${JSON.stringify(agenda)}`,
+      `已有的用户问题（不要重复）：\n${JSON.stringify(existing)}`,
+    ].join("\n\n"),
+    maxTokens: 4_000,
+  });
+  return {
+    agenda: { id: agenda.id, title: agenda.title, desiredJudgment: agenda.desiredJudgment },
+    problems: normalizeAgendaProblemCandidates(completion.data, agenda),
+    model: completion.model || "",
+  };
+}
+
 function normalizeBridgeCandidate(data, { hasExperience, allowedSources }) {
   if (!data || typeof data !== "object") throw new Error("模型没有返回内容机会对象");
   const fit = clean(data.fit, 20);
@@ -143,6 +199,13 @@ export async function previewContentOpportunity(env, workspace, { wikiPageId, au
         ? "只可使用本次提供的个人经历。experience 要素必须使用 source_kind=material 和给出的真实 source_id，不得伪造。"
         : "工作区没有个人经历来源。不得生成第一人称经历或 experience 要素；若建议经历型，只能提示用户补充真实经历。",
       agenda ? "评估这条内容是否强化所选议程；不匹配时如实返回 weak 或 none。" : "没有选择议程，agenda_fit.status 返回 none。",
+      /**
+       * 假设型问题是创作者自己从议程推导的，没有任何人真的这样问过。
+       * 这一条把它接进已有的 evidence_gaps 机制，不另造概念。
+       */
+      problem.origin === "hypothesis"
+        ? "⚠️ 这条用户问题是创作者从自己的长期议程推导出的假设，尚无任何真实观察证据。不得在知识解释、认知差或大众入口中声称已经有人这样提问或这类困惑很普遍；并且必须把「验证这个问题在真实受众中是否存在」作为一条 evidence_gaps。"
+        : "",
       "elements 类型只能 concept,fact,case,experience,judgment,problem,evidence,method,analogy,conflict,observation。",
       `所有需要来源的 elements 和 evidence_gaps.source_refs，只能引用以下 source_kind/source_id 对：${JSON.stringify(allowedSources)}`,
       "relations 类型只能 causal,analogy,contrast,conflict,support,challenge,concept_to_case,case_to_abstraction,problem_to_mechanism,mechanism_to_method，且 from/to 必须引用 elements.id。",
@@ -162,7 +225,7 @@ export async function previewContentOpportunity(env, workspace, { wikiPageId, au
         counterarguments: [{ claim: "", response: "" }],
         agenda_fit: { status: "strong|medium|weak|none", reason: "" },
       }),
-    ].join("\n"),
+    ].filter(Boolean).join("\n"),
     user: [
       `Wiki 页面：\n${JSON.stringify(wiki)}`,
       `用户问题与来源：\n${JSON.stringify(problem)}`,

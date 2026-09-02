@@ -14,6 +14,7 @@ let server;
 let wikiSourceId = "";
 let problemSourceId = "";
 let mode = "strong";
+let lastRequest = null;
 
 function check(name, value) {
   assert(value, name);
@@ -64,7 +65,8 @@ function candidate(overrides = {}) {
 
 async function start() {
   const env = {
-    async CONTENT_BRIDGE_COMPLETE_JSON() {
+    async CONTENT_BRIDGE_COMPLETE_JSON(_env, request) {
+      lastRequest = request;
       if (mode === "failure") throw Object.assign(new Error("模型服务暂时不可用"), { status: 503 });
       if (mode === "weak") return { model: "test", data: candidate({
         fit: "weak",
@@ -172,6 +174,27 @@ try {
   check("Preview 不保存 Opportunity 或 Project", strong.value.candidateOnly === true
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === before.opportunities
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count === before.projects);
+  check("观察到的问题不会触发假设告知", !/尚无任何真实观察证据/.test(lastRequest.system));
+
+  // 议程推导出的假设进入 Preview 时，模型必须被告知没有人真的这样问过。
+  const hypothesisProblemId = workspace.contentBridge.createAudienceProblem({
+    statement: "哪些事情可以交给 AI，哪些必须自己判断？",
+    summary: "这条议程预测受众会卡在判断责任的边界上。",
+    origin: "hypothesis",
+    originAgendaId: agendaId,
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  // 桩候选里的 problem 要素引用的是「本次预览的那条问题」，换问题就得跟着换，否则会被来源白名单拦下。
+  const observedProblemSourceId = problemSourceId;
+  problemSourceId = hypothesisProblemId;
+  const hypothesisPreview = await post(base, { ...input, audienceProblemId: hypothesisProblemId });
+  problemSourceId = observedProblemSourceId;
+  assert.equal(hypothesisPreview.response.status, 200, JSON.stringify(hypothesisPreview.value));
+  check("假设型用户问题在 Preview 提示里被标为尚无观察证据",
+    /尚无任何真实观察证据/.test(lastRequest.system)
+    && /验证这个问题在真实受众中是否存在/.test(lastRequest.system));
   check("Preview 记录 Wiki、用户问题与议程版本", strong.value.candidate.freshness.wikiRevision === 1
     && strong.value.candidate.freshness.audienceProblemUpdatedAt && strong.value.candidate.freshness.agendaUpdatedAt);
 

@@ -334,6 +334,55 @@ try {
   await page.getByText("不建议硬做内容", { exact: true }).waitFor();
   check("无自然连接时明确建议更换，而不是硬生成文章", (await page.locator(".bridge-result").innerText()).includes("两者目前没有足够自然的连接"));
 
+  // 议程 → 用户问题：问题库唯一不依赖外部抓取的供给路径。
+  let deriveCalls = 0;
+  await page.route("**/api/workspace/audience-problems/from-agenda", async (route) => {
+    deriveCalls += 1;
+    const payload = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true,
+      candidateOnly: true,
+      agenda: { id: payload.agendaId, title: "保留人的判断权" },
+      // 第一次故意返回空：拎不出问题是合格结果，不该硬凑。
+      problems: deriveCalls === 1 ? [] : [{
+        statement: "哪些事情可以交给 AI，哪些必须自己判断？",
+        whyItMatters: "受众卡在判断责任的边界上，这正是这条议程要回答的。",
+        pattern: "knowledge_gap",
+        origin: "hypothesis",
+        originAgendaId: payload.agendaId,
+        sources: [],
+      }],
+    }) });
+  });
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
+  check("议程入口长在第 02 栏，不必先跑一次 Preview", await page.getByLabel("选择长期议程").count() === 1
+    && await page.getByRole("button", { name: "从议程拎问题" }).count() === 1);
+  await page.getByLabel("选择长期议程").selectOption(agendaId);
+  await page.getByRole("button", { name: "从议程拎问题" }).click();
+  await page.getByText("这个议程暂时没拎出值得记的问题").waitFor();
+  check("拎不出问题是合格结果，不硬凑候选", deriveCalls === 1
+    && await page.locator(".bridge-candidates").count() === 0);
+
+  await page.getByRole("button", { name: "从议程拎问题" }).click();
+  await page.getByText("议程推导 · 尚无真实观察").waitFor();
+  check("议程候选明确标注没有真实观察", await page.locator(".bridge-candidates article").count() === 1);
+  await page.getByRole("button", { name: "确认保存" }).click();
+  await page.getByRole("button", { name: "选择用户问题：哪些事情可以交给 AI，哪些必须自己判断？", pressed: true }).waitFor();
+  const hypothesisRow = workspace.db.prepare("SELECT origin, origin_agenda_id AS agendaId, source_ref AS sourceRef FROM audience_problems WHERE statement=?")
+    .get("哪些事情可以交给 AI，哪些必须自己判断？");
+  const hypothesisSources = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problem_sources WHERE problem_id=(SELECT id FROM audience_problems WHERE statement=?)")
+    .get("哪些事情可以交给 AI，哪些必须自己判断？").count;
+  check("确认后落库为假设：记住来源议程、不写任何观察证据", hypothesisRow?.origin === "hypothesis"
+    && hypothesisRow.agendaId === agendaId
+    && hypothesisRow.sourceRef === `agenda:${agendaId}`
+    && hypothesisSources === 0);
+
+  await page.reload();
+  await page.getByRole("button", { name: "选择用户问题：哪些事情可以交给 AI，哪些必须自己判断？" }).waitFor();
+  check("刷新后假设仍标为待验证，而不是显示 0 个来源", (await page.locator(".bridge-side-list--problems").innerText()).includes("议程推导 · 待验证")
+    && !(await page.locator(".bridge-side-list--problems").innerText()).includes("0 个来源"));
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge/${encodeURIComponent(`opportunity:${saved.id}`)}`);

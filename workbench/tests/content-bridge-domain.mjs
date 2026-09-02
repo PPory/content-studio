@@ -41,7 +41,7 @@ try {
     "content_opportunities",
     "content_project_opportunities",
   ].every((name) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)));
-  check("工作区 Schema 已升级到 Content Bridge 完整性版本", WORKSPACE_SCHEMA_VERSION === 12);
+  check("工作区 Schema 已升级到用户问题来历版本", WORKSPACE_SCHEMA_VERSION === 13);
 
   assert.throws(() => contentBridge.createAgenda({ title: "判断权", desiredJudgment: "人应保留判断权", actor: "user", now }), /明确确认/);
   const agendaId = contentBridge.createAgenda({
@@ -86,6 +86,61 @@ try {
   });
   const problem = contentBridge.audienceProblem(problemId);
   check("Audience Problem 保存来源关系与逐字证据", problem.sources.length === 1 && problem.sources[0].evidenceText.includes("先问 AI"));
+  check("观察到的问题 origin 默认是 observed", problem.origin === "observed" && problem.originAgendaId === null);
+
+  // 议程推导出的问题是假设：没有观察来源，且必须永久可区分。
+  assert.throws(() => contentBridge.createAudienceProblem({
+    statement: "议程推导但缺议程",
+    origin: "hypothesis",
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /议程推导所属议程/);
+  assert.throws(() => contentBridge.createAudienceProblem({
+    statement: "假设不能带观察证据",
+    origin: "hypothesis",
+    originAgendaId: agendaId,
+    sources: [{ sourceKind: "comment", sourceId: "comment:fake:1", evidenceText: "假装有人说过", observedAt: now }],
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /不能携带观察证据/);
+  assert.throws(() => contentBridge.createAudienceProblem({
+    statement: "来历取值必须受支持",
+    origin: "guess",
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /来历不受支持/);
+
+  const hypothesisId = contentBridge.createAudienceProblem({
+    statement: "哪些事情可以交给 AI，哪些必须自己判断？",
+    summary: "这条议程预测受众会卡在判断责任的边界上。",
+    // 故意传一个会被服务端覆盖的 pattern 和 sourceKind，验证假设不接受调用方指定出处。
+    pattern: "trend",
+    sourceKind: "hotspot",
+    sourceRef: "hotspot:pretend",
+    origin: "hypothesis",
+    originAgendaId: agendaId,
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+  const hypothesis = contentBridge.audienceProblem(hypothesisId);
+  check("议程推导的问题标为假设并记住来源议程", hypothesis.origin === "hypothesis" && hypothesis.originAgendaId === agendaId);
+  check("假设不写任何观察来源", hypothesis.sources.length === 0);
+  check("假设的出处和模式由服务端钉死", hypothesis.sourceRef === `agenda:${agendaId}` && hypothesis.sourceKind === "manual" && hypothesis.pattern === "knowledge_gap");
+
+  contentBridge.setAgendaArchived(agendaId, true, { confirmed: true, actor: "user", now: new Date(now.getTime() + 4_000) });
+  assert.throws(() => contentBridge.createAudienceProblem({
+    statement: "已归档议程不能继续推导",
+    origin: "hypothesis",
+    originAgendaId: agendaId,
+    actor: "user",
+    confirmed: true,
+    now,
+  }), /已归档议程/);
+  contentBridge.setAgendaArchived(agendaId, false, { confirmed: true, actor: "user", now: new Date(now.getTime() + 5_000) });
 
   const wikiPageId = createWikiPage(workspace);
   const invalidConstruction = {

@@ -123,6 +123,7 @@ export const api = {
   updateAgenda: (id, body) => postJson(`/api/workspace/agendas/${encodeURIComponent(id)}/update`, body),
   audienceProblems: () => req("/api/workspace/audience-problems"),
   extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
+  agendaProblemCandidates: (agendaId) => postJson("/api/workspace/audience-problems/from-agenda", { agendaId }),
   createAudienceProblem: (body) => postJson("/api/workspace/audience-problems", body),
   updateAudienceProblem: (id, body) => postJson(`/api/workspace/audience-problems/${encodeURIComponent(id)}/update`, body),
   previewContentOpportunity: (body) => postJson("/api/workspace/content-opportunities/preview", body),
