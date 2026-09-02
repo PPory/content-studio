@@ -1,6 +1,7 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { CONTENT_EXPERIMENT_VALUES } from "../domain/content-experiments.mjs";
 import { extractExperimentProblemCandidates } from "../domain/content-experiments-ai.mjs";
+import { observePositioning } from "../domain/positioning.mjs";
 
 async function ready(source) {
   const workspace = await source;
@@ -21,6 +22,12 @@ function guard(handler) {
 }
 
 export const contentExperimentRoutes = [
+  {
+    /** 只读观察，不写任何东西：定位是算出来的，不是存下来的一张表。 */
+    method: "GET",
+    path: "/api/workspace/positioning",
+    handler: guard(async ({ workspace, res }) => json(res, { ok: true, positioning: observePositioning(workspace) })),
+  },
   {
     method: "GET",
     path: "/api/workspace/experiments",

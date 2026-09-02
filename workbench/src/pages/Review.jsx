@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, FilterHeader, ViewTabs, Empty } from "../components/ui.jsx";
+import { PositioningNote } from "../components/PositioningNote.jsx";
 import { platformColor } from "../components/TrendChart.jsx";
 import { fmtNum, metricLabel, METRIC_KEYS } from "../lib/posts.js";
 import { IconArrowRight, IconCheck, IconChartBar, IconLink } from "../components/icons.jsx";
@@ -87,6 +88,13 @@ export function Review({ onGo }) {
           />
         }
       />
+
+      {/*
+        涌现定位长在复盘页：复盘回答的就是「发出去之后我学到了什么」，
+        而定位正是这些学到的东西攒够之后才看得出来的形状。
+        它不新开页面，也不要求填任何字段。
+      */}
+      <PositioningNote />
 
       <ErrorNote error={error} what="读取复盘任务" />
       {!result && !posts && !error ? <Loading rows={4} /> : null}

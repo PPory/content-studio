@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
+import { POSITIONING_THRESHOLD, observePositioning } from "../server/domain/positioning.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-experiments-"));
 const xenhoHome = path.join(root, "Xenho");
@@ -163,6 +164,26 @@ try {
   check("实验的每次写入都进了审计", audit.includes("content_experiment.recorded")
     && audit.includes("content_experiment.settled")
     && audit.includes("content_experiment.problem_linked"));
+
+  /**
+   * 涌现定位：数据不够时必须说不知道，并且说清还差几条。
+   * 编一个看起来很满的仪表盘，和一句没有数字的「继续加油」，都是没用的输出。
+   */
+  const observed = observePositioning(workspace);
+  check("数据不够时不下结论，并说清还差多少", observed.ready === false
+    && observed.threshold.publications === POSITIONING_THRESHOLD.publications
+    && observed.missing.some((item) => /再发 \d+ 篇/.test(item))
+    && observed.missing.some((item) => /再结算 \d+ 次实验/.test(item)));
+  check("定位只从已经做过的事里算，不需要任何填写字段", observed.counts.settledExperiments === 1
+    && observed.learnings[0].learning.includes("沉淀型")
+    && observed.verdicts.mixed === 1);
+
+  // 回收站里的项目不能继续算进「你写过几篇」
+  const beforeTrash = observePositioning(workspace).counts.publications;
+  domain.softDeleteEntity(projectId, { actor, now });
+  const afterTrash = observePositioning(workspace).counts.publications;
+  check("移进回收站的项目不再计入定位", beforeTrash > 0 && afterTrash === 0);
+  domain.restoreEntity(projectId, { actor, now });
 
   const integrity = workspace.check();
   check("数据库完整性与外键检查通过", integrity.ok);

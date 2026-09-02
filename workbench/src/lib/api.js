@@ -124,6 +124,7 @@ export const api = {
   audienceProblems: () => req("/api/workspace/audience-problems"),
   extractAudienceProblems: (insightId) => postJson("/api/workspace/audience-problems/extract", { insightId }),
   agendaProblemCandidates: (agendaId) => postJson("/api/workspace/audience-problems/from-agenda", { agendaId }),
+  positioning: () => req("/api/workspace/positioning"),
   experiments: (query = "") => req(`/api/workspace/experiments${query}`),
   experiment: (id) => req(`/api/workspace/experiments/${encodeURIComponent(id)}`),
   recordHypothesis: (body) => postJson("/api/workspace/experiments", body),

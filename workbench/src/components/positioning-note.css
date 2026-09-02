@@ -1,0 +1,35 @@
+.positioning {
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.positioning > header { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+.positioning > header h2 { margin: 0; font-size: var(--fs-md); }
+.positioning > header small { color: var(--text-3); font-size: var(--fs-xs); }
+
+/* 「还看不出来」是结论，不是错误：正常字色，不用警示色 */
+.positioning__pending {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+.positioning__pending span { color: var(--text-3); font-size: var(--fs-xs); }
+
+.positioning__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sp-7); }
+.positioning__grid h3 { margin: 0 0 var(--sp-4); color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }
+.positioning__grid ul { display: grid; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.positioning__grid li { display: grid; gap: 3px; min-width: 0; }
+.positioning__grid strong { font-size: var(--fs-sm); font-weight: 500; line-height: 1.6; }
+.positioning__grid small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.positioning__verdicts { margin: var(--sp-4) 0 0; color: var(--text-3); font-size: var(--fs-xs); }
+
+@media (max-width: 640px) {
+  .positioning__grid { grid-template-columns: 1fr; gap: var(--sp-6); }
+}
