@@ -342,6 +342,12 @@ try {
   await page.getByRole("button", { name: "看看怎么连接" }).click();
   await page.getByText("不建议硬做内容", { exact: true }).waitFor();
   check("无自然连接时明确建议更换，而不是硬生成文章", (await page.locator(".bridge-result").innerText()).includes("两者目前没有足够自然的连接"));
+  // 系统说了不建议，主动作就不能还是「保存」——否则判断和引导互相矛盾。
+  check("弱连接时主动作是换一个，保存退成次级", await page.getByRole("button", { name: "换一个知识或问题" }).count() === 1
+    && await page.getByRole("button", { name: "仍然保存为内容机会" }).count() === 1
+    && await page.getByRole("button", { name: "保存为内容机会", exact: true }).count() === 0);
+  await page.getByRole("button", { name: "换一个知识或问题" }).click();
+  check("换一个知识或问题把两栏放回来", await page.locator(".bridge-picker").count() === 1);
 
   // 议程 → 用户问题：问题库唯一不依赖外部抓取的供给路径。
   let deriveCalls = 0;

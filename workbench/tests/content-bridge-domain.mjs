@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 import { buildContentBridgeContext } from "../server/domain/content-bridge-context.mjs";
+import { validateContentConstruction } from "../server/domain/content-bridge.mjs";
 import { createUlid } from "../server/storage/ids.mjs";
 import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
 
@@ -141,6 +142,27 @@ try {
     now,
   }), /已归档议程/);
   contentBridge.setAgendaArchived(agendaId, false, { confirmed: true, actor: "user", now: new Date(now.getTime() + 5_000) });
+
+  /**
+   * 证据缺口的来源引用。真实跑第一轮就死在这儿：模型把 source_refs 给成了对象数组，
+   * 旧代码 String() 成 "[object Object]" 再去比白名单，整次预览 400 挂掉。
+   */
+  const allowed = [{ sourceKind: "wiki_page", sourceId: "wiki-1" }];
+  const gapShapes = validateContentConstruction({
+    elements: [],
+    evidence_gaps: [
+      { claim: "对象形状的来源", source_refs: [{ source_kind: "wiki_page", source_id: "wiki-1" }] },
+      { claim: "字符串形状的来源", source_refs: ["wiki-1"] },
+      { claim: "认不出的来源", source_refs: ["ghost-source"] },
+    ],
+  }, { allowedSources: allowed });
+  check("证据缺口来源同时接受字符串和 {source_id} 对象", gapShapes.evidence_gaps[0].source_refs[0] === "wiki-1"
+    && gapShapes.evidence_gaps[1].source_refs[0] === "wiki-1");
+  check("认不出的证据来源被丢掉，而不是让整次预览失败", gapShapes.evidence_gaps[2].source_refs.length === 0);
+  assert.throws(() => validateContentConstruction({
+    elements: [],
+    evidence_gaps: [{ claim: "形状不对", source_refs: [{ note: "既不是 ID 也没有 source_id" }] }],
+  }, { allowedSources: allowed }), /来源 ID 或带 source_id 的对象/);
 
   const wikiPageId = createWikiPage(workspace);
   const invalidConstruction = {

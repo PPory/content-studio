@@ -212,6 +212,19 @@
 .bridge-side-empty { padding: var(--sp-9) var(--sp-4); color: var(--text-2); text-align: center; }
 .bridge-side-empty p { margin: 0 0 var(--sp-5); line-height: 1.7; }
 
+/* 等待要占住结果将要出现的位置，并说清楚在等什么、大概多久 */
+.bridge-pending {
+  display: grid;
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0;
+  padding: var(--sp-6) var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.bridge-pending p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
+.bridge-pending small { color: var(--text-3); line-height: 1.6; }
+.bridge-pending--result { margin-top: var(--sp-8); }
+
 .bridge-manual-form,
 .bridge-candidates {
   display: grid;
@@ -266,7 +279,9 @@
 .bridge-result-head { justify-content: space-between; gap: var(--sp-6); padding: var(--sp-7) 0; border-bottom: 1px solid var(--border); }
 .bridge-result-head > div { display: grid; gap: var(--sp-2); }
 .bridge-result-head p { margin: 0; color: var(--text-2); }
-.bridge-result-head > strong { color: var(--emph); }
+/* 「不建议硬做内容」是这一页最重要的一句判断，别让 flex 把它压成竖排三行 */
+.bridge-result-head > strong { flex: none; white-space: nowrap; align-self: flex-start; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); background: color-mix(in srgb, var(--emph) 12%, transparent); color: var(--emph); font-size: var(--fs-sm); }
+.bridge-result-footer__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .bridge-fit { width: fit-content; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); background: var(--brand-wash); color: var(--brand-strong); font-size: var(--fs-xs); font-weight: 700; }
 .bridge-result[data-fit="weak"] .bridge-fit { background: color-mix(in srgb, var(--emph) 12%, transparent); color: var(--emph); }
 

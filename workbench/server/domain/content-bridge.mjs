@@ -86,12 +86,31 @@ function normalizeEntryOption(value, index) {
   };
 }
 
+/**
+ * 证据来源引用统一成 source_id 字符串。
+ *
+ * ⚠️ 模型会两种形状都给：`"01ABC…"`，也会给 `{source_kind, source_id}`。
+ * 原来直接 `required(source)`，对象会被 String() 成 `[object Object]`，
+ * 然后拿这个去比对白名单——**整次预览 400 失败，错误里还带着 `[object Object]`**。
+ * 模型其实给的是真来源，只是换了个形状；该做的是收下来，不是把整次结果丢掉。
+ */
+function normalizeSourceRef(value, label) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const id = clean(value.source_id ?? value.sourceId ?? value.id);
+    if (id) return required(id, label, 500);
+    throw new TypeError(`${label}必须是来源 ID 或带 source_id 的对象`);
+  }
+  if (typeof value !== "string" && typeof value !== "number") throw new TypeError(`${label}必须是来源 ID 或带 source_id 的对象`);
+  return required(value, label, 500);
+}
+
 function normalizeEvidenceGap(value, index) {
   const item = typeof value === "string" ? { claim: value } : record(value, `证据缺口 ${index + 1}`);
   return {
     claim: required(item.claim || item.text, `证据缺口 ${index + 1}`, 2000),
     needed: optional(item.needed || item.suggestion, `证据缺口 ${index + 1} 所需证据`, 2000),
-    source_refs: array(item.source_refs || item.sourceRefs || [], `证据缺口 ${index + 1} 来源`, 20).map((source) => required(source, "证据来源", 500)),
+    source_refs: array(item.source_refs || item.sourceRefs || [], `证据缺口 ${index + 1} 来源`, 20)
+      .map((source) => normalizeSourceRef(source, `证据缺口 ${index + 1} 来源`)),
   };
 }
 
@@ -137,11 +156,17 @@ export function validateContentConstruction(value, { allowedSources = null } = {
     evidence_gaps: array(input.evidence_gaps || input.evidenceGaps || [], "证据缺口", 30).map(normalizeEvidenceGap),
     counterarguments: array(input.counterarguments || [], "反方", 30).map(normalizeCounterargument),
   };
+  /**
+   * 证据缺口里认不出的来源**丢掉，不让整次预览失败**。
+   *
+   * ⚠️ 和 elements 的硬闸区别对待，是故意的：element 带假来源等于**正文里一条编造的事实**，
+   * 必须拦；而 evidence_gap 说的是「这一条还缺证据」，它本身不是正文依据。
+   * 为了一条脚注的引用形状把整份连接分析（问题 / 解释 / 认知差 / 判断）丢掉不成比例——
+   * 真实跑第一轮就是这么 400 掉的。丢掉引用不削弱真实性：假来源一样进不了库。
+   */
   if (allowedIds) {
     for (const gap of normalized.evidence_gaps) {
-      for (const sourceId of gap.source_refs) {
-        if (!allowedIds.has(sourceId)) throw new Error(`证据缺口引用了本次预览未读取的来源：${sourceId}`);
-      }
+      gap.source_refs = gap.source_refs.filter((sourceId) => allowedIds.has(sourceId));
     }
   }
   return normalized;

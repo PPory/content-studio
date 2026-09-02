@@ -215,7 +215,13 @@ export function ContentBridge({ state = "", onGo }) {
       } else {
         setWikiId(requested.wikiId);
         setProblemId(requested.problemId);
-        setAgendaId("");
+        /**
+         * ⚠️ 默认选中最近更新的那条议程，不留空。
+         * 留空的代价是「从议程拎问题」一进页面就是灰的，而灰掉的原因（还没选议程）
+         * 界面上一个字都没说——真实跑的时候我就在这儿卡住过。议程一共两三条、
+         * 长期不变，猜最近那条几乎总是对的，猜错了下拉框就在旁边。
+         */
+        setAgendaId((agendaData.agendas || [])[0]?.id || "");
         setPreview(null);
         setSavedOpportunity(null);
       }
@@ -260,6 +266,7 @@ export function ContentBridge({ state = "", onGo }) {
 
   const runPreview = async ({ dominantAction = "", agendaOverride } = {}) => {
     if (!wikiId || !problemId) return;
+    setPickerOpen(false);
     setPreviewBusy(true);
     setPreviewError(null);
     setSavedOpportunity(null);
@@ -487,7 +494,8 @@ export function ContentBridge({ state = "", onGo }) {
   const evidenceGaps = construction.evidence_gaps || [];
   const counterarguments = construction.counterarguments || [];
   const latestInsight = insights[0] || null;
-  const pickerCollapsed = Boolean(preview) && !pickerOpen;
+  // 一开始判断就塌起来：等待提示要落在结果将要出现的地方，而不是被顶到折叠线以下。
+  const pickerCollapsed = (Boolean(preview) || previewBusy) && !pickerOpen;
 
   return (
     <div className="view-body content-bridge">
@@ -625,6 +633,17 @@ export function ContentBridge({ state = "", onGo }) {
               <button type="button" className="btn btn-primary" disabled={!manualStatement.trim() || saveBusy} onClick={saveManual}>{saveBusy ? "正在保存…" : "确认保存"}</button>
             </div>
           ) : null}
+          {/*
+            ⚠️ 拎问题要 8 秒上下。原来这段时间里全页唯一的变化是那颗小按钮换了行字，
+            真实用起来完全不知道它在不在动。等待要占住结果将要出现的位置，
+            并且说清楚要等多久、等出来的是什么。
+          */}
+          {extractBusy ? (
+            <div className="bridge-pending" aria-live="polite">
+              <p>正在{selectedAgenda ? `从「${selectedAgenda.title}」` : ""}拎出可能的用户问题…</p>
+              <small>通常十几秒。拎出来的是候选，你逐条确认之后才会保存。</small>
+            </div>
+          ) : null}
           {extractionNote ? <p className="bridge-insight-source">{extractionNote}</p> : null}
           {extraction.length ? (
             <div className="bridge-candidates" aria-label="待确认的用户问题候选">
@@ -683,6 +702,13 @@ export function ContentBridge({ state = "", onGo }) {
       </section>
       </>
       )}
+
+      {previewBusy ? (
+        <div className="bridge-pending bridge-pending--result" aria-live="polite">
+          <p>正在判断这两者能不能连接…</p>
+          <small>会依次得到：用户真正的问题、你的知识能提供什么解释、最大的认知差、核心判断。通常十几秒。</small>
+        </div>
+      ) : null}
 
       {previewError ? <ErrorNote error={previewError} what="内容连接" onRetry={wikiId && problemId ? () => runPreview() : undefined} /> : null}
 
@@ -744,7 +770,13 @@ export function ContentBridge({ state = "", onGo }) {
           </ResultSection>
 
           <div className="bridge-action-bar" aria-label="调整内容连接">
-            <button type="button" disabled={entryOptions.length < 2} onClick={() => setEntryIndex((value) => (value + 1) % entryOptions.length)}>换一个大众入口</button>
+            {/* 灰掉必须说明为什么：这次只生成了一个入口，没有可换的 */}
+            <button
+              type="button"
+              disabled={entryOptions.length < 2}
+              title={entryOptions.length < 2 ? "这次只给出了一个大众入口，没有别的可换" : `共 ${entryOptions.length} 个入口`}
+              onClick={() => setEntryIndex((value) => (value + 1) % entryOptions.length)}
+            >换一个大众入口</button>
             <div className="bridge-action-menu">
               <span>换一种表达方式</span>
               {ACTIONS.map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
@@ -770,14 +802,29 @@ export function ContentBridge({ state = "", onGo }) {
             </div>
           </section>
 
-          <footer className="bridge-result-footer">
+          {/*
+            ⚠️ 弱连接时主动作是**换一个**，不是保存。
+            系统刚说完「不建议硬做内容」，底下再摆一颗黑色的「保存为内容机会」，
+            判断和引导就是互相矛盾的——真实跑的时候我一路顺着主按钮就把一条
+            自己判断为弱的连接存下去了。保存仍然留着，但退成次级：决定权还是用户的。
+          */}
+          <footer className="bridge-result-footer" data-fit={preview.fit}>
             {savedOpportunity ? (
               <Note title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
+            ) : preview.fit === "weak" ? (
+              <Note title="不建议在这条连接上硬做">换一个知识，或者换一个用户问题，通常比把这条硬撑成文章划算。</Note>
             ) : (
               <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会。</Note>
             )}
             {savedOpportunity ? (
               <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>
+            ) : preview.fit === "weak" ? (
+              <div className="bridge-result-footer__actions">
+                <button type="button" className="btn btn-primary" onClick={() => setPickerOpen(true)}>换一个知识或问题</button>
+                <button type="button" className="btn" disabled={saveBusy} onClick={saveOpportunity}>
+                  {saveBusy ? "正在保存…" : "仍然保存为内容机会"}
+                </button>
+              </div>
             ) : (
               <button type="button" className="btn btn-primary" disabled={saveBusy} onClick={saveOpportunity}>
                 {saveBusy ? "正在保存…" : "保存为内容机会"}
