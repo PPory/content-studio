@@ -11,6 +11,13 @@ import { describeSettlementEvidence } from "./content-experiment-context.mjs";
  *
  * 有原话时，每条候选必须能逐字定位回那段原话——和洞察提取同一条硬闸。
  * 所以这里产出的是 origin=observed 的问题：它确实有人说过。
+ *
+ * ⚠️ **反馈原文本身要先落进不可变证据层。**
+ * 上一版把它当成一个临时字符串，产出的证据行写着 `source_id = experiment:<id>`——
+ * 那个 id 指向一次实验，指不回任何一段原话。于是这条问题永远回溯不到
+ * 「谁说了什么」，`gradeProblemEvidence` 也只能把它判成「人工记录」。
+ * 闭环看着连上了，其实断在这里。现在反馈先成为一段 `audience_raw_source`，
+ * 证据写成 `raw:<id>`，既能逐字回溯，也会被下一次 Discovery 直接读到。
  */
 
 const clean = (value, max = 8_000) => String(value ?? "").trim().slice(0, max);
@@ -25,9 +32,15 @@ function exactQuote(source, quote) {
   return value;
 }
 
-export async function extractExperimentProblemCandidates(env, workspace, { experimentId, feedbackText = "" } = {}) {
+/**
+ * 把这次发布收到的反馈收进不可变证据层。
+ *
+ * ⚠️ 这一步是闭环真正闭上的地方：反馈从此是一段可回溯的原话，
+ * 而不是某个表单里的临时字符串。它同时会被下一次 Discovery 读到——
+ * 「这一篇发出去之后收到的话」本来就是下一篇最该看的现实声音。
+ */
+export function recordExperimentFeedback(workspace, { experimentId, feedbackText, now } = {}) {
   const experiment = workspace.experiments.experiment(experimentId);
-  if (experiment.verdict === "open") throw Object.assign(new Error("先结算这次实验，再从反馈里读用户问题"), { status: 409 });
   const feedback = clean(feedbackText, 20_000);
   if (!feedback) {
     throw Object.assign(new Error("需要真实反馈原话才能读出用户问题"), {
@@ -35,6 +48,32 @@ export async function extractExperimentProblemCandidates(env, workspace, { exper
       hint: "把评论、私信或群里的原话贴进来。只有阅读量和收藏数的话，读出的问题是推断，不是观察。",
     });
   }
+  const publication = experiment.publicationId
+    ? workspace.db.prepare("SELECT platform, title FROM publication_records WHERE id = ?").get(experiment.publicationId)
+    : null;
+  return workspace.audienceRaw.record({
+    kind: "feedback",
+    body: feedback,
+    sourceName: publication
+      ? `${publication.platform}《${publication.title}》发布后`
+      : `《${experiment.projectTitle || "这一篇"}》发布后`,
+    actor: "user",
+    confirmed: true,
+    now,
+  });
+}
+
+export async function extractExperimentProblemCandidates(env, workspace, { experimentId, feedbackText = "", rawSourceId = "" } = {}) {
+  const experiment = workspace.experiments.experiment(experimentId);
+  if (experiment.verdict === "open") throw Object.assign(new Error("先结算这次实验，再从反馈里读用户问题"), { status: 409 });
+  /**
+   * ⚠️ 反馈先入证据层，再读问题。
+   * 顺序反过来的话，产出的证据就只能指向一次实验，而不是指向那段话。
+   */
+  const source = clean(rawSourceId, 120)
+    ? workspace.audienceRaw.source(clean(rawSourceId, 120))
+    : recordExperimentFeedback(workspace, { experimentId, feedbackText }).source;
+  const feedback = source.body;
   const existing = workspace.contentBridge.audienceProblems().map((item) => item.statement);
   const completion = await completionFor(env)(env, {
     system: [
@@ -72,14 +111,17 @@ export async function extractExperimentProblemCandidates(env, workspace, { exper
       sourceKind: "feedback",
       sources: [{
         sourceKind: "feedback",
-        sourceId: `experiment:${experiment.id}`,
+        // ⚠️ 指向那段原话本身，不是指向这次实验：实验 id 回溯不到任何一句话。
+        sourceId: source.ref,
         evidenceText,
-        observedAt: new Date().toISOString(),
+        observedAt: source.observedAt,
       }],
     };
   });
   return {
     experiment: { id: experiment.id, projectTitle: experiment.projectTitle, verdict: experiment.verdict },
+    /** 这段反馈现在是一段可回溯的原话，下一次 Discovery 会读到它。 */
+    voice: { id: source.id, ref: source.ref, kindLabel: source.kindLabel, sourceName: source.sourceName },
     problems,
     model: completion.model || "",
   };

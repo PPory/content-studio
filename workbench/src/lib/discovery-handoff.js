@@ -16,6 +16,13 @@
 
 let pending = null;
 let session = null;
+/**
+ * 下一次扫描要往哪儿看。
+ *
+ * ⚠️ 复盘学到的东西如果只留在那条实验里，闭环就停在「我知道了」。
+ * 把它带成下一次 Discovery 的 focus，学到的判断才真的影响下一篇看哪里。
+ */
+let focus = "";
 
 export function setDiscoveryHandoff(value) {
   pending = value || null;
@@ -39,4 +46,14 @@ export function setConstructionSession(value) {
 
 export function peekConstructionSession() {
   return session;
+}
+
+export function setDiscoveryFocus(value) {
+  focus = String(value || "").trim().slice(0, 500);
+}
+
+export function takeDiscoveryFocus() {
+  const value = focus;
+  focus = "";
+  return value;
 }

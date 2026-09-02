@@ -3,7 +3,7 @@
 // ⚠️ **只有记录和读取，没有修改。** 这不是遗漏：证据层的全部价值就在于正文不会变。
 
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { AUDIENCE_RAW_KINDS } from "../domain/audience-raw.mjs";
+import { AUDIENCE_RAW_KINDS, extractProblemsFromVoice } from "../domain/audience-raw.mjs";
 
 async function ready(source) {
   const workspace = await source;
@@ -45,6 +45,21 @@ export const audienceRawRoutes = [
     handler: guard(async ({ workspace, res, params }) => {
       const voice = workspace.audienceRaw.source(params.id);
       json(res, { ok: true, voice: { ...voice, citations: workspace.audienceRaw.citationCount(voice.id) } });
+    }),
+  },
+  {
+    /**
+     * 从一段原话直接读用户问题。
+     * ⚠️ 只产候选，不写库；确认保存仍走 POST /audience-problems，那条路会再做一次逐字校验。
+     */
+    method: "POST",
+    path: "/api/workspace/audience-voices/:id/problem-candidates",
+    handler: guard(async ({ env, workspace, res, params }) => {
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+      const result = await extractProblemsFromVoice(env, workspace, { rawSourceId: params.id });
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+      if (before !== after) throw new Error("读用户问题产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
   {

@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Note } from "./ui.jsx";
-import { IconSparkles } from "./icons.jsx";
+import { IconSparkles, IconArrowRight } from "./icons.jsx";
+import { setDiscoveryFocus } from "../lib/discovery-handoff.js";
 import "./experiment-panel.css";
 
 const VERDICTS = [
@@ -43,6 +44,7 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
   const [feedbackText, setFeedbackText] = useState("");
   const [candidates, setCandidates] = useState([]);
   const [candidateNote, setCandidateNote] = useState("");
+  const [feedbackNote, setFeedbackNote] = useState("");
 
   const load = useCallback(() => {
     if (!projectId) return;
@@ -119,6 +121,18 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
         verdict,
         confirmed: true,
       });
+      /**
+       * ⚠️ **贴进来的反馈要在这一刻收进证据层。**
+       * 不收的话它只是这个表单里的一段临时文字：结算完就没了，
+       * 而它恰恰是下一篇最该读的现实声音。收进去之后它是一段可回溯的原话，
+       * 下一次扫描会直接读到。
+       */
+      if (feedbackText.trim()) {
+        try {
+          const kept = await api.recordExperimentFeedback(id, feedbackText.trim());
+          setFeedbackNote(kept.duplicate ? "这段反馈之前已经记过了。" : "这段反馈已经收进用户声音，下次扫描会读到它。");
+        } catch { setFeedbackNote("这段反馈没能收进用户声音，你可以用 Ctrl+K 手动记一次。"); }
+      }
       setSettling("");
       setOutcome("");
       setLearning("");
@@ -133,6 +147,8 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
     try {
       const result = await api.experimentProblemCandidates(id, { feedbackText });
       setCandidates(result.problems || []);
+      // 读之前它已经先进了证据层，所以这句话是事实，不是承诺。
+      setFeedbackNote(result.voice ? "这段反馈已经收进用户声音，下次扫描会读到它。" : "");
       if (!(result.problems || []).length) setCandidateNote("这段反馈里没读出值得记的用户问题。");
     } catch (failure) { setError(failure); } finally { setBusy(false); }
   };
@@ -161,6 +177,8 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
       )}
 
       {error ? <ErrorNote error={error} what="内容实验" onRetry={load} /> : null}
+      {/* ⚠️ 结算完这张卡就换成「已结算」了，回执挂在反馈那一段里会看不见。 */}
+      {feedbackNote ? <p className="experiment-note">{feedbackNote}</p> : null}
 
       {!openExperiment && !settled.length ? (
         published ? (
@@ -358,7 +376,17 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
           ) : (
             <div className="experiment-actions">
               <button type="button" className="btn btn-sm" onClick={() => setFeedbackFor(item.id)}>从反馈里读用户问题</button>
-              {onGo ? <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "")}>去内容机会</button> : null}
+              {/*
+                ⚠️ **学到的东西要能直接影响下一篇看哪里。**
+                只留在这张卡上的话，闭环停在「我知道了」——而复盘的意义是下一次会不一样。
+              */}
+              {onGo && item.learningMarkdown ? (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => { setDiscoveryFocus(item.learningMarkdown); onGo("bridge", ""); }}
+                >按这条学到的去看下一步<IconArrowRight aria-hidden="true" /></button>
+              ) : null}
             </div>
           )}
         </article>

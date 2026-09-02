@@ -7258,3 +7258,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 
 /* 「可留空」跟在字段名后面，别和标题连成一个词 */
 .field label .field__optional { margin-left: 6px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }
+
+/* 记完原话之后当场读出来的用户问题候选。挂在成功提示里，所以只需要最轻的排版。 */
+.voice-problem { display: grid; gap: 2px; margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--border); }
+.voice-problem strong { font-size: var(--fs-sm); line-height: 1.6; }
+.voice-problem span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.voice-problem small { color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
+.voice-problem em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; }
+.voice-problem .btn { justify-self: start; margin-top: 4px; }

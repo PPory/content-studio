@@ -55,6 +55,11 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
+  /** 记完之后直接从这段话里读问题：不必等 Discovery 恰好挑中它。 */
+  const [problems, setProblems] = useState([]);
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState("");
+  const [kept, setKept] = useState([]);
   const textRef = useRef(null);
 
   const boxRef = useDialog(open, onClose);
@@ -73,6 +78,9 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
     setObservedAt("");
     setError(null);
     setDone(null);
+    setProblems([]);
+    setReadNote("");
+    setKept([]);
   }, [open, preset]);
 
   if (!open) return null;
@@ -186,11 +194,55 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
                   ? "同样的原话工作台里已经有一条，没有重复保存。"
                   : "下次在内容里扫描时，它会被一起读进去。你不用先把它整理成用户问题。"}
               </div>
-              {onGo ? (
-                <div className="row-actions" style={{ marginTop: 8 }}>
-                  <button type="button" className="btn btn-sm" onClick={() => { onGo("bridge", ""); onClose(); }}>去内容看看</button>
+              {/*
+                ⚠️ **这里还需要一条直路。**
+                只靠 AI 发现的话，一次只给三五条连接；没被挑中的那些原话里的困惑，
+                就再也没有出口了。所以记完可以当场问一句「这段里有什么问题」。
+              */}
+              <div className="row-actions" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={reading}
+                  onClick={async () => {
+                    setReading(true);
+                    setError(null);
+                    setReadNote("");
+                    try {
+                      const result = await api.voiceProblemCandidates(done.voice.id);
+                      setProblems(result.problems || []);
+                      if (!(result.problems || []).length) setReadNote("这段话里没读出值得记的用户问题。");
+                    } catch (failure) { setError(failure); } finally { setReading(false); }
+                  }}
+                >{reading ? "正在读…" : "从这段里读用户问题"}</button>
+                {onGo ? <button type="button" className="btn btn-sm" onClick={() => { onGo("bridge", ""); onClose(); }}>去内容看看</button> : null}
+              </div>
+              {readNote ? <div style={{ marginTop: 8 }}>{readNote}</div> : null}
+              {problems.map((candidate) => (
+                <div key={candidate.statement} className="voice-problem">
+                  <strong>{candidate.statement}</strong>
+                  <span>{candidate.whyItMatters}</span>
+                  {/* 依据挂在候选下面：一条读不回原话的「用户问题」就是推断。 */}
+                  <small>原话：{candidate.sources?.[0]?.evidenceText}</small>
+                  {kept.includes(candidate.statement) ? (
+                    <em>已保存</em>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        setError(null);
+                        try {
+                          await api.createAudienceProblem({ ...candidate, confirmed: true });
+                          setKept((items) => [...items, candidate.statement]);
+                        } catch (failure) { setError(failure); } finally { setBusy(false); }
+                      }}
+                    >确认保存</button>
+                  )}
                 </div>
-              ) : null}
+              ))}
             </Note>
           ) : null}
         </div>

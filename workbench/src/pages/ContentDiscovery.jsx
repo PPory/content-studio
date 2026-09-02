@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, Note, relTime } from "../components/ui.jsx";
-import { setDiscoveryHandoff } from "../lib/discovery-handoff.js";
+import { setDiscoveryHandoff, takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
 import "./content-discovery.css";
@@ -147,6 +147,8 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   const [scanError, setScanError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  /** 复盘学到的东西带过来的「这次优先看哪儿」。取完即清：它只影响这一次扫描。 */
+  const [focus] = useState(() => takeDiscoveryFocus());
 
   const load = useCallback(() => {
     setLoading(true);
@@ -169,7 +171,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
     setScanning(true);
     setScanError(null);
     try {
-      const result = await api.scanContentDiscovery({ force });
+      const result = await api.scanContentDiscovery({ force, focus: focus || undefined });
       setData((current) => ({ ...(current || {}), ...result }));
     } catch (failure) {
       /**
@@ -180,7 +182,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [focus]);
 
   const develop = useCallback((connection) => {
     // ⚠️ 这里**什么都不写库**。候选一路带到「保存为内容机会」那一刻。
@@ -226,6 +228,16 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
 
       <ErrorNote error={error} what="读取内容发现" onRetry={load} />
       {loading && !data ? <Loading rows={3} /> : null}
+
+      {/*
+        ⚠️ 带着复盘学到的东西过来时要说出来。
+        不说的话，用户会奇怪这次扫描的结果为什么偏向某个方向。
+      */}
+      {focus && !scanning ? (
+        <div className="discovery-stale" role="status">
+          <span>这次会按你上一篇复盘学到的东西优先看：{focus}</span>
+        </div>
+      ) : null}
 
       {/* 数据变了才提示。⚠️ 说清**变了什么**：「又记了 2 段原话」比「有更新」多回答一个问题。 */}
       {data && stale && scan_ && !scanning ? (

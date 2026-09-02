@@ -1,6 +1,6 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { CONTENT_EXPERIMENT_VALUES } from "../domain/content-experiments.mjs";
-import { extractExperimentProblemCandidates, previewExperimentSettlement, proposeExperimentHypotheses } from "../domain/content-experiments-ai.mjs";
+import { extractExperimentProblemCandidates, previewExperimentSettlement, proposeExperimentHypotheses, recordExperimentFeedback } from "../domain/content-experiments-ai.mjs";
 import { hypothesisContext, settlementContext } from "../domain/content-experiment-context.mjs";
 import { observePositioning } from "../domain/positioning.mjs";
 
@@ -75,6 +75,22 @@ export const contentExperimentRoutes = [
         },
         ...result,
       });
+    }),
+  },
+  {
+    /**
+     * 把这次发布收到的反馈收进不可变证据层。
+     *
+     * ⚠️ 这是闭环真正闭上的一步：反馈从此是一段可回溯的原话，
+     * 下一次 Discovery 会直接读到它——「这一篇发出去之后收到的话」
+     * 本来就是下一篇最该看的现实声音。
+     */
+    method: "POST",
+    path: "/api/workspace/experiments/:id/feedback",
+    handler: guard(async ({ workspace, req, res, params }) => {
+      const body = await readJsonBody(req);
+      const result = recordExperimentFeedback(workspace, { experimentId: params.id, feedbackText: body.feedbackText, now: new Date() });
+      json(res, { ok: true, duplicate: result.duplicate, voice: result.source });
     }),
   },
   {
@@ -158,9 +174,16 @@ export const contentExperimentRoutes = [
     handler: guard(async ({ env, workspace, req, res, params }) => {
       const body = await readJsonBody(req);
       const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+      /**
+       * ⚠️ **这一步会写一样东西：那段反馈本身。**
+       * 它是用户明确贴进来的原话，收进不可变证据层是这条闭环成立的前提——
+       * 不收的话，读出来的问题就只能指向一次实验，回溯不到任何一句真话。
+       * 用户问题仍然只是候选：下面这条断言盯的就是它。
+       */
       const result = await extractExperimentProblemCandidates(env, workspace, {
         experimentId: params.id,
         feedbackText: body.feedbackText || body.feedback || "",
+        rawSourceId: body.rawSourceId || "",
       });
       const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
       if (after !== before) throw new Error("实验回流产生了不应有的写入");

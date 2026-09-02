@@ -308,3 +308,68 @@ export class AudienceRawDomain {
     return { total: row.total || 0, pending: row.pending || 0, latest: row.latest || "" };
   }
 }
+
+/**
+ * 从一段原话里直接读出用户问题候选。
+ *
+ * ⚠️ **这是「粘一段话」和「有一条用户问题」之间唯一的一条直路。**
+ * 在这之前，一段原话只能通过 AI 发现的连接候选变成问题——而 Discovery 一次只给
+ * 三五条连接，那些没被选上的原话里的困惑就再也没有出口了。
+ *
+ * ⚠️ 逐字硬闸照旧：每条候选必须能在这段原话里连续定位。
+ * 读不出真正的困惑就返回空数组，这是合格结果——一段闲聊本来就可能什么问题都没有。
+ */
+export async function extractProblemsFromVoice(env, workspace, { rawSourceId } = {}) {
+  const source = workspace.audienceRaw.source(rawSourceId);
+  const existing = workspace.contentBridge.audienceProblems().map((item) => item.statement);
+  const complete = typeof env?.AUDIENCE_VOICE_COMPLETE_JSON === "function"
+    ? env.AUDIENCE_VOICE_COMPLETE_JSON
+    : typeof env?.CONTENT_BRIDGE_COMPLETE_JSON === "function"
+      ? env.CONTENT_BRIDGE_COMPLETE_JSON
+      : (await import("../lib/model-json.mjs")).completeJson;
+
+  const completion = await complete(env, {
+    system: [
+      "你从一段真实的用户原话里，读出这些人正在困惑的问题。",
+      "每条候选都必须给出 evidence_quote：这段原话里**连续的逐字原文**，不能改写、不能拼接、不能翻译。",
+      "statement 写成一个具体的人会怎么把困惑说出口，不要写成话题、领域或标题。",
+      "why_it_matters 说明这个困惑为什么值得被回答，不要复述 statement。",
+      "读不出真正的困惑就返回空数组——一段闲聊本来就可能什么问题都没有，凑数比空着糟。",
+      "不要重复已有问题列表里已经存在的问题。",
+      "只输出 JSON。",
+      '结构：{"problems":[{"statement":"...","why_it_matters":"...","evidence_quote":"原话里的连续逐字原文"}]}',
+    ].join("\n"),
+    user: [
+      `这段原话的来源：${audienceRawKindLabel(source.kind)}${source.sourceName ? ` · ${source.sourceName}` : ""}`,
+      `原话：\n${source.body}`,
+      `已有的用户问题（不要重复）：\n${JSON.stringify(existing)}`,
+    ].join("\n\n"),
+    maxTokens: 4_000,
+  });
+
+  const data = completion.data;
+  if (!data || typeof data !== "object" || !Array.isArray(data.problems)) throw new Error("模型没有返回 problems 数组");
+  const problems = data.problems.slice(0, 8).map((item, index) => {
+    const statement = clean(item?.statement);
+    const whyItMatters = clean(item?.why_it_matters ?? item?.whyItMatters);
+    const quote = clean(item?.evidence_quote ?? item?.evidenceQuote);
+    if (!statement || !whyItMatters) throw new Error(`第 ${index + 1} 个用户问题候选缺少问题或价值说明`);
+    if (!sourceContainsVerbatim(source.body, quote)) {
+      throw new Error(`第 ${index + 1} 个用户问题候选的原话无法在这段声音里逐字定位`);
+    }
+    return {
+      statement: statement.slice(0, 500),
+      whyItMatters: whyItMatters.slice(0, 2000),
+      pattern: "feedback",
+      origin: "observed",
+      sourceKind: problemSourceKindForRawKind(source.kind),
+      sources: [{
+        sourceKind: problemSourceKindForRawKind(source.kind),
+        sourceId: source.ref,
+        evidenceText: quote,
+        observedAt: source.observedAt,
+      }],
+    };
+  });
+  return { voice: source, problems, model: completion.model || "" };
+}

@@ -603,6 +603,38 @@ try {
     /不可变证据/,
   );
   check("存进去的原话在真实运行时也改不了", true);
+  /**
+   * ⚠️ **记完原话之后要有一条直路。**
+   * 只靠 AI 发现的话，一次只给三五条连接；没被挑中的那些原话里的困惑
+   * 就再也没有出口了。
+   */
+  let voiceProblemCalls = 0;
+  await page.route("**/api/workspace/audience-voices/*/problem-candidates", async (route) => {
+    voiceProblemCalls += 1;
+    // ⚠️ 这段原话刚粘完，id 只有库里知道；不要引用后面才声明的变量。
+    const justPasted = workspace.db.prepare("SELECT id FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1").get();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, model: "test-voice",
+      problems: [{
+        statement: "AI 工具这么多，我到底该按什么顺序学？",
+        whyItMatters: "选择成本正在挤掉真正的学习时间。",
+        pattern: "feedback",
+        origin: "observed",
+        sourceKind: "feedback",
+        sources: [{ sourceKind: "feedback", sourceId: `raw:${justPasted.id}`, evidenceText: "感觉不学就落后，学了又用不上，挺焦虑的", observedAt: new Date().toISOString() }],
+      }],
+    }) });
+  });
+
+  const problemsBeforeVoice = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
+  await voiceDialog.getByRole("button", { name: "从这段里读用户问题" }).click();
+  await voiceDialog.locator(".voice-problem").first().waitFor();
+  check("记完原话可以当场读出用户问题", voiceProblemCalls === 1);
+  check("候选带着它的原话依据",
+    (await voiceDialog.locator(".voice-problem").innerText()).includes("原话："));
+  check("读问题本身不写库",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeVoice);
+
   await voiceDialog.getByRole("button", { name: "完成" }).click();
 
   /**
