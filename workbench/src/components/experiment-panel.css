@@ -78,3 +78,11 @@
 @media (max-width: 640px) {
   .experiment-panel > header { align-items: flex-start; flex-direction: column; gap: var(--sp-2); }
 }
+
+/* 嵌进复盘 01 时它是那一段的一部分，不再自带上下分隔线和外边距 */
+.experiment-panel[data-compact="true"] {
+  gap: var(--sp-4);
+  margin: var(--sp-6) 0 0;
+  padding: 0;
+  border: 0;
+}

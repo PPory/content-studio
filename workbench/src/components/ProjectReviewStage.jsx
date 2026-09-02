@@ -16,7 +16,7 @@ const METRICS = [
   ["shares", "分享"],
 ];
 
-export function ProjectReviewStage({ project, busy, onSave }) {
+export function ProjectReviewStage({ project, busy, onSave, experiment = null }) {
   const [form, setForm] = useState(() => projectReviewForm(project));
   useEffect(() => setForm(projectReviewForm(project)), [project]);
   const captured = project.review?.status === "已沉淀";
@@ -36,6 +36,8 @@ export function ProjectReviewStage({ project, busy, onSave }) {
           <h2>这篇原本想验证什么</h2>
           <blockquote>{reviewGoal(project)}</blockquote>
           <p>{published?.platform || "当前平台"} · {published?.publishedAt ? new Date(published.publishedAt).toLocaleDateString("zh-CN") : "发布时间已记录"}</p>
+          {/* 事前假设属于「原本想验证什么」，不该在这一段上面再开一块问同样的话 */}
+          {experiment}
         </div>
       </section>
 

@@ -22,7 +22,7 @@ const VERDICTS = [
 
 const VERDICT_LABELS = Object.fromEntries(VERDICTS.map((item) => [item.key, item.label]));
 
-export function ExperimentPanel({ projectId, publication, onGo }) {
+export function ExperimentPanel({ projectId, publication, onGo, compact = false }) {
   const [experiments, setExperiments] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -102,11 +102,17 @@ export function ExperimentPanel({ projectId, publication, onGo }) {
   };
 
   return (
-    <section className="experiment-panel" aria-labelledby="experiment-title">
-      <header>
-        <h2 id="experiment-title">这一篇在验证什么</h2>
-        <small>假设 → 发布 → 发生了什么 → 我更新了什么判断</small>
-      </header>
+    <section className="experiment-panel" data-compact={compact ? "true" : undefined} aria-label="这一篇在验证什么">
+      {/*
+        ⚠️ 嵌进复盘的 01「这篇原本想验证什么」时不再自带标题：
+        那一段问的就是这件事，两个标题叠在一起是把同一个问题问了两遍。
+      */}
+      {compact ? null : (
+        <header>
+          <h2>这一篇在验证什么</h2>
+          <small>假设 → 发布 → 发生了什么 → 我更新了什么判断</small>
+        </header>
+      )}
 
       {error ? <ErrorNote error={error} what="内容实验" onRetry={load} /> : null}
 

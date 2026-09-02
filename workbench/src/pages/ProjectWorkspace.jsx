@@ -817,15 +817,12 @@ ${(form.body || "").slice(0, 3000)}`);
 
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (
-          <>
-            {/*
-              ⚠️ 实验面板只在**该出现的时刻**出现，不常驻正文上方。
-              复盘阶段正文已经不是主体了，这里占主区没问题；
-              写作阶段它什么也不解决，只是把正文往下推。
-            */}
-            <ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} />
-            <ProjectReviewStage project={project} busy={busy} onSave={saveReview} />
-          </>
+          <ProjectReviewStage
+            project={project}
+            busy={busy}
+            onSave={saveReview}
+            experiment={<ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} compact />}
+          />
         ) : <>
         <main className="project-draft">
           {draft ? (
