@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { actionableProjects, groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
+import { byActionPriority, groupProjects, PROJECT_STAGES, PROJECT_STAGE_META, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
-import { Empty, ErrorNote, Loading, PageHeader, relTime, Toast, MenuButton } from "../components/ui.jsx";
-import { IconFileText, IconLayoutGrid, IconLayoutKanban, IconPlus, IconRefresh } from "../components/icons.jsx";
-import { ProjectCard } from "../components/ProjectCard.jsx";
+import { Empty, ErrorNote, Loading, PageHeader, Toast } from "../components/ui.jsx";
+import { IconFileText, IconLayoutGrid, IconLayoutKanban, IconRefresh } from "../components/icons.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { ProjectBoard } from "./content/ProjectBoard.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
@@ -34,12 +33,43 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
 
   useEffect(load, [load]);
 
+  /**
+   * Esc 清掉阶段筛选。
+   *
+   * ⚠️ **筛着的时候才挂监听**，没筛就整个不注册：Esc 是全局最忙的一颗键
+   *（关弹窗、关命令面板、清搜索框），多挂一个「什么都不做」的监听器只会让
+   * 以后排查「Esc 被谁吃了」时多一个嫌疑人。
+   *
+   * ⚠️ **三道闸**：弹窗开着时不管（合集选择器自己要用 Esc 关）、
+   * 已经被别人处理过的不管（`defaultPrevented`）、焦点在输入类控件里的不管
+   *（那儿的 Esc 归清空输入，见 `SearchBox`）。
+   */
+  useEffect(() => {
+    if (!stage || filing) return undefined;
+    const onKey = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const el = event.target;
+      if (el instanceof HTMLElement && (el.closest("input, textarea, [contenteditable]") || el.closest("dialog"))) return;
+      setStage("");
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [stage, filing]);
+
   const projects = useMemo(() => projectsFrom(result), [result]);
   const grouped = useMemo(() => groupProjects(projects), [projects]);
-  /** 筛了阶段就只看那一档，否则全量。表格是「全集」那一侧，不分组。 */
-  const shown = useMemo(() => (stage ? grouped[stage] || [] : projects), [stage, grouped, projects]);
-  /** 顶上那三张：和今日页同一个优先级（需处理 → 待发布 → 写作中 → 待复盘 → 策划中） */
-  const attention = useMemo(() => actionableProjects(projects, 3), [projects]);
+  /**
+   * 筛了阶段就只看那一档，否则全量。表格是「全集」那一侧，不分组。
+   *
+   * ⚠️ **排序走 `byActionPriority`，第一行就是最该动的那一篇。**
+   * 上一版靠顶上另开三张「需要你处理的」卡来回答这个问题，而那三张卡就是这张表的
+   * 第 2/3/4 行——同一批东西在一屏上画了两遍，还各带一套视觉语汇。
+   * 把优先级放进排序之后，「先做哪一件」是表本身的第一行，不需要第二个表面。
+   */
+  const shown = useMemo(
+    () => [...(stage ? grouped[stage] || [] : projects)].sort(byActionPriority),
+    [stage, grouped, projects],
+  );
   /**
    * 看板列。⚠️ **只画能落脚的那几档**：九个阶段全铺出来的话，一屏横着排九列，
    * 而 `已完成` / `生成中` 这两档要么是终点、要么是流水线自己在跑，拖不进去也拖不出来。
@@ -106,9 +136,14 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
 
   return (
     <>
+      {/**
+        * ⚠️ **不传 `desc`。** 页名在外壳页头里已经写着「内容 / 创作」，而那句
+        * 「这里按一篇内容真正走到哪一步…」是说给第一次来的人听的，却每天都占着
+        * 第一屏最上面一行、把真正的内容往下推。**这一页要解释自己的时候只有一个：
+        * 空的时候**——所以那句话搬进了下面的 `Empty`。
+        */}
       <PageHeader
         title="创作"
-        desc="这里按一篇内容真正走到哪一步，把最需要推进的下一步摆在前面。"
         aside={
           <>
             {result ? <span className="project-total">{result.total ?? projects.length} 个内容项目</span> : null}
@@ -121,11 +156,12 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
         }
       />
 
-      <div className="content-kind-switch seg" role="group" aria-label="创作类型">
-        <button aria-pressed="true">全部文章</button>
-        <button aria-pressed="false" onClick={() => onGo("series")}>合集</button>
-      </div>
-
+      {/**
+        * ⚠️ **「全部文章 / 合集」那条切换搬去侧栏了**（`App.jsx` 的 `NAV`，内容底下第三项）。
+        * 它是**导航**——两边是两个页面、两套 URL——却长成一排筛选芯片，
+        * 而它正下方就是真的筛选芯片：一屏上下两条一模一样的控件，一条换页、一条筛当前页。
+        * 换页的东西归侧栏，页内只留筛当前页的那一条。
+        */}
       {!workerReady ? (
         <div className="project-setup">
           <strong>先连接内容流水线</strong>
@@ -150,21 +186,17 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
       {result ? (
         <>
           {/**
-            * 顶上「需要你处理的」：**最多三张卡**。
-            * 判据和今日页那三张同一条——卡片给「要动手的少数」，全集走下面那张表。
-            * ⚠️ **筛了阶段就不画**：筛选之后「需要你处理的」和下面的表是同一批东西，
-            * 上下两遍说同一件事。
+            * ⚠️ **顶上那组「需要你处理的」卡撤了，别加回来。**
+            *
+            * 它是三张 `ProjectCard`，取的是 `actionableProjects(projects, 3)`——
+            * 而下面那张表**同一批数据一条不落地又画了一遍**，于是屏幕上第 2/3/4 行
+            * 和顶上三张卡说的是同一件事，还各带一套视觉语汇（卡片一套、行一套）。
+            * 更糟的是卡上那条进度全是 50%：它按 `stage index / 7` 算，
+            * 等于把卡上那颗状态 pill 已经说过的阶段换个形状再说一遍。
+            *
+            * 「先做哪一件」现在由**排序**回答（`byActionPriority`，见上面的 `shown`）：
+            * 表的第一行就是它，不需要第二个表面。
             */}
-          {!stage && attention.length ? (
-            <section className="project-attention">
-              <h2 className="section-label">需要你处理的</h2>
-              <div className="act-cards">
-                {attention.map((p) => (
-                  <ProjectCard key={p.id} project={p} onOpen={() => open(p)} />
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           {/* 筛选条 + 视图切换并排一行（和选题库、稿件库那条 `.list-bar` 一套语汇） */}
           <div className="list-bar">
@@ -191,8 +223,10 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
           <ErrorNote error={moveError} what="推进阶段" />
 
           {!projects.length ? (
+            /* ⚠️ 这一页唯一解释自己的地方。页头那句说明撤了，理由写在 `PageHeader` 上面 */
             <Empty icon={IconFileText}>
-              还没有内容项目。新建一篇，或者先去素材里整理一个想法。
+              这里按一篇内容真正走到哪一步排，最该推进的排在最前面。
+              还没有内容项目——新建一篇，或者先去素材里整理一个想法。
             </Empty>
           ) : layout === "board" ? (
             <ProjectBoard

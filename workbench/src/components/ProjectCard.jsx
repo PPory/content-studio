@@ -10,7 +10,7 @@
 // 上一版这张卡是**全集**的显示形态（九个阶段各一条泳道、每条两列卡），
 // 于是它 218px 高却只装了三四行字，中段大片留白——那正是「太乱」的来源之一。
 
-import { StatePill, Meter, relTime } from "./ui.jsx";
+import { StatePill, relTime } from "./ui.jsx";
 import { IconAlertTriangle, IconArrowRight } from "./icons.jsx";
 import { PROJECT_STAGE_META, PROJECT_STAGES, projectOpenTarget } from "../lib/content-projects.js";
 
@@ -22,9 +22,11 @@ import { PROJECT_STAGE_META, PROJECT_STAGES, projectOpenTarget } from "../lib/co
  * 自己按「简报齐没齐 / 有没有主稿 / 发没发」再算一遍的话，就成了第二份阶段判据，
  * 而这个项目的事故清一色是「同一件事写在两个地方」。
  *
- * ⚠️ **`已搁置` / `需处理` / `生成中` 返回 null，整条进度不画**（`Meter` 收到 null 就不渲染）。
- * 它们不在那条线上：搁置是停下了、需处理是岔出去了。硬给一个百分比等于说
- * 「它还在正常往前走」，而那是假话。
+ * ⚠️ **`已搁置` / `需处理` / `生成中` 返回 null**。它们不在那条线上：搁置是停下了、
+ * 需处理是岔出去了。硬给一个百分比等于说「它还在正常往前走」，而那是假话。
+ *
+ * ⚠️ **眼下没有调用方**——卡片上那条进度撤了（理由写在 `act-card__foot` 上面）。
+ * 留着这份实现是为了下次真要画进度时不再算第二遍，不是为了把它画回卡上。
  */
 export function stageProgress(stage) {
   const n = Number(PROJECT_STAGE_META[stage]?.index);
@@ -80,16 +82,28 @@ export function ProjectCard({ project, onOpen }) {
       <h3 className="act-card__title" title={title}>{title}</h3>
 
       {/**
-        * ⚠️ **进度和动作合成一行，不再是一条出血的底栏。**
-        * 上一版底部是「一道分隔线 + 一整条 48px 的动作区」，而它装的只有一句
-        * 「下一步 · 去处理」——一张卡因此高出快五十像素，三张竖排就是一屏半。
+        * 底部只剩一句「下一步」。
         *
         * ⚠️ **按钮上写的是 `nextAction` 本身，不是「去处理」。**
         * 「去处理」是个泛指，读完还得往左看一眼才知道要去干嘛；
         * 而「去排版发布」「继续写作」自己就说完了。按钮上的字要说清会发生什么。
+        *
+        * ⚠️ **同一行左边那条进度撤了，别加回来。**
+        *
+        * 它是 `stageProgress(project.stage)`，也就是 `阶段序号 / 7`——而阶段就写在
+        * 这张卡左上角那颗 `StatePill` 上，两者是同一个事实的两种画法。
+        * 实际长出来的样子是：三张卡并排，三条一模一样的 50%。一个每张卡上都相同、
+        * 又能从旁边直接读出来的数字，占的是版面，给的是零信息。
+        *
+        * 更要紧的是它**会骗人**：进度画的是流程走到第几格，不是内容写了多少
+        *（这句话 `content-projects.js` 里已经为详情页的七段流程线写过一遍，
+        * 那条线因此被整个撤掉了——这条进度是同一个错误的最后一处残留）。
+        * 一篇 0 字的空稿子照样显示 50%。
+        *
+        * `stageProgress()` 和 `Meter` 组件都留着：`Meter` 别处在用，
+        * `stageProgress` 留一份实现，免得以后有人再算一遍。
         */}
       <div className="act-card__foot">
-        <Meter value={blockers.length ? null : stageProgress(project.stage)} label={`${title} 的进度`} />
         {/**
           * ⚠️ **必须是一颗真 button，不能退成 `<span>` 靠整卡点击。**
           * 整卡 onClick 只是**鼠标**的便利；写成 span 的话键盘用户根本打不开这个项目，

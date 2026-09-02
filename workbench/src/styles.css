@@ -2725,6 +2725,31 @@ svg[data-tone] { color: var(--tone); }
 .chip[aria-pressed="true"]::before { content: "✓"; font-weight: 700; }
 .chip:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/**
+ * ⚠️ **筛选用的那排芯片不走上面那套黄色，走「你在这儿」那对 token。**
+ *
+ * 上面那段注释的分法是对的（黑＝你在这儿，黄＝我给它贴的标），但它是照着
+ * **入库时选类型**那种芯片写的（`IntakeDrawer` 的「金句 / 概念 / 案例」、
+ * `VoiceCapture` 的来源种类）——那儿黄色确实是「我挑了这个标」。
+ *
+ * 而 `.chips-sm` 这三处（创作按阶段、数据按渠道、素材按处理状态）问的是
+ * **「这一页现在只看哪一部分」**，那正是「你在这儿」。判据只能按这个走，
+ * 不能按控件长什么样走。两个后果，都在创作页上量得到：
+ *
+ *   1. 黄 = `--st-doing`（写作中）的语义色。一排黄芯片压在一列「写作中」状态上面，
+ *      同一个颜色在同一屏里说两件无关的事。
+ *   2. 「✓ 全部 6」比它筛出来的六条内容还重——**筛选器比内容显眼**。
+ *
+ * `::before` 那颗 ✓ 一起撤：`aria-pressed` 给读屏，底色给眼睛，第三份是多的。
+ * 这也让它和 `.view-tabs`（复盘、热点那颗胶囊）终于是同一套语汇——
+ * 同一个问题在这个工作台里长两个样，是这个项目反复出的那类事故。
+ */
+.chips-sm .chip:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
+.chips-sm .chip[aria-pressed="true"] {
+  background: var(--sel-bg); border-color: var(--border-strong); color: var(--sel-fg); font-weight: 600;
+}
+.chips-sm .chip[aria-pressed="true"]::before { content: none; }
+
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button {
   height: 30px; padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm);
@@ -4262,15 +4287,46 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
  * 状态 pill。⚠️ **图标不能省** —— 形状是主编码，颜色只让它跳出来，不辨色一样能用。
  * 底是 `--tone` 混出来的淡层，字是另配的 `--tone-ink`（见 token 那儿的注释）。
  */
+/**
+ * 状态 pill。
+ *
+ * ⚠️ **不画底色。别再加回来。**
+ *
+ * 原来是 `background: color-mix(--tone 14%, --surface)`，看单颗很精致；
+ * 问题出在**一列**上——创作页一屏九行，九块淡黄色底竖着排下来，成了整个屏幕上
+ * 最亮、最先被看到的东西。而这一页的主角是那九个**标题**，它们只是普通黑字。
+ * 换句话说：底色让「系统给它打的标签」压过了「你写的那篇东西」。
+ *
+ * 拿掉底色之后，**颜色收进那枚图标里，字退成普通次要色**——
+ * 这也终于让 token 里那两套色各归各位（分工写在 `--st-*` 的注释上）：
+ *   - **`--tone` 给图标**。它本来就是「给图标描边挑的」那一套，
+ *     当文字色不够（`--st-doing` 在白底只有 1.7:1），当一枚 13px 的实心形状正好。
+ *   - **字走 `--text-2`**。状态是这一行的注脚，不该和标题抢。
+ *
+ * 状态仍然是两条路都能读：**形状**（虚线圈 / 扇形 / 勾 / 叉 / 盾）不辨色也认得出，
+ * 这是这个项目从一开始守着的那条；**词**就写在旁边。颜色只负责让它在一列里被扫到。
+ *
+ * 少了一块底之后 pill 也不再需要左右内边距：它现在就是一枚图标加一个词。
+ */
 .pill {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
-  height: 22px; padding: 0 9px 0 7px; border-radius: var(--r-pill);
+  height: 22px; border-radius: var(--r-pill);
   font-size: var(--fs-xs); font-weight: 550; line-height: 1; white-space: nowrap;
-  background: color-mix(in srgb, var(--tone, var(--text-3)) 14%, var(--surface));
-  color: var(--tone-ink, var(--text-2));
+  background: none;
+  color: var(--text-2);
 }
-.pill svg { width: 13px; height: 13px; flex: none; }
-.pill.pill-lg { height: 26px; padding: 0 11px 0 9px; font-size: var(--fs-sm); }
+.pill svg { width: 13px; height: 13px; flex: none; color: var(--tone, var(--text-3)); }
+/**
+ * ⚠️ **素材页那颗 kind 标签没有图标**（`studio/DocRow.jsx`，「收藏 / 灵感 / 素材」），
+ * 所以上面那条「颜色收进图标里」对它不成立——照抄的话它会变成一个和普通 `.tag`
+ * 完全一样的灰词，而 `kindTone` 那条分支就白写了。
+ * 它保留字色（`--tone-ink`，是按 AA 量过的那套），只是不再有那块底。
+ * 素材页轮到它自己那一轮时再决定这一层要不要留。
+ */
+.pill.tag--kind { color: var(--tone-ink, var(--text-2)); }
+/* 内边距跟着底色一起撤了：没有底的时候，那点 padding 只是在图标左边留一段空。
+   `StatePill` 的 `size` 参数仍然通到这儿，眼下全库没有调用方传它。 */
+.pill.pill-lg { height: 26px; font-size: var(--fs-sm); }
 
 /**
  * 进度条。填充是墨绿——**进度属于「进展」，那是墨绿管的三件事之一**。
@@ -4337,16 +4393,17 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
 .act-card__warn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-card__warn svg { width: 13px; height: 13px; flex: none; }
 /**
- * 底部一行：**进度 + 下一步**。
+ * 底部一行：**只剩「下一步」那一句**。
  * ⚠️ 上一版是「一道分隔线 + 一整条 48px 的出血动作区」，装的只有一句
  * 「下一步 · 去处理」——一张卡因此高出快五十像素，三张竖排就是一屏半。
- * 现在和进度条并成一行，不画线也不出血。
+ * 现在不画线也不出血。
+ * ⚠️ **同一行左边那条进度也撤了**（理由写在 `ProjectCard.jsx` 里）：
+ * 它画的是 `阶段序号 / 7`，而阶段就在这张卡左上角那颗 pill 上。
  */
 .act-card__foot {
   display: flex; align-items: center; gap: 12px; margin-top: auto;
   font-size: var(--fs-sm); color: var(--text-2);
 }
-.act-card__foot .meter { flex: 1 1 auto; min-width: 0; }
 /* ⚠️ 这颗是**真 button**（键盘要够得着），但**不该长得像个按钮**：
    卡片上最重的已经是标题和进度，底部这一行是「下一步是什么」，
    给它画个框会让一排三张卡的底部出现三个抢眼的方块。所以退成一行绿字 + 箭头。 */
@@ -4358,14 +4415,16 @@ a.seed__from:hover { color: var(--text-1); text-decoration: underline; text-unde
  * 那两样才是真的要一眼分出来的。
  */
 .act-card__go {
-  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 4px;
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
   padding: 0; border: 0; background: none;
   font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
 }
 .act-card__go:disabled { color: var(--text-3); cursor: default; }
 .act-card__go:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
-/* 按钮上写的是 `nextAction` 本身（「去排版发布」），长短不一，要能截断而不撑破那一行 */
-.act-card__go { margin-left: auto; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 按钮上写的是 `nextAction` 本身（「去排版发布」），长短不一，要能截断而不撑破那一行。
+   ⚠️ **进度条撤掉之后 `margin-left: auto` 一起撤了**：这一行现在只剩它一个，
+   再往右推就成了一张卡底部孤零零悬在右下角的一句话，和上面左对齐的标题对不上。 */
+.act-card__go { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-card__go svg { flex: none; }
 .act-card:hover .act-card__go { color: var(--accent-strong); }
 /* 进度条同理：同一张卡上不再出现第二个颜色 */
@@ -5271,10 +5330,18 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .project-attention { margin-bottom: 26px; }
 
 /* ── 全部内容项目：表格 ───────────────────────────────────────────── */
+/**
+ * ⚠️ **列宽只有 `--ptable-cols` 这一个真源，由 `ProjectTable` 挂在容器上。**
+ *
+ * 以前表头和行各写一份 `grid-template-columns`，两份必须一字不差——这张表为此
+ * 错位过两次（下面那段注释记着一次，`.doc-rows__head` 那次一模一样）。
+ * 而且现在列数是**变的**（一整列同值就不画那一列），两份手抄的写法已经不成立了。
+ * 改成变量之后，结构上就不可能只改一处。
+ */
 .ptable { display: grid; }
 .ptable__head, .ptable__row {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 88px 56px minmax(0, 168px) 104px;
+  grid-template-columns: var(--ptable-cols);
   align-items: center; gap: 14px;
   padding: 0 10px;
 }
@@ -5290,7 +5357,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ptable__head > .ptable__headgrid {
   flex: 1 1 auto; min-width: 0;
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 88px 56px minmax(0, 168px) 104px;
+  grid-template-columns: var(--ptable-cols);
   /* ⚠️ 这一层**不再加内边距**：外面那层 `.ptable__head` 已经有 `padding: 0 10px`，
      两层叠起来就比行多出 10px——上一版量到的就是这个数 */
   align-items: center; gap: 14px;
@@ -5366,12 +5433,41 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;
   font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap;
 }
-.ptable__head span:nth-child(3), .ptable__head span:nth-child(4), .ptable__head span:nth-child(6) { text-align: right; }
-.ptable__dim svg { opacity: 0; transition: opacity 0.12s; }
-.ptable__row:hover .ptable__dim svg { opacity: 1; }
+/* ⚠️ **按位置写，不按序号写。** 列数是变的（一整列同值就不画那一列），
+   点名 `nth-child(3), (4), (6)` 的写法在少一列时会把标题也拉到右边。
+   规则本身也更好读：**头两列是「这是什么」，往后全是数值和时间，一律右对齐。** */
+.ptable__headgrid > span:nth-child(n + 3) { text-align: right; }
+
+/**
+ * 最后一格：平时「多久没动」，指到这一行时换成「下一步」。
+ *
+ * ⚠️ **两段字叠在同一格里，不是并排。** 并排的话这一列平时就得留出下一步那句的宽度，
+ * 于是屏幕上多一片常年空着的横向空间——而它每行都一样宽、每行都白留。
+ * 叠起来之后这一格的宽度只由较宽的那句决定，平时那片地方是标题的。
+ */
+.ptable__tail {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  justify-content: flex-end; min-width: 0;
+  font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap;
+}
+.ptable__tail > time { transition: opacity 0.12s var(--ease); }
 .ptable__next {
-  font-size: var(--fs-sm); color: var(--text-2);
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 5px;
+  justify-content: flex-end; font-style: normal;
+  color: var(--text-1); opacity: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: opacity 0.12s var(--ease);
+}
+.ptable__next svg { flex: none; }
+/* ⚠️ `:focus-visible` 必须跟着 hover 一起写：键盘用 ↑↓ 走行时也要看见下一步，
+   否则「这一行点下去会怎样」只有鼠标用户读得到。 */
+.ptable__row:hover .ptable__tail > time,
+.ptable__row:focus-visible .ptable__tail > time { opacity: 0; }
+.ptable__row:hover .ptable__next,
+.ptable__row:focus-visible .ptable__next { opacity: 1; }
+/* 不给动效的那一档：直接换，不淡入淡出。换的是文字内容，本来也不需要过渡 */
+@media (prefers-reduced-motion: reduce) {
+  .ptable__tail > time, .ptable__next { transition: none; }
 }
 
 /* ── 看板 ────────────────────────────────────────────────────────── */

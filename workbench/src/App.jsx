@@ -66,6 +66,18 @@ const ENTRY_LIST_STATE = /^(review|source):/;
  */
 const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", "metrics"]);
 
+/**
+ * 详情页归到哪个二级项底下高亮。**只写这一处。**
+ *
+ * 没列进来的 view 就用它自己的名字去比（`#/content` 对「创作」）。
+ * 列进来的都是**没有自己那一项的详情页**：打开一篇文章是从「创作」那张表进去的，
+ * 合集目录和合集详情属于「合集」。
+ */
+const SUBNAV_HOME = {
+  project: "content",
+  "series-detail": "series",
+};
+
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
@@ -76,6 +88,16 @@ const NAV = [
       /** 实验导航只表达新主路径；Ideas / Seeds 的数据、深链和 Ctrl+K 入口继续保留。 */
       { to: "bridge", label: "内容机会" },
       { to: "content", label: "创作" },
+      /**
+       * ⚠️ **「合集」从创作页里那排「全部文章 / 合集」搬上来的。**
+       *
+       * 它在页内长得和它正下方那排阶段筛选芯片一模一样，但干的是完全不同的事：
+       * **一个换页（两个 view、两条 URL），一个筛当前页。** 一屏上下两条长得一样的
+       * 控件，用户得点一次才知道哪条会把整页换掉。
+       * 换页的东西归侧栏——这也正好让「文章」和「合集」这两个并列的东西
+       * 在导航里就是并列的两项，不用先进文章页才发现还有合集。
+       */
+      { to: "series", label: "合集" },
     ],
   },
   {
@@ -603,7 +625,15 @@ export function App() {
                       <button
                         key={child.to}
                         className="subnav-item"
-                        aria-current={route.view === child.to || (["project", "series", "series-detail"].includes(route.view) && child.to === "content") ? "page" : undefined}
+                        /**
+                         * ⚠️ **判据只写在 `SUBNAV_HOME` 那一张表里。**
+                         * 这里原来是一句就地写死的 `["project","series","series-detail"].includes(...)
+                         * && child.to === "content"`，也就是「三个详情页全算创作」。
+                         * 合集升成侧栏一项之后那句立刻错了——`#/series` 会**同时**命中
+                         * 自己那一条和「算作创作」那一条，两个二级项一起高亮，
+                         * 而这种错不报任何东西，只是看着像界面抽了一下。
+                         */
+                        aria-current={(SUBNAV_HOME[route.view] || route.view) === child.to ? "page" : undefined}
                         // ⚠️ **不传第二个参数**。传 `""` 的话 `state === undefined` 不成立，
                         // `go` 里那条「没指定就用适配器的 defaultState」的分支永远走不到——
                         // 于是进选题库看到的是「全部」，而 `sources.js` 写着 `defaultState: "待写"`、

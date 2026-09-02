@@ -55,15 +55,25 @@ export function groupProjects(projects = []) {
   return grouped;
 }
 
+/**
+ * 「先做哪一件」的排序。**判据只写这一处**，今日页那三张卡和创作页那张表共用。
+ *
+ * ⚠️ **它排序但不过滤。** `actionableProjects` 之外还有一个调用方是**全集那张表**——
+ * 表要回答「我一共有哪些」，不在 `ACTION_PRIORITY` 里的那几档
+ *（生成中＝流水线在跑、已完成＝终点、已搁置＝停了）沉到最后，但必须还在。
+ * 两边各写一遍排序的话，「最该动的那一篇」在两个页面上会是不同的两篇。
+ */
+export function byActionPriority(a, b) {
+  const byStage = (ACTION_PRIORITY.get(a?.stage) ?? 99) - (ACTION_PRIORITY.get(b?.stage) ?? 99);
+  if (byStage) return byStage;
+  return String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || ""));
+}
+
 export function actionableProjects(projects = [], limit = 5) {
   return [...projects]
     // 生成中是流水线的工作，已完成也没有当下动作；两者都不应进「今日」。
     .filter((project) => ACTION_PRIORITY.has(project?.stage))
-    .sort((a, b) => {
-      const byStage = (ACTION_PRIORITY.get(a?.stage) ?? 99) - (ACTION_PRIORITY.get(b?.stage) ?? 99);
-      if (byStage) return byStage;
-      return String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || ""));
-    })
+    .sort(byActionPriority)
     .slice(0, limit);
 }
 
