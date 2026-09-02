@@ -48,13 +48,23 @@ function dateLabel(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }
 
+/**
+ * 路由状态 → 这一页此刻是**概览**还是**工作台**。
+ *
+ * ⚠️ 这两件事以前挤在同一屏：一进来先看到大标题、说明文案、已保存机会列表，
+ * 然后才是两栏选择器和结果。可它们的节奏完全不同——概览回答「我该继续哪一条」，
+ * 工作台回答「这一条到底能不能连」。挤在一起的结果是每次做新连接都要先滚过
+ * 一堆自己已经做完的东西，而读结果时头顶还挂着一个跟当前无关的列表。
+ */
 function initialIds(value) {
   const text = String(value || "");
-  if (text.startsWith("wiki:")) return { wikiId: text.slice(5), problemId: "", opportunityId: "", capture: false };
-  if (text.startsWith("problem:")) return { wikiId: "", problemId: text.slice(8), opportunityId: "", capture: false };
-  if (text.startsWith("opportunity:")) return { wikiId: "", problemId: "", opportunityId: text.slice(12), capture: false };
-  // Ctrl+K 里没打字就选「记一个用户问题」时的落点：直接把手记表单打开。
-  return { wikiId: "", problemId: "", opportunityId: "", capture: text === "capture" };
+  const workspace = { mode: "workspace", capture: false };
+  if (text.startsWith("wiki:")) return { ...workspace, wikiId: text.slice(5), problemId: "", opportunityId: "" };
+  if (text.startsWith("problem:")) return { ...workspace, wikiId: "", problemId: text.slice(8), opportunityId: "" };
+  if (text.startsWith("opportunity:")) return { ...workspace, wikiId: "", problemId: "", opportunityId: text.slice(12) };
+  if (text === "new") return { ...workspace, wikiId: "", problemId: "", opportunityId: "" };
+  // Ctrl+K 里没打字就选「记一个用户问题」时的落点：概览 + 手记表单直接展开。
+  return { mode: "overview", wikiId: "", problemId: "", opportunityId: "", capture: text === "capture" };
 }
 
 function SourceCount({ count }) {
@@ -185,7 +195,7 @@ export function ContentBridge({ state = "", onGo }) {
       setProblems(problemData.problems || []);
       setAgendas(agendaData.agendas || []);
       setInsights(insightData.reports || []);
-      setRecentOpportunities(recentResult.status === "fulfilled" ? (recentResult.value.opportunities || []).slice(0, 5) : []);
+      setRecentOpportunities(recentResult.status === "fulfilled" ? (recentResult.value.opportunities || []).slice(0, 50) : []);
       if (agendaResult.status === "rejected") setAgendaError(agendaResult.reason);
       if (insightResult.status === "rejected") setInsightsError(insightResult.reason);
       if (recentResult.status === "rejected") setRecentError(recentResult.reason);
@@ -369,7 +379,7 @@ export function ContentBridge({ state = "", onGo }) {
         confirmed: true,
       });
       setSavedOpportunity(result.opportunity);
-      setRecentOpportunities((items) => [result.opportunity, ...items.filter((item) => item.id !== result.opportunity.id)].slice(0, 5));
+      setRecentOpportunities((items) => [result.opportunity, ...items.filter((item) => item.id !== result.opportunity.id)].slice(0, 50));
     } catch (failure) {
       setPreviewError(failure);
     } finally {
@@ -383,7 +393,7 @@ export function ContentBridge({ state = "", onGo }) {
     setPreviewError(null);
     try {
       const result = await api.createProjectFromOpportunity(savedOpportunity.id, {
-        title: savedOpportunity.coreClaim,
+        // 标题交给领域层按用户问题生成，前端不再把整句核心判断塞进去
         confirmed: true,
       });
       onGo?.("project", result.projectId);
@@ -497,80 +507,22 @@ export function ContentBridge({ state = "", onGo }) {
   // 一开始判断就塌起来：等待提示要落在结果将要出现的地方，而不是被顶到折叠线以下。
   const pickerCollapsed = (Boolean(preview) || previewBusy) && !pickerOpen;
 
-  return (
-    <div className="view-body content-bridge">
-      <header className="bridge-head">
-        <div>
-          <p className="bridge-kicker">内容机会</p>
-          <h2>把你搞懂的，连接到用户正在困惑的。</h2>
-          <p>不从找标题开始。先看看你的知识能不能真正解决一个用户问题。</p>
-        </div>
-      </header>
+  /**
+   * 概览 / 工作台。
+   *
+   * ⚠️ 这一页原来一屏干四件事：看已保存的机会、攒用户问题、选知识、读结果。
+   * 四件事的节奏完全不同——概览回答「我该继续哪一条」，工作台回答「这一条能不能连」。
+   * 挤在一起的代价是每次开新连接都要先滚过自己已经做完的东西，
+   * 而读结果时头顶还挂着一个跟当前无关的列表。拆开之后各自只回答一个问题。
+   */
+  const overview = initial.mode === "overview";
 
-      <section className="bridge-recent" aria-labelledby="bridge-recent-title">
-        <div className="bridge-recent-head">
-          <h3 id="bridge-recent-title">最近保存的内容机会</h3>
-          <span>继续已有工作</span>
-        </div>
-        {recentError ? <p className="bridge-local-error">最近内容机会暂时无法读取，不影响新建连接。</p> : null}
-        {!recentError && !recentOpportunities.length ? <p className="bridge-recent-empty">保存第一条内容机会后，可以从这里继续。</p> : null}
-        {recentOpportunities.length ? (
-          <div className="bridge-recent-list">
-            {recentOpportunities.map((item) => (
-              <button key={item.id} type="button" onClick={() => onGo?.("bridge", `opportunity:${item.id}`)}>
-                <span><strong>{item.coreClaim}</strong><small>{item.audienceProblemStatement || "关联用户问题"}</small></span>
-                <span className="bridge-recent-meta"><small>{dateLabel(item.updatedAt)}更新</small><em>{item.hasProject ? "已建立项目" : "待建立项目"}</em></span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
-      {pickerCollapsed ? (
-        <div className="bridge-selection-bar">
-          <p><strong>{selectedWiki?.title}</strong><span aria-hidden="true">×</span><strong>{selectedProblem?.statement}</strong></p>
-          <button type="button" className="btn btn-sm" onClick={() => setPickerOpen(true)}>重新选择</button>
-        </div>
-      ) : null}
-
-      {pickerCollapsed ? null : (
-      <>
-      <div className="bridge-picker" aria-label="选择知识和用户问题">
-        <section className="bridge-side" aria-labelledby="bridge-wiki-title">
-          <div className="bridge-side-head">
-            <div><span>01</span><h3 id="bridge-wiki-title">我搞懂了什么</h3></div>
-            <small>长期知识</small>
-          </div>
-          <SearchBox value={wikiQuery} onChange={setWikiQuery} placeholder="搜索我的知识" ariaLabel="搜索长期知识" />
-          <div className="bridge-filter" role="tablist" aria-label="筛选知识类型">
-            {WIKI_FILTERS.map((item) => (
-              <button key={item.key} type="button" role="tab" aria-selected={wikiFilter === item.key} onClick={() => setWikiFilter(item.key)}>{item.label}</button>
-            ))}
-          </div>
-          <div className="bridge-side-list">
-            {!wikiData?.pages?.length ? (
-              <EmptySide action={<button type="button" className="btn" onClick={() => onGo?.("entries")}>去知识库</button>}>
-                先把真正值得长期保留的知识整理进知识库。
-              </EmptySide>
-            ) : !wikiPages.length ? (
-              <EmptySide>当前筛选下没有匹配的知识页面。</EmptySide>
-            ) : wikiPages.map((page) => (
-              <SelectionRow key={page.id} selected={wikiId === page.id} onClick={() => selectWiki(page.id)} ariaLabel={`选择知识：${page.title}`}>
-                <strong>{page.title}</strong>
-                <p>{page.summary || "这页还没有一句摘要。"}</p>
-                <small><SourceCount count={page.sourceCount} /> · {dateLabel(page.updatedAt)}更新</small>
-              </SelectionRow>
-            ))}
-          </div>
-        </section>
-
-        <div className="bridge-multiply" aria-hidden="true">×</div>
-
-        <section className="bridge-side" aria-labelledby="bridge-problem-title">
-          <div className="bridge-side-head">
-            <div><span>02</span><h3 id="bridge-problem-title">用户在困惑什么</h3></div>
-            <small>议程 / 洞察 / 反馈</small>
-          </div>
+  const problemsPanel = (pickable) => (
+    <section className="bridge-problems" aria-labelledby="bridge-problem-title">
+      <div className="bridge-panel-head">
+        <h3 id="bridge-problem-title">用户在困惑什么</h3>
+        <small>{problems.length ? `${problems.length} 条` : "议程 / 洞察 / 反馈"}</small>
+      </div>
           {/*
             ⚠️ 议程在这里，不在结果第 5 段里。
             问题库空着的时候，用户此刻最该做的一件事是把议程拎成问题，
@@ -671,7 +623,7 @@ export function ContentBridge({ state = "", onGo }) {
                   : "还没有用户问题。先定一个长期议程——你希望受众最终形成什么判断，决定了他们的哪些困惑值得你回答。"}
               </EmptySide>
             ) : problems.map((problem) => (
-              <SelectionRow key={problem.id} selected={problemId === problem.id} onClick={() => selectProblem(problem.id)} ariaLabel={`选择用户问题：${problem.statement}`}>
+              <SelectionRow key={problem.id} selected={pickable && problemId === problem.id} onClick={() => (pickable ? selectProblem(problem.id) : onGo?.("bridge", `problem:${problem.id}`))} ariaLabel={`选择用户问题：${problem.statement}`}>
                 <strong>{problem.statement}</strong>
                 <p>{problem.summary || "这条问题还没有补充说明。"}</p>
                 {/* 假设没有来源，显示「0 个来源」会读成「来源丢了」，是两回事。 */}
@@ -683,25 +635,130 @@ export function ContentBridge({ state = "", onGo }) {
               </SelectionRow>
             ))}
           </div>
-        </section>
-      </div>
+    </section>
+  );
 
-      <section className="bridge-connection" aria-live="polite">
-        {selectedWiki && selectedProblem ? (
-          <>
-            <div className="bridge-equation">
-              <strong>{selectedWiki.title}</strong><span>×</span><strong>{selectedProblem.statement}</strong>
-            </div>
-            <button type="button" className="btn btn-primary bridge-primary-action" disabled={previewBusy} onClick={() => runPreview()}>
+  if (overview) {
+    return (
+      <div className="view-body content-bridge content-bridge--overview">
+        <div className="bridge-bar">
+          <div className="bridge-bar__title">
+            <h2>内容机会</h2>
+            {recentOpportunities.length ? <small>{recentOpportunities.length} 条在做</small> : null}
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "new")}>新建连接</button>
+        </div>
+
+        <div className="bridge-overview">
+          <section className="bridge-opportunities" aria-label="已保存的内容机会">
+            {recentError ? <p className="bridge-local-error">内容机会暂时无法读取。</p> : null}
+            {!recentError && !recentOpportunities.length ? (
+              <div className="bridge-blank">
+                {/* 说明文案只在这里出现：需要解释的是空态，不是每天用的工作区 */}
+                <h3>把你搞懂的，连接到用户正在困惑的</h3>
+                <p>不从找标题开始。先看看你的知识能不能真正解决一个用户问题。</p>
+                <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "new")}>新建连接</button>
+              </div>
+            ) : null}
+            {recentOpportunities.length ? (
+              <ul className="bridge-opp-list">
+                {recentOpportunities.map((item) => (
+                  <li key={item.id}>
+                    <button type="button" onClick={() => onGo?.("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}>
+                      <span className="bridge-opp-pair">
+                        <strong>{item.wikiTitle || "已删除的知识"}</strong>
+                        <em aria-hidden="true">×</em>
+                        <strong>{item.audienceProblemStatement}</strong>
+                      </span>
+                      <span className="bridge-opp-claim">{item.coreClaim}</span>
+                      <span className="bridge-opp-meta">
+                        <span className="bridge-fit" data-fit={item.fit}>{FIT_LABELS[item.fit] || item.fit}</span>
+                        <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
+                        <small>{dateLabel(item.updatedAt)}更新</small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          <aside className="bridge-aside">{problemsPanel(false)}</aside>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="view-body content-bridge">
+      {/* 工作台的顶栏是常驻操作区：滚到结果哪一段，主动作都还在手边 */}
+      <div className="bridge-bar bridge-bar--sticky">
+        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+        <div className="bridge-bar__title">
+          {selectedWiki || selectedProblem ? (
+            <h2>
+              <span>{selectedWiki?.title || "选一个知识"}</span>
+              <em aria-hidden="true">×</em>
+              <span>{selectedProblem?.statement || "选一个用户问题"}</span>
+            </h2>
+          ) : <h2>新建连接</h2>}
+        </div>
+        <div className="bridge-bar__actions">
+          {preview ? <span className="bridge-fit" data-fit={preview.fit}>{FIT_LABELS[preview.fit] || preview.fit}</span> : null}
+          {preview && !savedOpportunity ? (
+            <button type="button" className="btn btn-sm" onClick={() => setPickerOpen((value) => !value)}>{pickerOpen ? "收起选择" : "重新选择"}</button>
+          ) : null}
+          {!preview ? (
+            <button type="button" className="btn btn-primary" disabled={previewBusy || !wikiId || !problemId} onClick={() => runPreview()}>
               {previewBusy ? "正在判断连接…" : "看看怎么连接"}
             </button>
-          </>
-        ) : (
-          <p>从两边各选一个对象，系统才会判断它们是否真的能连接。</p>
-        )}
-      </section>
-      </>
+          ) : savedOpportunity ? (
+            <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>
+          ) : preview.fit === "weak" ? (
+            <button type="button" className="btn btn-primary" onClick={() => setPickerOpen(true)}>换一个知识或问题</button>
+          ) : (
+            <button type="button" className="btn btn-primary" disabled={saveBusy} onClick={saveOpportunity}>{saveBusy ? "正在保存…" : "保存为内容机会"}</button>
+          )}
+        </div>
+      </div>
+
+      {pickerCollapsed ? null : (
+        <div className="bridge-picker" aria-label="选择知识和用户问题">
+        <section className="bridge-side" aria-labelledby="bridge-wiki-title">
+          {/* 01/02 的编号取消了：两栏不再是一个仪式化的对称装置，就是选左边和选右边 */}
+          <div className="bridge-panel-head">
+            <h3 id="bridge-wiki-title">我搞懂了什么</h3>
+            <small>{wikiPages.length} / {wikiData?.pages?.length || 0} 条长期知识</small>
+          </div>
+          <SearchBox value={wikiQuery} onChange={setWikiQuery} placeholder="搜索我的知识" ariaLabel="搜索长期知识" />
+          <div className="bridge-filter" role="tablist" aria-label="筛选知识类型">
+            {WIKI_FILTERS.map((item) => (
+              <button key={item.key} type="button" role="tab" aria-selected={wikiFilter === item.key} onClick={() => setWikiFilter(item.key)}>{item.label}</button>
+            ))}
+          </div>
+          <div className="bridge-side-list">
+            {!wikiData?.pages?.length ? (
+              <EmptySide action={<button type="button" className="btn" onClick={() => onGo?.("entries")}>去知识库</button>}>
+                先把真正值得长期保留的知识整理进知识库。
+              </EmptySide>
+            ) : !wikiPages.length ? (
+              <EmptySide>当前筛选下没有匹配的知识页面。</EmptySide>
+            ) : wikiPages.map((page) => (
+              <SelectionRow key={page.id} selected={wikiId === page.id} onClick={() => selectWiki(page.id)} ariaLabel={`选择知识：${page.title}`}>
+                <strong>{page.title}</strong>
+                <p>{page.summary || "这页还没有一句摘要。"}</p>
+                <small><SourceCount count={page.sourceCount} /> · {dateLabel(page.updatedAt)}更新</small>
+              </SelectionRow>
+            ))}
+          </div>
+        </section>
+          {problemsPanel(true)}
+        </div>
       )}
+
+      {!pickerCollapsed && !(wikiId && problemId) ? (
+        <p className="bridge-hint">从两边各选一个对象，系统才会判断它们是否真的能连接。</p>
+      ) : null}
 
       {previewBusy ? (
         <div className="bridge-pending bridge-pending--result" aria-live="polite">
@@ -808,27 +865,23 @@ export function ContentBridge({ state = "", onGo }) {
             判断和引导就是互相矛盾的——真实跑的时候我一路顺着主按钮就把一条
             自己判断为弱的连接存下去了。保存仍然留着，但退成次级：决定权还是用户的。
           */}
+          {/*
+            ⚠️ 底部不再重复主动作——它已经常驻在顶栏，滚到哪儿都在手边。
+            这里只说明当前是什么状态；弱连接时多给一条次级出口，
+            因为「仍然要做」是个需要多想一秒的决定，不该和主动作并排。
+          */}
           <footer className="bridge-result-footer" data-fit={preview.fit}>
             {savedOpportunity ? (
               <Note title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
             ) : preview.fit === "weak" ? (
-              <Note title="不建议在这条连接上硬做">换一个知识，或者换一个用户问题，通常比把这条硬撑成文章划算。</Note>
-            ) : (
-              <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会。</Note>
-            )}
-            {savedOpportunity ? (
-              <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>
-            ) : preview.fit === "weak" ? (
-              <div className="bridge-result-footer__actions">
-                <button type="button" className="btn btn-primary" onClick={() => setPickerOpen(true)}>换一个知识或问题</button>
+              <>
+                <Note title="不建议在这条连接上硬做">换一个知识，或者换一个用户问题，通常比把这条硬撑成文章划算。</Note>
                 <button type="button" className="btn" disabled={saveBusy} onClick={saveOpportunity}>
                   {saveBusy ? "正在保存…" : "仍然保存为内容机会"}
                 </button>
-              </div>
+              </>
             ) : (
-              <button type="button" className="btn btn-primary" disabled={saveBusy} onClick={saveOpportunity}>
-                {saveBusy ? "正在保存…" : "保存为内容机会"}
-              </button>
+              <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会。</Note>
             )}
           </footer>
         </div>

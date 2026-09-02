@@ -250,8 +250,12 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
+  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
   check("主导航以内容机会作为内容入口", await page.getByRole("button", { name: "内容机会", exact: true }).count() === 1);
+  check("概览先回答「我该继续哪一条」，不上来就是选择器", await page.locator(".bridge-picker").count() === 0
+    && await page.getByRole("button", { name: "新建连接" }).count() >= 1);
+  await page.getByRole("button", { name: "新建连接" }).first().click();
+  await page.locator(".bridge-picker").waitFor();
   await page.getByRole("button", { name: "选择知识：认知卸载" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？" }).click();
   check("Wiki 与用户问题均可选择", await page.getByRole("button", { name: "选择知识：认知卸载", pressed: true }).count() === 1
@@ -266,12 +270,13 @@ try {
 
   // 有结果之后这一页从「选」切到「读和决定」：两栏塌成一行，结果不再被压到第二屏。
   const resultTop = (await page.locator(".bridge-result").boundingBox()).y;
-  check("有结果时选择区塌成一行，结果落在第一屏", await page.locator(".bridge-picker").count() === 0
-    && await page.locator(".bridge-selection-bar").count() === 1
-    && resultTop < 700, `结果顶边 ${resultTop}px`);
+  check("有结果时选择区收起，结果落在第一屏", await page.locator(".bridge-picker").count() === 0
+    && (await page.locator(".bridge-bar__title").innerText()).includes("认知卸载")
+    && resultTop < 500, `结果顶边 ${resultTop}px`);
   await page.getByRole("button", { name: "重新选择" }).click();
   check("重新选择把两栏放回来", await page.locator(".bridge-picker").count() === 1
     && await page.getByRole("button", { name: "选择知识：认知卸载", pressed: true }).count() === 1);
+  await page.getByRole("button", { name: "收起选择" }).click();
 
   await page.getByRole("button", { name: "换一个大众入口" }).click();
   check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-storyline").innerText()).includes("范围过大")
@@ -296,11 +301,20 @@ try {
   await page.getByRole("button", { name: "查看反方" }).click();
   check("反方操作把焦点送到可读结果", await page.locator(".bridge-checks > div").nth(1).evaluate((element) => element === document.activeElement));
 
+  check("主动作只在顶栏出现一次，底部不重复", await page.getByRole("button", { name: "保存为内容机会", exact: true }).count() === 1);
   await page.getByRole("button", { name: "保存为内容机会" }).click();
   await page.getByText("内容机会已保存", { exact: true }).waitFor();
   const saved = workspace.db.prepare("SELECT id,agenda_id AS agendaId,dominant_action AS dominantAction FROM content_opportunities").get();
   check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "experience");
-  check("保存后立即出现在最近内容机会", await page.locator(".bridge-recent-list").getByText("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。").count() === 1);
+  await page.getByRole("button", { name: "← 内容机会" }).click();
+  await page.locator(".bridge-opp-list").waitFor();
+  check("保存后回到概览就能看到这一条", (await page.locator(".bridge-opp-list").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
+    && (await page.locator(".bridge-opp-list").innerText()).includes("认知卸载"));
+  // 从概览点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
+  await page.locator(".bridge-opp-list button").first().click();
+  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  check("从概览点进去能还原已保存的机会", await page.getByRole("button", { name: "建立内容项目" }).count() === 1
+    && (await page.locator(".bridge-bar__title").innerText()).includes("认知卸载"));
 
   if (process.argv.includes("--shots")) {
     await fs.mkdir(shotDir, { recursive: true });
@@ -336,7 +350,8 @@ try {
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).waitFor();
   check("项目可以回到用户问题及其来源", page.url().includes(encodeURIComponent(`problem:${problemId}`)));
 
-  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge/new`);
+  await page.locator(".bridge-picker").waitFor();
   await page.getByRole("button", { name: "选择知识：CSS 网格布局" }).click();
   await page.getByRole("button", { name: "选择用户问题：如何判断退休账户风险？" }).click();
   await page.getByRole("button", { name: "看看怎么连接" }).click();
@@ -372,8 +387,8 @@ try {
   // 上一段留着一个弱连接结果，而结果在时选择区是塌起来的；这里要的是干净的选择态。
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
   await page.reload();
-  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
-  check("议程入口长在第 02 栏，不必先跑一次 Preview", await page.getByLabel("选择长期议程").count() === 1
+  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
+  check("议程入口长在问题库panel，不必先跑一次 Preview", await page.getByLabel("选择长期议程").count() === 1
     && await page.getByRole("button", { name: "从议程拎问题" }).count() === 1);
   await page.getByLabel("选择长期议程").selectOption(agendaId);
   await page.getByRole("button", { name: "从议程拎问题" }).click();
@@ -385,7 +400,8 @@ try {
   await page.getByText("议程推导 · 尚无真实观察").waitFor();
   check("议程候选明确标注没有真实观察", await page.locator(".bridge-candidates article").count() === 1);
   await page.getByRole("button", { name: "确认保存" }).click();
-  await page.getByRole("button", { name: "选择用户问题：哪些事情可以交给 AI，哪些必须自己判断？", pressed: true }).waitFor();
+  // 概览里的问题行不是「选中」态，它是通往工作台的入口
+  await page.getByRole("button", { name: "选择用户问题：哪些事情可以交给 AI，哪些必须自己判断？" }).waitFor();
   const hypothesisRow = workspace.db.prepare("SELECT origin, origin_agenda_id AS agendaId, source_ref AS sourceRef FROM audience_problems WHERE statement=?")
     .get("哪些事情可以交给 AI，哪些必须自己判断？");
   const hypothesisSources = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problem_sources WHERE problem_id=(SELECT id FROM audience_problems WHERE statement=?)")
@@ -418,8 +434,8 @@ try {
 
   await page.route("**/api/workspace/agendas", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: false, error: "议程暂时不可用" }) }));
   await page.route("**/api/workspace/insights", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: false, error: "洞察暂时不可用" }) }));
-  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge/new`);
+  await page.locator(".bridge-picker").waitFor();
   await page.getByText("洞察报告暂时无法读取。你仍可选择已有问题或自己记录。").waitFor();
   check("Agenda 和 Insights 失败时 Bridge 核心选择仍可使用", await page.getByRole("button", { name: "选择知识：认知卸载" }).count() === 1);
   await page.getByRole("button", { name: "选择知识：认知卸载" }).click();

@@ -238,6 +238,7 @@ function opportunityDto(row) {
     status: row.status,
     previewFreshness: parseFreshness(row.preview_freshness_json, row.id),
     audienceProblemStatement: row.audience_problem_statement || "",
+    wikiTitle: row.wiki_title || "",
     projectId: row.project_id || null,
     hasProject: Boolean(row.project_id),
     createdAt: row.created_at,
@@ -421,7 +422,12 @@ export class ContentBridgeDomain {
         id,wiki_page_id,audience_problem_id,agenda_id,core_claim,knowledge_explanation,cognitive_gap,dominant_action,fit,fit_reason,construction_json,preview_freshness_json,status,created_at,updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
         .run(id, wikiPageId, audienceProblemId, agendaId || null, opportunity.coreClaim, opportunity.knowledgeExplanation, opportunity.cognitiveGap, opportunity.dominantAction, opportunity.fit, opportunity.fitReason, opportunity.constructionJson, opportunity.freshnessJson, stamp, stamp);
-      this.repository.setEntityText(id, { title: opportunity.coreClaim, body: `${opportunity.knowledgeExplanation}\n${opportunity.cognitiveGap}`, now });
+      // 检索里这条机会叫「知识 × 问题」——那是你回想它时用的说法；论断留在正文里可搜。
+      this.repository.setEntityText(id, {
+        title: `${context.wiki.title} × ${context.problem.statement}`.slice(0, 200),
+        body: `${opportunity.coreClaim}\n${opportunity.knowledgeExplanation}\n${opportunity.cognitiveGap}`,
+        now,
+      });
       this.workspaceDomain.audit("content_opportunity.created", id, { wikiPageId, audienceProblemId, agendaId: agendaId || null }, now);
       return id;
     });
@@ -432,11 +438,12 @@ export class ContentBridgeDomain {
   }
 
   opportunities({ includeArchived = false } = {}) {
-    return this.db.prepare(`SELECT o.*,p.statement AS audience_problem_statement,
+    return this.db.prepare(`SELECT o.*,p.statement AS audience_problem_statement,w.title AS wiki_title,
       (SELECT link.project_id FROM content_project_opportunities link
        WHERE link.opportunity_id=o.id AND link.role='primary' LIMIT 1) AS project_id
       FROM content_opportunities o
       JOIN audience_problems p ON p.id=o.audience_problem_id
+      LEFT JOIN wiki_pages w ON w.id=o.wiki_page_id
       JOIN entities e ON e.id=o.id AND e.deleted_at IS NULL
       ${includeArchived ? "" : "WHERE o.status='active'"} ORDER BY o.updated_at DESC, o.id`).all().map(opportunityDto);
   }
@@ -459,7 +466,15 @@ export class ContentBridgeDomain {
       if (current) return current.projectId;
 
       const projectId = this.workspaceDomain.createProject({
-        title: clean(title) || opportunity.coreClaim,
+        /**
+         * ⚠️ 项目名默认取**用户问题**，不取核心判断。
+         *
+         * 核心判断是一整句论断（真实库里那条 60 多字），当标题在项目列表、Today
+         * 和最近机会里全被截断，看一眼分不出是哪一篇。而用户问题本来就是一句话，
+         * 「为什么我越写越不敢下判断？」这种working title 也更像一篇文章的起点。
+         * 判断没丢：它写进了 brief 和 viewpoint。
+         */
+        title: clean(title) || clean(problem.statement).slice(0, 120) || opportunity.coreClaim,
         briefMarkdown: clean(briefMarkdown) || `用户问题：${problem.statement}\n\n核心判断：${opportunity.coreClaim}`,
         viewpoint: opportunity.coreClaim,
         audience: "",
