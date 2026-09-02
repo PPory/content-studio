@@ -490,8 +490,10 @@ try {
   await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
   await sourceName.waitFor();
 
+  // ⚠️ **这份来源只有一节，所以点标题直接进阅读器**，没有「先展开再点章节」那一步。
+  // 展开只会得到一行同名、同字数、同状态的自己，那次点击不产生任何信息。
+  check("单节来源不摆展开箭头", await sourceName.getAttribute("aria-expanded") === null);
   await sourceName.click();
-  await page.getByRole("button", { name: "证据章节", exact: true }).click();
   const returnToSources = page.getByRole("button", { name: "返回来源" });
   await returnToSources.waitFor();
   await returnToSources.click();
