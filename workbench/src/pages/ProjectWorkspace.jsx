@@ -7,6 +7,7 @@ import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
 import { ContentIntentPanel } from "../components/ContentIntentPanel.jsx";
+import { ExperimentPanel } from "../components/ExperimentPanel.jsx";
 import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
@@ -739,6 +740,12 @@ ${(form.body || "").slice(0, 3000)}`);
         }}
       />
 
+
+      {/*
+        学习闭环挂在项目上：假设写在发布之前，结算发生在发布之后，
+        两个时刻都在这一页，不用跳去别处。
+      */}
+      <ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} />
 
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (

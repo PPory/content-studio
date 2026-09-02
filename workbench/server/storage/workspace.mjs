@@ -8,6 +8,7 @@ import { resolveWorkspacePaths } from "./workspace-paths.mjs";
 import { WorkspaceRepository } from "./workspace-repository.mjs";
 import { WorkspaceDomain } from "../domain/workspace-domain.mjs";
 import { ContentBridgeDomain } from "../domain/content-bridge.mjs";
+import { ContentExperimentDomain } from "../domain/content-experiments.mjs";
 import { JobStore } from "../jobs/job-store.mjs";
 
 const FORMAT_VERSION = 1;
@@ -76,6 +77,7 @@ export async function openWorkspace(options = {}) {
     const repositoryAssets = new AssetStore({ db, paths });
     const domain = new WorkspaceDomain({ db, repository });
     const contentBridge = new ContentBridgeDomain({ db, repository, workspaceDomain: domain });
+    const experiments = new ContentExperimentDomain({ db, repository, workspaceDomain: domain });
     const jobs = new JobStore(db);
     return {
       paths,
@@ -84,6 +86,7 @@ export async function openWorkspace(options = {}) {
       repository,
       domain,
       contentBridge,
+      experiments,
       jobs,
       assets: repositoryAssets,
       check: () => checkWorkspaceDatabase(db),

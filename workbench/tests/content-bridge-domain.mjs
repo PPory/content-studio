@@ -42,7 +42,7 @@ try {
     "content_opportunities",
     "content_project_opportunities",
   ].every((name) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)));
-  check("工作区 Schema 已升级到用户问题来历版本", WORKSPACE_SCHEMA_VERSION === 13);
+  check("工作区 Schema 已升级到当前版本", WORKSPACE_SCHEMA_VERSION === 14);
 
   assert.throws(() => contentBridge.createAgenda({ title: "判断权", desiredJudgment: "人应保留判断权", actor: "user", now }), /明确确认/);
   const agendaId = contentBridge.createAgenda({

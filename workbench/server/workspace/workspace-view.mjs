@@ -150,7 +150,8 @@ export function projectDto(workspace, projectId) {
   const primaryId = workspace.db.prepare("SELECT draft_id AS id FROM project_primary_drafts WHERE project_id = ?").get(projectId)?.id || (drafts.length === 1 ? drafts[0].id : null);
   const master = drafts.find((draft) => draft.id === primaryId) || null;
   const publications = workspace.db.prepare(`SELECT p.* FROM publication_records p JOIN entities e ON e.id = p.id AND e.deleted_at IS NULL JOIN drafts d ON d.id = p.draft_id WHERE d.project_id = ? ORDER BY p.published_at DESC, p.id DESC`).all(projectId);
-  const publicationRecords = publications.map((row) => ({ draftId: row.draft_id, title: row.title, platform: row.platform, url: row.published_url, publishedAt: row.published_at, complete: true }));
+  // ⚠️ id 是必须的：内容实验拿它去比「假设记录时间 vs 发布时间」，缺了那道闸就形同虚设。
+  const publicationRecords = publications.map((row) => ({ id: row.id, draftId: row.draft_id, title: row.title, platform: row.platform, url: row.published_url, publishedAt: row.published_at, complete: true }));
   const latest = publicationRecords[0] || null;
   const latestRow = publications[0] || null;
   const materials = workspace.db.prepare(`SELECT m.*, e.updated_at FROM project_materials pm JOIN materials m ON m.id = pm.material_id JOIN entities e ON e.id = m.id AND e.deleted_at IS NULL WHERE pm.project_id = ? ORDER BY e.updated_at DESC`).all(projectId).map(materialDto);

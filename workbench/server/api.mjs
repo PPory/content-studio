@@ -18,6 +18,7 @@ import { configureAssistantWorkspace } from "./agent-runtime/assistant-runner.mj
 import { backupRoutes } from "./routes/backup.mjs";
 import { assistantRoutes } from "./routes/assistant.mjs";
 import { contentBridgeRoutes } from "./routes/content-bridge.mjs";
+import { contentExperimentRoutes } from "./routes/content-experiments.mjs";
 
 const EXTENSION_ALIASES = {
   "/api/extension/intake": "/api/workspace/intake",
@@ -68,6 +69,7 @@ const ROUTES = [
   ...promptsRoutes,
   ...workspaceRoutes,
   ...contentBridgeRoutes,
+  ...contentExperimentRoutes,
   ...localBookRoutes,
   ...wikiRoutes,
   ...localContentRoutes,
