@@ -6727,10 +6727,17 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-lead b { color: var(--text-1); font-weight: 600; }
 
 .src-group { margin-bottom: 28px; }
+/**
+ * ⚠️ **分组名和列名都吸顶。** 27 份资料分四组、书籍那一组就有 15 行，
+ * 滚到一半时列名早已滚走，而每组重画一遍表头并不能解决这件事——
+ * 你既不知道第三列是「字数」还是「节数」，也不知道现在看的是哪一类。
+ * 两条各自吸在自己那一组里，滚过这一组就自然让位给下一组。
+ */
 .src-group__head {
+  position: sticky; top: 0; z-index: 3;
   display: flex; align-items: baseline; gap: 8px;
   font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
-  margin: 0 0 6px;
+  margin: 0; padding: 8px 0 6px; background: var(--surface-2);
 }
 .src-group__count {
   font-weight: 500; color: var(--text-3);
@@ -6749,13 +6756,17 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-item:first-child > .src-row { border-top-color: var(--border-strong); }
 
 .src-row--head {
+  position: sticky; top: 34px; z-index: 2;
   border-top: 0; min-height: 28px;
+  background: var(--surface-2);
   font-size: var(--fs-sm); color: var(--text-3);
 }
 /* 数字列右对齐，标题列左对齐——数字左对齐的表读不出量级差别 */
 .src-row--head > :not(:first-child) { text-align: right; }
 
-.src-item > .src-row:hover { background: var(--surface-2); }
+/* ⚠️ hover 用**白**不用 `--surface-2`：后者和 `.main` 的底色是同一个值（#f4f4f5），
+   写了等于没写——这一页的行悬停一直是没有反馈的。 */
+.src-item > .src-row:hover { background: var(--surface); }
 
 .src-name {
   display: flex; align-items: center; gap: 6px; min-width: 0;
@@ -6828,7 +6839,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 
 .src-children { padding-bottom: 4px; }
 .src-row--child { min-height: 34px; border-top: 1px dashed var(--border); }
-.src-row--child:hover { background: var(--surface-2); }
+.src-row--child:hover { background: var(--surface); }
 .src-name--child { padding-left: 22px; color: var(--text-2); font-size: var(--fs-sm); }
 .src-empty { color: var(--text-3); font-size: var(--fs-sm); padding: 8px 30px; margin: 0; }
 
@@ -6865,13 +6876,24 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__head em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-weight: 400; }
 .ing__item { border-top: 1px solid var(--border); }
 .ing__row { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, auto) auto; gap: 20px; align-items: center; min-height: 66px; }
-.ing__title { min-width: 0; padding: 10px 4px; border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
-.ing__title b, .ing__title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ing__title b { margin-bottom: 3px; font-size: var(--fs-base); }
-.ing__title span, .ing__counts { color: var(--text-3); font-size: var(--fs-xs); }
+.ing__title { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 4px; border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+.ing__title > svg { flex: none; width: 16px; height: 16px; color: var(--text-3); transition: transform 120ms ease; }
+.ing__title > svg[data-open] { transform: rotate(90deg); }
+.ing__title:hover > svg { color: var(--text-1); }
+.ing__title-text { min-width: 0; }
+.ing__title-text b, .ing__title-text > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ing__title-text b { margin-bottom: 3px; font-size: var(--fs-base); }
+.ing__title-text > span, .ing__counts { color: var(--text-3); font-size: var(--fs-xs); }
 .ing__actions { display: flex; gap: 6px; }
 .ing__actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
-.ing__actions .is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+/**
+ * ⚠️ **采纳不是实心黑。** 四份候选同时在场时，实心主按钮会在一屏里出现四次，
+ * 而这一页本来就有「全库体检」那一颗——设计系统那条「一屏只保留一个最强主操作」
+ * 直接被违反。更要紧的是语义：把 AI 写的正文写进 Wiki 的那颗，不该是最省力的那颗。
+ * 描边加深一档仍然找得到，但不再压过「展开对照」。
+ */
+.ing__actions .is-strong { border-color: var(--text-1); color: var(--text-1); font-weight: 500; }
+.ing__actions .is-strong:hover { background: var(--surface-2); }
 .ing__actions button:disabled { opacity: .5; cursor: not-allowed; }
 .ing__body { padding: 0 4px 16px; }
 .ing__choice { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px; padding: 10px 0; border-top: 1px dashed var(--border); cursor: pointer; }
@@ -7049,7 +7071,7 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-section__head span { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
 .wiki-page-list { border-top: 1px solid var(--border-strong); }
 .wiki-page-row { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(260px, 1.5fr) 170px; gap: 18px; align-items: baseline; width: 100%; min-height: 60px; padding: 13px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
-.wiki-page-row:hover { background: var(--surface-2); }
+.wiki-page-row:hover { background: var(--surface); }
 .wiki-page-row__title { font-weight: 600; }
 .wiki-page-row__summary { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.55; }
 .wiki-page-row__meta { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); text-align: right; }

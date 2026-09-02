@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
+import { IconChevronRight } from "./icons.jsx";
 
 const FINDING_TYPES = {
   contradiction: { level: "高风险", label: "观点冲突", tone: "risk" },
@@ -206,12 +207,18 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
           <article id={`knowledge-candidate-${item.id}`} key={item.id} className={`ing__item${isLint ? " ing__item--lint" : ""}${isRepair ? " ing__item--repair" : ""}${isResearch ? " ing__item--research" : ""}`}>
             <div className="ing__row">
               <button type="button" className="ing__title" aria-expanded={expanded} onClick={() => setOpenId(expanded ? "" : item.id)}>
+                {/* ⚠️ **展开才是这张卡的主路径。** 采纳按钮以前是实心黑，而标题上
+                    没有任何可展开的记号——最省力的动作就成了「不看内容直接写进 Wiki」。
+                    箭头把「逐页对照」摆回视线里，采纳按钮同时降成描边。 */}
+                <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />
+                <span className="ing__title-text">
                 <b>{isLint ? "全库体检报告" : isRepair ? "体检修订候选" : isResearch ? "补充来源候选" : item.sourceTitle || "未命名资料"}</b>
                 <span>{isLint
                   ? "页面问题生成修订；来源问题先搜索资料，二者都要再次确认"
                   : isRepair ? item.repairSummary || "根据所选体检问题生成，尚未写入 Wiki"
                   : isResearch ? "AI 已读取公开网页；确认后才会导入 Raw 并开始 Wiki 编译"
                   : `已阅读全文（${item.chunksRead || 1} 段） · ${item.compilationSummary || item.bookTitle}`}</span>
+                </span>
               </button>
               <span className="ing__counts">{counts.join(" · ") || "没有可应用的修改"}</span>
               <div className="ing__actions">
@@ -221,12 +228,12 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
                     {researchCount ? <button type="button" disabled={!!busy || repairing || researching || researchReady} onClick={() => generateResearch(item)}>
                       {researchReady ? "来源候选已生成" : researching ? "正在搜索来源…" : item.researchStatus === "failed" ? `重新搜索来源（${researchCount}）` : `同意发送页面名称并搜索（${researchCount}）`}
                     </button> : null}
-                    {repairCount ? <button type="button" className="is-primary" disabled={!!busy || repairing || researching || repairReady} onClick={() => generateRepair(item)}>
+                    {repairCount ? <button type="button" className="is-strong" disabled={!!busy || repairing || researching || repairReady} onClick={() => generateRepair(item)}>
                       {repairReady ? "修订候选已生成" : repairing ? "正在生成修订…" : item.repairStatus === "failed" ? `重新生成修订（${repairCount}）` : `生成页面修订（${repairCount}）`}
                     </button> : null}
                   </>
                 ) : (
-                  <button type="button" className="is-primary" disabled={!!busy || kept === 0} onClick={() => decide(item, "accept")}>{busy === item.id ? "处理中…" : isRepair ? `应用所选修改（${kept}）` : isResearch ? `导入所选并开始编译（${kept}）` : kept === allKeys.length ? "全部接受" : `接受所选（${kept}）`}</button>
+                  <button type="button" className="is-strong" disabled={!!busy || kept === 0} onClick={() => decide(item, "accept")}>{busy === item.id ? "处理中…" : isRepair ? `应用所选修改（${kept}）` : isResearch ? `导入所选并开始编译（${kept}）` : kept === allKeys.length ? "全部接受" : `接受所选（${kept}）`}</button>
                 )}
               </div>
             </div>
