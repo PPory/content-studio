@@ -34,7 +34,8 @@ export const NAV_LABELS = {
    * 词条则是这一栏真正的产物。
    */
   knowledge: "知识",
-  review: "数据",
+  // ⚠️ 这一栏是「发出去之后」：复盘和支撑判断的数字在一起，不再分两栏
+  review: "复盘",
 };
 
 /**

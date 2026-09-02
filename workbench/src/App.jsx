@@ -40,7 +40,7 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 // ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
-const CONTENT_VIEWS = new Set(["bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "review"]);
+const CONTENT_VIEWS = new Set(["bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts"]);
 const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
 const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
 // 知识库：词条（提炼出来的）+ 来源（书架和其他资料）
@@ -53,9 +53,15 @@ const SHELF_KINDS = Object.freeze(["书籍"]);
  * 否则它会被当成 id 拿去查页面，用户看到的是「Wiki 页面不存在」。
  */
 const ENTRY_LIST_STATE = /^(review|source):/;
-// ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
-// 留在这儿的话点进去侧栏会同时亮两处。
-const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]);
+/**
+ * 发出去之后的那一段：复盘和数据。
+ *
+ * ⚠️ **它们原来分在两栏**——「复盘」挂在内容底下，「数据」是另一个一级项。
+ * 可这两件事回答的是同一个问题：发出去之后发生了什么、我因此改变了什么判断。
+ * 分开的代价是每次复盘都要在两栏之间来回：判断写在这边，支撑判断的数字在那边。
+ * 现在合成一栏，内容那一栏只留「还没发出去」的部分。
+ */
+const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", "metrics"]);
 
 // 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
 const NAV = [
@@ -67,8 +73,6 @@ const NAV = [
       /** 实验导航只表达新主路径；Ideas / Seeds 的数据、深链和 Ctrl+K 入口继续保留。 */
       { to: "bridge", label: "内容机会" },
       { to: "content", label: "创作" },
-      // 「待复盘」本来就是项目的一个阶段，所以它在这一栏而不是单开一级
-      { to: "review", label: "复盘" },
     ],
   },
   {
@@ -126,7 +130,13 @@ const NAV = [
    * （内容明细 / 月度总览 / 数据同步），tab 走 hash 的状态段。
    * 两条旧路由留着重定向（见 `readHash`），深链不会断。
    */
-  { key: "review", to: "review-performance", match: (v) => REVIEW_VIEWS.has(v) },
+  {
+    key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v),
+    children: [
+      { to: "review", label: "复盘" },
+      { to: "review-performance", label: "数据" },
+    ],
+  },
 ];
 
 // 这个 view 归哪一栏。侧栏高亮、面包屑、二级展开三处都问它，别各写各的
