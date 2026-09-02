@@ -47,6 +47,12 @@ const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
 const KNOWLEDGE_VIEWS = new Set(["knowledge", "entries", "shelf", "sources"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
+/**
+ * ⚠️ `#/entries/<state>` 的第二段既可能是**词条 id**（进详情），也可能是
+ * **列表的筛选前缀**（留在列表页）。加新前缀时要一起加到这儿，
+ * 否则它会被当成 id 拿去查页面，用户看到的是「Wiki 页面不存在」。
+ */
+const ENTRY_LIST_STATE = /^(review|source):/;
 // ⚠️ `review`（待复盘）**不在这里**：它搬进内容那一栏了（见 CONTENT_VIEWS），
 // 留在这儿的话点进去侧栏会同时亮两处。
 const REVIEW_VIEWS = new Set(["review-performance", "review-sources", "metrics"]);
@@ -763,11 +769,13 @@ export function App() {
                   setOpenTarget("shelf", `bookdoc:${doc.id}`);
                   setOpenTarget("shelf-return", "返回来源|#/sources");
                   go("shelf", `book:${source.id}`);
-                }} onReview={(sourceId) => go("entries", `review:${sourceId}`)} />
+                }} onReview={(sourceId) => go("entries", `review:${sourceId}`)}
+                  onPages={(bookId) => go("entries", `source:${bookId}`)} />
               ) : route.view === "entries" ? (
                 // `#/entries/<id>` 是同一条路由的第二段，不另开一个 view——
                 // 词条详情是列表的下一层，不是并列的另一页。
-                route.state && !route.state.startsWith("review:") ? (
+                // `review:` 和 `source:` 是同一段状态上的两个筛选前缀，不是词条 id
+                route.state && !ENTRY_LIST_STATE.test(route.state) ? (
                   <EntryDetail
                     entryId={route.state}
                     onBack={() => go("entries")}
@@ -787,11 +795,15 @@ export function App() {
                     }}
                   />
                 ) : (
-                  <Entries focusSourceId={String(route.state || "").startsWith("review:") ? route.state.slice("review:".length) : ""} onGo={(target) => {
+                  <Entries
+                    focusSourceId={String(route.state || "").startsWith("review:") ? route.state.slice("review:".length) : ""}
+                    focusBookId={String(route.state || "").startsWith("source:") ? route.state.slice("source:".length) : ""}
+                    onGo={(target) => {
                     const value = String(target);
-                    if (value.startsWith("entries/")) go("entries", value.slice("entries/".length));
-                    else go(value);
-                  }} />
+                      if (value.startsWith("entries/")) go("entries", value.slice("entries/".length));
+                      else go(value);
+                    }}
+                  />
                 )
               ) : STUDIO.has(route.view) ? (
                 <Studio

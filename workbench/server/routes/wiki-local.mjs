@@ -61,6 +61,7 @@ function sourceRows(workspace) {
       -- 和「导进来放着」，而后者在任何文件列表里都长得和前者一模一样。
       (SELECT COUNT(*) FROM entry_facts f JOIN book_documents d ON d.id = f.source_entity_id WHERE d.book_id = b.id) AS citedFacts,
       (SELECT COUNT(DISTINCT s.page_id) FROM wiki_page_sources s JOIN book_documents d ON d.id=s.source_entity_id
+        JOIN entities pe ON pe.id=s.page_id AND pe.deleted_at IS NULL
         WHERE d.book_id=b.id) AS citedPages,
       (SELECT COUNT(*) FROM source_ingests s JOIN book_documents d ON d.id = s.source_entity_id
         WHERE d.book_id = b.id AND s.status IN ('applied', 'proposed', 'empty')) AS distilled,
@@ -87,7 +88,8 @@ function sourceRows(workspace) {
 function citedPageTotal(workspace) {
   return workspace.db.prepare(`SELECT COUNT(DISTINCT s.page_id) AS count
     FROM wiki_page_sources s JOIN book_documents d ON d.id = s.source_entity_id
-    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL`).get().count;
+    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
+    JOIN entities pe ON pe.id = s.page_id AND pe.deleted_at IS NULL`).get().count;
 }
 
 /** 一份来源里的章节，供表格展开。带上每一节自己的提炼状态。 */
@@ -96,7 +98,9 @@ function sourceDocuments(workspace, bookId) {
     SELECT d.id, d.title, d.document_order AS position, LENGTH(d.body_markdown) AS chars,
       COALESCE(s.status, '') AS ingestStatus, COALESCE(s.error, '') AS ingestError,
       (SELECT COUNT(*) FROM entry_facts f WHERE f.source_entity_id = d.id) AS citedFacts
-      ,(SELECT COUNT(DISTINCT s.page_id) FROM wiki_page_sources s WHERE s.source_entity_id=d.id) AS citedPages
+      ,(SELECT COUNT(DISTINCT s.page_id) FROM wiki_page_sources s
+        JOIN entities pe ON pe.id=s.page_id AND pe.deleted_at IS NULL
+        WHERE s.source_entity_id=d.id) AS citedPages
     FROM book_documents d
     JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
     LEFT JOIN source_ingests s ON s.source_entity_id = d.id

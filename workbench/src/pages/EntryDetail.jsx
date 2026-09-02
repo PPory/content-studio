@@ -6,6 +6,18 @@ import { renderMarkdown } from "../lib/markdown.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { ScrollToTop } from "../components/ScrollToTop.jsx";
 
+/**
+ * 页头那几个计数以前是纯文字。「7 个来源」是这一页最该被追问的数字
+ * （AI 写的这段话凭什么？），而答案就在右栏，隔着一屏。跳过去并把焦点
+ * 交给那一节，键盘用户才不是只看着页面自己滚了一下。
+ */
+function jumpTo(id) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.scrollIntoView({ block: "center" });
+  target.focus({ preventScroll: true });
+}
+
 function dateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -62,7 +74,12 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
       <header className="wiki-article__head">
         <p>{typeLabels[page.pageType] || page.pageType}</p>
         <h2>{page.title}</h2>
-        <div><span>版本 {page.revision}</span><span>{sources.length} 个来源</span><span>{links.outgoing.length + links.incoming.length} 个连接</span><time>{dateTime(page.updatedAt)}</time></div>
+        <div>
+          <span>版本 {page.revision}</span>
+          <button type="button" onClick={() => jumpTo("wiki-rail-sources")}>{sources.length} 个来源</button>
+          <button type="button" onClick={() => jumpTo("wiki-rail-links")}>{links.outgoing.length + links.incoming.length} 个连接</button>
+          <time>{dateTime(page.updatedAt)}</time>
+        </div>
         <blockquote>{page.summary}</blockquote>
       </header>
 
@@ -70,7 +87,7 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
         <article className="wiki-article__body prose" dangerouslySetInnerHTML={{ __html: html }} />
         <aside className="wiki-article__rail">
           <section>
-            <h3>连接</h3>
+            <h3 id="wiki-rail-links" tabIndex={-1}>连接</h3>
             {[...links.outgoing.map((item) => ({ ...item, direction: "out" })),
               ...links.incoming.map((item) => ({ ...item, direction: "in" }))].map((item) => (
               <button key={`${item.direction}-${item.id}-${item.relation}`} type="button" onClick={() => onGo?.(`entries/${item.id}`)}>
@@ -84,7 +101,7 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
           </section>
 
           <section>
-            <h3>依据</h3>
+            <h3 id="wiki-rail-sources" tabIndex={-1}>依据</h3>
             {sources.map((source, index) => (
               <details key={`${source.sourceId}-${index}`}>
                 <summary>{source.locator || source.sourceTitle || "本地来源"}</summary>

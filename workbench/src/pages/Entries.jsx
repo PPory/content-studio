@@ -13,7 +13,7 @@ function when(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }
 
-export function Entries({ onGo, focusSourceId = "" }) {
+export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
@@ -23,16 +23,25 @@ export function Entries({ onGo, focusSourceId = "" }) {
   const load = () => api.wiki().then(setData).catch(setError);
   useEffect(() => { load(); }, []);
 
+  // 「来源」页点「影响页面 85」进来时带的书 id。名字从库里查，不塞进 URL。
+  const focusBook = useMemo(
+    () => (data?.sourceBooks || []).find((book) => book.id === focusBookId) || null,
+    [data, focusBookId],
+  );
+  const scoped = useMemo(() => (data?.pages || [])
+    .filter((page) => !focusBookId || (page.sourceBookIds || []).includes(focusBookId)),
+  [data, focusBookId]);
+
   const groups = useMemo(() => {
     const term = query.trim().toLowerCase();
-    const pages = (data?.pages || []).filter((page) => !term
+    const pages = scoped.filter((page) => !term
       || `${page.title} ${page.summary}`.toLowerCase().includes(term));
     return TYPE_ORDER.map((type) => ({
       type,
       label: data?.typeLabels?.[type] || type,
       pages: pages.filter((page) => page.pageType === type),
     })).filter((group) => group.pages.length);
-  }, [data, query]);
+  }, [data, query, scoped]);
 
   const runLint = async () => {
     setLintBusy(true);
@@ -84,6 +93,16 @@ export function Entries({ onGo, focusSourceId = "" }) {
       ) : null}
       <IngestReview onDone={load} focusSourceId={focusSourceId} />
 
+      {focusBookId ? (
+        <div className="wiki-scope" role="status">
+          <span>
+            只看<b>{focusBook ? `《${focusBook.title}》` : "这份来源"}</b>影响的
+            <b> {scoped.length} </b>张页面
+          </span>
+          <button type="button" className="link-btn" onClick={() => onGo?.("entries")}>看全部 {totals.pages} 张</button>
+        </div>
+      ) : null}
+
       <div className="wiki-toolbar">
         <SearchBox value={query} onChange={setQuery} placeholder="搜索页面、主题或来源" ariaLabel="搜索 Wiki" />
         <p>
@@ -100,8 +119,12 @@ export function Entries({ onGo, focusSourceId = "" }) {
       ) : (
         <div className="wiki-layout">
           <main className="wiki-index">
-            {!groups.length && query.trim() ? (
-              <div className="wiki-search-empty">没有找到“{query.trim()}”相关的知识页面。</div>
+            {!groups.length ? (
+              <div className="wiki-search-empty">
+                {query.trim()
+                  ? `没有找到“${query.trim()}”相关的知识页面。`
+                  : "这份来源还没有影响任何 Wiki 页面。"}
+              </div>
             ) : groups.map((group) => (
               <section key={group.type} className="wiki-section">
                 <div className="wiki-section__head">

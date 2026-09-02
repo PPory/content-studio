@@ -6801,6 +6801,14 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
 }
 .src-num--strong { color: var(--text-1); font-weight: 500; }
+/* 「影响页面」那个数字是可点的。不画按钮壳——一列 27 个方框会盖过数字本身，
+   下划线在悬停时才出现，静止时这一列读起来仍然是一列数。 */
+.src-pages {
+  border: 0; background: transparent; padding: 0;
+  color: inherit; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.src-pages:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.src-pages:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 /* 状态用文字加一颗点，不用整块色底：一屏几十行的话，色块会盖过内容本身 */
 .src-state {
@@ -7020,6 +7028,15 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-notice .note { margin: 0; padding: 2px 0 2px 12px; border: 0; border-left: 2px solid var(--border-strong); border-radius: 0; background: transparent; }
 .wiki-notice .note-title { font-size: var(--fs-sm); }
 .wiki-notice .note-hint { margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); }
+/* 从「来源」点进来时的筛选条。它得说清「现在看到的不是全部」并给出退路，
+   所以计数和「看全部」写在同一行，而不是只留一个可以点掉的小叉。 */
+.wiki-scope {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin: 22px 0 0; padding: 10px 14px;
+  border-left: 2px solid var(--brand); background: var(--surface-2);
+  color: var(--text-2); font-size: var(--fs-sm);
+}
+.wiki-scope b { color: var(--text-1); font-weight: 600; }
 .wiki-toolbar { display: flex; align-items: center; gap: 24px; margin: 26px 0 22px; }
 .wiki-toolbar .search-box { flex: 0 1 520px; width: min(520px, 100%); }
 .wiki-toolbar p { margin: 0 0 0 auto; color: var(--text-3); font-size: var(--fs-xs); }
@@ -7048,7 +7065,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-article__head { max-width: 800px; padding-bottom: 28px; border-bottom: 1px solid var(--border-strong); }
 .wiki-article__head > p { margin: 0 0 8px; color: var(--brand); font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; }
 .wiki-article__head h2 { margin: 0; font-size: clamp(32px, 4vw, 48px); font-weight: 650; letter-spacing: -.045em; }
-.wiki-article__head > div { display: flex; gap: 14px; margin-top: 12px; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.wiki-article__head > div { display: flex; align-items: center; gap: 14px; margin-top: 12px; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
+/* 计数是按钮但读起来仍然是这行元信息的一部分：不给壳，悬停才亮出可点 */
+.wiki-article__head > div button { border: 0; background: transparent; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.wiki-article__head > div button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.wiki-article__rail h3:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .wiki-article__head > blockquote { margin: 22px 0 0; padding-left: 18px; border-left: 3px solid var(--brand); color: var(--text-2); font-family: "Literata", "Noto Sans SC", serif; font-size: 18px; line-height: 1.75; }
 .wiki-article__layout { display: grid; grid-template-columns: minmax(0, 760px) 300px; gap: 68px; align-items: start; margin-top: 32px; }
 .wiki-article__body { font-family: "Literata", "Noto Sans SC", serif; font-size: 16px; line-height: 1.9; }

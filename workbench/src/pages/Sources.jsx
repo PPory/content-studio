@@ -74,7 +74,7 @@ function GroupSelectAll({ kind, items, selected, onToggle }) {
     />
   );
 }
-export function Sources({ onOpen, onReview }) {
+export function Sources({ onOpen, onReview, onPages }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
@@ -349,7 +349,17 @@ export function Sources({ onOpen, onReview }) {
                         </button>
                       ) : <span className={`src-state src-state--${state.tone}`}>{state.label}</span>}
                     </span>
-                    <span className="src-num src-num--strong" role="cell">{source.citedPages ? number(source.citedPages) : "—"}</span>
+                    {/* ⚠️ **这个数字必须能点。** 它是这张表存在的理由——区分「读过并沉淀了」
+                        和「导进来放着」——而看到 85 之后用户想做的唯一一件事是「哪 85 张」。
+                        以前它是一段纯文本，问题问出来了却没有答案的去处。 */}
+                    <span className="src-num src-num--strong" role="cell">
+                      {source.citedPages ? (
+                        <button type="button" className="src-pages" onClick={() => onPages?.(source.id)}
+                          aria-label={`查看《${source.title}》影响的 ${source.citedPages} 张 Wiki 页面`}>
+                          {number(source.citedPages)}
+                        </button>
+                      ) : "—"}
+                    </span>
                   </div>
 
                   {expanded ? (

@@ -488,10 +488,18 @@ export function wikiHealth(workspace) {
 export function wikiIndex(workspace, { query = "" } = {}) {
   const needle = clean(query, 300);
   const like = `%${needle.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  /**
+   * ⚠️ **每页带上「它由哪几份来源养出来」。** 「来源」页那一列「影响页面 85」
+   * 是这套知识库特有的数字，但用户看到它之后想做的唯一一件事——「哪 85 张？」——
+   * 需要反向的这张映射。95 张页面各拼几个 id，比为它单开一条按来源过滤的接口便宜，
+   * 前端拿到就能就地筛，两页之间不用再往返一次。
+   */
   const pages = workspace.db.prepare(`SELECT p.id,p.title,p.page_type AS pageType,p.summary,
       p.current_revision AS revision,p.updated_at AS updatedAt,
       (SELECT COUNT(*) FROM wiki_page_sources s WHERE s.page_id=p.id) AS sourceCount,
-      (SELECT COUNT(*) FROM wiki_page_links l WHERE l.from_page_id=p.id OR l.to_page_id=p.id) AS linkCount
+      (SELECT COUNT(*) FROM wiki_page_links l WHERE l.from_page_id=p.id OR l.to_page_id=p.id) AS linkCount,
+      (SELECT GROUP_CONCAT(DISTINCT d.book_id) FROM wiki_page_sources s
+        JOIN book_documents d ON d.id=s.source_entity_id WHERE s.page_id=p.id) AS sourceBookIds
     FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL
     WHERE (?='' OR p.title LIKE ? ESCAPE '\\' OR p.summary LIKE ? ESCAPE '\\' OR p.body_markdown LIKE ? ESCAPE '\\')
     ORDER BY CASE p.page_type WHEN 'overview' THEN 0 WHEN 'topic' THEN 1 WHEN 'synthesis' THEN 2
@@ -502,8 +510,17 @@ export function wikiIndex(workspace, { query = "" } = {}) {
   const changes = workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_operation_log").get().count;
   const links = workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_page_links").get().count;
   const sources = workspace.db.prepare("SELECT COUNT(DISTINCT source_entity_id) AS count FROM wiki_page_sources").get().count;
+  // 筛选条要能说出「只看《XX》」，所以把真的贡献过页面的那几本的标题一起带上
+  const sourceBooks = workspace.db.prepare(`SELECT DISTINCT b.id,b.title FROM books b
+    JOIN book_documents d ON d.book_id=b.id
+    JOIN wiki_page_sources s ON s.source_entity_id=d.id
+    JOIN entities e ON e.id=b.id AND e.deleted_at IS NULL ORDER BY b.title`).all();
   return {
-    pages,
+    pages: pages.map((page) => ({
+      ...page,
+      sourceBookIds: String(page.sourceBookIds || "").split(",").filter(Boolean),
+    })),
+    sourceBooks,
     log,
     typeLabels: WIKI_PAGE_TYPE_LABELS,
     schema: activeWikiSchema(workspace),
