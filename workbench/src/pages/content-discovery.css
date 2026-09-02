@@ -145,3 +145,36 @@
   .content-discovery .bridge-bar__title h2 { white-space: nowrap; }
   .content-discovery .bridge-bar__actions { flex-wrap: wrap; }
 }
+
+/*
+ * 最近在助手里想的。
+ *
+ * ⚠️ 它是扫描的输入之一，所以要看得见；但它不是这一屏的主体，
+ * 所以默认收起来，一行就够。
+ */
+.discovery-research { margin-top: var(--sp-9); }
+.discovery-research > button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.discovery-research > button:hover { color: var(--text-1); }
+/* 这句话是硬闸的可见部分，不是脚注：它说明这一段为什么不能当证据。 */
+.discovery-research__gate {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 2px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+}
+.discovery-research ul { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
+.discovery-research li { display: grid; gap: 2px; }
+.discovery-research strong { font-size: var(--fs-sm); }
+.discovery-research span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.discovery-research .btn { justify-self: start; margin-top: var(--sp-2); }

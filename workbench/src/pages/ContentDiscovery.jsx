@@ -148,17 +148,22 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   /** 复盘学到的东西带过来的「这次优先看哪儿」。取完即清：它只影响这一次扫描。 */
-  const [focus] = useState(() => takeDiscoveryFocus());
+  const [focus, setFocus] = useState(() => takeDiscoveryFocus());
+  /** 最近在助手里聊过什么。⚠️ 只含你自己打的字：AI 的回答不是事实来源。 */
+  const [research, setResearch] = useState([]);
+  const [researchOpen, setResearchOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.contentDiscovery(),
       api.contentOpportunities().catch(() => ({ opportunities: [] })),
+      api.researchSignals().catch(() => ({ signals: [] })),
     ])
-      .then(([discovery, saved]) => {
+      .then(([discovery, saved, signals]) => {
         setData(discovery);
         setOpportunities(saved.opportunities || []);
+        setResearch(signals.signals || []);
         setError(null);
       })
       .catch(setError)
@@ -167,11 +172,11 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
 
   useEffect(load, [load]);
 
-  const scan = useCallback(async ({ force = false } = {}) => {
+  const scan = useCallback(async ({ force = false, focusOverride } = {}) => {
     setScanning(true);
     setScanError(null);
     try {
-      const result = await api.scanContentDiscovery({ force, focus: focus || undefined });
+      const result = await api.scanContentDiscovery({ force, focus: focusOverride || focus || undefined });
       setData((current) => ({ ...(current || {}), ...result }));
     } catch (failure) {
       /**
@@ -314,6 +319,47 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {/*
+        ⚠️ **把「系统看到的研究方向」摆出来，而不是悄悄用掉。**
+        这一段是扫描的输入之一；不显示的话，用户会奇怪结果为什么偏向某个方向，
+        而且看不出系统到底把什么当成了「他最近在想的」。
+        ⚠️ 这里**只有你自己打的字**——AI 的回答不进这一段，也不进扫描的事实层。
+      */}
+      {research.length ? (
+        <section className="discovery-research" aria-label="最近你在想的">
+          <button type="button" aria-expanded={researchOpen} onClick={() => setResearchOpen((value) => !value)}>
+            最近你在助手里想的 {research.length} 件事{researchOpen ? "" : "（扫描时会参考方向）"}
+          </button>
+          {researchOpen ? (
+            <>
+              <p className="discovery-research__gate">
+                只取你自己写下的话。AI 的回答不算方向依据，更不算事实——知识仍然要回到 Wiki，证据仍然要回到原话。
+              </p>
+              <ul>
+                {research.map((item) => (
+                  <li key={item.conversationId}>
+                    <strong>{item.title || "（未命名对话）"}</strong>
+                    <span>{item.userTurns.join(" / ")}</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={scanning}
+                      onClick={async () => {
+                        try {
+                          const result = await api.conversationFocus(item.conversationId);
+                          setFocus(result.focus);
+                          await scan({ force: true, focusOverride: result.focus });
+                        } catch (failure) { setScanError(failure); }
+                      }}
+                    >按这段看一遍</button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
       ) : null}
 
       {opportunities.length ? (

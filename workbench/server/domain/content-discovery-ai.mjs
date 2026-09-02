@@ -16,6 +16,7 @@
 
 import { completeJson } from "../lib/model-json.mjs";
 import { assertRawSourceEvidence, rawSourceRef } from "./audience-raw.mjs";
+import { describeResearchSignals } from "./assistant-signals.mjs";
 
 const clean = (value, max = 8_000) => String(value ?? "").trim().slice(0, max);
 const FITS = new Set(["strong", "medium", "weak"]);
@@ -45,6 +46,7 @@ function systemPrompt({ hasVoices, hasAgenda, limit }) {
     "",
     "⚠️ hypothesis 候选中绝对不要写「大家都在问」「很多人反映」「普遍存在」这类关于人数或频率的断言——你没有任何数据支持它。",
     "⚠️ 已存在的用户问题请通过 existing_problem_id 引用，不要重复造一条；它的来历以工作台记录为准，你不要改。",
+    "⚠️ 「我最近在想什么」那一段只是方向，不是事实：不得把它当成证据，也不得因为那里提到过某个说法就当它已经成立。",
     hasVoices
       ? "现实侧给了尚未分析的原话。优先从原话里读出真正的困惑，而不是复述已有问题。"
       : "现实侧没有新的原话。只能基于已确认的用户问题，或如实给出 hypothesis 候选。",

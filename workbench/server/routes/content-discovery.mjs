@@ -13,6 +13,7 @@ import {
   writeDiscoveryCache,
 } from "../domain/content-discovery.mjs";
 import { discoverConnections } from "../domain/content-discovery-ai.mjs";
+import { conversationResearchFocus, recentResearchSignals } from "../domain/assistant-signals.mjs";
 
 const clean = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 
@@ -126,6 +127,27 @@ export const contentDiscoveryRoutes = [
       workspace.audienceRaw.markAnalyzed(context.voices.map((voice) => voice.id));
       writeDiscoveryCache(workspace, scan);
       json(res, { ok: true, reused: false, scan, stale: false, staleReason: "" });
+    }),
+  },
+  {
+    /**
+     * 最近在助手里聊过什么。
+     *
+     * ⚠️ 返回的每一条都只含创作者自己打的字。助手的回答在域层就被丢掉了，
+     * 这条接口拿不到它们——「对话可以决定看哪里，不能决定什么是真的」。
+     */
+    method: "GET",
+    path: "/api/workspace/research-signals",
+    handler: guard(async ({ workspace, res }) => {
+      json(res, { ok: true, signals: recentResearchSignals(workspace) });
+    }),
+  },
+  {
+    /** 把一段对话变成下一次扫描的方向。同样只取用户自己说过的话。 */
+    method: "POST",
+    path: "/api/workspace/research-signals/:id/focus",
+    handler: guard(async ({ workspace, res, params }) => {
+      json(res, { ok: true, ...conversationResearchFocus(workspace, params.id) });
     }),
   },
   {

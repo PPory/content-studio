@@ -683,6 +683,40 @@ try {
     }) });
   });
 
+  /**
+   * ⚠️ **扫描的输入之一要看得见。**
+   * 不显示的话，用户会奇怪结果为什么偏向某个方向，也看不出系统把什么
+   * 当成了「他最近在想的」——而这一段里**只有他自己打的字**。
+   */
+  const assistantClaim = "研究已经证明认知卸载会让人的判断力永久下降。";
+  const conversationId = `chat-${Date.now()}`;
+  workspace.repository.transaction(() => {
+    workspace.repository.createEntity({ id: conversationId, type: "ai_conversation" });
+    workspace.db.prepare(`INSERT INTO ai_conversations(id,title,scope_type,scope_id,model,record_json,permission_mode,title_mode)
+      VALUES (?,?,'global','01TESTSCOPE0000000000000AA','test',?,'daily','auto')`)
+      .run(conversationId, "认知卸载和判断权", JSON.stringify({
+        id: conversationId,
+        messages: [
+          { role: "user", text: "我最近一直在想，AI 越用越顺之后，人是不是把判断也一起交出去了。" },
+          { role: "assistant", text: assistantClaim },
+        ],
+      }));
+  });
+
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("heading", { name: "最近有什么值得讲", exact: true }).waitFor();
+  await page.getByRole("button", { name: /最近你在助手里想的/ }).click();
+  const researchText = await page.locator(".discovery-research").innerText();
+  check("最近在助手里想的东西摆出来了，扫描会参考它",
+    researchText.includes("认知卸载和判断权") && researchText.includes("把判断也一起交出去"));
+  /**
+   * ⚠️ 这一条是 P6 的关键：AI 说过的话不能出现在这里，也不能进事实层。
+   * 它看起来和事实一模一样，而且往往写得比事实更顺。
+   */
+  check("AI 说过的话一个字都没出现", !researchText.includes("研究已经证明"));
+  check("并且当面说清它为什么不能当证据",
+    (await page.locator(".discovery-research__gate").innerText()).includes("不算事实"));
+
   const problemsBeforeDiscovery = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
   await page.getByRole("heading", { name: "最近有什么值得讲", exact: true }).waitFor();

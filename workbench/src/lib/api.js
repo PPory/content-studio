@@ -131,6 +131,9 @@ export const api = {
   // AI 发现：读一次缓存，扫描是显式动作——进页面不自动烧模型。
   contentDiscovery: (query = "") => req(`/api/workspace/content-discovery${query}`),
   scanContentDiscovery: (body) => postJson("/api/workspace/content-discovery/scan", body),
+  // 最近在助手里聊过什么。⚠️ 只含用户自己打的字：AI 的回答不是事实来源。
+  researchSignals: () => req("/api/workspace/research-signals"),
+  conversationFocus: (id) => postJson(`/api/workspace/research-signals/${encodeURIComponent(id)}/focus`, {}),
   // 内容构造：提几种讲法、按一句话继续推。两个都只产候选，不写库。
   constructionRoutes: (body) => postJson("/api/workspace/content-construction/routes", body),
   refineConstructionRoute: (body) => postJson("/api/workspace/content-construction/refine", body),

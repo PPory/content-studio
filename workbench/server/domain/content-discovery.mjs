@@ -16,6 +16,7 @@
  */
 
 import { gradeProblemEvidence } from "./audience-raw.mjs";
+import { recentResearchSignals } from "./assistant-signals.mjs";
 import { sha256Json } from "./integrity.mjs";
 
 /** 一次扫描最多喂给模型多少字符的原话。超出的截断并如实标注。 */
@@ -53,6 +54,13 @@ export function discoveryFingerprint(workspace, { agendaId = "", focus = "" } = 
   const agendas = one(`SELECT COUNT(*) AS total, MAX(a.updated_at) AS latest FROM content_agendas a
     JOIN entities e ON e.id=a.id AND e.deleted_at IS NULL WHERE a.status='active'`);
   const voices = workspace.audienceRaw.stats();
+  /**
+   * ⚠️ 最近聊过什么也算输入的一部分：聊完一轮新方向回来，
+   * 缓存不失效的话，页面会继续显示一份没看过这些的旧扫描。
+   */
+  const research = workspace.db.prepare(`SELECT COUNT(*) AS total, MAX(e.updated_at) AS latest
+    FROM ai_conversations c JOIN entities e ON e.id = c.id AND e.deleted_at IS NULL
+    WHERE c.archived_at IS NULL`).get();
   return sha256Json({
     wiki: { total: wiki.total, latest: wiki.latest || "" },
     problems: { total: problems.total, latest: problems.latest || "" },
@@ -63,6 +71,7 @@ export function discoveryFingerprint(workspace, { agendaId = "", focus = "" } = 
      * 就宣告自己的结果过期了。真正表示「有新东西」的是条数和最新导入时间。
      */
     voices: { total: voices.total, latest: voices.latest },
+    research: { total: research.total || 0, latest: research.latest || "" },
     agendaId: clean(agendaId, 120),
     focus: clean(focus, 500),
   });
@@ -131,18 +140,29 @@ export function buildDiscoveryContext(workspace, { agendaId = "", focus = "" } =
   const agendas = workspace.contentBridge.agendas();
   const agenda = agendaId ? agendas.find((item) => item.id === agendaId) || null : null;
 
+  /**
+   * 最近在 AI 助手里聊过什么。
+   *
+   * ⚠️ **它只决定往哪儿看，不决定什么是真的。**
+   * 而且它只包含创作者自己打的字——助手说过的话在 `assistant-signals.mjs`
+   * 里就被丢掉了，到不了这里。知识还是要回到 Wiki，证据还是要回到原话。
+   */
+  const research = recentResearchSignals(workspace);
+
   return {
     wikiPages,
     problems,
     voices,
     agendas,
     agenda,
+    research,
     focus: clean(focus, 500),
     // 有多少张 Wiki、多少条问题、几段原话真的进了这次上下文——回执要说得出来。
     read: {
       wikiPages: wikiPages.length,
       problems: problems.length,
       voices: voices.length,
+      researchThreads: research.length,
       pendingVoices: pending.length,
       reusedVoices: pending.length ? 0 : voices.length,
       voiceChars: spent,
