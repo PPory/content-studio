@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { createServer } from "vite";
 import { createBookRecord } from "../server/routes/books-local.mjs";
 import { applyWikiCompile, captureWikiSourceSnapshot } from "../server/domain/wiki-pages.mjs";
+import { buildContentBridgeContext } from "../server/domain/content-bridge-context.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-bridge-ui-"));
@@ -47,7 +48,7 @@ async function request(pathname, options = {}) {
   return data;
 }
 
-function strongCandidate({ dominantAction = "judgment", agendaId = "" } = {}) {
+function strongCandidate({ dominantAction = "judgment", agendaId = "", wikiId, problemId, freshness } = {}) {
   const experience = dominantAction === "experience";
   return {
     fit: "strong",
@@ -65,8 +66,8 @@ function strongCandidate({ dominantAction = "judgment", agendaId = "" } = {}) {
       : { available: false, reason: "当前表达不依赖个人经历。", sourceRefs: [] },
     construction: {
       elements: [
-        { id: "problem", type: "problem", label: "AI 使用中的判断依赖", source_kind: "audience_problem", source_id: "problem-source" },
-        { id: "concept", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: "wiki-source" },
+        { id: "problem", type: "problem", label: "AI 使用中的判断依赖", source_kind: "audience_problem", source_id: problemId },
+        { id: "concept", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiId },
         { id: "claim", type: "judgment", label: "保留人的判断权", source_kind: "", source_id: "" },
       ],
       relations: [
@@ -85,10 +86,11 @@ function strongCandidate({ dominantAction = "judgment", agendaId = "" } = {}) {
     agendaFit: agendaId
       ? { status: "strong", reason: "这条内容会强化高质量使用 AI 必须保留人的判断权。" }
       : { status: "none", reason: "可以暂不关联议程，先验证连接本身。" },
+    freshness,
   };
 }
 
-function weakCandidate() {
+function weakCandidate({ wikiId, problemId, freshness } = {}) {
   return {
     fit: "weak",
     fitReason: "CSS 网格布局无法自然解释退休账户风险，两者目前没有足够自然的连接。",
@@ -100,8 +102,8 @@ function weakCandidate() {
     experience: { available: false, reason: "不适用。", sourceRefs: [] },
     construction: {
       elements: [
-        { id: "problem", type: "problem", label: "退休账户风险", source_kind: "audience_problem", source_id: "weak-problem-source" },
-        { id: "method", type: "method", label: "CSS 网格布局", source_kind: "wiki_page", source_id: "weak-wiki-source" },
+        { id: "problem", type: "problem", label: "退休账户风险", source_kind: "audience_problem", source_id: problemId },
+        { id: "method", type: "method", label: "CSS 网格布局", source_kind: "wiki_page", source_id: wikiId },
       ],
       relations: [],
       entry_options: [],
@@ -109,6 +111,7 @@ function weakCandidate() {
       counterarguments: [{ claim: "表面上的网格类比不能替代真实金融知识。", response: "应更换知识或用户问题。" }],
     },
     agendaFit: { status: "weak", reason: "与当前议程不匹配。" },
+    freshness,
   };
 }
 
@@ -219,12 +222,31 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  let previewCalls = 0;
+  let agendaFitCalls = 0;
   await page.route("**/api/workspace/content-opportunities/preview", async (route) => {
+    previewCalls += 1;
     const payload = route.request().postDataJSON();
+    const context = buildContentBridgeContext(workspace, {
+      wikiPageId: payload.wikiPageId,
+      audienceProblemId: payload.audienceProblemId,
+      agendaId: payload.agendaId || null,
+    });
     const candidate = payload.wikiPageId === weakWiki.id || payload.audienceProblemId === weakProblemId
-      ? weakCandidate()
-      : strongCandidate({ dominantAction: payload.dominantAction || "judgment", agendaId: payload.agendaId || "" });
+      ? weakCandidate({ wikiId: payload.wikiPageId, problemId: payload.audienceProblemId, freshness: context.freshness })
+      : strongCandidate({ dominantAction: payload.dominantAction || "judgment", agendaId: payload.agendaId || "", wikiId: payload.wikiPageId, problemId: payload.audienceProblemId, freshness: context.freshness });
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, candidate }) });
+  });
+  await page.route("**/api/workspace/content-opportunities/agenda-fit", async (route) => {
+    agendaFitCalls += 1;
+    const payload = route.request().postDataJSON();
+    const agenda = workspace.contentBridge.agenda(payload.agendaId);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true,
+      candidateOnly: true,
+      agendaFit: { status: "strong", reason: "这条内容会强化高质量使用 AI 必须保留人的判断权。" },
+      agendaFreshness: { agendaId: agenda.id, agendaUpdatedAt: agenda.updatedAt },
+    }) });
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
@@ -251,42 +273,56 @@ try {
   const bridgeText = await page.locator(".bridge-result").innerText();
   check("没有经历来源时只给条件式入口", bridgeText.includes("如果你确实有") && !bridgeText.includes("我最近发现"));
 
+  const claimBeforeAgenda = await page.locator(".bridge-result-section blockquote").textContent();
+  const callsBeforeAgenda = previewCalls;
   await page.locator(".bridge-agenda-field select").selectOption(agendaId);
   await page.getByText("高质量使用 AI，核心是保留人的判断权。", { exact: true }).waitFor();
-  check("用户可选择长期议程并看到长期判断", await page.locator(".bridge-agenda-field select").inputValue() === agendaId);
+  check("选择长期议程只计算 Agenda Fit，不重写整个 Candidate", await page.locator(".bridge-agenda-field select").inputValue() === agendaId
+    && agendaFitCalls === 1 && previewCalls === callsBeforeAgenda
+    && await page.locator(".bridge-result-section blockquote").textContent() === claimBeforeAgenda);
+  check("按议程重新构造需要明确点击", await page.getByRole("button", { name: "按这个议程重新构造" }).count() === 1);
 
-  await page.getByRole("button", { name: "找证据缺口" }).click();
+  await page.getByRole("button", { name: "查看证据缺口" }).click();
   check("证据缺口操作把焦点送到可读结果", await page.locator(".bridge-checks > div").first().evaluate((element) => element === document.activeElement));
-  await page.getByRole("button", { name: "看反方" }).click();
+  await page.getByRole("button", { name: "查看反方" }).click();
   check("反方操作把焦点送到可读结果", await page.locator(".bridge-checks > div").nth(1).evaluate((element) => element === document.activeElement));
 
   await page.getByRole("button", { name: "保存为内容机会" }).click();
   await page.getByText("内容机会已保存", { exact: true }).waitFor();
   const saved = workspace.db.prepare("SELECT id,agenda_id AS agendaId,dominant_action AS dominantAction FROM content_opportunities").get();
   check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "experience");
+  check("保存后立即出现在最近内容机会", await page.locator(".bridge-recent-list").getByText("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。").count() === 1);
+
   if (process.argv.includes("--shots")) {
     await fs.mkdir(shotDir, { recursive: true });
     await page.screenshot({ path: path.join(shotDir, "content-bridge-desktop.png"), fullPage: true });
   }
 
   await page.getByRole("button", { name: "建立内容项目" }).click();
-  await page.getByRole("heading", { name: "先守住这条内容为什么值得写" }).waitFor();
+  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
   const link = workspace.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=?").get(saved.id);
-  check("已保存机会复用现有项目并显示创作意图", Boolean(link?.projectId)
-    && (await page.locator(".content-intent").innerText()).includes("认知卸载")
-    && (await page.locator(".content-intent").innerText()).includes("保留人的判断权"));
+  check("创作意图默认折叠且正文保持视觉主体", Boolean(link?.projectId)
+    && await page.getByRole("button", { name: "展开" }).count() === 1
+    && !(await page.locator(".content-intent").innerText()).includes("认知卸载"));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-collapsed.png"), fullPage: true });
+  await page.getByRole("button", { name: "展开" }).click();
+  check("展开后显示支撑知识、表达动作、证据缺口和 AI 思考动作", (await page.locator(".content-intent").innerText()).includes("认知卸载")
+    && (await page.locator(".content-intent").innerText()).includes("主导表达动作")
+    && (await page.locator(".content-intent").innerText()).includes("当前证据缺口"));
   check("项目优先提供挑战判断、证据和入口操作", await page.getByRole("button", { name: "挑战核心判断" }).count() === 1
     && await page.getByRole("button", { name: "找证据" }).count() === 1
     && await page.getByRole("button", { name: "换大众入口" }).count() === 1);
-  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-project.png"), fullPage: true });
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-expanded.png"), fullPage: true });
 
   await page.reload();
-  await page.getByRole("heading", { name: "先守住这条内容为什么值得写" }).waitFor();
+  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
   check("重载后项目与内容机会关系仍然存在", (await page.locator(".content-intent").innerText()).includes("AI 正从信息工具进入人的判断链"));
-  await page.getByRole("button", { name: "回到 Wiki" }).click();
+  await page.getByRole("button", { name: "展开" }).click();
+  await page.getByRole("button", { name: "回到知识库" }).click();
   await page.getByRole("heading", { name: "认知卸载", exact: true }).waitFor();
   check("项目可以回到支撑 Wiki", page.url().includes(`#/entries/${cognitiveWiki.id}`));
   await page.goto(`http://127.0.0.1:${PORT}/#/project/${link.projectId}`);
+  await page.getByRole("button", { name: "展开" }).click();
   await page.getByRole("button", { name: "查看来源" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).waitFor();
   check("项目可以回到用户问题及其来源", page.url().includes(encodeURIComponent(`problem:${problemId}`)));
@@ -313,6 +349,22 @@ try {
   check("小屏和减少动态效果模式下仍可完整阅读", overflow <= 2 && projectButtonCount === 1,
     `横向溢出 ${overflow}px；项目按钮 ${projectButtonCount}；越界元素 ${JSON.stringify(overflowNodes)}`);
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-bridge-mobile.png"), fullPage: true });
+
+  await page.route("**/api/workspace/agendas", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: false, error: "议程暂时不可用" }) }));
+  await page.route("**/api/workspace/insights", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: false, error: "洞察暂时不可用" }) }));
+  await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
+  await page.getByRole("heading", { name: "把你搞懂的，连接到用户正在困惑的。" }).waitFor();
+  await page.getByText("洞察报告暂时无法读取。你仍可选择已有问题或自己记录。").waitFor();
+  check("Agenda 和 Insights 失败时 Bridge 核心选择仍可使用", await page.getByRole("button", { name: "选择知识：认知卸载" }).count() === 1);
+  await page.getByRole("button", { name: "选择知识：认知卸载" }).click();
+  await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？" }).click();
+  await page.getByRole("button", { name: "看看怎么连接" }).click();
+  await page.getByRole("heading", { name: "长期议程" }).waitFor();
+  check("无 Agenda 时仍可新建议程并继续构造", await page.getByRole("button", { name: "＋ 新建议程" }).count() === 1
+    && await page.getByText("长期议程暂时无法读取，不影响继续构造和保存不关联议程的机会。").count() === 1);
+  await page.getByRole("button", { name: "＋ 新建议程" }).click();
+  check("最小议程创建只要求名称和长期判断", await page.getByLabel("名称").count() === 1
+    && await page.getByLabel("希望用户最终形成什么判断").count() === 1);
 
   await page.keyboard.press("Control+K");
   await page.getByText("找题（旧版）", { exact: true }).waitFor();

@@ -22,6 +22,50 @@
   font-size: var(--fs-2xl);
   line-height: 1.3;
   letter-spacing: -.025em;
+.bridge-recent {
+  margin-bottom: var(--sp-7);
+  padding: var(--sp-5) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.bridge-recent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.bridge-recent-head h3 { margin: 0; font-size: var(--fs-sm); }
+.bridge-recent-head span,
+.bridge-recent-empty,
+.bridge-insight-source { color: var(--text-3); font-size: var(--fs-xs); }
+.bridge-recent-empty { margin: 0; }
+.bridge-recent-list { display: grid; gap: 1px; background: var(--border); }
+.bridge-recent-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  background: var(--surface);
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+.bridge-recent-list button:hover { background: var(--surface-2); }
+.bridge-recent-list button > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.bridge-recent-list strong,
+.bridge-recent-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bridge-recent-list strong { font-size: var(--fs-sm); }
+.bridge-recent-list small { color: var(--text-3); font-size: var(--fs-xs); }
+.bridge-recent-meta { display: flex; align-items: center; gap: var(--sp-3); flex: none; }
+.bridge-recent-meta em { padding: 2px 7px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); font-style: normal; }
+.bridge-local-error { margin: var(--sp-3) 0; color: var(--emph); font-size: var(--fs-xs); line-height: 1.5; }
+.bridge-insight-source { margin: var(--sp-2) 0 0; }
 }
 
 .bridge-head > div > p:last-child {
@@ -208,6 +252,32 @@
 .bridge-result-section small { display: block; margin-top: var(--sp-3); color: var(--text-3); }
 .bridge-result-section blockquote { max-width: 920px; margin: 0; font-size: var(--fs-xl); line-height: 1.55; letter-spacing: -.015em; }
 
+.bridge-agenda-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-4); }
+.bridge-agenda-create {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 620px;
+  margin-top: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.bridge-agenda-create label { display: grid; gap: var(--sp-2); color: var(--text-2); font-size: var(--fs-sm); }
+.bridge-agenda-create input,
+.bridge-agenda-create textarea {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+}
+.bridge-agenda-create textarea { resize: vertical; }
+.bridge-agenda-create input:focus,
+.bridge-agenda-create textarea:focus { outline: 0; border-color: var(--border-strong); }
+.bridge-agenda-create .btn { justify-self: start; }
 .bridge-agenda-field { display: grid; gap: var(--sp-3); max-width: 520px; margin-bottom: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
 .bridge-agenda-field select { min-height: 42px; padding: 0 var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-1); font: inherit; }
 
@@ -264,6 +334,9 @@
   .bridge-result-section blockquote { font-size: var(--fs-lg); }
   .bridge-action-menu { width: 100%; overflow-x: auto; border-radius: var(--r-md); }
   .bridge-result-footer { align-items: stretch; flex-direction: column; }
+  .bridge-recent-list button { align-items: flex-start; flex-direction: column; gap: var(--sp-2); }
+  .bridge-recent-meta { width: 100%; justify-content: space-between; }
+  .bridge-recent-head span { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

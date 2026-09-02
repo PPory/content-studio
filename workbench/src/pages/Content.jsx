@@ -108,7 +108,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     <>
       <PageHeader
         title="创作"
-        desc="不再在选题库和稿件库之间来回找。这里按一篇内容真正走到哪一步，把下一步摆在最前面。"
+        desc="这里按一篇内容真正走到哪一步，把最需要推进的下一步摆在前面。"
         aside={
           <>
             {result ? <span className="project-total">{result.total ?? projects.length} 个内容项目</span> : null}

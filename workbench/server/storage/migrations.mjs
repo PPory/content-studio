@@ -10,6 +10,7 @@ const wikiSql = fs.readFileSync(new URL("./migrations/0006-wiki.sql", import.met
 const sourceKindSql = fs.readFileSync(new URL("./migrations/0007-source-kind.sql", import.meta.url), "utf8");
 const sourceIngestsSql = fs.readFileSync(new URL("./migrations/0008-source-ingests.sql", import.meta.url), "utf8");
 const wikiEvidenceSql = fs.readFileSync(new URL("./migrations/0009-wiki-evidence.sql", import.meta.url), "utf8");
+const contentBridgeIntegritySql = fs.readFileSync(new URL("./migrations/0012-content-bridge-integrity.sql", import.meta.url), "utf8");
 const llmWikiPagesSql = fs.readFileSync(new URL("./migrations/0010-llm-wiki-pages.sql", import.meta.url), "utf8");
 const contentBridgeSql = fs.readFileSync(new URL("./migrations/0011-content-bridge.sql", import.meta.url), "utf8");
 
@@ -79,6 +80,12 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     name: "content-bridge",
     sql: contentBridgeSql,
     checksum: crypto.createHash("sha256").update(contentBridgeSql).digest("hex"),
+  }),
+  Object.freeze({
+    version: 12,
+    name: "content-bridge-integrity",
+    sql: contentBridgeIntegritySql,
+    checksum: crypto.createHash("sha256").update(contentBridgeIntegritySql).digest("hex"),
   }),
 ]);
 

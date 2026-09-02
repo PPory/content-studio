@@ -204,7 +204,7 @@ export function Hotspots({ onIntake, onGo }) {
             });
             setSeeding(null);
             await loadSeeds();
-            setToast("记下了，去「内容 · 种子」挑一个写");
+            setToast("已记下这条反应。需要时可从搜索打开旧版种子继续处理。");
           } catch (e) {
             setSeedError(e.message || "记不下来");
           } finally {

@@ -1,5 +1,6 @@
 import { completeJson } from "../lib/model-json.mjs";
 import { validateContentConstruction } from "./content-bridge.mjs";
+import { buildContentBridgeContext } from "./content-bridge-context.mjs";
 
 const clean = (value, max = 8_000) => String(value ?? "").trim().slice(0, max);
 const PROBLEM_PATTERNS = new Set(["trend", "frequency", "knowledge_gap", "feedback"]);
@@ -71,34 +72,7 @@ export async function extractAudienceProblemCandidates(env, workspace, { insight
   };
 }
 
-function activeWiki(workspace, id) {
-  const row = workspace.db.prepare(`SELECT p.id,p.title,p.summary,p.body_markdown AS bodyMarkdown,p.page_type AS pageType
-    FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(clean(id, 500));
-  if (!row) throw Object.assign(new Error("Wiki 页面不存在"), { status: 404 });
-  row.sources = workspace.db.prepare(`SELECT source_entity_id AS sourceId,source_quote AS quote,source_locator AS locator,contribution
-    FROM wiki_page_sources WHERE page_id=? ORDER BY created_at DESC LIMIT 20`).all(row.id);
-  return row;
-}
-
-function activeProblem(workspace, id) {
-  const problem = workspace.contentBridge.audienceProblem(clean(id, 500));
-  if (problem.status !== "active") throw Object.assign(new Error("用户问题已归档"), { status: 409 });
-  return problem;
-}
-
-function activeAgenda(workspace, id) {
-  if (!id) return null;
-  const agenda = workspace.contentBridge.agenda(clean(id, 500));
-  if (agenda.status !== "active") throw Object.assign(new Error("议程已归档"), { status: 409 });
-  return agenda;
-}
-
-function hasExperienceProvenance(workspace) {
-  return Boolean(workspace.db.prepare(`SELECT 1 FROM materials m JOIN entities e ON e.id=m.id AND e.deleted_at IS NULL
-    WHERE m.material_type='个人经历' AND length(trim(m.body_markdown))>0 LIMIT 1`).get());
-}
-
-function normalizeBridgeCandidate(data, { hasExperience }) {
+function normalizeBridgeCandidate(data, { hasExperience, allowedSources }) {
   if (!data || typeof data !== "object") throw new Error("模型没有返回内容机会对象");
   const fit = clean(data.fit, 20);
   if (!FITS.has(fit)) throw new Error("模型返回的匹配度无效");
@@ -125,7 +99,7 @@ function normalizeBridgeCandidate(data, { hasExperience }) {
       entry_options: data.entry_options || data.entryOptions || [],
       evidence_gaps: data.evidence_gaps || data.evidenceGaps || [],
       counterarguments: data.counterarguments || [],
-    }),
+    }, { allowedSources }),
     agendaFit: { status: agendaStatus, reason: clean(agendaFit.reason, 2_000) },
     experience: {
       available: hasExperience,
@@ -149,12 +123,13 @@ function normalizeBridgeCandidate(data, { hasExperience }) {
 }
 
 export async function previewContentOpportunity(env, workspace, { wikiPageId, audienceProblemId, agendaId = null, dominantAction = "" } = {}) {
-  const wiki = activeWiki(workspace, wikiPageId);
-  const problem = activeProblem(workspace, audienceProblemId);
-  const agenda = activeAgenda(workspace, agendaId);
-  const hasExperience = hasExperienceProvenance(workspace);
   const requestedAction = clean(dominantAction, 40);
   if (requestedAction && !ACTIONS.has(requestedAction)) throw Object.assign(new Error("主导表达动作不受支持"), { status: 400 });
+  const context = buildContentBridgeContext(workspace, {
+    wikiPageId, audienceProblemId, agendaId, includeExperiences: requestedAction === "experience",
+  });
+  const { wiki, problem, agenda, experiences, allowedSources } = context;
+  const hasExperience = experiences.length > 0;
   const completion = await completionFor(env)(env, {
     system: [
       "你为 Content Studio 判断一份长期知识能否自然解释一个真实用户问题。",
@@ -165,10 +140,11 @@ export async function previewContentOpportunity(env, workspace, { wikiPageId, au
       "大众入口 entry_options 必须包含 scope_check.status=supported|too_broad 和 reason；不能承诺正文回答不了的问题。",
       "事实、数据、引用只能基于给出的 Wiki 与来源；证据不足要放进 evidence_gaps。",
       hasExperience
-        ? "工作区存在个人经历来源，但只有带明确 source_id 的经历要素才能使用。"
+        ? "只可使用本次提供的个人经历。experience 要素必须使用 source_kind=material 和给出的真实 source_id，不得伪造。"
         : "工作区没有个人经历来源。不得生成第一人称经历或 experience 要素；若建议经历型，只能提示用户补充真实经历。",
       agenda ? "评估这条内容是否强化所选议程；不匹配时如实返回 weak 或 none。" : "没有选择议程，agenda_fit.status 返回 none。",
       "elements 类型只能 concept,fact,case,experience,judgment,problem,evidence,method,analogy,conflict,observation。",
+      `所有需要来源的 elements 和 evidence_gaps.source_refs，只能引用以下 source_kind/source_id 对：${JSON.stringify(allowedSources)}`,
       "relations 类型只能 causal,analogy,contrast,conflict,support,challenge,concept_to_case,case_to_abstraction,problem_to_mechanism,mechanism_to_method，且 from/to 必须引用 elements.id。",
       "只输出 JSON。",
       JSON.stringify({
@@ -191,9 +167,48 @@ export async function previewContentOpportunity(env, workspace, { wikiPageId, au
       `Wiki 页面：\n${JSON.stringify(wiki)}`,
       `用户问题与来源：\n${JSON.stringify(problem)}`,
       `长期议程：\n${JSON.stringify(agenda)}`,
+      `可使用的个人经历：\n${JSON.stringify(experiences)}`,
       requestedAction ? `用户指定主导表达动作：${requestedAction}` : "请建议主导表达动作。",
     ].join("\n\n"),
     maxTokens: 8_000,
   });
-  return { candidate: normalizeBridgeCandidate(completion.data, { hasExperience }), model: completion.model || "" };
+  return {
+    candidate: {
+      ...normalizeBridgeCandidate(completion.data, { hasExperience, allowedSources }),
+      freshness: context.freshness,
+    },
+    model: completion.model || "",
+  };
+}
+
+export async function previewContentOpportunityAgendaFit(env, workspace, {
+  wikiPageId, audienceProblemId, agendaId, candidate,
+} = {}) {
+  const context = buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId, agendaId });
+  if (!context.agenda) throw Object.assign(new Error("请选择长期议程"), { status: 400 });
+  const proposal = {
+    coreClaim: clean(candidate?.coreClaim, 4_000),
+    cognitiveGap: clean(candidate?.cognitiveGap, 4_000),
+    knowledgeExplanation: clean(candidate?.knowledgeExplanation, 8_000),
+  };
+  if (!proposal.coreClaim || !proposal.cognitiveGap || !proposal.knowledgeExplanation) {
+    throw Object.assign(new Error("当前内容机会候选不完整"), { status: 400 });
+  }
+  const completion = await completionFor(env)(env, {
+    system: [
+      "你只评估当前内容候选与长期议程的匹配关系，不得改写候选的核心判断、认知差、知识解释或内容结构。",
+      "status 只能 strong、medium、weak。只输出 JSON：{\"agenda_fit\":{\"status\":\"strong|medium|weak\",\"reason\":\"...\"}}。",
+    ].join("\n"),
+    user: `当前候选：\n${JSON.stringify(proposal)}\n\n长期议程：\n${JSON.stringify(context.agenda)}`,
+    maxTokens: 1_200,
+  });
+  const raw = completion.data?.agenda_fit || completion.data?.agendaFit;
+  const status = clean(raw?.status, 20);
+  const reason = clean(raw?.reason, 2_000);
+  if (!["strong", "medium", "weak"].includes(status) || !reason) throw new Error("模型返回的议程匹配结果无效");
+  return {
+    agendaFit: { status, reason },
+    agendaFreshness: { agendaId: context.agenda.id, agendaUpdatedAt: context.agenda.updatedAt },
+    model: completion.model || "",
+  };
 }

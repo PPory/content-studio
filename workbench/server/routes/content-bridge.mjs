@@ -1,5 +1,5 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
-import { extractAudienceProblemCandidates, previewContentOpportunity } from "../domain/content-bridge-ai.mjs";
+import { extractAudienceProblemCandidates, previewContentOpportunity, previewContentOpportunityAgendaFit } from "../domain/content-bridge-ai.mjs";
 import { CONTENT_BRIDGE_VALUES } from "../domain/content-bridge.mjs";
 
 async function ready(source) {
@@ -153,6 +153,26 @@ export const contentBridgeRoutes = [
     }),
   },
   {
+    method: "POST",
+    path: "/api/workspace/content-opportunities/agenda-fit",
+    handler: guard(async ({ env, workspace, req, res }) => {
+      const body = await readJsonBody(req);
+      const before = {
+        opportunities: workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count,
+        projects: workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count,
+      };
+      const result = await previewContentOpportunityAgendaFit(env, workspace, body);
+      const after = {
+        opportunities: workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count,
+        projects: workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count,
+      };
+      if (before.opportunities !== after.opportunities || before.projects !== after.projects) {
+        throw new Error("议程匹配 Preview 产生了不应有的写入");
+      }
+      json(res, { ok: true, candidateOnly: true, ...result });
+    }),
+  },
+  {
     method: "GET",
     path: "/api/workspace/content-opportunities",
     handler: guard(async ({ workspace, res, url }) => {
@@ -178,6 +198,7 @@ export const contentBridgeRoutes = [
         fit: body.fit,
         fitReason: body.fitReason,
         construction: body.construction,
+        freshness: body.freshness,
         actor: "user",
         confirmed: body.confirmed === true,
         now: new Date(),

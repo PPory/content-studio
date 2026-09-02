@@ -126,6 +126,7 @@ export const api = {
   createAudienceProblem: (body) => postJson("/api/workspace/audience-problems", body),
   updateAudienceProblem: (id, body) => postJson(`/api/workspace/audience-problems/${encodeURIComponent(id)}/update`, body),
   previewContentOpportunity: (body) => postJson("/api/workspace/content-opportunities/preview", body),
+  previewContentOpportunityAgendaFit: (body) => postJson("/api/workspace/content-opportunities/agenda-fit", body),
   contentOpportunities: () => req("/api/workspace/content-opportunities"),
   contentOpportunity: (id) => req(`/api/workspace/content-opportunities/${encodeURIComponent(id)}`),
   saveContentOpportunity: (body) => postJson("/api/workspace/content-opportunities", body),

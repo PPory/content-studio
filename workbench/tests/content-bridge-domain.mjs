@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { openWorkspace } from "../server/storage/workspace.mjs";
+import { buildContentBridgeContext } from "../server/domain/content-bridge-context.mjs";
 import { createUlid } from "../server/storage/ids.mjs";
 import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
 
@@ -40,7 +41,7 @@ try {
     "content_opportunities",
     "content_project_opportunities",
   ].every((name) => db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)));
-  check("工作区 Schema 已升级到 Content Bridge 版本", WORKSPACE_SCHEMA_VERSION === 11);
+  check("工作区 Schema 已升级到 Content Bridge 完整性版本", WORKSPACE_SCHEMA_VERSION === 12);
 
   assert.throws(() => contentBridge.createAgenda({ title: "判断权", desiredJudgment: "人应保留判断权", actor: "user", now }), /明确确认/);
   const agendaId = contentBridge.createAgenda({
@@ -88,7 +89,7 @@ try {
 
   const wikiPageId = createWikiPage(workspace);
   const invalidConstruction = {
-    elements: [{ id: "knowledge", type: "concept", label: "认知卸载" }],
+    elements: [{ id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiPageId }],
     relations: [{ from: "knowledge", to: "missing", type: "causal" }],
   };
   assert.throws(() => contentBridge.saveOpportunity({
@@ -103,6 +104,7 @@ try {
     fitReason: "该知识能直接解释问题背后的机制。",
     construction: invalidConstruction,
     actor: "user",
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId, agendaId }).freshness,
     confirmed: true,
     now,
   }), /两个不同的现有要素/);
@@ -115,11 +117,57 @@ try {
     dominantAction: "experience",
     fit: "medium",
     fitReason: "测试",
-    construction: { elements: [{ id: "story", type: "experience", label: "我最近发现自己什么都问 AI" }] },
+    construction: { elements: [{ id: "story", type: "experience", label: "我最近发现自己什么都问 AI", source_kind: "material", source_id: "fake-experience" }] },
+    actor: "user",
+    confirmed: true,
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId }).freshness,
+    now,
+  }), /真实来源/);
+
+  const experiencePayload = (sourceId) => ({
+    wikiPageId,
+    audienceProblemId: problemId,
+    coreClaim: "只有真实经历才能成为第一人称入口",
+    knowledgeExplanation: "知识解释仍来自当前 Wiki。",
+    cognitiveGap: "经历型表达不能等同于虚构第一人称。",
+    dominantAction: "experience",
+    fit: "medium",
+    fitReason: "真实经历可以作为条件明确的表达入口。",
+    construction: { elements: [{ id: "story", type: "experience", label: "一次真实的 AI 选择经历", source_kind: "material", source_id: sourceId }] },
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId }).freshness,
     actor: "user",
     confirmed: true,
     now,
-  }), /真实来源/);
+  });
+  const realExperienceId = workspace.domain.createMaterial({
+    title: "一次真实的 AI 选择经历",
+    type: "个人经历",
+    bodyMarkdown: "我曾在一次真实选择中先问 AI，随后重新核对自己的判断。",
+    actor: "user",
+    now,
+  });
+  const experienceOpportunityId = contentBridge.saveOpportunity(experiencePayload(realExperienceId));
+  check("真实存在的个人经历素材可以通过服务端真实性校验", contentBridge.opportunity(experienceOpportunityId).construction.elements[0].source_id === realExperienceId);
+  contentBridge.setOpportunityArchived(experienceOpportunityId, true, { actor: "user", confirmed: true, now });
+
+  const wrongTypeId = workspace.domain.createMaterial({
+    title: "不是个人经历的观点",
+    type: "核心观点",
+    bodyMarkdown: "这是一条观点，不是用户个人经历。",
+    actor: "user",
+    now,
+  });
+  assert.throws(() => contentBridge.saveOpportunity(experiencePayload(wrongTypeId)), /类型不符/);
+  const deletedExperienceId = workspace.domain.createMaterial({
+    title: "已删除的个人经历",
+    type: "个人经历",
+    bodyMarkdown: "这条经历随后被用户移入回收站。",
+    actor: "user",
+    now,
+  });
+  workspace.domain.softDeleteEntity(deletedExperienceId, { actor: "user", now });
+  assert.throws(() => contentBridge.saveOpportunity(experiencePayload(deletedExperienceId)), /已删除/);
+  check("类型不符和已删除的个人经历 source_id 均被拒绝", true);
 
   const opportunityId = contentBridge.saveOpportunity({
     wikiPageId,
@@ -146,6 +194,7 @@ try {
       counterarguments: [{ claim: "把判断交给 AI 也可能释放精力", response: "需要区分低风险选择与关键判断" }],
     },
     actor: "user",
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId: problemId, agendaId }).freshness,
     confirmed: true,
     now,
   });
@@ -156,6 +205,13 @@ try {
   check("Opportunity 复用现有 Domain 创建项目且幂等建立关系", projectId === replayProjectId
     && db.prepare("SELECT COUNT(*) AS count FROM content_project_opportunities WHERE opportunity_id=?").get(opportunityId).count === 1
     && workspace.domain.projectStage(projectId).stage === "策划中");
+
+  const anotherProjectId = workspace.domain.createProject({ title: "并发重复项目", actor: "user", confirmed: true, now });
+  assert.throws(() => workspace.db.prepare(`INSERT INTO content_project_opportunities(project_id,opportunity_id,role,created_at)
+    VALUES (?, ?, 'primary', ?)`).run(anotherProjectId, opportunityId, now.toISOString()), /UNIQUE/);
+  check("数据库级唯一约束拒绝同一 Opportunity 的第二个 primary Project", workspace.db.prepare(`SELECT COUNT(*) AS count
+    FROM content_project_opportunities WHERE opportunity_id=? AND role='primary'`).get(opportunityId).count === 1);
+  workspace.domain.softDeleteEntity(anotherProjectId, { actor: "user", now });
 
   contentBridge.setOpportunityArchived(opportunityId, true, { actor: "user", confirmed: true, now: new Date(now.getTime() + 4_000) });
   check("Opportunity 支持归档并保留 Project Link", contentBridge.opportunities().length === 0

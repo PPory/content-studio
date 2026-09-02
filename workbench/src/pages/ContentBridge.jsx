@@ -99,6 +99,11 @@ export function ContentBridge({ state = "", onGo }) {
   const [problems, setProblems] = useState([]);
   const [agendas, setAgendas] = useState([]);
   const [insights, setInsights] = useState([]);
+  const [recentOpportunities, setRecentOpportunities] = useState([]);
+  const [agendaError, setAgendaError] = useState(null);
+  const [insightsError, setInsightsError] = useState(null);
+  const [recentError, setRecentError] = useState(null);
+  const [agendaFitBusy, setAgendaFitBusy] = useState(false);
   const [wikiId, setWikiId] = useState(initial.wikiId);
   const [problemId, setProblemId] = useState(initial.problemId);
   const [agendaId, setAgendaId] = useState("");
@@ -118,24 +123,45 @@ export function ContentBridge({ state = "", onGo }) {
   const [saveBusy, setSaveBusy] = useState(false);
   const [savedOpportunity, setSavedOpportunity] = useState(null);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [agendaFormOpen, setAgendaFormOpen] = useState(false);
+  const [agendaTitle, setAgendaTitle] = useState("");
+  const [agendaJudgment, setAgendaJudgment] = useState("");
+  const [agendaCreateBusy, setAgendaCreateBusy] = useState(false);
+
   const evidenceRef = useRef(null);
   const counterRef = useRef(null);
 
-  const load = async () => {
+  const load = async (requested = initial) => {
     setLoading(true);
     setError(null);
+    setAgendaError(null);
+    setInsightsError(null);
+    setRecentError(null);
+    const [wikiResult, problemResult, agendaResult, insightResult, recentResult, opportunityResult] = await Promise.allSettled([
+      api.wiki(),
+      api.audienceProblems(),
+      api.agendas(),
+      api.workspaceInsights(),
+      api.contentOpportunities(),
+      requested.opportunityId ? api.contentOpportunity(requested.opportunityId) : Promise.resolve(null),
+    ]);
     try {
-      const [wiki, problemData, agendaData, insightData, opportunityData] = await Promise.all([
-        api.wiki(),
-        api.audienceProblems(),
-        api.agendas(),
-        api.workspaceInsights(),
-        initial.opportunityId ? api.contentOpportunity(initial.opportunityId) : Promise.resolve(null),
-      ]);
+      if (wikiResult.status === "rejected") throw wikiResult.reason;
+      if (problemResult.status === "rejected") throw problemResult.reason;
+      if (opportunityResult.status === "rejected") throw opportunityResult.reason;
+      const wiki = wikiResult.value;
+      const problemData = problemResult.value;
+      const agendaData = agendaResult.status === "fulfilled" ? agendaResult.value : { agendas: [] };
+      const insightData = insightResult.status === "fulfilled" ? insightResult.value : { reports: [] };
+      const opportunityData = opportunityResult.value;
       setWikiData(wiki);
       setProblems(problemData.problems || []);
       setAgendas(agendaData.agendas || []);
       setInsights(insightData.reports || []);
+      setRecentOpportunities(recentResult.status === "fulfilled" ? (recentResult.value.opportunities || []).slice(0, 5) : []);
+      if (agendaResult.status === "rejected") setAgendaError(agendaResult.reason);
+      if (insightResult.status === "rejected") setInsightsError(insightResult.reason);
+      if (recentResult.status === "rejected") setRecentError(recentResult.reason);
       const stored = opportunityData?.opportunity;
       if (stored) {
         const storedProblem = (problemData.problems || []).find((item) => item.id === stored.audienceProblemId);
@@ -156,11 +182,18 @@ export function ContentBridge({ state = "", onGo }) {
             status: stored.agendaId ? "strong" : "none",
             reason: storedAgenda?.desiredJudgment || "这条机会暂未关联长期议程。",
           },
+          freshness: stored.previewFreshness,
         });
         setSavedOpportunity(stored);
+      } else {
+        setWikiId(requested.wikiId);
+        setProblemId(requested.problemId);
+        setAgendaId("");
+        setPreview(null);
+        setSavedOpportunity(null);
       }
-      if (initial.wikiId && !(wiki.pages || []).some((item) => item.id === initial.wikiId)) setWikiId("");
-      if (initial.problemId && !(problemData.problems || []).some((item) => item.id === initial.problemId)) setProblemId("");
+      if (requested.wikiId && !(wiki.pages || []).some((item) => item.id === requested.wikiId)) setWikiId("");
+      if (requested.problemId && !(problemData.problems || []).some((item) => item.id === requested.problemId)) setProblemId("");
     } catch (failure) {
       setError(failure);
     } finally {
@@ -168,7 +201,7 @@ export function ContentBridge({ state = "", onGo }) {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(initial); }, [state]);
 
   const wikiPages = useMemo(() => {
     const term = wikiQuery.trim().toLowerCase();
@@ -219,6 +252,66 @@ export function ContentBridge({ state = "", onGo }) {
       setPreviewBusy(false);
     }
   };
+  const selectAgenda = async (nextAgendaId) => {
+    setAgendaId(nextAgendaId);
+    setSavedOpportunity(null);
+    setPreviewError(null);
+    if (!preview) return;
+    if (!nextAgendaId) {
+      setPreview((current) => ({
+        ...current,
+        agendaFit: { status: "none", reason: "这条机会暂不关联长期议程。" },
+        freshness: { ...current.freshness, agendaId: null, agendaUpdatedAt: null },
+      }));
+      return;
+    }
+    setAgendaFitBusy(true);
+    try {
+      const result = await api.previewContentOpportunityAgendaFit({
+        wikiPageId: wikiId,
+        audienceProblemId: problemId,
+        agendaId: nextAgendaId,
+        candidate: {
+          coreClaim: preview.coreClaim,
+          cognitiveGap: preview.cognitiveGap,
+          knowledgeExplanation: preview.knowledgeExplanation,
+        },
+      });
+      setPreview((current) => ({
+        ...current,
+        agendaFit: result.agendaFit,
+        freshness: { ...current.freshness, ...result.agendaFreshness },
+      }));
+    } catch (failure) {
+      setPreviewError(failure);
+    } finally {
+      setAgendaFitBusy(false);
+    }
+  };
+
+  const createAgenda = async () => {
+    if (!agendaTitle.trim() || !agendaJudgment.trim()) return;
+    setAgendaCreateBusy(true);
+    setPreviewError(null);
+    try {
+      const result = await api.createAgenda({
+        title: agendaTitle.trim(),
+        desiredJudgment: agendaJudgment.trim(),
+        confirmed: true,
+      });
+      setAgendas((items) => [result.agenda, ...items]);
+      setAgendaError(null);
+      setAgendaFormOpen(false);
+      setAgendaTitle("");
+      setAgendaJudgment("");
+      await selectAgenda(result.agenda.id);
+    } catch (failure) {
+      setPreviewError(failure);
+    } finally {
+      setAgendaCreateBusy(false);
+    }
+  };
+
 
   const saveOpportunity = async () => {
     if (!preview || !wikiId || !problemId) return;
@@ -233,12 +326,14 @@ export function ContentBridge({ state = "", onGo }) {
         knowledgeExplanation: preview.knowledgeExplanation,
         cognitiveGap: preview.cognitiveGap,
         dominantAction: preview.dominantAction,
+        freshness: preview.freshness,
         fit: preview.fit,
         fitReason: preview.fitReason,
         construction: preview.construction,
         confirmed: true,
       });
       setSavedOpportunity(result.opportunity);
+      setRecentOpportunities((items) => [result.opportunity, ...items.filter((item) => item.id !== result.opportunity.id)].slice(0, 5));
     } catch (failure) {
       setPreviewError(failure);
     } finally {
@@ -336,25 +431,45 @@ export function ContentBridge({ state = "", onGo }) {
   const activeEntry = entryOptions[entryIndex] || null;
   const evidenceGaps = construction.evidence_gaps || [];
   const counterarguments = construction.counterarguments || [];
+  const latestInsight = insights[0] || null;
 
   return (
     <div className="view-body content-bridge">
       <header className="bridge-head">
         <div>
-          <p className="bridge-kicker">Content Bridge</p>
+          <p className="bridge-kicker">内容机会</p>
           <h2>把你搞懂的，连接到用户正在困惑的。</h2>
           <p>不从找标题开始。先看看你的知识能不能真正解决一个用户问题。</p>
         </div>
       </header>
 
+      <section className="bridge-recent" aria-labelledby="bridge-recent-title">
+        <div className="bridge-recent-head">
+          <h3 id="bridge-recent-title">最近保存的内容机会</h3>
+          <span>继续已有工作</span>
+        </div>
+        {recentError ? <p className="bridge-local-error">最近内容机会暂时无法读取，不影响新建连接。</p> : null}
+        {!recentError && !recentOpportunities.length ? <p className="bridge-recent-empty">保存第一条内容机会后，可以从这里继续。</p> : null}
+        {recentOpportunities.length ? (
+          <div className="bridge-recent-list">
+            {recentOpportunities.map((item) => (
+              <button key={item.id} type="button" onClick={() => onGo?.("bridge", `opportunity:${item.id}`)}>
+                <span><strong>{item.coreClaim}</strong><small>{item.audienceProblemStatement || "关联用户问题"}</small></span>
+                <span className="bridge-recent-meta"><small>{dateLabel(item.updatedAt)}更新</small><em>{item.hasProject ? "已建立项目" : "待建立项目"}</em></span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
       <div className="bridge-picker" aria-label="选择知识和用户问题">
         <section className="bridge-side" aria-labelledby="bridge-wiki-title">
           <div className="bridge-side-head">
             <div><span>01</span><h3 id="bridge-wiki-title">我搞懂了什么</h3></div>
-            <small>Living Wiki</small>
+            <small>长期知识</small>
           </div>
-          <SearchBox value={wikiQuery} onChange={setWikiQuery} placeholder="搜索我的知识" ariaLabel="搜索 Living Wiki" />
-          <div className="bridge-filter" role="tablist" aria-label="筛选 Wiki 类型">
+          <SearchBox value={wikiQuery} onChange={setWikiQuery} placeholder="搜索我的知识" ariaLabel="搜索长期知识" />
+          <div className="bridge-filter" role="tablist" aria-label="筛选知识类型">
             {WIKI_FILTERS.map((item) => (
               <button key={item.key} type="button" role="tab" aria-selected={wikiFilter === item.key} onClick={() => setWikiFilter(item.key)}>{item.label}</button>
             ))}
@@ -362,10 +477,10 @@ export function ContentBridge({ state = "", onGo }) {
           <div className="bridge-side-list">
             {!wikiData?.pages?.length ? (
               <EmptySide action={<button type="button" className="btn" onClick={() => onGo?.("entries")}>去知识库</button>}>
-                先把真正值得长期保留的知识整理进 Wiki。
+                先把真正值得长期保留的知识整理进知识库。
               </EmptySide>
             ) : !wikiPages.length ? (
-              <EmptySide>当前筛选下没有匹配的 Wiki 页面。</EmptySide>
+              <EmptySide>当前筛选下没有匹配的知识页面。</EmptySide>
             ) : wikiPages.map((page) => (
               <SelectionRow key={page.id} selected={wikiId === page.id} onClick={() => selectWiki(page.id)} ariaLabel={`选择知识：${page.title}`}>
                 <strong>{page.title}</strong>
@@ -381,14 +496,16 @@ export function ContentBridge({ state = "", onGo }) {
         <section className="bridge-side" aria-labelledby="bridge-problem-title">
           <div className="bridge-side-head">
             <div><span>02</span><h3 id="bridge-problem-title">用户在困惑什么</h3></div>
-            <small>Radar / 反馈</small>
+            <small>洞察 / 反馈</small>
           </div>
           <div className="bridge-side-actions">
             <button type="button" className="btn btn-sm" disabled={extractBusy || !insights.length} onClick={extractProblems}>
-              {extractBusy ? "正在提取…" : "从最近洞察提取"}
+              {extractBusy ? "正在提取…" : latestInsight ? `从《${latestInsight.title || latestInsight.week || "最近洞察"}》提取用户问题` : "暂无洞察可提取"}
             </button>
             <button type="button" className="btn btn-sm" onClick={() => setManualOpen((value) => !value)}>自己记一个问题</button>
           </div>
+          {latestInsight ? <p className="bridge-insight-source">读取报告：{latestInsight.title || latestInsight.week || "最近洞察"}{latestInsight.generatedAt ? ` · ${dateLabel(latestInsight.generatedAt)}` : ""}</p> : null}
+          {insightsError ? <p className="bridge-local-error">洞察报告暂时无法读取。你仍可选择已有问题或自己记录。</p> : null}
           {manualOpen ? (
             <div className="bridge-manual-form">
               <label>用户正在困惑什么<textarea value={manualStatement} onChange={(event) => setManualStatement(event.target.value)} rows={3} placeholder="写成一个真实问题，而不是热点标题" /></label>
@@ -456,12 +573,24 @@ export function ContentBridge({ state = "", onGo }) {
           <ResultSection index={5} title="长期议程">
             <label className="bridge-agenda-field">
               <span>这条内容会继续强化什么长期判断</span>
-              <select value={agendaId} disabled={previewBusy} onChange={(event) => { const next = event.target.value; setAgendaId(next); runPreview({ agendaOverride: next, dominantAction: preview.dominantAction }); }}>
+              <select value={agendaId} disabled={previewBusy || agendaFitBusy} onChange={(event) => selectAgenda(event.target.value)}>
                 <option value="">暂不关联议程</option>
                 {agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}
               </select>
             </label>
-            <p>{selectedAgenda?.desiredJudgment || preview.agendaFit.reason}</p>
+            {agendaError ? <p className="bridge-local-error">长期议程暂时无法读取，不影响继续构造和保存不关联议程的机会。</p> : null}
+            <p>{agendaFitBusy ? "正在判断与议程的关系…" : selectedAgenda?.desiredJudgment || preview.agendaFit.reason}</p>
+            <div className="bridge-agenda-actions">
+              <button type="button" className="btn btn-sm" onClick={() => setAgendaFormOpen((value) => !value)}>＋ 新建议程</button>
+              {agendaId ? <button type="button" className="btn btn-sm" disabled={previewBusy} onClick={() => runPreview({ agendaOverride: agendaId, dominantAction: preview.dominantAction })}>按这个议程重新构造</button> : null}
+            </div>
+            {agendaFormOpen ? (
+              <div className="bridge-agenda-create">
+                <label>名称<input value={agendaTitle} onChange={(event) => setAgendaTitle(event.target.value)} placeholder="例如：保留人的判断权" /></label>
+                <label>希望用户最终形成什么判断<textarea rows={2} value={agendaJudgment} onChange={(event) => setAgendaJudgment(event.target.value)} placeholder="写出长期希望受众形成的稳定判断" /></label>
+                <button type="button" className="btn btn-primary btn-sm" disabled={!agendaTitle.trim() || !agendaJudgment.trim() || agendaCreateBusy} onClick={createAgenda}>{agendaCreateBusy ? "正在创建…" : "确认创建"}</button>
+              </div>
+            ) : null}
           </ResultSection>
           <ResultSection index={6} title="怎么讲">
             <ol className="bridge-storyline">
@@ -478,9 +607,8 @@ export function ContentBridge({ state = "", onGo }) {
               <span>换一种表达方式</span>
               {ACTIONS.map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
             </div>
-            <button type="button" onClick={() => focusSection(counterRef)}>挑战这个连接</button>
-            <button type="button" onClick={() => focusSection(evidenceRef)}>找证据缺口</button>
-            <button type="button" onClick={() => focusSection(counterRef)}>看反方</button>
+            <button type="button" onClick={() => focusSection(evidenceRef)}>查看证据缺口</button>
+            <button type="button" onClick={() => focusSection(counterRef)}>查看反方</button>
           </div>
 
           <section className="bridge-checks" aria-label="证据和反方">
@@ -498,7 +626,7 @@ export function ContentBridge({ state = "", onGo }) {
             {savedOpportunity ? (
               <Note title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
             ) : (
-              <Note title="目前仍是候选">Preview 不会创建项目、修改 Wiki 或写入正文。只有你确认保存后，才会写入内容机会。</Note>
+              <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会。</Note>
             )}
             {savedOpportunity ? (
               <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>

@@ -200,7 +200,7 @@ export function SettingsWritingProfile({ onSaved }) {
 
       <section className="profile-experts" aria-label="专家能力出现位置">
         <div><b>专家能力如何出现</b><span>{enabledExperts.length} 项</span></div>
-        <p>它们不是一个统一下拉框，而是在对应任务里直接工作：找题时定方向，写作时推动，成稿后再查素材、审稿和核查。</p>
+        <p>它们不是一个统一下拉框，而是在对应任务里直接工作：发现内容机会时定方向，写作时推动，成稿后再查素材、审稿和核查。</p>
         {enabledExperts.length ? (
           <div className="profile-experts__list">
             {enabledExperts.map((expert) => (

@@ -11,6 +11,8 @@ const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-bridge-previ
 const workspace = await openWorkspace({ xenhoHome: path.join(root, "Xenho") });
 const now = new Date("2026-09-01T08:00:00.000Z");
 let server;
+let wikiSourceId = "";
+let problemSourceId = "";
 let mode = "strong";
 
 function check(name, value) {
@@ -44,8 +46,8 @@ function candidate(overrides = {}) {
     cognitive_gap: "会用 AI 不等于应该把关键判断都交给 AI。",
     dominant_action: "judgment",
     elements: [
-      { id: "problem", type: "problem", label: "依赖 AI 判断", source_kind: "audience_problem", source_id: "problem" },
-      { id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: "wiki" },
+      { id: "problem", type: "problem", label: "依赖 AI 判断", source_kind: "audience_problem", source_id: problemSourceId },
+      { id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiSourceId },
       { id: "claim", type: "judgment", label: "重新分配判断权" },
     ],
     relations: [
@@ -86,11 +88,18 @@ async function start() {
       if (mode === "experience") return { model: "test", data: candidate({
         dominant_action: "experience",
         elements: [
-          { id: "problem", type: "problem", label: "依赖 AI 判断", source_kind: "audience_problem", source_id: "problem" },
-          { id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: "wiki" },
+          { id: "problem", type: "problem", label: "依赖 AI 判断", source_kind: "audience_problem", source_id: problemSourceId },
+          { id: "knowledge", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: wikiSourceId },
         ],
         relations: [{ from: "problem", to: "knowledge", type: "problem_to_mechanism", explanation: "只建议从真实经历进入，不生成经历" }],
         entry_options: [{ text: "如果你有类似真实经历，可以从一次依赖 AI 的选择进入。", scope_check: { status: "supported", reason: "这是条件式提示，没有声称经历已发生" } }],
+      }) };
+      if (mode === "fabricated-fact") return { model: "test", data: candidate({
+        elements: [
+          { id: "problem", type: "problem", label: "依赖 AI 判断", source_kind: "audience_problem", source_id: problemSourceId },
+          { id: "fact", type: "fact", label: "频繁使用 AI 会削弱判断能力", source_kind: "raw", source_id: "fake-raw" },
+        ],
+        relations: [{ from: "fact", to: "problem", type: "support", explanation: "伪造来源不能支撑问题" }],
       }) };
       if (mode === "fabricated-experience") return { model: "test", data: candidate({
         dominant_action: "experience",
@@ -112,8 +121,8 @@ async function start() {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
-async function post(base, body) {
-  const response = await fetch(`${base}/api/workspace/content-opportunities/preview`, {
+async function post(base, body, pathname = "/api/workspace/content-opportunities/preview") {
+  const response = await fetch(`${base}${pathname}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: base },
     body: JSON.stringify(body),
@@ -123,6 +132,7 @@ async function post(base, body) {
 
 try {
   const wikiPageId = createWikiPage();
+  wikiSourceId = wikiPageId;
   const agendaId = workspace.contentBridge.createAgenda({
     title: "保留人的判断权",
     desiredJudgment: "高质量使用 AI 的核心是保留人的判断权",
@@ -139,6 +149,7 @@ try {
     confirmed: true,
     now,
   });
+  problemSourceId = audienceProblemId;
   const base = await start();
   const input = { wikiPageId, audienceProblemId, agendaId };
 
@@ -161,6 +172,20 @@ try {
   check("Preview 不保存 Opportunity 或 Project", strong.value.candidateOnly === true
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === before.opportunities
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM projects").get().count === before.projects);
+  check("Preview 记录 Wiki、用户问题与议程版本", strong.value.candidate.freshness.wikiRevision === 1
+    && strong.value.candidate.freshness.audienceProblemUpdatedAt && strong.value.candidate.freshness.agendaUpdatedAt);
+
+  const agendaFit = await post(base, {
+    ...input,
+    candidate: {
+      coreClaim: strong.value.candidate.coreClaim,
+      cognitiveGap: strong.value.candidate.cognitiveGap,
+      knowledgeExplanation: strong.value.candidate.knowledgeExplanation,
+    },
+  }, "/api/workspace/content-opportunities/agenda-fit");
+  check("Agenda Fit 独立返回且不改写 Candidate 或写入业务数据", agendaFit.response.status === 200
+    && agendaFit.value.agendaFit.status === "strong" && !agendaFit.value.candidate
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === before.opportunities);
 
   mode = "weak";
   const weak = await post(base, input);
@@ -179,7 +204,10 @@ try {
     && !experience.value.candidate.construction.elements.some((item) => item.type === "experience"));
   mode = "fabricated-experience";
   const fabricated = await post(base, { ...input, dominantAction: "experience" });
-  check("模型编造个人经历被服务端硬闸拒绝", fabricated.response.status === 400 && /真实来源/.test(fabricated.value.error));
+  check("模型编造个人经历被服务端硬闸拒绝", fabricated.response.status === 400 && /来源/.test(fabricated.value.error));
+  mode = "fabricated-fact";
+  const fabricatedFact = await post(base, input);
+  check("模型伪造事实来源 ID 被服务端硬闸拒绝", fabricatedFact.response.status === 400 && /实际读取范围/.test(fabricatedFact.value.error));
 
   mode = "too-broad";
   const tooBroad = await post(base, input);

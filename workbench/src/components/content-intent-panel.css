@@ -1,27 +1,51 @@
 .content-intent {
-  margin: 18px 20px 0;
-  padding: 18px 20px;
+  margin: 10px 20px 0;
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   background: var(--surface-2);
 }
 
 .content-intent > header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 8px 12px;
 }
 
-.content-intent > header span,
+.content-intent__label span,
+.content-intent__summary span,
 .content-intent__facts span {
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
 
-.content-intent > header h2 {
-  margin: 3px 0 0;
-  font-size: var(--fs-md);
+.content-intent__label h2 {
+  margin: 1px 0 0;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.content-intent__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.content-intent__summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.content-intent__summary strong {
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .content-intent button {
@@ -34,64 +58,55 @@
 }
 
 .content-intent button:hover { color: var(--text-1); }
+.content-intent__controls { display: flex; gap: 10px; white-space: nowrap; }
+.content-intent__controls button:first-child { color: var(--accent); }
+
+.content-intent__details {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border);
+}
 
 .content-intent__facts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 16px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  margin-top: 12px;
   overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--border);
 }
 
 .content-intent__facts > div {
-  min-width: 0;
   display: grid;
-  align-content: start;
-  gap: 5px;
-  padding: 13px 14px;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
   background: var(--surface);
 }
 
-.content-intent__facts strong {
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-}
-
-.content-intent__facts small {
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  line-height: 1.5;
-}
-
+.content-intent__facts strong { font-size: var(--fs-sm); line-height: 1.45; }
 .content-intent__facts button { justify-self: start; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
 
-.content-intent__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 14px;
-}
-
+.content-intent__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .content-intent__actions button {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
   background: var(--surface);
 }
-
 .content-intent__actions button:hover { border-color: var(--border-strong); }
 
 @media (max-width: 900px) {
-  .content-intent__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content-intent > header { grid-template-columns: 1fr auto; }
+  .content-intent__summary { grid-column: 1 / -1; grid-row: 2; }
 }
 
 @media (max-width: 640px) {
-  .content-intent { margin-inline: 12px; padding: 15px; }
-  .content-intent > header { align-items: stretch; flex-direction: column; }
-  .content-intent > header > button { align-self: flex-start; padding: 0; }
+  .content-intent { margin-inline: 12px; }
+  .content-intent > header { gap: 8px; }
+  .content-intent__summary { grid-template-columns: 1fr; }
+  .content-intent__summary > div:not(:first-child) { display: none; }
   .content-intent__facts { grid-template-columns: 1fr; }
 }

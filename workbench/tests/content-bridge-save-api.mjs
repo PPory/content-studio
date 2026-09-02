@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createApi } from "../server/api.mjs";
 import { createUlid } from "../server/storage/ids.mjs";
+import { buildContentBridgeContext } from "../server/domain/content-bridge-context.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-content-bridge-save-api-"));
@@ -87,6 +88,7 @@ try {
       evidence_gaps: [],
       counterarguments: [{ claim: "外包低风险判断可以释放精力", response: "需要区分低风险与关键判断" }],
     },
+    freshness: buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId, agendaId }).freshness,
   };
 
   const unconfirmed = await call(base, "/api/workspace/content-opportunities", { method: "POST", body: candidate });
@@ -99,6 +101,31 @@ try {
   });
   check("保存 API 拒绝失效 Wiki 引用", missingWiki.response.status === 404
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 0);
+
+  const staleCandidate = { ...candidate, freshness: { ...candidate.freshness } };
+  workspace.contentBridge.updateAgenda(agendaId, {
+    title: "保留人的判断权",
+    desiredJudgment: "高质量使用 AI 的核心是保留人的判断权",
+    actor: "user",
+    confirmed: true,
+    now: new Date(now.getTime() + 1_000),
+  });
+  const stale = await call(base, "/api/workspace/content-opportunities", {
+    method: "POST",
+    body: { ...staleCandidate, confirmed: true },
+  });
+  check("正式对象更新后拒绝保存过时 Preview", stale.response.status === 409
+    && /重新预览/.test(stale.value.error)
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 0);
+  candidate.freshness = buildContentBridgeContext(workspace, { wikiPageId, audienceProblemId, agendaId }).freshness;
+
+  const fakeExperience = await call(base, "/api/workspace/content-opportunities", {
+    method: "POST",
+    body: { ...candidate, dominantAction: "experience", construction: { elements: [{ id: "story", type: "experience", label: "伪造经历", source_kind: "material", source_id: "fake" }] }, confirmed: true },
+  });
+  assert.equal(fakeExperience.response.status, 400, JSON.stringify(fakeExperience.value));
+  check("保存 API 拒绝伪造个人经历 source_id", fakeExperience.response.status === 400
+    && /真实来源/.test(fakeExperience.value.error));
 
   const saved = await call(base, "/api/workspace/content-opportunities", {
     method: "POST",

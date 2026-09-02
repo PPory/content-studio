@@ -1,4 +1,5 @@
 import { createUlid } from "../storage/ids.mjs";
+import { assertContentBridgeFreshness, buildContentBridgeContext } from "./content-bridge-context.mjs";
 
 const SOURCE_KINDS = new Set(["hotspot", "insight_report", "social_post", "comment", "feedback", "manual"]);
 const PROBLEM_PATTERNS = new Set(["trend", "frequency", "knowledge_gap", "feedback"]);
@@ -7,6 +8,7 @@ const DOMINANT_ACTIONS = new Set(["knowledge", "judgment", "experience", "demons
 const ELEMENT_TYPES = new Set(["concept", "fact", "case", "experience", "judgment", "problem", "evidence", "method", "analogy", "conflict", "observation"]);
 const RELATION_TYPES = new Set(["causal", "analogy", "contrast", "conflict", "support", "challenge", "concept_to_case", "case_to_abstraction", "problem_to_mechanism", "mechanism_to_method"]);
 const SCOPE_STATUSES = new Set(["supported", "too_broad"]);
+const PROVENANCE_REQUIRED_TYPES = new Set(["concept", "fact", "case", "experience", "problem", "evidence", "method", "observation"]);
 
 const isoNow = (now = new Date()) => new Date(now).toISOString();
 const clean = (value) => String(value ?? "").trim();
@@ -93,23 +95,56 @@ function normalizeCounterargument(value, index) {
   };
 }
 
-export function validateContentConstruction(value) {
+function sourceKey(kind, id) {
+  return `${clean(kind)}\u0000${clean(id)}`;
+}
+
+export function validateContentConstruction(value, { allowedSources = null } = {}) {
   const input = record(value, "内容构造");
   const elements = array(input.elements || [], "内容要素").map(normalizeElement);
   const elementIds = new Set(elements.map((item) => item.id));
   if (elementIds.size !== elements.length) throw new TypeError("内容要素 ID 不能重复");
-  return {
+  const allowedPairs = allowedSources ? new Set(allowedSources.map((item) => sourceKey(item.sourceKind, item.sourceId))) : null;
+  const allowedIds = allowedSources ? new Set(allowedSources.map((item) => clean(item.sourceId))) : null;
+  if (allowedPairs) {
+    for (const element of elements) {
+      const hasSource = Boolean(element.source_kind && element.source_id);
+      if (PROVENANCE_REQUIRED_TYPES.has(element.type) && !hasSource) {
+        throw new Error(`${element.type} 要素必须携带本次预览实际读取到的来源`);
+      }
+      if ((element.source_kind || element.source_id) && !hasSource) throw new Error("内容要素的来源类型和来源 ID 必须同时提供");
+      if (hasSource && !allowedPairs.has(sourceKey(element.source_kind, element.source_id))) {
+        if (element.type === "experience") throw new Error("个人经历真实来源无效：可能已删除、类型不符或无法找到");
+        throw new Error(`内容要素来源不属于本次预览实际读取范围：${element.source_id}`);
+      }
+      if (element.type === "experience" && element.source_kind !== "material") {
+        throw new Error("经历要素必须引用当前工作区真实存在的个人经历素材");
+      }
+    }
+  }
+  const normalized = {
     elements,
     relations: array(input.relations || [], "要素关系").map((item, index) => normalizeRelation(item, index, elementIds)),
     entry_options: array(input.entry_options || input.entryOptions || [], "大众入口", 20).map(normalizeEntryOption),
     evidence_gaps: array(input.evidence_gaps || input.evidenceGaps || [], "证据缺口", 30).map(normalizeEvidenceGap),
     counterarguments: array(input.counterarguments || [], "反方", 30).map(normalizeCounterargument),
   };
+  if (allowedIds) {
+    for (const gap of normalized.evidence_gaps) {
+      for (const sourceId of gap.source_refs) {
+        if (!allowedIds.has(sourceId)) throw new Error(`证据缺口引用了本次预览未读取的来源：${sourceId}`);
+      }
+    }
+  }
+  return normalized;
 }
-
 function parseConstruction(value, id) {
   try { return JSON.parse(value); } catch { throw new Error(`内容机会 ${id} 的结构化内容已损坏`); }
 }
+function parseFreshness(value, id) {
+  try { return JSON.parse(value || "{}"); } catch { throw new Error(`内容机会 ${id} 的预览版本信息已损坏`); }
+}
+
 
 function agendaDto(row) {
   return row && {
@@ -166,6 +201,10 @@ function opportunityDto(row) {
     fitReason: row.fit_reason,
     construction: parseConstruction(row.construction_json, row.id),
     status: row.status,
+    previewFreshness: parseFreshness(row.preview_freshness_json, row.id),
+    audienceProblemStatement: row.audience_problem_statement || "",
+    projectId: row.project_id || null,
+    hasProject: Boolean(row.project_id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
@@ -298,21 +337,15 @@ export class ContentBridgeDomain {
     return problemDto(row, this.db.prepare("SELECT * FROM audience_problem_sources WHERE problem_id=? ORDER BY observed_at DESC, source_kind, source_id").all(id).map(sourceDto));
   }
 
-  saveOpportunity({ id = createUlid(), wikiPageId, audienceProblemId, agendaId = null, coreClaim, knowledgeExplanation, cognitiveGap, dominantAction, fit, fitReason, construction = {}, actor, confirmed = false, now } = {}) {
+  saveOpportunity({ id = createUlid(), wikiPageId, audienceProblemId, agendaId = null, coreClaim, knowledgeExplanation, cognitiveGap, dominantAction, fit, fitReason, construction = {}, freshness, actor, confirmed = false, now } = {}) {
     requireConfirmedUser({ actor, confirmed }, "保存内容机会");
-    const wiki = this.db.prepare(`SELECT w.id FROM wiki_pages w JOIN entities e ON e.id=w.id AND e.deleted_at IS NULL WHERE w.id=?`).get(required(wikiPageId, "Wiki 页面 ID", 500));
-    if (!wiki) throw new Error("Wiki 页面不存在");
-    const problem = this.db.prepare(`SELECT p.id,p.status FROM audience_problems p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(required(audienceProblemId, "用户问题 ID", 500));
-    if (!problem || problem.status !== "active") throw new Error("用户问题不存在或已归档");
-    if (agendaId) {
-      const agenda = this.db.prepare(`SELECT a.id,a.status FROM content_agendas a JOIN entities e ON e.id=a.id AND e.deleted_at IS NULL WHERE a.id=?`).get(agendaId);
-      if (!agenda || agenda.status !== "active") throw new Error("议程不存在或已归档");
-    }
+    const context = buildContentBridgeContext({ db: this.db, contentBridge: this }, { wikiPageId, audienceProblemId, agendaId, includeExperiences: true });
+    const normalizedFreshness = assertContentBridgeFreshness(freshness, context.freshness);
     const canonicalAction = clean(dominantAction);
     if (!DOMINANT_ACTIONS.has(canonicalAction)) throw new TypeError("主导表达动作不受支持");
     const canonicalFit = clean(fit);
     if (!FITS.has(canonicalFit)) throw new TypeError("内容机会匹配度不受支持");
-    const normalizedConstruction = validateContentConstruction(construction);
+    const normalizedConstruction = validateContentConstruction(construction, { allowedSources: context.allowedSources });
     const opportunity = {
       coreClaim: required(coreClaim, "核心判断", 4000),
       knowledgeExplanation: required(knowledgeExplanation, "知识解释", 8000),
@@ -321,14 +354,15 @@ export class ContentBridgeDomain {
       fit: canonicalFit,
       fitReason: required(fitReason, "匹配理由", 4000),
       constructionJson: JSON.stringify(normalizedConstruction),
+      freshnessJson: JSON.stringify(normalizedFreshness),
     };
     const stamp = isoNow(now);
     return this.repository.transaction(() => {
       this.repository.createEntity({ id, type: "content_opportunity", now });
       this.db.prepare(`INSERT INTO content_opportunities(
-        id,wiki_page_id,audience_problem_id,agenda_id,core_claim,knowledge_explanation,cognitive_gap,dominant_action,fit,fit_reason,construction_json,status,created_at,updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
-        .run(id, wikiPageId, audienceProblemId, agendaId || null, opportunity.coreClaim, opportunity.knowledgeExplanation, opportunity.cognitiveGap, opportunity.dominantAction, opportunity.fit, opportunity.fitReason, opportunity.constructionJson, stamp, stamp);
+        id,wiki_page_id,audience_problem_id,agenda_id,core_claim,knowledge_explanation,cognitive_gap,dominant_action,fit,fit_reason,construction_json,preview_freshness_json,status,created_at,updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`)
+        .run(id, wikiPageId, audienceProblemId, agendaId || null, opportunity.coreClaim, opportunity.knowledgeExplanation, opportunity.cognitiveGap, opportunity.dominantAction, opportunity.fit, opportunity.fitReason, opportunity.constructionJson, opportunity.freshnessJson, stamp, stamp);
       this.repository.setEntityText(id, { title: opportunity.coreClaim, body: `${opportunity.knowledgeExplanation}\n${opportunity.cognitiveGap}`, now });
       this.workspaceDomain.audit("content_opportunity.created", id, { wikiPageId, audienceProblemId, agendaId: agendaId || null }, now);
       return id;
@@ -340,7 +374,12 @@ export class ContentBridgeDomain {
   }
 
   opportunities({ includeArchived = false } = {}) {
-    return this.db.prepare(`SELECT o.* FROM content_opportunities o JOIN entities e ON e.id=o.id AND e.deleted_at IS NULL
+    return this.db.prepare(`SELECT o.*,p.statement AS audience_problem_statement,
+      (SELECT link.project_id FROM content_project_opportunities link
+       WHERE link.opportunity_id=o.id AND link.role='primary' LIMIT 1) AS project_id
+      FROM content_opportunities o
+      JOIN audience_problems p ON p.id=o.audience_problem_id
+      JOIN entities e ON e.id=o.id AND e.deleted_at IS NULL
       ${includeArchived ? "" : "WHERE o.status='active'"} ORDER BY o.updated_at DESC, o.id`).all().map(opportunityDto);
   }
 
@@ -358,6 +397,9 @@ export class ContentBridgeDomain {
     if (existing) return existing.projectId;
     const problem = this.audienceProblem(opportunity.audienceProblemId);
     return this.repository.transaction(() => {
+      const current = this.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=? AND role='primary'").get(id);
+      if (current) return current.projectId;
+
       const projectId = this.workspaceDomain.createProject({
         title: clean(title) || opportunity.coreClaim,
         briefMarkdown: clean(briefMarkdown) || `用户问题：${problem.statement}\n\n核心判断：${opportunity.coreClaim}`,
