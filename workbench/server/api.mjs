@@ -20,6 +20,7 @@ import { assistantRoutes } from "./routes/assistant.mjs";
 import { contentBridgeRoutes } from "./routes/content-bridge.mjs";
 import { audienceRawRoutes } from "./routes/audience-raw.mjs";
 import { contentDiscoveryRoutes } from "./routes/content-discovery.mjs";
+import { contentConstructionRoutes } from "./routes/content-construction.mjs";
 import { contentExperimentRoutes } from "./routes/content-experiments.mjs";
 
 const EXTENSION_ALIASES = {
@@ -73,6 +74,7 @@ const ROUTES = [
   ...contentBridgeRoutes,
   ...audienceRawRoutes,
   ...contentDiscoveryRoutes,
+  ...contentConstructionRoutes,
   ...contentExperimentRoutes,
   ...localBookRoutes,
   ...wikiRoutes,

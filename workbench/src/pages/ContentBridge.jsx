@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
-import { takeDiscoveryHandoff } from "../lib/discovery-handoff.js";
+import { peekDiscoveryHandoff } from "../lib/discovery-handoff.js";
 import "./content-bridge.css";
 
 const WIKI_FILTERS = [
@@ -63,8 +63,11 @@ function initialIds(value) {
   if (text.startsWith("wiki:")) return { ...workspace, wikiId: text.slice(5) };
   if (text.startsWith("problem:")) return { ...workspace, problemId: text.slice(8) };
   if (text.startsWith("opportunity:")) return { ...workspace, opportunityId: text.slice(12) };
-  // 从 AI 发现「发展这条」过来：候选在内存交接里，不进 hash 也不进库。
-  if (text === "develop") return { ...workspace, develop: true };
+  /**
+   * 从构造工作台点「查看完整分析」过来：候选在内存交接里，不进 hash 也不进库。
+   * ⚠️ 旧的 `develop` 落点仍然认——它现在归构造工作台，这里留着只为老链接不炸。
+   */
+  if (text === "analyze" || text === "develop") return { ...workspace, develop: true };
   return workspace;
 }
 
@@ -237,7 +240,12 @@ export function ContentBridge({ state = "", onGo }) {
          * 用户可能看两眼就放弃，那种放弃不该在问题库里留下任何东西。
          * 刷新页面候选就没了，这是对的：那时它已经不是「刚发现的这一条」了。
          */
-        const handoff = takeDiscoveryHandoff();
+        /**
+         * ⚠️ 用 `peek` 不用 `take`：构造工作台和这份完整分析之间要能来回走。
+         * 取完即清的话，从这儿返回构造页就变成「这条连接已经不在手边了」——
+         * 而它明明还在屏幕上。真正让它失效的是刷新，那是对的。
+         */
+        const handoff = peekDiscoveryHandoff();
         if (!handoff) {
           setWikiId("");
           setProblemId("");

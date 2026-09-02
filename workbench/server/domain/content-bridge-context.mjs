@@ -1,5 +1,19 @@
 import { assertRawSourceEvidence, isRawSourceRef, problemSourceKindForRawKind, rawSourceRef } from "./audience-raw.mjs";
+import { workspaceElementPool } from "./content-construction.mjs";
 import { sha256Json } from "./integrity.mjs";
+
+/**
+ * 一次构造允许引用多大范围的来源。
+ *
+ * - `anchor`：只有锚点 Wiki 和它的来源、这条用户问题、个人经历。
+ *   旧的单路线分析走这条——它给模型看的就这些。
+ * - `workspace`：整个工作区的要素池。多路线构造走这条，因为它给模型看的就是整个池子。
+ *
+ * ⚠️ **两边必须一致：给模型看什么，就允许它引用什么。**
+ * 白名单比上下文宽，等于放行它没读过的来源；比上下文窄，等于它刚读过的东西引用不了。
+ * 所以 scope 会写进 freshness——保存时用哪个范围校验，由**当初预览用的那个**决定。
+ */
+export const CONTEXT_SCOPES = Object.freeze(["anchor", "workspace"]);
 
 const clean = (value) => String(value ?? "").trim();
 
@@ -100,7 +114,9 @@ export function buildContentBridgeContext(workspace, {
   problemCandidate = null,
   agendaId = null,
   includeExperiences = false,
+  scope = "anchor",
 } = {}) {
+  if (!CONTEXT_SCOPES.includes(scope)) throw new TypeError("来源范围不受支持");
   const wiki = workspace.db.prepare(`SELECT p.id,p.title,p.summary,p.body_markdown AS bodyMarkdown,p.page_type AS pageType,
     p.current_revision AS currentRevision,p.updated_at AS updatedAt
     FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`)
@@ -128,12 +144,17 @@ export function buildContentBridgeContext(workspace, {
     WHERE m.material_type='个人经历' AND length(trim(m.body_markdown))>0
     ORDER BY e.updated_at DESC,m.id DESC LIMIT 12`).all() : [];
 
+  // 整个工作区的要素池只在 workspace 范围里取——anchor 范围压根不需要读它。
+  const pool = scope === "workspace" ? workspaceElementPool(workspace.db) : null;
+
   return {
     wiki,
     problem,
     problemCandidate: candidate,
     agenda,
     experiences,
+    scope,
+    pool,
     allowedSources: [
       { sourceKind: "wiki_page", sourceId: wiki.id },
       ...wiki.sources.map((item) => ({ sourceKind: "raw", sourceId: item.sourceId })),
@@ -141,6 +162,7 @@ export function buildContentBridgeContext(workspace, {
       ...(problem.id ? [{ sourceKind: "audience_problem", sourceId: problem.id }] : []),
       ...problem.sources.map((item) => ({ sourceKind: item.sourceKind, sourceId: item.sourceId })),
       ...experiences.map((item) => ({ sourceKind: "material", sourceId: item.id })),
+      ...(pool?.allowedSources || []),
     ],
     freshness: {
       wikiPageId: wiki.id,
@@ -150,6 +172,7 @@ export function buildContentBridgeContext(workspace, {
       problemCandidateHash: candidate ? problemCandidateHash(candidate) : null,
       agendaId: agenda?.id || null,
       agendaUpdatedAt: agenda?.updatedAt || null,
+      scope,
     },
   };
 }
@@ -162,7 +185,13 @@ export function assertContentBridgeFreshness(value, expected) {
     && (clean(value.audienceProblemUpdatedAt) || null) === (expected.audienceProblemUpdatedAt || null)
     && (clean(value.problemCandidateHash) || null) === (expected.problemCandidateHash || null)
     && (clean(value.agendaId) || null) === expected.agendaId
-    && (clean(value.agendaUpdatedAt) || null) === expected.agendaUpdatedAt;
+    && (clean(value.agendaUpdatedAt) || null) === expected.agendaUpdatedAt
+    /**
+     * ⚠️ 范围也要对得上。多路线构造引用了整个工作区，用 anchor 范围去校验它一定会失败；
+     * 反过来，拿 anchor 范围产出的候选按 workspace 范围保存，等于悄悄放宽了它的白名单。
+     * 老数据没有这一位，按 anchor 处理。
+     */
+    && (clean(value.scope) || "anchor") === (expected.scope || "anchor");
   if (!same) throw Object.assign(new Error("相关知识、用户问题或议程已更新，请重新预览后再保存"), { status: 409 });
   return { ...expected };
 }

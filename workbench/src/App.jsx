@@ -13,6 +13,7 @@ import { Today } from "./pages/Today.jsx";
 import { Assistant } from "./pages/Assistant.jsx";
 import { ContentBridge } from "./pages/ContentBridge.jsx";
 import { ContentDiscovery } from "./pages/ContentDiscovery.jsx";
+import { ContentConstruction } from "./pages/ContentConstruction.jsx";
 import { Content } from "./pages/Content.jsx";
 import { Series } from "./pages/Series.jsx";
 import { SeriesWorkspace } from "./pages/SeriesWorkspace.jsx";
@@ -735,7 +736,14 @@ export function App() {
                  * 仍然是一条真实的路，只是不该是每天打开内容时看到的第一件事。
                  * `wiki:` / `problem:` / `opportunity:` 这些老深链照旧直接进工作台。
                  */
-                route.state ? (
+                route.state === "develop" ? (
+                  /**
+                   * ⚠️ **「发展这条」的落点是构造工作台，不是那份完整分析。**
+                   * 完整分析（01/02/03/04）没有删，退到 `#/bridge/analyze`——
+                   * 它回答「这条能不能连」，而这一步要回答的是「这件事可以怎么讲」。
+                   */
+                  <ContentConstruction onGo={go} />
+                ) : route.state ? (
                   <ContentBridge state={route.state} onGo={go} />
                 ) : (
                   <ContentDiscovery onGo={go} onCaptureVoice={(term) => setVoice({ term })} />

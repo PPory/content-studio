@@ -20,13 +20,23 @@
   padding-bottom: var(--sp-5);
   border-bottom: 1px solid var(--border);
 }
+/*
+ * ⚠️ **`var(--bg)` 这个 token 根本不存在**，所以这条常驻顶栏一直是透明的——
+ * 滚动时正文从它背后穿过去，字叠着字。写的时候没发现，是因为结果页短的时候
+ * 根本滚不到那一步；构造工作台一长，它立刻就露出来了。
+ * 滚动容器 `.main` 用的是 `--sunken`，顶栏跟它同色才叫「盖住」。
+ *
+ * ⚠️ 还要用负 margin 把背景往上撑到滚动容器顶边：页面自己有 40px 上内边距，
+ * 不撑的话正文会从顶栏**上方**那道缝里穿过去。
+ */
 .bridge-bar--sticky {
   position: sticky;
   top: 0;
   z-index: 3;
+  margin-top: calc(var(--sp-10) * -1);
   margin-bottom: var(--sp-6);
-  padding-top: var(--sp-4);
-  background: var(--bg);
+  padding-top: var(--sp-10);
+  background: var(--sunken);
 }
 .bridge-bar__title { display: flex; align-items: baseline; gap: var(--sp-4); min-width: 0; flex: 1; }
 .bridge-bar__title h2 { display: flex; align-items: baseline; gap: var(--sp-3); min-width: 0; margin: 0; font-size: var(--fs-lg); letter-spacing: -.015em; }

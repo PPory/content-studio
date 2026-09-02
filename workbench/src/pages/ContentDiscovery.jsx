@@ -39,6 +39,7 @@ function dateLabel(value) {
  */
 function ConnectionCard({ connection, onDevelop, busy }) {
   const [quotesOpen, setQuotesOpen] = useState(false);
+  const [more, setMore] = useState(false);
   const hypothesis = connection.problem.origin === "hypothesis";
   const quotes = connection.problem.evidence || [];
 
@@ -94,18 +95,42 @@ function ConnectionCard({ connection, onDevelop, busy }) {
         <p>{connection.coreClaim}</p>
       </div>
 
-      {connection.evidenceGaps?.length ? (
-        <div className="discovery-card__gaps">
-          <span className="discovery-card__label">现在还缺</span>
-          <ul>{connection.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul>
+      {/*
+        ⚠️ **完整解释、证据缺口和议程说明默认折起来。**
+        这一屏要回答的是「值不值得我判断」，那只需要：谁在困惑、用我的什么、
+        为什么值得连、可能留下什么判断。其余的是**决定发展之后**才要读的东西，
+        默认铺开只会让三张卡各自变成一屏。
+      */}
+      {more ? (
+        <div className="discovery-card__more">
+          <div>
+            <span className="discovery-card__label">这条知识怎么解释它</span>
+            <p>{connection.knowledgeExplanation}</p>
+          </div>
+          <div>
+            <span className="discovery-card__label">大众现在卡在哪</span>
+            <p>{connection.cognitiveGap}</p>
+          </div>
+          {connection.evidenceGaps?.length ? (
+            <div>
+              <span className="discovery-card__label">现在还缺</span>
+              <ul>{connection.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul>
+            </div>
+          ) : null}
+          {connection.agendaSuggestion?.reason ? (
+            <div>
+              <span className="discovery-card__label">和长期议程的关系</span>
+              <p>{connection.agendaSuggestion.reason}</p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       <footer className="discovery-card__foot">
         <span className="bridge-fit" data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</span>
-        {connection.agendaSuggestion?.reason ? (
-          <span className="discovery-card__agenda">{connection.agendaSuggestion.reason}</span>
-        ) : null}
+        <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={() => setMore((value) => !value)}>
+          {more ? "收起" : "看完整解释"}
+        </button>
         <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDevelop(connection)}>
           发展这条
           <IconArrowRight aria-hidden="true" />

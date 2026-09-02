@@ -594,30 +594,139 @@ try {
     workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 1);
 
-  await page.getByRole("button", { name: "发展这条" }).click();
   /**
-   * ⚠️ **点完直接进构造，中间不再停在选择器上。**
-   * 用户已经在卡片上表达过「就看这一条」，再要求他点一次「看看怎么连接」
-   * 是把同一个意图问两遍。
+   * 12：构造工作台。
+   *
+   * ⚠️ **「发展这条」的落点不再是那份完整分析。** 完整分析回答的是「这条能不能连」，
+   * 而这一步要回答的是「这件事可以怎么讲」——它有好几个答案，而上一版只给一个。
    */
-  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  const constructionFreshness = () => buildContentBridgeContext(workspace, {
+    wikiPageId: cognitiveWiki.id,
+    problemCandidate: {
+      statement: "AI 工具每周都在出新的，我到底该学哪个？",
+      summary: "选择成本正在挤掉真正的学习时间。",
+      origin: "observed",
+      evidence: [{ rawSourceId: rawVoice.id, quote: discoveryQuote }],
+    },
+    includeExperiences: true,
+    scope: "workspace",
+  }).freshness;
+
+  const elementsA = [
+    { id: "p", type: "problem", label: "该学哪个工具", source_kind: "feedback", source_id: `raw:${rawVoice.id}`, role: "现实入口" },
+    { id: "m", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: cognitiveWiki.id, role: "解释为什么会外包判断" },
+    { id: "j", type: "judgment", label: "先定任务再挑工具" },
+  ];
+  // ⚠️ B 用的是**另一页 Wiki**：锚点只是入口，这一条正是要证明构造能跳出锚点。
+  const elementsB = [
+    { id: "k", type: "concept", label: "CSS 网格布局", source_kind: "wiki_page", source_id: weakWiki.id, role: "举一个表层技能的例子" },
+    { id: "a", type: "concept", label: "认知卸载", source_kind: "wiki_page", source_id: cognitiveWiki.id, role: "给出判断标准" },
+    { id: "j2", type: "judgment", label: "标准而不是禁令" },
+  ];
+  const routeA = {
+    id: "A", label: "从工具焦虑进入", dominantAction: "knowledge",
+    entry: "AI 工具这么多，我到底该学哪个？",
+    storyline: "从工具焦虑进入 → 用认知卸载解释判断为什么被外包 → 给出学习顺序。",
+    keyRelation: "先解释机制，再把机制变成可执行的顺序。",
+    risk: "容易讲成一篇知识科普，读完没有下一步。",
+    coreClaim: "工具焦虑的根源是把判断权连同任务一起交了出去。",
+    knowledgeExplanation: "认知卸载说明人会把认知任务交给工具。",
+    cognitiveGap: "大众以为要追上每一个工具。",
+    supportingElements: elementsA.map((item) => ({ id: item.id, type: item.type, label: item.label, sourceKind: item.source_kind || "", sourceId: item.source_id || "", role: item.role || "" })),
+    evidenceGaps: ["还缺一个跨工具迁移同一套流程的实测。"],
+    counterarguments: [{ claim: "有些新工具确实值得早追。", response: "那也该由任务决定。" }],
+    construction: {
+      route: { id: "A", storyline: "从工具焦虑进入 → 用认知卸载解释判断为什么被外包 → 给出学习顺序。", key_relation: "先解释机制，再把机制变成可执行的顺序。", risk: "容易讲成一篇知识科普，读完没有下一步。" },
+      elements: elementsA.map(({ role, ...rest }) => ({ ...rest, source_kind: rest.source_kind || "", source_id: rest.source_id || "" })),
+      relations: [{ from: "p", to: "m", type: "problem_to_mechanism", explanation: "用认知卸载解释焦虑从哪来。" }],
+      entry_options: [{ text: "AI 工具这么多，我到底该学哪个？", scope_check: { status: "supported", reason: "正文能回答。" } }],
+      evidence_gaps: [{ claim: "还缺一个跨工具迁移同一套流程的实测。", needed: "", source_refs: [] }],
+      counterarguments: [{ claim: "有些新工具确实值得早追。", response: "那也该由任务决定。" }],
+    },
+  };
+  const routeB = {
+    ...routeA,
+    id: "B", label: "从反方进入", dominantAction: "judgment",
+    entry: "追新工具真的错了吗？",
+    storyline: "先承认追新有回报 → 指出它什么时候不成立 → 给出判断标准。",
+    risk: "承认反方之后，容易收不回来。",
+    coreClaim: "追新工具不总是错的，错的是没有一个决定什么时候追的标准。",
+    supportingElements: elementsB.map((item) => ({ id: item.id, type: item.type, label: item.label, sourceKind: item.source_kind || "", sourceId: item.source_id || "", role: item.role || "" })),
+    construction: {
+      route: { id: "B", storyline: "先承认追新有回报 → 指出它什么时候不成立 → 给出判断标准。", key_relation: "用反方逼出一个标准。", risk: "承认反方之后，容易收不回来。" },
+      elements: elementsB.map(({ role, ...rest }) => ({ ...rest, source_kind: rest.source_kind || "", source_id: rest.source_id || "" })),
+      relations: [{ from: "k", to: "a", type: "challenge", explanation: "反方逼出一个标准。" }],
+      entry_options: [{ text: "追新工具真的错了吗？", scope_check: { status: "supported", reason: "正文能回答。" } }],
+      evidence_gaps: [{ claim: "还缺一个跨工具迁移同一套流程的实测。", needed: "", source_refs: [] }],
+      counterarguments: [{ claim: "有些新工具确实值得早追。", response: "那也该由任务决定。" }],
+    },
+  };
+
+  let routeCalls = 0;
+  let refineCalls = 0;
+  await page.route("**/api/workspace/content-construction/routes", async (route) => {
+    routeCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true, routes: [routeA, routeB], droppedAsSame: 1, note: "",
+      experienceAvailable: false, poolSize: { wikiPages: 2, materials: 0, experiences: 0, cards: 0, pastClaims: 1 },
+      freshness: constructionFreshness(), model: "test-construction",
+    }) });
+  });
+  await page.route("**/api/workspace/content-construction/refine", async (route) => {
+    refineCalls += 1;
+    const payload = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, candidateOnly: true,
+      route: { ...payload.route, coreClaim: "在多数任务上，先定清楚任务比先挑工具更省时间。" },
+      note: "把结论从「根源是」收成了「在多数任务上」，入口和材料没动。",
+      experienceAvailable: false, freshness: constructionFreshness(), model: "test-construction",
+    }) });
+  });
+
+  await page.getByRole("button", { name: "发展这条" }).click();
+  await page.getByRole("heading", { name: /Xenho 找到 \d+ 种讲法/ }).waitFor();
+  check("发展这条进的是构造工作台，不是那份完整分析", routeCalls === 1
+    && await page.getByRole("heading", { name: "核心判断" }).count() === 0);
   check("发展这条仍然不写库",
     workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
-  const developedTitle = await page.locator(".bridge-bar__title").innerText();
-  check("发展这条直接进构造，不用再自己挑一遍 Wiki 和问题",
-    developedTitle.includes("认知卸载") && developedTitle.includes("AI 工具每周都在出新的"));
-  /**
-   * ⚠️ **「还没保存」必须在顶栏里，不能只写在问题栏那张候选卡上。**
-   * 结果一出来选择区就整个塌起来，那张卡当场从屏幕上消失——
-   * 而这正是用户要按「保存为内容机会」的时刻。
-   */
-  check("要按保存的那一刻，「还没保存」仍然在顶栏里看得见", developedTitle.includes("用户问题还没保存"));
 
-  await page.getByRole("button", { name: "重新选择" }).click();
-  await page.locator(".bridge-side-candidate").waitFor();
-  check("展开选择区时，候选和已入库的问题长得不一样，并写明还没保存",
-    (await page.locator(".bridge-side-candidate").innerText()).includes("还没保存"));
-  await page.getByRole("button", { name: "收起选择" }).click();
+  const cardsText = await page.locator(".route-card").allInnerTexts();
+  check("给的是两条讲法，不是一个答案", cardsText.length === 2);
+  check("两条的主导动作、入口和判断都不一样",
+    cardsText[0].includes("知识型") && cardsText[1].includes("判断型")
+    && cardsText[0].includes("工具焦虑的根源") && cardsText[1].includes("追新工具不总是错的"));
+  check("每条都写明用了哪些材料、为什么这样组织、最容易出什么问题",
+    cardsText[0].includes("用到的材料") && cardsText[0].includes("为什么这样组织") && cardsText[0].includes("这条最容易出的问题"));
+  check("第二条用上了锚点以外的知识", cardsText[1].includes("CSS 网格布局"));
+  check("重复的那条被去掉了，并且说了出来",
+    (await page.locator(".construction-routes__head").innerText()).includes("1 条和上面重复"));
+  check("没有个人经历时说清经历型这条路线为什么不在",
+    (await page.locator(".construction-note--gate").innerText()).includes("个人经历"));
+
+  await page.locator(".route-card").nth(1).getByRole("button", { name: "沿这个继续" }).click();
+  await page.locator(".construction-ask").waitFor();
+  check("选定之后只留当前这条，其他退成次级",
+    await page.locator(".route-card").count() === 1
+    && await page.getByRole("button", { name: /另外 1 种讲法/ }).count() === 1);
+
+  await page.getByLabel("跟 Xenho 说").fill("结论太绝对了，收一点");
+  await page.getByRole("button", { name: "继续推" }).click();
+  await page.getByText("在多数任务上，先定清楚任务比先挑工具更省时间。").waitFor();
+  check("一句话就能继续推这条讲法", refineCalls === 1);
+  check("只改被要求的那部分，入口没动",
+    (await page.locator(".route-card").innerText()).includes("追新工具真的错了吗？"));
+  check("改过什么留在页面上", (await page.locator(".construction-history").innerText()).includes("结论太绝对了"));
+  check("继续推同样不写库",
+    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
+
+  // 完整分析没有删，只是退成了次级入口。
+  await page.getByRole("button", { name: "查看完整分析" }).click();
+  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  check("完整分析仍然可达，只是不再是默认", page.url().endsWith("#/bridge/analyze"));
+  await page.goBack();
+  await page.locator(".construction-ask").waitFor();
+  check("从完整分析回来，这条讲法还在", (await page.locator(".route-card").innerText()).includes("在多数任务上"));
+
   await page.getByRole("button", { name: "保存为内容机会" }).click();
   await page.getByText("内容机会已保存", { exact: true }).waitFor();
   const fromDiscovery = workspace.db.prepare(`SELECT p.origin, s.source_id AS sourceId, s.evidence_text AS quote
@@ -628,6 +737,14 @@ try {
     && fromDiscovery.origin === "observed"
     && fromDiscovery.sourceId === `raw:${rawVoice.id}`
     && fromDiscovery.quote === discoveryQuote);
+  const savedConstruction = JSON.parse(workspace.db.prepare(`SELECT construction_json AS json FROM content_opportunities
+    ORDER BY created_at DESC LIMIT 1`).get().json);
+  check("选中的那条讲法本身也存了下来，写作时还知道为什么这样排",
+    savedConstruction.route?.storyline?.includes("先承认追新有回报")
+    && Boolean(savedConstruction.route.risk));
+  check("跨来源的要素完整保留，不只有锚点那一页",
+    savedConstruction.elements.some((item) => item.source_id === weakWiki.id)
+    && savedConstruction.elements.some((item) => item.source_id === cognitiveWiki.id));
 
   check("Content Bridge 真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
   if (process.argv.includes("--shots")) console.log(` 截图目录：${shotDir}`);

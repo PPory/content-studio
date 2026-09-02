@@ -71,7 +71,20 @@
 .discovery-card__claim p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.75; }
 .discovery-card__claim p { font-weight: 600; }
 
-.discovery-card__gaps ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.discovery-card__more { display: grid; gap: var(--sp-5); padding-top: var(--sp-5); border-top: 1px dashed var(--border); }
+.discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
+.discovery-card__more ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.discovery-card__more-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.discovery-card__more-toggle:hover { color: var(--text-1); }
 
 .discovery-card__foot {
   display: flex;
@@ -81,8 +94,9 @@
   padding-top: var(--sp-5);
   border-top: 1px solid var(--border);
 }
-.discovery-card__agenda { flex: 1; min-width: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
 .discovery-card__foot .btn { margin-left: auto; }
+.discovery-card__foot .discovery-card__more-toggle { margin-left: auto; }
+.discovery-card__foot .btn ~ .discovery-card__more-toggle { margin-left: 0; }
 
 .discovery-stale {
   display: flex;

@@ -1,0 +1,154 @@
+/*
+ * 内容构造工作台。
+ *
+ * 三段，从上到下就是决定顺序：为谁讲（意图）→ 怎么讲（讲法）→ 再调一句（跟 Xenho 说）。
+ * 没有关系图，没有白板：这一页要读的是文字，画成图只会让人先学一遍图例。
+ */
+
+.content-construction { max-width: 940px; }
+
+/* 顶：创作意图。轻量、不占屏——它是背景，不是当前要做的事。 */
+.construction-intent {
+  display: grid;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.construction-intent > div { display: grid; gap: 2px; min-width: 0; }
+.construction-intent span { color: var(--text-3); font-size: var(--fs-xs); }
+.construction-intent strong { font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; }
+.construction-intent small { color: var(--brand-strong); font-size: var(--fs-xs); }
+/* 假设不能长得像证据——和发现页同一条规矩、同一种表现。 */
+.construction-intent small[data-origin="hypothesis"] { color: var(--text-3); font-style: italic; }
+.construction-intent__agenda { display: flex; align-items: center; gap: var(--sp-3); }
+.construction-intent__agenda label { flex: none; color: var(--text-3); font-size: var(--fs-xs); }
+/* ⚠️ 不给宽度的话它会撑满整行——一个两三个字的下拉框横跨 1200px。 */
+.construction-intent__agenda select { max-width: min(320px, 100%); }
+
+.construction-routes__head { margin-bottom: var(--sp-5); }
+.construction-routes__head h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-lg); letter-spacing: -.015em; }
+.construction-routes__head small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.construction-routes__list { display: grid; gap: var(--sp-6); }
+
+.construction-note { margin: 0 0 var(--sp-5); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.construction-note--gate { color: var(--text-2); padding: var(--sp-4) var(--sp-5); border-left: 2px solid var(--border); }
+
+.route-card {
+  display: grid;
+  gap: var(--sp-5);
+  padding: var(--sp-7);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.route-card[data-selected] { border-color: var(--brand); }
+.route-card[data-compact] { gap: var(--sp-3); padding: var(--sp-5); }
+
+.route-card header { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.route-card__id {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-pill);
+  background: var(--text-1);
+  color: var(--surface);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.route-card header h3 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-md); letter-spacing: -.01em; }
+.route-card__action { flex: none; padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); }
+
+.route-field > span { display: block; margin-bottom: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
+.route-field p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.75; }
+.route-field--claim p { font-weight: 600; }
+/* 风险用强调色。它是选择时真正要比较的东西，不该和别的段落一个分量。 */
+.route-field--risk p { color: var(--emph); }
+
+.route-elements { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.route-elements li { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--sp-3); align-items: baseline; }
+.route-elements em {
+  grid-row: span 3;
+  align-self: start;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-style: normal;
+}
+.route-elements strong { font-size: var(--fs-sm); font-weight: 600; }
+.route-elements span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.route-elements small { color: var(--text-3); font-size: var(--fs-xs); }
+
+.route-gaps { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+
+.route-card footer { display: flex; justify-content: flex-end; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+
+.construction-current { display: grid; gap: var(--sp-6); }
+
+.construction-others > button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.construction-others > button:hover { color: var(--text-1); }
+.construction-others__list { display: grid; gap: var(--sp-4); margin-top: var(--sp-4); }
+
+/* 改过什么。它是一条时间线，不是聊天记录——只留「我说了什么、它改了什么」。 */
+.construction-history { display: grid; gap: var(--sp-3); margin: 0; padding-left: 1.2em; }
+.construction-history li { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.construction-history q { display: block; color: var(--text-1); }
+.construction-history span { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+
+.construction-ask {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.construction-ask label { color: var(--text-3); font-size: var(--fs-xs); }
+.construction-ask textarea {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  resize: vertical;
+}
+.construction-ask__actions { display: flex; align-items: center; gap: var(--sp-3); }
+
+@media (max-width: 720px) {
+  .route-card { padding: var(--sp-5); }
+  .route-elements li { grid-template-columns: 1fr; }
+  .route-elements em { grid-row: auto; justify-self: start; }
+  .content-construction .bridge-bar { flex-wrap: wrap; row-gap: var(--sp-3); }
+  .content-construction .bridge-bar__title { flex-direction: column; align-items: flex-start; gap: var(--sp-2); width: 100%; }
+}
+
+/* 一条都没剩下时，把每条为什么被丢掉写出来——不然这故障没法查。 */
+.construction-dropped {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 620px;
+  margin: 0 auto var(--sp-7);
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  list-style: none;
+  text-align: left;
+}

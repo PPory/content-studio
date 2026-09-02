@@ -127,6 +127,26 @@ function sourceKey(kind, id) {
   return `${clean(kind)}\u0000${clean(id)}`;
 }
 
+/**
+ * 被选中的那条构造路线。
+ *
+ * ⚠️ **不新建表**：它是这一份构造的一部分，随 `construction_json` 一起存。
+ * 存下来是因为「为什么这样讲」在写作阶段还要用——不存的话，项目页只剩一堆要素，
+ * 而当初决定它们怎么排的那个理由丢了。
+ *
+ * ⚠️ 老的内容机会没有这一段，所以它是可选的。
+ */
+function normalizeRoute(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const item = record(value, "构造路线");
+  return {
+    id: optional(item.id, "构造路线 ID", 120),
+    storyline: required(item.storyline, "构造路线推进方式", 4000),
+    key_relation: optional(item.key_relation || item.keyRelation, "构造路线的组织理由", 2000),
+    risk: optional(item.risk, "构造路线的风险", 2000),
+  };
+}
+
 export function validateContentConstruction(value, { allowedSources = null } = {}) {
   const input = record(value, "内容构造");
   const elements = array(input.elements || [], "内容要素").map(normalizeElement);
@@ -150,7 +170,9 @@ export function validateContentConstruction(value, { allowedSources = null } = {
       }
     }
   }
+  const route = normalizeRoute(input.route);
   const normalized = {
+    ...(route ? { route } : {}),
     elements,
     relations: array(input.relations || [], "要素关系").map((item, index) => normalizeRelation(item, index, elementIds)),
     entry_options: array(input.entry_options || input.entryOptions || [], "大众入口", 20).map(normalizeEntryOption),
@@ -416,7 +438,14 @@ export class ContentBridgeDomain {
   saveOpportunity({ id = createUlid(), wikiPageId, audienceProblemId, problemCandidate = null, agendaId = null, coreClaim, knowledgeExplanation, cognitiveGap, dominantAction, fit, fitReason, construction = {}, freshness, actor, confirmed = false, now } = {}) {
     requireConfirmedUser({ actor, confirmed }, "保存内容机会");
     const workspaceView = { db: this.db, contentBridge: this };
-    const context = buildContentBridgeContext(workspaceView, { wikiPageId, audienceProblemId, problemCandidate, agendaId, includeExperiences: true });
+    /**
+     * ⚠️ **范围由当初那次预览决定，不由保存这一刻决定。**
+     * 多路线构造引用了整个工作区，拿 anchor 范围去校验它会全部判成「越界」；
+     * 而 freshness 里也记了同一个 scope，对不上就直接 409，
+     * 所以这里不是听调用方的，是听那次预览留下的记录的。
+     */
+    const scope = clean(freshness?.scope) || "anchor";
+    const context = buildContentBridgeContext(workspaceView, { wikiPageId, audienceProblemId, problemCandidate, agendaId, includeExperiences: true, scope });
     const normalizedFreshness = assertContentBridgeFreshness(freshness, context.freshness);
     const canonicalAction = clean(dominantAction);
     if (!DOMINANT_ACTIONS.has(canonicalAction)) throw new TypeError("主导表达动作不受支持");
