@@ -12,3 +12,7 @@ desktop.ini
 # 退役远端实现仅保留本机缓存，不再纳入仓库
 worker/
 supabase/
+
+# 原始音频转写稿：产品讨论的素材来源，不是本仓库的内容。
+# ⚠️ 仓库是公开的，而这些是别人视频的逐字全文——不要再被 `git add docs/` 扫进去。
+docs/transcription_*.json
