@@ -77,6 +77,19 @@ function sourceRows(workspace) {
   `).all();
 }
 
+/**
+ * 全库「被来源影响过的 Wiki 页面」总数。
+ *
+ * ⚠️ **不能把每份来源各自的 `citedPages` 加起来。** 一张被三份来源引用的页面
+ * 会被数三遍，于是「来源」页显示的 103 大于全库实际的 95 张——两页相邻摆着，
+ * 数字自己拆自己的台。去重只能在一条查询里做。
+ */
+function citedPageTotal(workspace) {
+  return workspace.db.prepare(`SELECT COUNT(DISTINCT s.page_id) AS count
+    FROM wiki_page_sources s JOIN book_documents d ON d.id = s.source_entity_id
+    JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL`).get().count;
+}
+
 /** 一份来源里的章节，供表格展开。带上每一节自己的提炼状态。 */
 function sourceDocuments(workspace, bookId) {
   return workspace.db.prepare(`
@@ -278,7 +291,7 @@ export const wikiRoutes = [
         chars: sources.reduce((sum, item) => sum + item.chars, 0),
         distilled: sources.reduce((sum, item) => sum + item.distilled, 0),
         citedFacts: sources.reduce((sum, item) => sum + item.citedFacts, 0),
-        citedPages: sources.reduce((sum, item) => sum + item.citedPages, 0),
+        citedPages: citedPageTotal(workspace),
       },
     });
   }) },
