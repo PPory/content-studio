@@ -4,6 +4,8 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const state = {
   context: null,
+  /** 用户声音的种类清单。真源在领域层，连上工作台时由 status 带过来。 */
+  voiceKinds: [],
   tab: "annotate",
   notes: [],
   asks: [],
@@ -158,6 +160,10 @@ async function checkConnection(showResult = false) {
     }
     node.classList.add("ok");
     node.querySelector("span").textContent = result.status.ready ? "已连接" : "部分可用";
+    if (Array.isArray(result.status.audienceKinds) && result.status.audienceKinds.length) {
+      renderVoiceKinds(result.status.audienceKinds);
+      if (state.context?.selection) $("#voice-row").hidden = false;
+    }
     if (showResult) notify(result.synced ? `工作台连接正常，已同步 ${result.synced} 条收藏` : result.status.ready ? "工作台连接正常" : "已连接，部分服务尚未配置");
   } catch (error) {
     node.classList.add("bad");
@@ -179,6 +185,10 @@ async function applyContext(next) {
   $("#selection").textContent = next.selection;
   $("#source-link").href = next.url;
   $("#annotation-input").value = drafts.get(next.captureId) || "";
+  // 上一段选区的「已记下」不能留在新选区下面——那会读成这一段也记过了。
+  if (changed) $("#voice-status").textContent = "";
+  // 种类清单还没拿到就先不显示这一行：一个空的下拉框只会让人点了才发现不能用。
+  $("#voice-row").hidden = !next.selection || !state.voiceKinds.length;
 
   if (changed) {
     state.askRun?.abort();
@@ -305,6 +315,44 @@ async function saveNote() {
   $("#notes-status").textContent = "";
   renderNotes();
   notify("批注已写入本地知识库");
+}
+
+/**
+ * 把划中的话记进证据层。
+ *
+ * ⚠️ **存的就是你划中的那段字，不经过模型。** 划词这个动作本身是逐字的，
+ * 所以这条通路的证据强度天然是最高的一档——前提是中间没人改写它。
+ *
+ * 这条路存在是因为 API 抓不到中文平台（知乎 403、小红书登录墙），
+ * 而你的浏览器里有登录态。
+ */
+function renderVoiceKinds(kinds) {
+  state.voiceKinds = kinds;
+  const select = $("#voice-kind");
+  if (select.options.length === kinds.length) return;
+  select.textContent = "";
+  for (const kind of kinds) {
+    const option = document.createElement("option");
+    option.value = kind.key;
+    option.textContent = kind.label;
+    select.append(option);
+  }
+  // 划中的多半是评论区里的话，所以默认停在这里，不让人每次都选一遍。
+  select.value = kinds.some((item) => item.key === "comment") ? "comment" : kinds[0]?.key || "";
+}
+
+async function saveVoice() {
+  const context = state.context;
+  if (!context?.selection) return notify("先在网页上选中别人说的话", true);
+  const status = $("#voice-status");
+  const data = await api("/api/extension/audience-voice", {
+    method: "POST",
+    body: { url: context.url, title: context.title, selection: context.selection, kind: $("#voice-kind").value },
+  });
+  if (state.context?.captureId !== context.captureId) return;
+  // 重复不是错误：同一段话被划第二次，说的是「这条已经在库里」，不是操作失败。
+  status.textContent = data.duplicate ? "这段之前已经记过了" : "已记下，带着这一页的链接";
+  notify(data.duplicate ? "这段之前已经记过" : "已记进真实用户声音");
 }
 
 function scheduleAskRender() {
@@ -475,6 +523,7 @@ for (const engine of $$("[data-engine]")) engine.addEventListener("click", () =>
 
 $("#connection").addEventListener("click", () => checkConnection(true));
 $("#save-note").addEventListener("click", (event) => withBusy(event.currentTarget, saveNote));
+$("#save-voice").addEventListener("click", (event) => withBusy(event.currentTarget, saveVoice));
 $("#annotation-input").addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); $("#save-note").click(); }
 });

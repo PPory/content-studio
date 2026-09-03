@@ -1,5 +1,6 @@
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { createUlid } from "../storage/ids.mjs";
+import { AUDIENCE_RAW_KINDS } from "../domain/audience-raw.mjs";
 
 const TRACKING_KEYS = new Set(["fbclid", "gclid", "dclid", "msclkid", "spm", "ref_src"]);
 
@@ -62,7 +63,9 @@ export const extensionRoutes = [
       pairToken: extensionToken,
       ready: true,
       services: { workspace: true },
-      capabilities: { collectionsV1: true, localWorkspace: true, stableAnnotations: true },
+      capabilities: { collectionsV1: true, localWorkspace: true, stableAnnotations: true, audienceVoiceV1: true },
+      // 种类由领域层定义，扩展不要自己抄一份——抄的那份迟早和 CHECK 约束对不上。
+      audienceKinds: AUDIENCE_RAW_KINDS,
       workspaceId: workspace.manifest.workspaceId,
     })),
   },
@@ -93,6 +96,46 @@ export const extensionRoutes = [
         workspace.repository.setEntityText(id, { title: String(input.title || "未命名网页"), body: `${quote}\n\n${body}`, now: stamp });
       });
       json(res, { ok: true, normalizedUrl, noteItems: noteItems(workspace, normalizedUrl) });
+    }),
+  },
+  {
+    /**
+     * 把选中的一段话记成真实用户声音。
+     *
+     * ⚠️ **这条路存在，是因为 API 抓不到中文平台。** 知乎问题页 403，知乎专栏和
+     * 小红书只回登录墙——而你的浏览器里有登录态。所以中文平台的评论只能这样进来。
+     *
+     * ⚠️ **存的是你划中的原文，不经过模型。** 划词这个动作本身就是逐字的，
+     * 也就是说这条通路的证据强度天然是最高的那一档，前提是正文别被碰。
+     *
+     * 点这个按钮就是用户确认。选中、按下，两个动作都由人做出，
+     * 所以这里给 confirmed: true 是如实描述，不是绕过确认闸。
+     */
+    method: "POST",
+    path: "/api/extension/audience-voice",
+    handler: guarded(async ({ workspace, req, res }) => {
+      const input = await readJsonBody(req, 220_000);
+      const normalizedUrl = normalizeWebUrl(input.url);
+      const quote = String(input.selection || "").trim();
+      if (!quote) throw new Error("请先在网页上选中别人说的话");
+      const kind = String(input.kind || "comment");
+      if (!AUDIENCE_RAW_KINDS.some((item) => item.key === kind)) throw new Error("用户声音来源种类不受支持");
+      const result = workspace.audienceRaw.record({
+        kind,
+        body: quote,
+        sourceName: String(input.title || "").slice(0, 200),
+        sourceUrl: normalizedUrl,
+        actor: "user",
+        confirmed: true,
+        now: new Date(),
+      });
+      json(res, {
+        ok: true,
+        duplicate: result.duplicate,
+        voiceId: result.id,
+        normalizedUrl,
+        kinds: AUDIENCE_RAW_KINDS,
+      });
     }),
   },
   {

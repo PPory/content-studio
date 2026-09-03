@@ -578,7 +578,7 @@ try {
   await captureRow.waitFor();
   check("记下来这一行排在结果之后，不抢走 Enter", await page.locator(".cmdk__row").last().innerText().then((text) => text.includes("记成用户原话")));
   await captureRow.click();
-  const voiceDialog = page.getByRole("dialog", { name: "记录用户声音" });
+  const voiceDialog = page.getByRole("dialog", { name: "真实用户声音" });
   await voiceDialog.waitFor();
   check("打进去的那句不用再打一遍", await voiceDialog.getByLabel("原话").inputValue() === heard);
   check("只要一个输入框，不问问题名称和为什么值得关注",
@@ -603,6 +603,73 @@ try {
     /不可变证据/,
   );
   check("存进去的原话在真实运行时也改不了", true);
+
+  // ── 去公开讨论里找：另一个起点，同一个抽屉 ─────────────────────────
+  //
+  // ⚠️ 验的是「摆出来的东西能不能当场核对」和「丢掉的说不说」。
+  // 找到几条不是重点——一句「AI 找到了 4 条相关讨论」本来就没法判断真假。
+  let harvestCalls = 0;
+  const rawBeforeHarvest = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_raw_sources").get().count;
+  const harvestBody = [
+    "r/ArtificialInteligence",
+    "# AI helps me learn faster, but am I really learning?",
+    "quietbuilder  2d ago",
+    "But sometimes I wonder, if I am not struggling as much, am I missing something?",
+    "mira_codes  1d ago",
+    "I stopped trying to keep up and just picked two tools.",
+  ].join("\n");
+  await page.route("**/api/workspace/audience-harvest", async (route) => {
+    harvestCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true, candidateOnly: true, model: "test-harvest", charged: 0,
+        candidates: [{
+          url: "https://www.reddit.com/r/ArtificialInteligence/comments/1/",
+          title: "AI helps me learn faster, but am I really learning?",
+          siteName: "reddit.com", kind: "post", length: harvestBody.length,
+          summary: "学习者担心 AI 让过程太轻松，反而没真正学会。",
+          quotes: [
+            "But sometimes I wonder, if I am not struggling as much, am I missing something?",
+            "I stopped trying to keep up and just picked two tools.",
+          ],
+          body: harvestBody, duplicateOf: "",
+        }],
+        dropped: [{ url: "https://example.com/blog", reason: "这一页没有真实用户在提问题" }],
+        walled: [{ url: "https://www.zhihu.com/question/1", title: "知乎问题", platform: "知乎" }],
+        failures: [],
+        nothingFoundReason: "",
+      }),
+    });
+  });
+
+  await voiceDialog.getByRole("button", { name: "去找找有没有人在说" }).click();
+  check("两个起点在同一个抽屉里，切换不用关掉重开",
+    await voiceDialog.getByLabel("找什么").count() === 1
+    && await voiceDialog.getByRole("button", { name: "记下这段原话" }).count() === 0);
+
+  await voiceDialog.getByLabel("找什么").fill("am I really learning with AI");
+  await voiceDialog.getByRole("button", { name: "开始找" }).click();
+  await voiceDialog.getByText("学习者担心 AI 让过程太轻松").waitFor();
+  check("逐字原话直接摆出来，不折叠",
+    await voiceDialog.getByText("if I am not struggling as much").isVisible());
+  check("丢掉了什么也说出来", await voiceDialog.getByText("另外 1 页没有留下").count() === 1);
+  check("登录墙平台如实列出并指到扩展那条路",
+    await voiceDialog.getByText("1 条要登录才看得到").count() === 1);
+
+  const beforeKeep = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_raw_sources").get().count;
+  check("找完还没有入库", harvestCalls === 1 && beforeKeep === rawBeforeHarvest);
+
+  await voiceDialog.getByRole("button", { name: "收下这一页" }).click();
+  await voiceDialog.getByText("已收进真实用户声音").waitFor();
+  const kept = workspace.db.prepare("SELECT body, source_url AS sourceUrl FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1").get();
+  check("确认之后才入库，正文和链接原样存下",
+    kept?.body === harvestBody && kept.sourceUrl === "https://www.reddit.com/r/ArtificialInteligence/comments/1/");
+
+  await voiceDialog.getByRole("button", { name: "我这儿有一段话" }).click();
+  await page.unroute("**/api/workspace/audience-harvest");
+
   /**
    * ⚠️ **记完原话之后要有一条直路。**
    * 只靠 AI 发现的话，一次只给三五条连接；没被挑中的那些原话里的困惑
@@ -644,7 +711,9 @@ try {
    * **不用先挑 Wiki、也不用先维护用户问题**，点一次就能拿到几条有理由、有原话的连接；
    * 「发展这条」仍然一个字都不写库，直到用户确认保存。
    */
-  const rawVoice = workspace.db.prepare("SELECT id FROM audience_raw_sources ORDER BY ingested_at DESC LIMIT 1").get();
+  // 按正文取，不按「最新一条」取：这一屏之后还会有别的东西进证据层，
+  // 靠时间排序拿数据的话，每加一条通路就会莫名其妙地挂一次。
+  const rawVoice = workspace.db.prepare("SELECT id FROM audience_raw_sources WHERE body = ?").get(pasted);
   const discoveryQuote = "AI 工具每周都在出新的，我到底该学哪个？";
   let scanCalls = 0;
   await page.route("**/api/workspace/content-discovery/scan", async (route) => {

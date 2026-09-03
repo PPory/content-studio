@@ -129,6 +129,8 @@ export const api = {
   audienceVoices: (query = "") => req(`/api/workspace/audience-voices${query}`),
   audienceVoice: (id) => req(`/api/workspace/audience-voices/${encodeURIComponent(id)}`),
   recordAudienceVoice: (body) => postJson("/api/workspace/audience-voices", body),
+  // 去公开讨论里找。只回候选，入库仍然走 recordAudienceVoice 那道确认门。
+  harvestAudienceVoices: (body) => postJson("/api/workspace/audience-harvest", body),
   // 从一段原话直接读用户问题：不必等 Discovery 恰好挑中它。
   voiceProblemCandidates: (id) => postJson(`/api/workspace/audience-voices/${encodeURIComponent(id)}/problem-candidates`, {}),
   // AI 发现：读一次缓存，扫描是显式动作——进页面不自动烧模型。

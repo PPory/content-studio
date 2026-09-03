@@ -31,6 +31,18 @@
         </div>
         <h1 id="page-title"></h1>
         <blockquote id="selection"></blockquote>
+        <!--
+          这一行作用于**选区本身**，所以放在选区正下方，不放进「批注」面板：
+          批注是你写的判断，这里记的是别人说的原话，两件事。
+        -->
+        <div id="voice-row" class="voice-row" hidden>
+          <label class="voice-kind">
+            <span class="sr-only">这段话是哪来的</span>
+            <select id="voice-kind"></select>
+          </label>
+          <button id="save-voice" class="secondary" type="button">记为用户声音</button>
+        </div>
+        <div id="voice-status" class="inline-status"></div>
       </section>
 
       <nav class="tabs" aria-label="功能">

@@ -6,6 +6,10 @@
  * 整理成结论**。真实的顺序是反过来的：你先看见有人这么说，之后才知道那是什么问题。
  * 提炼是 AI 的活，这一屏只负责不让原话丢失、不让它被改写。
  *
+ * ⚠️ **「粘一段」和「去找找」在同一个抽屉里。** 它们是同一件事的两个起点：
+ * 手上已经有话就粘，想知道有没有人在说就搜，落点都是同一个证据层。
+ * 拆成两个入口，等于让用户在还分不清这两者之前先做一次选择。
+ *
  * ⚠️ **来源种类是猜出来的，不是问出来的**（Infer before Ask）。
  * 粘进来的东西长什么样，基本已经说明它是群聊还是一条评论；猜错了改一下就是一次点击，
  * 而每多问一个必填项，这个入口就少被用一次。
@@ -16,6 +20,7 @@ import { api } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { ErrorNote, Note } from "./ui.jsx";
 import { IconMessageQuestion, IconX } from "./icons.jsx";
+import { VoiceHarvest } from "./VoiceHarvest.jsx";
 
 const KINDS = [
   { key: "group_chat", label: "群聊" },
@@ -45,6 +50,8 @@ export function guessVoiceKind(text) {
 }
 
 export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
+  /** 从哪儿开始：手上有话（paste），还是想知道有没有人在说（find）。 */
+  const [mode, setMode] = useState("paste");
   const [body, setBody] = useState("");
   const [kind, setKind] = useState("other");
   const [kindTouched, setKindTouched] = useState(false);
@@ -81,6 +88,9 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
     setProblems([]);
     setReadNote("");
     setKept([]);
+    // 默认停在粘贴那一侧：带进来的那行字同样可能是刚复制的原话。
+    // 只有调用方明说要去找（比如「没发现新连接」那个出口）才落在搜索那一侧。
+    setMode(preset?.mode === "find" ? "find" : "paste");
   }, [open, preset]);
 
   if (!open) return null;
@@ -119,15 +129,27 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
 
   return (
     <div className="scrim" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="drawer" ref={boxRef} onSubmit={save} role="dialog" aria-modal="true" aria-label="记录用户声音">
+      <form className="drawer" ref={boxRef} onSubmit={save} role="dialog" aria-modal="true" aria-label="真实用户声音">
         <div className="drawer-head">
-          <div className="drawer-title">记录用户声音</div>
+          <div className="drawer-title">真实用户声音</div>
+          {/*
+            ⚠️ 两个起点摆在一起，让「原来还能去找」这件事被看见。
+            藏进菜单的话，没用过的人永远不会知道有这条路。
+          */}
+          <div className="seg" role="group" aria-label="从哪儿开始">
+            <button type="button" aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>我这儿有一段话</button>
+            <button type="button" aria-pressed={mode === "find"} onClick={() => setMode("find")}>去找找有没有人在说</button>
+          </div>
           <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭">
             <IconX aria-hidden="true" stroke={1.8} />
           </button>
         </div>
 
         <div className="drawer-body">
+          {mode === "find" ? <VoiceHarvest initialQuery={preset?.term || ""} onStored={onStored} /> : null}
+
+          {mode === "paste" ? (
+            <>
           <div className="field field--grow">
             <label htmlFor="voice-body">原话</label>
             <textarea
@@ -245,16 +267,22 @@ export function VoiceCapture({ open, onClose, onStored, onGo, preset = null }) {
               ))}
             </Note>
           ) : null}
+            </>
+          ) : null}
         </div>
 
         <div className="drawer-foot">
           {/* 存完之后这颗不再是「取消」——已经存进去了，取消不掉。
               右上角那颗 icon 按钮的无障碍名就是「关闭」，这里再叫一次会撞名。 */}
           <button type="button" className="btn" onClick={onClose}>{done && !done.duplicate ? "完成" : "取消"}</button>
-          <button className="btn btn-primary" disabled={busy || !body.trim()}>
-            <IconMessageQuestion aria-hidden="true" stroke={1.8} />
-            {busy ? "正在记下…" : "记下这段原话"}
-          </button>
+          {/* 找候选那一侧没有「保存」——收下哪一条是每张卡自己的决定，
+              页脚再放一颗主按钮会让人以为还要再确认一次。 */}
+          {mode === "paste" ? (
+            <button className="btn btn-primary" disabled={busy || !body.trim()}>
+              <IconMessageQuestion aria-hidden="true" stroke={1.8} />
+              {busy ? "正在记下…" : "记下这段原话"}
+            </button>
+          ) : null}
         </div>
       </form>
     </div>

@@ -213,3 +213,32 @@
 .discovery-agenda__card .row-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-2); }
 /* 「去手动探索自己写」是句子里的一个词，不是一颗按钮。 */
 .linkish { padding: 0; border: 0; background: none; color: var(--brand-strong); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+/* 去公开讨论里找真实声音。
+   ⚠️ 引证是卡片的主体而不是折叠细节：用户要判断的就是「这话是不是真有人说过」，
+   而那只能靠把原话摆出来让他自己看。 */
+.harvest { display: flex; flex-direction: column; gap: 14px; }
+.harvest-search { display: flex; gap: 8px; align-items: center; }
+.harvest-search input { flex: 1 1 auto; min-width: 0; }
+.harvest-examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  color: var(--text-3); font-size: var(--fs-sm); }
+.harvest-examples .chip { height: 26px; padding: 0 10px; font-size: var(--fs-sm); }
+
+.harvest-card { border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.harvest-card header { display: flex; flex-direction: column; gap: 2px; }
+.harvest-card header a { font-weight: 600; color: var(--text-1); }
+.harvest-card header small { color: var(--text-3); font-size: var(--fs-sm); }
+.harvest-summary { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+
+.harvest-quotes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.harvest-quotes li { border-left: 2px solid var(--accent-soft); padding: 2px 0 2px 10px;
+  color: var(--text-1); font-size: var(--fs-sm); line-height: 1.55; }
+
+.harvest-card footer { display: flex; align-items: center; gap: 8px; }
+.harvest-note { color: var(--text-3); font-size: var(--fs-sm); }
+.harvest-note--ok { color: var(--accent-strong); }
+
+.harvest-dropped { font-size: var(--fs-sm); color: var(--text-3); }
+.harvest-dropped summary { cursor: pointer; }
+.harvest-dropped ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }

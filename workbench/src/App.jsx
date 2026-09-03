@@ -779,7 +779,7 @@ export function App() {
                 ) : route.state ? (
                   <ContentBridge state={route.state} onGo={go} />
                 ) : (
-                  <ContentDiscovery onGo={go} onCaptureVoice={(term) => setVoice({ term })} />
+                  <ContentDiscovery onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} />
                 )
               ) : route.view === "ideas" ? (
                 <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
@@ -921,7 +921,7 @@ export function App() {
         open={finder}
         onClose={() => setFinder(false)}
         onGo={go}
-        onCaptureVoice={(term) => setVoice({ term })}
+        onCaptureVoice={(term, mode) => setVoice({ term, mode })}
       />
 
       <VoiceCapture

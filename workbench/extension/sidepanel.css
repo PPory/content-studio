@@ -314,3 +314,13 @@ main { padding: 20px 16px 90px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* 选区下面那一行：把划中的话记进证据层。作用于选区，所以贴着选区。 */
+.voice-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.voice-kind { flex: 0 0 auto; }
+.voice-kind select { max-width: 108px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--surface); color: var(--text-1); font: 400 10.5px/1.4 var(--font); }
+.voice-row button { flex: 0 0 auto; }
+/* 只给读屏器看的标签。select 本身已经说得清，视觉上再加一行是噪音。 */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

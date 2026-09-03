@@ -229,7 +229,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
         <div className="bridge-bar__actions">
           <button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}>
             <IconMessageQuestion aria-hidden="true" stroke={1.7} />
-            记录用户声音
+            真实用户声音
           </button>
           <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索</button>
           {scan_ ? (
@@ -318,8 +318,13 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
           <h3>最近没有发现足够自然的新连接</h3>
           <p>{scan_.nothingFoundReason}</p>
           <div className="discovery-empty__outs">
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => onCaptureVoice?.("")}>
-              导入一些真实用户声音
+            {/*
+              ⚠️ 这个出口落在搜索那一侧，不是粘贴。
+              走到这里说明工作台里的原话不够用了——此时让人「去粘一段」，
+              等于要求他先自己找到材料，而那正是这一步该替他做的事。
+            */}
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => onCaptureVoice?.("", "find")}>
+              去找找有没有人在说
             </button>
             <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>
               自己挑两个东西连连看

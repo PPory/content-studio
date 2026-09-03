@@ -135,6 +135,35 @@ try {
   const removed = await removeRes.json();
   check("网页批注可编辑并进入回收站", editRes.ok && removeRes.ok && removed.noteItems.length === 0 && workspace.repository.getEntity(note.id, { includeDeleted: true }).deletedAt);
 
+  // ── 划中的话记进证据层 ─────────────────────────────────────────────
+  //
+  // ⚠️ 这条路存在是因为 API 抓不到中文平台（知乎 403、小红书登录墙），
+  // 而浏览器里有登录态。所以它的正确性直接决定中文受众声音进不进得来。
+  const quote = "每次都想着先收藏，收藏完就再也没打开过";
+  const voiceRes = await fetch(`${base}/api/extension/audience-voice`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ url: "https://www.xiaohongshu.com/explore/abc?utm_source=x", title: "小红书笔记", selection: quote, kind: "comment" }) });
+  const voice = await voiceRes.json();
+  check("划中的话写入不可变证据层", voiceRes.ok && workspace.repository.getEntity(voice.voiceId)?.type === "audience_raw_source");
+  check("存的就是划中那段字，没有被改写", workspace.audienceRaw.source(voice.voiceId).body === quote);
+  check("来源链接跟着存下来并去掉了跟踪参数",
+    workspace.audienceRaw.source(voice.voiceId).sourceUrl === "https://www.xiaohongshu.com/explore/abc");
+
+  const againRes = await fetch(`${base}/api/extension/audience-voice`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ url: "https://www.xiaohongshu.com/explore/abc", title: "小红书笔记", selection: quote, kind: "comment" }) });
+  const again = await againRes.json();
+  check("同一段话划第二次说「已经记过」而不是再记一条",
+    again.duplicate === true && again.voiceId === voice.voiceId
+    && workspace.db.prepare("SELECT COUNT(*) AS c FROM audience_raw_sources").get().c === 1);
+
+  const emptyRes = await fetch(`${base}/api/extension/audience-voice`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ url: "https://example.com/a", title: "x", selection: "  ", kind: "comment" }) });
+  check("没选中东西时说清要先选", emptyRes.status === 400);
+
+  const badKindRes = await fetch(`${base}/api/extension/audience-voice`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ url: "https://example.com/a", title: "x", selection: "有内容", kind: "made_up" }) });
+  check("种类必须是领域层定义过的那几种", badKindRes.status === 400);
+
+  const statusBody = await (await fetch(`${base}/api/extension/status`, { headers: auth })).json();
+  check("种类清单由工作台下发，扩展不自己抄一份",
+    statusBody.capabilities.audienceVoiceV1 === true
+    && statusBody.audienceKinds.some((item) => item.key === "comment" && item.label));
+
   const askRes = await fetch(`${base}/api/extension/ask`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ mode: "解释", selection: "只做配置检查" }) });
   const ask = await askRes.json();
   check("未配置模型时扩展 AI 本地拒绝且不发远程调用", askRes.status === 503 && ask.error === "本地 Pi 模型尚未配置");
