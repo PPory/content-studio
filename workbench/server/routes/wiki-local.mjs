@@ -324,8 +324,27 @@ export const wikiRoutes = [
       const text = String(body.text || "").trim();
       if (text.length < 20) throw new Error("粘贴的文字太短，至少需要 20 个字符");
       source = { title: pastedTitle(text), author: "", sourceUrl: "", platform: "", text };
+    } else if (mode === "capture") {
+      /**
+       * ⚠️ **情报 → 知识。** 收藏原来只能停在情报那一栏：读过、留着、然后没有下一步。
+       * 它身上该有的东西（标题、正文、链接）本来就齐了，所以这条路不新开一份导入实现，
+       * 只是把收藏喂进同一个 `createBookRecord`——提炼、逐字校验、审核全都照旧。
+       */
+      const capture = workspace.db.prepare(`SELECT c.id, c.title, c.body_markdown AS body, c.source_url AS sourceUrl
+        FROM captures c JOIN entities e ON e.id = c.id AND e.deleted_at IS NULL WHERE c.id = ?`).get(String(body.captureId || ""));
+      if (!capture) throw new Error("这条收藏不存在");
+      const text = String(capture.body || "").trim();
+      if (text.length < 20) {
+        throw Object.assign(new Error("这条收藏正文太短，提炼不出东西"), {
+          hint: "收藏里只存了标题或链接时会这样。先把正文补进去，或者直接用「粘贴链接」重读一遍。",
+        });
+      }
+      source = {
+        title: capture.title || pastedTitle(text), author: "",
+        sourceUrl: capture.sourceUrl || "", platform: "", text, captureId: capture.id,
+      };
     } else {
-      throw new Error("请选择粘贴链接或粘贴文字");
+      throw new Error("请选择粘贴链接、粘贴文字，或指定一条收藏");
     }
     if (!source.text.trim()) throw new Error("没有读取到可导入的正文");
     const book = await createBookRecord(workspace, {
@@ -343,7 +362,14 @@ export const wikiRoutes = [
         JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id=? ORDER BY d.document_order`).all(book.id);
       queuedForDistill = queueIngest(workspace, documents).queued;
     }
-    json(res, { ok: true, book, queuedForDistill });
+    /**
+     * ⚠️ **提炼过的收藏就算归好了。** 不改状态的话，值班台上「N 条收藏还没归」
+     * 会一直报同一条——而你已经对它做了这条链上最实的一件事。
+     */
+    if (source.captureId) {
+      workspace.db.prepare("UPDATE captures SET status = 'accepted' WHERE id = ? AND status = 'pending'").run(source.captureId);
+    }
+    json(res, { ok: true, book, queuedForDistill, captureId: source.captureId || "" });
   }) },
 
   { method: "POST", path: "/api/workspace/knowledge/ingest", handler: guard(async ({ workspace, req, res }) => {

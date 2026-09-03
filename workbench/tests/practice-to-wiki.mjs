@@ -1,4 +1,4 @@
-// 内容 → 知识：结算过的实践记录也能沉淀成词条。
+// 链和链之间的两个交汇：内容 → 知识、情报 → 知识。
 //
 // ⚠️ 这一步唯一的危险是**顺手把逐字闸也放松掉**。
 // 允许「来源是我自己的实践」，改的是「什么算一份来源」——
@@ -102,7 +102,50 @@ try {
   check("排的是同一张候选表，审核那一关照旧",
     workspace.db.prepare("SELECT COUNT(*) AS n FROM source_ingests WHERE source_entity_id = ?").get(experimentId).n === 1);
 
-  console.log("\n实践记录回流知识库验收通过");
+  // ── 情报 → 知识：收藏也能提炼 ──────────────────────────────────────
+  //
+  // ⚠️ 收藏原来只能停在情报那一栏：读过、留着、然后没有下一步。
+  const captureId = createUlid();
+  const captureBody = "作者说，判断权一旦交出去就很难拿回来，因为你会先失去判断所需要的那些练习。";
+  workspace.repository.transaction(() => {
+    workspace.repository.createEntity({ id: captureId, type: "capture", now });
+    workspace.db.prepare(`INSERT INTO captures(id,capture_kind,title,body_markdown,source_url,status,reaction)
+      VALUES (?,'article','一条读到的帖子',?,'https://example.com/a','pending','')`).run(captureId, captureBody);
+  });
+
+  const imported = await fetch(`${base}/api/workspace/knowledge/sources/import`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode: "capture", captureId }),
+  });
+  const importedData = await imported.json();
+  check("收藏能直接提炼成来源", imported.status === 200 && importedData.ok === true && importedData.book?.id);
+  check("并且排进了提炼队列", importedData.queuedForDistill >= 1);
+  check("正文原样进了来源，没有被改写",
+    workspace.db.prepare("SELECT body_markdown AS body FROM book_documents WHERE book_id = ?")
+      .get(importedData.book.id).body === captureBody);
+  check("链接跟着存下来",
+    workspace.db.prepare("SELECT source_url AS url FROM books WHERE id = ?").get(importedData.book.id).url
+      === "https://example.com/a");
+  check("提炼过的收藏就算归好了，值班台不再重复报它",
+    workspace.db.prepare("SELECT status FROM captures WHERE id = ?").get(captureId).status === "accepted");
+
+  const thinId = createUlid();
+  workspace.repository.transaction(() => {
+    workspace.repository.createEntity({ id: thinId, type: "capture", now });
+    workspace.db.prepare(`INSERT INTO captures(id,capture_kind,title,body_markdown,source_url,status,reaction)
+      VALUES (?,'article','只存了个标题','','https://example.com/b','pending','')`).run(thinId);
+  });
+  const thin = await fetch(`${base}/api/workspace/knowledge/sources/import`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode: "capture", captureId: thinId }),
+  });
+  const thinData = await thin.json();
+  check("正文太短时说清为什么，并给下一步",
+    thin.status >= 400 && /正文太短/.test(thinData.error) && /粘贴链接/.test(thinData.hint || ""));
+  check("失败的收藏保持原状，不被顺手标成已归",
+    workspace.db.prepare("SELECT status FROM captures WHERE id = ?").get(thinId).status === "pending");
+
+  console.log("\n两个交汇验收通过");
 } finally {
   if (server) await new Promise((resolve) => server.close(resolve));
   workspace?.close?.();
