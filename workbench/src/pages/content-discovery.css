@@ -23,20 +23,80 @@
 .bridge-bar__stale { font-weight: 500; color: var(--text-2); }
 .bridge-bar__stale::before { content: "·"; margin: 0 6px; color: var(--border-strong); font-weight: 400; }
 
-.discovery-list { display: grid; gap: var(--sp-8); }
-
-.discovery-card {
+/**
+ * 候选清单：**一条一行，能横着比。**
+ * 行之间用一道线分开，不是四张浮起来的卡——四块带边框的白盒子叠着，
+ * 屏幕上最强的节奏会是那四圈边框，而不是它们装的那四句判断。
+ */
+.discovery-list {
   display: grid;
-  /* ⚠️ 段间距从 sp-6 收到 sp-5：眉标砍掉之后，段落自己就是分隔，
-     再留原来那么大的沟会让一张卡散成六块互不相干的东西 */
-  gap: var(--sp-5);
-  padding: var(--sp-7);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
 }
+
+.discovery-card { border-top: 1px solid var(--border); }
+.discovery-card:first-child { border-top: 0; }
 /* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
-.discovery-card[data-fit="weak"] { opacity: .78; }
+.discovery-card[data-fit="weak"] { opacity: .72; }
+.discovery-card[data-open] { background: var(--surface); }
+
+/* 评级 | 内容 | 动作。评级定宽，四行的判断才在同一条左缘上起头 */
+.discovery-card__row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: var(--sp-5);
+  align-items: start;
+  padding: var(--sp-5) var(--sp-4);
+}
+.discovery-card__fit {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); white-space: nowrap;
+}
+.discovery-card__fit[data-fit="weak"] { color: var(--text-3); font-weight: 500; }
+
+.discovery-card__body { display: grid; gap: var(--sp-3); min-width: 0; }
+
+/* 判断是这一条的标题：几条之间差别最大的地方，也是真写下去要写的那句话 */
+.discovery-card__claim {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: -.01em;
+}
+
+.discovery-card__from {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2);
+  margin: 0; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.65;
+}
+.discovery-card__from > i { font-style: normal; color: var(--border-strong); }
+/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
+.discovery-card__from[data-origin="hypothesis"] { color: var(--text-3); }
+/* 问句：他们问什么。截两行——它是上下文，不是这一行的标题 */
+.discovery-card__q {
+  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.discovery-card__from button {
+  padding: 0; margin-left: var(--sp-1, 2px);
+  border: 0; background: none; color: inherit;
+  font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.discovery-card__from button:hover { color: var(--text-1); }
+
+/* 锚点只报名字，名字之间用间距和点分开、不做胶囊：
+   一行三颗小方块会比它们支撑的那句判断还抢眼 */
+.discovery-card__anchors {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px var(--sp-3);
+  margin: 0; font-size: var(--fs-xs); color: var(--text-3);
+}
+.discovery-card__anchors .discovery-card__label { margin: 0; flex: none; }
+.discovery-anchor::after { content: "·"; margin-left: var(--sp-3); color: var(--border-strong); }
+.discovery-anchor:last-child::after { content: none; }
+
+/* 动作靠右，两颗竖着：一行里横着排会把判断那一列挤窄 */
+.discovery-card__acts {
+  display: grid; justify-items: end; align-content: start; gap: var(--sp-3); flex: none;
+}
 
 .discovery-card__label {
   display: block;
@@ -45,125 +105,29 @@
   font-size: var(--fs-xs);
 }
 
-/**
- * 来路那一行：**谁在困惑 + 这话有多硬 + 看原话**，全在一行里。
- * ⚠️ 上一版是两处分开说的（问句上面一个眉标、下面再一句斜体免责），
- * 而它们说的是同一件事的两半，中间夹着问句本身。
- */
-.discovery-card__from {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin: 0 0 var(--sp-2);
-  color: var(--brand-strong);
-  font-size: var(--fs-xs);
+/* 展开区缩进到判断那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
+.discovery-card__more {
+  display: grid; gap: var(--sp-5);
+  margin: 0 var(--sp-4) var(--sp-6) calc(76px + var(--sp-5) + var(--sp-4));
+  padding-left: var(--sp-5);
+  border-left: 1px solid var(--border);
 }
-.discovery-card__from > i { font-style: normal; color: var(--border-strong); }
-/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
-.discovery-card__from[data-origin="hypothesis"] { color: var(--text-3); }
-.discovery-card__from button {
-  padding: 0; margin-left: var(--sp-2);
-  border: 0; background: none; color: inherit;
-  font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+.discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
+.discovery-card__more ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.discovery-card__more-toggle {
+  padding: 0; border: 0; background: none;
+  color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; cursor: pointer;
 }
-.discovery-card__from button:hover { color: var(--text-1); }
-
-.discovery-card__q {
-  margin: 0;
-  font-size: var(--fs-lg);
-  line-height: 1.5;
-  letter-spacing: -.015em;
-}
-
-/**
- * 评级 + 它的理由并成一句。
- * ⚠️ 评级不再是页脚上一颗孤零零的绿药丸——「很自然」单独摆着没有量表也没有对照，
- * 而紧跟着的就是专门解释为什么自然的那段话。合起来，评级是那段话的引子。
- */
-.discovery-card__why {
-  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75;
-}
-.discovery-card__why > b { margin-right: var(--sp-2); color: var(--text-1); font-weight: 600; }
-.discovery-card__why > b[data-fit="weak"] { color: var(--text-3); }
-
-/* 锚点在这一层只报名字，名字之间用间距分开、不做胶囊：
-   一行三颗小方块会比它们支撑的那句判断还抢眼 */
-.discovery-card__anchors {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
-  margin: 0; font-size: var(--fs-sm); color: var(--text-2);
-}
-.discovery-card__anchors .discovery-card__label { margin: 0; flex: none; }
-.discovery-anchor::after { content: "·"; margin-left: var(--sp-4); color: var(--border-strong); }
-.discovery-anchor:last-child::after { content: none; }
+.discovery-card__more-toggle:hover { color: var(--text-1); }
 
 .discovery-anchor-why { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
 .discovery-anchor-why li { display: grid; gap: 2px; }
 .discovery-anchor-why strong { font-size: var(--fs-sm); }
 .discovery-anchor-why span { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
 
-.discovery-evidence {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--sp-3);
-  margin: 0;
-  color: var(--brand-strong);
-  font-size: var(--fs-xs);
-}
-/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
-.discovery-evidence[data-origin="hypothesis"] { color: var(--text-3); font-style: italic; }
-.discovery-evidence button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.discovery-evidence button:hover { color: var(--text-1); }
-
-.discovery-quotes { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 0; padding: var(--sp-4) var(--sp-5); border-left: 2px solid var(--border); list-style: none; }
+.discovery-quotes { display: grid; gap: var(--sp-4); margin: var(--sp-2) 0 0; padding: var(--sp-4) var(--sp-5); border-left: 2px solid var(--border); list-style: none; }
 .discovery-quotes q { display: block; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
 .discovery-quotes small { display: block; margin-top: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
-
-.discovery-card__anchors ul { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
-.discovery-card__anchors li { display: grid; gap: 2px; }
-.discovery-card__anchors strong { font-size: var(--fs-sm); }
-.discovery-card__anchors span { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-
-.discovery-card__why p,
-.discovery-card__claim p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.75; }
-.discovery-card__claim p { font-weight: 600; }
-
-.discovery-card__more { display: grid; gap: var(--sp-5); padding-top: var(--sp-5); border-top: 1px dashed var(--border); }
-.discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
-.discovery-card__more ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-.discovery-card__more-toggle {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.discovery-card__more-toggle:hover { color: var(--text-1); }
-
-.discovery-card__foot {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-4);
-  padding-top: var(--sp-5);
-  border-top: 1px solid var(--border);
-}
-/* 页脚只剩两颗：左边「再看看」，右边「就它了」。
-   评级药丸搬去了 `.discovery-card__why` 当引子，理由写在那儿。 */
-.discovery-card__foot .btn { margin-left: auto; }
 
 .discovery-stale {
   display: flex;
@@ -195,7 +159,17 @@
 .discovery-empty p { max-width: 520px; margin: 0 auto var(--sp-7); color: var(--text-2); line-height: 1.7; }
 .discovery-empty__outs { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-3); }
 
+/**
+ * ⚠️ **「进行中」和上面的候选走同一套行语汇，别让它更重。**
+ * 候选是**还没决定**的东西，进行中是**已经决定**的——已经决定的那些不该比
+ * 待决定的更抢眼。上一版候选变成平铺行之后，这一段还留着一堆浮起来的白盒子，
+ * 一页上两种列表语汇，重的那种装的还是次要的东西。
+ */
 .discovery-saved { margin-top: var(--sp-11); }
+.discovery-saved .bridge-opp-list { background: none; gap: 0; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.discovery-saved .bridge-opp-list li + li { border-top: 1px solid var(--border); }
+.discovery-saved .bridge-opp-list button { padding: var(--sp-4) var(--sp-4); background: none; }
+.discovery-saved .bridge-opp-list button:hover { background: var(--surface); }
 .discovery-saved h3 { margin: 0 0 var(--sp-4); }
 
 @media (max-width: 720px) {
