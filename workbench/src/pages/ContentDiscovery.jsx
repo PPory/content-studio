@@ -31,27 +31,27 @@ function dateLabel(value) {
 }
 
 /**
- * 一条连接候选。**一行，不是一整块。**
+ * 一条连接候选，**一张卡**。
  *
- * ⚠️ **别再让它铺成一大段散文。** 一次扫描默认给 4 条、最多 5 条
- *（`content-discovery-ai.mjs` 的 `DEFAULT_LIMIT` / `MAX_LIMIT`），
- * 而上一版每条是一块 268px 的满宽长文——四条叠起来一屏多，
- * **你没法把它们放在一起比**，只能一条条读下去，读到第四条时第一条已经忘了。
- * 这一步是**在几条里挑一条**，那就得像清单一样能横着扫。
+ * ⚠️ **两列，不是三列或自动填充。** 一次扫描默认给 4 条、最多 5 条
+ *（`content-discovery-ai.mjs` 的 `DEFAULT_LIMIT` / `MAX_LIMIT`）。
+ * 三列时 4 条排成 3+1，第二行右边空掉三分之二；两列时 4 条正好铺满，
+ * 而且卡宽约 530px——中文判断落在两行，不是三行。
  *
- * 折叠时只留能做选择的三样，其余全部收起：
- *   1. **判断**——真发展下去要写的就是这句话，也是几条之间差别最大的地方，所以它是标题；
- *   2. **问句 + 证据成色**——这事是不是真有人在困惑；
- *   3. **凭哪几条知识**——是不是我能说的。
- * 理由（为什么值得连、知识怎么解释、大众卡在哪）是**决定倾向某一条之后**才读的，
- * 展开才给。
+ * ⚠️ **判断和问句都定行数，卡才等高。** 试做版没定，于是同一行里
+ * 「判断两行」和「判断三行」的卡被拉齐成一样高，矮的那张底部空一截；
+ * 更糟的是**每张卡的问句从不同的高度开始**，四张并排时眼睛没有可比的基准线。
+ * 现在判断锁两行、问句锁一行，四张卡逐行对得上。
  *
- * ⚠️ **不做「卡片 / 列表」切换。** 四条以内的东西给两种看法，是把一个本来
- * 有答案的问题丢回给用户；而这一页的答案很明确：**要比较，所以是列表。**
+ * ⚠️ **展开时整卡横跨两列。** 不跨的话，展开那一张会把同一行的另一张也撑到同样高，
+ * 旁边就多出一大块空白——而展开是「我要细读这一条」，本来就该独占一行。
+ *
+ * 折叠时只留能做选择的几样：判断（真写下去要写的就是这句，也是几条之间差别最大的）、
+ * 问句和证据成色（是不是真有人卡在这儿）、凭哪几条知识（是不是我能说的）。
+ * 理由都在「看完整解释」后面。
  */
-function ConnectionCard({ connection, onDevelop, busy }) {
+function ConnectionCard({ connection, onDevelop, busy, more, onToggleMore }) {
   const [quotesOpen, setQuotesOpen] = useState(false);
-  const [more, setMore] = useState(false);
   const quotes = connection.problem.evidence || [];
   const anchors = connection.knowledgeAnchors || [];
 
@@ -110,7 +110,7 @@ function ConnectionCard({ connection, onDevelop, busy }) {
         </p>
 
         <div className="discovery-card__acts">
-          <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={() => setMore((value) => !value)}>
+          <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={onToggleMore}>
             {more ? "收起" : "看完整解释"}
           </button>
           <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDevelop(connection)}>
@@ -180,6 +180,13 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   /** 最近在助手里聊过什么。⚠️ 只含你自己打的字：AI 的回答不是事实来源。 */
   const [research, setResearch] = useState([]);
   const [researchOpen, setResearchOpen] = useState(false);
+  /**
+   * ⚠️ **一次只展开一张。**
+   * 展开的卡横跨两列，多张同时展开就会在网格里留下多个空洞；
+   * 而且这一步是「在几条里挑一条」，同时摊开三份细读本来也不是这一屏的用法。
+   * 和 Wiki 审阅队列（`IngestReview` 的 `openId`）同一套。
+   */
+  const [openConnection, setOpenConnection] = useState("");
   /**
    * 长期议程：现在够不够看出一条。
    * ⚠️ 不够就说还差多少，并且**不跑模型**——那种情况下它只会把现有几条重新包装一遍。
@@ -330,18 +337,15 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
 
       {scan_ && !scanning && connections.length ? (
         <section className="discovery-list" aria-label="值得发展的连接">
-          {/* 表头解释那三列各是什么——「凭」单看两个字读不出是知识锚点 */}
-          <div className="discovery-list__head" aria-hidden="true">
-            <span>贴合</span>
-            <span>值得讲的判断</span>
-            <span>凭哪几条知识</span>
-            <span />
-          </div>
           {connections.map((connection, index) => (
             <ConnectionCard
               key={`${connection.problem.statement}:${index}`}
               connection={connection}
               busy={scanning}
+              more={openConnection === `${connection.problem.statement}:${index}`}
+              onToggleMore={() => setOpenConnection((current) => (
+                current === `${connection.problem.statement}:${index}` ? "" : `${connection.problem.statement}:${index}`
+              ))}
               onDevelop={develop}
             />
           ))}

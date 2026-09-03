@@ -30,100 +30,121 @@
 .bridge-bar__stale::before { content: "·"; margin: 0 6px; color: var(--border-strong); font-weight: 400; }
 
 /**
- * 候选清单：**一条一行，能横着比。**
- * 行之间用一道线分开，不是四张浮起来的卡——四块带边框的白盒子叠着，
- * 屏幕上最强的节奏会是那四圈边框，而不是它们装的那四句判断。
+ * 候选卡片：**两列网格。**
+ *
+ * ⚠️ **两列，别改成三列或 `auto-fill`。** 一次扫描默认 4 条、最多 5 条：
+ * 三列时 4 条排成 3+1，第二行右边空掉三分之二；两列时 4 条正好铺满，
+ * 卡宽约 530px，中文判断落两行而不是三行。
  */
 .discovery-list {
   display: grid;
-  border-top: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
-}
-
-.discovery-card { border-top: 1px solid var(--border); }
-.discovery-card:first-child { border-top: 0; }
-/* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
-.discovery-card[data-fit="weak"] { opacity: .72; }
-.discovery-card[data-open] { background: var(--surface); }
-
-/**
- * 列宽只写这一处（`--disc-cols`），表头和行都引用它。
- * ⚠️ 表头和行各抄一份是这个项目出过两次列错位的写法（`.ptable` / `.doc-rows__head`），
- * 这里从一开始就只留一份。
- */
-/**
- * ⚠️ **末列写死宽度，不能用 `auto`。**
- * `auto` 按**各自的内容**定宽，而表头那一格是空的——量出来表头的后两列
- * 比行里的往右偏了 93px，一个指错列的表头比没有表头更糟。
- * 这张表的动作是「看完整解释 + 发展这条」，宽度是已知的，写死即可。
- */
-.discovery-list { --disc-cols: 76px minmax(0, 1fr) minmax(150px, 230px) 118px; }
-
-.discovery-list__head {
-  display: grid;
-  grid-template-columns: var(--disc-cols);
-  gap: var(--sp-5);
-  padding: 0 var(--sp-4) var(--sp-3);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-}
-
-/* 贴合 | 内容 | 凭哪几条知识 | 动作 */
-.discovery-card__row {
-  display: grid;
-  grid-template-columns: var(--disc-cols);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-5);
   align-items: start;
-  padding: var(--sp-5) var(--sp-4);
 }
-.discovery-card__fit {
-  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); white-space: nowrap;
+
+.discovery-card {
+  display: flex; flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
 }
+.discovery-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+/* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
+.discovery-card[data-fit="weak"] { opacity: .72; }
+/**
+ * ⚠️ **展开的那张横跨两列。** 不跨的话它会把同一行的另一张也撑到同样高，
+ * 旁边多出一大块空白；而展开的意思是「我要细读这一条」，本来就该独占一行。
+ */
+/**
+ * 展开的那张横跨两列。
+ * ⚠️ **不跨的话它只是变高**，同一行另一张仍是 224px，底下空出四百多像素；
+ * 跨了之后它独占一行，正文也拿到该有的宽度。
+ * 代价是**前一行会剩半个空位**——那是网格改跨度时躲不掉的，
+ * 而且只在「我正要细读这一条」时出现，是个瞬时状态。
+ * 不用 `grid-auto-flow: dense` 去填那个洞：填法是把后面的卡提上来，
+ * 而候选是按相关度排的，比较时把顺序打乱比留个空位糟得多。
+ * 同时展开多张会出现多个洞，所以展开是互斥的（见 `openConnection`）。
+ */
+.discovery-card[data-open] { grid-column: 1 / -1; border-color: var(--border-strong); }
+/**
+ * ⚠️ **总数是奇数时，第一张通栏。**
+ *
+ * 两列网格遇到 1 / 3 / 5 条会剩一个半行的洞——1 条时尤其难看：
+ * 一张半宽的卡，右边空着整整一半。补洞有两种选法，这里选**第一张**：
+ * 候选是模型按相关度排的，通栏落在最相关那条上读起来是「这条最值得看」；
+ * 落在最后一张上则是给最弱的那条最大版面，强调正好反了。
+ *
+ * `:nth-last-child(odd)` 作用在第一个孩子上，等价于「从末尾数过来是奇数位」，
+ * 也就是**总数为奇数**——CSS 里没有 `count()`，这是唯一不写 JS 的问法。
+ */
+.discovery-card:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+@media (prefers-reduced-motion: reduce) { .discovery-card { transition: none; } }
+
+.discovery-card__row {
+  display: grid; gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+}
+
+.discovery-card__fit { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); }
 .discovery-card__fit[data-fit="weak"] { color: var(--text-3); font-weight: 500; }
 
 .discovery-card__body { display: grid; gap: var(--sp-3); min-width: 0; }
 
-/* 判断是这一条的标题：几条之间差别最大的地方，也是真写下去要写的那句话 */
+/**
+ * 判断是卡的标题，也是几张之间差别最大的地方。
+ * ⚠️ **锁两行**（`min-height` + `line-clamp` 一起给）：只截不撑的话，
+ * 判断短的那张标题只有一行，它下面的问句就比邻居高一截——四张并排时没有基准线。
+ */
 .discovery-card__claim {
   margin: 0;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  line-height: 1.6;
-  letter-spacing: -.01em;
+  font-size: var(--fs-base); font-weight: 600; line-height: 1.6; letter-spacing: -.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: calc(var(--fs-base) * 1.6 * 2);
+}
+
+/* 问句锁一行，同理 */
+.discovery-card__q {
+  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .discovery-card__from {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2);
   margin: 0; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.65;
 }
-.discovery-card__from > i { font-style: normal; color: var(--border-strong); }
 /* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
 .discovery-card__from[data-origin="hypothesis"] { color: var(--text-3); }
-/* 问句：他们问什么。截两行——它是上下文，不是这一行的标题 */
-.discovery-card__q {
-  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
 .discovery-card__from button {
-  padding: 0; margin-left: var(--sp-1, 2px);
+  padding: 0; margin-left: 2px;
   border: 0; background: none; color: inherit;
   font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
 }
 .discovery-card__from button:hover { color: var(--text-1); }
 
-/* 锚点只报名字，名字之间用间距和点分开、不做胶囊：
-   一行三颗小方块会比它们支撑的那句判断还抢眼 */
-/* 锚点自己一列：竖着排，同一条知识在四行里的位置就对得上，一眼看得出哪条被反复动用 */
+/* 锚点做成安静的芯片：在一张卡里它们是「材料清单」，成组出现时芯片比裸文字好数 */
 .discovery-card__anchors {
-  display: grid; align-content: start; gap: 3px;
-  margin: 0; min-width: 0; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.6;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin: var(--sp-1, 2px) 0 0; min-width: 0;
 }
-.discovery-anchor { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discovery-anchor {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 8px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-2xs);
+}
 
-/* 动作靠右，两颗竖着：一行里横着排会把判断那一列挤窄 */
+/**
+ * 页脚是一条带上边框的横带：左边「再看看」，右边「就它了」。
+ * ⚠️ **它必须贴着卡底**（`margin-top: auto`），否则同一行两张卡的按钮
+ * 会落在不同高度——那是这一版最先要治的毛病。
+ */
 .discovery-card__acts {
-  display: grid; justify-items: end; align-content: start; gap: var(--sp-3); flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
+  margin-top: auto;
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
 }
 
 .discovery-card__label {
@@ -134,12 +155,12 @@
 }
 
 /* 展开区缩进到判断那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
-/* 展开区缩进到「判断」那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
+/* 展开区：卡内铺开，顶上一道线接住它。跨两列时正文会很宽，所以限一个可读行宽 */
 .discovery-card__more {
   display: grid; gap: var(--sp-5);
-  margin: 0 var(--sp-4) var(--sp-6) calc(76px + var(--sp-5) + var(--sp-4));
-  padding-left: var(--sp-5);
-  border-left: 1px solid var(--border);
+  margin: 0 var(--sp-5) var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
   max-width: 76ch;
 }
 .discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
@@ -332,17 +353,7 @@
 .harvest-dropped summary { cursor: pointer; }
 .harvest-dropped ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 
-/**
- * ⚠️ **窄下来先把锚点那一列收到正文底下。**
- * 四列在 1100px 以下会把「判断」挤成四五行，而判断是这一行唯一的标题。
- * 动作跟着回到正文下面——它在窄屏上本来也够不着右上角。
- */
-@media (max-width: 1100px) {
-  .discovery-list { --disc-cols: 66px minmax(0, 1fr); }
-  .discovery-list__head > span:nth-child(3), .discovery-list__head > span:nth-child(4) { display: none; }
-  .discovery-card__anchors, .discovery-card__acts { grid-column: 2; }
-  .discovery-card__anchors { display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); }
-  .discovery-anchor::after { content: "·"; margin-left: var(--sp-3); color: var(--border-strong); }
-  .discovery-anchor:last-child::after { content: none; }
-  .discovery-card__acts { justify-items: start; grid-auto-flow: column; align-items: center; gap: var(--sp-4); }
+/* 窄屏收成一列。两列卡在 1000px 以下各自只剩 460px，中文判断又会掉到三行 */
+@media (max-width: 1000px) {
+  .discovery-list { grid-template-columns: minmax(0, 1fr); }
 }
