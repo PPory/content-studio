@@ -69,6 +69,13 @@
   --brand-wash: #eaf3ef;
   --on-brand: #ffffff;
 
+  /* 四条链各一个色。**饱和度和明度刻意接近——没有哪条链比别的重。**
+     它们只用在值班台的标记点上，不做背景、不做文字。 */
+  --lane-knowledge: #33658a;
+  --lane-content:   #0e6f5c;
+  --lane-intel:     #8a6410;
+  --lane-ops:       #9a4736;
+
   --ok: #16a34a;
   --warn: #d97706;
   --danger: #dc2626;
@@ -387,6 +394,11 @@
     /* 暗色同理。原值 #78787f 在三种底上是 4.57 / 4.33 / 4.04，最沉的那格不过 AA。
        **暗色要单独量**：同一个灰在深底上的对比度和在浅底上完全是两回事。 */
     --ink-400: #8e8e99;
+    /* 深底上同一批色要单独调亮，浅色那组在 #0d0d10 上几乎看不见 */
+    --lane-knowledge: #74a8ce;
+    --lane-content:   #55c1a5;
+    --lane-intel:     #d0a458;
+    --lane-ops:       #de8a76;
     --line-1: #26262c;
     --line-2: #35353d;
 
@@ -7626,3 +7638,52 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .voice-problem small { color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
 .voice-problem em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; }
 .voice-problem .btn { justify-self: start; margin-top: 4px; }
+
+/* ── 值班台：四条链此刻各自的下一步 ─────────────────────────────────
+   ⚠️ **不是四张卡片。** 卡片是给「要动手的少数」的；这四条是**常驻的一览**，
+   每天都在、位置固定。用一块带分隔线的板，比四张浮起来的卡更接近它的角色，
+   也不会和下面「先做这一件」那三张真卡片撞在一起。 */
+.lane-board {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); overflow: hidden;
+}
+.lane {
+  display: grid; grid-template-columns: 10px 52px minmax(0, 1fr) auto;
+  align-items: center; gap: 14px; padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.lane:last-child { border-bottom: 0; }
+.lane__mark { width: 8px; height: 8px; border-radius: 50%; }
+.lane__mark--knowledge { background: var(--lane-knowledge); }
+.lane__mark--content   { background: var(--lane-content); }
+.lane__mark--intel     { background: var(--lane-intel); }
+.lane__mark--ops       { background: var(--lane-ops); }
+.lane__name { font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.lane__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lane__next { font-size: 15px; color: var(--text-1); }
+.lane__next b { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* 具体是哪几件。没有它，那个数字没法判断值不值得现在动 */
+.lane__detail {
+  font-size: var(--fs-sm); color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lane__do {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  height: 30px; padding: 0 11px; border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text-1); font-size: var(--fs-xs); cursor: pointer;
+}
+.lane__do:hover { border-color: var(--accent-soft); color: var(--accent); }
+.lane__do svg { width: 13px; height: 13px; }
+
+/* 没事的那条**不消失也不变灰到读不出来**：
+   「这条链今天没事」本身就是要看的信息，藏起来等于每天重新去确认一遍。 */
+.lane--quiet .lane__next { color: var(--text-3); }
+.lane--quiet .lane__do { border-style: dashed; color: var(--text-3); }
+
+@media (max-width: 720px) {
+  .lane { grid-template-columns: 10px minmax(0, 1fr); row-gap: 7px; }
+  .lane__name, .lane__body, .lane__do { grid-column: 2; }
+  .lane__do { justify-self: start; }
+  .lane__detail { white-space: normal; }
+}

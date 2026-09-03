@@ -130,6 +130,8 @@ export const api = {
   audienceVoice: (id) => req(`/api/workspace/audience-voices/${encodeURIComponent(id)}`),
   recordAudienceVoice: (body) => postJson("/api/workspace/audience-voices", body),
   // 去公开讨论里找。只回候选，入库仍然走 recordAudienceVoice 那道确认门。
+  // 四条链此刻各自的下一步。纯读，不调模型。
+  lanes: () => req("/api/workspace/lanes"),
   harvestAudienceVoices: (body) => postJson("/api/workspace/audience-harvest", body),
   // 从一段原话直接读用户问题：不必等 Discovery 恰好挑中它。
   voiceProblemCandidates: (id) => postJson(`/api/workspace/audience-voices/${encodeURIComponent(id)}/problem-candidates`, {}),

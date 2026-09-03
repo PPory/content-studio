@@ -5,6 +5,7 @@ import { createUlid } from "../storage/ids.mjs";
 import { SEED_REACTION_GROUPS, SEED_REACTIONS } from "../domain/values.mjs";
 import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto, seriesMarkdown, seriesReadDto } from "../workspace/workspace-view.mjs";
 import { collectAssetRefs, exportFileName, markdownBundle, markdownToDocx, markdownToPlainText, projectMarkdown, rewriteAssetRefs } from "../lib/document-export.mjs";
+import { observeLanes } from "../domain/workbench-lanes.mjs";
 
 const actor = "user";
 const clean = (value) => String(value ?? "").trim();
@@ -255,6 +256,13 @@ export const workspaceRoutes = [
       bytes: markdownBundle({ title: project.title, markdown: rewritten, assets }),
     });
   }) },
+  /**
+   * 值班台：四条链此刻各自的下一步。
+   *
+   * ⚠️ **纯读，不调模型。** 每条链的下一步是数出来的；算不出来就回 next: null，
+   * 由界面照实说「这条链现在没事」。
+   */
+  { method: "GET", path: "/api/workspace/lanes", handler: guarded(async ({ workspace, res }) => json(res, { ok: true, ...observeLanes(workspace) })) },
   { method: "GET", path: "/api/workspace/projects", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listProjects(workspace, { stage: url.searchParams.get("stage") || "" }) })) },
   { method: "GET", path: "/api/workspace/projects/:id", handler: guarded(async ({ workspace, res, params }) => { const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); json(res, { ok: true, project }); }) },
   { method: "POST", path: "/api/workspace/projects", handler: guarded(async ({ workspace, req, res }) => {

@@ -184,6 +184,35 @@ try {
     if (message.type() === "error" && !/Failed to load resource/i.test(message.text())) errors.push(message.text());
   });
 
+  // ── 今日：四条链的值班台 ─────────────────────────────────────────
+  //
+  // ⚠️ 这一页原来只读 projects，也就是只覆盖内容和运营两条链。
+  // 验的是**四条链都在屏幕上**，以及**没事的那条如实说没事**——
+  // 后者比前者更容易退化：为了让屏幕不空而硬凑一件待办，是这块板唯一的死法。
+  await page.goto(`http://127.0.0.1:${PORT}/#/today`);
+  const board = page.getByRole("region", { name: "四条链的下一步" });
+  await board.waitFor();
+  for (const name of ["知识", "内容", "情报", "运营"]) {
+    check(`值班台上有「${name}」这条链`, await board.getByText(name, { exact: true }).count() === 1);
+  }
+
+  // 有事的那两条：给的是动作，不是库存
+  check("知识那条先说等着点头的，不是那个更大的「还没提炼」",
+    await board.getByText("条提炼候选等着你点头").count() === 1
+    && await board.getByRole("button", { name: /去审/ }).count() === 1);
+  check("内容那条在证据层薄的时候直接说出来",
+    await board.getByText(/扫描还看不出反复/).count() === 1);
+
+  // ⚠️ 没事的那两条：**这块板唯一的死法是为了不空而硬凑一件待办**
+  check("没事的链如实说没事，不硬凑", await board.getByText("这条链现在没事").count() === 2);
+  check("没事的时候改说这条链是干什么的",
+    await board.getByText("我知道外面在发生什么").count() === 1);
+  check("没事也留着一个能点的出口", await board.getByRole("button", { name: /去翻翻/ }).count() === 2);
+
+  // 一级导航按四条链命名：情报不叫「发现」，运营不叫「复盘」
+  check("侧栏用四条链的名字", await page.getByRole("link", { name: "情报" }).count()
+    + await page.getByRole("button", { name: "情报" }).count() >= 1);
+
   // ── 合集：建 → 从文章列表归类 → 在合集中新建 → 排序 → 分节 → 通读 ──
   //
   // ⚠️ **归类走的是文章列表那条路**，不是「进合集再添加」。那条新路径正是这次

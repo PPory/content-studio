@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
+import { LaneBoard } from "./today/LaneBoard.jsx";
 import { TodayStats } from "./today/TodayStats.jsx";
 import { TodayChart } from "./today/TodayChart.jsx";
 import { RecentPosts } from "./today/RecentPosts.jsx";
@@ -15,11 +16,14 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
   const localReady = true;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  /** 四条链的值班台。它和项目各自独立取——一条挂了不该把另一条也拖黑。 */
+  const [lanes, setLanes] = useState(null);
 
   const load = useCallback(() => {
     api.projects().then((data) => { setResult(data); setError(null); }).catch(setError);
   }, []);
   useEffect(load, [load, status?.ts]);
+  useEffect(() => { api.lanes().then(setLanes).catch(() => setLanes(null)); }, [status?.ts]);
 
   const projects = useMemo(() => projectsFrom(result), [result]);
   const allActions = useMemo(() => actionableProjects(projects, projects.length), [projects]);
@@ -66,6 +70,17 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
         * 状态在前、动作在后，是因为同一件事该不该做，取决于它前面那几个数。
         * 四个数分属四条不同的链（产出 / 待办 / 库存 / 反馈），见 `TodayStats`。
         */}
+      {/**
+        * ⚠️ **值班台在最上面，早于 KPI 那一排。**
+        * 这一页要回答的是「从哪儿开始」，而这块板是唯一回答了全部四条链的东西——
+        * 上一版这里只读 projects，知识和情报根本不在屏幕上。
+        *
+        * 「状态在前、动作在后」那条规矩没有被破：每一行**自己就带着数字**
+        * （1366 节没提炼 / 1 段原话 / 2 条待归 / 3 篇对不上），
+        * 状态和动作在行内是并排的，不需要先看完一排 KPI 才知道该不该动。
+        */}
+      <LaneBoard data={lanes} onGo={onGo} />
+
       {localReady ? <TodayStats pending={pending} topStage={actions[0]?.stage || ""} onGo={onGo} /> : null}
 
       {result ? (
