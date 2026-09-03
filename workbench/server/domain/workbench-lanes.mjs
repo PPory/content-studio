@@ -28,6 +28,8 @@ const LANES = Object.freeze([
 
 export const LANE_KEYS = Object.freeze(LANES.map((lane) => lane.key));
 
+const clean = (value, max = 200) => String(value ?? "").trim().slice(0, max);
+
 const count = (db, sql, ...args) => {
   try { return db.prepare(sql).get(...args)?.n ?? 0; } catch { return 0; }
 };
@@ -35,9 +37,15 @@ const list = (db, sql, ...args) => {
   try { return db.prepare(sql).all(...args); } catch { return []; }
 };
 
-/** 一条链的下一步。`view`/`state` 是点进去落到的地方——落到那件事上，不是那个库。 */
-function step({ text, count: n = 0, detail = "", action, view, state = "" }) {
-  return { text, count: n, detail, action, view, state };
+/**
+ * 一条链的下一步。`view`/`state` 是点进去落到的地方——落到那件事上，不是那个库。
+ *
+ * ⚠️ **有些下一步就地做完比跳过去更对。** `act` 给的是「点一下这里就办了」，
+ * 而不是把人送到某个五层深的面板上去找同一颗按钮。
+ * 只有**本来就只有一个动作、而且不需要再挑**的那种才配 `act`。
+ */
+function step({ text, count: n = 0, detail = "", action, view, state = "", act = "" }) {
+  return { text, count: n, detail, action, view, state, act };
 }
 
 /**
@@ -53,6 +61,28 @@ function knowledgeLane(db) {
       text: "条提炼候选等着你点头", count: pending, action: "去审",
       view: "entries", state: "review",
       detail: "AI 已经从来源里读出来了，确认之后才进词条。",
+    });
+  }
+
+  /**
+   * ⚠️ **自己实践学到的东西排在「还没提炼的书」前面。**
+   * 它通常只有几条，而那个数字是四位数——压在下面就等于永远轮不到。
+   * 而且这些是**只有你有**的东西：书谁都能读，这一条是你自己跑出来的。
+   */
+  const learned = count(db, `SELECT COUNT(*) AS n FROM content_experiments x
+    JOIN entities e ON e.id = x.id AND e.deleted_at IS NULL
+    WHERE x.verdict <> 'open'
+      AND NOT EXISTS (SELECT 1 FROM source_ingests s WHERE s.source_entity_id = x.id)`);
+  if (learned) {
+    const items = list(db, `SELECT x.learning_markdown AS learning FROM content_experiments x
+      JOIN entities e ON e.id = x.id AND e.deleted_at IS NULL
+      WHERE x.verdict <> 'open'
+        AND NOT EXISTS (SELECT 1 FROM source_ingests s WHERE s.source_entity_id = x.id)
+      ORDER BY x.settled_at DESC LIMIT 2`);
+    return step({
+      text: "条自己学到的还没进知识库", count: learned, action: "沉淀成词条",
+      act: "distill-learnings",
+      detail: items.map((row) => clean(row.learning, 60)).join(" · "),
     });
   }
 

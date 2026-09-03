@@ -132,6 +132,8 @@ export const api = {
   // 去公开讨论里找。只回候选，入库仍然走 recordAudienceVoice 那道确认门。
   // 四条链此刻各自的下一步。纯读，不调模型。
   lanes: () => req("/api/workspace/lanes"),
+  // 把所有结算过、还没进知识库的学习一次排进提炼队列。只排队，不产生词条。
+  distillLearnings: () => postJson("/api/workspace/lanes/distill-learnings", {}),
   harvestAudienceVoices: (body) => postJson("/api/workspace/audience-harvest", body),
   // 从一段原话直接读用户问题：不必等 Discovery 恰好挑中它。
   voiceProblemCandidates: (id) => postJson(`/api/workspace/audience-voices/${encodeURIComponent(id)}/problem-candidates`, {}),

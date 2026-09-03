@@ -16,20 +16,56 @@
  * 为了填满屏幕硬凑一件待办，比空着更糟——它会让人不再相信这块屏幕。
  */
 
+import { useState } from "react";
+import { api } from "../../lib/api.js";
 import { IconArrowRight } from "../../components/icons.jsx";
 
 const LANE_ICON_KEY = {
   knowledge: "knowledge", content: "content", intel: "intel", ops: "ops",
 };
 
-export function LaneBoard({ data, onGo }) {
+export function LaneBoard({ data, onGo, onChanged }) {
+  const [busy, setBusy] = useState("");
+  const [done, setDone] = useState({});
+  const [failed, setFailed] = useState({});
   if (!data?.lanes?.length) return null;
+
+  /**
+   * 就地做完的那几种。
+   *
+   * ⚠️ **点一下就办，不是跳过去再找一遍。** 「沉淀成词条」原来只长在
+   * 内容 → 创作 → 某个项目 → 发布栏 → 结算卡上，五层深；而这件事本来
+   * 只有一个动作、也不需要再挑什么，那就该在你看见它的地方办掉。
+   *
+   * ⚠️ **它只是排队，不产生词条。** 读出来的词条仍然要在知识那一栏过审核。
+   */
+  const run = async (lane) => {
+    const kind = lane.next?.act;
+    if (!kind || busy) return;
+    setBusy(lane.key);
+    setFailed((current) => ({ ...current, [lane.key]: "" }));
+    try {
+      if (kind === "distill-learnings") await api.distillLearnings();
+      setDone((current) => ({ ...current, [lane.key]: true }));
+      onChanged?.();
+    } catch (error) {
+      setFailed((current) => ({ ...current, [lane.key]: error?.message || "没成功" }));
+    } finally {
+      setBusy("");
+    }
+  };
 
   return (
     <div className="lanes" role="region" aria-label="四条链的下一步">
       {data.lanes.map((lane) => {
         const next = lane.next;
-        const go = () => onGo(next ? next.view : laneHome(lane.key), next?.state || "");
+        const acts = Boolean(next?.act) && !done[lane.key];
+        const go = () => {
+          // 排完队之后这张卡改成通往审核那一屏，而不是变成一颗按不动的按钮
+          if (next?.act && !done[lane.key]) { run(lane); return; }
+          if (next?.act) { onGo("entries", "review"); return; }
+          onGo(next ? next.view : laneHome(lane.key), next?.state || "");
+        };
         return (
           <button
             key={lane.key}
@@ -52,11 +88,14 @@ export function LaneBoard({ data, onGo }) {
             )}
 
             {/* 具体是哪几件。没有它，那个数字没法判断值不值得现在动 */}
-            <span className="lane__detail">{next ? next.detail || lane.goal : lane.goal}</span>
+            <span className="lane__detail">
+              {failed[lane.key] || (done[lane.key] ? "已排进提炼队列，读出来的词条要你过一眼才落库" : "")
+                || (next ? next.detail || lane.goal : lane.goal)}
+            </span>
 
             <span className="lane__do">
-              {next ? next.action : "去翻翻"}
-              <IconArrowRight aria-hidden="true" />
+              {done[lane.key] ? "去审一眼" : busy === lane.key ? "正在排队…" : next ? next.action : "去翻翻"}
+              {acts && busy !== lane.key ? null : <IconArrowRight aria-hidden="true" />}
             </span>
           </button>
         );

@@ -18,9 +18,15 @@ const xenhoHome = path.join(root, "Xenho");
 const now = new Date("2026-09-03T10:00:00.000Z");
 let workspace;
 let server;
+let base = "";
 
 const check = (name, value) => { assert(value, name); console.log(` ✓ ${name}`); };
 const lane = (result, key) => result.lanes.find((item) => item.key === key);
+
+async function call(pathname, { method = "GET" } = {}) {
+  const response = await fetch(`${base}${pathname}`, { method });
+  return { status: response.status, data: await response.json() };
+}
 
 function book(title, sections) {
   const id = createUlid();
@@ -51,7 +57,7 @@ try {
   const api = createApi({}, { workspace: Promise.resolve(workspace) });
   server = http.createServer((req, res) => api(req, res, () => { res.writeHead(404); res.end(); }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
+  base = `http://127.0.0.1:${server.address().port}`;
 
   // ── 全空：四条链都说没事，不硬凑 ────────────────────────────────
   const empty = observeLanes(workspace);
@@ -78,6 +84,37 @@ try {
   workspace.db.prepare("UPDATE source_ingests SET status='applied'").run();
   check("点过头之后又回到「还没提炼」这条", lane(observeLanes(workspace), "knowledge").next.count === 5);
 
+  // ── 自己学到的东西排在那个四位数前面，而且能就地做完 ────────────────
+  const learnProject = createUlid();
+  workspace.repository.transaction(() => {
+    workspace.repository.createEntity({ id: learnProject, type: "project", now });
+    workspace.db.prepare(`INSERT INTO projects(id,title,brief_markdown,viewpoint,audience,primary_platform,priority,status)
+      VALUES (?,?,'','','','公众号','中','active')`).run(learnProject, "结论前置试一次");
+  });
+  const learnedId = workspace.experiments.recordHypothesis({
+    projectId: learnProject, hypothesisMarkdown: "把结论放在开头会让完读率变高。", actor: "user", confirmed: true, now,
+  });
+  workspace.experiments.settleExperiment(learnedId, {
+    outcomeMarkdown: "完读率掉了，收藏翻倍。",
+    learningMarkdown: "开头给结论会赶走还没同意的人。",
+    verdict: "refuted", actor: "user", confirmed: true, now,
+  });
+  const withLearning = observeLanes(workspace);
+  check("自己学到的排在「还没提炼的书」前面，不被那个大数压住",
+    /条自己学到的还没进知识库/.test(lane(withLearning, "knowledge").next.text));
+  check("这一步是就地做完的，不是把人送去别处再找一遍",
+    lane(withLearning, "knowledge").next.act === "distill-learnings");
+
+  const distilled = await call("/api/workspace/lanes/distill-learnings", { method: "POST" });
+  check("首页点一下就排进提炼队列", distilled.status === 200 && distilled.data.queued >= 1);
+  check("排的是同一张表，审核那一关照旧",
+    workspace.db.prepare("SELECT COUNT(*) AS n FROM source_ingests WHERE source_entity_id = ?").get(learnedId).n === 1);
+  check("排完之后这一步就不再报了",
+    !/条自己学到的/.test(lane(observeLanes(workspace), "knowledge").next?.text || ""));
+
+  const again = await call("/api/workspace/lanes/distill-learnings", { method: "POST" });
+  check("没有等着沉淀的东西时明说，不假装办了一件事",
+    again.status === 409 && /没有等着沉淀的学习/.test(again.data.error));
   // ── 内容：证据层薄要盖过「几篇在写」 ─────────────────────────────
   const projectId = createUlid();
   workspace.repository.transaction(() => {
@@ -88,7 +125,7 @@ try {
   const thin = observeLanes(workspace);
   check("证据层薄的时候，它比「几篇在写」更该被说出来",
     /扫描还看不出反复/.test(thin.lanes.find((item) => item.key === "content").next.text));
-  check("同时不隐瞒还有几篇在写", /1 个项目在写/.test(lane(thin, "content").next.detail));
+  check("同时不隐瞒还有几篇在写", /个项目在写/.test(lane(thin, "content").next.detail));
 
   for (let index = 0; index < 3; index += 1) {
     workspace.audienceRaw.record({

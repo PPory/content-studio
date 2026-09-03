@@ -22,7 +22,28 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
     api.projects().then((data) => { setResult(data); setError(null); }).catch(setError);
   }, []);
   useEffect(load, [load, status?.ts]);
-  useEffect(() => { api.lanes().then(setLanes).catch(() => setLanes(null)); }, [status?.ts]);
+  const loadLanes = useCallback(() => {
+    api.lanes().then(setLanes).catch(() => setLanes(null));
+  }, []);
+  useEffect(loadLanes, [loadLanes, status?.ts]);
+
+  /**
+   * ⚠️ **回到这一页要重新数一遍。**
+   * 页面被 `ViewSlots` 留在内存里，切走再切回来不会重新挂载——所以去知识那栏
+   * 审完几条候选、回到今日，看到的还是走之前那组数字。一块**说的是「现在该做什么」
+   * 的板，报的却是十分钟前的事**，比没有更糟。
+   */
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) loadLanes(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("hashchange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("hashchange", refresh);
+    };
+  }, [loadLanes]);
 
   const projects = useMemo(() => projectsFrom(result), [result]);
   const allActions = useMemo(() => actionableProjects(projects, projects.length), [projects]);
@@ -81,7 +102,7 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
         * 「那我现在点哪儿」。而值班台每一格自己就带着数字和下一步，
         * 状态和动作在卡内是并排的。同一批东西显示两遍，是让人读两次再自己合并。
         */}
-      <LaneBoard data={lanes} onGo={onGo} />
+      <LaneBoard data={lanes} onGo={onGo} onChanged={loadLanes} />
 
       {result ? (
         <section className="today-focus">

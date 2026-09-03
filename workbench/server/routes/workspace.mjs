@@ -6,6 +6,8 @@ import { SEED_REACTION_GROUPS, SEED_REACTIONS } from "../domain/values.mjs";
 import { entityPage, listMaterials, listProjects, listSeries, projectDto, seriesDto, seriesMarkdown, seriesReadDto } from "../workspace/workspace-view.mjs";
 import { collectAssetRefs, exportFileName, markdownBundle, markdownToDocx, markdownToPlainText, projectMarkdown, rewriteAssetRefs } from "../lib/document-export.mjs";
 import { observeLanes } from "../domain/workbench-lanes.mjs";
+import { resolveIngestSource } from "../domain/wiki-ingest.mjs";
+import { queueIngest } from "./wiki-local.mjs";
 
 const actor = "user";
 const clean = (value) => String(value ?? "").trim();
@@ -262,6 +264,24 @@ export const workspaceRoutes = [
    * ⚠️ **纯读，不调模型。** 每条链的下一步是数出来的；算不出来就回 next: null，
    * 由界面照实说「这条链现在没事」。
    */
+  /**
+   * 把所有结算过、还没进知识库的学习一次排进提炼队列。
+   *
+   * ⚠️ **只排队，不产生词条。** 读出来的词条仍然要在知识那一栏过审核——
+   * AGENTS.md 第 4 条。少了那一关，「我自己的实践」就成了唯一一种
+   * 不用点头就能进知识库的来源，而它恰恰是最该被自己复核的一种。
+   */
+  { method: "POST", path: "/api/workspace/lanes/distill-learnings", handler: guarded(async ({ workspace, res }) => {
+    const rows = workspace.db.prepare(`SELECT x.id FROM content_experiments x
+      JOIN entities e ON e.id = x.id AND e.deleted_at IS NULL
+      WHERE x.verdict <> 'open'
+        AND NOT EXISTS (SELECT 1 FROM source_ingests s WHERE s.source_entity_id = x.id)
+      ORDER BY x.settled_at DESC LIMIT 20`).all();
+    if (!rows.length) throw Object.assign(new Error("没有等着沉淀的学习"), { status: 409 });
+    const sources = rows.map((row) => resolveIngestSource(workspace.db, row.id)).filter(Boolean);
+    const queued = queueIngest(workspace, sources.map((item) => ({ id: item.id, body: item.body }))).queued;
+    json(res, { ok: true, queued });
+  }) },
   { method: "GET", path: "/api/workspace/lanes", handler: guarded(async ({ workspace, res }) => json(res, { ok: true, ...observeLanes(workspace) })) },
   { method: "GET", path: "/api/workspace/projects", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listProjects(workspace, { stage: url.searchParams.get("stage") || "" }) })) },
   { method: "GET", path: "/api/workspace/projects/:id", handler: guarded(async ({ workspace, res, params }) => { const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); json(res, { ok: true, project }); }) },

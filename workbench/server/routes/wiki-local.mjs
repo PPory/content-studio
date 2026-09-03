@@ -127,7 +127,8 @@ function selectedProposal(payload, include) {
   };
 }
 
-function queueIngest(workspace, documents, { retry = false } = {}) {
+// 值班台也排提炼（`workspace.mjs`），所以导出。和 `createBookRecord` 跨文件是同一个路子。
+export function queueIngest(workspace, documents, { retry = false } = {}) {
   const stamp = new Date().toISOString();
   let queued = 0;
   let skipped = 0;
