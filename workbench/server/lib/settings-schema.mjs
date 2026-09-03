@@ -188,6 +188,12 @@ export const SETTINGS = [
     check: "deepl",
   },
   {
+    key: "MONID_API_KEY",
+    group: "optional",
+    label: "Monid 密钥（TinyFish 公开讨论抓取）",
+    secret: true,
+  },
+  {
     key: "FIRECRAWL_API_KEY",
     group: "optional",
     label: "Firecrawl 密钥",

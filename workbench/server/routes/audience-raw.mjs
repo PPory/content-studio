@@ -4,6 +4,7 @@
 
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { AUDIENCE_RAW_KINDS, extractProblemsFromVoice } from "../domain/audience-raw.mjs";
+import { HARVEST_DOMAINS, harvestVoiceCandidates } from "../domain/audience-harvest.mjs";
 
 async function ready(source) {
   const workspace = await source;
@@ -59,6 +60,31 @@ export const audienceRawRoutes = [
       const result = await extractProblemsFromVoice(env, workspace, { rawSourceId: params.id });
       const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
       if (before !== after) throw new Error("读用户问题产生了不应有的写入");
+      json(res, { ok: true, candidateOnly: true, ...result });
+    }),
+  },
+  {
+    /**
+     * 到公开讨论里找真实声音。
+     *
+     * ⚠️ **只提候选，一条都不入库。** 抓取不等于「用户认可这是证据」——
+     * 确认仍然走下面那条 POST /audience-voices。这里断言一次写入计数没变，
+     * 因为这条边界一旦破掉，证据层就变成了一个搜索结果缓存。
+     */
+    method: "POST",
+    path: "/api/workspace/audience-harvest",
+    handler: guard(async ({ env, workspace, req, res }) => {
+      const body = await readJsonBody(req);
+      const before = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_raw_sources").get().count;
+      const result = await harvestVoiceCandidates(env, workspace, {
+        query: body.query,
+        includeDomains: body.includeDomains ?? HARVEST_DOMAINS.discussion,
+        language: body.language,
+        location: body.location,
+        pages: body.pages,
+      });
+      const after = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_raw_sources").get().count;
+      if (before !== after) throw new Error("找候选产生了不应有的写入");
       json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
