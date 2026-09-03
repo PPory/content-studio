@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
-import { IconChevronRight } from "./icons.jsx";
+import { IconArrowRight, IconChevronRight, IconShieldCheck } from "./icons.jsx";
 
 const FINDING_TYPES = {
   contradiction: { level: "高风险", label: "观点冲突", tone: "risk" },
@@ -27,6 +27,33 @@ function keysOf(item) {
 
 function Evidence({ quote }) {
   return quote ? <blockquote className="ing__quote">{quote}</blockquote> : null;
+}
+
+/**
+ * 折叠那一行中间显示什么：**这条候选会碰到的东西的名字**。
+ *
+ * ⚠️ **上一版这里是一句被截断的说明**（「已阅读全文（1 段）· 基于认知神经科学与情绪
+ * 构建理论，补充了创作焦虑与写作障碍的神经认知建构机制，更新了《写作障碍》、《写…」）。
+ * 它有两个毛病，而且是一起犯的：
+ *   1. **每行开头都一样**（「已阅读全文（N 段） · 」），真正不同的部分被挤到后面截掉；
+ *   2. **它回答不了这一行要回答的问题**。你在这儿要决定的是「让不让 AI 改我的 Wiki」，
+ *      而做这个决定靠的是**它要改哪几页**——那几个页面名一直就在数据里
+ *      （`item.pages[].title`），却被折叠藏着，只在展开后才看得到。
+ *
+ * 现在中间那一列直接列页面名：`写作障碍 · 写作 · 情绪构建理论`。一行放得下，
+ * 而且五行并排时你一眼就看得出哪几页被反复改（这一屏里《写作》被三份来源同时盯上）。
+ *
+ * 四种候选各自「碰的东西」不一样，但都是一串名字，所以合成同一个形状：
+ *   编译 / 修订 → 会写入的页面；补充来源 → 找到的来源；体检 → 被诊断到的页面。
+ */
+function subjectsOf(item) {
+  if (item.type === "research") return (item.sources || []).map((source) => ({ name: source.title, isNew: true }));
+  if (item.type === "wiki-lint") {
+    const seen = new Set();
+    for (const finding of item.findings || []) for (const page of finding.pages || []) seen.add(page);
+    return [...seen].map((name) => ({ name, isNew: false }));
+  }
+  return (item.pages || []).map((page) => ({ name: page.title, isNew: page.action === "create" }));
 }
 
 export function IngestReview({ onDone, focusSourceId = "" }) {
@@ -210,29 +237,43 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
         const researchReady = item.researchStatus === "ready";
         const repairCount = isLint ? [...(selected[item.id] || [])].filter((key) => item.findings?.[Number(key.split(":")[1])]?.repairable).length : 0;
         const researchCount = isLint ? [...(selected[item.id] || [])].filter((key) => item.findings?.[Number(key.split(":")[1])]?.researchable).length : 0;
-        const counts = isLint
-          ? [item.findings?.length ? `${item.findings.length} 项语义问题` : "", item.deterministic?.orphans ? `${item.deterministic.orphans} 个孤页` : ""].filter(Boolean)
-          : isResearch ? [item.sources?.length ? `${item.sources.length} 份候选来源` : "", item.unreadable ? `${item.unreadable} 个网页未读出` : ""].filter(Boolean)
-          : [item.pages?.filter((page) => page.action === "create").length ? `${item.pages.filter((page) => page.action === "create").length} 个新页面` : "", item.pages?.filter((page) => page.action === "update").length ? `${item.pages.filter((page) => page.action === "update").length} 个页面更新` : ""].filter(Boolean);
+        const subjects = subjectsOf(item);
+        const shown = subjects.slice(0, 4);
+        const rest = subjects.length - shown.length;
+        /** 展开之后才说的那句话：读了多少、这一份大意是什么。折叠时它挤掉的是页面名。 */
+        const context = isLint ? "页面问题生成修订；来源问题先搜索资料，二者都要再次确认"
+          : isRepair ? item.repairSummary || "根据所选体检问题生成，尚未写入 Wiki"
+          : isResearch ? "AI 已读取公开网页；确认后才会导入 Raw 并开始 Wiki 编译"
+          : `已阅读全文（${item.chunksRead || 1} 段） · ${item.compilationSummary || item.bookTitle}`;
         return (
-          <article id={`knowledge-candidate-${item.id}`} key={item.id} className={`ing__item${isLint ? " ing__item--lint" : ""}${isRepair ? " ing__item--repair" : ""}${isResearch ? " ing__item--research" : ""}`}>
+          <article id={`knowledge-candidate-${item.id}`} key={item.id} className={`ing__item${expanded ? " is-open" : ""}${isLint ? " ing__item--lint" : ""}${isRepair ? " ing__item--repair" : ""}${isResearch ? " ing__item--research" : ""}`}>
             <div className="ing__row">
               <button type="button" className="ing__title" aria-expanded={expanded} onClick={() => setOpenId(expanded ? "" : item.id)}>
                 {/* ⚠️ **展开才是这张卡的主路径。** 采纳按钮以前是实心黑，而标题上
                     没有任何可展开的记号——最省力的动作就成了「不看内容直接写进 Wiki」。
-                    箭头把「逐页对照」摆回视线里，采纳按钮同时降成描边。 */}
+                    箭头把「逐页对照」摆回视线里，采纳和拒绝现在**只在展开之后存在**。 */}
                 <IconChevronRight aria-hidden="true" stroke={1.8} data-open={expanded ? "" : undefined} />
-                <span className="ing__title-text">
                 <b>{isLint ? "全库体检报告" : isRepair ? "体检修订候选" : isResearch ? "补充来源候选" : item.sourceTitle || "未命名资料"}</b>
-                <span>{isLint
-                  ? "页面问题生成修订；来源问题先搜索资料，二者都要再次确认"
-                  : isRepair ? item.repairSummary || "根据所选体检问题生成，尚未写入 Wiki"
-                  : isResearch ? "AI 已读取公开网页；确认后才会导入 Raw 并开始 Wiki 编译"
-                  : `已阅读全文（${item.chunksRead || 1} 段） · ${item.compilationSummary || item.bookTitle}`}</span>
-                </span>
               </button>
-              <span className="ing__counts">{counts.join(" · ") || "没有可应用的修改"}</span>
-              <div className="ing__actions">
+
+              {/* 中间：会碰到的东西的名字。这才是「让不让它改」的判断材料，理由见 `subjectsOf` */}
+              <span className="ing__subjects">
+                {shown.length ? shown.map((subject, index) => (
+                  <span key={`${subject.name}-${index}`} className="ing__subject" data-new={subject.isNew ? "" : undefined}>
+                    {subject.name}
+                  </span>
+                )) : <span className="ing__subject is-none">没有可应用的修改</span>}
+                {rest > 0 ? <span className="ing__subject is-rest">+{rest}</span> : null}
+              </span>
+
+              {/**
+                * ⚠️ **折叠时右端只有一句「看改动」，没有按钮。**
+                * 五份候选各挂两颗描边钮就是十圈边框——那会成为这一屏最强的视觉节奏，
+                * 而它们代表的是「不看内容直接写进 Wiki」。展开之后这一行会吸顶，
+                * 真正的采纳/拒绝在那时才出现，就在手边。
+                */}
+              {expanded ? null : <span className="ing__peek" aria-hidden="true">看改动<IconArrowRight size={14} stroke={1.8} /></span>}
+              {expanded ? <div className="ing__actions">
                 <button type="button" disabled={!!busy || repairing || researching} onClick={() => decide(item, "reject")}>{isLint ? "暂不处理" : isRepair ? "放弃修订" : isResearch ? "不导入" : "整份拒绝"}</button>
                 {isLint ? (
                   <>
@@ -246,7 +287,7 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
                 ) : (
                   <button type="button" className="is-strong" disabled={!!busy || kept === 0} onClick={() => decide(item, "accept")}>{busy === item.id ? "处理中…" : isRepair ? `应用所选修改（${kept}）` : isResearch ? `导入所选并开始编译（${kept}）` : kept === allKeys.length ? "全部接受" : `接受所选（${kept}）`}</button>
                 )}
-              </div>
+              </div> : null}
             </div>
 
             {isLint && (repairing || item.repairStatus === "failed") ? (
@@ -262,11 +303,17 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
 
             {expanded ? (
               <div className="ing__body">
+                {/* 折叠行原来把这句话摆在中间，于是每行开头都是一样的「已阅读全文（N 段）·」，
+                    真正不同的那半句反而被截掉。它属于「已经决定要看了」之后的上下文。 */}
+                <p className="ing__context">{context}</p>
                 {item.rejected?.length || item.unresolved?.length ? (
                   <p className="ing__gate">
+                    <IconShieldCheck size={14} stroke={1.8} aria-hidden="true" />
+                    <span>
                     {item.rejected?.length ? `证据校验已拦下 ${item.rejected.length} 条不可靠修改，它们不会进入正式知识。` : ""}
                     {item.rejected?.length && item.unresolved?.length ? " " : ""}
                     {item.unresolved?.length ? `另有 ${item.unresolved.length} 项建议未生成可用修订，仍保留为待处理问题。` : ""}
+                    </span>
                   </p>
                 ) : null}
                 {(item.pages || []).map((page, index) => pageLine(item, page, index))}

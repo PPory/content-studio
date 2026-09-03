@@ -517,7 +517,13 @@ try {
   await page.getByRole("button", { name: "清空搜索" }).click();
   const researchCandidateCard = page.locator(`[id="knowledge-candidate-${researchReviewCandidate.id}"]`);
   await researchCandidateCard.getByRole("button", { name: /补充来源候选/ }).click();
-  check("搜索结果以可核对来源卡片展示，确认前不会写入", await researchCandidateCard.getByText("来源精准跳转官方说明", { exact: true }).count() === 1
+  /**
+   * ⚠️ **来源名要在**展开后的来源卡**里找，不能在整条候选里数「出现一次」。**
+   * 折叠那一行现在会先把这条候选会碰到的东西列出来（补充来源候选列的就是来源名），
+   * 所以同一个标题在一条候选里合法地出现两次：一次是概览，一次是可核对的卡片。
+   * 这条断言要的是后者——「确认前能逐条核对」——所以范围限定在 `.ing__sources`。
+   */
+  check("搜索结果以可核对来源卡片展示，确认前不会写入", await researchCandidateCard.locator(".ing__sources").getByText("来源精准跳转官方说明", { exact: true }).count() === 1
     && await researchCandidateCard.getByRole("link", { name: "查看原文" }).count() === 1
     && await researchCandidateCard.getByRole("button", { name: "导入所选并开始编译（1）" }).count() === 1
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM books WHERE source_url=?").get("https://example.com/wiki-source").count === 0);

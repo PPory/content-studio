@@ -6967,21 +6967,82 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .src-review-link { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: var(--fs-xs); cursor: pointer; }
 .src-review-link:hover > span:last-child { text-decoration: underline; }
 
-/* ⚠️ **不画 border-top。** Wiki 首页那块 hero 撤掉之后这一段成了页面第一件东西，
-   那道线上面什么都没有，读起来是一条孤零零的横杠。分区靠 `.ing__head` 那行标题。 */
-.ing { margin: 0 0 24px; background: transparent; }
+/**
+ * 待审阅：**一块浮在灰底上的白面板**。
+ *
+ * ⚠️ **这是全页唯一一处画边界的地方，理由要说清。** 设计系统那条「不要框里画框」
+ * 的判据是「这层边界回答了什么问题」——这里答得上来：
+ * **框里这几条还不是你的 Wiki**。它们是 AI 想写、等你放行的东西，
+ * 而框外下面那张索引是已经成立的知识。两者一旦长成同一种列表行，
+ * 「暂存」和「已成立」在屏幕上就没有区别了，而这恰恰是这一页最要紧的那条界线。
+ * 外壳的底色是 `--sunken`，所以白面板在这儿是「浮起来一层」，不是白上加白。
+ */
+.ing {
+  margin: 0 0 22px; padding: 4px 16px 6px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface);
+}
 .ing__head { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 14px 4px 10px; font-size: var(--fs-base); }
 .ing__head em { color: var(--text-3); font-size: var(--fs-xs); font-style: normal; font-weight: 400; }
 .ing__item { border-top: 1px solid var(--border); }
-.ing__row { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, auto) auto; gap: 20px; align-items: center; min-height: 66px; }
-.ing__title { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 4px; border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+/**
+ * 一行 = 一份候选。**来源名 | 它要碰的东西 | 右端**。
+ * ⚠️ 中间那一列以前是一句被截断的说明，现在是页面名——理由写在 `subjectsOf` 上面。
+ */
+.ing__row {
+  display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr) minmax(96px, auto);
+  gap: 20px; align-items: center; min-height: 52px;
+}
+.ing__title {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 4px;
+  border: 0; background: transparent; color: var(--text-1); text-align: left; cursor: pointer;
+}
 .ing__title > svg { flex: none; width: 16px; height: 16px; color: var(--text-3); transition: transform 120ms ease; }
 .ing__title > svg[data-open] { transform: rotate(90deg); }
 .ing__title:hover > svg { color: var(--text-1); }
-.ing__title-text { min-width: 0; }
-.ing__title-text b, .ing__title-text > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ing__title-text b { margin-bottom: 3px; font-size: var(--fs-base); }
-.ing__title-text > span, .ing__counts { color: var(--text-3); font-size: var(--fs-xs); }
+.ing__title > b {
+  min-width: 0; font-size: var(--fs-base); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/**
+ * 会被改到的那几个名字。**它们是这一行的内容，不是元信息**，所以走正文色。
+ * 分隔点画在元素之间（几何只写这一条，别在别处再给 `.ing__subject` 加左内边距，
+ * 那会像 `.wiki-bar__todo` 那次一样把点顶没）。
+ */
+.ing__subjects {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px 0;
+  min-width: 0; font-size: var(--fs-sm); color: var(--text-2);
+}
+.ing__subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ing__subject + .ing__subject { position: relative; padding-left: 17px; }
+.ing__subject + .ing__subject::before {
+  content: ""; position: absolute; left: 7px; top: 50%; width: 3px; height: 3px;
+  margin-top: -1.5px; border-radius: 50%; background: var(--border-strong);
+}
+/* 新建的页面挂一枚上标记号：一屏里「改已有」和「凭空新建」的分量完全不同 */
+.ing__subject[data-new]::after {
+  content: "新"; margin-left: 4px; padding: 1px 4px; border-radius: var(--r-sm);
+  background: var(--accent-wash); color: var(--text-2);
+  font-size: var(--fs-2xs); font-weight: 600; vertical-align: 1px;
+}
+.ing__subject.is-none, .ing__subject.is-rest { color: var(--text-3); }
+
+/**
+ * 折叠时右端那句「看改动」。和创作页表格行尾同一条规矩：
+ * **指到才说话，而且说的是点下去会发生什么**，不是一枚没有宾语的角括号。
+ */
+.ing__peek {
+  display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px;
+  color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap;
+  opacity: 0; transition: opacity 0.12s var(--ease);
+}
+.ing__peek svg { flex: none; }
+.ing__row:hover .ing__peek, .ing__row:focus-within .ing__peek { opacity: 1; color: var(--text-1); }
+@media (prefers-reduced-motion: reduce) { .ing__peek { transition: none; } }
+
+/* 展开后第一行：读了多少、这一份大意是什么。折叠时它挤掉的是页面名 */
+.ing__context { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.65; }
 .ing__actions { display: flex; gap: 6px; }
 .ing__actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); color: var(--text-2); cursor: pointer; }
 /**
@@ -6995,33 +7056,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__actions button:disabled { opacity: .5; cursor: not-allowed; }
 
 /**
- * ⚠️ **拒绝那颗（`.ing__actions` 的第一颗）平时不画，指到这一行才出现。**
- *
- * 上一版每行两颗描边钮，五份候选就是**十圈边框**——它们加起来是这一屏最重的东西，
- * 而这一页真正的主角是那五条「AI 想往 Wiki 里写什么」。
- * 两颗里「拒绝」是次级：它等于「什么都不做」，而且不做本来就是默认（不点就不会写）。
- * 藏它不减少任何能力，只是不再让「否决」和「采纳」抢同一份视觉预算——
- * 和这张表上的删除钮（`.ptable__del`）、素材行的次级动作是同一条规矩。
- *
- * ⚠️ **用 `opacity` 不用 `display`：这一格的宽度必须常年占着。**
- * 让它 hover 时才占位的话，「全部接受」会在指针移进来的那一瞬间往左跳——
- * 而那正是你要点的那颗。
- *
- * 三种情况要露出来：鼠标指到这一行、键盘 Tab 进这一行（`:focus-within`）、
- * 以及**已经展开**——展开就是「我正在看要不要采纳」，那时候两条路都该在手边。
+ * ⚠️ **采纳和拒绝只在展开之后存在**（组件里就没渲染，不是 CSS 藏的）。
+ * 折叠时每行两颗描边钮 × 五份候选 = 十圈边框，是这一屏最强的视觉节奏，
+ * 而它们代表的恰恰是「不看内容直接写进 Wiki」。
+ * 折叠行右端只留一句「看改动」，真正的两条路在展开后的吸顶行上。
  */
-.ing__actions > button:first-child {
-  opacity: 0; pointer-events: none;
-  transition: opacity 0.12s var(--ease);
-}
-.ing__row:hover .ing__actions > button:first-child,
-.ing__row:focus-within .ing__actions > button:first-child,
-.ing__item:has(> .ing__body) .ing__actions > button:first-child {
-  opacity: 1; pointer-events: auto;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ing__actions > button:first-child { transition: none; }
-}
 /**
  * ⚠️ **展开的正文要缩进到标题那一列，并挂一条左线。**
  * 以前它和折叠条目在同一条左边线上，四份候选连着排时看不出「这几页属于哪一份」——
@@ -7041,11 +7080,20 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 }
 
 /* 证据闸门的结果是**做决定之前**要看到的，不是列表末尾一行裸的橙字 */
+/**
+ * 证据闸门拦下了什么。
+ * ⚠️ **不用彩色左竖线**——design-system 明令禁止（「一道彩色竖线 + 一句加粗标题，
+ * 任何界面套上去都长一个样」）。展开之后这一块曾是整块面板里最亮的东西，
+ * 而它说的是「有几条已经被挡住了」，是个安心的事实，不是要你立刻处理的警报。
+ * 一枚盾牌图标 + 一行安静的字就够；语气靠图标的形状，不靠一整条底色。
+ */
 .ing__gate {
-  margin: 0 0 6px; padding: 9px 12px;
-  border-left: 2px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent);
-  color: var(--text-2); font-size: var(--fs-xs); line-height: 1.65;
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 0 0 8px; padding: 0;
+  border: 0; background: none;
+  color: var(--text-3); font-size: var(--fs-xs); line-height: 1.65;
 }
+.ing__gate > svg { flex: none; margin-top: 2px; color: var(--st-done); }
 
 .ing__choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 10px; padding: 14px 0; border-top: 1px dashed var(--border); }
 .ing__choice:first-of-type { border-top: 0; }
@@ -7234,7 +7282,8 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px;
   margin: 0 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-strong);
 }
-.wiki-bar .search-box { flex: 0 1 420px; width: min(420px, 100%); }
+.wiki-bar .search-box { flex: 0 1 340px; width: min(340px, 100%); }
+.wiki-bar__types { margin-bottom: 0; }
 .wiki-bar__facts {
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px;
   margin: 0 0 0 auto; color: var(--text-3); font-size: var(--fs-xs);
@@ -7269,15 +7318,28 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-bar__todo:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
 .wiki-search-empty { padding: 28px 2px; border-top: 1px solid var(--border-strong); color: var(--text-3); font-size: var(--fs-sm); }
 .wiki-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 44px; align-items: start; }
-.wiki-index { min-width: 0; }
-.wiki-section { margin-bottom: 34px; }
+.wiki-index { min-width: 0; border-top: 1px solid var(--border-strong); }
+/**
+ * ⚠️ **`.wiki-section` / `.wiki-page-list` 那两层撤了。**
+ * 索引不再按类型分节——真实数据只落到三档，其中一档只有一条成员，
+ * 分节做的分类工作几乎为零，却把一条能连续扫的列表切成三段。
+ * 类型改成 `.wiki-bar__types` 那排筛选钮，理由写在 `Entries.jsx` 的 `typeCounts` 上面。
+ * `.wiki-section__head` 留着：右栏「最近演化」还在用它当栏头。
+ */
 .wiki-section__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .wiki-section__head h3 { font-size: var(--fs-sm); font-weight: 650; }
 .wiki-section__head span { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
-.wiki-page-list { border-top: 1px solid var(--border-strong); }
-.wiki-page-row { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(260px, 1.5fr) 170px; gap: 18px; align-items: baseline; width: 100%; min-height: 60px; padding: 13px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; }
+/* 词条名 | 一句定义 | 类型 | 连接 · 来源 · 版本 */
+.wiki-page-row {
+  display: grid; grid-template-columns: minmax(150px, .62fr) minmax(260px, 1.6fr) 74px 160px;
+  gap: 18px; align-items: baseline; width: 100%; min-height: 56px; padding: 12px 8px;
+  border: 0; border-bottom: 1px solid var(--border); border-radius: var(--r-sm);
+  background: transparent; color: var(--text-1); text-align: left; cursor: pointer;
+}
 .wiki-page-row:hover { background: var(--surface); }
-.wiki-page-row__title { font-weight: 600; }
+.wiki-page-row__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+/* 类型退成一个词，不做胶囊：一列九十多枚小方块会比词条名还抢眼 */
+.wiki-page-row__type { color: var(--text-3); font-size: var(--fs-xs); }
 /**
  * ⚠️ **摘要截到两行。**
  * 不截的话行高跟着摘要长短在 60~110px 之间跳，而这一列有九十多条——
