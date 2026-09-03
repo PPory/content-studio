@@ -748,8 +748,20 @@ export function ContentBridge({ state = "", onGo }) {
             <button type="button" className="btn btn-sm" onClick={() => setPickerOpen((value) => !value)}>{pickerOpen ? "收起选择" : "重新选择"}</button>
           ) : null}
           {!preview ? (
+            /**
+              * ⚠️ **不能点的时候，按钮上写清还差什么。**
+              * 上一版一律写「看看怎么连接」，只是变灰——一颗灰色实心按钮读起来像坏了，
+              * 而真正的原因（还没选够两个）写在两栏底下那句提示里，
+              * 那句话在 560px 的列表下面，滚不到就看不见。
+              * design-system 的「disabled 必须有真实原因，需要理解时直接说明」说的就是这个。
+              * ⚠️ 两边都选齐之后文案必须回到「看看怎么连接」——冒烟测试按这个名字点它。
+              */
             <button type="button" className="btn btn-primary" disabled={previewBusy || !wikiId || !hasProblem} onClick={() => runPreview()}>
-              {previewBusy ? "正在判断连接…" : "看看怎么连接"}
+              {previewBusy ? "正在判断连接…"
+                : !wikiId && !hasProblem ? "两边各选一个"
+                : !wikiId ? "还差左边一个知识"
+                : !hasProblem ? "还差右边一个用户问题"
+                : "看看怎么连接"}
             </button>
           ) : savedOpportunity ? (
             <button type="button" className="btn btn-primary" disabled={projectBusy} onClick={createProject}>{projectBusy ? "正在建立项目…" : "建立内容项目"}</button>
@@ -795,9 +807,8 @@ export function ContentBridge({ state = "", onGo }) {
         </div>
       )}
 
-      {!pickerCollapsed && !(wikiId && hasProblem) ? (
-        <p className="bridge-hint">从两边各选一个对象，系统才会判断它们是否真的能连接。</p>
-      ) : null}
+      {/* ⚠️ 「从两边各选一个对象」那句提示撤了：它在 560px 的列表底下，滚不到就看不见，
+          而它要说的话现在写在顶栏那颗按钮上（「还差左边一个知识」），就在你要点的地方。 */}
 
       {previewBusy ? (
         <div className="bridge-pending bridge-pending--result" aria-live="polite">
