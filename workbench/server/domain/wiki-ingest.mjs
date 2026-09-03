@@ -254,13 +254,66 @@ export function validateProposal(proposal, { sourceText, existing = [] }) {
   return { entries, definitions, facts, relations, contradictions, rejected };
 }
 
-/** 读一份来源，产出一份**已经过逐字校验**的提案。不写库。 */
-export async function proposeFromSource(workspace, env, { sourceId, model = "", signal } = {}) {
-  const source = workspace.db.prepare(`SELECT d.id, d.title, d.body_markdown AS body,
-      b.published_at AS publishedAt, b.source_url AS sourceUrl, b.platform
+/**
+ * 一份来源可以是什么。
+ *
+ * ⚠️ **一条结算过的实践记录也是来源。** 词条原来只认外部读物，于是「我自己做完
+ * 一件事学到的东西」永远回不了知识库——那条链在这里是断的。
+ *
+ * ⚠️ **但逐字闸一点没松。** 结算记录是**你自己在结算时写下并确认过的文本**，
+ * 引它和引一本书一样可以逐字核对；这里改的只是「什么算一份来源」，
+ * 不是「引用要不要对得上」。下游的 `validateProposal` 和 `applyProposal` 一行没动。
+ *
+ * ⚠️ **只认结算过的**（`verdict <> 'open'`）。一个还没验证的假设不是知识，
+ * 把它沉淀成词条，等于把「我猜」写成「我知道」。
+ */
+export function resolveIngestSource(db, sourceId) {
+  const doc = db.prepare(`SELECT d.id, d.title, d.body_markdown AS body,
+      b.published_at AS assertedAt, b.platform,
+      d.title AS locatorTitle
     FROM book_documents d
     JOIN entities e ON e.id = d.id AND e.deleted_at IS NULL
     JOIN books b ON b.id = d.book_id WHERE d.id = ?`).get(sourceId);
+  if (doc) {
+    return {
+      id: doc.id, title: doc.title, body: doc.body, assertedAt: doc.assertedAt || "",
+      locator: [doc.title, doc.platform, doc.assertedAt?.slice(0, 10)].filter(Boolean).join(" · "),
+    };
+  }
+
+  const learned = db.prepare(`SELECT x.id, x.hypothesis_markdown AS hypothesis,
+      x.outcome_markdown AS outcome, x.learning_markdown AS learning, x.verdict, x.settled_at AS settledAt,
+      p.title AS projectTitle
+    FROM content_experiments x
+    JOIN entities e ON e.id = x.id AND e.deleted_at IS NULL
+    LEFT JOIN projects p ON p.id = x.project_id
+    WHERE x.id = ? AND x.verdict <> 'open'`).get(sourceId);
+  if (!learned) return null;
+
+  /**
+   * 拼给模型看、也拿来做逐字校验的那份正文。
+   * 三段都留着：只给「学到了什么」的话，模型引不出**当初赌的是什么**，
+   * 而一条判断脱离了它被验证的处境，就只是一句漂亮话。
+   */
+  const body = [
+    `# 从《${learned.projectTitle || "一次发布"}》学到的`,
+    "", "## 当初的假设", learned.hypothesis || "（没有记）",
+    "", "## 实际发生了什么", learned.outcome || "（没有记）",
+    "", "## 我更新了什么判断", learned.learning || "（没有记）",
+  ].join("\n");
+
+  return {
+    id: learned.id,
+    title: `从《${learned.projectTitle || "一次发布"}》学到的`,
+    body,
+    assertedAt: learned.settledAt || "",
+    locator: ["我自己的实践", learned.projectTitle, learned.settledAt?.slice(0, 10)].filter(Boolean).join(" · "),
+  };
+}
+
+/** 读一份来源，产出一份**已经过逐字校验**的提案。不写库。 */
+export async function proposeFromSource(workspace, env, { sourceId, model = "", signal } = {}) {
+  const source = resolveIngestSource(workspace.db, sourceId);
   if (!source) throw new Error("来源文档不存在");
   const sourceText = clean(source.body, 60_000);
   if (sourceText.length < 200) return { sourceId, empty: true, reason: "正文太短，没有可沉淀的内容", model: "" };
@@ -278,9 +331,9 @@ export async function proposeFromSource(workspace, env, { sourceId, model = "", 
   return {
     sourceId, title: source.title, model: usedModel, usage, existing, empty,
     reason: empty ? "没有通过真实性校验的可沉淀内容" : "",
-    sourceLocator: [source.title, source.platform, source.publishedAt?.slice(0, 10)].filter(Boolean).join(" · "),
+    sourceLocator: source.locator,
     sourceContentSha256: crypto.createHash("sha256").update(source.body).digest("hex"),
-    assertedAt: source.publishedAt || "",
+    assertedAt: source.assertedAt,
     ...validated,
   };
 }

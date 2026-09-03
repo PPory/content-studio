@@ -12,6 +12,7 @@ import {
   wikiHealth,
   trashWikiPage,
 } from "../domain/wiki-pages.mjs";
+import { resolveIngestSource } from "../domain/wiki-ingest.mjs";
 
 function guard(handler) {
   return async (context) => {
@@ -20,7 +21,9 @@ function guard(handler) {
       if (!workspace?.db?.open) throw Object.assign(new Error("本地工作区尚未就绪"), { status: 503 });
       await handler({ ...context, workspace });
     } catch (error) {
-      fail(context.res, error.message || "知识库请求失败", { status: error.status || 400 });
+      // ⚠️ hint 要带上：这一栏里好几处报错都备了「下一步怎么办」，
+      // 而这里原来只把 message 送出去，那些提示一句都到不了屏幕上。
+      fail(context.res, error.message || "知识库请求失败", { status: error.status || 400, hint: error.hint });
     }
   };
 }
@@ -347,7 +350,13 @@ export const wikiRoutes = [
     const body = await readJsonBody(req);
     const bookIds = [...new Set((body.bookIds || []).map(String).filter(Boolean))];
     const documentIds = [...new Set((body.documentIds || []).map(String).filter(Boolean))];
-    if (!bookIds.length && !documentIds.length) throw new Error("请先选择要提炼的来源");
+    /**
+     * ⚠️ **结算过的实践记录也能提炼。** 词条原来只认外部读物，于是「我自己做完一件事
+     * 学到的东西」永远回不了知识库——四条链里「内容 → 知识」这一段是断的。
+     * 逐字闸没有放松：结算记录是你自己写下并确认过的文本，引它一样要对得上。
+     */
+    const experimentIds = [...new Set((body.experimentIds || []).map(String).filter(Boolean))];
+    if (!bookIds.length && !documentIds.length && !experimentIds.length) throw new Error("请先选择要提炼的来源");
     const placeholders = (items) => items.map(() => "?").join(",");
     const byBooks = bookIds.length ? workspace.db.prepare(`SELECT d.id, d.body_markdown AS body
       FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL
@@ -355,7 +364,18 @@ export const wikiRoutes = [
     const byIds = documentIds.length ? workspace.db.prepare(`SELECT d.id, d.body_markdown AS body
       FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL
       WHERE d.id IN (${placeholders(documentIds)}) ORDER BY d.id`).all(...documentIds) : [];
-    const unique = new Map([...byBooks, ...byIds].map((item) => [item.id, item]));
+    // 未结算的假设在这里解析不出来，所以「只沉淀已经验证过的」这条规矩由领域层守，
+    // 不靠路由再抄一遍条件。
+    const byExperiments = experimentIds
+      .map((id) => resolveIngestSource(workspace.db, id))
+      .filter(Boolean)
+      .map((source) => ({ id: source.id, body: source.body }));
+    if (experimentIds.length && !byExperiments.length) {
+      throw Object.assign(new Error("这条实验还没结算，沉淀不了"), {
+        hint: "还没验证的假设不是知识。先在运营那一栏结算它，再沉淀。",
+      });
+    }
+    const unique = new Map([...byBooks, ...byIds, ...byExperiments].map((item) => [item.id, item]));
     const result = queueIngest(workspace, [...unique.values()], { retry: body.retry === true });
     json(res, { ok: true, ...result, maxBatch: 20 });
   }) },
