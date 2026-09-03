@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_FIRECRAWL_ENDPOINT = "https://api.firecrawl.dev/v2/scrape";
@@ -132,18 +132,65 @@ async function loadEnvironment(projectRoot, explicitEnvFile) {
   return { ...fileEnv, ...process.env };
 }
 
-async function resolveFetch(projectRoot) {
-  // The workbench already provides proxyFetch for unstable networks.
-  // Prefer it when available; keep a global-fetch fallback for portability and tests.
-  const proxyPath = path.resolve(projectRoot, "server/lib/fetch.mjs");
-  try {
-    const module = await import(pathToFileURL(proxyPath).href);
-    if (typeof module.proxyFetch === "function") return module.proxyFetch;
-  } catch {
-    // Fall through intentionally.
+/** Env vars that mean "this machine cannot reach the open web directly". */
+function configuredProxy() {
+  return (process.env.HTTPS_PROXY || process.env.https_proxy
+    || process.env.ALL_PROXY || process.env.all_proxy || "").trim();
+}
+
+/**
+ * Where `server/lib/fetch.mjs` might live: the caller's --project-root first, then
+ * every directory above this script.
+ *
+ * The script is invoked from whatever directory the analyst happens to be in, so
+ * resolving only against cwd found the helper by luck. Walking up from the script's
+ * own location finds it no matter where the command was typed.
+ */
+function* proxyModuleCandidates(projectRoot) {
+  yield path.resolve(projectRoot, "server/lib/fetch.mjs");
+  // fileURLToPath, not manual URL surgery: this repo lives under a path with CJK
+  // characters, and a raw file URL keeps them percent-encoded.
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 8; depth += 1) {
+    yield path.join(dir, "server", "lib", "fetch.mjs");
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+}
+
+async function resolveFetch(projectRoot) {
+  // The workbench provides proxyFetch because Node 22's global fetch ignores
+  // HTTPS_PROXY. Prefer it; keep a global-fetch fallback for portability and tests.
+  const failures = [];
+  for (const candidate of proxyModuleCandidates(projectRoot)) {
+    try {
+      const module = await import(pathToFileURL(candidate).href);
+      if (typeof module.proxyFetch === "function") return module.proxyFetch;
+      failures.push(`${candidate}: no proxyFetch export`);
+    } catch (error) {
+      failures.push(`${candidate}: ${error.message.split("\n")[0]}`);
+    }
+  }
+
   if (typeof globalThis.fetch !== "function") {
     throw new Error("no fetch implementation available");
+  }
+
+  /**
+   * Falling back silently is the bug this guard exists for. Global fetch ignores
+   * HTTPS_PROXY, so on a machine that needs one every request dies as a bare
+   * `fetch failed` after a full connect timeout — which reads like a dead API key
+   * or a spent quota, and sends you to the billing page instead of the network.
+   */
+  const proxy = configuredProxy();
+  if (proxy) {
+    throw new Error([
+      `a proxy is configured (${proxy}) but server/lib/fetch.mjs could not be loaded,`,
+      "and Node's global fetch ignores HTTPS_PROXY — every request would time out.",
+      "Pass --project-root <workbench dir>, or run with `node --use-env-proxy`.",
+      `Tried:\n  ${failures.join("\n  ")}`,
+    ].join(" "));
   }
   return globalThis.fetch.bind(globalThis);
 }
