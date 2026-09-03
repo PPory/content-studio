@@ -515,6 +515,20 @@ try {
   await page.getByLabel("搜索 Wiki").fill("不存在的页面");
   check("Wiki 搜索没有结果时给出明确反馈", await page.getByText(/没有找到“不存在的页面”/).count() === 1);
   await page.getByRole("button", { name: "清空搜索" }).click();
+
+  /**
+   * ⚠️ **待审阅从 Wiki 首页搬到了 `#/entries/review`。**
+   * 首页只留一行入口（`.wiki-todo`）——审阅要整页宽度读 diff，索引要一条能扫的长列表，
+   * 两件事挤在一屏时两边都不好用。这里顺带验一次那行入口真的能进去。
+   */
+  const wikiTodo = page.locator(".wiki-todo");
+  await wikiTodo.waitFor();
+  check("Wiki 首页只留一行待审阅入口，列表已搬走", (await wikiTodo.innerText()).includes("候选等你审阅")
+    && await page.locator(".ing__row").count() === 0);
+  await wikiTodo.click();
+  await page.waitForURL((url) => url.hash === "#/entries/review");
+  await page.locator(".ing__row").first().waitFor();
+
   const researchCandidateCard = page.locator(`[id="knowledge-candidate-${researchReviewCandidate.id}"]`);
   await researchCandidateCard.getByRole("button", { name: /补充来源候选/ }).click();
   /**

@@ -7027,6 +7027,22 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   font-size: var(--fs-2xs); font-weight: 600; vertical-align: 1px;
 }
 .ing__subject.is-none, .ing__subject.is-rest { color: var(--text-3); }
+/**
+ * 已经不能写的那一页：**划掉**。
+ * 用删除线不用红字——红是「出错了」，而这一页没出错，只是这份候选算的是旧版本。
+ * 划掉说的是「这条作废了」，语气正好。
+ */
+.ing__subject[data-stale] { color: var(--text-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+/* 有几份候选同时要改这一页。先接受哪一份，其余就要重新编译——这是操作顺序的提示 */
+.ing__clash { margin-left: 4px; color: var(--text-3); font-style: normal; font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+
+/* 展开区顶部：这份候选为什么不能直接写入，以及出路 */
+.ing__stale {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7;
+}
+.ing__stale > svg { flex: none; margin-top: 3px; color: var(--warn); }
+.ing__stale b { color: var(--text-1); font-weight: 600; }
 
 /**
  * 折叠时右端那句「看改动」。和创作页表格行尾同一条规矩：
@@ -7098,7 +7114,21 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 10px; padding: 14px 0; border-top: 1px dashed var(--border); }
 .ing__choice:first-of-type { border-top: 0; }
 .ing__choice.is-off { opacity: .48; }
-.ing__choice > input { margin-top: 3px; accent-color: var(--accent); }
+/**
+ * ⚠️ **复选框要对准首行的视觉中线，不是对准整块的顶。**
+ *
+ * 原来是写死的 `margin-top: 3px`，量出来复选框中线比标题中线高 3px——
+ * 单看一行看不出，一列三个勾并排就一眼歪。而这一档不能再拍脑袋填一个数：
+ * 首行高度是标题字号推出来的，字阶动一次它就又歪了。
+ * 所以两个数都显式写出来，让居中是算出来的：
+ * 首行 = `--fs-base` × 行高 1.65，勾 14px，上边距取两者差的一半。
+ */
+.ing__choice > input {
+  --ing-head-h: calc(var(--fs-base) * 1.65);
+  width: 14px; height: 14px;
+  margin-top: calc((var(--ing-head-h) - 14px) / 2);
+  accent-color: var(--accent);
+}
 .ing__choice-body { display: grid; gap: 6px; min-width: 0; }
 
 /* 标签 + 页名 + 计数在同一行：三样都是「这是哪一页」，摘要另起一行才读得开 */
@@ -7278,6 +7308,29 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  * ⚠️ 注脚**紧贴搜索框在同一行**，不另起一条横带：它是索引的注解，
  * 而顶上那四格大数字正是因为自成一段才显得像这一页的主角。
  */
+/**
+ * 待审阅的入口。**一行，不是一段列表。**
+ * 整块审阅搬去了 `#/entries/review`（`pages/KnowledgeReview.jsx` 顶上写了理由）——
+ * 这一行只负责说「有几份、会改多少、其中几份已经过期」，够不够进去由你判断。
+ */
+.wiki-todo {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  margin: 0 0 18px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); color: var(--text-1); text-align: left; cursor: pointer;
+  transition: border-color 0.14s var(--ease);
+}
+.wiki-todo:hover { border-color: var(--border-strong); }
+.wiki-todo > b { font-size: var(--fs-base); font-weight: 600; }
+.wiki-todo > span { min-width: 0; color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-todo > svg { margin-left: auto; flex: none; color: var(--text-3); }
+.wiki-todo:hover > svg { color: var(--text-1); }
+@media (prefers-reduced-motion: reduce) { .wiki-todo { transition: none; } }
+
+/* 审阅页：满宽单栏，没有右栏也没有索引 */
+.knowledge-review { max-width: 1080px; }
+.knowledge-review .ing { margin-top: 0; }
+
 .wiki-bar {
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px;
   margin: 0 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-strong);
@@ -7318,7 +7371,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-bar__todo:hover { color: var(--text-1); text-decoration: underline; text-underline-offset: 3px; }
 .wiki-search-empty { padding: 28px 2px; border-top: 1px solid var(--border-strong); color: var(--text-3); font-size: var(--fs-sm); }
 .wiki-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 44px; align-items: start; }
-.wiki-index { min-width: 0; border-top: 1px solid var(--border-strong); }
+/* ⚠️ 不再自己画上缘：`.wiki-bar` 的下边框就是索引的上缘，
+   两条都画就是相隔 40px 的两道平行线（窄屏下尤其明显） */
+.wiki-index { min-width: 0; }
 /**
  * ⚠️ **`.wiki-section` / `.wiki-page-list` 那两层撤了。**
  * 索引不再按类型分节——真实数据只落到三档，其中一档只有一条成员，
@@ -7374,6 +7429,25 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-log p {
   margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.55;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/**
+ * ⚠️ **窄下来先撤右栏，再撤类型列。**
+ *
+ * 这两档都是量出来的，不是拍的：1180px 以下索引那四列（150 + 260 + 74 + 160 加三道 18px 沟）
+ * 已经吃不下剩余宽度，**元信息那一列会直接压到右栏的「最近演化」上**——
+ * 而 `document.scrollWidth` 一点不涨，所以「没有横向溢出」这条检查看不出来，
+ * 只有真去看那一屏才发现两栏叠在一起了。窄屏验收要看图，不能只看数。
+ *
+ * 撤的顺序跟着「谁在回答当前任务」：右栏是日志，先走；类型在窄屏靠筛选钮也问得到，第二个走。
+ */
+@media (max-width: 1180px) {
+  .wiki-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .wiki-log { position: static; padding-left: 0; border-left: 0; border-top: 1px solid var(--border-strong); padding-top: 14px; }
+}
+@media (max-width: 900px) {
+  .wiki-page-row { grid-template-columns: minmax(120px, .7fr) minmax(0, 1.6fr) 140px; gap: 14px; }
+  .wiki-page-row__type { display: none; }
 }
 
 .wiki-article { max-width: 1180px; }

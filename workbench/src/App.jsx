@@ -22,6 +22,7 @@ import { Seeds } from "./pages/Seeds.jsx";
 import { ProjectWorkspace } from "./pages/ProjectWorkspace.jsx";
 import { Studio } from "./pages/Studio.jsx";
 import { Entries } from "./pages/Entries.jsx";
+import { KnowledgeReview } from "./pages/KnowledgeReview.jsx";
 import { EntryDetail } from "./pages/EntryDetail.jsx";
 import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
@@ -55,7 +56,7 @@ const SHELF_KINDS = Object.freeze(["书籍"]);
  * **列表的筛选前缀**（留在列表页）。加新前缀时要一起加到这儿，
  * 否则它会被当成 id 拿去查页面，用户看到的是「Wiki 页面不存在」。
  */
-const ENTRY_LIST_STATE = /^(review|source):/;
+const ENTRY_LIST_STATE = /^(review$|review:|source:)/;
 /**
  * 发出去之后的那一段：复盘和数据。
  *
@@ -696,14 +697,16 @@ export function App() {
             {(() => {
               const item = groupOf(route.view);
               const Icon = item ? NAV_ICONS[item.key] : null;
-              const child = item?.children?.find(
-                (c) => c.to === route.view || (["project", "series", "series-detail"].includes(route.view) && c.to === "content")
-              );
+              // ⚠️ 归属判据只写在 `SUBNAV_HOME` 那一张表里，别在这儿再列一遍 view 名
+              const child = item?.children?.find((c) => c.to === (SUBNAV_HOME[route.view] || route.view));
+              // 审阅是 Wiki 底下的一层，所以是第三段而不是另起一栏
+              const leaf = route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
               return (
                 <>
                   {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
                   <b>{item ? NAV_LABELS[item.key] : "工作台"}</b>
                   {child ? <><i aria-hidden="true">/</i><span>{child.label}</span></> : null}
+                  {leaf ? <><i aria-hidden="true">/</i><span>{leaf}</span></> : null}
                 </>
               );
             })()}
@@ -859,9 +862,23 @@ export function App() {
                       go("shelf", `book:${fact.sourceBookId}`);
                     }}
                   />
+                ) : String(route.state || "").startsWith("review") ? (
+                  /**
+                   * ⚠️ **审阅是自己一屏，不再是 Wiki 首页顶上的一段。**
+                   * 它要整页宽度读 diff，而首页要的是一条能扫的长索引——
+                   * 两件事挤在一屏时两边都不好用。`review:<sourceId>` 是从「来源」页
+                   * 直接点进某一份候选的深链，落点仍然是这一屏。
+                   */
+                  <KnowledgeReview
+                    focusSourceId={route.state.startsWith("review:") ? route.state.slice("review:".length) : ""}
+                    onGo={(target) => {
+                      const value = String(target);
+                      if (value.startsWith("entries/")) go("entries", value.slice("entries/".length));
+                      else go(value);
+                    }}
+                  />
                 ) : (
                   <Entries
-                    focusSourceId={String(route.state || "").startsWith("review:") ? route.state.slice("review:".length) : ""}
                     focusBookId={String(route.state || "").startsWith("source:") ? route.state.slice("source:".length) : ""}
                     onGo={(target) => {
                     const value = String(target);

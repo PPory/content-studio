@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { Empty, ErrorNote, Loading, Note, PageHeader, SearchBox } from "../components/ui.jsx";
-import { IconNotebook } from "../components/icons.jsx";
-import { IngestReview } from "../components/IngestReview.jsx";
+import { IconArrowRight, IconNotebook } from "../components/icons.jsx";
+import { summarize } from "../lib/knowledge-candidates.js";
 import { ScrollToTop } from "../components/ScrollToTop.jsx";
 
 const TYPE_ORDER = ["overview", "topic", "synthesis", "comparison", "concept", "method", "person", "organization", "work", "stance", "source_summary"];
@@ -14,7 +14,7 @@ function when(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }
 
-export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
+export function Entries({ onGo, focusBookId = "" }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
@@ -22,8 +22,30 @@ export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
   const [lintBusy, setLintBusy] = useState(false);
   const [notice, setNotice] = useState(null);
 
+  const [pending, setPending] = useState(null);
+
   const load = () => api.wiki().then(setData).catch(setError);
   useEffect(() => { load(); }, []);
+
+  /**
+   * 待审阅的**摘要**，只为页顶那一行入口。
+   *
+   * ⚠️ **这一页不再渲染整个审阅列表**（它搬去 `KnowledgeReview` 了）。
+   * 查词条和审阅是两件事：前者要一条长索引，后者要整页宽度读 diff，
+   * 挤在一屏的结果是有候选时索引被压到折叠线以下，而 diff 又被右栏夹着。
+   *
+   * 版本号顺带从已有的 `data` 里取，所以「其中几份已经过期」也能在入口就说出来——
+   * 判据和审阅页共用 `lib/knowledge-candidates.js` 那一份，不在这儿另算。
+   */
+  useEffect(() => {
+    if (!data) return undefined;
+    let alive = true;
+    const revisions = new Map((data.pages || []).map((page) => [page.id, page.revision]));
+    api.knowledgeCandidates()
+      .then((result) => { if (alive) setPending(summarize(result.candidates || [], revisions)); })
+      .catch(() => { if (alive) setPending(null); });
+    return () => { alive = false; };
+  }, [data]);
 
   // 「来源」页点「影响页面 85」进来时带的书 id。名字从库里查，不塞进 URL。
   const focusBook = useMemo(
@@ -119,7 +141,13 @@ export function Entries({ onGo, focusSourceId = "", focusBookId = "" }) {
           <Note tone="default" title={notice.title}>{notice.detail}</Note>
         </div>
       ) : null}
-      <IngestReview onDone={load} focusSourceId={focusSourceId} />
+      {pending?.count ? (
+        <button type="button" className="wiki-todo" onClick={() => onGo?.("entries/review")}>
+          <b>{pending.count} 份候选等你审阅</b>
+          <span>会改 {pending.subjects} 处{pending.stale ? ` · 其中 ${pending.stale} 份已过期，需要重新编译` : ""}</span>
+          <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
+        </button>
+      ) : null}
 
       {focusBookId ? (
         <div className="wiki-scope" role="status">

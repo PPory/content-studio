@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
-import { IconArrowRight, IconChevronRight, IconShieldCheck } from "./icons.jsx";
+import { IconAlertTriangle, IconArrowRight, IconChevronRight, IconShieldCheck } from "./icons.jsx";
+import { collisionCounts, stalePages, subjectsOf } from "../lib/knowledge-candidates.js";
+import { diffTokens } from "../lib/text-diff.js";
+import { RevisionDiff } from "./assistant/CandidateCard.jsx";
 
 const FINDING_TYPES = {
   contradiction: { level: "高风险", label: "观点冲突", tone: "risk" },
@@ -29,34 +32,7 @@ function Evidence({ quote }) {
   return quote ? <blockquote className="ing__quote">{quote}</blockquote> : null;
 }
 
-/**
- * 折叠那一行中间显示什么：**这条候选会碰到的东西的名字**。
- *
- * ⚠️ **上一版这里是一句被截断的说明**（「已阅读全文（1 段）· 基于认知神经科学与情绪
- * 构建理论，补充了创作焦虑与写作障碍的神经认知建构机制，更新了《写作障碍》、《写…」）。
- * 它有两个毛病，而且是一起犯的：
- *   1. **每行开头都一样**（「已阅读全文（N 段） · 」），真正不同的部分被挤到后面截掉；
- *   2. **它回答不了这一行要回答的问题**。你在这儿要决定的是「让不让 AI 改我的 Wiki」，
- *      而做这个决定靠的是**它要改哪几页**——那几个页面名一直就在数据里
- *      （`item.pages[].title`），却被折叠藏着，只在展开后才看得到。
- *
- * 现在中间那一列直接列页面名：`写作障碍 · 写作 · 情绪构建理论`。一行放得下，
- * 而且五行并排时你一眼就看得出哪几页被反复改（这一屏里《写作》被三份来源同时盯上）。
- *
- * 四种候选各自「碰的东西」不一样，但都是一串名字，所以合成同一个形状：
- *   编译 / 修订 → 会写入的页面；补充来源 → 找到的来源；体检 → 被诊断到的页面。
- */
-function subjectsOf(item) {
-  if (item.type === "research") return (item.sources || []).map((source) => ({ name: source.title, isNew: true }));
-  if (item.type === "wiki-lint") {
-    const seen = new Set();
-    for (const finding of item.findings || []) for (const page of finding.pages || []) seen.add(page);
-    return [...seen].map((name) => ({ name, isNew: false }));
-  }
-  return (item.pages || []).map((page) => ({ name: page.title, isNew: page.action === "create" }));
-}
-
-export function IngestReview({ onDone, focusSourceId = "" }) {
+export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState("");
@@ -167,6 +143,8 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
   }, []);
 
   const candidates = data?.candidates || [];
+  /** 哪几页被多份候选同时盯着。算一次，行里和展开区共用 */
+  const collisions = useMemo(() => collisionCounts(candidates), [candidates]);
   const totalFindings = useMemo(() => candidates.reduce((sum, item) => sum
     + (item.type === "wiki-lint" ? item.findings?.length || 0
       : item.type === "research" ? item.sources?.length || 0 : item.pages?.length || 0), 0), [candidates]);
@@ -200,10 +178,22 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
           <p className="ing__choice-summary">{page.summary}</p>
           {page.changeSummary ? <p className="ing__why">{page.changeSummary}</p> : null}
           <Evidence quote={page.citations?.[0]?.quote} />
+          {/**
+            * ⚠️ **对照走真的字级 diff，不再是「修改前一块 / 修改后一块」。**
+            *
+            * 上下两块全文摊开时，读者要自己在两段几百字的中文里找出改了哪儿——
+            * 而两段有九成是一样的。这正是 `lib/text-diff.js` 解决的问题，
+            * 而且它已经在 AI 候选卡和编辑器里用着了：**复用 `RevisionDiff`，
+            * 不在这儿另画一套对照**（同一件事写在两个地方是这个项目的常见事故）。
+            *
+            * 新建的页面没有「之前」，diff 无从谈起，照旧只摊开正文。
+            */}
           <details className="ing__diff">
-            <summary>对照完整内容</summary>
-            {page.beforeBodyMarkdown ? <><b>修改前</b><pre>{page.beforeBodyMarkdown}</pre></> : null}
-            <b>修改后</b><pre>{page.bodyMarkdown}</pre>
+            <summary>{page.beforeBodyMarkdown ? "对照改了哪儿" : "看完整内容"}</summary>
+            {page.beforeBodyMarkdown ? (() => {
+              const { parts, degraded } = diffTokens(page.beforeBodyMarkdown, page.bodyMarkdown);
+              return <RevisionDiff parts={parts} degraded={degraded} ariaLabel={`《${page.title}》修改对照`} />;
+            })() : <pre>{page.bodyMarkdown}</pre>}
           </details>
         </div>
       </div>
@@ -240,6 +230,14 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
         const subjects = subjectsOf(item);
         const shown = subjects.slice(0, 4);
         const rest = subjects.length - shown.length;
+        /**
+         * ⚠️ **过期的候选不让点「接受」，而且要在点之前就看得出来。**
+         * 服务端会逐页核对版本号并整份 409（`wiki-pages.mjs` 的 `assertPageRevision`），
+         * 界面此前没有任何迹象——实测四份候选全部至少有一页过期，
+         * 每一颗接受钮点下去都会报错。判据写在 `lib/knowledge-candidates.js`。
+         */
+        const stale = stalePages(item, pageRevisions);
+        const staleNames = new Set(stale.map((page) => page.title));
         /** 展开之后才说的那句话：读了多少、这一份大意是什么。折叠时它挤掉的是页面名。 */
         const context = isLint ? "页面问题生成修订；来源问题先搜索资料，二者都要再次确认"
           : isRepair ? item.repairSummary || "根据所选体检问题生成，尚未写入 Wiki"
@@ -259,8 +257,18 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
               {/* 中间：会碰到的东西的名字。这才是「让不让它改」的判断材料，理由见 `subjectsOf` */}
               <span className="ing__subjects">
                 {shown.length ? shown.map((subject, index) => (
-                  <span key={`${subject.name}-${index}`} className="ing__subject" data-new={subject.isNew ? "" : undefined}>
+                  <span
+                    key={`${subject.name}-${index}`}
+                    className="ing__subject"
+                    data-new={subject.isNew ? "" : undefined}
+                    data-stale={staleNames.has(subject.name) ? "" : undefined}
+                    title={staleNames.has(subject.name) ? `《${subject.name}》在这份候选算出来之后又改过，需要重新编译`
+                      : collisions.get(subject.name) ? `还有 ${collisions.get(subject.name) - 1} 份候选也要改《${subject.name}》，先接受哪一份，其余就要重新编译`
+                      : undefined}
+                  >
                     {subject.name}
+                    {!staleNames.has(subject.name) && collisions.get(subject.name)
+                      ? <i className="ing__clash" aria-hidden="true">×{collisions.get(subject.name)}</i> : null}
                   </span>
                 )) : <span className="ing__subject is-none">没有可应用的修改</span>}
                 {rest > 0 ? <span className="ing__subject is-rest">+{rest}</span> : null}
@@ -285,7 +293,18 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
                     </button> : null}
                   </>
                 ) : (
-                  <button type="button" className="is-strong" disabled={!!busy || kept === 0} onClick={() => decide(item, "accept")}>{busy === item.id ? "处理中…" : isRepair ? `应用所选修改（${kept}）` : isResearch ? `导入所选并开始编译（${kept}）` : kept === allKeys.length ? "全部接受" : `接受所选（${kept}）`}</button>
+                  /**
+                    * ⚠️ **过期就禁用，并且 `title` 上写清是哪几页、为什么。**
+                    * disabled 必须有真实原因且说得出来（design-system 的「控件」那条），
+                    * 而这里的原因很具体：这份候选算出来之后，那几页又被改过。
+                    */
+                  <button
+                    type="button"
+                    className="is-strong"
+                    disabled={!!busy || kept === 0 || stale.length > 0}
+                    title={stale.length ? `《${stale.map((page) => page.title).join("》《")}》在这份候选算出来之后又改过，需要重新编译这份资料` : undefined}
+                    onClick={() => decide(item, "accept")}
+                  >{busy === item.id ? "处理中…" : stale.length ? "已过期，需重新编译" : isRepair ? `应用所选修改（${kept}）` : isResearch ? `导入所选并开始编译（${kept}）` : kept === allKeys.length ? "全部接受" : `接受所选（${kept}）`}</button>
                 )}
               </div> : null}
             </div>
@@ -306,6 +325,16 @@ export function IngestReview({ onDone, focusSourceId = "" }) {
                 {/* 折叠行原来把这句话摆在中间，于是每行开头都是一样的「已阅读全文（N 段）·」，
                     真正不同的那半句反而被截掉。它属于「已经决定要看了」之后的上下文。 */}
                 <p className="ing__context">{context}</p>
+                {stale.length ? (
+                  <p className="ing__stale" role="status">
+                    <IconAlertTriangle size={14} stroke={1.8} aria-hidden="true" />
+                    <span>
+                      《{stale.map((page) => page.title).join("》《")}》在这份候选算出来之后又被改过
+                      （多半是刚才接受了另一份候选）。整份写入会被挡下，
+                      需要回到<b>来源</b>重新编译这份资料，再回来审阅。
+                    </span>
+                  </p>
+                ) : null}
                 {item.rejected?.length || item.unresolved?.length ? (
                   <p className="ing__gate">
                     <IconShieldCheck size={14} stroke={1.8} aria-hidden="true" />
