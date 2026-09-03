@@ -204,10 +204,13 @@ try {
     await board.getByText(/扫描还看不出反复/).count() === 1);
 
   // ⚠️ 没事的那两条：**这块板唯一的死法是为了不空而硬凑一件待办**
-  check("没事的链如实说没事，不硬凑", await board.getByText("这条链现在没事").count() === 2);
+  check("没事的链如实说没事，不硬凑", await board.getByText("现在没事").count() === 2);
   check("没事的时候改说这条链是干什么的",
     await board.getByText("我知道外面在发生什么").count() === 1);
-  check("没事也留着一个能点的出口", await board.getByRole("button", { name: /去翻翻/ }).count() === 2);
+  // ⚠️ 整张卡就是按钮：卡里再放一颗按钮，等于同一格里有两个可点的东西，
+  // 而它们干的是同一件事——键盘走一遍会停两次。
+  check("整张卡可点，不是卡里再塞一颗按钮",
+    await board.getByRole("button").count() === 4);
 
   // 一级导航按四条链命名：情报不叫「发现」，运营不叫「复盘」
   check("侧栏用四条链的名字", await page.getByRole("link", { name: "情报" }).count()

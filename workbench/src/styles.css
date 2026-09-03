@@ -7640,50 +7640,45 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .voice-problem .btn { justify-self: start; margin-top: 4px; }
 
 /* ── 值班台：四条链此刻各自的下一步 ─────────────────────────────────
-   ⚠️ **不是四张卡片。** 卡片是给「要动手的少数」的；这四条是**常驻的一览**，
-   每天都在、位置固定。用一块带分隔线的板，比四张浮起来的卡更接近它的角色，
-   也不会和下面「先做这一件」那三张真卡片撞在一起。 */
-.lane-board {
-  border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--surface); overflow: hidden;
-}
+   ⚠️ **占的是原来那排 KPI 卡的位置**，所以沿用 `.stats` 的栅格和卡片语言：
+   同一屏上两种卡片长得不一样，等于告诉人它们是两类东西——而它们不是。 */
+.lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .lane {
-  display: grid; grid-template-columns: 10px 52px minmax(0, 1fr) auto;
-  align-items: center; gap: 14px; padding: 14px 18px;
-  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 7px; min-width: 0; text-align: left;
+  padding: 15px 16px 14px; font: inherit; color: inherit; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
 }
-.lane:last-child { border-bottom: 0; }
-.lane__mark { width: 8px; height: 8px; border-radius: 50%; }
+.lane:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+
+.lane__head { display: flex; align-items: center; gap: 8px; }
+.lane__mark { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .lane__mark--knowledge { background: var(--lane-knowledge); }
 .lane__mark--content   { background: var(--lane-content); }
 .lane__mark--intel     { background: var(--lane-intel); }
 .lane__mark--ops       { background: var(--lane-ops); }
-.lane__name { font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
-.lane__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.lane__next { font-size: 15px; color: var(--text-1); }
-.lane__next b { font-variant-numeric: tabular-nums; font-weight: 600; }
-/* 具体是哪几件。没有它，那个数字没法判断值不值得现在动 */
+.lane__label { font-size: var(--fs-sm); color: var(--text-2); }
+
+.lane__row { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.lane__count { font-family: var(--font-display); font-size: var(--fs-xl); line-height: 1;
+  font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-1); }
+.lane__text { font-size: var(--fs-sm); color: var(--text-1); }
+.lane__row--quiet { font-size: var(--fs-md); color: var(--text-3); min-height: 24px; align-items: center; }
+
+/* 具体是哪几件。没有它，上面那个数字没法判断值不值得现在动。
+   卡片窄，夹到两行——第三行开始已经是「还有别的」而不是「是哪几件」。 */
 .lane__detail {
-  font-size: var(--fs-sm); color: var(--text-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; min-height: 2lh;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
+
 .lane__do {
-  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-  height: 30px; padding: 0 11px; border-radius: var(--r-sm);
-  border: 1px solid var(--border-strong); background: var(--surface);
-  color: var(--text-1); font-size: var(--fs-xs); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 1px;
+  font-size: var(--fs-sm); color: var(--accent);
 }
-.lane__do:hover { border-color: var(--accent-soft); color: var(--accent); }
 .lane__do svg { width: 13px; height: 13px; }
+.lane:hover .lane__do { text-decoration: underline; text-underline-offset: 3px; }
 
 /* 没事的那条**不消失也不变灰到读不出来**：
    「这条链今天没事」本身就是要看的信息，藏起来等于每天重新去确认一遍。 */
-.lane--quiet .lane__next { color: var(--text-3); }
-.lane--quiet .lane__do { border-style: dashed; color: var(--text-3); }
-
-@media (max-width: 720px) {
-  .lane { grid-template-columns: 10px minmax(0, 1fr); row-gap: 7px; }
-  .lane__name, .lane__body, .lane__do { grid-column: 2; }
-  .lane__do { justify-self: start; }
-  .lane__detail { white-space: normal; }
-}
+.lane--quiet .lane__do { color: var(--text-3); }

@@ -4,7 +4,6 @@ import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/cont
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
 import { LaneBoard } from "./today/LaneBoard.jsx";
-import { TodayStats } from "./today/TodayStats.jsx";
 import { TodayChart } from "./today/TodayChart.jsx";
 import { RecentPosts } from "./today/RecentPosts.jsx";
 import { IconArrowRight } from "../components/icons.jsx";
@@ -45,10 +44,15 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
     <>
       <PageHeader
         title="今天"
-        desc="先推进一篇，再处理其他。系统状态退到后面，真正等你决定的事情排在前面。"
         aside={
           <>
-            {result ? <span className="project-total">{pending ? `${pending} 件事等你` : "今天没有内容待办"}</span> : null}
+            {/* ⚠️ 这个数按**四条链**报，不再只报内容项目。
+                下面第一块就是四条链，右上角却只说内容那一条，两个数会互相拆台。 */}
+            {lanes ? (
+              <span className="project-total">
+                {lanes.busy ? `${lanes.busy} 条链有事` : "四条链现在都没事"}
+              </span>
+            ) : null}
             {/**
               * ⚠️ **四个页面共用同一颗 `NewContentButton`。**
               * 这儿原来是 `MODES.map(...)` + 一份 `onCreated` 跳转，
@@ -71,17 +75,13 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
         * 四个数分属四条不同的链（产出 / 待办 / 库存 / 反馈），见 `TodayStats`。
         */}
       {/**
-        * ⚠️ **值班台在最上面，早于 KPI 那一排。**
-        * 这一页要回答的是「从哪儿开始」，而这块板是唯一回答了全部四条链的东西——
-        * 上一版这里只读 projects，知识和情报根本不在屏幕上。
-        *
-        * 「状态在前、动作在后」那条规矩没有被破：每一行**自己就带着数字**
-        * （1366 节没提炼 / 1 段原话 / 2 条待归 / 3 篇对不上），
-        * 状态和动作在行内是并排的，不需要先看完一排 KPI 才知道该不该动。
+        * ⚠️ **这四张卡取代了原来那排 KPI 卡**（本月发布 / 等你动手 / 可用素材 / 粉丝）。
+        * 那四个数本来就分属四条链——`TodayStats` 的注释自己写着这件事——
+        * 但它们给的是**不动的数字**：「等你动手 6 件」看完之后，你还得自己想
+        * 「那我现在点哪儿」。而值班台每一格自己就带着数字和下一步，
+        * 状态和动作在卡内是并排的。同一批东西显示两遍，是让人读两次再自己合并。
         */}
       <LaneBoard data={lanes} onGo={onGo} />
-
-      {localReady ? <TodayStats pending={pending} topStage={actions[0]?.stage || ""} onGo={onGo} /> : null}
 
       {result ? (
         <section className="today-focus">
