@@ -36,64 +36,93 @@ function dateLabel(value) {
  * 排版顺序就是判断顺序：**谁在困惑什么 → 用我的什么知识 → 为什么值得连 →
  * 可能留下什么判断**。分数、热度、爆款概率一个都没有——那些东西看起来像依据，
  * 其实什么都没解释。
+ *
+ * ⚠️ **六个眉标压到两个了，别再往回加。**
+ *
+ * 上一版每一段前面都挂一个灰色小标题（你认为可能有人在困惑 / 你的知识 /
+ * 为什么值得连接 / 可能留下的判断……），一张卡 380px 高里**光标签就占了四行**，
+ * 而它们说的话大多能从内容本身读出来：一个问句不用标注「这是个问题」，
+ * 一句加粗的结论不用标注「这是结论」。
+ *
+ * 其中两条还把同一个免责声明说了两遍——「**你认为**可能有人在困惑」和
+ * 「**你认为**这可能是一个受众问题，尚待真实反馈验证」。这条声明很重要
+ *（把推测显示成真实反馈是这套系统里最容易犯的假），但说一遍就够。
+ *
+ * 三个知识锚点原来各是「标题 + 一段解释」，三段解释加起来比问句还长，
+ * 而这一屏要回答的只是「值不值得我判断」——**锚点在这一层只需要名字**，
+ * 每条为什么成立是「决定发展之后」才读的东西，收进折叠区。
  */
 function ConnectionCard({ connection, onDevelop, busy }) {
   const [quotesOpen, setQuotesOpen] = useState(false);
   const [more, setMore] = useState(false);
-  const hypothesis = connection.problem.origin === "hypothesis";
   const quotes = connection.problem.evidence || [];
+  const anchors = connection.knowledgeAnchors || [];
 
   return (
     <article className="discovery-card" data-fit={connection.fit}>
-      <header className="discovery-card__problem">
-        <span className="discovery-card__label">{hypothesis ? "你认为可能有人在困惑" : "有人在问"}</span>
-        <h3>{connection.problem.statement}</h3>
-        {/*
-          ⚠️ **证据说明只有一处真源**，措辞由服务端给。
-          「N 段真实原话」和「尚待验证」差一个字都不行：把手工记录或议程推导
-          显示成真实反馈，是这套系统里最容易犯、也最难发现的那种假。
+      {/**
+        * 问句是这张卡的入口：先知道有人卡在哪儿，才谈得上要不要接。
+        * ⚠️ 证据来路和「够不够硬」写在同一行里，措辞由服务端给
+        *（`evidenceLabel`）——「N 段真实原话」和「尚待验证」差一个字都不行。
         */}
-        <p className="discovery-evidence" data-origin={connection.problem.origin}>
-          {connection.problem.evidenceLabel}
-          {quotes.length ? (
-            <button type="button" aria-expanded={quotesOpen} onClick={() => setQuotesOpen((value) => !value)}>
-              {quotesOpen ? "收起原话" : "看原话"}
-            </button>
-          ) : null}
-        </p>
-        {quotesOpen && quotes.length ? (
-          <ul className="discovery-quotes">
-            {quotes.map((item, index) => (
-              <li key={`${item.rawSourceId}:${index}`}>
-                <q>{item.quote}</q>
-                <small>{item.kindLabel}{item.sourceName ? ` · ${item.sourceName}` : ""}{item.observedAt ? ` · ${dateLabel(item.observedAt)}` : ""}</small>
-              </li>
-            ))}
-          </ul>
+      <p className="discovery-card__from" data-origin={connection.problem.origin}>
+        {/**
+          * ⚠️ **只用 `evidenceLabel`，别在前面再加一句自己的话。**
+          * 服务端那句已经把话说完了（「你认为这可能是一个受众问题，尚待真实反馈验证」/
+          * 「已确认的用户问题」/「N 段可逐字回溯的真实原话」），而且
+          * `content-discovery-ai.mjs` 明写着「真实性文案只有一处真源」。
+          * 上一版在它前面又加了「你推测有人在困惑」，屏幕上就成了
+          * 「你推测…… · 你认为……」——同一个免责声明连说两遍，
+          * 而且那正是这套系统里最不该出现第二种措辞的地方。
+          */}
+        {connection.problem.evidenceLabel}
+        {quotes.length ? (
+          <button type="button" aria-expanded={quotesOpen} onClick={() => setQuotesOpen((value) => !value)}>
+            {quotesOpen ? "收起原话" : "看原话"}
+          </button>
         ) : null}
-      </header>
+      </p>
+      <h3 className="discovery-card__q">{connection.problem.statement}</h3>
 
-      <div className="discovery-card__anchors">
-        <span className="discovery-card__label">你的知识</span>
-        <ul>
-          {connection.knowledgeAnchors.map((anchor) => (
-            <li key={anchor.wikiPageId}>
-              <strong>{anchor.title}</strong>
-              {anchor.reason ? <span>{anchor.reason}</span> : null}
+      {quotesOpen && quotes.length ? (
+        <ul className="discovery-quotes">
+          {quotes.map((item, index) => (
+            <li key={`${item.rawSourceId}:${index}`}>
+              <q>{item.quote}</q>
+              <small>{item.kindLabel}{item.sourceName ? ` · ${item.sourceName}` : ""}{item.observedAt ? ` · ${dateLabel(item.observedAt)}` : ""}</small>
             </li>
           ))}
         </ul>
-      </div>
+      ) : null}
 
-      <div className="discovery-card__why">
-        <span className="discovery-card__label">为什么值得连接</span>
-        <p>{connection.fitReason}</p>
-      </div>
-
+      {/**
+        * 判断是这张卡的**产物**——真发展下去，要写的就是这句话。所以它加粗、
+        * 顶着唯一保留的那个眉标；其余几段是它的理由，跟在后面。
+        */}
       <div className="discovery-card__claim">
         <span className="discovery-card__label">可能留下的判断</span>
         <p>{connection.coreClaim}</p>
       </div>
+
+      {/**
+        * ⚠️ **评级和它的理由并成一句，不再是页脚上一颗孤零零的绿药丸。**
+        * 「很自然」单独摆着说不清什么——没有量表、没有对照；而它下面正好有一段
+        * 专门解释为什么自然（`fitReason`）。合在一起，评级成了那段话的引子。
+        */}
+      <p className="discovery-card__why">
+        <b data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</b>
+        {connection.fitReason}
+      </p>
+
+      {/* 锚点在这一层只报名字；每条为什么成立收在折叠区里 */}
+      {anchors.length ? (
+        <p className="discovery-card__anchors">
+          <span className="discovery-card__label">凭</span>
+          {anchors.map((anchor) => (
+            <span key={anchor.wikiPageId} className="discovery-anchor">{anchor.title}</span>
+          ))}
+        </p>
+      ) : null}
 
       {/*
         ⚠️ **完整解释、证据缺口和议程说明默认折起来。**
@@ -103,6 +132,16 @@ function ConnectionCard({ connection, onDevelop, busy }) {
       */}
       {more ? (
         <div className="discovery-card__more">
+          {anchors.some((anchor) => anchor.reason) ? (
+            <div>
+              <span className="discovery-card__label">每条知识各解释了什么</span>
+              <ul className="discovery-anchor-why">
+                {anchors.filter((anchor) => anchor.reason).map((anchor) => (
+                  <li key={anchor.wikiPageId}><strong>{anchor.title}</strong><span>{anchor.reason}</span></li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div>
             <span className="discovery-card__label">这条知识怎么解释它</span>
             <p>{connection.knowledgeExplanation}</p>
@@ -127,7 +166,6 @@ function ConnectionCard({ connection, onDevelop, busy }) {
       ) : null}
 
       <footer className="discovery-card__foot">
-        <span className="bridge-fit" data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</span>
         <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={() => setMore((value) => !value)}>
           {more ? "收起" : "看完整解释"}
         </button>
@@ -224,7 +262,20 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
       <div className="bridge-bar">
         <div className="bridge-bar__title">
           <h2>最近有什么值得讲</h2>
-          {scan_ ? <small>{relTime(scan_.scannedAt)}扫描{summary ? ` · 读了 ${summary}` : ""}</small> : null}
+          {/**
+            * ⚠️ **「有更新」并进这一行，不再单独一条横带。**
+            * 上一版页头有一颗黑色的「重新扫描」，正下方 60px 又是一条
+            * 「知识、用户问题或议程有更新。要不要重新看一遍？[重新扫描]」——
+            * **同一个动作，两颗按钮，隔着一行**。
+            * 提示里真正多说的那件事是**变了什么**，那属于这行说明；
+            * 按钮只需要一颗，而且永远在同一个位置。
+            */}
+          {scan_ ? (
+            <small>
+              {relTime(scan_.scannedAt)}扫描{summary ? ` · 读了 ${summary}` : ""}
+              {stale && data?.staleReason ? <b className="bridge-bar__stale">{data.staleReason}</b> : null}
+            </small>
+          ) : null}
         </div>
         <div className="bridge-bar__actions">
           <button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}>
@@ -251,14 +302,6 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
       {focus && !scanning ? (
         <div className="discovery-stale" role="status">
           <span>这次会按你上一篇复盘学到的东西优先看：{focus}</span>
-        </div>
-      ) : null}
-
-      {/* 数据变了才提示。⚠️ 说清**变了什么**：「又记了 2 段原话」比「有更新」多回答一个问题。 */}
-      {data && stale && scan_ && !scanning ? (
-        <div className="discovery-stale" role="status">
-          <span>{data.staleReason}。要不要重新看一遍？</span>
-          <button type="button" className="btn btn-sm" onClick={() => scan({ force: true })}>重新扫描</button>
         </div>
       ) : null}
 
@@ -356,7 +399,9 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
                 {research.map((item) => (
                   <li key={item.conversationId}>
                     <strong>{item.title || "（未命名对话）"}</strong>
-                    <span>{item.userTurns.join(" / ")}</span>
+                    {/* ⚠️ 标题常常**就是第一句**（会话名取自开场那句），原样铺开时
+                        屏幕上是同一句话连着出现两遍。重复的那句去掉再拼。 */}
+                    <span>{item.userTurns.filter((turn) => turn !== item.title).join(" / ")}</span>
                     <button
                       type="button"
                       className="btn btn-sm"
@@ -435,6 +480,8 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
               ))}
             </>
           ) : (
+            /* ⚠️ 这条不画彩色左竖线（design-system 明令禁止），也不画引用块：
+               它是一句进度说明，不是引文。安静一行，和上面的研究方向同一档。 */
             <p className="discovery-agenda__wait">
               还看不出一条长期议程：{agendaSignals.missing.join("；")}。
               {/* ⚠️ 措辞不要和顶栏那颗「手动探索」重名：一屏两个同名按钮，指的还不是同一件事。 */}
@@ -457,8 +504,14 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
                     <strong>{item.audienceProblemStatement}</strong>
                   </span>
                   <span className="bridge-opp-claim">{item.coreClaim}</span>
+                  {/**
+                    * ⚠️ **这一行不再画贴合度药丸。**
+                    * 「很自然」是**保存那一刻**下的判断，摆在这儿不驱动任何动作；
+                    * 而这一段回答的是「哪一条我该接着做」——那由「建没建项目」决定。
+                    * 上面那张候选卡里同一颗药丸也撤了（它在那儿有 `fitReason` 可以当引子，
+                    * 这儿连引子都没有，就只剩一个没有量表的评级）。
+                    */}
                   <span className="bridge-opp-meta">
-                    <span className="bridge-fit" data-fit={item.fit}>{FIT_LABELS[item.fit] || item.fit}</span>
                     <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
                     <small>{dateLabel(item.updatedAt)}更新</small>
                   </span>

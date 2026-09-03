@@ -8,12 +8,29 @@
 
 .content-discovery { max-width: 900px; }
 
+/**
+ * ⚠️ **页名和它的出处竖着放，不并排。**
+ * `.bridge-bar__title` 默认是一行（h2 + small 并排，small 还 `flex: none`），
+ * 那条 small 一长，**不能收缩的是它，被挤成四行的是标题**——
+ * 「最近有什么值得讲」曾经竖着排成了四行。
+ * 这一页的 small 会长（扫描时间 + 读了什么 + 有什么更新），所以给它自己一行。
+ */
+.content-discovery .bridge-bar__title { display: grid; gap: 3px; align-items: start; }
+.content-discovery .bridge-bar__title h2 { white-space: nowrap; }
+.content-discovery .bridge-bar__title small { flex: initial; line-height: 1.6; }
+/* 「有什么变了」跟在出处后面，用一个分隔点接上，并且比出处再实一档——
+   它是唯一一句需要你做决定的话（要不要重扫） */
+.bridge-bar__stale { font-weight: 500; color: var(--text-2); }
+.bridge-bar__stale::before { content: "·"; margin: 0 6px; color: var(--border-strong); font-weight: 400; }
+
 .discovery-list { display: grid; gap: var(--sp-8); }
 
 .discovery-card {
   display: grid;
-  gap: var(--sp-6);
-  padding: var(--sp-8);
+  /* ⚠️ 段间距从 sp-6 收到 sp-5：眉标砍掉之后，段落自己就是分隔，
+     再留原来那么大的沟会让一张卡散成六块互不相干的东西 */
+  gap: var(--sp-5);
+  padding: var(--sp-7);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -28,12 +45,62 @@
   font-size: var(--fs-xs);
 }
 
-.discovery-card__problem h3 {
-  margin: 0 0 var(--sp-3);
+/**
+ * 来路那一行：**谁在困惑 + 这话有多硬 + 看原话**，全在一行里。
+ * ⚠️ 上一版是两处分开说的（问句上面一个眉标、下面再一句斜体免责），
+ * 而它们说的是同一件事的两半，中间夹着问句本身。
+ */
+.discovery-card__from {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  color: var(--brand-strong);
+  font-size: var(--fs-xs);
+}
+.discovery-card__from > i { font-style: normal; color: var(--border-strong); }
+/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
+.discovery-card__from[data-origin="hypothesis"] { color: var(--text-3); }
+.discovery-card__from button {
+  padding: 0; margin-left: var(--sp-2);
+  border: 0; background: none; color: inherit;
+  font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.discovery-card__from button:hover { color: var(--text-1); }
+
+.discovery-card__q {
+  margin: 0;
   font-size: var(--fs-lg);
   line-height: 1.5;
   letter-spacing: -.015em;
 }
+
+/**
+ * 评级 + 它的理由并成一句。
+ * ⚠️ 评级不再是页脚上一颗孤零零的绿药丸——「很自然」单独摆着没有量表也没有对照，
+ * 而紧跟着的就是专门解释为什么自然的那段话。合起来，评级是那段话的引子。
+ */
+.discovery-card__why {
+  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75;
+}
+.discovery-card__why > b { margin-right: var(--sp-2); color: var(--text-1); font-weight: 600; }
+.discovery-card__why > b[data-fit="weak"] { color: var(--text-3); }
+
+/* 锚点在这一层只报名字，名字之间用间距分开、不做胶囊：
+   一行三颗小方块会比它们支撑的那句判断还抢眼 */
+.discovery-card__anchors {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  margin: 0; font-size: var(--fs-sm); color: var(--text-2);
+}
+.discovery-card__anchors .discovery-card__label { margin: 0; flex: none; }
+.discovery-anchor::after { content: "·"; margin-left: var(--sp-4); color: var(--border-strong); }
+.discovery-anchor:last-child::after { content: none; }
+
+.discovery-anchor-why { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.discovery-anchor-why li { display: grid; gap: 2px; }
+.discovery-anchor-why strong { font-size: var(--fs-sm); }
+.discovery-anchor-why span { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
 
 .discovery-evidence {
   display: flex;
@@ -94,9 +161,9 @@
   padding-top: var(--sp-5);
   border-top: 1px solid var(--border);
 }
+/* 页脚只剩两颗：左边「再看看」，右边「就它了」。
+   评级药丸搬去了 `.discovery-card__why` 当引子，理由写在那儿。 */
 .discovery-card__foot .btn { margin-left: auto; }
-.discovery-card__foot .discovery-card__more-toggle { margin-left: auto; }
-.discovery-card__foot .btn ~ .discovery-card__more-toggle { margin-left: 0; }
 
 .discovery-stale {
   display: flex;
@@ -153,23 +220,40 @@
  * 所以默认收起来，一行就够。
  */
 .discovery-research { margin-top: var(--sp-9); }
+/**
+ * ⚠️ **展开钮不画下划线。** 加了下划线它就长得像一条链接，而链接的意思是
+ * 「点了会去别的地方」；这一颗只是把下面那段摊开。展开态由 `aria-expanded`
+ * 驱动的那个三角说，和 `.ing__title` 那颗箭头同一个记号。
+ */
 .discovery-research > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
   padding: 0;
   border: 0;
   background: none;
   color: var(--text-3);
   font-size: var(--fs-sm);
-  text-decoration: underline;
-  text-underline-offset: 3px;
   cursor: pointer;
 }
+.discovery-research > button::before {
+  content: "";
+  width: 0; height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform 0.12s var(--ease);
+}
+.discovery-research > button[aria-expanded="true"]::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .discovery-research > button::before { transition: none; } }
 .discovery-research > button:hover { color: var(--text-1); }
 /* 这句话是硬闸的可见部分，不是脚注：它说明这一段为什么不能当证据。 */
+/* ⚠️ 不画左竖线（design-system 禁的那条）。这句话要读，但它不是引文；
+   靠缩进对齐到展开区内容的左缘就够。 */
 .discovery-research__gate {
   margin: var(--sp-4) 0 0;
-  padding: var(--sp-4) var(--sp-5);
-  border-left: 2px solid var(--border);
-  color: var(--text-2);
+  padding: 0;
+  color: var(--text-3);
   font-size: var(--fs-xs);
   line-height: 1.7;
 }
@@ -188,12 +272,13 @@
 .discovery-agenda { display: grid; gap: var(--sp-4); margin-top: var(--sp-9); }
 .discovery-agenda__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
 .discovery-agenda__head strong { font-size: var(--fs-sm); }
+/* ⚠️ 不画左竖线。这两句是进度说明（「还差多少才看得出一条议程」），不是引文，
+   而 design-system 明写着不用通用彩色左竖线——引用块的形状会让人以为这是谁说的话。 */
 .discovery-agenda__wait,
 .discovery-agenda__none {
   margin: 0;
-  padding: var(--sp-4) var(--sp-5);
-  border-left: 2px solid var(--border);
-  color: var(--text-2);
+  padding: 0;
+  color: var(--text-3);
   font-size: var(--fs-sm);
   line-height: 1.7;
 }
