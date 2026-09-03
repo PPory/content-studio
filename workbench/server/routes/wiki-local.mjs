@@ -13,6 +13,10 @@ import {
   trashWikiPage,
 } from "../domain/wiki-pages.mjs";
 import { resolveIngestSource } from "../domain/wiki-ingest.mjs";
+// ⚠️ 这两个原来没 import，而这个文件里有四处在用它们。ESM 里引一个不存在的名字**不报编译错**，
+// 只在那一行真的跑到时抛 ReferenceError——于是召回这个端点从上线起每次都 500，而写作现场的
+// 「相关词条」只是安静地什么都不显示（它 `.catch(() => setData(null))`，没命中和请求失败长得一模一样）。
+import { ENTRY_KIND_LABELS, ENTRY_RELATION_LABELS } from "../domain/values.mjs";
 
 function guard(handler) {
   return async (context) => {
