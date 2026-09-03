@@ -299,8 +299,13 @@ try {
   await page.getByRole("button", { name: "收起选择" }).click();
 
   await page.getByRole("button", { name: "换一个大众入口" }).click();
-  check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-storyline").innerText()).includes("范围过大")
-    && (await page.locator(".bridge-storyline").innerText()).includes("无法证明所有人会彻底失去思考能力"));
+  /**
+   * ⚠️ **`.bridge-storyline` 那套 ①②③④ 撤了**（四条里两条是上面几段的逐字重复），
+   * 入口和它的范围检查现在各自成段。断言要的还是同一件事：
+   * 范围过大要说出来，而且入口文案是那一条。
+   */
+  check("过大入口显示范围检查而不是标题党", (await page.locator(".bridge-scope-warn").innerText()).includes("范围过大")
+    && (await page.locator(".bridge-result").innerText()).includes("无法证明所有人会彻底失去思考能力"));
 
   /**
    * ⚠️ **没有真实经历时，「经历型」这颗按钮根本不摆出来。**
@@ -320,10 +325,17 @@ try {
     && await page.locator(".bridge-result-section blockquote").textContent() === claimBeforeAgenda);
   check("按议程重新构造需要明确点击", await page.getByRole("button", { name: "按这个议程重新构造" }).count() === 1);
 
-  await page.getByRole("button", { name: "查看证据缺口" }).click();
-  check("证据缺口操作把焦点送到可读结果", await page.locator(".bridge-checks > div").first().evaluate((element) => element === document.activeElement));
-  await page.getByRole("button", { name: "查看反方" }).click();
-  check("反方操作把焦点送到可读结果", await page.locator(".bridge-checks > div").nth(1).evaluate((element) => element === document.activeElement));
+  /**
+   * ⚠️ **「查看证据缺口 / 查看反方」两颗跳转钮撤了**——它们只是滚到本页下面两段，
+   * 而那两段就在动作条正下方，隔着不到一屏；留着的代价是那一条里
+   * 「会重跑模型的」和「只是滚动的」长得一模一样。
+   * 该验的事情没变：**这两段要在，而且各自说得出话**。
+   */
+  const checksText = await page.locator(".bridge-checks").innerText();
+  check("证据缺口和反方各自成段、就在结果里读得到",
+    await page.locator(".bridge-checks > div").count() === 2
+    && checksText.includes("需要补的证据") && checksText.includes("真正有力的反方")
+    && await page.getByRole("button", { name: "查看证据缺口" }).count() === 0);
 
   check("主动作只在顶栏出现一次，底部不重复", await page.getByRole("button", { name: "保存为内容机会", exact: true }).count() === 1);
   await page.getByRole("button", { name: "保存为内容机会" }).click();

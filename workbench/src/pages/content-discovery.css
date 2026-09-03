@@ -86,6 +86,17 @@
  */
 .discovery-card:first-child:nth-last-child(3n + 1) { grid-column: span 3; }
 .discovery-card:first-child:nth-last-child(3n + 2) { grid-column: span 2; }
+/**
+ * ⚠️ **通栏的那张不锁标题高度。**
+ *
+ * `min-height` 存在的唯一理由是**让并排的几张在同一条基线上**；
+ * 通栏那张比邻居宽一到两倍，本来就没有可对齐的对象。留着它的后果实测过：
+ * 只有一条候选时，判断在 1093px 宽里只占一行（24px），
+ * 而 `min-height` 把这一格撑到 72px——**卡中间凭空空出两行**，
+ * 那正是「只有一条候选」这个最常见的日常状态。
+ */
+.discovery-card:first-child:nth-last-child(3n + 1) .discovery-card__claim,
+.discovery-card:first-child:nth-last-child(3n + 2) .discovery-card__claim { min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .discovery-card { transition: none; } }
 
 .discovery-card__row {

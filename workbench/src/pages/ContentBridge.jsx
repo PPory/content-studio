@@ -115,11 +115,19 @@ function AgendaQuickForm({ title, judgment, onTitle, onJudgment, busy, onSubmit 
   );
 }
 
-function ResultSection({ index, title, children, id }) {
+/**
+ * 结果里的一段。
+ *
+ * ⚠️ **编号撤了（原来是 01–05 的等宽序号）。** 它把一份分析排成了一份仪式化的报告，
+ * 而这几段之间并没有「必须按序执行」的关系——它们是同一个判断的几个侧面。
+ * 序号还制造了一个假承诺：中间那个议程下拉不编号（它是决定不是正文），
+ * 于是屏幕上出现「04 … 一个没编号的框 … 05」，读起来像漏了一段。
+ */
+function ResultSection({ title, children, id }) {
   return (
     <section className="bridge-result-section" id={id} tabIndex={id ? -1 : undefined}>
-      <span className="bridge-result-index">{String(index).padStart(2, "0")}</span>
-      <div><h3>{title}</h3>{children}</div>
+      <h3>{title}</h3>
+      {children}
     </section>
   );
 }
@@ -178,8 +186,6 @@ export function ContentBridge({ state = "", onGo }) {
   const [agendaJudgment, setAgendaJudgment] = useState("");
   const [agendaCreateBusy, setAgendaCreateBusy] = useState(false);
 
-  const evidenceRef = useRef(null);
-  const counterRef = useRef(null);
 
   const load = async (requested = initial) => {
     setLoading(true);
@@ -566,11 +572,6 @@ export function ContentBridge({ state = "", onGo }) {
     }
   };
 
-  const focusSection = (ref) => {
-    ref.current?.scrollIntoView({ block: "center" });
-    ref.current?.focus({ preventScroll: true });
-  };
-
   if (loading) return <Loading rows={10} />;
   if (error) return <ErrorNote error={error} what="内容桥接" onRetry={load} />;
 
@@ -826,16 +827,16 @@ export function ContentBridge({ state = "", onGo }) {
             {preview.fit === "weak" ? <strong>不建议硬做内容</strong> : null}
           </div>
 
-          <ResultSection index={1} title="用户真正的问题">
+          <ResultSection title="用户真正的问题">
             <p>{preview.audienceProblem.underlying}</p>
             {/* 从已保存机会还原时表层和深层都回落成同一句问题，重复显示会读成出错 */}
             {preview.audienceProblem.surface && preview.audienceProblem.surface !== preview.audienceProblem.underlying
               ? <small>表层表现：{preview.audienceProblem.surface}</small>
               : null}
           </ResultSection>
-          <ResultSection index={2} title="我的知识能提供什么解释"><p>{preview.knowledgeExplanation}</p></ResultSection>
-          <ResultSection index={3} title="最大的认知差"><p>{preview.cognitiveGap}</p></ResultSection>
-          <ResultSection index={4} title="核心判断"><blockquote>{preview.coreClaim}</blockquote></ResultSection>
+          <ResultSection title="我的知识能提供什么解释"><p>{preview.knowledgeExplanation}</p></ResultSection>
+          <ResultSection title="最大的认知差"><p>{preview.cognitiveGap}</p></ResultSection>
+          <ResultSection title="核心判断"><blockquote>{preview.coreClaim}</blockquote></ResultSection>
           {/*
             ⚠️ 议程不编号。01–04 是**读**的东西（问题 → 解释 → 认知差 → 判断，
             这个顺序是产品原则，不要倒过来把标题提前），而这里是一个**决定**：
@@ -867,13 +868,23 @@ export function ContentBridge({ state = "", onGo }) {
               />
             ) : null}
           </section>
-          <ResultSection index={5} title="怎么讲">
-            <ol className="bridge-storyline">
-              <li><span>①</span><div><b>从什么现实问题进入</b><p>{activeEntry?.text || preview.audienceProblem.surface}</p>{activeEntry?.scope_check?.status === "too_broad" ? <em>范围过大：{activeEntry.scope_check.reason}</em> : null}</div></li>
-              <li><span>②</span><div><b>用什么知识解释</b><p>{preview.knowledgeExplanation}</p></div></li>
-              <li><span>③</span><div><b>哪些东西形成关系</b><p>{(construction.relations || []).map((item) => `${RELATION_LABELS[item.type] || item.type}：${item.explanation}`).filter(Boolean).join("；") || "当前还没有足够自然的关系。"}</p></div></li>
-              <li><span>④</span><div><b>最终留下什么判断</b><p>{preview.coreClaim}</p></div></li>
-            </ol>
+          {/*
+            ⚠️ **「怎么讲」原来有四条，其中两条是上面几段的逐字重复——删了，别加回来。**
+            ② 用什么知识解释 渲染的就是 `preview.knowledgeExplanation`，
+            和「我的知识能提供什么解释」那一段一模一样；
+            ④ 最终留下什么判断 渲染的就是 `preview.coreClaim`，和「核心判断」一模一样。
+            也就是这一页把同样四句话说了两遍：一遍叫分析，一遍叫讲法。
+            真正只属于讲法的只有**从哪儿进入**和**怎么串起来**，所以只剩这两条，
+            也就不再需要 ①②③④ 那层嵌套编号（页面上本来就已经有一套编号了）。
+          */}
+          <ResultSection title="从哪儿进入">
+            <p>{activeEntry?.text || preview.audienceProblem.surface}</p>
+            {activeEntry?.scope_check?.status === "too_broad"
+              ? <em className="bridge-scope-warn">范围过大：{activeEntry.scope_check.reason}</em>
+              : null}
+          </ResultSection>
+          <ResultSection title="怎么串起来">
+            <p>{(construction.relations || []).map((item) => `${RELATION_LABELS[item.type] || item.type}：${item.explanation}`).filter(Boolean).join("；") || "当前还没有足够自然的关系。"}</p>
           </ResultSection>
 
           <div className="bridge-action-bar" aria-label="调整内容连接">
@@ -889,21 +900,20 @@ export function ContentBridge({ state = "", onGo }) {
               {ACTIONS.filter((action) => action.key !== "experience" || experienceAvailable).map((action) => <button key={action.key} type="button" aria-pressed={preview.dominantAction === action.key} disabled={previewBusy} onClick={() => runPreview({ dominantAction: action.key })}>{action.label}</button>)}
             </div>
             {/*
-              这两颗是**跳到本页下面某处**，上面两组是**改变候选**。
-              混在一条里读起来全是「按钮」，分不清哪个会重算、哪个只是滚动。
+              ⚠️ **「查看证据缺口 / 查看反方」两颗跳转钮删了。**
+              它们只是滚到本页下面两段——而那两段就在这条动作条正下方，隔着不到一屏。
+              留着的代价是：这一条里三种东西长得一模一样，
+              两颗会重跑模型、两颗只是滚动，点之前分不出来。
+              这一条现在只放**会重算的**。
             */}
-            <div className="bridge-action-jump">
-              <button type="button" onClick={() => focusSection(evidenceRef)}>查看证据缺口</button>
-              <button type="button" onClick={() => focusSection(counterRef)}>查看反方</button>
-            </div>
           </div>
 
           <section className="bridge-checks" aria-label="证据和反方">
-            <div ref={evidenceRef} tabIndex={-1}>
+            <div>
               <h3>需要补的证据</h3>
               {evidenceGaps.length ? <ul>{evidenceGaps.map((item, index) => <li key={`${item.claim}:${index}`}><b>{item.claim}</b>{item.needed ? <span>{item.needed}</span> : null}</li>)}</ul> : <p>当前没有发现明确证据缺口。</p>}
             </div>
-            <div ref={counterRef} tabIndex={-1}>
+            <div>
               <h3>真正有力的反方</h3>
               {counterarguments.length ? <ul>{counterarguments.map((item, index) => <li key={`${item.claim}:${index}`}><b>{item.claim}</b>{item.response ? <span>{item.response}</span> : null}</li>)}</ul> : <p>当前还没有生成有力反方。</p>}
             </div>
@@ -922,7 +932,9 @@ export function ContentBridge({ state = "", onGo }) {
           */}
           <footer className="bridge-result-footer" data-fit={preview.fit}>
             {savedOpportunity ? (
-              <Note title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
+              /* ⚠️ 用 success 不用默认的 warn：`Note` 不传 tone 时是警告语气（感叹号图标），
+                 而「已经保存好了」是个安心的结果，不是要你注意的问题。 */
+              <Note tone="success" title="内容机会已保存">这条连接已经写入本地工作区，重启后仍可继续发展。</Note>
             ) : preview.fit === "weak" ? (
               <>
                 <Note title="不建议在这条连接上硬做">换一个知识，或者换一个用户问题，通常比把这条硬撑成文章划算。</Note>

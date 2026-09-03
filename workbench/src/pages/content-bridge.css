@@ -259,20 +259,28 @@
 .bridge-fit[data-fit="weak"] { background: color-mix(in srgb, var(--emph) 12%, transparent); color: var(--emph); }
 .bridge-fit[data-fit="medium"] { background: var(--surface-2); color: var(--text-2); }
 
+/**
+ * 结果里的一段。
+ * ⚠️ **序号那一列（52px）撤了**，所以不再是两列网格——标题和正文就是上下两行。
+ * 撤掉的理由写在 `ContentBridge.jsx` 的 `ResultSection` 上面。
+ * 段间距也跟着收一档：没有序号占着左边那一列之后，`--sp-8` 会让每段散成孤岛。
+ */
 .bridge-result-section {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: var(--sp-6);
-  padding: var(--sp-8) 0;
+  padding: var(--sp-6) 0;
   border-bottom: 1px solid var(--border);
   scroll-margin: var(--sp-10);
 }
 .bridge-result-section:focus { outline: 2px solid var(--text-1); outline-offset: 4px; }
-.bridge-result-index { color: var(--text-3); font: 500 var(--fs-xs)/1.5 var(--font-mono); }
-.bridge-result-section h3 { margin: 0 0 var(--sp-4); font-size: var(--fs-md); }
-.bridge-result-section p { max-width: 820px; margin: 0; color: var(--text-2); font-size: var(--fs-md); line-height: 1.75; }
+/* 段名退成一行安静的小字：这一页真正要读的是它下面那段话，不是段名本身 */
+.bridge-result-section h3 {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-3); font-size: var(--fs-xs); font-weight: 500;
+}
+.bridge-result-section p { max-width: 820px; margin: 0; color: var(--text-1); font-size: var(--fs-base); line-height: 1.8; }
 .bridge-result-section small { display: block; margin-top: var(--sp-3); color: var(--text-3); }
-.bridge-result-section blockquote { max-width: 920px; margin: 0; font-size: var(--fs-xl); line-height: 1.55; letter-spacing: -.015em; }
+/* 核心判断是这一页的产物，给它整页唯一的大字号 */
+.bridge-result-section blockquote { max-width: 920px; margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.6; letter-spacing: -.015em; }
+.bridge-scope-warn { display: block; margin-top: var(--sp-3); color: var(--emph); font-style: normal; font-size: var(--fs-sm); }
 
 /*
  * 议程条：这里是**决定**（这条判断归到哪条长期议程），不是正文的第五段。
@@ -314,22 +322,17 @@
 .bridge-agenda-field { display: grid; gap: var(--sp-3); max-width: 520px; margin-bottom: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
 .bridge-agenda-field select { min-height: 42px; padding: 0 var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-1); font: inherit; }
 
-.bridge-storyline { list-style: none; display: grid; gap: var(--sp-6); padding: 0; margin: 0; }
-.bridge-storyline li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--sp-4); }
-.bridge-storyline li > span { color: var(--text-3); }
-.bridge-storyline b { font-size: var(--fs-sm); }
-.bridge-storyline p { margin-top: var(--sp-2); }
-.bridge-storyline em { display: block; margin-top: var(--sp-3); color: var(--emph); font-style: normal; }
+/* ⚠️ `.bridge-storyline` 那套 ①②③④ 撤了：四条里两条是上面几段的逐字重复，
+   剩下两条各自成段就够，不需要页面上的第二套编号（理由写在 JSX 里）。 */
 
 .bridge-action-bar { flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-7) 0; border-bottom: 1px solid var(--border); }
 /* 跳转类动作靠右并单独成组，和左边会重算候选的动作分开 */
-.bridge-action-jump { display: flex; align-items: center; gap: var(--sp-3); margin-inline-start: auto; }
+/* ⚠️ `.bridge-action-jump` 那两颗跳转钮撤了：它们只是滚到本页下面两段，
+   而那两段就在这条动作条正下方。这一条现在只放会重跑模型的东西。 */
 .bridge-action-bar > button,
-.bridge-action-jump > button,
 .bridge-action-menu { min-height: 38px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-md); background: var(--surface-2); }
 /* 跳转组只靠位置和这道竖线区分，不靠更重的描边——它不比左边的动作更重要 */
-.bridge-action-jump { padding-inline-start: var(--sp-4); border-inline-start: 1px solid var(--border); }
-.bridge-action-jump > button { color: var(--text-2); font-size: var(--fs-sm); }
+
 .bridge-action-bar button:hover:not(:disabled) { color: var(--text-1); background: var(--accent-wash); }
 .bridge-action-bar button:disabled { opacity: .45; cursor: not-allowed; }
 .bridge-action-menu { gap: var(--sp-2); border-radius: var(--r-pill); color: var(--text-3); font-size: var(--fs-sm); }
