@@ -85,16 +85,6 @@ function ConnectionCard({ connection, onDevelop, busy }) {
             ) : null}
           </p>
 
-          {/* 锚点在这一层只报名字；每条为什么成立收在展开区里 */}
-          {anchors.length ? (
-            <p className="discovery-card__anchors">
-              <span className="discovery-card__label">凭</span>
-              {anchors.map((anchor) => (
-                <span key={anchor.wikiPageId} className="discovery-anchor">{anchor.title}</span>
-              ))}
-            </p>
-          ) : null}
-
           {quotesOpen && quotes.length ? (
             <ul className="discovery-quotes">
               {quotes.map((item, index) => (
@@ -106,6 +96,18 @@ function ConnectionCard({ connection, onDevelop, busy }) {
             </ul>
           ) : null}
         </div>
+
+        {/**
+          * ⚠️ **锚点是自己一列，不挤在正文里。**
+          * 四条候选并排时，「我这几条都在动用哪些知识」是横着扫才看得出来的事
+          *（这一屏三条都压在《写作障碍》上）；混在正文段落里就只能一条条读。
+          * 和素材页那张表把元信息拉成右侧几列是同一条：**能对齐成列的东西就别塞进正文。**
+          */}
+        <p className="discovery-card__anchors">
+          {anchors.map((anchor) => (
+            <span key={anchor.wikiPageId} className="discovery-anchor">{anchor.title}</span>
+          ))}
+        </p>
 
         <div className="discovery-card__acts">
           <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={() => setMore((value) => !value)}>
@@ -328,6 +330,13 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
 
       {scan_ && !scanning && connections.length ? (
         <section className="discovery-list" aria-label="值得发展的连接">
+          {/* 表头解释那三列各是什么——「凭」单看两个字读不出是知识锚点 */}
+          <div className="discovery-list__head" aria-hidden="true">
+            <span>贴合</span>
+            <span>值得讲的判断</span>
+            <span>凭哪几条知识</span>
+            <span />
+          </div>
           {connections.map((connection, index) => (
             <ConnectionCard
               key={`${connection.problem.statement}:${index}`}

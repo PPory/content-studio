@@ -6,7 +6,13 @@
  * 不是一张列表里的几行。
  */
 
-.content-discovery { max-width: 900px; }
+/**
+ * ⚠️ **不再卡 900px。**
+ * 这一页曾经是几段满宽长文，窄一点是为了让中文正文不要太长；
+ * 而它现在是一张**能横着比的清单**，窄栏只会把「判断」那一列挤成三行、
+ * 把锚点挤回正文里，右边还空掉四百多像素。
+ * 宽度跟着 `.main__inner` 的 1320px 走，和素材页、创作页同一档。
+ */
 
 /**
  * ⚠️ **页名和它的出处竖着放，不并排。**
@@ -40,10 +46,33 @@
 .discovery-card[data-fit="weak"] { opacity: .72; }
 .discovery-card[data-open] { background: var(--surface); }
 
-/* 评级 | 内容 | 动作。评级定宽，四行的判断才在同一条左缘上起头 */
+/**
+ * 列宽只写这一处（`--disc-cols`），表头和行都引用它。
+ * ⚠️ 表头和行各抄一份是这个项目出过两次列错位的写法（`.ptable` / `.doc-rows__head`），
+ * 这里从一开始就只留一份。
+ */
+/**
+ * ⚠️ **末列写死宽度，不能用 `auto`。**
+ * `auto` 按**各自的内容**定宽，而表头那一格是空的——量出来表头的后两列
+ * 比行里的往右偏了 93px，一个指错列的表头比没有表头更糟。
+ * 这张表的动作是「看完整解释 + 发展这条」，宽度是已知的，写死即可。
+ */
+.discovery-list { --disc-cols: 76px minmax(0, 1fr) minmax(150px, 230px) 118px; }
+
+.discovery-list__head {
+  display: grid;
+  grid-template-columns: var(--disc-cols);
+  gap: var(--sp-5);
+  padding: 0 var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* 贴合 | 内容 | 凭哪几条知识 | 动作 */
 .discovery-card__row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
+  grid-template-columns: var(--disc-cols);
   gap: var(--sp-5);
   align-items: start;
   padding: var(--sp-5) var(--sp-4);
@@ -85,13 +114,12 @@
 
 /* 锚点只报名字，名字之间用间距和点分开、不做胶囊：
    一行三颗小方块会比它们支撑的那句判断还抢眼 */
+/* 锚点自己一列：竖着排，同一条知识在四行里的位置就对得上，一眼看得出哪条被反复动用 */
 .discovery-card__anchors {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px var(--sp-3);
-  margin: 0; font-size: var(--fs-xs); color: var(--text-3);
+  display: grid; align-content: start; gap: 3px;
+  margin: 0; min-width: 0; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.6;
 }
-.discovery-card__anchors .discovery-card__label { margin: 0; flex: none; }
-.discovery-anchor::after { content: "·"; margin-left: var(--sp-3); color: var(--border-strong); }
-.discovery-anchor:last-child::after { content: none; }
+.discovery-anchor { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 动作靠右，两颗竖着：一行里横着排会把判断那一列挤窄 */
 .discovery-card__acts {
@@ -106,11 +134,13 @@
 }
 
 /* 展开区缩进到判断那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
+/* 展开区缩进到「判断」那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
 .discovery-card__more {
   display: grid; gap: var(--sp-5);
   margin: 0 var(--sp-4) var(--sp-6) calc(76px + var(--sp-5) + var(--sp-4));
   padding-left: var(--sp-5);
   border-left: 1px solid var(--border);
+  max-width: 76ch;
 }
 .discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
 .discovery-card__more ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
@@ -301,3 +331,18 @@
 .harvest-dropped { font-size: var(--fs-sm); color: var(--text-3); }
 .harvest-dropped summary { cursor: pointer; }
 .harvest-dropped ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+/**
+ * ⚠️ **窄下来先把锚点那一列收到正文底下。**
+ * 四列在 1100px 以下会把「判断」挤成四五行，而判断是这一行唯一的标题。
+ * 动作跟着回到正文下面——它在窄屏上本来也够不着右上角。
+ */
+@media (max-width: 1100px) {
+  .discovery-list { --disc-cols: 66px minmax(0, 1fr); }
+  .discovery-list__head > span:nth-child(3), .discovery-list__head > span:nth-child(4) { display: none; }
+  .discovery-card__anchors, .discovery-card__acts { grid-column: 2; }
+  .discovery-card__anchors { display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); }
+  .discovery-anchor::after { content: "·"; margin-left: var(--sp-3); color: var(--border-strong); }
+  .discovery-anchor:last-child::after { content: none; }
+  .discovery-card__acts { justify-items: start; grid-auto-flow: column; align-items: center; gap: var(--sp-4); }
+}
