@@ -168,6 +168,8 @@ function intelLane(db) {
       WHERE c.status = 'pending' ORDER BY e.created_at DESC LIMIT 3`);
     return step({
       text: "条收藏还没归", count: pending, action: "归一下",
+      // ⚠️ 是 `inbox` 不是 `collections`：后者只装 capture_bucket='collection' 那一档，
+      // 而随手收进来的都落在另一档。名字反直觉，但数据在这边。
       view: "inbox",
       detail: items.map((row) => row.title || "（无题）").join(" · "),
     });
