@@ -40,6 +40,9 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
   const [proposing, setProposing] = useState(false);
   /** 发布后的结算预览：观察 / 推断 / 学习候选三段分开。 */
   const [settlement, setSettlement] = useState(null);
+  /** 已经沉淀进知识库的那几条（按实验 id 记），以及那一次的回执。 */
+  const [distilled, setDistilled] = useState({});
+  const [distilling, setDistilling] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [candidates, setCandidates] = useState([]);
@@ -108,6 +111,27 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
       }
     } catch (failure) { setError(failure); } finally { setPreviewing(false); }
   }, [feedbackText]);
+
+  /**
+   * 把一条结算过的学习送进提炼队列。
+   *
+   * ⚠️ **这里不产生词条，只是排队。** 读出来的词条仍然要在知识那一栏过审核——
+   * AGENTS.md 第 4 条：AI 只提候选。少了那一关，「我自己的实践」就成了
+   * 唯一一种不用点头就能进知识库的来源，而它恰恰是最该被自己复核的一种。
+   */
+  const distill = async (id) => {
+    if (distilling) return;
+    setDistilling(id);
+    setError(null);
+    try {
+      await api.queueKnowledgeIngest({ experimentIds: [id] });
+      setDistilled((current) => ({ ...current, [id]: true }));
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setDistilling("");
+    }
+  };
 
   const settle = async (id) => {
     if (!outcome.trim() || !learning.trim()) return;
@@ -376,6 +400,22 @@ export function ExperimentPanel({ projectId, publication, onGo, compact = false 
           ) : (
             <div className="experiment-actions">
               <button type="button" className="btn btn-sm" onClick={() => setFeedbackFor(item.id)}>从反馈里读用户问题</button>
+              {/*
+                ⚠️ **学到的东西要回得了知识库。**
+                词条原来只认外部读物，于是「我自己做完一件事学到的」永远沉淀不下来——
+                四条链里「内容 → 知识」这一段是断的。逐字闸没松：结算记录是你自己
+                写下并确认过的文本，引它一样要对得上；提炼出来的词条仍然要过审核那一关。
+              */}
+              {distilled[item.id] ? (
+                <span className="experiment-note">已排进提炼队列，读出来的词条要你过一眼才落库</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={distilling === item.id}
+                  onClick={() => distill(item.id)}
+                >{distilling === item.id ? "正在排队…" : "沉淀成词条"}</button>
+              )}
               {/*
                 ⚠️ **学到的东西要能直接影响下一篇看哪里。**
                 只留在这张卡上的话，闭环停在「我知道了」——而复盘的意义是下一次会不一样。
