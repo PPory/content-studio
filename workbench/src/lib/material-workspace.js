@@ -39,14 +39,26 @@ function countOf(value) {
   return Array.isArray(value) ? value.filter(Boolean).length : 0;
 }
 
+/**
+ * 「去向」那一列：**这条东西往前走到哪儿了。**
+ *
+ * ⚠️ **只说往前的部分，不再拼上「来源 N」。**
+ *
+ * 上一版素材那一支第一段写的是 `来源 1` / `独立素材`——那是**它从哪儿来**，
+ * 而这一列的表头写着「去向」。两件事反了，还有两个连带后果：
+ *   1. 三十条里二十六条都是「来源 1」，一列几乎恒定，扫下去只有噪音；
+ *   2. **它和行尾那颗「看原文」按钮说的是同一件事**——那颗按钮的出现条件
+ *      正是 `inspirationIds[0]` 存在（见下面 `sourceOpen`）。同一个事实一行里画两遍。
+ *
+ * 现在往前没走过就返回空串，`DocList` 的 `metaCols` 据此整列不画。
+ * 等素材真的进了项目或稿件，这一列会带着真内容自己回来。
+ * 收藏 / 灵感那两支保留「素材 N / 尚未拆成素材」——对它们来说那**就是**往前的下一步。
+ */
 function relationTrace(entry) {
   const materials = countOf(entry.materialIds);
-  const inspirations = countOf(entry.inspirationIds);
   const topics = countOf(entry.topicIds);
   const drafts = countOf(entry.draftIds);
   const parts = [];
-  if (entry.kind === "material") parts.push(inspirations ? `来源 ${inspirations}` : "独立素材");
-  else parts.push("来源");
   if (entry.kind !== "material") parts.push(materials ? `素材 ${materials}` : "尚未拆成素材");
   if (topics) parts.push(`项目 ${topics}`);
   if (drafts) parts.push(`稿件 ${drafts}`);
@@ -108,7 +120,14 @@ export function mapMaterialWorkspaceItem(entry = {}) {
     key: `${sourceKey}:${id}`,
     sourceOpen,
     title: entry.title || "（无标题）",
-    sub: [kindLabel, entry.type].filter(Boolean).join(" · "),
+    /**
+     * ⚠️ **副标题只放类型，不再前置「可复用素材」那个环节名。**
+     * 环节已经有自己的一列（`kindLabel`），而且素材库里它三十条全一样——
+     * 摆在每行摘要的最前面，等于把一个恒定值念三十遍，
+     * 真正能分辨这一条的 `type`（框架/模型、核心观点、反直觉点…）反而排在它后面。
+     * 混着几种环节的列表里那一列会自己出现（`metaCols` 判「值不全一样」）。
+     */
+    sub: entry.type || "",
     preview: entry.excerpt || record.note || record.selection || "",
     tags: Array.isArray(entry.tags) ? entry.tags : [],
     kindLabel,

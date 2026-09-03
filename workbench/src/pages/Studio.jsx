@@ -301,6 +301,20 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
     return { all, rows, options: [all, ...rows.map((r) => r.label)] };
   }, [source.facet, facetOptions]);
 
+  /**
+   * 核验状态筛选的取值。**用列表真的回来的那几种，不用适配器里那份静态清单。**
+   *
+   * `source.verificationFilters` 是「理论上有哪几种」（待核验 / 已核验 / 不适用），
+   * 而 `facets.verifications` 是「这个库里真的出现过哪几种」——素材库里全是「不适用」，
+   * 只有一种。按静态清单画的话，屏幕上是一颗永远筛不掉任何东西的下拉，
+   * 却和旁边真正有用的「类型」长得一模一样。判据和 `facetPick` 那条一致：**少于两种就不画**。
+   */
+  const verificationOptions = useMemo(() => {
+    const live = list?.facets?.verifications;
+    const options = Array.isArray(live) && live.length ? live : (source.verificationFilters || []);
+    return options.length > 1 ? options : [];
+  }, [list, source.verificationFilters]);
+
   async function loadMore() {
     if (!list?.nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -596,7 +610,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
   // 两处隔着整个 PageHeader，各自轮询会互相打架、百分比还会差一拍。
   const insightRun = useInsightRun(reload);
 
-  const hasFilterBar = Boolean(showStates || facetPick || source.verificationFilters?.length);
+  const hasFilterBar = Boolean(showStates || source.isMaterialWorkspace || facetPick || verificationOptions.length);
 
   return (
     <>
@@ -607,9 +621,17 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         // 页头刚说完「选题库」、正文顶上再来一个「TOPICS / 选题库 1 条」，
         // 同一个名字一屏出现两次，中间只隔一行描述
         count={list ? `${list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条` : ""}
-        /* ⚠️ **没有筛选条的库，说明不走页头这条路**——它会自己占一整行，
-           而下面那条 `.list-bar` 的左半边正好空着（见下）。两行并成一行。 */
-        desc={hasFilterBar ? source.sub : ""}
+        /**
+         * ⚠️ **有筛选条的库，那句说明不进页头。**
+         *
+         * 它是讲给第一次来的人听的，却每天占着第一屏最上面一整行、把列表往下推——
+         * 和 Wiki 那块 hero、创作页那句页头说明是同一件事，判据写在
+         * design-system 的「页面不介绍自己」：**说明句只在空态出现**
+         *（空态那句见 `DocList` 的 `Empty`）。
+         *
+         * 没有筛选条的库仍然走 `.list-bar__lead`：那儿 `.list-bar` 的左半边本来就空着，
+         * 这句话填的是一块已经存在的空地，不额外占行。
+         */
         aside={
           source.isMaterialWorkspace ? (
             <button className="btn btn-primary" onClick={() => onIntake({ target: "collection" })}>
@@ -628,15 +650,6 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
           页头右侧那个窄槽装不下，挤进去会把「新建 / 跑一次洞察」按钮顶到换行。 */}
       {sourceKey === "insights" ? (
         <InsightRunProgress run={insightRun.run} onCancel={insightRun.cancel} />
-      ) : null}
-
-      {/**
-        * ⚠️ **素材页的链路块本身就是状态筛选器**，所以那一页不再画 `FilterBar` 的状态芯片
-        *（判据是上面那个 `showStates`）。两者同时在屏幕上时是**同一组数字一屏两份**，
-        * 而且点哪一份效果完全一样。
-        */}
-      {source.isMaterialWorkspace ? (
-        <MaterialFlow counts={list?.counts || {}} active={state} onPick={onState} />
       ) : null}
 
       <section className="panel-block">
@@ -659,6 +672,15 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
             <FilterBar
               source={source}
               showStates={showStates}
+              /**
+               * ⚠️ **素材页的环节筛选自己一份**（`MaterialFlow`），因为它的取值不是
+               * `stateTabs` 原样铺开：**只画有东西的那几档**，而这条链常年有四档是 0。
+               * 但它现在和普通状态芯片长得一样、也待在同一个位置——
+               * 上一版它是首屏顶上五张大卡，占掉 150px 去显示四个 0。
+               */
+              stageSlot={source.isMaterialWorkspace
+                ? <MaterialFlow counts={list?.counts || {}} active={state} onPick={onState} />
+                : null}
               state={state}
               onState={onState}
               facet={facet}
@@ -666,6 +688,7 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
               facetPick={facetPick}
               verification={verification}
               setVerification={setVerification}
+              verificationOptions={verificationOptions}
               counts={{ total: list?.total, ...(list?.counts || {}) }}
             />
           ) : source.sub ? <p className="list-bar__lead">{source.sub}</p> : <span />}

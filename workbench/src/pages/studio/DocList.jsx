@@ -102,8 +102,12 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
         ) : null}
       </>
     ) : list ? (
+      /* ⚠️ 库空着的时候才解释这个库是什么（`source.sub`）——页头那句说明为此撤了，
+         判据见 `Studio.jsx` 的 `desc` 和 design-system 的「页面不介绍自己」 */
       <Empty icon={IconBulb}>
-        {query ? `没有匹配「${query}」的条目` : state ? `没有「${state}」的条目` : source.emptyHint}
+        {query ? `没有匹配「${query}」的条目`
+          : state ? `没有「${state}」的条目`
+          : [source.sub, source.emptyHint].filter(Boolean).join(" ")}
       </Empty>
     ) : null}
     </>
@@ -113,13 +117,35 @@ export function DocList({ list, listError, source, shown, layout, canBoard, quer
 /**
  * 右侧那几列画哪些。**按整份列表算一次**，理由见调用处那段注释。
  * 时间列永远在，所以不进这个串——它是唯一一个每条都有的。
+ *
+ * ⚠️ **两条判据，缺一列都要满足：有值，而且值不是全一样。**
+ *
+ * 只判「有没有」的那一版漏掉了更常见的一种：**整列同一个值**。
+ * 素材页量出来的实况——三十条全是 `kind: material`，于是「类别」那一列
+ * 从头到尾三十个「可复用素材」，还配着一枚紫色 pill。一列相同的值携带的信息是零，
+ * 却照样吃掉横向空间、把标题挤窄，而那枚紫 pill 还是这一屏唯一的第二个强调色。
+ *
+ * 判据和创作页那张表的「平台」列是同一条（`ProjectTable` 的 `showPlatform`），
+ * 也写进了 design-system：**一列的值全都相同 → 整列不画**。
  */
 function metaCols(items = []) {
-  const has = (fn) => (items.some(fn) ? 1 : 0);
+  /** 有值、且至少两种不同的值 */
+  const varies = (read) => {
+    const seen = new Set();
+    for (const item of items) {
+      const value = read(item);
+      if (value) seen.add(value);
+      if (seen.size > 1) return true;
+    }
+    return false;
+  };
   return [
-    has((i) => i.trace) && "trace",
-    has((i) => i.kindLabel) && "kind",
-    has((i) => (i.tags || []).some((t) => !isSpec(t))) && "tag",
+    varies((i) => i.trace) && "trace",
+    varies((i) => i.kindLabel) && "kind",
+    // ⚠️ 标签是个数组，比的是「这几行的标签集合一不一样」，所以序列化了再比。
+    // 别用某个「不会出现的分隔符」去 join——上一版拿 NUL 当分隔符，
+    // 而那个字符真的落进了源文件，git 当场把这个 .jsx 认成二进制文件。
+    varies((i) => JSON.stringify((i.tags || []).filter((t) => !isSpec(t)))) && "tag",
   ].filter(Boolean).join(" ") || "none";
 }
 

@@ -2744,10 +2744,30 @@ svg[data-tone] { color: var(--tone); }
  * 这也让它和 `.view-tabs`（复盘、热点那颗胶囊）终于是同一套语汇——
  * 同一个问题在这个工作台里长两个样，是这个项目反复出的那类事故。
  */
-.chips-sm .chip:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
-.chips-sm .chip[aria-pressed="true"] {
-  background: var(--sel-bg); border-color: var(--border-strong); color: var(--sel-fg); font-weight: 600;
+/**
+ * ⚠️ **选中的那颗是「浮起来」的，没选中的退进底色里。别反过来。**
+ *
+ * 上一版选中态给的是 `--sel-bg`（= `--sunken`），而这几排芯片**待的就是 `--sunken` 底**
+ *（`.main` 的背景，量出来两者都是 #f4f4f5）——**选中的底色和它身后的底色一模一样**，
+ * 于是「全部 30」在屏幕上就是一句普通的灰字，一点也不像被按下了。
+ * 侧栏那边同一个 token 是对的，因为侧栏是白底；换个底就失效，
+ * 这正是「挑值只在一种底色下试」的老毛病。
+ *
+ * 现在按「谁在说话」排：
+ *   - **选中**：白底 + 实边 + 正文色 —— 一排里唯一长得像控件的那颗；
+ *   - **未选**：透明底、无边、`--text-3` —— 退进底色，指上去才浮起来预览选中的样子。
+ *
+ * 这也顺手解决了另一件事：一排四五颗全带边框时，屏幕上是一串同样重的小方块，
+ * 而「现在筛的是哪一档」才是这一排唯一要说的话。
+ */
+.chips-sm .chip {
+  background: none; border-color: transparent; color: var(--text-3);
 }
+.chips-sm .chip:hover { background: var(--surface); border-color: var(--border); color: var(--text-1); }
+.chips-sm .chip[aria-pressed="true"] {
+  background: var(--surface); border-color: var(--border-strong); color: var(--text-1); font-weight: 600;
+}
+.chips-sm .chip[aria-pressed="true"]:hover { background: var(--surface); border-color: var(--border-strong); }
 .chips-sm .chip[aria-pressed="true"]::before { content: none; }
 
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -2852,15 +2872,18 @@ svg[data-tone] { color: var(--tone); }
  *
  * 入库抽屉里的素材类型芯片**仍然是黄的**——那才是打标，是「我圈中了」。
  */
-.filter-bar .chip[aria-pressed="true"] {
-  background: var(--sel-bg); border-color: transparent; color: var(--sel-fg); font-weight: 600;
-}
-.filter-bar .chip[aria-pressed="true"]:hover { background: var(--sel-bg); color: var(--sel-fg); }
+/**
+ * ⚠️ **这里原来还有一份 `.chip[aria-pressed="true"]`，删了，别加回来。**
+ * 它和 `.chips-sm` 那条管同一件事却给了不同的值（`border-color: transparent`），
+ * 而它特异度更高——于是**同一颗芯片在筛选条里和在创作页里长得不一样**：
+ * 一个有边框一个没有。量出来才看得见，CSS 不会为此报任何错。
+ * 判据只留 `.chips-sm` 那一处。
+ */
 .filter-bar .chips-sm { margin-bottom: 0; }
-/* 下拉按状态芯片的高度收一档，两者才在同一条线上 */
+/* 下拉和芯片同高，两者才在同一条线上 */
 .filter-bar .select__btn { height: 26px; padding: 0 10px; font-size: var(--fs-sm); }
 .chips-sm { gap: 4px; margin-bottom: 12px; }
-.chips-sm .chip { height: 24px; padding: 0 10px; font-size: var(--fs-xs); }
+.chips-sm .chip { height: 26px; padding: 0 10px; font-size: var(--fs-xs); }
 
 .ws-items { display: flex; flex-direction: column; gap: 1px; }
 .ws-item {
@@ -4536,14 +4559,25 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* ⚠️ 分组色带的底色 = 这个状态自己的颜色 @8%。颜色在这儿不装饰任何东西，
    它就是状态本身。`--tone` 由 `[data-tone]` 给（映射只写那一处）。
    `sticky` 让长列表滚动时永远看得见「现在读的是哪一档」。 */
+/**
+ * 分组头。
+ *
+ * ⚠️ **不再整条上底色。** 原来是 `color-mix(--tone 10%, --surface)`——一条淡紫的横带
+ *（可用素材走 `review` 那档）。它是这一屏唯一的第二个强调色，而它标的东西
+ *（现在在哪一组）上面那排筛选芯片已经说过一遍了。
+ *
+ * 和状态 pill 那次是同一条处理：**颜色收进那枚形状图标里，字和底退回中性**。
+ * 分组该做的事是「把两组分开」，那由吸顶 + 一道分隔线完成，不需要一整条彩色。
+ */
 .doc-band {
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 8px;
-  height: 36px; padding: 0 16px;
-  background: color-mix(in srgb, var(--tone) 10%, var(--surface));
-  border-bottom: 1px solid var(--border);
-  font-size: var(--fs-base);
+  height: 34px; padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: var(--fs-sm);
 }
+.doc-band > svg { color: var(--tone, var(--text-3)); }
 .doc-band__name { font-weight: 600; }
 .doc-band__count { color: var(--text-3); font-variant-numeric: tabular-nums; }
 

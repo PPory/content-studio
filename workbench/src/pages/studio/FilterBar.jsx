@@ -6,8 +6,7 @@
 import { Select, fieldIcon, stateIcon, valueIcon } from "../../components/ui.jsx";
 import { IconShieldCheck } from "../../components/icons.jsx";
 
-export function FilterBar({ source, showStates, state, onState, facet, setFacet, facetPick, verification, setVerification, counts = {} }) {
-  const verificationOptions = source.verificationFilters || [];
+export function FilterBar({ source, showStates, stageSlot = null, state, onState, facet, setFacet, facetPick, verification, setVerification, verificationOptions = [], counts = {} }) {
   const verificationAll = "全部核验状态";
   return (
     <div className="filter-bar">
@@ -17,6 +16,9 @@ export function FilterBar({ source, showStates, state, onState, facet, setFacet,
         * 两者同时在屏幕上时是**同一组数字一屏两份**，而点哪一份效果完全一样。
         * 判据只写一处：写两处的话，加一个源就会出现「壳画了、里面空着」那种半死状态。
         */}
+      {/* 素材页把自己那份环节筛选塞进这一格：位置和语汇都和普通状态芯片一致，
+          只是取值规则不同（只画有东西的档），理由写在 `MaterialFlow` 顶上 */}
+      {stageSlot}
       {showStates ? (
         <div className="chips chips-sm" aria-label="按处理状态筛选">
           <button className="chip" aria-pressed={!state} onClick={() => onState("")}>全部{counts.total != null ? ` ${counts.total}` : ""}</button>
@@ -49,6 +51,10 @@ export function FilterBar({ source, showStates, state, onState, facet, setFacet,
           title={`只看某一个${source.facet.label}的条目`}
         />
       ) : null}
+      {/**
+        * 取值由页面按「这个库里真的出现过哪几种」算好再传进来（少于两种就是空数组，
+        * 判据写在 `Studio.jsx` 的 `verificationOptions` 上面）。这一层只管画。
+        */}
       {verificationOptions.length ? (
         <Select
           value={verification || verificationAll}
