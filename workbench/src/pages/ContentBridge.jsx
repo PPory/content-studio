@@ -715,7 +715,7 @@ export function ContentBridge({ state = "", onGo }) {
       <div className="bridge-bar bridge-bar--sticky">
         <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
         <div className="bridge-bar__title">
-          <h2>{savedOpportunity ? "内容简报" : preview ? "这条内容为什么值得写" : "从一个知识，找到值得回答的问题"}</h2>
+          <h2>{savedOpportunity ? "内容简报" : preview ? "方向分析" : "手动探索"}</h2>
           {problemCandidate ? <span className="bridge-bar__pending">用户问题还没保存</span> : null}
         </div>
         <div className="bridge-bar__actions">

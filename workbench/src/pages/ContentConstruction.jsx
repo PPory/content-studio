@@ -99,7 +99,7 @@ export function ContentConstruction({ onGo }) {
   useEffect(() => {
     if (!selectedId || !focusBriefOnSelection.current) return;
     focusBriefOnSelection.current = false;
-    briefHeadingRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    briefHeadingRef.current?.closest(".construction-current")?.scrollIntoView({ block: "start", behavior: "instant" });
     briefHeadingRef.current?.focus({ preventScroll: true });
   }, [selectedId]);
 
@@ -228,8 +228,8 @@ export function ContentConstruction({ onGo }) {
 
       <header className="construction-heading">
         {saved ? <div className="construction-heading__eyebrow">已保存到内容机会</div> : null}
-        <h1>{selected ? "把这个方向，变成一篇内容。" : "同一个问题，可以怎样讲？"}</h1>
-        <p>{selected ? "读一遍简报，调整你不认同的地方。准备好后，保存并开始创作。" : "比较开篇、核心判断和证据缺口，选出你最想写的一个。"}</p>
+        <h1>{selected ? "创作简报" : "比较讲法"}</h1>
+        <p>{selected ? "确认核心判断与依据，保存后进入创作。" : "从切入点、核心判断和依据中，选定一个创作方向。"}</p>
       </header>
 
       <section className="construction-intent" aria-label="创作意图">
@@ -243,7 +243,7 @@ export function ContentConstruction({ onGo }) {
 
       {!busy && routes.length ? <>
         {!selected ? <section className="construction-routes" aria-label="可选的讲法">
-          <header className="construction-routes__head"><div><h2>选一个你想写的角度</h2><p>{routes.length} 种讲法 · 选定后展开完整简报{droppedAsSame ? ` · ${droppedAsSame} 条和上面重复，已合并` : ""}</p></div></header>
+          <header className="construction-routes__head"><div><h2>候选讲法</h2><p>{routes.length} 种讲法 · 选定后展开完整简报{droppedAsSame ? ` · ${droppedAsSame} 条和上面重复，已合并` : ""}</p></div></header>
           <div className="construction-routes__list">{routes.map((route, index) => <RouteCard key={route.id} route={route} number={String(index + 1).padStart(2, "0")} onSelect={() => chooseRoute(route.id)} />)}</div>
           {note ? <p className="construction-note construction-note--after">{note}</p> : null}
           {!experienceAvailable ? <p className="construction-note construction-note--gate">尚无可用的个人经历素材，本次只提供其他讲法。要以自己的经历开篇，请先补充真实的个人经历。</p> : null}
@@ -261,7 +261,7 @@ export function ContentConstruction({ onGo }) {
                 {refining ? <p className="construction-note" role="status">正在更新简报，请稍候。</p> : null}
               </div>
               {history.length ? <details className="construction-revisions" open><summary>已调整 {history.length} 次</summary><ol className="construction-history" aria-label="这条讲法被怎么调整过">{history.map((item, index) => <li key={`${item.ask}:${index}`}><q>{item.ask}</q>{item.note ? <span>{item.note}</span> : null}</li>)}</ol></details> : null}
-              <div className="construction-save"><h3>准备好继续了吗？</h3><p>保存这份简报和关联材料，作为接下来创作的起点。</p><button type="button" className="btn btn-primary" disabled={saveBusy || refining} onClick={save}>{saveBusy ? "正在保存…" : "保存为内容机会"}<IconArrowRight aria-hidden="true" /></button><button type="button" className="construction-change" disabled={refining || saveBusy} onClick={() => setSelectedId("")}>返回比较，换一条讲法</button></div>
+              <div className="construction-save"><h3>保存简报</h3><p>保存这份简报和关联材料，作为接下来创作的起点。</p><button type="button" className="btn btn-primary" disabled={saveBusy || refining} onClick={save}>{saveBusy ? "正在保存…" : "保存为内容机会"}<IconArrowRight aria-hidden="true" /></button><button type="button" className="construction-change" disabled={refining || saveBusy} onClick={() => setSelectedId("")}>返回比较，换一条讲法</button></div>
             </>}
           </aside>
         </section>}

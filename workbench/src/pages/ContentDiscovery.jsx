@@ -16,20 +16,19 @@ function OpportunityBrief({ connection, onDevelop, onGo, busy, onBack, mobileDet
   const headingRef = useRef(null);
   useEffect(() => {
     if (mobileDetail && window.matchMedia("(max-width: 1000px)").matches) {
-      headingRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+      headingRef.current?.closest("article")?.scrollIntoView({ block: "start", behavior: "instant" });
       headingRef.current?.focus({ preventScroll: true });
     }
   }, [mobileDetail]);
   const anchors = connection.knowledgeAnchors || [];
   return (
     <article className="opportunity-brief" aria-label="方向详情">
-      <button className="opportunity-mobile-back" type="button" onClick={onBack}>← 返回方向列表</button>
       <header className="opportunity-brief__head">
-        <span className="opportunity-eyebrow">这一篇可以讲</span>
+        <div className="opportunity-brief__toolbar"><span>方向详情</span><button className="opportunity-mobile-back" type="button" onClick={onBack}>← 返回方向列表</button><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDevelop(connection)}>发展这条<IconArrowRight aria-hidden="true" /></button></div>
         <h3 ref={headingRef} tabIndex={-1}>{connection.coreClaim}</h3>
-        <p className="opportunity-brief__reason"><span>{FIT_LABELS[connection.fit] || connection.fit}</span>{connection.fitReason}</p>
+        <p className="opportunity-brief__reason"><span className="opportunity-fit" data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</span>{connection.fitReason}</p>
       </header>
-      <footer className="opportunity-brief__footer"><div><strong>想沿着这个方向写？</strong><small>下一步比较讲法，还不会创建文章。</small></div><button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDevelop(connection)}>发展这条<IconArrowRight aria-hidden="true" /></button></footer>
+
       <section className="opportunity-brief__section">
         <h4>为谁解决什么问题</h4>
         <p className="discovery-card__q">{connection.problem.statement}</p>
@@ -69,6 +68,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   const [researchOpen, setResearchOpen] = useState(false);
   const [openConnection, setOpenConnection] = useState(0);
   const [mobileDetail, setMobileDetail] = useState(false);
+  const [view, setView] = useState("discover");
   const [savedQuery, setSavedQuery] = useState("");
   const [savedError, setSavedError] = useState(null);
   const [agendaSignals, setAgendaSignals] = useState(null);
@@ -89,6 +89,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   useEffect(load, [load]);
 
   const scan = useCallback(async ({ force = false, focusOverride } = {}) => {
+    setView("discover");
     setScanning(true);
     setScanError(null);
     try {
@@ -129,19 +130,23 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   return (
     <div className="view-body content-bridge content-discovery opportunity-home">
       <header className="opportunity-header">
-        <div><span className="opportunity-eyebrow">从积累，到表达</span><h2>最近有什么值得讲</h2><p>找到一个你有话可说、也值得读者花时间的方向。</p></div>
-        <div className="opportunity-header__actions">{opportunities.length ? <button type="button" className="btn" onClick={() => { document.getElementById("opportunity-saved")?.scrollIntoView(); document.getElementById("opportunity-saved")?.focus({ preventScroll: true }); }}>继续进行中 · {opportunities.length}</button> : null}<button type="button" className="btn" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button></div>
+        <div className="opportunity-header__identity"><IconSparkles aria-hidden="true" /><h2>内容机会</h2></div>
+        <div className="opportunity-header__actions"><button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />收集声音</button><button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button></div>
       </header>
+      <nav className="opportunity-views" aria-label="内容机会视图">
+        {[['discover', '发现方向', connections.length], ['saved', '已保存', opportunities.length], ['research', '研究线索', research.length]].map(([id, label, count]) => <button key={id} type="button" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>{label}<span>{count}</span></button>)}
+      </nav>
       <ErrorNote error={error} what="读取内容机会" onRetry={load} />
       {loading && !data ? <Loading rows={3} /> : null}
+      <div hidden={view !== "discover"} className="opportunity-discover-view">
       <div className="opportunity-scan">
         <form onSubmit={(event) => { event.preventDefault(); if (!scanning) scan({ force: true }); }}>
           <IconSparkles aria-hidden="true" />
           <label className="sr-only" htmlFor="opportunity-focus">这次想关注的方向</label>
-          <input id="opportunity-focus" value={focus} maxLength={500} onChange={(event) => setFocus(event.target.value)} disabled={scanning} placeholder="这次想关注什么？也可以留空，从最近的积累里发现" />
-          <button type="submit" className="btn btn-primary" disabled={scanning || loading || !data}>{scanning ? "正在寻找…" : scan_ ? "重新扫描" : "帮我看看最近有什么值得讲"}</button>
+          <input id="opportunity-focus" value={focus} maxLength={500} onChange={(event) => setFocus(event.target.value)} disabled={scanning} placeholder="输入关注方向，或留空探索最近的积累" />
+          <button type="submit" className={`btn${connections.length ? "" : " btn-primary"}`} disabled={scanning || loading || !data}>{scanning ? "正在寻找…" : scan_ ? "重新扫描" : "发现新方向"}</button>
         </form>
-        <div className="opportunity-scan__meta"><span>{scan_ ? `${relTime(scan_.scannedAt)}扫描${summary ? ` · 读了 ${summary}` : ""}` : "使用你的知识和真实用户声音，生成待你判断的候选。"}</span><button type="button" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />真实用户声音</button></div>
+        <div className="opportunity-scan__meta"><span>{scan_ ? `${relTime(scan_.scannedAt)}扫描${summary ? ` · 读了 ${summary}` : ""}` : "使用你的知识和真实用户声音，生成待你判断的候选。"}</span></div>
         {stale && data?.staleReason ? <p className="opportunity-update">{data.staleReason}</p> : null}
       </div>
       {scanError ? <div className="discovery-failed"><ErrorNote error={scanError} what="寻找新方向" onRetry={() => scan({ force: true })} /><p>已有机会没有被改动。你可以继续看上次的结果，或手动探索。</p></div> : null}
@@ -153,21 +158,22 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
             <div className="opportunity-section-heading"><h3>发现的方向</h3><span>{connections.length} 条候选</span></div>
             <div className="opportunity-options">{connections.map((connection, index) => (
               <button type="button" className="opportunity-option" key={`${connection.problem.statement}:${index}`} aria-pressed={activeConnection === connection} onClick={() => { setOpenConnection(index); setMobileDetail(true); }}>
-                <span className="opportunity-option__number">{String(index + 1).padStart(2, "0")}</span><strong>{connection.coreClaim}</strong><p>{connection.problem.statement}</p><small>{connection.problem.origin === "hypothesis" ? "受众假设 · 待验证" : "有真实用户声音"} · {connection.knowledgeAnchors?.length || 0} 条知识</small><span className="opportunity-option__read">查看方向<IconArrowRight aria-hidden="true" /></span>
+                <span className="opportunity-option__number" aria-hidden="true">◇</span><strong>{connection.coreClaim}</strong><p>{connection.problem.statement}</p><small>{connection.problem.origin === "hypothesis" ? "受众假设 · 待验证" : "有真实用户声音"} · {connection.knowledgeAnchors?.length || 0} 条知识</small><span className="opportunity-option__read">查看方向<IconArrowRight aria-hidden="true" /></span>
               </button>
             ))}</div>
-            <p className="opportunity-index__note">候选供你选择，保存后才成为内容机会。</p>
+
           </div>
           <OpportunityBrief key={openConnection} connection={activeConnection} onDevelop={develop} onGo={onGo} busy={scanning} mobileDetail={mobileDetail} onBack={() => { setMobileDetail(false); requestAnimationFrame(() => document.querySelector(".opportunity-option[aria-pressed=true]")?.focus()); }} />
         </section>
       ) : null}
       {scan_ && !scanning && !connections.length ? <section className="opportunity-welcome"><h3>这次还没有值得展开的新方向</h3><p>{scan_.nothingFoundReason || "暂时没有足够的知识或真实声音支撑新的内容。"}</p><div className="row-actions"><button type="button" className="btn" onClick={() => onCaptureVoice?.("", "find")}>去找找有没有人在说</button><button type="button" className="btn" onClick={() => onGo("entries")}>补充我的知识</button></div></section> : null}
-      <section id="opportunity-saved" tabIndex={-1} className="discovery-saved opportunity-saved" aria-label="进行中的内容机会">
-        <header className="opportunity-section-heading"><div><h3>进行中</h3><p>你已经留下的判断，随时接着往下写。</p></div>{opportunities.length ? <SearchBox value={savedQuery} onChange={setSavedQuery} placeholder="搜索已保存的机会" ariaLabel="搜索已保存的机会" /> : null}</header>
+      </div>
+      <section hidden={view !== "saved"} id="opportunity-saved" tabIndex={-1} className="discovery-saved opportunity-saved" aria-label="进行中的内容机会">
+        <header className="opportunity-section-heading"><div><h3>已保存的机会</h3><p>已确认的创作方向与简报</p></div>{opportunities.length ? <SearchBox value={savedQuery} onChange={setSavedQuery} placeholder="搜索已保存的机会" ariaLabel="搜索已保存的机会" /> : null}</header>
         <ErrorNote error={savedError} what="读取已保存机会" onRetry={load} />
         {savedItems.length ? <ul className="opportunity-saved-list">{savedItems.map((item) => <li key={item.id}><button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}><div><strong>{item.coreClaim || item.audienceProblemStatement}</strong><p>{item.wikiTitle || "知识已移除"}<span> · </span>{item.audienceProblemStatement}</p></div><span className="opportunity-saved-list__status">{item.hasProject ? "已进入创作" : "待开始写作"}<small>{dateLabel(item.updatedAt)}更新</small></span><IconArrowRight aria-hidden="true" /></button></li>)}</ul> : !savedError && !loading ? <p className="opportunity-saved-empty">{savedQuery ? "没有找到匹配的机会，试试其他关键词。" : "还没有保存的机会。选一个方向，打磨讲法后，它会留在这里。"}</p> : null}
       </section>
-      <aside className="opportunity-context" aria-label="研究方向与长期议程">
+      <aside hidden={view !== "research"} className="opportunity-context" aria-label="研究方向与长期议程">
       {research.length ? (
         <section className="discovery-research" aria-label="最近你在想的">
           <button type="button" aria-expanded={researchOpen} onClick={() => setResearchOpen((value) => !value)}>

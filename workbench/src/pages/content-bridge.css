@@ -1,8 +1,19 @@
+.main__inner:has(.content-bridge) { max-width: none; padding: 0; --main-pad-top: 0px; }
+.main:has(.content-bridge) { background: var(--surface); }
 .content-bridge {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: var(--sp-10) var(--sp-9) var(--sp-12);
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  max-width: none;
+  margin: 0;
+  padding: 0 28px 48px;
+  font-size: 13px;
 }
+.content-bridge .btn { min-height: 30px; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 12px; gap: 6px; }
+.content-bridge .btn svg { width: 14px; height: 14px; }
+.content-bridge [hidden] { display: none !important; }
 
 /*
  * 顶栏。列表页和工作台共用一条，是这一页唯一常驻的操作区。
@@ -357,7 +368,7 @@
 }
 
 @media (max-width: 980px) {
-  .content-bridge { padding-inline: var(--sp-7); }
+  .content-bridge { padding-inline: 20px; }
   .bridge-picker { grid-template-columns: 1fr; gap: 0; }
   .bridge-side + .bridge-side { border-top: 1px solid var(--border); }
   .bridge-side-list { max-height: 360px; }
@@ -367,7 +378,7 @@
 }
 
 @media (max-width: 640px) {
-  .content-bridge { padding: var(--sp-8) var(--sp-5) var(--sp-10); }
+  .content-bridge { padding: 0 16px 32px; }
   .bridge-bar { align-items: flex-start; flex-direction: column; gap: var(--sp-4); }
   .bridge-bar__actions { width: 100%; }
   .bridge-bar__title h2 { font-size: var(--fs-md); }
@@ -434,4 +445,19 @@
   .bridge-bar--sticky { position: static; margin-top: 0; padding-top: 0; }
   .bridge-bar__title { width: 100%; flex-wrap: wrap; }
   .bridge-bar__actions .btn { white-space: normal; height: auto; min-height: 34px; }
+}
+
+/* Keep navigation reachable on small screens without consuming the working area. */
+@media (max-width: 900px) {
+  .app:has(.content-bridge) .sidebar { gap: 4px 10px; padding: 6px 12px; }
+  .app:has(.content-bridge) .sidebar__head { flex: 1; height: 32px; }
+  .app:has(.content-bridge) .sidebar__find { flex: 0 0 32px; width: 32px; padding: 6px; margin: 0; }
+  .app:has(.content-bridge) .sidebar__find > span, .app:has(.content-bridge) .sidebar__find kbd { display: none; }
+  .app:has(.content-bridge) .nav { flex: 0 0 100%; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 2px 0; }
+  .app:has(.content-bridge) .nav-group, .app:has(.content-bridge) .nav-group[data-current="true"] { display: flex; flex: none; width: auto; align-items: center; }
+  .app:has(.content-bridge) .nav-item { padding: 6px 8px; min-height: 30px; white-space: nowrap; font-size: 12px; }
+  .app:has(.content-bridge) .subnav { flex-wrap: nowrap; margin: 0; }
+  .app:has(.content-bridge) .subnav-item { white-space: nowrap; font-size: 12px; }
+  .app:has(.content-bridge) .sidebar__foot { flex: none; margin: 0; padding: 0; border: 0; }
+  .app:has(.content-bridge) .nav { order: 1; }
 }
