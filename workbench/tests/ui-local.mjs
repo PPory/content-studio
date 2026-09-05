@@ -190,6 +190,7 @@ try {
   // 验的是**四条链都在屏幕上**，以及**没事的那条如实说没事**——
   // 后者比前者更容易退化：为了让屏幕不空而硬凑一件待办，是这块板唯一的死法。
   await page.goto(`http://127.0.0.1:${PORT}/#/today`);
+  await page.getByText("查看积累与发布状态", { exact: true }).click();
   const board = page.getByRole("region", { name: "四条链的下一步" });
   await board.waitFor();
   for (const name of ["知识", "内容", "情报", "运营"]) {
@@ -213,8 +214,7 @@ try {
     await board.getByRole("button").count() === 4);
 
   // 一级导航按四条链命名：情报不叫「发现」，运营不叫「复盘」
-  check("侧栏用四条链的名字", await page.getByRole("link", { name: "情报" }).count()
-    + await page.getByRole("button", { name: "情报" }).count() >= 1);
+  check("侧栏按工作空间组织", await page.locator(".nav").getByRole("button", { name: "积累", exact: true }).count() === 1);
 
   // ── 合集：建 → 从文章列表归类 → 在合集中新建 → 排序 → 分节 → 通读 ──
   //

@@ -37,9 +37,9 @@ export function ContentIntentPanel({ projectId, onGo, onAsk }) {
     <section className="content-intent" aria-labelledby="content-intent-title">
       <header>
         <div className="content-intent__label">
-          <span>创作意图</span><h2 id="content-intent-title">写作前先守住这三件事</h2>
+          <span>来源记录</span><h2 id="content-intent-title">最初的方向与依据</h2>
         </div>
-        <div className="content-intent__summary">
+        <div className="content-intent__summary" hidden={!expanded}>
           {/* 假设型问题还没有任何人真的这样问过。写作时必须一眼看见，否则很容易当成已验证的需求。 */}
           <div><span>用户问题{problem.origin === "hypothesis" ? " · 待验证" : ""}</span><strong>{problem.statement}</strong></div>
           <div><span>核心判断</span><strong>{opportunity.coreClaim}</strong></div>
@@ -47,7 +47,7 @@ export function ContentIntentPanel({ projectId, onGo, onAsk }) {
         </div>
         <div className="content-intent__controls">
           <button type="button" aria-expanded={expanded} aria-controls="content-intent-details" onClick={() => setExpanded((value) => !value)}>{expanded ? "收起" : "展开"}</button>
-          <button type="button" onClick={() => onGo?.("bridge", `opportunity:${opportunity.id}`)}>回到内容机会</button>
+          <button type="button" onClick={() => onGo?.("bridge", `opportunity:${opportunity.id}`)}>查看原始记录</button>
         </div>
       </header>
 

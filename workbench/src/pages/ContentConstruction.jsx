@@ -110,7 +110,7 @@ export function ContentConstruction({ onGo }) {
     api.agendas().then((result) => {
       setAgendas(result.agendas || []);
       // 恢复出来的会话已经有它自己的议程选择，别用「最近那条」把它盖掉。
-      if (!restored) setAgendaId((result.agendas || [])[0]?.id || "");
+      // 新探索不默认套用最近编辑的长期方向。
     }).catch(() => setAgendas([])).finally(() => setAgendasReady(true));
   }, [restored]);
 

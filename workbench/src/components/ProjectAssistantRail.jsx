@@ -9,7 +9,13 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   const [contextOpen, setContextOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  useEffect(() => {
+    const screen = window.matchMedia("(max-width: 900px)");
+    const change = () => { if (screen.matches) setCollapsed(true); };
+    screen.addEventListener("change", change);
+    return () => screen.removeEventListener("change", change);
+  }, []);
   const railRef = useRef(null);
   const contextTriggerRef = useRef(null);
 
@@ -76,6 +82,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       <IconFileText aria-hidden="true" />
       <span><b>{document?.title?.trim() || "未命名稿件"}</b></span><IconChevronDown aria-hidden="true" />
     </button>
+    <button type="button" className="btn btn-sm" aria-expanded={materialsOpen} onClick={() => { setMaterialsOpen(!materialsOpen); setContextOpen(false); }}>材料</button>
     <ProjectContextPanel
       open={contextOpen}
       openedByKeyboard={openedByKeyboard}

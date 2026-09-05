@@ -1,5 +1,5 @@
-// 一级导航只表达五个用户任务：今天做什么、内容走到哪、有什么素材、外面有什么、发布后学到什么。
-// 数据库对象和旧工具路由仍保留兼容，但只归属于其中一个任务，不再争抢侧栏位置。
+import "./app-navigation.css";
+// 一级导航表达今日、积累、创作、复盘；旧路由保留并归到对应工作空间。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api.js";
@@ -43,12 +43,8 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-// ⚠️ `typeset` 不在这里：它现在是一级导航自己一项（工具不是阶段）
-const CONTENT_VIEWS = new Set(["bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts"]);
-const MATERIAL_VIEWS = new Set(["materials", "collections", "inbox"]);
-const DISCOVER_VIEWS = new Set(["discover", "hot", "insights"]);
-// 知识库：词条（提炼出来的）+ 来源（书架和其他资料）
-const KNOWLEDGE_VIEWS = new Set(["knowledge", "entries", "shelf", "sources"]);
+const CONTENT_VIEWS = new Set(["bridge", "content", "project", "series", "series-detail", "topics", "drafts"]);
+const KNOWLEDGE_VIEWS = new Set(["assistant", "ideas", "seeds", "materials", "collections", "inbox", "discover", "hot", "insights", "knowledge", "entries", "shelf", "sources"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -77,100 +73,56 @@ const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", 
 const SUBNAV_HOME = {
   project: "content",
   "series-detail": "series",
+  topics: "content",
+  drafts: "content",
+  collections: "materials",
+  inbox: "materials",
+  knowledge: "entries",
+  discover: "hot",
 };
 
-// 侧栏项。旧路由通过 match 归回新的用户任务，兼容期仍能准确高亮。
+// 业务导航按用户目的组织，AI 发现只是创作中的可选工具。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
-  { key: "assistant", to: "assistant", match: (v) => v === "assistant" },
   {
-    key: "content", to: "bridge", match: (v) => CONTENT_VIEWS.has(v),
+    key: "knowledge", to: "materials", match: (v) => KNOWLEDGE_VIEWS.has(v),
     children: [
-      /** 实验导航只表达新主路径；Ideas / Seeds 的数据、深链和 Ctrl+K 入口继续保留。 */
-      { to: "bridge", label: "内容机会" },
-      { to: "content", label: "创作" },
-      /**
-       * ⚠️ **「合集」从创作页里那排「全部文章 / 合集」搬上来的。**
-       *
-       * 它在页内长得和它正下方那排阶段筛选芯片一模一样，但干的是完全不同的事：
-       * **一个换页（两个 view、两条 URL），一个筛当前页。** 一屏上下两条长得一样的
-       * 控件，用户得点一次才知道哪条会把整页换掉。
-       * 换页的东西归侧栏——这也正好让「文章」和「合集」这两个并列的东西
-       * 在导航里就是并列的两项，不用先进文章页才发现还有合集。
-       */
-      { to: "series", label: "合集" },
-    ],
-  },
-  {
-    /**
-     * ⚠️ **「排版」是一级，不在「内容」底下。**
-     * 内容那一栏读下来是**一条链**（选种 → 种子 → 发芽 → 收成），
-     * 而排版是一个**工具页**（嵌进来的 wechat-typeset）——它夹在几个阶段中间很突兀。
-     * 这也是它当初没跟着起植物名的同一个理由：**工具不是阶段**。
-     */
-    key: "typeset", to: "typeset", match: (v) => v === "typeset",
-  },
-  {
-    key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v) || MATERIAL_VIEWS.has(v),
-    children: [
+      { to: "materials", label: "素材" },
+      { to: "ideas", label: "灵感" },
+      { to: "seeds", label: "想法" },
+      { to: "entries", label: "Wiki" },
+      { to: "sources", label: "来源" },
+      { to: "shelf", label: "书架" },
+      { to: "assistant", label: "研究" },
       { to: "hot", label: "热点" },
       { to: "insights", label: "洞察" },
-      /**
-       * ⚠️ **「素材」归到「发现」，不归「内容」。**
-       * 发现回答的是「东西从哪儿来」（热点 / 洞察 / 书架），而素材是
-       * **已经收下来并拆好的那些**——同一类，只是更靠后一步。
-       * 放进内容会把那条链插断：素材不在链上，它是链**旁边**的储备；
-       * 而且写的时候你是从**项目页右栏**用它的，不需要跳过去。
-       */
-      { to: "materials", label: "素材" },
     ],
   },
   {
-    /**
-     * ⚠️ **书架在这儿，不在「发现」。** 发现回答「东西从哪儿来」，
-     * 而这一栏回答「我已经有什么」——沉淀下来的东西和从中提炼的词条。
-     *
-     * 顺序是**从产物到原料**：词条是你真正会去用的，来源是它的依据。
-     * 反过来排会把最常点的那一项压到第二位。
-     */
-    key: "knowledge", to: "entries", match: (v) => KNOWLEDGE_VIEWS.has(v),
+    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
     children: [
-      { to: "entries", label: "Wiki" },
-      { to: "shelf", label: "书架" },
-      /**
-       * ⚠️ **「来源」列全部，包括书架里那 15 本。**
-       * 一开始按归类把书排除在外，两栏正好互斥、看着很整齐——但那样就再也看不到
-       * 「《平凡的世界》170 节、未提炼」这类事实，而书占了全库 90% 的章节。
-       * 这张表回答的是「我有什么、读到哪儿了、哪些真被用上了」，
-       * 排除掉最大的那部分就等于不回答。
-       *
-       * 书架不因此多余：它是**读**的地方（封面、进度、划词、批注），
-       * 而这里是**清点**的地方。两件事，两个界面。
-       */
-      { to: "sources", label: "来源" },
+      { to: "content", label: "全部内容" },
+      { to: "series", label: "合集" },
+      { to: "bridge", label: "发现方向" },
     ],
   },
-  /**
-   * ⚠️ **「数据」没有二级项。** 「表现 / 来源」原来是两条侧栏项，而它们是**同一批数字的
-   * 两个视角**——拆开的代价是每次先想「这个数字在哪一页」。现在是一页三个 tab
-   * （内容明细 / 月度总览 / 数据同步），tab 走 hash 的状态段。
-   * 两条旧路由留着重定向（见 `readHash`），深链不会断。
-   */
   {
     key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v),
     children: [
-      { to: "review", label: "复盘" },
+      { to: "review", label: "发布复盘" },
       { to: "review-performance", label: "数据" },
     ],
   },
 ];
+const TOOL_NAV = { key: "typeset", to: "typeset" };
 
-// 这个 view 归哪一栏。侧栏高亮、面包屑、二级展开三处都问它，别各写各的
-const groupOf = (view) => NAV.find((n) => (n.match ? n.match(view) : view === n.key));
+// 侧栏高亮、面包屑和 AI 上下文共用归属，工具仍有清楚的当前位置。
+const groupOf = (view) => NAV.find((n) => (n.match ? n.match(view) : view === n.key))
+  || (view === TOOL_NAV.to ? TOOL_NAV : undefined);
 
 function assistantPageContext(route) {
   const item = groupOf(route.view);
-  const child = item?.children?.find((entry) => entry.to === route.view);
+  const child = item?.children?.find((entry) => entry.to === (SUBNAV_HOME[route.view] || route.view));
   const detail = route.view === "overview"
     ? "总览"
     : route.view === "review-performance"
@@ -664,6 +616,17 @@ export function App() {
         <div className="sidebar__foot">
           <button
             className="nav-item"
+            onClick={() => go("typeset")}
+            aria-current={route.view === "typeset" ? "page" : undefined}
+            title="排版工具"
+          >
+            <span className="nav-item__icon">
+              <NAV_ICONS.typeset aria-hidden="true" className="nav-icon" stroke={1.7} />
+            </span>
+            <span className="nav-item__label">排版</span>
+          </button>
+          <button
+            className="nav-item"
             onClick={() => setSettings(true)}
             title="设置：本地工作区、模型与本机工具"
           >
@@ -761,7 +724,7 @@ export function App() {
                   onSettings={() => setSettings(true)}
                 />
               ) : route.view === "assistant" ? (
-                <Assistant conversationId={globalConversationId} onConversationChange={setGlobalConversationId} />
+                <Assistant onGo={go} conversationId={route.state || globalConversationId} onConversationChange={setGlobalConversationId} />
               ) : route.view === "bridge" ? (
                 /**
                  * ⚠️ **`#/bridge` 的默认落点换成了 AI 发现。**

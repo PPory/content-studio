@@ -303,9 +303,8 @@ try {
     now,
   });
   const lone = await call(base, `/api/workspace/projects/${loneProject}/creative-context`);
-  check("没有关联内容机会时如实说不知道，并给出下一步", lone.status === 409
-    && /没有关联的内容机会/.test(lone.data.error)
-    && /发展一条连接/.test(lone.data.hint || ""));
+  check("没有内容机会也能读取创作上下文，不伪造判断", lone.status === 200
+    && lone.data.context.coreClaim === "" && lone.data.context.problem.origin === "hypothesis");
 
   check("结构转 Markdown 带上每节的作用", outlineToMarkdown(outlineResult.data.outline).includes("> 把最强的反方立起来"));
 

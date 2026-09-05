@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, SearchBox, relTime } from "../components/ui.jsx";
-import { setDiscoveryHandoff, takeDiscoveryFocus } from "../lib/discovery-handoff.js";
+import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
 import "./content-discovery.css";
@@ -63,6 +63,8 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   const [scanError, setScanError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [developing, setDeveloping] = useState(false);
+  const explorationKeys = useRef(new Map());
   const [focus, setFocus] = useState(() => takeDiscoveryFocus());
   const [research, setResearch] = useState([]);
   const [researchOpen, setResearchOpen] = useState(false);
@@ -104,11 +106,22 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
     }
   }, [focus]);
 
-  const develop = useCallback((connection) => {
-    // ⚠️ 这里**什么都不写库**。候选一路带到「保存为内容机会」那一刻。
-    setDiscoveryHandoff(connection);
-    onGo("bridge", "develop");
-  }, [onGo]);
+  const develop = useCallback(async (connection) => {
+    if (developing) return;
+    setDeveloping(true); setScanError(null);
+    const fingerprint = JSON.stringify(connection);
+    if (!explorationKeys.current.has(fingerprint)) explorationKeys.current.set(fingerprint, crypto.randomUUID());
+    try {
+      const result = await api.createExploration({
+        requestKey: explorationKeys.current.get(fingerprint),
+        title: String(connection.problem?.statement || "未命名").slice(0, 100),
+        thought: connection.coreClaim || "",
+        discovery: { connection },
+      });
+      onGo("project", result.projectId);
+    } catch (failure) { setScanError(failure); }
+    finally { setDeveloping(false); }
+  }, [onGo, developing]);
 
   const scan_ = data?.scan || null;
   const connections = scan_?.connections || [];
@@ -151,7 +164,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
       </div>
       {scanError ? <div className="discovery-failed"><ErrorNote error={scanError} what="寻找新方向" onRetry={() => scan({ force: true })} /><p>已有机会没有被改动。你可以继续看上次的结果，或手动探索。</p></div> : null}
       {scanning ? <div className="opportunity-pending" role="status"><IconRefresh aria-hidden="true" /><div><strong>正在把你的积累和读者的问题放在一起看</strong><p>找出值得讲的判断，并核对它的来源。你可以继续浏览已有机会。</p></div></div> : null}
-      {data && neverScanned && !scanning ? <section className="opportunity-welcome"><span className="opportunity-eyebrow">第一篇，从你的积累里开始</span><h3>不必对着空白页想选题。</h3><p>让知识回答一个真实的问题，把你的理解变成一篇有价值的内容。</p><ol><li><b>找方向</b><span>从知识和用户声音中发现连接</span></li><li><b>挑讲法</b><span>比较切入点、判断和依据</span></li><li><b>开始写</b><span>确认简报，带着材料进入创作</span></li></ol></section> : null}
+      {data && neverScanned && !scanning ? <section className="opportunity-welcome"><span className="opportunity-eyebrow">第一篇，从你的积累里开始</span><h3>不必对着空白页想选题。</h3><p>让知识回答一个真实的问题，把你的理解变成一篇有价值的内容。</p><ol><li><b>找方向</b><span>从知识和用户声音中发现连接</span></li><li><b>发展成一篇</b><span>把方向保存在创作里，随写随改</span></li></ol></section> : null}
       {activeConnection ? (
         <section className="opportunity-workspace" aria-label="值得发展的连接" data-mobile-detail={mobileDetail}>
           <div className="opportunity-index">
@@ -163,7 +176,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
             ))}</div>
 
           </div>
-          <OpportunityBrief key={openConnection} connection={activeConnection} onDevelop={develop} onGo={onGo} busy={scanning} mobileDetail={mobileDetail} onBack={() => { setMobileDetail(false); requestAnimationFrame(() => document.querySelector(".opportunity-option[aria-pressed=true]")?.focus()); }} />
+          <OpportunityBrief key={openConnection} connection={activeConnection} onDevelop={develop} onGo={onGo} busy={scanning || developing} mobileDetail={mobileDetail} onBack={() => { setMobileDetail(false); requestAnimationFrame(() => document.querySelector(".opportunity-option[aria-pressed=true]")?.focus()); }} />
         </section>
       ) : null}
       {scan_ && !scanning && !connections.length ? <section className="opportunity-welcome"><h3>这次还没有值得展开的新方向</h3><p>{scan_.nothingFoundReason || "暂时没有足够的知识或真实声音支撑新的内容。"}</p><div className="row-actions"><button type="button" className="btn" onClick={() => onCaptureVoice?.("", "find")}>去找找有没有人在说</button><button type="button" className="btn" onClick={() => onGo("entries")}>补充我的知识</button></div></section> : null}

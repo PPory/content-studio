@@ -4,6 +4,7 @@
 // 「AI 只提出候选，正文由用户确认后写入」这条在写作阶段同样成立——
 // 而且这里是最容易破例的地方，因为产出的东西本身就长得像正文。
 
+import { createProjectExploration, getProjectNotebook, saveProjectNotebook } from "../domain/project-notebook.mjs";
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { proposeProjectDraft, proposeProjectOutline } from "../domain/content-project-ai.mjs";
 import { projectCreativeContext } from "../domain/content-project.mjs";
@@ -44,6 +45,29 @@ function draftBytes(workspace, projectId) {
 }
 
 export const contentProjectRoutes = [
+  {
+    method: "POST",
+    path: "/api/workspace/explorations",
+    handler: guard(async ({ workspace, req, res }) => {
+      const body = await readJsonBody(req, 300000);
+      json(res, { ok: true, ...createProjectExploration(workspace, body) });
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/workspace/projects/:id/notebook",
+    handler: guard(async ({ workspace, res, params }) => {
+      json(res, { ok: true, notebook: getProjectNotebook(workspace, params.id) });
+    }),
+  },
+  {
+    method: "PUT",
+    path: "/api/workspace/projects/:id/notebook",
+    handler: guard(async ({ workspace, req, res, params }) => {
+      const body = await readJsonBody(req, 300000);
+      json(res, { ok: true, notebook: saveProjectNotebook(workspace, params.id, body) });
+    }),
+  },
   {
     method: "GET",
     path: "/api/workspace/projects/:id/creative-context",

@@ -19,7 +19,7 @@ import { ErrorNote, Note } from "./ui.jsx";
 import { IconSparkles } from "./icons.jsx";
 import "./project-start-panel.css";
 
-export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: outerBusy = false, onInsert, onStartDraft, onActiveChange, onGo }) {
+export function ProjectStartPanel({ projectId, contextVersion = 0, empty, needsDraft = false, busy: outerBusy = false, onInsert, onStartDraft, onActiveChange, onGo }) {
   const [context, setContext] = useState(undefined);
   const [outline, setOutline] = useState(null);
   const [markdown, setMarkdown] = useState("");
@@ -46,7 +46,7 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
       // 没有关联内容机会的老项目走原来的写法，这一栏不出现。
       .catch(() => { if (alive) setContext(null); });
     return () => { alive = false; };
-  }, [projectId]);
+  }, [projectId, contextVersion]);
 
   const buildOutline = useCallback(async (ask = "") => {
     setBusy(true);
@@ -93,7 +93,7 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
     }
   }, [outline, projectId, onInsert, ensureDraft]);
 
-  const active = Boolean(context) && !dismissed && (empty || Boolean(outline));
+  const active = Boolean(context) && !dismissed;
   useEffect(() => { onActiveChange?.(active); }, [active, onActiveChange]);
 
   if (!active) return null;
@@ -102,14 +102,14 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
     <section className="project-start" aria-labelledby="project-start-title">
       <header>
         <div>
-          <span>还没开始写</span>
-          <h2 id="project-start-title">先搭一个结构，再起稿</h2>
+          <span>写作辅助</span>
+          <h2 id="project-start-title">需要时让 AI 帮忙</h2>
         </div>
         <div className="project-start__actions">
           {!outline ? (
             <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => buildOutline()}>
               <IconSparkles aria-hidden="true" />
-              {busy ? "正在搭…" : "基于这条构造，帮我搭一个结构"}
+              {busy ? "正在搭…" : "帮我搭结构"}
             </button>
           ) : (
             <>
@@ -132,11 +132,11 @@ export function ProjectStartPanel({ projectId, empty, needsDraft = false, busy: 
       </header>
 
       {/* 继承下来的意图。只读三行，不是让人再填一遍的表。 */}
-      <dl className="project-start__intent">
+      {context.coreClaim ? <dl className="project-start__intent">
         <div><dt>要回答的问题</dt><dd>{context.problem.statement}{context.problem.origin === "hypothesis" ? <em>（假设，尚待验证）</em> : null}</dd></div>
         <div><dt>要留下的判断</dt><dd>{context.coreClaim}</dd></div>
         {context.route ? <div><dt>选定的讲法</dt><dd>{context.route.storyline}</dd></div> : null}
-      </dl>
+      </dl> : null}
 
       <ErrorNote error={error} what={outline ? "起稿" : "搭结构"} onRetry={outline ? () => buildDraft() : () => buildOutline()} />
 

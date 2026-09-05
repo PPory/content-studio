@@ -1,3 +1,4 @@
+import { getProjectNotebook } from "../domain/project-notebook.mjs";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
@@ -679,6 +680,7 @@ async function localContext(env, input, record) {
     attachments: (record.attachments || []).map(({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef }) => ({ id, name, type, kind, bytes, characters, originalPath, textPath, imageRef })),
     project: {
       id: clean(input.document?.id, 160),
+      notebook: input.document?.id && workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(input.document.id) ? getProjectNotebook(workspace, input.document.id) : null,
       workspaceId: workspace.manifest.workspaceId,
       title: clean(input.document?.title, 300),
       body: String(input.document?.body ?? ""),
@@ -742,6 +744,7 @@ function contentPrompt(input, context, model) {
     assistantReferencePrompt(context),
     expertDelegationPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
+    context.project?.notebook ? `【当前构思与候选，优先于旧简报；不是已核实事实，不自动采用】\n${JSON.stringify(context.project.notebook)}` : "",
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
     style,

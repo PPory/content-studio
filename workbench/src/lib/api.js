@@ -29,6 +29,9 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
+  createExploration: (body) => postJson("/api/workspace/explorations", body),
+  projectNotebook: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/notebook`),
+  saveProjectNotebook: (id, body) => req(`/api/workspace/projects/${encodeURIComponent(id)}/notebook`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   status: () => req("/api/workspace/status"),
   seriesList: () => req("/api/workspace/series"),
   series: (id) => req(`/api/workspace/series/${encodeURIComponent(id)}`),

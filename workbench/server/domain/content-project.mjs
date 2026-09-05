@@ -1,3 +1,4 @@
+import { getProjectNotebook } from "./project-notebook.mjs";
 /**
  * 项目继承的创作上下文。
  *
@@ -30,6 +31,7 @@ const ELEMENT_TYPE_LABELS = Object.freeze({
  * 比没有这条素材更糟。
  */
 function resolveElement(db, element) {
+  if (!element || typeof element !== "object" || Array.isArray(element)) return null;
   const base = {
     id: element.id,
     type: element.type,
@@ -88,20 +90,28 @@ export function personalExperienceMaterials(db) {
 export function projectCreativeContext(workspace, projectId) {
   const db = workspace.db;
   workspace.domain.entity(projectId, "project");
-  const opportunity = workspace.contentBridge.projectOpportunity(projectId);
-  if (!opportunity) {
-    throw Object.assign(new Error("这个项目没有关联的内容机会"), {
-      status: 409,
-      hint: "从内容里发展一条连接并保存成内容机会，再建立项目，写作阶段的 AI 才知道你想讲什么。",
-    });
+  const notebook = getProjectNotebook(workspace, projectId);
+  const inherited = workspace.contentBridge.projectOpportunity(projectId);
+  const opportunity = inherited || { coreClaim: "", cognitiveGap: "", knowledgeExplanation: "", dominantAction: "", construction: {} };
+  const problem = inherited ? workspace.contentBridge.audienceProblem(inherited.audienceProblemId) : { statement: "尚未确定", origin: "hypothesis", sources: [] };
+  const wiki = inherited ? db.prepare(`SELECT p.id,p.title,p.summary,p.page_type AS pageType FROM wiki_pages p
+    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(inherited.wikiPageId) || null : null;
+  const agendaId = notebook.version ? notebook.agendaId : inherited?.agendaId;
+  const agenda = agendaId ? workspace.contentBridge.agenda(agendaId) : null;
+  const selectedRoute = (Array.isArray(notebook.discovery?.routes) ? notebook.discovery.routes : []).find((item) => item?.id === notebook.discovery?.selectedId);
+  const construction = selectedRoute?.construction && typeof selectedRoute.construction === "object" ? selectedRoute.construction : opportunity.construction || {};
+  const elements = (Array.isArray(construction.elements) ? construction.elements : []).map((element) => resolveElement(db, element)).filter(Boolean);
+  // 资料必须回到数据库读取；构思和候选文字永远不能伪装成证据。
+  const materialRows = db.prepare(`SELECT m.id,m.title,m.material_type FROM project_materials pm
+    JOIN materials m ON m.id=pm.material_id JOIN entities e ON e.id=m.id AND e.deleted_at IS NULL
+    WHERE pm.project_id=?`).all(projectId);
+  for (const row of materialRows) {
+    if (!elements.some((item) => item.sourceId === row.id)) elements.push(resolveElement(db, { id: row.id, label: row.title, type: row.material_type === "个人经历" ? "experience" : "evidence", source_kind: "material", source_id: row.id }));
   }
-
-  const problem = workspace.contentBridge.audienceProblem(opportunity.audienceProblemId);
-  const wiki = db.prepare(`SELECT p.id,p.title,p.summary,p.page_type AS pageType FROM wiki_pages p
-    JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(opportunity.wikiPageId) || null;
-  const agenda = opportunity.agendaId ? workspace.contentBridge.agenda(opportunity.agendaId) : null;
-  const construction = opportunity.construction || {};
-  const elements = (construction.elements || []).map((element) => resolveElement(db, element));
+  for (const anchor of (Array.isArray(notebook.discovery?.connection?.knowledgeAnchors) ? notebook.discovery.connection.knowledgeAnchors : []).slice(0, 20)) {
+    if (typeof anchor?.wikiPageId !== "string" || elements.some((item) => item.sourceId === anchor.wikiPageId)) continue;
+    elements.push(resolveElement(db, { id: anchor.wikiPageId, label: "待核对知识来源", type: "concept", source_kind: "wiki_page", source_id: anchor.wikiPageId }));
+  }
 
   const draft = db.prepare(`SELECT d.id,d.title,d.body_markdown AS body FROM drafts d
     JOIN project_primary_drafts p ON p.draft_id = d.id AND p.project_id = ?`).get(projectId)
@@ -110,17 +120,18 @@ export function projectCreativeContext(workspace, projectId) {
 
   return {
     projectId,
+    notebook,
     opportunity,
     problem,
     wiki,
     agenda,
     /** 选中的那条讲法。老的内容机会没有这一段，那时只有一个默认结构。 */
-    route: construction.route || null,
+    route: construction.route && typeof construction.route === "object" ? construction.route : null,
     elements,
-    relations: construction.relations || [],
-    entryOptions: construction.entry_options || [],
-    evidenceGaps: construction.evidence_gaps || [],
-    counterarguments: construction.counterarguments || [],
+    relations: Array.isArray(construction.relations) ? construction.relations.filter((item) => item && typeof item === "object") : [],
+    entryOptions: Array.isArray(construction.entry_options) ? construction.entry_options.filter((item) => item && typeof item === "object") : [],
+    evidenceGaps: Array.isArray(construction.evidence_gaps) ? construction.evidence_gaps.filter((item) => item && typeof item === "object") : [],
+    counterarguments: Array.isArray(construction.counterarguments) ? construction.counterarguments.filter((item) => item && typeof item === "object") : [],
     experiences: personalExperienceMaterials(db),
     draft,
     /** 正文还空着——「搭个结构」只在这种时候才是主动作。 */
@@ -135,7 +146,14 @@ export function projectCreativeContext(workspace, projectId) {
  */
 export function describeCreativeContext(context) {
   const lines = [];
-  lines.push("# 这篇要回答的真实问题");
+  if (context.notebook) {
+    const n = context.notebook;
+    lines.push("# 当前构思（用户可随时修改；它优先于旧简报。以下不是已核实证据）");
+    lines.push(`想讲什么：${n.thought || "尚未确定"}\n写给谁：${n.audience || "未定"}\n想让读者带走什么：${n.intent || "未定"}\n尚未想明白：${n.questions || "无"}\n待核实依据：${n.evidenceNotes || "无"}`);
+    if (n.alternatives.length) lines.push(`候选讲法（未采纳，不要默认选一条）：${JSON.stringify(n.alternatives)}`);
+    lines.push("构思可以只有疑问或经历。不要为凑齐框架捏造判断、读者需求或来源。证据不足时明确指出。");
+  }
+  lines.push("# 原有问题背景（如有）");
   lines.push(context.problem.statement);
   if (context.problem.origin === "hypothesis") {
     lines.push("⚠️ 这条问题是从长期议程推导的假设，没有任何人真的这样问过。不得写「很多人都在问」「大家普遍」这类关于人数或频率的断言。");
@@ -144,7 +162,7 @@ export function describeCreativeContext(context) {
     for (const source of context.problem.sources.slice(0, 5)) lines.push(`「${clean(source.evidenceText, 600)}」`);
   }
 
-  lines.push("\n# 这篇最后要留下的判断");
+  lines.push("\n# 原有简报判断（仅供参考，当前构思优先）");
   lines.push(context.opportunity.coreClaim);
   lines.push("\n# 大众现在卡在哪");
   lines.push(context.opportunity.cognitiveGap);
@@ -152,7 +170,7 @@ export function describeCreativeContext(context) {
   lines.push(context.opportunity.knowledgeExplanation);
 
   if (context.route) {
-    lines.push("\n# 已经选定的讲法（不要换一种讲法，就沿这条写）");
+    lines.push("\n# 原有讲法（用户当前构思或修改要求优先，可以调整）");
     lines.push(`推进方式：${context.route.storyline}`);
     if (context.route.key_relation) lines.push(`为什么这样组织：${context.route.key_relation}`);
     if (context.route.risk) lines.push(`⚠️ 这条讲法最容易出的问题：${context.route.risk}`);

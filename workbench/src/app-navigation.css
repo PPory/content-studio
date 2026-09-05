@@ -1,0 +1,18 @@
+@media (max-width: 900px) {
+  .app .sidebar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px; }
+  .app .sidebar__head { min-width:0; }
+  .app .sidebar__foot { display:flex; margin:0; padding:0; border:0; grid-column:2; grid-row:1; }
+  .app .sidebar__foot .nav-item { width:auto; padding:8px; }
+  .app .sidebar__foot .nav-item__label { display:none; }
+  .app .sidebar__find { grid-column:1 / -1; width:100%; }
+  .app .nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); width:100%; grid-column:1 / -1; gap:4px; }
+  .app .nav-group,.app .nav-group[data-current="true"] { display:contents; }
+  .app .nav-group > .nav-item,.app .nav-group[data-current="true"] > .nav-item { width:100%; padding:8px 4px; gap:4px; justify-content:center; }
+  .app .nav .nav-item__caret { display:none; }
+  .app .nav .nav-item__label { flex-shrink:0; }
+  .app .nav .subnav { grid-column:1 / -1; grid-row:2; display:flex; flex-wrap:nowrap; gap:4px; overflow-x:auto; margin:0; padding:4px 0; }
+  .app .nav .subnav-item { flex-shrink:0; }
+}
+
+.today-more-state { margin:24px 0; }
+.today-more-state > summary { cursor:pointer; font-size:13px; color:var(--text-2); }

@@ -4,7 +4,6 @@ import { actionableProjects, projectOpenTarget, projectsFrom } from "../lib/cont
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
 import { LaneBoard } from "./today/LaneBoard.jsx";
-import { TodayChart } from "./today/TodayChart.jsx";
 import { RecentPosts } from "./today/RecentPosts.jsx";
 import { IconArrowRight } from "../components/icons.jsx";
 // ⚠️ **从 `components/` 引，不是从 `./Content.jsx`。** 页面 import 另一个页面
@@ -69,11 +68,6 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
           <>
             {/* ⚠️ 这个数按**四条链**报，不再只报内容项目。
                 下面第一块就是四条链，右上角却只说内容那一条，两个数会互相拆台。 */}
-            {lanes ? (
-              <span className="project-total">
-                {lanes.busy ? `${lanes.busy} 条链有事` : "四条链现在都没事"}
-              </span>
-            ) : null}
             {/**
               * ⚠️ **四个页面共用同一颗 `NewContentButton`。**
               * 这儿原来是 `MODES.map(...)` + 一份 `onCreated` 跳转，
@@ -102,7 +96,7 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
         * 「那我现在点哪儿」。而值班台每一格自己就带着数字和下一步，
         * 状态和动作在卡内是并排的。同一批东西显示两遍，是让人读两次再自己合并。
         */}
-      <LaneBoard data={lanes} onGo={onGo} onChanged={loadLanes} />
+
 
       {result ? (
         <section className="today-focus">
@@ -110,7 +104,7 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
             {/* ⚠️ 区块标题**一行就够**。上一版是「眉标 + 21px 大标题」两行，
                 而它上面已经有一排数字卡、下面就是卡片——中间夹两行标题是在
                 替一屏最不需要解释的东西占地方 */}
-            <h2 className="section-label">{actions.length ? "先做这一件" : "今天可以从容一点"}</h2>
+            <h2 className="section-label">{actions.length ? "继续你的内容" : "从一个问题或想法开始"}</h2>
             <button className="today-focus__all" onClick={() => onGo("content")}>
               查看全部内容 <IconArrowRight aria-hidden="true" />
             </button>
@@ -139,7 +133,7 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
                     <ProjectCard key={project.id} project={project} onOpen={() => open(project)} />
                   ))}
                 </div>
-                <TodayChart onGo={onGo} />
+
               </div>
               {/* 超出的收成一句，**点得动**——否则「还有 N 篇」是个说了不算的数字 */}
               {overflow ? (
@@ -166,7 +160,7 @@ export function Today({ status, statusError, statusLoading, onRetryStatus, onGo,
         * 表说「具体是哪几条」，三层各答一问。
         * 清单本身没删，`components/DayPlan.jsx` 还在，旧总览页仍然用它。
         */}
-      <RecentPosts onGo={onGo} />
+      <details className="today-more-state"><summary>查看积累与发布状态</summary><LaneBoard data={lanes} onGo={onGo} onChanged={loadLanes} /><RecentPosts onGo={onGo} /></details>
 
       {status ? (
         <section className="today-background" aria-label="本地工作区状态">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ProjectNotebook } from "../components/ProjectNotebook.jsx";
 import { api, downloadProjectExport } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { projectPhase } from "../lib/content-projects.js";
@@ -196,6 +197,9 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [publishGateOpen, setPublishGateOpen] = useState(false);
   const [startPanelOn, setStartPanelOn] = useState(false);
+  const [notebookDirty, setNotebookDirty] = useState(false);
+  const [notebookVersion, setNotebookVersion] = useState(0);
+  const notebookSave = useRef(null);
   const [form, setForm] = useState(() => releaseForm());
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -306,11 +310,11 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
     if (!registerNavigationGuard) return undefined;
     return registerNavigationGuard((next) => {
       // 这次只管理“新建后尚未确认保存”的项目；已有项目沿用原来的编辑行为。
-      if (!temporary) return false;
+      if (!temporary && !notebookDirty) return false;
       setPendingLeave(next);
       return true;
     });
-  }, [dirty, registerNavigationGuard, temporary]);
+  }, [dirty, registerNavigationGuard, temporary, notebookDirty]);
 
   useEffect(() => {
     if (!temporary) return undefined;
@@ -574,7 +578,8 @@ ${(form.body || "").slice(0, 3000)}`);
     setLeaving(true);
     setError(null);
     try {
-      if (blankTemporary) {
+      if (notebookDirty && !(await notebookSave.current?.())) return;
+      if (blankTemporary && !notebookDirty) {
         await api.removeProject(projectId);
         clearTemporaryProject(projectId);
         setTemporary(false);
@@ -818,6 +823,9 @@ ${(form.body || "").slice(0, 3000)}`);
           </div>
         </section>
       ) : null}
+      <ProjectNotebook key={projectId} projectId={projectId} onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
+        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }} onGo={onGo}
+        onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
       <ContentIntentPanel
         projectId={projectId}
         onGo={onGo}
@@ -835,7 +843,8 @@ ${(form.body || "").slice(0, 3000)}`);
         正文一旦写起来它自己消失，不做成常驻面板去和正文抢屏幕。
       */}
       {["策划中", "写作中"].includes(project.stage) ? (
-        <ProjectStartPanel
+        <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
+          contextVersion={notebookVersion}
           projectId={projectId}
           empty={!String(form.body || "").trim()}
           needsDraft={!masterDraft}
@@ -844,7 +853,7 @@ ${(form.body || "").slice(0, 3000)}`);
           onStartDraft={() => transition("start-writing")}
           onActiveChange={setStartPanelOn}
           onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
-        />
+        /></details>
       ) : null}
 
 

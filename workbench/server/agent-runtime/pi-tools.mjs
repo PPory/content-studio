@@ -1,3 +1,4 @@
+import { getProjectNotebook } from "../domain/project-notebook.mjs";
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import net from "node:net";
@@ -222,7 +223,11 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
 
   tools.push(tool("project_read", "读取当前内容", "读取当前内容项目快照。只读。", Type.Object({}), async () => {
     allowed("project_read");
-    return text(context.project || context.document || {});
+    const project = context.project;
+    if (project?.id && context.workspace?.db?.open && context.workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(project.id)) {
+      return text({ ...project, notebook: getProjectNotebook(context.workspace, project.id), notebookStatus: "探索记录与候选，不是已核实事实或正式正文" });
+    }
+    return text(project || context.document || {});
   }));
 
   tools.push(tool("workbench_projects", "读取工作台内容状态", "实时读取当前 SQLite 工作区的项目阶段、数量、阻塞原因与下一步。只读。", Type.Object({

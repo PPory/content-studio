@@ -406,7 +406,7 @@ try {
   });
 
   await page.getByRole("button", { name: "建立内容项目" }).click();
-  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
+  await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
   const link = workspace.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=?").get(saved.id);
 
   /**
@@ -415,7 +415,8 @@ try {
    * ⚠️ **不自动生成全文。** 一上来给一篇完整的稿，人会本能地去改它，
    * 而不是先想自己要讲什么；而那篇稿是照着「一般文章该怎么写」写的。
    */
-  await page.getByRole("heading", { name: "先搭一个结构，再起稿" }).waitFor();
+  await page.locator(".project-writing-help > summary").click();
+  await page.getByRole("heading", { name: "需要时让 AI 帮忙" }).waitFor();
   const draftBytes = () => workspace.db.prepare("SELECT COALESCE(SUM(length(body_markdown)),0) AS size FROM drafts WHERE project_id=?").get(link.projectId).size;
   const emptyDraft = draftBytes();
   check("建了项目不自动起稿，正文还是空的", outlineCalls === 0 && draftCalls === 0 && emptyDraft === 0);
@@ -423,7 +424,7 @@ try {
     (await page.locator(".project-start__intent").innerText()).includes("AI 正从信息工具进入人的判断链")
     && await page.locator(".project-start input, .project-start textarea").count() === 0);
 
-  await page.getByRole("button", { name: /帮我搭一个结构/ }).click();
+  await page.getByRole("button", { name: "帮我搭结构" }).click();
   await page.locator(".project-start__outline").waitFor();
   check("结构候选每一节都说清作用和用哪条材料",
     (await page.locator(".project-start__outline").innerText()).includes("把最强的反方立起来")
@@ -450,13 +451,13 @@ try {
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "project-start-draft.png"), fullPage: true });
 
   await page.reload();
-  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
+  await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
   check("没采纳就刷新，正文仍然是空的", draftBytes() === emptyDraft);
   check("创作意图默认折叠且正文保持视觉主体", Boolean(link?.projectId)
-    && await page.getByRole("button", { name: "展开" }).count() === 1
+    && await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).count() === 1
     && !(await page.locator(".content-intent").innerText()).includes("认知卸载"));
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-collapsed.png"), fullPage: true });
-  await page.getByRole("button", { name: "展开" }).click();
+  await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).click();
   check("展开后显示支撑知识、表达动作、证据缺口和 AI 思考动作", (await page.locator(".content-intent").innerText()).includes("认知卸载")
     && (await page.locator(".content-intent").innerText()).includes("主导表达动作")
     && (await page.locator(".content-intent").innerText()).includes("当前证据缺口"));
@@ -466,14 +467,14 @@ try {
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-expanded.png"), fullPage: true });
 
   await page.reload();
-  await page.getByRole("heading", { name: "写作前先守住这三件事" }).waitFor();
-  check("重载后项目与内容机会关系仍然存在", (await page.locator(".content-intent").innerText()).includes("AI 正从信息工具进入人的判断链"));
-  await page.getByRole("button", { name: "展开" }).click();
+  await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
+  check("重载后项目与内容机会关系仍然存在", (await page.getByLabel("想讲什么", { exact: true }).inputValue()).includes("AI 正从信息工具进入人的判断链"));
+  await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).click();
   await page.getByRole("button", { name: "回到知识库" }).click();
   await page.getByRole("heading", { name: "认知卸载", exact: true }).waitFor();
   check("项目可以回到支撑 Wiki", page.url().includes(`#/entries/${cognitiveWiki.id}`));
   await page.goto(`http://127.0.0.1:${PORT}/#/project/${link.projectId}`);
-  await page.getByRole("button", { name: "展开" }).click();
+  await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).click();
   await page.getByRole("button", { name: "查看来源" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).waitFor();
   check("项目可以回到用户问题及其来源", page.url().includes(encodeURIComponent(`problem:${problemId}`)));
@@ -979,85 +980,45 @@ try {
     }) });
   });
 
+  const projectCount = workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n;
+  const opportunityCount = workspace.db.prepare("SELECT COUNT(*) AS n FROM content_opportunities").get().n;
   await page.getByRole("button", { name: "发展这条" }).click();
-  await page.getByRole("heading", { name: "候选讲法" }).waitFor();
-  check("发展这条进的是构造工作台，不是那份完整分析", routeCalls === 1
-    && await page.getByRole("heading", { name: "核心判断" }).count() === 0);
-  check("发展这条仍然不写库",
-    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
-
-  const cardsText = await page.locator(".route-card").allInnerTexts();
-  check("给的是两条讲法，不是一个答案", cardsText.length === 2);
-  check("两条的主导动作、入口和判断都不一样",
-    cardsText[0].includes("知识型") && cardsText[1].includes("判断型")
-    && cardsText[0].includes("工具焦虑的根源") && cardsText[1].includes("追新工具不总是错的"));
-  check("候选聚焦判断与风险，材料在选定后展开", cardsText.every((text) => text.includes("需要留意") && text.includes("还需要补充") && !text.includes("材料与来源")));
-  check("重复的那条被去掉了，并且说了出来",
-    (await page.locator(".construction-routes__head").innerText()).includes("1 条和上面重复"));
-  check("没有个人经历时说清经历型这条路线为什么不在",
-    (await page.locator(".construction-note--gate").innerText()).includes("个人经历"));
-
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.waitForFunction(() => innerWidth === 1440);
-  await page.locator(".content-construction").evaluate((el) => el.closest(".main").scrollTo(0, 0));
-  const routeBoxes = await page.locator(".construction-routes__list > .route-card").evaluateAll((els) => els.map((el) => ({ x: el.getBoundingClientRect().x, y: el.getBoundingClientRect().y })));
-  check("桌面讲法并排比较", routeBoxes.length === 2 && Math.abs(routeBoxes[0].y - routeBoxes[1].y) < 2 && routeBoxes[1].x > routeBoxes[0].x, JSON.stringify(routeBoxes));
-  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-construction-desktop.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  check("小屏讲法卡片保持在视口内", await page.locator(".route-card").evaluateAll((els) => els.every((el) => el.getBoundingClientRect().right <= innerWidth)));
-  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-construction-mobile.png"), fullPage: true });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-
-  await page.locator(".route-card").nth(1).getByRole("button", { name: "沿这个继续" }).click();
-  await page.locator(".construction-ask").waitFor();
-  check("选中简报显示材料来源与组织依据", (await page.locator(".route-card").innerText()).includes("CSS 网格布局") && (await page.locator(".route-card").innerText()).includes("为什么这样讲"));
-  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-construction-brief.png"), fullPage: true });
-  check("选定之后只留当前这条，其他退成次级",
-    await page.locator(".route-card").count() === 1
-    && await page.getByRole("button", { name: /另外 1 种讲法/ }).count() === 1);
-
-  await page.getByLabel("跟 Xenho 说").fill("结论太绝对了，收一点");
-  await page.getByRole("button", { name: "继续推" }).click();
-  await page.getByText("在多数任务上，先定清楚任务比先挑工具更省时间。").waitFor();
-  check("一句话就能继续推这条讲法", refineCalls === 1);
-  check("只改被要求的那部分，入口没动",
-    (await page.locator(".route-card").innerText()).includes("追新工具真的错了吗？"));
-  check("改过什么留在页面上", (await page.locator(".construction-history").innerText()).includes("结论太绝对了"));
-  check("继续推同样不写库",
-    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
-
-  // 完整分析没有删，只是退成了次级入口。
-  await page.getByRole("button", { name: "查看完整分析" }).click();
-  await page.getByRole("heading", { name: "核心判断" }).waitFor();
-  check("完整分析仍然可达，只是不再是默认", page.url().endsWith("#/bridge/analyze"));
-  await page.goBack();
-  await page.locator(".construction-ask").waitFor();
-  check("从完整分析回来，这条讲法还在", (await page.locator(".route-card").innerText()).includes("在多数任务上"));
-
-  await page.getByRole("button", { name: "保存为内容机会" }).click();
-  await page.getByRole("heading", { name: "这个方向，已经留下来了。" }).waitFor();
-  const fromDiscovery = workspace.db.prepare(`SELECT p.origin, s.source_id AS sourceId, s.evidence_text AS quote
-    FROM audience_problems p JOIN audience_problem_sources s ON s.problem_id = p.id
-    WHERE p.statement = ?`).get("AI 工具每周都在出新的，我到底该学哪个？");
-  check("确认保存那一刻，用户问题和它的原话才第一次入库",
-    workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery + 1
-    && fromDiscovery.origin === "observed"
-    && fromDiscovery.sourceId === `raw:${rawVoice.id}`
-    && fromDiscovery.quote === discoveryQuote);
-  const savedConstruction = JSON.parse(workspace.db.prepare(`SELECT construction_json AS json FROM content_opportunities
-    ORDER BY created_at DESC LIMIT 1`).get().json);
-  check("选中的那条讲法本身也存了下来，写作时还知道为什么这样排",
-    savedConstruction.route?.storyline?.includes("先承认追新有回报")
-    && Boolean(savedConstruction.route.risk));
-  check("跨来源的要素完整保留，不只有锚点那一页",
-    savedConstruction.elements.some((item) => item.source_id === weakWiki.id)
-    && savedConstruction.elements.some((item) => item.source_id === cognitiveWiki.id));
-  await page.getByRole("button", { name: "查看完整分析" }).click();
-  await page.getByRole("heading", { name: "核心判断", exact: true }).waitFor();
-  await page.evaluate(() => { window.location.hash = "#/bridge/develop"; });
-  await page.getByRole("heading", { name: "这个方向，已经留下来了。" }).waitFor();
-  check("保存后往返分析不丢失保存状态", await page.getByRole("button", { name: "保存为内容机会", exact: true }).count() === 0);
-
+  await page.waitForURL(/#\/project\//);
+  const explorationId = decodeURIComponent(page.url().split("#/project/")[1]);
+  await page.getByRole("region", { name: "这篇的构思" }).waitFor();
+  const notebook = page.getByRole("region", { name: "这篇的构思" });
+  check("发展方向直接进入同一篇可写内容", workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n === projectCount + 1);
+  check("保存探索不生成正式机会或用户问题", workspace.db.prepare("SELECT COUNT(*) AS n FROM content_opportunities").get().n === opportunityCount
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
+  const draftBeforeCompare = workspace.db.prepare("SELECT body_markdown FROM drafts WHERE project_id=?").all(explorationId);
+  await notebook.locator("summary").filter({ hasText: "比较讲法" }).click();
+  await notebook.getByRole("button", { name: "根据这个方向生成讲法候选" }).click();
+  await notebook.getByLabel("讲法 2 内容", { exact: true }).waitFor();
+  check("同篇内比较两种讲法", routeCalls === 1 && await notebook.getByLabel("讲法 1 内容", { exact: true }).count() === 1);
+  await notebook.getByLabel("调整讲法 1", { exact: true }).fill("把判断收窄一点");
+  await notebook.getByRole("button", { name: "调整这条候选", exact: true }).first().click();
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if ((await notebook.getByLabel("讲法 1 内容", { exact: true }).inputValue()).includes("在多数任务上")) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  check("调整候选保留在同一篇内", (await notebook.getByLabel("讲法 1 内容", { exact: true }).inputValue()).includes("在多数任务上"));
+  const selectedThought = await notebook.getByLabel("讲法 2 内容", { exact: true }).inputValue();
+  await notebook.getByRole("button", { name: "用作当前构思" }).nth(1).click();
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const saved = await request(`/api/workspace/projects/${explorationId}/notebook`);
+    if (saved.notebook.thought === selectedThought) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  check("采用讲法已持久化", (await request(`/api/workspace/projects/${explorationId}/notebook`)).notebook.thought === selectedThought);
+  check("改讲法不覆盖正文", JSON.stringify(workspace.db.prepare("SELECT body_markdown FROM drafts WHERE project_id=?").all(explorationId)) === JSON.stringify(draftBeforeCompare));
+  await notebook.getByText("构思已保存", { exact: true }).waitFor();
+  await page.reload();
+  await notebook.getByLabel("想讲什么", { exact: true }).waitFor();
+  check("刷新恢复讲法与构思", (await notebook.getByLabel("想讲什么", { exact: true }).inputValue()) === selectedThought);
+  const keptExploration = JSON.parse(workspace.db.prepare("SELECT notes_json FROM project_notebooks WHERE project_id=?").get(explorationId).notes_json);
+  check("候选的跨来源要素完整保留", keptExploration.discovery.routes.some((item) => item.construction.elements.some((el) => el.source_id === weakWiki.id)));
+  check("探索中的用户原话仍保留引用", keptExploration.discovery.connection.problem.evidence.length > 0);
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "project-exploration-desktop.png"), fullPage: true });
 
   /**
    * 14：实验 AI。
