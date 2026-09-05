@@ -1,19 +1,8 @@
-/**
- * 内容构造工作台：和 Xenho 一起把一条连接讲成一篇内容。
- *
- * ⚠️ **这一页替代的是「AI 一次生成答案、用户阅读答案」。**
- * 上一版点「发展这条」直接进 01/02/03/04 那份完整分析——那份分析是对的，
- * 但它只有一个答案，而写作真正的选择恰恰发生在「这件事可以怎么讲」这一层。
- * 完整分析没有删，退成了「查看完整分析」。
- *
- * ⚠️ **没有关系图，没有白板。** 结构是三段：创作意图（顶）、当前讲法（中）、
- * 跟 Xenho 说（底）。选定一条之后其他两条退到次级区域——
- * 让三个完整方案长期并排，读的人每次都要重新比较一遍。
- */
+/** 比较候选讲法，完善创作简报，并经用户确认保存为内容机会。 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note } from "../components/ui.jsx";
+import { ErrorNote, Note } from "../components/ui.jsx";
 import { peekConstructionSession, peekDiscoveryHandoff, setConstructionSession } from "../lib/discovery-handoff.js";
 import { IconArrowRight, IconSparkles } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -36,85 +25,35 @@ const SOURCE_LABELS = {
   audience_problem: "用户问题", raw: "来源原文",
 };
 
-/** 一条讲法的卡片。选择前是并排的候选，选择后是当前正在推的那一条。 */
-function RouteCard({ route, selected, onSelect, compact = false }) {
+/** 候选只呈现选择依据；选定后展开为可用于创作的简报。 */
+function RouteCard({ route, selected = false, onSelect, compact = false, number, titleRef, disabled = false }) {
+  const elements = route.supportingElements || [];
+  const sourceCount = new Set(elements.filter((item) => item.sourceId).map((item) => `${item.sourceKind}:${item.sourceId}`)).size;
   return (
     <article className="route-card" data-selected={selected ? "true" : undefined} data-compact={compact ? "true" : undefined}>
       <header>
-        <span className="route-card__id">{route.id}</span>
-        <h3>{route.label}</h3>
-        <span className="route-card__action">{ACTION_LABELS[route.dominantAction] || route.dominantAction}</span>
+        <div className="route-card__meta"><span className="route-card__id">{selected ? "创作简报" : `讲法 ${number || route.id}`}</span><span className="route-card__action">{ACTION_LABELS[route.dominantAction] || route.dominantAction}</span></div>
+        <h3 ref={titleRef} tabIndex={selected ? -1 : undefined}>{route.label}</h3>
       </header>
-
-      {compact ? null : (
-        <>
-          <div className="route-field">
-            <span>从哪进入</span>
-            <p>{route.entry}</p>
-          </div>
-          <div className="route-field">
-            <span>怎么推进</span>
-            <p>{route.storyline}</p>
-          </div>
-          <div className="route-field route-field--claim">
-            <span>最后留下什么判断</span>
-            <p>{route.coreClaim}</p>
-          </div>
-
-          {/* 用了哪些东西 —— 每一条都带着它的真实出处，点不开也看得出是哪来的。 */}
-          <div className="route-field">
-            <span>用到的材料（{route.supportingElements.length}）</span>
-            <ul className="route-elements">
-              {route.supportingElements.map((element) => (
-                <li key={element.id}>
-                  <em>{ELEMENT_LABELS[element.type] || element.type}</em>
-                  <strong>{element.label}</strong>
-                  {element.role ? <span>{element.role}</span> : null}
-                  <small>{element.sourceId ? (SOURCE_LABELS[element.sourceKind] || element.sourceKind) : "由这条讲法自己组织"}</small>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {route.keyRelation ? (
-            <div className="route-field">
-              <span>为什么这样组织</span>
-              <p>{route.keyRelation}</p>
-            </div>
-          ) : null}
-
-          {/*
-            ⚠️ 风险和证据缺口是**默认展开**的，不折叠。
-            这两样正是「选哪条」真正要比较的东西；折起来的话，三条讲法读上去
-            就只剩三个漂亮的入口。
-          */}
-          {route.risk ? (
-            <div className="route-field route-field--risk">
-              <span>这条最容易出的问题</span>
-              <p>{route.risk}</p>
-            </div>
-          ) : null}
-          {route.evidenceGaps?.length ? (
-            <div className="route-field">
-              <span>还缺什么</span>
-              <ul className="route-gaps">{route.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul>
-            </div>
-          ) : null}
-        </>
-      )}
-
-      {onSelect ? (
-        <footer>
-          <button type="button" className="btn btn-sm" onClick={onSelect}>
-            {selected ? "正在推这条" : "沿这个继续"}
-            {selected ? null : <IconArrowRight aria-hidden="true" />}
-          </button>
-        </footer>
-      ) : null}
+      <div className="route-field"><span>从这里开篇</span><p>{route.entry}</p></div>
+      <div className="route-field route-field--claim"><span>让读者带走的判断</span><p>{route.coreClaim}</p></div>
+      {selected ? <>
+        <div className="route-field"><span>文章怎样展开</span><p>{route.storyline}</p></div>
+        {route.keyRelation ? <div className="route-field"><span>为什么这样讲</span><p>{route.keyRelation}</p></div> : null}
+      </> : null}
+      {route.risk ? <div className="route-field route-field--risk"><span>需要留意</span><p>{route.risk}</p></div> : null}
+      {route.evidenceGaps?.length ? <div className="route-field route-field--gaps"><span>还需要补充</span><ul className="route-gaps">{route.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul></div> : null}
+      {selected ? <section className="route-sources" aria-label="材料与来源">
+        <div className="route-sources__heading"><h4>材料与来源</h4><span>{sourceCount} 个关联来源</span></div>
+        {elements.length ? <ul className="route-elements">{elements.map((element) => <li key={element.id}>
+          <em>{ELEMENT_LABELS[element.type] || element.type}</em>
+          <div><strong>{element.label}</strong>{element.role ? <p>{element.role}</p> : null}<small>{element.sourceId ? `来源：${SOURCE_LABELS[element.sourceKind] || element.sourceKind}` : "AI 组织的表达，不是来源证据"}</small></div>
+        </li>)}</ul> : <p className="construction-note">还没有可引用的材料，需要在写作前补充依据。</p>}
+      </section> : null}
+      {onSelect ? <footer><span>{sourceCount} 个关联来源</span><button type="button" className="btn btn-sm" disabled={disabled} onClick={onSelect}>沿这个继续<IconArrowRight aria-hidden="true" /></button></footer> : null}
     </article>
   );
 }
-
 export function ContentConstruction({ onGo }) {
   /**
    * ⚠️ 用 `peek` 不用 `take`：这一页会因为状态更新重渲染好几次，
@@ -151,9 +90,18 @@ export function ContentConstruction({ onGo }) {
   const [instruction, setInstruction] = useState("");
   const [history, setHistory] = useState(() => restored?.history || []);
   const [saveBusy, setSaveBusy] = useState(false);
-  const [saved, setSaved] = useState(null);
+  const [saved, setSaved] = useState(() => restored?.saved || null);
   const [showOthers, setShowOthers] = useState(false);
   const askRef = useRef(null);
+  const briefHeadingRef = useRef(null);
+  const focusBriefOnSelection = useRef(false);
+
+  useEffect(() => {
+    if (!selectedId || !focusBriefOnSelection.current) return;
+    focusBriefOnSelection.current = false;
+    briefHeadingRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    briefHeadingRef.current?.focus({ preventScroll: true });
+  }, [selectedId]);
 
   const selected = useMemo(() => routes.find((route) => route.id === selectedId) || null, [routes, selectedId]);
   const others = useMemo(() => routes.filter((route) => route.id !== selectedId), [routes, selectedId]);
@@ -197,7 +145,7 @@ export function ContentConstruction({ onGo }) {
 
   const refine = useCallback(async () => {
     const ask = instruction.trim();
-    if (!ask || !selected || refining) return;
+    if (!ask || !selected || refining || saveBusy) return;
     setRefining(true);
     setError(null);
     try {
@@ -212,10 +160,10 @@ export function ContentConstruction({ onGo }) {
       setRefining(false);
       askRef.current?.focus();
     }
-  }, [instruction, selected, refining, connection, routesAgendaId, freshness]);
+  }, [instruction, selected, refining, saveBusy, connection, routesAgendaId, freshness]);
 
   const save = useCallback(async () => {
-    if (!selected || !connection || saveBusy) return;
+    if (!selected || !connection || saveBusy || refining) return;
     setSaveBusy(true);
     setError(null);
     try {
@@ -248,7 +196,7 @@ export function ContentConstruction({ onGo }) {
     } finally {
       setSaveBusy(false);
     }
-  }, [selected, connection, routesAgendaId, freshness, saveBusy]);
+  }, [selected, connection, routesAgendaId, freshness, saveBusy, refining]);
 
   /**
    * 把当前状态写回会话。⚠️ 每次变化都写，而不是离开时写——
@@ -256,194 +204,70 @@ export function ContentConstruction({ onGo }) {
    */
   useEffect(() => {
     if (!connection) return;
-    setConstructionSession({ routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId });
-  }, [connection, routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId]);
+    setConstructionSession({ routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId, saved });
+  }, [connection, routes, note, droppedAsSame, dropped, experienceAvailable, selectedId, freshness, history, agendaId, routesAgendaId, saved]);
 
   if (!connection) {
-    return (
-      <div className="view-body content-bridge content-construction">
-        <div className="bridge-bar">
-          <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
-        </div>
-        <Note title="这条连接已经不在手边了">
-          构造中的讲法只活在这一次操作里，刷新之后就没了——它还没有被保存，所以也没有留下任何东西。
-          回内容首页重新挑一条继续。
-        </Note>
-      </div>
-    );
+    return <div className="view-body content-bridge content-construction">
+      <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+      <Note title="从一个内容方向开始">这份未保存的简报已不在当前会话中。回到内容机会，选择一个方向继续。</Note>
+      <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "")}>寻找内容方向</button>
+    </div>;
   }
 
   const hypothesis = connection.problem.origin === "hypothesis";
+  const chooseRoute = (id) => { if (refining || saveBusy) return; focusBriefOnSelection.current = true; setSelectedId(id); setShowOthers(false); setInstruction(""); };
 
   return (
     <div className="view-body content-bridge content-construction">
-      <div className="bridge-bar bridge-bar--sticky">
-        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
-        <div className="bridge-bar__title">
-          <h2><span>{connection.knowledgeAnchors[0]?.title}</span><em aria-hidden="true">×</em><span>{connection.problem.statement}</span></h2>
-          <span className="bridge-bar__pending">{saved ? "已保存" : "还没保存"}</span>
-        </div>
-        <div className="bridge-bar__actions">
-          {/*
-            旧的完整分析没有删，只是不再是默认。
-            ⚠️ **这里不要再 `setDiscoveryHandoff` 一次**：那个函数会顺手清掉构造会话
-            （换连接时本该如此），于是从完整分析回来，选好的讲法和推过的两轮全没了。
-            连接本来就还在交接位上，两边都只是读它。
-          */}
-          <button type="button" className="btn btn-sm" onClick={() => onGo?.("bridge", "analyze")}>查看完整分析</button>
-          {selected && !saved ? (
-            <button type="button" className="btn btn-primary btn-sm" disabled={saveBusy} onClick={save}>
-              {saveBusy ? "正在保存…" : "保存为内容机会"}
-            </button>
-          ) : null}
-          {saved ? (
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => onGo?.("bridge", `opportunity:${saved.id}`)}>打开这条内容机会</button>
-          ) : null}
-        </div>
-      </div>
+      <nav className="construction-nav" aria-label="当前位置">
+        <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+        <span>{selected ? "完善创作简报" : "选择讲法"}</span>
+        <button type="button" className="btn btn-sm" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "analyze")}>查看完整分析</button>
+      </nav>
 
-      {/* 顶：创作意图。轻量三行，不占屏。 */}
+      <header className="construction-heading">
+        {saved ? <div className="construction-heading__eyebrow">已保存到内容机会</div> : null}
+        <h1>{selected ? "把这个方向，变成一篇内容。" : "同一个问题，可以怎样讲？"}</h1>
+        <p>{selected ? "读一遍简报，调整你不认同的地方。准备好后，保存并开始创作。" : "比较开篇、核心判断和证据缺口，选出你最想写的一个。"}</p>
+      </header>
+
       <section className="construction-intent" aria-label="创作意图">
-        <div>
-          <span>{hypothesis ? "你认为可能有人在困惑" : "有人在问"}</span>
-          <strong>{connection.problem.statement}</strong>
-          <small data-origin={connection.problem.origin}>{connection.problem.evidenceLabel}</small>
-        </div>
-        <div>
-          <span>核心连接</span>
-          <strong>{connection.fitReason}</strong>
-        </div>
-        {agendas.length ? (
-          <div className="construction-intent__agenda">
-            <label htmlFor="construction-agenda">长期议程</label>
-            <select
-              id="construction-agenda"
-              value={agendaId}
-              disabled={busy || refining}
-              onChange={(event) => { setAgendaId(event.target.value); setRoutes([]); }}
-            >
-              <option value="">不关联议程</option>
-              {agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}
-            </select>
-          </div>
-        ) : null}
+        <div className="construction-intent__question"><span>{hypothesis ? "待验证的读者困惑" : "要回应的读者问题"}</span><strong>{connection.problem.statement}</strong><small data-origin={connection.problem.origin}>{connection.problem.evidenceLabel}</small></div>
+        <div className="construction-intent__knowledge"><span>从你的知识出发</span><strong>{connection.knowledgeAnchors[0]?.title}</strong><p>{connection.fitReason}</p></div>
+        {agendas.length ? <div className="construction-intent__agenda"><label htmlFor="construction-agenda">关联长期议程</label><select id="construction-agenda" value={agendaId} disabled={busy || refining || saveBusy || Boolean(saved)} onChange={(event) => { setAgendaId(event.target.value); setRoutes([]); setError(null); setSelectedId(""); }}><option value="">不关联议程</option>{agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}</select></div> : null}
       </section>
 
-      <ErrorNote error={error} what="内容构造" onRetry={routes.length ? undefined : () => propose(agendaId)} />
+      <ErrorNote error={error} what="创作简报" onRetry={routes.length ? undefined : () => propose(agendaId)} />
+      {busy || !agendasReady ? <div className="construction-loading" role="status"><IconSparkles aria-hidden="true" /><h3>正在寻找不同的讲法</h3><p>结合这个问题和工作区里的材料，整理可以比较的候选。</p></div> : null}
 
-      {busy ? (
-        <div className="bridge-pending" aria-live="polite">
-          <p>正在从整个工作区里找可用的材料，凑出几种不同的讲法…</p>
-          <small>通常二十秒上下。给出来的是候选，选了才继续，保存了才入库。</small>
-        </div>
-      ) : null}
-
-      {!busy && routes.length ? (
-        <>
-          {!selected ? (
-            <section className="construction-routes" aria-label="可选的讲法">
-              <header className="construction-routes__head">
-                <h3>Xenho 找到 {routes.length} 种讲法</h3>
-                <small>
-                  {routes.length === 1 ? "这条连接目前只撑得起一种讲法。" : "它们的入口、用到的材料和最后的判断都不一样。"}
-                  {droppedAsSame ? ` 另有 ${droppedAsSame} 条和上面重复，已经去掉。` : ""}
-                </small>
-              </header>
-              {note ? <p className="construction-note">{note}</p> : null}
-              {!experienceAvailable ? (
-                <p className="construction-note construction-note--gate">
-                  工作区里还没有个人经历，所以这次没有经历型的讲法。如果你有一段相关的真实经历，
-                  先把它作为「个人经历」素材存进来，再回到这条连接。
-                </p>
-              ) : null}
-              <div className="construction-routes__list">
-                {routes.map((route) => (
-                  <RouteCard key={route.id} route={route} onSelect={() => setSelectedId(route.id)} />
-                ))}
+      {!busy && routes.length ? <>
+        {!selected ? <section className="construction-routes" aria-label="可选的讲法">
+          <header className="construction-routes__head"><div><h2>选一个你想写的角度</h2><p>{routes.length} 种讲法 · 选定后展开完整简报{droppedAsSame ? ` · ${droppedAsSame} 条和上面重复，已合并` : ""}</p></div></header>
+          <div className="construction-routes__list">{routes.map((route, index) => <RouteCard key={route.id} route={route} number={String(index + 1).padStart(2, "0")} onSelect={() => chooseRoute(route.id)} />)}</div>
+          {note ? <p className="construction-note construction-note--after">{note}</p> : null}
+          {!experienceAvailable ? <p className="construction-note construction-note--gate">尚无可用的个人经历素材，本次只提供其他讲法。要以自己的经历开篇，请先补充真实的个人经历。</p> : null}
+        </section> : <section className="construction-current" aria-label="正在推的讲法">
+          <div className="construction-document">
+            <RouteCard route={selected} selected titleRef={briefHeadingRef} />
+            {others.length && !saved ? <div className="construction-others"><button type="button" aria-expanded={showOthers} disabled={refining || saveBusy} onClick={() => setShowOthers((value) => !value)}>{showOthers ? "收起另外的讲法" : `另外 ${others.length} 种讲法`}</button>{showOthers ? <div className="construction-others__list">{others.map((route) => <RouteCard key={route.id} route={route} compact disabled={refining || saveBusy} onSelect={() => chooseRoute(route.id)} />)}</div> : null}</div> : null}
+          </div>
+          <aside className="construction-workspace" aria-label="修改与保存简报">
+            {saved ? <div className="construction-saved" role="status"><span>已保存</span><h2>这个方向，已经留下来了。</h2><p>简报、材料和来源已一起保存。接下来可以建立内容项目开始写作。</p><button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", `opportunity:${saved.id}`)}>打开这条内容机会<IconArrowRight aria-hidden="true" /></button></div> : <>
+              <div className="construction-ask"><div className="construction-ask__heading"><IconSparkles aria-hidden="true" /><label htmlFor="construction-ask">跟 Xenho 说</label></div><p>哪里还不像你想写的？</p>
+                <textarea id="construction-ask" ref={askRef} rows={5} value={instruction} disabled={refining || saveBusy} onChange={(event) => setInstruction(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); refine(); } }} placeholder="例如：结论太绝对了，保留判断，但说清它适用的范围。" />
+                <div className="construction-ask__prompts" aria-label="常见修改方向">{["收窄结论", "补充案例", "调整开篇"].map((label, index) => <button type="button" key={label} disabled={refining || saveBusy} onClick={() => { setInstruction(["结论太绝对了，请收窄判断并说明适用范围。", "请寻找工作区中有真实来源的案例，增强这条讲法的依据。", "请从读者遇到的具体场景开篇，再引出核心判断。"][index]); askRef.current?.focus(); }}>{label}</button>)}</div>
+                <div className="construction-ask__actions"><small>Ctrl / ⌘ + Enter</small><button type="button" className="btn btn-sm" disabled={!instruction.trim() || refining || saveBusy} onClick={refine}>{refining ? "正在改…" : "继续推"}<IconArrowRight aria-hidden="true" /></button></div>
+                {refining ? <p className="construction-note" role="status">正在更新简报，请稍候。</p> : null}
               </div>
-            </section>
-          ) : (
-            <section className="construction-current" aria-label="正在推的讲法">
-              <RouteCard route={selected} selected />
+              {history.length ? <details className="construction-revisions" open><summary>已调整 {history.length} 次</summary><ol className="construction-history" aria-label="这条讲法被怎么调整过">{history.map((item, index) => <li key={`${item.ask}:${index}`}><q>{item.ask}</q>{item.note ? <span>{item.note}</span> : null}</li>)}</ol></details> : null}
+              <div className="construction-save"><h3>准备好继续了吗？</h3><p>保存这份简报和关联材料，作为接下来创作的起点。</p><button type="button" className="btn btn-primary" disabled={saveBusy || refining} onClick={save}>{saveBusy ? "正在保存…" : "保存为内容机会"}<IconArrowRight aria-hidden="true" /></button><button type="button" className="construction-change" disabled={refining || saveBusy} onClick={() => setSelectedId("")}>返回比较，换一条讲法</button></div>
+            </>}
+          </aside>
+        </section>}
+      </> : null}
 
-              {/* 其他讲法退到次级：想比较时点开，不长期占屏。 */}
-              {others.length ? (
-                <div className="construction-others">
-                  <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers((value) => !value)}>
-                    {showOthers ? "收起另外的讲法" : `另外 ${others.length} 种讲法`}
-                  </button>
-                  {showOthers ? (
-                    <div className="construction-others__list">
-                      {others.map((route) => (
-                        <RouteCard key={route.id} route={route} compact onSelect={() => { setSelectedId(route.id); setShowOthers(false); }} />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {history.length ? (
-                <ol className="construction-history" aria-label="这条讲法被怎么调整过">
-                  {history.map((item, index) => (
-                    <li key={`${item.ask}:${index}`}>
-                      <q>{item.ask}</q>
-                      {item.note ? <span>{item.note}</span> : null}
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
-
-              {saved ? (
-                <Note tone="success" title="内容机会已保存">
-                  用户问题、这条讲法用到的材料和它们的组织方式都一起存下来了。接着可以建立内容项目开始写。
-                </Note>
-              ) : (
-                <div className="construction-ask">
-                  <label htmlFor="construction-ask">跟 Xenho 说</label>
-                  <textarea
-                    id="construction-ask"
-                    ref={askRef}
-                    rows={2}
-                    value={instruction}
-                    disabled={refining}
-                    onChange={(event) => setInstruction(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) refine(); }}
-                    placeholder="例如：结论太绝对了，收一点｜有没有我以前记过的案例能支撑它｜把最强的反方放到前面｜这条太像知识科普了，变成判断型"
-                  />
-                  <div className="construction-ask__actions">
-                    <button type="button" className="btn btn-sm" disabled={!instruction.trim() || refining} onClick={refine}>
-                      {refining ? "正在改…" : "继续推"}
-                    </button>
-                    <button type="button" className="btn btn-sm" disabled={refining} onClick={() => setSelectedId("")}>换一条讲法</button>
-                  </div>
-                  {refining ? <p className="construction-note" aria-live="polite">只改你说的那部分，其余保持原样。</p> : null}
-                </div>
-              )}
-            </section>
-          )}
-        </>
-      ) : null}
-
-      {!busy && !routes.length && !error ? (
-        <div className="bridge-blank">
-          <h3>这次没凑出站得住的讲法</h3>
-          {/*
-            ⚠️ **必须说出为什么。** 模型明明返回了东西却一条都没剩下，
-            如果界面只说「暂时没有」，这故障就没法查也没法判断该不该重试。
-          */}
-          {dropped.length ? (
-            <ul className="construction-dropped">
-              {dropped.map((item, index) => <li key={`${item.id}:${index}`}>讲法 {item.id}：{item.reason}</li>)}
-            </ul>
-          ) : (
-            <p>这条连接暂时凑不出站得住的构造路线。可以换个议程再试，或者回去看看完整分析。</p>
-          )}
-          <button type="button" className="btn btn-primary" onClick={() => propose(agendaId)}>
-            <IconSparkles aria-hidden="true" />
-            再试一次
-          </button>
-        </div>
-      ) : null}
+      {agendasReady && !busy && !routes.length && !error ? <div className="bridge-blank"><h3>还需要一些材料，才能讲得扎实</h3>{dropped.length ? <ul className="construction-dropped">{dropped.map((item, index) => <li key={`${item.id}:${index}`}>{item.reason}</li>)}</ul> : <p>现有材料还不足以形成讲法。可以换一个长期议程，或查看完整分析里的证据缺口。</p>}<button type="button" className="btn btn-primary" onClick={() => propose(agendaId)}><IconSparkles aria-hidden="true" />再试一次</button></div> : null}
     </div>
   );
 }

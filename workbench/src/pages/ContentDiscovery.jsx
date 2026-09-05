@@ -1,150 +1,58 @@
-/**
- * 内容首页：最近有什么值得讲。
- *
- * ⚠️ **这一页不是两栏选择器。** 上一版打开「内容机会」，第一件事是左边选 Wiki、
- * 右边选用户问题——那是在操作数据库，而且它默认你已经知道该连哪两个。
- * 真实的顺序是反过来的：先让系统读一遍我的知识和现实里听到的话，
- * 把值得判断的少数几件事摆出来，我再决定。
- *
- * ⚠️ **没有一排筛选器。** 第一屏只回答一个问题：Xenho 最近发现了什么值得我判断？
- * 手动挑两个东西连起来仍然可以，但那是逃生口，不是主路径。
- *
- * ⚠️ **不自动跑模型。** 打开页面显示的是上次的结果和它的时间；
- * 数据真的变了才提示可以重新扫描。每进一次页面烧一次模型，既贵又让人不敢进来。
- */
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note, relTime } from "../components/ui.jsx";
+import { ErrorNote, Loading, SearchBox, relTime } from "../components/ui.jsx";
 import { setDiscoveryHandoff, takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
 import "./content-discovery.css";
 
 const FIT_LABELS = { strong: "很自然", medium: "值得继续", weak: "比较牵强" };
-
 function dateLabel(value) {
-  if (!value) return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
+  return value && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date) : "";
 }
 
-/** 候选保持可比较的卡宽；一次展开一条，小屏在原列内阅读。 */
-function ConnectionCard({ connection, onDevelop, busy, more, onToggleMore }) {
-  const [quotesOpen, setQuotesOpen] = useState(false);
-  const quotes = connection.problem.evidence || [];
+function OpportunityBrief({ connection, onDevelop, onGo, busy, onBack, mobileDetail }) {
+  const headingRef = useRef(null);
+  useEffect(() => {
+    if (mobileDetail && window.matchMedia("(max-width: 1000px)").matches) {
+      headingRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+      headingRef.current?.focus({ preventScroll: true });
+    }
+  }, [mobileDetail]);
   const anchors = connection.knowledgeAnchors || [];
-
   return (
-    <article className="discovery-card" data-fit={connection.fit} data-open={more ? "" : undefined}>
-      <div className="discovery-card__row">
-        {/* 评级在最左边：一列扫下来，「很自然」和「比较牵强」的分布一眼看得出 */}
-        <span className="discovery-card__fit" data-fit={connection.fit}>
-          {FIT_LABELS[connection.fit] || connection.fit}
-        </span>
+    <article className="opportunity-brief" aria-label="方向详情">
+      <button className="opportunity-mobile-back" type="button" onClick={onBack}>← 返回方向列表</button>
+      <header className="opportunity-brief__head">
+        <span className="opportunity-eyebrow">这一篇可以讲</span>
+        <h3 ref={headingRef} tabIndex={-1}>{connection.coreClaim}</h3>
+        <p className="opportunity-brief__reason"><span>{FIT_LABELS[connection.fit] || connection.fit}</span>{connection.fitReason}</p>
+      </header>
+      <footer className="opportunity-brief__footer"><div><strong>想沿着这个方向写？</strong><small>下一步比较讲法，还不会创建文章。</small></div><button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDevelop(connection)}>发展这条<IconArrowRight aria-hidden="true" /></button></footer>
+      <section className="opportunity-brief__section">
+        <h4>为谁解决什么问题</h4>
+        <p className="discovery-card__q">{connection.problem.statement}</p>
+        <small className="opportunity-evidence" data-origin={connection.problem.origin}>{connection.problem.evidenceLabel}</small>
+        {connection.problem.evidence?.length ? (
+          <details className="opportunity-quotes"><summary>看原话</summary>
+            <ul className="discovery-quotes">{connection.problem.evidence.map((item, index) => (
+              <li key={`${item.rawSourceId}:${index}`}><q>{item.quote}</q><small>{item.kindLabel}{item.sourceName ? ` · ${item.sourceName}` : ""}{item.observedAt ? ` · ${dateLabel(item.observedAt)}` : ""}</small></li>
+            ))}</ul>
+          </details>
+        ) : null}
+      </section>
+      <section className="opportunity-brief__section">
+        <h4>你有什么独特的解释</h4>
+        <p>{connection.knowledgeExplanation}</p>
+        <ul className="opportunity-sources">{anchors.map((anchor) => (
+          <li key={anchor.wikiPageId}><button type="button" onClick={() => onGo("entries", anchor.wikiPageId)}>{anchor.title}<IconArrowRight aria-hidden="true" /></button>{anchor.reason ? <p>{anchor.reason}</p> : null}</li>
+        ))}</ul>
+      </section>
+      <section className="opportunity-brief__section"><h4>读者能带走什么新认识</h4><p>{connection.cognitiveGap}</p></section>
+      {connection.evidenceGaps?.length ? <section className="opportunity-brief__section opportunity-brief__gaps"><h4>动笔前还需要补充</h4><ul>{connection.evidenceGaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></section> : null}
+      {connection.agendaSuggestion?.reason ? <p className="opportunity-brief__agenda">{connection.agendaSuggestion.reason}</p> : null}
 
-        <div className="discovery-card__body">
-          {/* 判断是这一条的产物，也是几条之间差别最大的地方，所以它当标题 */}
-          <h3 className="discovery-card__claim">{connection.coreClaim}</h3>
-
-          {/* 问句和证据成色各占一行：一个是「他们问什么」，一个是「这话有多硬」，
-              硬挤在一行时中间那个分隔点会被换行甩到句尾，孤零零挂着 */}
-          <p className="discovery-card__q">{connection.problem.statement}</p>
-          <p className="discovery-card__from" data-origin={connection.problem.origin}>
-            {/**
-              * ⚠️ **只用 `evidenceLabel`，别在前面再加一句自己的话。**
-              * 服务端那句已经把话说完了，而且 `content-discovery-ai.mjs` 明写着
-              * 「真实性文案只有一处真源」。上一版在它前面还加了「你推测有人在困惑」，
-              * 屏幕上就成了同一个免责声明连说两遍。
-              */}
-            {connection.problem.evidenceLabel}
-            {quotes.length ? (
-              <button type="button" aria-expanded={quotesOpen} onClick={() => setQuotesOpen((value) => !value)}>
-                {quotesOpen ? "收起原话" : "看原话"}
-              </button>
-            ) : null}
-          </p>
-
-          {quotesOpen && quotes.length ? (
-            <ul className="discovery-quotes">
-              {quotes.map((item, index) => (
-                <li key={`${item.rawSourceId}:${index}`}>
-                  <q>{item.quote}</q>
-                  <small>{item.kindLabel}{item.sourceName ? ` · ${item.sourceName}` : ""}{item.observedAt ? ` · ${dateLabel(item.observedAt)}` : ""}</small>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-
-        {/**
-          * ⚠️ **锚点是自己一列，不挤在正文里。**
-          * 四条候选并排时，「我这几条都在动用哪些知识」是横着扫才看得出来的事
-          *（这一屏三条都压在《写作障碍》上）；混在正文段落里就只能一条条读。
-          * 和素材页那张表把元信息拉成右侧几列是同一条：**能对齐成列的东西就别塞进正文。**
-          */}
-        <p className="discovery-card__anchors">
-          {anchors.map((anchor) => (
-            <span key={anchor.wikiPageId} className="discovery-anchor">{anchor.title}</span>
-          ))}
-        </p>
-
-        <div className="discovery-card__acts">
-          <button type="button" className="discovery-card__more-toggle" aria-expanded={more} onClick={onToggleMore}>
-            {more ? "收起" : "看完整解释"}
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDevelop(connection)}>
-            发展这条
-            <IconArrowRight aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      {/*
-        ⚠️ **理由默认全部收起。**
-        折叠那一行要回答的是「在这几条里挑哪一条」，那只需要判断、问句和凭据。
-        为什么值得连、知识怎么解释、大众卡在哪——都是**倾向某一条之后**才读的东西，
-        默认铺开会让四条各自变成一屏，而那正是这一版要治的毛病。
-      */}
-      {more ? (
-        <div className="discovery-card__more">
-          <div>
-            <span className="discovery-card__label">为什么值得连接</span>
-            <p>{connection.fitReason}</p>
-          </div>
-          {anchors.some((anchor) => anchor.reason) ? (
-            <div>
-              <span className="discovery-card__label">每条知识各解释了什么</span>
-              <ul className="discovery-anchor-why">
-                {anchors.filter((anchor) => anchor.reason).map((anchor) => (
-                  <li key={anchor.wikiPageId}><strong>{anchor.title}</strong><span>{anchor.reason}</span></li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <div>
-            <span className="discovery-card__label">这条知识怎么解释它</span>
-            <p>{connection.knowledgeExplanation}</p>
-          </div>
-          <div>
-            <span className="discovery-card__label">大众现在卡在哪</span>
-            <p>{connection.cognitiveGap}</p>
-          </div>
-          {connection.evidenceGaps?.length ? (
-            <div>
-              <span className="discovery-card__label">现在还缺</span>
-              <ul>{connection.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul>
-            </div>
-          ) : null}
-          {connection.agendaSuggestion?.reason ? (
-            <div>
-              <span className="discovery-card__label">和长期议程的关系</span>
-              <p>{connection.agendaSuggestion.reason}</p>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </article>
   );
 }
@@ -156,22 +64,13 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
   const [scanError, setScanError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  /** 复盘学到的东西带过来的「这次优先看哪儿」。取完即清：它只影响这一次扫描。 */
   const [focus, setFocus] = useState(() => takeDiscoveryFocus());
-  /** 最近在助手里聊过什么。⚠️ 只含你自己打的字：AI 的回答不是事实来源。 */
   const [research, setResearch] = useState([]);
   const [researchOpen, setResearchOpen] = useState(false);
-  /**
-   * ⚠️ **一次只展开一张。**
-   * 展开的卡横跨两列，多张同时展开就会在网格里留下多个空洞；
-   * 而且这一步是「在几条里挑一条」，同时摊开三份细读本来也不是这一屏的用法。
-   * 和 Wiki 审阅队列（`IngestReview` 的 `openId`）同一套。
-   */
-  const [openConnection, setOpenConnection] = useState("");
-  /**
-   * 长期议程：现在够不够看出一条。
-   * ⚠️ 不够就说还差多少，并且**不跑模型**——那种情况下它只会把现有几条重新包装一遍。
-   */
+  const [openConnection, setOpenConnection] = useState(0);
+  const [mobileDetail, setMobileDetail] = useState(false);
+  const [savedQuery, setSavedQuery] = useState("");
+  const [savedError, setSavedError] = useState(null);
   const [agendaSignals, setAgendaSignals] = useState(null);
   const [agendaCandidates, setAgendaCandidates] = useState(null);
   const [agendaBusy, setAgendaBusy] = useState(false);
@@ -179,21 +78,12 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([
-      api.contentDiscovery(),
-      api.contentOpportunities().catch(() => ({ opportunities: [] })),
-      api.researchSignals().catch(() => ({ signals: [] })),
-      api.agendaSignals().catch(() => null),
-    ])
-      .then(([discovery, saved, signals, agenda]) => {
-        setData(discovery);
-        setOpportunities(saved.opportunities || []);
-        setResearch(signals.signals || []);
-        setAgendaSignals(agenda);
-        setError(null);
-      })
-      .catch(setError)
-      .finally(() => setLoading(false));
+    Promise.allSettled([
+      api.contentDiscovery().then((result) => { setData(result); setError(null); }).catch(setError),
+      api.contentOpportunities().then((result) => { setOpportunities(result.opportunities || []); setSavedError(null); }).catch(setSavedError),
+      api.researchSignals().then((result) => setResearch(result.signals || [])),
+      api.agendaSignals().then(setAgendaSignals),
+    ]).finally(() => setLoading(false));
   }, []);
 
   useEffect(load, [load]);
@@ -204,11 +94,9 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
     try {
       const result = await api.scanContentDiscovery({ force, focus: focusOverride || focus || undefined });
       setData((current) => ({ ...(current || {}), ...result }));
+      setOpenConnection(0);
+      setMobileDetail(false);
     } catch (failure) {
-      /**
-       * ⚠️ **模型失败不清空上次的结果。** 这一页的价值在那几条连接上，
-       * 因为一次调用超时就把它们抹掉，是把用户的损失放大了一倍。
-       */
       setScanError(failure);
     } finally {
       setScanning(false);
@@ -235,172 +123,51 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
     return parts.join(" · ");
   }, [read]);
 
+  const activeConnection = connections[openConnection] || connections[0];
+  const savedItems = opportunities.filter((item) => `${item.coreClaim} ${item.wikiTitle} ${item.audienceProblemStatement}`.toLowerCase().includes(savedQuery.toLowerCase()));
+
   return (
-    <div className="view-body content-bridge content-discovery">
-      <div className="bridge-bar">
-        <div className="bridge-bar__title">
-          <h2>最近有什么值得讲</h2>
-          {/**
-            * ⚠️ **「有更新」并进这一行，不再单独一条横带。**
-            * 上一版页头有一颗黑色的「重新扫描」，正下方 60px 又是一条
-            * 「知识、用户问题或议程有更新。要不要重新看一遍？[重新扫描]」——
-            * **同一个动作，两颗按钮，隔着一行**。
-            * 提示里真正多说的那件事是**变了什么**，那属于这行说明；
-            * 按钮只需要一颗，而且永远在同一个位置。
-            */}
-          {scan_ ? (
-            <small>
-              {relTime(scan_.scannedAt)}扫描{summary ? ` · 读了 ${summary}` : ""}
-              {stale && data?.staleReason ? <b className="bridge-bar__stale">{data.staleReason}</b> : null}
-            </small>
-          ) : null}
-        </div>
-        <div className="bridge-bar__actions">
-          <button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}>
-            <IconMessageQuestion aria-hidden="true" stroke={1.7} />
-            真实用户声音
-          </button>
-          <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索</button>
-          {scan_ ? (
-            <button type="button" className="btn btn-primary btn-sm" disabled={scanning} onClick={() => scan({ force: true })}>
-              <IconRefresh aria-hidden="true" className={scanning ? "spinning" : ""} />
-              {scanning ? "正在扫描…" : "重新扫描"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <ErrorNote error={error} what="读取内容发现" onRetry={load} />
+    <div className="view-body content-bridge content-discovery opportunity-home">
+      <header className="opportunity-header">
+        <div><span className="opportunity-eyebrow">从积累，到表达</span><h2>最近有什么值得讲</h2><p>找到一个你有话可说、也值得读者花时间的方向。</p></div>
+        <div className="opportunity-header__actions">{opportunities.length ? <button type="button" className="btn" onClick={() => { document.getElementById("opportunity-saved")?.scrollIntoView(); document.getElementById("opportunity-saved")?.focus({ preventScroll: true }); }}>继续进行中 · {opportunities.length}</button> : null}<button type="button" className="btn" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button></div>
+      </header>
+      <ErrorNote error={error} what="读取内容机会" onRetry={load} />
       {loading && !data ? <Loading rows={3} /> : null}
-
-      {/*
-        ⚠️ 带着复盘学到的东西过来时要说出来。
-        不说的话，用户会奇怪这次扫描的结果为什么偏向某个方向。
-      */}
-      {focus && !scanning ? (
-        <div className="discovery-stale" role="status">
-          <span>这次会按你上一篇复盘学到的东西优先看：{focus}</span>
-        </div>
-      ) : null}
-
-      {scanError ? (
-        <div className="discovery-failed">
-          <ErrorNote error={scanError} what="这次扫描" onRetry={() => scan({ force: true })} />
-          <p>
-            {connections.length
-              ? "下面还是上一次的结果，你的知识、原话和已有内容机会都没有被改动。"
-              : "你的知识、原话和已有内容机会都没有被改动。也可以先手动探索。"}
-            <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索</button>
-          </p>
-        </div>
-      ) : null}
-
-      {scanning ? (
-        <div className="bridge-pending" aria-live="polite">
-          <p>正在读你的知识和最近听到的原话…</p>
-          <small>通常十几秒。找出来的是候选，你判断之后才会继续。</small>
-        </div>
-      ) : null}
-
-      {data && neverScanned && !scanning ? (
-        <div className="bridge-blank">
-          <h3>先看看最近有什么值得讲</h3>
-          <p>
-            不用先挑知识，也不用先整理用户问题。Xenho 会读一遍你的知识和最近记下的原话，
-            找出几条值得你判断的连接。
-          </p>
-          <button type="button" className="btn btn-primary" onClick={() => scan({ force: true })}>
-            <IconSparkles aria-hidden="true" />
-            帮我看看最近有什么值得讲
-          </button>
-        </div>
-      ) : null}
-
-      {scan_ && !scanning && connections.length ? (
-        <section className="discovery-candidates" aria-label="值得发展的连接">
-          <div className="discovery-section-head"><h3>值得发展的连接 <span>{connections.length}</span></h3><small>候选 · 确认保存后进入进行中</small></div>
-          <div className="discovery-list">
-          {connections.map((connection, index) => (
-            <ConnectionCard
-              key={`${connection.problem.statement}:${index}`}
-              connection={connection}
-              busy={scanning}
-              more={openConnection === `${connection.problem.statement}:${index}`}
-              onToggleMore={() => setOpenConnection((current) => (
-                current === `${connection.problem.statement}:${index}` ? "" : `${connection.problem.statement}:${index}`
-              ))}
-              onDevelop={develop}
-            />
-          ))}
+      <div className="opportunity-scan">
+        <form onSubmit={(event) => { event.preventDefault(); if (!scanning) scan({ force: true }); }}>
+          <IconSparkles aria-hidden="true" />
+          <label className="sr-only" htmlFor="opportunity-focus">这次想关注的方向</label>
+          <input id="opportunity-focus" value={focus} maxLength={500} onChange={(event) => setFocus(event.target.value)} disabled={scanning} placeholder="这次想关注什么？也可以留空，从最近的积累里发现" />
+          <button type="submit" className="btn btn-primary" disabled={scanning || loading || !data}>{scanning ? "正在寻找…" : scan_ ? "重新扫描" : "帮我看看最近有什么值得讲"}</button>
+        </form>
+        <div className="opportunity-scan__meta"><span>{scan_ ? `${relTime(scan_.scannedAt)}扫描${summary ? ` · 读了 ${summary}` : ""}` : "使用你的知识和真实用户声音，生成待你判断的候选。"}</span><button type="button" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />真实用户声音</button></div>
+        {stale && data?.staleReason ? <p className="opportunity-update">{data.staleReason}</p> : null}
+      </div>
+      {scanError ? <div className="discovery-failed"><ErrorNote error={scanError} what="寻找新方向" onRetry={() => scan({ force: true })} /><p>已有机会没有被改动。你可以继续看上次的结果，或手动探索。</p></div> : null}
+      {scanning ? <div className="opportunity-pending" role="status"><IconRefresh aria-hidden="true" /><div><strong>正在把你的积累和读者的问题放在一起看</strong><p>找出值得讲的判断，并核对它的来源。你可以继续浏览已有机会。</p></div></div> : null}
+      {data && neverScanned && !scanning ? <section className="opportunity-welcome"><span className="opportunity-eyebrow">第一篇，从你的积累里开始</span><h3>不必对着空白页想选题。</h3><p>让知识回答一个真实的问题，把你的理解变成一篇有价值的内容。</p><ol><li><b>找方向</b><span>从知识和用户声音中发现连接</span></li><li><b>挑讲法</b><span>比较切入点、判断和依据</span></li><li><b>开始写</b><span>确认简报，带着材料进入创作</span></li></ol></section> : null}
+      {activeConnection ? (
+        <section className="opportunity-workspace" aria-label="值得发展的连接" data-mobile-detail={mobileDetail}>
+          <div className="opportunity-index">
+            <div className="opportunity-section-heading"><h3>发现的方向</h3><span>{connections.length} 条候选</span></div>
+            <div className="opportunity-options">{connections.map((connection, index) => (
+              <button type="button" className="opportunity-option" key={`${connection.problem.statement}:${index}`} aria-pressed={activeConnection === connection} onClick={() => { setOpenConnection(index); setMobileDetail(true); }}>
+                <span className="opportunity-option__number">{String(index + 1).padStart(2, "0")}</span><strong>{connection.coreClaim}</strong><p>{connection.problem.statement}</p><small>{connection.problem.origin === "hypothesis" ? "受众假设 · 待验证" : "有真实用户声音"} · {connection.knowledgeAnchors?.length || 0} 条知识</small><span className="opportunity-option__read">查看方向<IconArrowRight aria-hidden="true" /></span>
+              </button>
+            ))}</div>
+            <p className="opportunity-index__note">候选供你选择，保存后才成为内容机会。</p>
           </div>
+          <OpportunityBrief key={openConnection} connection={activeConnection} onDevelop={develop} onGo={onGo} busy={scanning} mobileDetail={mobileDetail} onBack={() => { setMobileDetail(false); requestAnimationFrame(() => document.querySelector(".opportunity-option[aria-pressed=true]")?.focus()); }} />
         </section>
       ) : null}
-
-      {/*
-        ⚠️ **允许说「最近没有值得做的」，并且必须说清下一步。**
-        为了让页面看起来智能而硬生成几条选题，比空着更糟：它会消耗掉用户
-        对这一页的信任，而信任是这一页唯一的资产。
-      */}
-      {scan_ && !scanning && !connections.length ? (
-        <div className="discovery-empty">
-          <h3>最近没有发现足够自然的新连接</h3>
-          <p>{scan_.nothingFoundReason}</p>
-          <div className="discovery-empty__outs">
-            {/*
-              ⚠️ 这个出口落在搜索那一侧，不是粘贴。
-              走到这里说明工作台里的原话不够用了——此时让人「去粘一段」，
-              等于要求他先自己找到材料，而那正是这一步该替他做的事。
-            */}
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => onCaptureVoice?.("", "find")}>
-              去找找有没有人在说
-            </button>
-            <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>
-              自己挑两个东西连连看
-            </button>
-            <button type="button" className="btn btn-sm" onClick={() => onGo("entries")}>
-              先去继续研究知识
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {opportunities.length ? (
-        <section className="discovery-saved" aria-label="进行中的内容机会">
-          <h3 className="section-label">进行中 <span>{opportunities.length}</span></h3>
-          <ul className="bridge-opp-list">
-            {opportunities.map((item) => (
-              <li key={item.id}>
-                <button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}>
-                  <span className="bridge-opp-pair">
-                    <strong>{item.wikiTitle || "已删除的知识"}</strong>
-                    <em aria-hidden="true">×</em>
-                    <strong>{item.audienceProblemStatement}</strong>
-                  </span>
-                  <span className="bridge-opp-claim">{item.coreClaim}</span>
-                  {/**
-                    * ⚠️ **这一行不再画贴合度药丸。**
-                    * 「很自然」是**保存那一刻**下的判断，摆在这儿不驱动任何动作；
-                    * 而这一段回答的是「哪一条我该接着做」——那由「建没建项目」决定。
-                    * 上面那张候选卡里同一颗药丸也撤了（它在那儿有 `fitReason` 可以当引子，
-                    * 这儿连引子都没有，就只剩一个没有量表的评级）。
-                    */}
-                  <span className="bridge-opp-meta">
-                    <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
-                    <small>{dateLabel(item.updatedAt)}更新</small>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/*
-        ⚠️ **把「系统看到的研究方向」摆出来，而不是悄悄用掉。**
-        这一段是扫描的输入之一；不显示的话，用户会奇怪结果为什么偏向某个方向，
-        而且看不出系统到底把什么当成了「他最近在想的」。
-        ⚠️ 这里**只有你自己打的字**——AI 的回答不进这一段，也不进扫描的事实层。
-      */}
+      {scan_ && !scanning && !connections.length ? <section className="opportunity-welcome"><h3>这次还没有值得展开的新方向</h3><p>{scan_.nothingFoundReason || "暂时没有足够的知识或真实声音支撑新的内容。"}</p><div className="row-actions"><button type="button" className="btn" onClick={() => onCaptureVoice?.("", "find")}>去找找有没有人在说</button><button type="button" className="btn" onClick={() => onGo("entries")}>补充我的知识</button></div></section> : null}
+      <section id="opportunity-saved" tabIndex={-1} className="discovery-saved opportunity-saved" aria-label="进行中的内容机会">
+        <header className="opportunity-section-heading"><div><h3>进行中</h3><p>你已经留下的判断，随时接着往下写。</p></div>{opportunities.length ? <SearchBox value={savedQuery} onChange={setSavedQuery} placeholder="搜索已保存的机会" ariaLabel="搜索已保存的机会" /> : null}</header>
+        <ErrorNote error={savedError} what="读取已保存机会" onRetry={load} />
+        {savedItems.length ? <ul className="opportunity-saved-list">{savedItems.map((item) => <li key={item.id}><button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}><div><strong>{item.coreClaim || item.audienceProblemStatement}</strong><p>{item.wikiTitle || "知识已移除"}<span> · </span>{item.audienceProblemStatement}</p></div><span className="opportunity-saved-list__status">{item.hasProject ? "已进入创作" : "待开始写作"}<small>{dateLabel(item.updatedAt)}更新</small></span><IconArrowRight aria-hidden="true" /></button></li>)}</ul> : !savedError && !loading ? <p className="opportunity-saved-empty">{savedQuery ? "没有找到匹配的机会，试试其他关键词。" : "还没有保存的机会。选一个方向，打磨讲法后，它会留在这里。"}</p> : null}
+      </section>
+      <aside className="opportunity-context" aria-label="研究方向与长期议程">
       {research.length ? (
         <section className="discovery-research" aria-label="最近你在想的">
           <button type="button" aria-expanded={researchOpen} onClick={() => setResearchOpen((value) => !value)}>
@@ -438,11 +205,6 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
         </section>
       ) : null}
 
-      {/*
-        ⚠️ **长期议程是观察出来的，不是填出来的**——和涌现定位同一条规矩。
-        数据不够时这一栏说的是「还差多少」，而不是画一个看起来很满的候选：
-        三条内容机会看不出「反复」，硬总结出来的那句话只是复述。
-      */}
       {agendaSignals ? (
         <section className="discovery-agenda" aria-label="长期议程">
           {agendaSignals.ready ? (
@@ -506,12 +268,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
           )}
         </section>
       ) : null}
-
-
-
-      {scan_ && !connections.length && !scan_.nothingFoundReason ? (
-        <Note title="这次没有读到任何东西">扫描没有出错，但工作台里暂时没有可用的知识或真实声音。</Note>
-      ) : null}
+      </aside>
     </div>
   );
 }

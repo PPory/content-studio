@@ -1,166 +1,119 @@
-/*
- * 内容构造工作台。
- *
- * 三段，从上到下就是决定顺序：为谁讲（意图）→ 怎么讲（讲法）→ 再调一句（跟 Xenho 说）。
- * 没有关系图，没有白板：这一页要读的是文字，画成图只会让人先学一遍图例。
- */
-
-.content-construction { max-width: 1200px; }
-
-/* 顶：创作意图。轻量、不占屏——它是背景，不是当前要做的事。 */
-.construction-intent {
-  display: grid;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-8);
-  padding: var(--sp-5) var(--sp-6);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-}
-.construction-intent > div { display: grid; gap: 2px; min-width: 0; }
-.construction-intent span { color: var(--text-3); font-size: var(--fs-xs); }
-.construction-intent strong { font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; }
-.construction-intent small { color: var(--brand-strong); font-size: var(--fs-xs); }
-/* 假设不能长得像证据——和发现页同一条规矩、同一种表现。 */
-.construction-intent small[data-origin="hypothesis"] { color: var(--text-3); font-style: italic; }
-.construction-intent__agenda { display: flex; align-items: center; gap: var(--sp-3); }
-.construction-intent__agenda label { flex: none; color: var(--text-3); font-size: var(--fs-xs); }
-/* ⚠️ 不给宽度的话它会撑满整行——一个两三个字的下拉框横跨 1200px。 */
-.construction-intent__agenda select { max-width: min(320px, 100%); }
-
-.construction-routes__head { margin-bottom: var(--sp-5); }
-.construction-routes__head h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-lg); letter-spacing: -.015em; }
-.construction-routes__head small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
-.construction-routes__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: var(--sp-5); align-items: stretch; }
-
-.construction-note { margin: 0 0 var(--sp-5); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-.construction-note--gate { color: var(--text-2); padding: var(--sp-4) 0; border-top: 1px solid var(--border); }
-
-.route-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-5);
-  min-width: 0;
-  padding: var(--sp-6);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-}
-.route-card[data-selected] { border: 0; border-radius: 0; padding-inline: 0; background: transparent; }
-.route-card[data-compact] { gap: var(--sp-3); padding: var(--sp-5); }
-
-.route-card header { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
-.route-card__id {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--r-pill);
-  background: var(--text-1);
-  color: var(--surface);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-}
-.route-card header h3 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-md); letter-spacing: -.01em; }
-.route-card__action { flex: none; padding: 2px 8px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); }
-
+/* 从比较讲法到创作简报：同一内容只在它被需要的位置出现。 */
+.content-construction { max-width: 1320px; }
+.construction-nav { position: sticky; top: 0; z-index: 3; background: var(--sunken); display: flex; align-items: center; gap: var(--sp-4); padding-block: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--border); }
+.construction-nav > span { padding-left: var(--sp-4); border-left: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-xs); }
+.construction-nav > .btn { margin-left: auto; }
+.construction-heading { padding-block: var(--sp-5); }
+.construction-heading__eyebrow { margin-bottom: var(--sp-3); color: var(--text-3); font-size: var(--fs-xs); letter-spacing: .1em; }
+.construction-heading h1 { max-width: 860px; margin: 0; font-size: clamp(25px, 2.3vw, 32px); font-weight: 600; line-height: 1.35; letter-spacing: -.045em; }
+.construction-heading > p { margin: var(--sp-3) 0 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.construction-intent { display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--sp-5) var(--sp-8); padding: var(--sp-4) 0; border-block: 1px solid var(--border); margin-bottom: var(--sp-6); }
+.construction-intent > div { min-width: 0; }
+.construction-intent span, .construction-intent__agenda label { display: block; margin-bottom: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
+.construction-intent strong { display: block; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; font-weight: 600; }
+.construction-intent p, .construction-intent small { display: block; margin: var(--sp-2) 0 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.construction-intent small[data-origin="hypothesis"] { color: var(--text-3); }
+.construction-intent__agenda { grid-column: 1 / -1; display: flex; gap: var(--sp-3); align-items: center; }
+.construction-intent__agenda label { flex-shrink: 0; margin: 0; }
+.construction-intent__agenda select { max-width: min(320px, 100%); min-width: 0; font-size: var(--fs-xs); }
+.construction-routes__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-4); margin-bottom: var(--sp-6); }
+.construction-routes__head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.03em; }
+.construction-routes__head p { margin: var(--sp-2) 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.construction-routes__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); align-items: stretch; gap: var(--sp-5); }
+.route-card { display: flex; flex-direction: column; min-width: 0; gap: var(--sp-5); padding: var(--sp-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow-wrap: anywhere; }
+.route-card > header { display: grid; gap: var(--sp-4); }
+.route-card__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.route-card__id { color: var(--text-3); font-size: var(--fs-xs); letter-spacing: .045em; }
+.route-card__action { color: var(--text-2); font-size: var(--fs-xs); padding: 3px 8px; background: var(--surface-2); border-radius: var(--r-sm); }
+.route-card header h3 { margin: 0; font-size: 21px; font-weight: 600; line-height: 1.5; letter-spacing: -.03em; }
 .route-field > span { display: block; margin-bottom: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
-.route-field p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.75; }
-.route-field--claim p { font-weight: 600; }
-/* 风险用强调色。它是选择时真正要比较的东西，不该和别的段落一个分量。 */
-.route-field--risk p { color: var(--emph); }
-
-.route-elements { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
-.route-elements li { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--sp-3); align-items: baseline; }
-.route-elements em {
-  grid-row: span 3;
-  align-self: start;
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-  font-style: normal;
-}
-.route-elements strong { font-size: var(--fs-sm); font-weight: 600; }
-.route-elements span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
-.route-elements small { color: var(--text-3); font-size: var(--fs-xs); }
-
-.route-gaps { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-
-.route-card footer { margin-top: auto; display: flex; justify-content: flex-end; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
-
-.construction-current { display: grid; gap: var(--sp-6); max-width: 820px; margin-inline: auto; }
-
-.construction-others > button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.construction-others > button:hover { color: var(--text-1); }
+.route-field p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; white-space: pre-line; }
+.route-field--claim p { color: var(--text-1); font-weight: 600; }
+.route-field--risk { border-top: 1px solid var(--border); padding-top: var(--sp-4); }
+.route-field--risk > span { color: var(--emph); }
+.route-field--risk p, .route-field--gaps li { font-size: var(--fs-xs); line-height: 1.75; }
+.route-gaps { margin: 0; padding-left: 1.15em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; }
+.route-card footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: auto; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+.route-card footer > span { color: var(--text-3); font-size: var(--fs-xs); }
+.route-card footer .btn svg, .construction-save .btn svg, .construction-saved .btn svg, .construction-ask .btn svg { width: 15px; height: 15px; }
+.construction-note { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.8; }
+.construction-note--after { margin: var(--sp-5) 0 0; }
+.construction-note--gate { padding-top: var(--sp-4); margin-top: var(--sp-5); border-top: 1px solid var(--border); color: var(--text-3); }
+.construction-current { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: var(--sp-8); align-items: start; }
+.construction-document { min-width: 0; padding-right: var(--sp-7); border-right: 1px solid var(--border); }
+.route-card[data-selected] { border: 0; border-radius: 0; padding: 0; background: transparent; gap: var(--sp-7); }
+.route-card[data-selected] header h3 { scroll-margin-top: 80px; max-width: 700px; font-size: clamp(24px, 2.2vw, 30px); line-height: 1.5; }
+.route-card[data-selected] .route-field--claim { padding-left: var(--sp-5); border-left: 3px solid var(--text-1); }
+.route-card[data-selected] .route-field--claim p { font-size: var(--fs-lg); font-weight: 500; line-height: 1.7; }
+.route-card[data-selected] .route-field--risk p, .route-card[data-selected] .route-field--gaps li { font-size: var(--fs-sm); }
+.route-sources { padding-top: var(--sp-6); border-top: 1px solid var(--border); }
+.route-sources__heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.route-sources__heading h4 { margin: 0; font-size: var(--fs-md); font-weight: 600; }
+.route-sources__heading > span { color: var(--text-3); font-size: var(--fs-xs); }
+.route-elements { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
+.route-elements li { display: flex; align-items: flex-start; gap: var(--sp-3); padding-block: var(--sp-4); border-bottom: 1px solid var(--border); }
+.route-elements li:last-child { border-bottom: 0; }
+.route-elements em { flex-shrink: 0; margin-top: 2px; padding: 2px 6px; background: var(--surface-2); border-radius: var(--r-sm); color: var(--text-3); font-size: var(--fs-xs); font-style: normal; }
+.route-elements strong { font-size: var(--fs-sm); font-weight: 500; line-height: 1.7; }
+.route-elements p { margin: var(--sp-1) 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.route-elements small { display: block; margin-top: var(--sp-1); color: var(--text-3); font-size: var(--fs-xs); }
+.construction-workspace { display: grid; gap: var(--sp-6); min-width: 0; }
+.construction-ask { display: grid; gap: var(--sp-3); }
+.construction-ask__heading { display: flex; align-items: center; gap: var(--sp-2); }
+.construction-ask__heading svg { width: 17px; height: 17px; }
+.construction-ask label { font-size: var(--fs-md); font-weight: 600; }
+.construction-ask > p { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; }
+.construction-ask textarea { box-sizing: border-box; min-height: 144px; width: 100%; border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4); resize: vertical; background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-sm); line-height: 1.75; }
+.construction-ask textarea::placeholder { color: var(--text-3); }
+.construction-ask__prompts { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.construction-ask__prompts button { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 5px 8px; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.construction-ask__prompts button:hover:not(:disabled) { background: var(--surface-2); color: var(--text-1); }
+.construction-ask__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.construction-ask__actions small { font-size: 11px; color: var(--text-3); }
+.construction-save { display: grid; gap: var(--sp-3); padding-top: var(--sp-6); border-top: 1px solid var(--border); }
+.construction-save h3 { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.construction-save p, .construction-saved p { margin: 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.8; }
+.construction-save > .btn { width: 100%; justify-content: space-between; }
+.construction-change, .construction-others > button { padding: var(--sp-2) 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: var(--fs-xs); cursor: pointer; text-align: left; }
+.construction-change:hover:not(:disabled), .construction-others > button:hover:not(:disabled) { color: var(--text-1); text-decoration: underline; text-underline-offset: 4px; }
+.construction-others { margin-top: var(--sp-6); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
 .construction-others__list { display: grid; gap: var(--sp-4); margin-top: var(--sp-4); }
-
-/* 改过什么。它是一条时间线，不是聊天记录——只留「我说了什么、它改了什么」。 */
-.construction-history { display: grid; gap: var(--sp-3); margin: 0; padding-left: 1.2em; }
-.construction-history li { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.route-card[data-compact] { padding: var(--sp-5); }
+.route-card[data-compact] header h3 { font-size: var(--fs-md); }
+.construction-revisions { padding-block: var(--sp-4); border-block: 1px solid var(--border); }
+.construction-revisions summary { color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
+.construction-history { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 0; padding-left: var(--sp-4); }
+.construction-history li { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.8; }
 .construction-history q { display: block; color: var(--text-1); }
-.construction-history span { display: block; color: var(--text-3); font-size: var(--fs-xs); }
-
-.construction-ask {
-  display: grid;
-  gap: var(--sp-3);
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
+.construction-history span { display: block; margin-top: var(--sp-1); }
+.construction-saved { display: grid; gap: var(--sp-4); }
+.construction-saved > span { color: var(--text-3); font-size: var(--fs-xs); }
+.construction-saved h2 { margin: 0; font-size: var(--fs-lg); line-height: 1.5; }
+.construction-loading { padding: var(--sp-8) var(--sp-5); border-block: 1px solid var(--border); text-align: center; }
+.construction-loading > svg { width: 24px; height: 24px; color: var(--text-3); }
+.construction-loading h3 { font-size: var(--fs-md); font-weight: 500; }
+.construction-loading p { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.7; }
+.construction-dropped { max-width: 620px; margin: var(--sp-4) auto; padding-left: var(--sp-5); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; text-align: left; }
+.content-construction button:focus-visible, .content-construction textarea:focus-visible, .content-construction select:focus-visible, .content-construction summary:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.content-construction button:disabled { cursor: not-allowed; opacity: .5; }
+@media (max-width: 1050px) {
+  .construction-current { grid-template-columns: minmax(0, 1fr) 270px; gap: var(--sp-6); }
+  .construction-document { padding-right: var(--sp-5); }
 }
-.construction-ask label { color: var(--text-3); font-size: var(--fs-xs); }
-.construction-ask textarea {
-  width: 100%;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--text-1);
-  font: inherit;
-  font-size: var(--fs-sm);
-  line-height: 1.7;
-  resize: vertical;
+@media (max-width: 820px) {
+  .construction-current { grid-template-columns: minmax(0, 1fr); }
+  .construction-document { padding-right: 0; border-right: 0; }
+  .construction-workspace { padding-top: var(--sp-6); border-top: 1px solid var(--border); }
 }
-.construction-ask__actions { display: flex; align-items: center; gap: var(--sp-3); }
-
-@media (max-width: 720px) {
+@media (max-width: 600px) {
+  .construction-nav { flex-wrap: wrap; gap: var(--sp-3); }
+  .construction-nav > span { display: none; }
+  .construction-heading { padding-block: var(--sp-5); }
+  .construction-intent { grid-template-columns: minmax(0, 1fr); gap: var(--sp-5); }
+  .construction-intent__agenda { flex-wrap: wrap; }
+  .construction-intent__agenda select { max-width: 100%; }
   .route-card { padding: var(--sp-5); }
-  .route-elements li { grid-template-columns: 1fr; }
-  .route-elements em { grid-row: auto; justify-self: start; }
-  .content-construction .bridge-bar { flex-wrap: wrap; row-gap: var(--sp-3); }
-  .content-construction .bridge-bar__title { flex-direction: column; align-items: flex-start; gap: var(--sp-2); width: 100%; }
-}
-
-/* 一条都没剩下时，把每条为什么被丢掉写出来——不然这故障没法查。 */
-.construction-dropped {
-  display: grid;
-  gap: var(--sp-2);
-  max-width: 620px;
-  margin: 0 auto var(--sp-7);
-  padding: 0;
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-  line-height: 1.7;
-  list-style: none;
-  text-align: left;
-}
-
-/* 背景并列，候选并排比较，选定后回到一页正文。 */
-.construction-intent { grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: 0; padding: 0 0 var(--sp-6); background: transparent; border-bottom: 1px solid var(--border); }
-.construction-intent__agenda { grid-column: 1 / -1; }
-.construction-current .route-field--claim p { font-size: var(--fs-lg); }
-.route-card__id { background: var(--surface-2); color: var(--text-2); border-radius: var(--r-sm); }
-@media (max-width: 720px) {
-  .construction-intent { grid-template-columns: minmax(0, 1fr); }
-  .construction-ask__actions { flex-wrap: wrap; }
+  .construction-routes__head { margin-bottom: var(--sp-4); }
+  .route-card[data-selected] .route-field--claim { padding-left: var(--sp-4); }
+  .construction-heading h1 { font-size: 27px; }
 }

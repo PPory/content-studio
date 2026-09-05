@@ -1,321 +1,124 @@
-/*
- * 内容首页：AI 发现。
- *
- * 一屏只做一件事——把少数几条值得判断的连接摆清楚。所以这里没有筛选条、
- * 没有侧栏、没有仪表盘，卡片之间留的空比卡片内部还大：它们是**并列的几个判断**，
- * 不是一张列表里的几行。
- */
-
-/**
- * ⚠️ **不再卡 900px。**
- * 这一页曾经是几段满宽长文，窄一点是为了让中文正文不要太长；
- * 而它现在是一张**能横着比的清单**，窄栏只会把「判断」那一列挤成三行、
- * 把锚点挤回正文里，右边还空掉四百多像素。
- * 宽度跟着 `.main__inner` 的 1320px 走，和素材页、创作页同一档。
- */
-
-/**
- * ⚠️ **页名和它的出处竖着放，不并排。**
- * `.bridge-bar__title` 默认是一行（h2 + small 并排，small 还 `flex: none`），
- * 那条 small 一长，**不能收缩的是它，被挤成四行的是标题**——
- * 「最近有什么值得讲」曾经竖着排成了四行。
- * 这一页的 small 会长（扫描时间 + 读了什么 + 有什么更新），所以给它自己一行。
- */
-.content-discovery .bridge-bar__title { display: grid; gap: 3px; align-items: start; }
-.content-discovery .bridge-bar__title h2 { white-space: nowrap; }
-.content-discovery .bridge-bar__title small { flex: initial; line-height: 1.6; }
-/* 「有什么变了」跟在出处后面，用一个分隔点接上，并且比出处再实一档——
-   它是唯一一句需要你做决定的话（要不要重扫） */
-.bridge-bar__stale { font-weight: 500; color: var(--text-2); }
-.bridge-bar__stale::before { content: "·"; margin: 0 6px; color: var(--border-strong); font-weight: 400; }
-
-/**
- * 候选卡片：**固定宽度的一格一格，不铺满。**
- *
- * ⚠️ **别再用「通栏补洞」那一套。** 上一版为了不让网格末尾留空位，
- * 让第一张按余数占 2 格或 3 格——结果只有一条候选时，那一张就横跨整个屏幕，
- * 一句判断被拉成 1093px 宽的一条。**卡片就该是卡片的尺寸**：
- * 条数少就少几张，右边空着是正常的，把卡撑开才不正常。
- *
- * `auto-fill` + `minmax` 一条就够：容器塞得下几列就开几列（1093px 下是三列、
- * 每列约 350px），只有一条时它就老老实实占左边一格。
- * ⚠️ 是 `auto-fill` 不是 `auto-fit`——`auto-fit` 会把空轨道折叠掉，
- * 于是一条候选又被拉回满宽，正是这次要修的毛病。
- */
-.discovery-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-  gap: var(--sp-5);
-  align-items: stretch;
+/* 内容机会：左侧挑方向，右侧读完整判断。选择不触发 AI，也不写业务数据。 */
+.opportunity-home { --opportunity-rule: var(--border); }
+.opportunity-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+.opportunity-eyebrow { color: var(--text-3); font-size: var(--fs-xs); letter-spacing: .08em; }
+.opportunity-header h2 { margin: 8px 0 10px; font-size: clamp(25px, 2.4vw, 34px); font-weight: 600; letter-spacing: -.04em; }
+.opportunity-header p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.opportunity-header > .btn { flex: none; }
+.opportunity-scan { margin-bottom: 32px; }
+.opportunity-scan form { display: flex; gap: 12px; align-items: center; padding: 10px 12px 10px 18px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); }
+.opportunity-scan form > svg { flex: none; width: 20px; color: var(--text-3); }
+.opportunity-scan input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text-1); font: inherit; font-size: var(--fs-sm); padding: 8px 0; outline: none; }
+.opportunity-scan form:focus-within { border-color: var(--text-2); }
+.opportunity-scan .btn { flex: none; }
+.opportunity-scan__meta { display: flex; justify-content: space-between; gap: 16px; padding: 10px 2px 0; color: var(--text-3); font-size: var(--fs-xs); }
+.opportunity-scan__meta button { display: inline-flex; align-items: center; gap: 6px; flex: none; border: 0; background: transparent; color: var(--text-2); font: inherit; cursor: pointer; }
+.opportunity-scan__meta svg { width: 15px; height: 15px; }
+.opportunity-update { margin: 6px 0; font-size: var(--fs-xs); color: var(--text-2); }
+.opportunity-workspace { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.6fr); align-items: start; gap: 28px; }
+.opportunity-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.opportunity-section-heading h3 { margin: 0; font-size: var(--fs-md); }
+.opportunity-section-heading p { margin: 6px 0 0; color: var(--text-3); font-size: var(--fs-xs); }
+.opportunity-section-heading > span { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.opportunity-options { display: grid; gap: 8px; }
+.opportunity-option { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 8px; width: 100%; padding: 18px 14px; text-align: left; border: 1px solid transparent; border-radius: var(--r-md); background: transparent; color: var(--text-1); font: inherit; cursor: pointer; }
+.opportunity-option:hover { background: var(--surface-2); }
+.opportunity-option[aria-pressed="true"] { border-color: var(--border-strong); background: var(--surface); }
+.opportunity-option__number { font-size: var(--fs-xs); color: var(--text-3); padding-top: 3px; font-variant-numeric: tabular-nums; }
+.opportunity-option strong { font-size: var(--fs-sm); font-weight: 600; line-height: 1.7; }
+.opportunity-option p { grid-column: 2; margin: 0; font-size: var(--fs-xs); color: var(--text-2); line-height: 1.7; }
+.opportunity-option small { grid-column: 2; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.opportunity-option__read { grid-column: 2; display: none; align-items: center; gap: 6px; font-size: var(--fs-xs); }
+.opportunity-option__read svg { width: 14px; }
+.opportunity-index__note { margin: 18px 14px; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.7; }
+.opportunity-brief { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 30px; }
+.opportunity-brief__head h3 { margin: 12px 0 16px; font-size: clamp(20px, 1.7vw, 26px); letter-spacing: -.025em; line-height: 1.6; }
+.opportunity-brief__reason { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; }
+.opportunity-brief__reason > span { display: inline; font-weight: 600; margin-right: 10px; color: var(--text-1); }
+.opportunity-brief__section { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--border); }
+.opportunity-brief__section h4 { margin: 0 0 10px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.opportunity-brief__section > p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.85; }
+.opportunity-evidence { display: block; margin-top: 10px; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
+.opportunity-evidence[data-origin="hypothesis"] { color: var(--text-2); }
+.opportunity-quotes { margin-top: 12px; font-size: var(--fs-xs); }
+.opportunity-quotes summary { cursor: pointer; color: var(--text-2); }
+.discovery-quotes { display: grid; gap: 16px; margin: 16px 0 0; padding: 0 0 0 14px; list-style: none; border-left: 2px solid var(--border); }
+.discovery-quotes q { font-size: var(--fs-sm); line-height: 1.8; }
+.discovery-quotes small { display: block; margin-top: 6px; color: var(--text-3); }
+.opportunity-sources { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.opportunity-sources button { display: inline-flex; align-items: center; gap: 8px; padding: 0; background: transparent; border: 0; font: inherit; font-size: var(--fs-sm); cursor: pointer; text-decoration: underline; text-underline-offset: 4px; color: var(--text-1); }
+.opportunity-sources svg { width: 14px; height: 14px; }
+.opportunity-sources p { margin: 6px 0 0; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-2); }
+.opportunity-brief__gaps ul { padding-left: 18px; margin: 0; font-size: var(--fs-sm); line-height: 1.8; color: var(--text-2); }
+.opportunity-brief__agenda { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; }
+.opportunity-brief__footer { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--border); }
+.opportunity-brief__footer strong { display: block; font-size: var(--fs-sm); }
+.opportunity-brief__footer small { display: block; color: var(--text-3); font-size: var(--fs-xs); margin-top: 6px; }
+.opportunity-brief__footer .btn { flex: none; }
+.opportunity-mobile-back { display: none; }
+.opportunity-welcome { padding: 40px 32px; background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border); }
+.opportunity-welcome h3 { margin: 12px 0; font-size: var(--fs-xl); }
+.opportunity-welcome p { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.8; }
+.opportunity-welcome ol { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); list-style: none; margin: 32px 0 0; padding: 0; gap: 24px; }
+.opportunity-welcome li { border-top: 1px solid var(--border); padding-top: 16px; }
+.opportunity-welcome b { display: block; font-size: var(--fs-sm); }
+.opportunity-welcome li span { display: block; margin-top: 8px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; }
+.opportunity-welcome .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.opportunity-pending { display: flex; gap: 14px; align-items: start; padding: 20px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.opportunity-pending svg { flex: none; width: 20px; }
+.opportunity-pending strong { font-size: var(--fs-sm); }
+.opportunity-pending p { font-size: var(--fs-xs); color: var(--text-3); margin: 6px 0 0; }
+.opportunity-saved { margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--border-strong); }
+.opportunity-saved .search-box { max-width: 260px; }
+.opportunity-saved-list { list-style: none; margin: 0; padding: 0; }
+.opportunity-saved-list li { border-bottom: 1px solid var(--border); }
+.opportunity-saved-list button { display: flex; align-items: center; gap: 20px; width: 100%; background: transparent; border: 0; text-align: left; color: var(--text-1); font: inherit; padding: 20px 8px; cursor: pointer; }
+.opportunity-saved-list button:hover { background: var(--surface); }
+.opportunity-saved-list button > div { flex: 1; min-width: 0; }
+.opportunity-saved-list strong { font-size: var(--fs-sm); line-height: 1.7; }
+.opportunity-saved-list p { margin: 6px 0 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.opportunity-saved-list__status { flex: none; font-size: var(--fs-xs); color: var(--text-2); }
+.opportunity-saved-list__status small { display: block; margin-top: 6px; color: var(--text-3); }
+.opportunity-saved-list svg { width: 16px; flex: none; }
+.opportunity-saved-empty { font-size: var(--fs-sm); padding: 16px 0; color: var(--text-3); }
+.opportunity-context { margin-top: 32px; display: grid; gap: 20px; color: var(--text-3); font-size: var(--fs-xs); }
+.discovery-research > button { padding: 0; border: 0; color: var(--text-2); background: transparent; font: inherit; cursor: pointer; }
+.discovery-research > button::before { content: '＋'; margin-right: 6px; }
+.discovery-research > button[aria-expanded="true"]::before { content: '−'; }
+.discovery-research__gate { line-height: 1.7; }
+.discovery-research ul { list-style: none; padding: 0; display: grid; gap: 16px; }
+.discovery-research li { display: grid; gap: 6px; }
+.discovery-research li .btn { justify-self: start; }
+.discovery-agenda__head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.discovery-agenda__wait, .discovery-agenda__none { margin: 0; line-height: 1.8; }
+.discovery-agenda__card { display: grid; gap: 10px; padding: 20px 0; border-bottom: 1px solid var(--border); }
+.discovery-agenda__card p { margin: 0; }
+.discovery-agenda__card .row-actions { display: flex; gap: 8px; }
+.linkish { border: 0; padding: 0; background: transparent; font: inherit; color: var(--text-2); text-decoration: underline; cursor: pointer; }
+.discovery-failed { margin-bottom: 20px; }
+.discovery-failed > p { color: var(--text-2); font-size: var(--fs-sm); }
+@media (max-width: 1000px) {
+  .opportunity-workspace { grid-template-columns: minmax(0, 1fr); }
+  .opportunity-workspace:not([data-mobile-detail="true"]) .opportunity-brief { display: none; }
+  .opportunity-workspace[data-mobile-detail="true"] .opportunity-index { display: none; }
+  .opportunity-option__read { display: flex; }
+  .opportunity-mobile-back { display: block; border: 0; background: transparent; padding: 0; margin-bottom: 24px; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 }
-
-.discovery-card {
-  display: flex; flex-direction: column;
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  transition: none;
+@media (max-width: 640px) {
+  .opportunity-header { align-items: start; flex-direction: column; gap: 16px; }
+  .opportunity-scan form { display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 8px; padding: 12px; }
+  .opportunity-scan form .btn { grid-column: 1 / -1; white-space: normal; height: auto; min-height: 38px; }
+  .opportunity-scan__meta { flex-wrap: wrap; }
+  .opportunity-brief { padding: 20px; }
+  .opportunity-brief__footer { flex-direction: column; align-items: stretch; }
+  .opportunity-brief__footer .btn { justify-content: center; }
+  .opportunity-welcome { padding: 24px; }
+  .opportunity-welcome ol { grid-template-columns: 1fr; gap: 16px; }
+  .opportunity-saved .opportunity-section-heading { align-items: stretch; flex-direction: column; }
+  .opportunity-saved-list button { flex-wrap: wrap; gap: 10px; }
+  .opportunity-saved-list button > div { flex-basis: 100%; }
+  .opportunity-saved-list__status small { display: inline; margin-left: 12px; }
 }
-.discovery-card:hover { border-color: var(--border-strong); }
-/* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
-.discovery-card[data-fit="weak"] { border-style: dashed; }
-/**
- * ⚠️ **展开的那张横跨两列。** 不跨的话它会把同一行的另一张也撑到同样高，
- * 旁边多出一大块空白；而展开的意思是「我要细读这一条」，本来就该独占一行。
- */
-/**
- * 展开的那张**占两格**，不铺满。
- *
- * ⚠️ 不跨的话它只是变高，而 358px 宽的一栏里读几段长中文全是短行；
- * 跨满整行又回到「一张卡撑满屏幕」——那正是这一版要治的毛病。
- * 两格（约 736px）是能好好读一段话、又还看得出它是一张卡的宽度。
- * 一次只展开一张（见 `openConnection`），所以最多只会错开一格。
- */
-.discovery-card[data-open] { grid-column: span 2; border-color: var(--border-strong); }
-
-.discovery-card__row {
-  display: grid; gap: var(--sp-3);
-  padding: var(--sp-5) var(--sp-5) var(--sp-4);
-}
-
-.discovery-card__fit { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); }
-.discovery-card__fit[data-fit="weak"] { color: var(--text-3); font-weight: 500; }
-
-.discovery-card__body { display: grid; gap: var(--sp-3); min-width: 0; }
-
-/**
- * 判断是卡的标题，也是几张之间差别最大的地方。
- * ⚠️ **锁两行**（`min-height` + `line-clamp` 一起给）：只截不撑的话，
- * 判断短的那张标题只有一行，它下面的问句就比邻居高一截——四张并排时没有基准线。
- */
-.discovery-card__claim {
-  margin: 0;
-  font-size: var(--fs-base); font-weight: 600; line-height: 1.6; letter-spacing: -.01em;
-  /* 三列下卡宽约 350px，中文判断常到三行——锁三行而不是两行，
-     否则大半条判断被截掉，而判断正是这张卡的产物 */
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-  min-height: calc(var(--fs-base) * 1.6 * 3);
-}
-
-/* 问句锁一行，同理 */
-.discovery-card__q {
-  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.discovery-card__from {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2);
-  margin: 0; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.65;
-}
-/* 假设不能长得像证据。这一处的颜色差别就是「有人真的说过」和「我猜的」的差别。 */
-.discovery-card__from[data-origin="hypothesis"] { color: var(--text-3); }
-.discovery-card__from button {
-  padding: 0; margin-left: 2px;
-  border: 0; background: none; color: inherit;
-  font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
-}
-.discovery-card__from button:hover { color: var(--text-1); }
-
-/* 锚点做成安静的芯片：在一张卡里它们是「材料清单」，成组出现时芯片比裸文字好数 */
-.discovery-card__anchors {
-  display: flex; flex-wrap: wrap; gap: 4px;
-  margin: var(--sp-1, 2px) 0 0; min-width: 0;
-}
-.discovery-anchor {
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 2px 8px; border-radius: var(--r-pill);
-  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-2xs);
-}
-
-/**
- * 页脚是一条带上边框的横带：左边「再看看」，右边「就它了」。
- * ⚠️ **它必须贴着卡底**（`margin-top: auto`），否则同一行两张卡的按钮
- * 会落在不同高度——那是这一版最先要治的毛病。
- */
-.discovery-card__acts {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
-  margin-top: auto;
-  padding: var(--sp-3) var(--sp-5);
-  border-top: 1px solid var(--border);
-}
-
-.discovery-card__label {
-  display: block;
-  margin-bottom: var(--sp-2);
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-}
-
-/* 展开区缩进到判断那一列的左缘，并挂一条竖线——它属于上面那一行，不是新的一条 */
-/* 展开区：卡内铺开，顶上一道线接住它。跨两列时正文会很宽，所以限一个可读行宽 */
-.discovery-card__more {
-  display: grid; gap: var(--sp-5);
-  margin: 0 var(--sp-5) var(--sp-5);
-  padding-top: var(--sp-5);
-  border-top: 1px solid var(--border);
-  max-width: 76ch;
-}
-.discovery-card__more p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.75; }
-.discovery-card__more ul { margin: 0; padding-left: 1.1em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-.discovery-card__more-toggle {
-  padding: 0; border: 0; background: none;
-  color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; cursor: pointer;
-}
-.discovery-card__more-toggle:hover { color: var(--text-1); }
-
-.discovery-anchor-why { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
-.discovery-anchor-why li { display: grid; gap: 2px; }
-.discovery-anchor-why strong { font-size: var(--fs-sm); }
-.discovery-anchor-why span { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-
-.discovery-quotes { display: grid; gap: var(--sp-4); margin: var(--sp-2) 0 0; padding: var(--sp-4) var(--sp-5); border-left: 2px solid var(--border); list-style: none; }
-.discovery-quotes q { display: block; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
-.discovery-quotes small { display: block; margin-top: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
-
-.discovery-stale {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-7);
-  padding: var(--sp-4) var(--sp-5);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-}
-
-.discovery-failed { margin-bottom: var(--sp-7); }
-.discovery-failed p {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-4);
-  margin: var(--sp-3) 0 0;
-  color: var(--text-2);
-  font-size: var(--fs-sm);
-  line-height: 1.7;
-}
-
-.discovery-empty { padding: var(--sp-10) var(--sp-6); text-align: center; }
-.discovery-empty h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-lg); letter-spacing: -.02em; }
-.discovery-empty p { max-width: 520px; margin: 0 auto var(--sp-7); color: var(--text-2); line-height: 1.7; }
-.discovery-empty__outs { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-3); }
-
-/**
- * ⚠️ **「进行中」和上面的候选走同一套行语汇，别让它更重。**
- * 候选是**还没决定**的东西，进行中是**已经决定**的——已经决定的那些不该比
- * 待决定的更抢眼。上一版候选变成平铺行之后，这一段还留着一堆浮起来的白盒子，
- * 一页上两种列表语汇，重的那种装的还是次要的东西。
- */
-.discovery-saved { margin-top: var(--sp-8); }
-.discovery-saved .bridge-opp-list { background: none; gap: 0; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
-.discovery-saved .bridge-opp-list li + li { border-top: 1px solid var(--border); }
-.discovery-saved .bridge-opp-list button { padding: var(--sp-4) var(--sp-4); background: none; }
-.discovery-saved .bridge-opp-list button:hover { background: var(--surface); }
-.discovery-saved h3 { margin: 0 0 var(--sp-4); }
-
-@media (max-width: 720px) {
-  .discovery-card { padding: 0; }
-  .discovery-card__foot .btn { margin-left: 0; }
-
-  /*
-   * ⚠️ **小屏上标题和那行「读了 95 条知识 · 1 段原话」不能挤在同一行。**
-   * 顶栏是 flex，而那行摘要会一直长；挤在一起的结果是标题被压到一个字一行
-   * （真机截图上就是竖着排的「最 近 有 什 么 值 得 讲」）。
-   */
-  .content-discovery .bridge-bar { flex-wrap: wrap; row-gap: var(--sp-3); }
-  .content-discovery .bridge-bar__title { flex-direction: column; align-items: flex-start; gap: var(--sp-2); width: 100%; }
-  .content-discovery .bridge-bar__title h2 { white-space: nowrap; }
-  .content-discovery .bridge-bar__actions { flex-wrap: wrap; }
-}
-
-/*
- * 最近在助手里想的。
- *
- * ⚠️ 它是扫描的输入之一，所以要看得见；但它不是这一屏的主体，
- * 所以默认收起来，一行就够。
- */
-.discovery-research { margin-top: var(--sp-9); }
-/**
- * ⚠️ **展开钮不画下划线。** 加了下划线它就长得像一条链接，而链接的意思是
- * 「点了会去别的地方」；这一颗只是把下面那段摊开。展开态由 `aria-expanded`
- * 驱动的那个三角说，和 `.ing__title` 那颗箭头同一个记号。
- */
-.discovery-research > button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-.discovery-research > button::before {
-  content: "";
-  width: 0; height: 0;
-  border-left: 4px solid currentColor;
-  border-top: 3.5px solid transparent;
-  border-bottom: 3.5px solid transparent;
-  transition: transform 0.12s var(--ease);
-}
-.discovery-research > button[aria-expanded="true"]::before { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .discovery-research > button::before { transition: none; } }
-.discovery-research > button:hover { color: var(--text-1); }
-/* 这句话是硬闸的可见部分，不是脚注：它说明这一段为什么不能当证据。 */
-/* ⚠️ 不画左竖线（design-system 禁的那条）。这句话要读，但它不是引文；
-   靠缩进对齐到展开区内容的左缘就够。 */
-.discovery-research__gate {
-  margin: var(--sp-4) 0 0;
-  padding: 0;
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  line-height: 1.7;
-}
-.discovery-research ul { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
-.discovery-research li { display: grid; gap: 2px; }
-.discovery-research strong { font-size: var(--fs-sm); }
-.discovery-research span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
-.discovery-research .btn { justify-self: start; margin-top: var(--sp-2); }
-
-/*
- * 长期议程。
- *
- * ⚠️ 数据不够时这一栏只有一句话，而且那句话带着数字——
- * 「还差 2 条」是一件能完成的事，「数据不足」不是。
- */
-.discovery-agenda { display: grid; gap: var(--sp-4); margin-top: var(--sp-9); }
-.discovery-agenda__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
-.discovery-agenda__head strong { font-size: var(--fs-sm); }
-/* ⚠️ 不画左竖线。这两句是进度说明（「还差多少才看得出一条议程」），不是引文，
-   而 design-system 明写着不用通用彩色左竖线——引用块的形状会让人以为这是谁说的话。 */
-.discovery-agenda__wait,
-.discovery-agenda__none {
-  margin: 0;
-  padding: 0;
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-  line-height: 1.7;
-}
-.discovery-agenda__card {
-  display: grid;
-  gap: var(--sp-2);
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px dashed var(--brand);
-  border-radius: var(--r-md);
-  background: var(--brand-wash);
-}
-.discovery-agenda__card strong { font-size: var(--fs-sm); }
-.discovery-agenda__card p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.7; }
-.discovery-agenda__card span { color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
-.discovery-agenda__card small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
-.discovery-agenda__card em { color: var(--brand-strong); font-size: var(--fs-xs); font-style: normal; }
-.discovery-agenda__card .row-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-2); }
-/* 「去手动探索自己写」是句子里的一个词，不是一颗按钮。 */
-.linkish { padding: 0; border: 0; background: none; color: var(--brand-strong); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 
 /* 去公开讨论里找真实声音。
    ⚠️ 引证是卡片的主体而不是折叠细节：用户要判断的就是「这话是不是真有人说过」，
@@ -346,26 +149,9 @@
 .harvest-dropped summary { cursor: pointer; }
 .harvest-dropped ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 
-/* ⚠️ 不需要断点减列：`auto-fill` 按容器宽自己决定开几列，
-   窄到放不下两列时自然就是一列。写死的断点反而会和它打架。 */
 
-/* 候选在前，保存过的机会紧随其后；研究与议程退到辅助位置。 */
-.discovery-section-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-5); }
-.discovery-section-head h3 { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
-.discovery-section-head h3 span, .discovery-saved h3 span { margin-left: var(--sp-2); color: var(--text-3); font-weight: 400; }
-.discovery-section-head small { color: var(--text-3); font-size: var(--fs-xs); }
-.discovery-card[data-open] .discovery-card__claim { display: block; min-height: 0; overflow: visible; }
-.discovery-card[data-open] .discovery-card__q { white-space: normal; overflow: visible; }
-.discovery-research { padding-top: var(--sp-5); border-top: 1px solid var(--border); }
-.discovery-saved .bridge-opp-list button { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-6); }
-.discovery-saved .bridge-opp-pair { grid-column: 1; }
-.discovery-saved .bridge-opp-claim { grid-column: 1; }
-.discovery-saved .bridge-opp-meta { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; align-items: flex-end; justify-content: center; }
-.discovery-saved .bridge-opp-meta em { background: transparent; padding: 0; }
-@media (max-width: 1100px) {
-  .discovery-card[data-open] { grid-column: 1 / -1; }
-}
-@media (max-width: 640px) {
-  .discovery-saved .bridge-opp-list button { grid-template-columns: minmax(0, 1fr); }
-  .discovery-saved .bridge-opp-meta { grid-column: 1; grid-row: auto; flex-direction: row; justify-content: flex-start; }
-}
+.opportunity-home .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+.opportunity-header__actions { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
+.opportunity-brief__head h3 { scroll-margin-top: 80px; }
+.opportunity-brief__head h3:focus { outline: none; }
