@@ -30,26 +30,7 @@ function dateLabel(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
 }
 
-/**
- * 一条连接候选，**一张卡**。
- *
- * ⚠️ **两列，不是三列或自动填充。** 一次扫描默认给 4 条、最多 5 条
- *（`content-discovery-ai.mjs` 的 `DEFAULT_LIMIT` / `MAX_LIMIT`）。
- * 三列时 4 条排成 3+1，第二行右边空掉三分之二；两列时 4 条正好铺满，
- * 而且卡宽约 530px——中文判断落在两行，不是三行。
- *
- * ⚠️ **判断和问句都定行数，卡才等高。** 试做版没定，于是同一行里
- * 「判断两行」和「判断三行」的卡被拉齐成一样高，矮的那张底部空一截；
- * 更糟的是**每张卡的问句从不同的高度开始**，四张并排时眼睛没有可比的基准线。
- * 现在判断锁两行、问句锁一行，四张卡逐行对得上。
- *
- * ⚠️ **展开时整卡横跨两列。** 不跨的话，展开那一张会把同一行的另一张也撑到同样高，
- * 旁边就多出一大块空白——而展开是「我要细读这一条」，本来就该独占一行。
- *
- * 折叠时只留能做选择的几样：判断（真写下去要写的就是这句，也是几条之间差别最大的）、
- * 问句和证据成色（是不是真有人卡在这儿）、凭哪几条知识（是不是我能说的）。
- * 理由都在「看完整解释」后面。
- */
+/** 候选保持可比较的卡宽；一次展开一条，小屏在原列内阅读。 */
 function ConnectionCard({ connection, onDevelop, busy, more, onToggleMore }) {
   const [quotesOpen, setQuotesOpen] = useState(false);
   const quotes = connection.problem.evidence || [];
@@ -336,7 +317,9 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
       ) : null}
 
       {scan_ && !scanning && connections.length ? (
-        <section className="discovery-list" aria-label="值得发展的连接">
+        <section className="discovery-candidates" aria-label="值得发展的连接">
+          <div className="discovery-section-head"><h3>值得发展的连接 <span>{connections.length}</span></h3><small>候选 · 确认保存后进入进行中</small></div>
+          <div className="discovery-list">
           {connections.map((connection, index) => (
             <ConnectionCard
               key={`${connection.problem.statement}:${index}`}
@@ -349,6 +332,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
               onDevelop={develop}
             />
           ))}
+          </div>
         </section>
       ) : null}
 
@@ -378,6 +362,37 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {opportunities.length ? (
+        <section className="discovery-saved" aria-label="进行中的内容机会">
+          <h3 className="section-label">进行中 <span>{opportunities.length}</span></h3>
+          <ul className="bridge-opp-list">
+            {opportunities.map((item) => (
+              <li key={item.id}>
+                <button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}>
+                  <span className="bridge-opp-pair">
+                    <strong>{item.wikiTitle || "已删除的知识"}</strong>
+                    <em aria-hidden="true">×</em>
+                    <strong>{item.audienceProblemStatement}</strong>
+                  </span>
+                  <span className="bridge-opp-claim">{item.coreClaim}</span>
+                  {/**
+                    * ⚠️ **这一行不再画贴合度药丸。**
+                    * 「很自然」是**保存那一刻**下的判断，摆在这儿不驱动任何动作；
+                    * 而这一段回答的是「哪一条我该接着做」——那由「建没建项目」决定。
+                    * 上面那张候选卡里同一颗药丸也撤了（它在那儿有 `fitReason` 可以当引子，
+                    * 这儿连引子都没有，就只剩一个没有量表的评级）。
+                    */}
+                  <span className="bridge-opp-meta">
+                    <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
+                    <small>{dateLabel(item.updatedAt)}更新</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {/*
@@ -492,36 +507,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice }) {
         </section>
       ) : null}
 
-      {opportunities.length ? (
-        <section className="discovery-saved" aria-label="进行中的内容机会">
-          <h3 className="section-label">进行中</h3>
-          <ul className="bridge-opp-list">
-            {opportunities.map((item) => (
-              <li key={item.id}>
-                <button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}>
-                  <span className="bridge-opp-pair">
-                    <strong>{item.wikiTitle || "已删除的知识"}</strong>
-                    <em aria-hidden="true">×</em>
-                    <strong>{item.audienceProblemStatement}</strong>
-                  </span>
-                  <span className="bridge-opp-claim">{item.coreClaim}</span>
-                  {/**
-                    * ⚠️ **这一行不再画贴合度药丸。**
-                    * 「很自然」是**保存那一刻**下的判断，摆在这儿不驱动任何动作；
-                    * 而这一段回答的是「哪一条我该接着做」——那由「建没建项目」决定。
-                    * 上面那张候选卡里同一颗药丸也撤了（它在那儿有 `fitReason` 可以当引子，
-                    * 这儿连引子都没有，就只剩一个没有量表的评级）。
-                    */}
-                  <span className="bridge-opp-meta">
-                    <em>{item.hasProject ? "已建立项目" : "待建立项目"}</em>
-                    <small>{dateLabel(item.updatedAt)}更新</small>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+
 
       {scan_ && !connections.length && !scan_.nothingFoundReason ? (
         <Note title="这次没有读到任何东西">扫描没有出错，但工作台里暂时没有可用的知识或真实声音。</Note>

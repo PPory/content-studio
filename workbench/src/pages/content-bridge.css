@@ -105,7 +105,7 @@
 
 .bridge-side {
   min-width: 0;
-  padding: var(--sp-8) 0;
+  padding: 0;
 }
 
 .bridge-side-actions,
@@ -137,7 +137,7 @@
 }
 
 .bridge-filter button { padding: var(--sp-3) var(--sp-4); font-size: var(--fs-sm); }
-.bridge-filter button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-1); font-weight: 600; }
+.bridge-filter button[aria-selected="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border-strong); color: var(--text-1); font-weight: 600; }
 
 /* ⚠️ 行矮下来之后限高跟着提：480px 那一版是照着 140px 的行定的，
    现在同样的高度能装两倍的条目，再限 480 就是白白浪费省下来的空间 */
@@ -170,7 +170,7 @@
 }
 
 .bridge-select-row:hover { background: var(--surface-2); }
-.bridge-select-row[data-selected="true"] { background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--accent); }
+.bridge-select-row[data-selected="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--text-1); }
 /* 标题最多两行：右栏是整句用户问题，一行截断会把「问的是什么」切掉 */
 .bridge-select-row strong {
   font-size: var(--fs-base); font-weight: 600; line-height: 1.5;
@@ -418,3 +418,20 @@
  * 问题那一侧读前半句就够认出是哪一条。
  */
 .bridge-bar__title h2 span:first-child { flex: 0 1 auto; min-width: min(14ch, 38%); }
+
+/* 子页面共用返回位置、可换行操作栏和正文阅读宽度。 */
+.bridge-bar { flex-wrap: wrap; }
+.bridge-bar__actions { flex-wrap: wrap; }
+.bridge-back { cursor: pointer; min-height: 32px; }
+.content-bridge-workspace .bridge-result { max-width: 960px; margin-inline: auto; }
+.content-bridge-workspace .bridge-picker > section { min-width: 0; }
+.content-bridge-workspace .bridge-picker > section + section { padding-left: var(--sp-6); border-left: 1px solid var(--border); }
+.content-bridge :is(p, strong, blockquote, h3) { overflow-wrap: anywhere; }
+@media (max-width: 980px) {
+  .content-bridge-workspace .bridge-picker > section + section { padding: var(--sp-6) 0 0; border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 640px) {
+  .bridge-bar--sticky { position: static; margin-top: 0; padding-top: 0; }
+  .bridge-bar__title { width: 100%; flex-wrap: wrap; }
+  .bridge-bar__actions .btn { white-space: normal; height: auto; min-height: 34px; }
+}

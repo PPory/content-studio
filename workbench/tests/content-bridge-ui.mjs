@@ -820,6 +820,18 @@ try {
   await page.getByRole("button", { name: /帮我看看最近有什么值得讲/ }).click();
   await page.locator(".discovery-card").first().waitFor();
 
+  const discoveryViewport = page.viewportSize();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator(".content-discovery").evaluate((el) => el.closest(".main").scrollTo(0, 0));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-discovery-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".discovery-card__more-toggle").first().click();
+  check("小屏展开候选不会生成越界网格列", await page.locator(".discovery-card").first().evaluate((el) => el.getBoundingClientRect().right <= innerWidth));
+  check("展开后核心判断和问题可以完整阅读", await page.locator(".discovery-card__q").first().evaluate((el) => getComputedStyle(el).whiteSpace === "normal"));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-discovery-mobile.png"), fullPage: true });
+  await page.locator(".discovery-card__more-toggle").first().click();
+  await page.setViewportSize(discoveryViewport);
+
   const cardText = await page.locator(".discovery-card").first().innerText();
   check("卡片说清谁在困惑什么、用我的什么知识、可能留下什么判断",
     cardText.includes("AI 工具每周都在出新的") && cardText.includes("认知卸载")
@@ -942,6 +954,17 @@ try {
     (await page.locator(".construction-routes__head").innerText()).includes("1 条和上面重复"));
   check("没有个人经历时说清经历型这条路线为什么不在",
     (await page.locator(".construction-note--gate").innerText()).includes("个人经历"));
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForFunction(() => innerWidth === 1440);
+  await page.locator(".content-construction").evaluate((el) => el.closest(".main").scrollTo(0, 0));
+  const routeBoxes = await page.locator(".construction-routes__list > .route-card").evaluateAll((els) => els.map((el) => ({ x: el.getBoundingClientRect().x, y: el.getBoundingClientRect().y })));
+  check("桌面讲法并排比较", routeBoxes.length === 2 && Math.abs(routeBoxes[0].y - routeBoxes[1].y) < 2 && routeBoxes[1].x > routeBoxes[0].x, JSON.stringify(routeBoxes));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-construction-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  check("小屏讲法卡片保持在视口内", await page.locator(".route-card").evaluateAll((els) => els.every((el) => el.getBoundingClientRect().right <= innerWidth)));
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-construction-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.locator(".route-card").nth(1).getByRole("button", { name: "沿这个继续" }).click();
   await page.locator(".construction-ask").waitFor();

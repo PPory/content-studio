@@ -44,9 +44,9 @@
  */
 .discovery-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: var(--sp-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 .discovery-card {
@@ -55,11 +55,11 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
-  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+  transition: none;
 }
-.discovery-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.discovery-card:hover { border-color: var(--border-strong); }
 /* 牵强的那条别用同样的分量。它仍然显示——AI 说了实话就该看得见。 */
-.discovery-card[data-fit="weak"] { opacity: .72; }
+.discovery-card[data-fit="weak"] { border-style: dashed; }
 /**
  * ⚠️ **展开的那张横跨两列。** 不跨的话它会把同一行的另一张也撑到同样高，
  * 旁边多出一大块空白；而展开的意思是「我要细读这一条」，本来就该独占一行。
@@ -209,7 +209,7 @@
  * 待决定的更抢眼。上一版候选变成平铺行之后，这一段还留着一堆浮起来的白盒子，
  * 一页上两种列表语汇，重的那种装的还是次要的东西。
  */
-.discovery-saved { margin-top: var(--sp-11); }
+.discovery-saved { margin-top: var(--sp-8); }
 .discovery-saved .bridge-opp-list { background: none; gap: 0; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 .discovery-saved .bridge-opp-list li + li { border-top: 1px solid var(--border); }
 .discovery-saved .bridge-opp-list button { padding: var(--sp-4) var(--sp-4); background: none; }
@@ -217,7 +217,7 @@
 .discovery-saved h3 { margin: 0 0 var(--sp-4); }
 
 @media (max-width: 720px) {
-  .discovery-card { padding: var(--sp-6); gap: var(--sp-5); }
+  .discovery-card { padding: 0; }
   .discovery-card__foot .btn { margin-left: 0; }
 
   /*
@@ -348,3 +348,24 @@
 
 /* ⚠️ 不需要断点减列：`auto-fill` 按容器宽自己决定开几列，
    窄到放不下两列时自然就是一列。写死的断点反而会和它打架。 */
+
+/* 候选在前，保存过的机会紧随其后；研究与议程退到辅助位置。 */
+.discovery-section-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+.discovery-section-head h3 { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.discovery-section-head h3 span, .discovery-saved h3 span { margin-left: var(--sp-2); color: var(--text-3); font-weight: 400; }
+.discovery-section-head small { color: var(--text-3); font-size: var(--fs-xs); }
+.discovery-card[data-open] .discovery-card__claim { display: block; min-height: 0; overflow: visible; }
+.discovery-card[data-open] .discovery-card__q { white-space: normal; overflow: visible; }
+.discovery-research { padding-top: var(--sp-5); border-top: 1px solid var(--border); }
+.discovery-saved .bridge-opp-list button { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-6); }
+.discovery-saved .bridge-opp-pair { grid-column: 1; }
+.discovery-saved .bridge-opp-claim { grid-column: 1; }
+.discovery-saved .bridge-opp-meta { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; align-items: flex-end; justify-content: center; }
+.discovery-saved .bridge-opp-meta em { background: transparent; padding: 0; }
+@media (max-width: 1100px) {
+  .discovery-card[data-open] { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .discovery-saved .bridge-opp-list button { grid-template-columns: minmax(0, 1fr); }
+  .discovery-saved .bridge-opp-meta { grid-column: 1; grid-row: auto; flex-direction: row; justify-content: flex-start; }
+}

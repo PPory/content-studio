@@ -723,10 +723,10 @@ export function ContentBridge({ state = "", onGo }) {
   );
 
   return (
-    <div className="view-body content-bridge">
+    <div className="view-body content-bridge content-bridge-workspace">
       {/* 工作台的顶栏是常驻操作区：滚到结果哪一段，主动作都还在手边 */}
       <div className="bridge-bar bridge-bar--sticky">
-        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容</button>
+        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
         <div className="bridge-bar__title">
           {selectedWiki || activeProblem ? (
             <h2>
@@ -744,7 +744,6 @@ export function ContentBridge({ state = "", onGo }) {
           {problemCandidate ? <span className="bridge-bar__pending">用户问题还没保存</span> : null}
         </div>
         <div className="bridge-bar__actions">
-          {preview ? <span className="bridge-fit" data-fit={preview.fit}>{FIT_LABELS[preview.fit] || preview.fit}</span> : null}
           {preview && !savedOpportunity ? (
             <button type="button" className="btn btn-sm" onClick={() => setPickerOpen((value) => !value)}>{pickerOpen ? "收起选择" : "重新选择"}</button>
           ) : null}

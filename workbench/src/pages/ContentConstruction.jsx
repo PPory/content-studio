@@ -105,7 +105,7 @@ function RouteCard({ route, selected, onSelect, compact = false }) {
 
       {onSelect ? (
         <footer>
-          <button type="button" className={`btn btn-sm${selected ? "" : " btn-primary"}`} onClick={onSelect}>
+          <button type="button" className="btn btn-sm" onClick={onSelect}>
             {selected ? "正在推这条" : "沿这个继续"}
             {selected ? null : <IconArrowRight aria-hidden="true" />}
           </button>
@@ -263,7 +263,7 @@ export function ContentConstruction({ onGo }) {
     return (
       <div className="view-body content-bridge content-construction">
         <div className="bridge-bar">
-          <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容</button>
+          <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
         </div>
         <Note title="这条连接已经不在手边了">
           构造中的讲法只活在这一次操作里，刷新之后就没了——它还没有被保存，所以也没有留下任何东西。
@@ -278,7 +278,7 @@ export function ContentConstruction({ onGo }) {
   return (
     <div className="view-body content-bridge content-construction">
       <div className="bridge-bar bridge-bar--sticky">
-        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容</button>
+        <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
         <div className="bridge-bar__title">
           <h2><span>{connection.knowledgeAnchors[0]?.title}</span><em aria-hidden="true">×</em><span>{connection.problem.statement}</span></h2>
           <span className="bridge-bar__pending">{saved ? "已保存" : "还没保存"}</span>
@@ -411,7 +411,7 @@ export function ContentConstruction({ onGo }) {
                     placeholder="例如：结论太绝对了，收一点｜有没有我以前记过的案例能支撑它｜把最强的反方放到前面｜这条太像知识科普了，变成判断型"
                   />
                   <div className="construction-ask__actions">
-                    <button type="button" className="btn btn-primary btn-sm" disabled={!instruction.trim() || refining} onClick={refine}>
+                    <button type="button" className="btn btn-sm" disabled={!instruction.trim() || refining} onClick={refine}>
                       {refining ? "正在改…" : "继续推"}
                     </button>
                     <button type="button" className="btn btn-sm" disabled={refining} onClick={() => setSelectedId("")}>换一条讲法</button>
