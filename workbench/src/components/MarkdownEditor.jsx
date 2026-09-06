@@ -408,6 +408,7 @@ export function MarkdownEditor({
   onDiscuss,                       // 回答卡的「对话」：把这一问交给右侧 AI 助手继续聊
   mediaBase = "",                  // 导入文档中相对图片/视频路径的兼容基准目录
   readOnly = false,
+  positionKey = "", // Local UI coordinates only; the body remains in SQLite.
 }) {
   const host = useRef(null);
   const view = useRef(null);
@@ -591,10 +592,16 @@ export function MarkdownEditor({
   // 光标、撤销历史、滚动位置全丢。外部改值走下面那个 effect 的补丁式更新。
   useEffect(() => {
     if (!host.current) return;
+    const preferenceKey = positionKey ? `xenho:writing-position:${positionKey}` : "";
+    let savedPosition = null;
+    try { if (preferenceKey) savedPosition = JSON.parse(localStorage.getItem(preferenceKey) || "null"); } catch { /* UI preferences never prevent writing. */ }
+    const docLength = String(value ?? "").length;
+    const clampPosition = (number) => Number.isFinite(number) ? Math.max(0, Math.min(docLength, Math.floor(number))) : 0;
     const v = new EditorView({
       parent: host.current,
       state: EditorState.create({
         doc: value ?? "",
+        selection: savedPosition ? { anchor: clampPosition(savedPosition.anchor), head: clampPosition(savedPosition.head) } : undefined,
         extensions: [
           history(),
           /**
@@ -798,7 +805,30 @@ export function MarkdownEditor({
     });
     view.current = v;
     onCursorChangeRef.current?.(v.state.selection.main.head);
-    onSelectionChangeRef.current?.(null);
+    const restoredSelection = v.state.selection.main;
+    onSelectionChangeRef.current?.(restoredSelection.empty ? null : { from: restoredSelection.from, to: restoredSelection.to, text: v.state.sliceDoc(restoredSelection.from, restoredSelection.to) });
+    const scrollParents = [];
+    for (let parent = host.current.parentElement; parent; parent = parent.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) scrollParents.push(parent);
+    }
+    let positionTimer = 0;
+    const savePosition = () => {
+      if (!preferenceKey) return;
+      const { anchor, head } = v.state.selection.main;
+      try { localStorage.setItem(preferenceKey, JSON.stringify({ anchor, head, scroll: scrollParents.map((node) => node.scrollTop), editorScroll: v.scrollDOM.scrollTop })); } catch { /* Storage may be unavailable or full. */ }
+    };
+    const schedulePosition = () => { clearTimeout(positionTimer); positionTimer = setTimeout(savePosition, 250); };
+    const restoreFrame = requestAnimationFrame(() => {
+      if (!savedPosition) return;
+      scrollParents.forEach((node, index) => { if (Number.isFinite(savedPosition.scroll?.[index])) node.scrollTop = Math.max(0, savedPosition.scroll[index]); });
+      if (Number.isFinite(savedPosition.editorScroll)) v.scrollDOM.scrollTop = Math.max(0, savedPosition.editorScroll);
+    });
+    if (preferenceKey) {
+      window.addEventListener("scroll", schedulePosition, true);
+      window.addEventListener("beforeunload", savePosition);
+      v.dom.addEventListener("keyup", schedulePosition);
+      v.dom.addEventListener("pointerup", schedulePosition);
+    }
     const refreshInlineMenus = () => {
       const active = v.state.field(textRevisionField).active;
       const nextSelection = revisionSelectionOf(v);
@@ -836,6 +866,13 @@ export function MarkdownEditor({
     window.addEventListener("resize", scheduleInlineRefresh);
     document.addEventListener("selectionchange", scheduleInlineRefresh);
     return () => {
+      cancelAnimationFrame(restoreFrame);
+      clearTimeout(positionTimer);
+      savePosition();
+      window.removeEventListener("scroll", schedulePosition, true);
+      window.removeEventListener("beforeunload", savePosition);
+      v.dom.removeEventListener("keyup", schedulePosition);
+      v.dom.removeEventListener("pointerup", schedulePosition);
       cancelAnimationFrame(refreshFrame);
       v.dom.removeEventListener(BLOCK_MENU_EVENT, openFromGutter);
       boundaryObserver?.disconnect();

@@ -1,0 +1,138 @@
+import { createUlid } from "../storage/ids.mjs";
+import { createProjectExploration } from "./project-notebook.mjs";
+const error = (message, status = 400) => Object.assign(new Error(message), { status });
+const stamp = () => new Date().toISOString();
+function text(value, max = 100000) {
+  if (typeof value !== "string" || value.length > max) throw error(`文字不能超过 ${max} 字符`);
+  return value;
+}
+function inputObject(input, keys) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => !keys.includes(key))) throw error("数据格式无效");
+}
+function researchRow(w, id) {
+  const row = w.db.prepare(`SELECT r.*,e.deleted_at FROM researches r JOIN entities e ON e.id=r.id WHERE r.id=? AND e.deleted_at IS NULL`).get(id);
+  if (!row) throw error("研究不存在", 404);
+  return row;
+}
+const librarySql = `SELECT m.id,'material' kind,m.title,m.body_markdown body,m.source_url sourceUrl,m.material_type nature,e.updated_at updatedAt FROM materials m JOIN entities e ON e.id=m.id WHERE e.deleted_at IS NULL
+ UNION ALL SELECT p.id,'wiki',p.title,p.body_markdown,'','知识笔记',e.updated_at FROM wiki_pages p JOIN entities e ON e.id=p.id WHERE e.deleted_at IS NULL
+ UNION ALL SELECT c.id,'capture',c.title,c.body_markdown,c.source_url,CASE WHEN c.capture_kind='thought' THEN '随手记' ELSE '原文' END,e.updated_at FROM captures c JOIN entities e ON e.id=c.id WHERE e.deleted_at IS NULL AND c.status!='discarded'
+ UNION ALL SELECT s.id,'seed',s.title,s.reaction,'','想法',e.updated_at FROM seeds s JOIN entities e ON e.id=s.id WHERE e.deleted_at IS NULL
+ UNION ALL SELECT d.id,'source',CASE WHEN d.title=b.title THEN d.title ELSE b.title||' · '||d.title END,d.body_markdown,b.source_url,b.source_kind||'原文',e.updated_at FROM book_documents d JOIN entities e ON e.id=d.id JOIN books b ON b.id=d.book_id JOIN entities be ON be.id=b.id WHERE e.deleted_at IS NULL AND be.deleted_at IS NULL
+ UNION ALL SELECT k.id,'source',k.title,k.body_markdown,k.source_url,'阅读记录',e.updated_at FROM knowledge_items k JOIN entities e ON e.id=k.id WHERE e.deleted_at IS NULL`;
+export function libraryItems(w, { q = "", kind = "", limit = 100 } = {}) {
+  text(q, 500); text(kind, 20);
+  const size = Number.isSafeInteger(Number(limit)) ? Math.max(1,Math.min(200,Number(limit))) : 100;
+  if (kind && !["material","wiki","source","capture","seed"].includes(kind)) throw error("资料类型无效");
+  return w.db.prepare(`SELECT *,substr(body,1,500) excerpt FROM (${librarySql}) WHERE (?='' OR kind=?) AND (?='' OR instr(lower(title||char(10)||body),lower(?))>0) ORDER BY updatedAt DESC LIMIT ?`).all(kind,kind,q,q,size).map(({body,...item}) => item);
+}
+export function libraryItem(w, kind, id) {
+  const item = w.db.prepare(`SELECT *,substr(body,1,20000) excerpt FROM (${librarySql}) WHERE kind=? AND id=?`).get(kind,id);
+  if (!item) throw error("资料不存在或已移除",404);
+  return item;
+}
+export function getResearch(w,id) {
+  const row = researchRow(w,id);
+  const references = w.db.prepare("SELECT kind,entity_id id FROM research_references WHERE research_id=? ORDER BY created_at").all(id).map(ref => {
+    try { const {body,...item} = libraryItem(w,ref.kind,ref.id); return item; }
+    catch (e) { if(e.status!==404) throw e; return {...ref,title:"资料已移除",excerpt:"",missing:true}; }
+  });
+  const conversations = w.db.prepare(`SELECT DISTINCT c.id,c.title,c.scope_id scopeId,e.updated_at updatedAt FROM ai_conversations c JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.scope_id=? OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=?) ORDER BY e.updated_at DESC`).all(`research:${id}`,id);
+  const projects = w.db.prepare(`SELECT p.id,p.title,l.selected_text selectedText FROM research_projects l JOIN projects p ON p.id=l.project_id JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE l.research_id=? ORDER BY l.created_at DESC`).all(id);
+  return {id,title:row.question || "未命名研究",question:row.question,notes:row.notes,openQuestions:row.open_questions,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at,scopeId:`research:${id}`,references,conversations,projects};
+}
+export function listResearches(w) {
+  return w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240)};});
+}
+export function createResearch(w,input) {
+  inputObject(input,["question","notes","openQuestions"]);
+  const question=text(input.question ?? "",1000),notes=text(input.notes ?? ""),openQuestions=text(input.openQuestions ?? "",20000);
+  return w.repository.transaction(() => {
+    const id=createUlid(),now=stamp();
+    w.repository.createEntity({id,type:"research",now:new Date(now)});
+    w.db.prepare("INSERT INTO researches(id,question,notes,open_questions,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(id,question,notes,openQuestions,now,now);
+    w.repository.setEntityText(id,{title:question,body:notes,now:new Date(now)});
+    w.domain.audit("research.created",id);
+    return getResearch(w,id);
+  });
+}
+export function saveResearch(w,id,input) {
+  inputObject(input,["question","notes","openQuestions","expectedVersion"]);
+  if (!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<1) throw error("缺少有效版本号");
+  for(const key of ["question","notes","openQuestions"]) if(Object.hasOwn(input,key)) text(input[key],key==="question"?1000:key==="notes"?100000:20000);
+  return w.repository.transaction(() => {
+    const row=researchRow(w,id);
+    if(row.version!==input.expectedVersion) throw error("研究已在另一处更新，请重新载入后再保存",409);
+    const now=stamp(),question=input.question??row.question,notes=input.notes??row.notes;
+    w.db.prepare("UPDATE researches SET question=?,notes=?,open_questions=?,version=version+1,updated_at=? WHERE id=?").run(question,notes,input.openQuestions??row.open_questions,now,id);
+    w.repository.setEntityText(id,{title:question,body:notes,now:new Date(now)});w.domain.touch(id,new Date(now));w.domain.audit("research.saved",id,{version:row.version+1});
+    return getResearch(w,id);
+  });
+}
+export function researchReference(w,id,input,remove=false) {
+  inputObject(input,["kind","id"]);text(input.kind,20);text(input.id,160);researchRow(w,id);
+  return w.repository.transaction(() => {
+    if(remove) w.db.prepare("DELETE FROM research_references WHERE research_id=? AND entity_id=? AND kind=?").run(id,input.id,input.kind);
+    else {libraryItem(w,input.kind,input.id);w.db.prepare("INSERT OR IGNORE INTO research_references(research_id,entity_id,kind,created_at) VALUES(?,?,?,?)").run(id,input.id,input.kind,stamp());}
+    w.domain.audit(remove?"research.reference_removed":"research.reference_added",id,{kind:input.kind,id:input.id});return getResearch(w,id);
+  });
+}
+export function researchConversation(w,id,input) {
+  inputObject(input,["conversationId"]);text(input.conversationId,160);researchRow(w,id);
+  const found=w.db.prepare("SELECT c.id FROM ai_conversations c JOIN entities e ON e.id=c.id WHERE c.id=? AND e.deleted_at IS NULL").get(input.conversationId);
+  if(!found) throw error("讨论不存在",404);
+  w.db.prepare("INSERT OR IGNORE INTO research_conversations(research_id,conversation_id,created_at) VALUES(?,?,?)").run(id,input.conversationId,stamp());
+  return getResearch(w,id);
+}
+export function researchProject(w,id,input) {
+  inputObject(input,["projectId","requestKey","title","selectedText"]);researchRow(w,id);
+  return w.repository.transaction(() => {
+    let created;
+    if(input.projectId) {text(input.projectId,160);w.domain.entity(input.projectId,"project");created={projectId:input.projectId};}
+    else {
+      text(input.requestKey,120);
+      const selectedText=text(input.selectedText,20000);
+      if(!selectedText.trim()) throw error("请先选择要带入创作的文字");
+      // A retry key belonging to a different research must not cross-link silently.
+      const old=w.db.prepare("SELECT project_id,json_extract(notes_json,'$.discovery.research.id') research_id FROM project_notebooks WHERE request_key=?").get(input.requestKey);
+      if(old && old.research_id!==id) throw error("请求 ID 已被其他创建操作使用",409);
+      created=createProjectExploration(w,{requestKey:input.requestKey,title:input.title,thought:selectedText,discovery:{research:{id,scopeId:`research:${id}`}}});
+    }
+    w.db.prepare("INSERT OR IGNORE INTO research_projects(research_id,project_id,selected_text,created_at) VALUES(?,?,?,?)").run(id,created.projectId,input.selectedText===undefined?"":text(input.selectedText,20000),stamp());
+    return {...created,research:getResearch(w,id)};
+  });
+}
+export function projectResearches(w,id) {
+  w.domain.entity(id,"project");
+  return w.db.prepare("SELECT r.id FROM researches r JOIN research_projects l ON l.research_id=r.id JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE l.project_id=? ORDER BY l.created_at").all(id).map(({id})=>getResearch(w,id));
+}
+export function quickNote(w,input) {
+  inputObject(input,["text","sourceUrl"]);const body=text(input.text);
+  if(!body.trim()) throw error("请先写一点内容");
+  const sourceUrl=text(input.sourceUrl??"",2000);
+  if(sourceUrl && !/^https?:\/\//i.test(sourceUrl)) throw error("出处应为 http 或 https 链接");
+  return w.repository.transaction(() => {
+  const id=w.domain.createCapture({kind:"thought",title:body.trim().split("\n")[0].slice(0,80),bodyMarkdown:body,sourceUrl,actor:"user",confirmed:true});
+  // A quick note is already saved; it is not an AI processing obligation.
+  w.db.prepare("UPDATE captures SET status='accepted' WHERE id=?").run(id);
+  const {body:original,...item}=libraryItem(w,"capture",id);return item;
+  });
+}
+export function workState(w,kind,id,input) {
+  if(!["research","project"].includes(kind)) throw error("工作类型无效");
+  w.domain.entity(id,kind);inputObject(input,["pinned","hidden","position"]);
+  for(const key of ["pinned","hidden"]) if(Object.hasOwn(input,key)&&typeof input[key]!=="boolean") throw error("置顶和隐藏必须是布尔值");
+  if(Object.hasOwn(input,"position")) {
+    if(!input.position || typeof input.position!=="object" || Array.isArray(input.position) || Buffer.byteLength(JSON.stringify(input.position))>4096) throw error("恢复位置格式无效");
+  }
+  const old=w.db.prepare("SELECT * FROM work_states WHERE entity_id=?").get(id);
+  const state={pinned:input.pinned??Boolean(old?.pinned),hidden:input.hidden??Boolean(old?.hidden),position:input.position??JSON.parse(old?.position_json||"{}")};
+  w.db.prepare("INSERT INTO work_states(entity_id,pinned,hidden,position_json) VALUES(?,?,?,?) ON CONFLICT(entity_id) DO UPDATE SET pinned=excluded.pinned,hidden=excluded.hidden,position_json=excluded.position_json").run(id,Number(state.pinned),Number(state.hidden),JSON.stringify(state.position));
+  return state;
+}
+export function recentWork(w,{includeHidden=false}={}) {
+  return w.db.prepare(`SELECT a.*,coalesce(s.pinned,0) pinned,coalesce(s.hidden,0) hidden,coalesce(s.position_json,'{}') position FROM (
+    SELECT r.id,'research' kind,CASE WHEN r.question='' THEN '未命名研究' ELSE r.question END title,substr(r.notes,1,240) excerpt,max(r.updated_at,coalesce((SELECT max(json_extract(message.value,'$.createdAt')) FROM ai_conversations c JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL,json_each(c.record_json,'$.messages') message WHERE (c.scope_id='research:'||r.id OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=r.id)) AND json_extract(message.value,'$.role')='user'),r.updated_at)) updatedAt FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL
+    UNION ALL SELECT p.id,'project',p.title,substr(coalesce(nullif(d.body_markdown,''),json_extract(n.notes_json,'$.thought'),''),1,240),max(e.updated_at,coalesce(de.updated_at,e.updated_at),coalesce(n.updated_at,e.updated_at)) FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL LEFT JOIN project_primary_drafts pd ON pd.project_id=p.id LEFT JOIN drafts d ON d.id=pd.draft_id LEFT JOIN entities de ON de.id=d.id LEFT JOIN project_notebooks n ON n.project_id=p.id WHERE p.status!='parked' AND (d.id IS NULL OR (de.deleted_at IS NULL AND d.workflow_status NOT IN ('已发布','已弃用')))
+  ) a LEFT JOIN work_states s ON s.entity_id=a.id WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,updatedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>({...row,pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)}));
+}

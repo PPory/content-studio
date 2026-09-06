@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./writing-surface.css";
 import { ProjectNotebook } from "../components/ProjectNotebook.jsx";
 import { api, downloadProjectExport } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
@@ -196,7 +197,6 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
   const [publishGateOpen, setPublishGateOpen] = useState(false);
-  const [startPanelOn, setStartPanelOn] = useState(false);
   const [notebookDirty, setNotebookDirty] = useState(false);
   const [notebookVersion, setNotebookVersion] = useState(0);
   const notebookSave = useRef(null);
@@ -389,6 +389,7 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   // ⚠️ 回执要说清成没成功：开写前那一步要「建好主稿之后接着把稿子放进去」，
   // 拿不到结果就只能让用户再点一次。
   async function transition(action, input = {}) {
+    if (notebookDirty && !(await notebookSave.current?.())) return;
     if (busy) return false;
     if (dirty && !(await saveDraft())) return false;
     setBusy(true); setError(null);
@@ -615,7 +616,6 @@ ${(form.body || "").slice(0, 3000)}`);
    * 开始写。一屏两颗主动作，看到的人第一反应是去猜它们有什么区别。
    * 那一栏自己会顺手建主稿，所以这颗退成次级——它仍然在，想要白纸就点它。
    */
-  const startPanelActive = startPanelOn && ["策划中", "写作中"].includes(project.stage);
   /**
    * 这篇文章属于哪些合集。**是个数组**——一篇可以同时进多个。
    *
@@ -673,7 +673,7 @@ ${(form.body || "").slice(0, 3000)}`);
   }
 
   return (
-    <div className="project-workspace">
+    <div className="project-workspace" data-project-id={project.id}>
       {/**
         * ⚠️ **这一行不再写标题。** 上一版这儿是「← 内容 / 《标题》」，而右边的
         * 简报栏里有个 `<h1>` 写同一句、正文顶上还有个可编辑的标题输入框——
@@ -788,7 +788,7 @@ ${(form.body || "").slice(0, 3000)}`);
              * `title` 里写清原因，因为一颗灰按钮自己说不了话。
              */
             <button
-              className={startPanelActive ? "btn" : "btn btn-primary"}
+              className="btn btn-primary"
               onClick={() => (releaseMissing.length ? setPublishGateOpen(true) : transition(mainAction.action))}
               disabled={busy || blockedReason !== ""}
               title={blockedReason || undefined}
@@ -823,40 +823,6 @@ ${(form.body || "").slice(0, 3000)}`);
           </div>
         </section>
       ) : null}
-      <ProjectNotebook key={projectId} projectId={projectId} onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
-        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }} onGo={onGo}
-        onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
-      <ContentIntentPanel
-        projectId={projectId}
-        onGo={onGo}
-        onAsk={(prompt) => {
-          setAssistantHandoff({ id: `intent-${Date.now()}`, prompt });
-          summonAssistant({ routeView: "project" });
-        }}
-      />
-
-      {/*
-        ⚠️ **它在正文之前，而且主稿还没建的时候也要在。**
-        从内容机会建出来的项目落在「策划中」，屏幕上原本只有一句
-        「点右上角建立主稿开始写」——那是一张白纸，而 Xenho 明明已经知道
-        这篇要回答什么问题、留下什么判断、沿哪条讲法。开写前那一步就发生在这儿。
-        正文一旦写起来它自己消失，不做成常驻面板去和正文抢屏幕。
-      */}
-      {["策划中", "写作中"].includes(project.stage) ? (
-        <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
-          contextVersion={notebookVersion}
-          projectId={projectId}
-          empty={!String(form.body || "").trim()}
-          needsDraft={!masterDraft}
-          busy={busy}
-          onGo={onGo}
-          onStartDraft={() => transition("start-writing")}
-          onActiveChange={setStartPanelOn}
-          onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
-        /></details>
-      ) : null}
-
-
       <div className="project-workspace__grid">
         {["待复盘", "已完成"].includes(project.stage) ? (
           <ProjectReviewStage
@@ -887,6 +853,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 * 都是同一句已经知道的话，而这一屏第一眼该是标题和正文。
                 */}
               <MarkdownEditor
+                positionKey={draft.id}
                 key={`${draft.id}:${draftEditable ? "edit" : "locked"}`}
                 value={form.body}
                 onChange={(value) => changeForm("body", value)}
@@ -960,6 +927,34 @@ ${(form.body || "").slice(0, 3000)}`);
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <ProjectAssistantRail
+            notebook={<>
+      <ProjectNotebook embedded key={projectId} projectId={projectId} onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
+        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }} onGo={onGo}
+        onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
+      <ContentIntentPanel
+        projectId={projectId}
+        onGo={onGo}
+        onAsk={(prompt) => {
+          setAssistantHandoff({ id: `intent-${Date.now()}`, prompt });
+          summonAssistant({ routeView: "project" });
+        }}
+      />
+
+      {["策划中", "写作中"].includes(project.stage) ? (
+        <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
+          contextVersion={notebookVersion}
+          projectId={projectId}
+          empty={!String(form.body || "").trim()}
+          needsDraft={!masterDraft}
+          busy={busy}
+          onGo={onGo}
+          onStartDraft={() => transition("start-writing")}
+          onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
+        /></details>
+      ) : null}
+
+
+            </>}
             handoffRequest={assistantHandoff}
             reviewingCandidate={candidateReviewFocused}
             recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}

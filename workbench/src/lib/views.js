@@ -5,10 +5,11 @@
 
 // 稳定的工作空间标签；typeset 只用于工具入口和面包屑。
 export const NAV_LABELS = {
-  today: "今日",
-  knowledge: "积累",
-  content: "创作",
+  today: "首页",
+  knowledge: "资料库",
+  content: "内容",
   review: "复盘",
+  assistant: "研究",
   typeset: "排版",
 };
 

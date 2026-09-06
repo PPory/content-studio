@@ -1,3 +1,4 @@
+import { getResearch, projectResearches } from "../domain/research.mjs";
 import { getProjectNotebook } from "../domain/project-notebook.mjs";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
@@ -158,6 +159,7 @@ async function readConversationRecord(scopeId, conversationId) {
 async function writeConversationRecord(scopeId, record, options = {}) {
   const workspace = currentWorkspace();
   const scope = clean(scopeId, 240);
+  if (scope.startsWith("research:")) getResearch(workspace, scope.slice(9));
   const data = normalizeConversationRecord(scope, record.id, {
     ...record,
     updatedAt: options.touch === false ? (record.updatedAt || record.createdAt || now()) : now(),
@@ -672,6 +674,8 @@ async function localContext(env, input, record) {
     sources.unshift({ id, typeLabel: "项目素材", title: clean(item.title || "未命名素材", 200), snippet: clean(item.content || item.note || item.summary, 1_000), url: clean(item.sourceUrl || item.url, 1_000), source: "当前内容项目" });
   }
   const result = {
+    linkedResearches: input.scopeId?.startsWith("project:") && input.document?.id && workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(input.document.id) ? projectResearches(workspace, input.document.id) : [],
+    research: input.scopeId?.startsWith("research:") ? getResearch(workspace, input.scopeId.slice(9)) : null,
     queries,
     localSources: sources.slice(0, 40),
     references: await resolveAssistantReferences(workspace, input.references),
@@ -739,6 +743,8 @@ function contentPrompt(input, context, model) {
     "knowledge_search 会优先返回持续维护的 Wiki 页面，需要核实时才回看 Raw。当回答形成可长期复用的比较、综合或新连接，并且已经基于至少一个 Wiki 页面时，用 propose_wiki_page 提出完整页面归档候选。禁止把知识拆成孤立事实或原子词条。归档只生成候选，不能声称已经写入。公开网页要先用 propose_knowledge_source 收为本地 Raw，不能把搜索摘要当证据。",
     "来源不足就明确写不足，禁止编造个人经历、数字、引语和出处。如果无法看到图片像素，必须明确说明无法读取，不能根据文件名、工作目录或上下文猜测画面。如果用户要求改写，先说明你将给出候选，再给出可直接替换的文本。",
     runtimeModelInstruction(model),
+    context.linkedResearches?.length ? `【当前作品关联研究，理解与讨论不等于事实，只有可回查的资料可作候选依据】\n${JSON.stringify(context.linkedResearches)}` : "",
+    context.research ? `【当前研究，来自本地保存记录】\n${JSON.stringify(context.research)}\n研究笔记是用户当前理解，不等于已核实事实；讨论只供追溯，不能当作证据。关联资料摘录保留原来源；missing 项不可引用。整理理解时输出可审阅候选，不自动修改笔记，也不默认转为文章。` : "",
     retrievalPrompt(context),
     wikiMentionPrompt(context),
     assistantReferencePrompt(context),
@@ -764,6 +770,8 @@ function generalPrompt(input, context, model) {
     "当用户明确要求在工作台里新建内容并给出正文时，必须调用 propose_content_create 提交结构化候选；不要只把正文回复在聊天里。该工具只生成待确认操作，用户确认后工作台才会真正写入。",
     "knowledge_search 会优先返回持续维护的 Wiki 页面，需要核实时才回看 Raw。当回答形成可长期复用的比较、综合或新连接，并且已经基于至少一个 Wiki 页面时，用 propose_wiki_page 提出完整页面归档候选。禁止把知识拆成孤立事实或原子词条。归档只生成候选，不能声称已经写入。公开网页要先收为本地 Raw，不能把搜索摘要当证据。",
     runtimeModelInstruction(model),
+    context.linkedResearches?.length ? `【当前作品关联研究，理解与讨论不等于事实，只有可回查的资料可作候选依据】\n${JSON.stringify(context.linkedResearches)}` : "",
+    context.research ? `【当前研究，来自本地保存记录】\n${JSON.stringify(context.research)}\n研究笔记是用户当前理解，不等于已核实事实；讨论只供追溯，不能当作证据。关联资料摘录保留原来源；missing 项不可引用。整理理解时输出可审阅候选，不自动修改笔记，也不默认转为文章。` : "",
     retrievalPrompt(context),
     wikiMentionPrompt(context),
     assistantReferencePrompt(context),

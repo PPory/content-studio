@@ -1,3 +1,4 @@
+import { projectResearches } from "./research.mjs";
 import { getProjectNotebook } from "./project-notebook.mjs";
 /**
  * 项目继承的创作上下文。
@@ -113,6 +114,17 @@ export function projectCreativeContext(workspace, projectId) {
     elements.push(resolveElement(db, { id: anchor.wikiPageId, label: "待核对知识来源", type: "concept", source_kind: "wiki_page", source_id: anchor.wikiPageId }));
   }
 
+  const researches = projectResearches(workspace, projectId);
+  for (const research of researches) {
+    for (const reference of research.references) {
+      if (elements.some((item) => item.sourceId === reference.id)) continue;
+      elements.push({ id: reference.id, type: "evidence", typeLabel: "关联研究的资料（需核对）", label: reference.title,
+        sourceId: reference.id, sourceKind: reference.kind === "wiki" ? "wiki_page" : reference.kind,
+        origin: `研究「${research.question}」 · ${reference.nature || "资料"} · ${reference.title}`,
+        body: reference.missing ? "" : clean(reference.excerpt, WIKI_BODY_LIMIT), sourceUrl: reference.sourceUrl || "", available: !reference.missing });
+    }
+  }
+
   const draft = db.prepare(`SELECT d.id,d.title,d.body_markdown AS body FROM drafts d
     JOIN project_primary_drafts p ON p.draft_id = d.id AND p.project_id = ?`).get(projectId)
     || db.prepare("SELECT id,title,body_markdown AS body FROM drafts WHERE project_id=? ORDER BY id LIMIT 1").get(projectId)
@@ -121,6 +133,7 @@ export function projectCreativeContext(workspace, projectId) {
   return {
     projectId,
     notebook,
+    researches,
     opportunity,
     problem,
     wiki,

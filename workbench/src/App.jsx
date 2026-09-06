@@ -1,4 +1,8 @@
 import "./app-navigation.css";
+import "./task-workspace.css";
+import { Research } from "./pages/Research.jsx";
+import { Library } from "./pages/Library.jsx";
+import { QuickNote } from "./components/QuickNote.jsx";
 // 一级导航表达今日、积累、创作、复盘；旧路由保留并归到对应工作空间。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -84,35 +88,9 @@ const SUBNAV_HOME = {
 // 业务导航按用户目的组织，AI 发现只是创作中的可选工具。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
-  {
-    key: "knowledge", to: "materials", match: (v) => KNOWLEDGE_VIEWS.has(v),
-    children: [
-      { to: "materials", label: "素材" },
-      { to: "ideas", label: "灵感" },
-      { to: "seeds", label: "想法" },
-      { to: "entries", label: "Wiki" },
-      { to: "sources", label: "来源" },
-      { to: "shelf", label: "书架" },
-      { to: "assistant", label: "研究" },
-      { to: "hot", label: "热点" },
-      { to: "insights", label: "洞察" },
-    ],
-  },
-  {
-    key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v),
-    children: [
-      { to: "content", label: "全部内容" },
-      { to: "series", label: "合集" },
-      { to: "bridge", label: "发现方向" },
-    ],
-  },
-  {
-    key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v),
-    children: [
-      { to: "review", label: "发布复盘" },
-      { to: "review-performance", label: "数据" },
-    ],
-  },
+  { key: "assistant", to: "research", match: (v) => v === "research" || v === "assistant" },
+  { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || REVIEW_VIEWS.has(v) || v === "typeset" },
+  { key: "knowledge", to: "library", match: (v) => v === "library" || (KNOWLEDGE_VIEWS.has(v) && v !== "assistant") },
 ];
 const TOOL_NAV = { key: "typeset", to: "typeset" };
 
@@ -136,7 +114,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -211,6 +189,7 @@ export function App() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusRetrying, setStatusRetrying] = useState(false); // 正在退避重试，还没到该报错的时候
   const retryTimer = useRef(null);
+  const [quickNote, setQuickNote] = useState(false);
   const [intake, setIntake] = useState(null); // null=关闭；{} 或 {content,source}=打开
   const [intakeVersion, setIntakeVersion] = useState(0);
   const [railCollapsed, setRailCollapsed] = useState(loadRail);
@@ -452,7 +431,7 @@ export function App() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key.toLowerCase() === "n") {
         e.preventDefault();
-        setIntake({});
+        setQuickNote(true);
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -488,7 +467,7 @@ export function App() {
               **「Xenho OS＋」**——它成了品牌名的一部分，而不是一颗按钮。 */}
           <button
             className="rail-icon"
-            onClick={() => setIntake({})}
+            onClick={() => setQuickNote(true)}
             aria-label="收集"
             title="收集（快捷键 n）"
           >
@@ -616,17 +595,6 @@ export function App() {
         <div className="sidebar__foot">
           <button
             className="nav-item"
-            onClick={() => go("typeset")}
-            aria-current={route.view === "typeset" ? "page" : undefined}
-            title="排版工具"
-          >
-            <span className="nav-item__icon">
-              <NAV_ICONS.typeset aria-hidden="true" className="nav-icon" stroke={1.7} />
-            </span>
-            <span className="nav-item__label">排版</span>
-          </button>
-          <button
-            className="nav-item"
             onClick={() => setSettings(true)}
             title="设置：本地工作区、模型与本机工具"
           >
@@ -715,6 +683,7 @@ export function App() {
               <ViewSlots.Provider value={slots}>
               {route.view === "today" ? (
                 <Today
+                  onQuickNote={() => setQuickNote(true)}
                   status={status}
                   statusError={statusError}
                   statusLoading={statusLoading}
@@ -723,6 +692,10 @@ export function App() {
                   onChanged={refreshStatus}
                   onSettings={() => setSettings(true)}
                 />
+              ) : route.view === "research" ? (
+                <Research researchId={route.state} onGo={go} onForceGo={forceGo} registerNavigationGuard={registerNavigationGuard} />
+              ) : route.view === "library" ? (
+                <Library onGo={go} onQuickNote={() => setQuickNote(true)} onImport={() => setIntake({})} />
               ) : route.view === "assistant" ? (
                 <Assistant onGo={go} conversationId={route.state || globalConversationId} onConversationChange={setGlobalConversationId} />
               ) : route.view === "bridge" ? (
@@ -760,7 +733,7 @@ export function App() {
               ) : route.view === "series-detail" ? (
                 <SeriesWorkspace seriesId={route.state} onGo={go} onChanged={refreshStatus} />
               ) : route.view === "project" ? (
-                <ProjectWorkspace
+                <ProjectWorkspace key={route.state}
                   projectId={route.state}
                   onGo={go}
                   onForceGo={forceGo}
@@ -782,7 +755,7 @@ export function App() {
                   statusLoading={statusLoading}
                   onRetryStatus={refreshStatus}
                   onGo={go}
-                  onIntake={() => setIntake({})}
+                  onIntake={() => setQuickNote(true)}
                   onSettings={() => setSettings(true)}
                 />
               ) : route.view === "hot" ? (
@@ -896,6 +869,7 @@ export function App() {
 
       <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={refreshStatus} />
 
+      <QuickNote open={quickNote} onClose={() => setQuickNote(false)} onSaved={() => { refreshStatus(); setIntakeVersion((v) => v + 1); }} />
       <IntakeDrawer
         open={!!intake}
         preset={intake}

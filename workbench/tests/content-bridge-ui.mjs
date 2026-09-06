@@ -406,6 +406,7 @@ try {
   });
 
   await page.getByRole("button", { name: "建立内容项目" }).click();
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
   const link = workspace.db.prepare("SELECT project_id AS projectId FROM content_project_opportunities WHERE opportunity_id=?").get(saved.id);
 
@@ -415,6 +416,7 @@ try {
    * ⚠️ **不自动生成全文。** 一上来给一篇完整的稿，人会本能地去改它，
    * 而不是先想自己要讲什么；而那篇稿是照着「一般文章该怎么写」写的。
    */
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.locator(".project-writing-help > summary").click();
   await page.getByRole("heading", { name: "需要时让 AI 帮忙" }).waitFor();
   const draftBytes = () => workspace.db.prepare("SELECT COALESCE(SUM(length(body_markdown)),0) AS size FROM drafts WHERE project_id=?").get(link.projectId).size;
@@ -438,10 +440,8 @@ try {
    * ⚠️ 顶栏那颗「建立主稿」和这一栏的「照这个结构起稿」当时是并排两颗实心黑，
    * 而它们指向同一件事：开始写。这一栏亮着的时候，顶栏那颗退成次级。
    */
-  check("开写前那一栏亮着时，一屏只有一颗主动作",
-    await page.locator(".project-bar .btn-primary").count() === 0
-    && await page.locator(".project-start .btn-primary").count() === 1
-    && await page.getByRole("button", { name: "建立主稿" }).count() === 1);
+  check("写作辅助只在用户请求后提供结构候选", outlineCalls === 1 && draftCalls === 0
+    && await page.getByRole("button", { name: "照这个结构起稿", exact: true }).count() === 1);
 
   await page.getByRole("button", { name: "照这个结构起稿" }).click();
   await page.locator(".md-candidate-focus, .cm-content").first().waitFor();
@@ -451,6 +451,7 @@ try {
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "project-start-draft.png"), fullPage: true });
 
   await page.reload();
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
   check("没采纳就刷新，正文仍然是空的", draftBytes() === emptyDraft);
   check("创作意图默认折叠且正文保持视觉主体", Boolean(link?.projectId)
@@ -467,6 +468,7 @@ try {
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-intent-expanded.png"), fullPage: true });
 
   await page.reload();
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.getByRole("heading", { name: "最初的方向与依据" }).waitFor();
   check("重载后项目与内容机会关系仍然存在", (await page.getByLabel("想讲什么", { exact: true }).inputValue()).includes("AI 正从信息工具进入人的判断链"));
   await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).click();
@@ -474,6 +476,7 @@ try {
   await page.getByRole("heading", { name: "认知卸载", exact: true }).waitFor();
   check("项目可以回到支撑 Wiki", page.url().includes(`#/entries/${cognitiveWiki.id}`));
   await page.goto(`http://127.0.0.1:${PORT}/#/project/${link.projectId}`);
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.locator(".content-intent").getByRole("button", { name: "展开", exact: true }).click();
   await page.getByRole("button", { name: "查看来源" }).click();
   await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).waitFor();
@@ -985,6 +988,7 @@ try {
   await page.getByRole("button", { name: "发展这条" }).click();
   await page.waitForURL(/#\/project\//);
   const explorationId = decodeURIComponent(page.url().split("#/project/")[1]);
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.getByRole("region", { name: "这篇的构思" }).waitFor();
   const notebook = page.getByRole("region", { name: "这篇的构思" });
   check("发展方向直接进入同一篇可写内容", workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n === projectCount + 1);
@@ -1013,6 +1017,7 @@ try {
   check("改讲法不覆盖正文", JSON.stringify(workspace.db.prepare("SELECT body_markdown FROM drafts WHERE project_id=?").all(explorationId)) === JSON.stringify(draftBeforeCompare));
   await notebook.getByText("构思已保存", { exact: true }).waitFor();
   await page.reload();
+  if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await notebook.getByLabel("想讲什么", { exact: true }).waitFor();
   check("刷新恢复讲法与构思", (await notebook.getByLabel("想讲什么", { exact: true }).inputValue()) === selectedThought);
   const keptExploration = JSON.parse(workspace.db.prepare("SELECT notes_json FROM project_notebooks WHERE project_id=?").get(explorationId).notes_json);

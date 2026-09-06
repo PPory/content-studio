@@ -18,6 +18,7 @@ export function useAssistantSummonTarget(kind, handler) {
 
 export function assistantSummonDestination({ routeView, readingAvailable = targets.has("reading") }) {
   if (readingAvailable) return "reading";
+  if (routeView === "research" && targets.has("research")) return "research";
   if (routeView === "project") return "project";
   if (routeView === "assistant") return "global-page";
   return "quick";

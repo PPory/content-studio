@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
+import { ProjectResearchLinks } from "./ProjectResearchLinks.jsx";
 import { ErrorNote } from "./ui.jsx";
 import "./project-notebook.css";
 
@@ -12,13 +13,13 @@ const fields = [
 ];
 
 // 构思只保存探索，不采纳 AI 候选，也不改变正式正文。
-export function ProjectNotebook({ projectId, onSaved, onAsk, onGo, onDirty, saveRef, onEdited }) {
+export function ProjectNotebook({ projectId, onSaved, onAsk, onGo, onDirty, saveRef, onEdited, embedded = false }) {
   const [value, setValue] = useState(null);
   const [agendas, setAgendas] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(embedded);
   const [status, setStatus] = useState("");
   const [generating, setGenerating] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -41,7 +42,7 @@ export function ProjectNotebook({ projectId, onSaved, onAsk, onGo, onDirty, save
     api.projectNotebook(projectId).then(({ notebook }) => {
       if (!alive) return;
       setValue(notebook); latest.current = notebook;
-      setOpen(Boolean(notebook.discovery || notebook.thought));
+      setOpen(embedded || Boolean(notebook.discovery || notebook.thought));
     }).catch((cause) => { if (alive) setError(cause); });
     api.agendas().then((result) => { if (alive) setAgendas(result.agendas || []); }).catch(() => {});
     return () => { alive = false; };
@@ -139,17 +140,19 @@ export function ProjectNotebook({ projectId, onSaved, onAsk, onGo, onDirty, save
   }
 
   return <section className="project-notebook" aria-label="这篇的构思">
-    <header><button type="button" className="btn btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>构思{open ? " · 收起" : " · 展开"}</button><span role="status">{status || "可以随写随改，不必先填完整"}</span>{dirty ? <button type="button" className="btn btn-sm" disabled={busy} onClick={save}>{busy ? "保存中…" : "保存构思"}</button> : null}</header>
+    <header>{embedded ? null : <button type="button" className="btn btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>构思{open ? " · 收起" : " · 展开"}</button>}<span role="status">{status || "可以随写随改，不必先填完整"}</span>{dirty ? <button type="button" className="btn btn-sm" disabled={busy} onClick={save}>{busy ? "保存中…" : "保存构思"}</button> : null}</header>
     <ErrorNote error={error} what="构思" onRetry={!value ? () => window.location.reload() : save} />
     {error?.status === 409 ? <div><button type="button" className="btn btn-sm" onClick={viewRemote}>查看另一处保存的构思</button>{remote ? <div><p>另一处的版本 {remote.version}。下面是已保存内容；你的输入仍留在编辑区。</p><pre style={{ whiteSpace: "pre-wrap" }}>{fields.map(([key, label]) => `${label}：${remote[key]}`).join("\n")}</pre><button type="button" className="btn btn-sm" onClick={() => { latest.current = { ...latest.current, version: remote.version }; setRemote(null); setError(null); save(); }}>确认以我的构思替换此版本</button></div> : null}</div> : null}
     {open && !value && !error ? <p role="status">正在读取构思…</p> : null}
     {open && value ? <div className="project-notebook__body">
       <div className="project-notebook__fields">{fields.filter(([key]) => key === "thought" || detailsOpen).map(([key, label, placeholder]) => <label key={key}>{label}<textarea aria-label={label} rows={key === "thought" ? 3 : 2} value={value[key]} placeholder={placeholder} onChange={(event) => change(key, event.target.value)} onBlur={() => { if (dirty && !busy) save(); }} /></label>)}</div>
       <button type="button" className="btn btn-sm" style={{ justifySelf: "start" }} aria-expanded={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? "收起补充信息" : "补充读者、疑问与依据"}</button>
-      <label>创作方向（可选）<select aria-label="创作方向（可选）" value={value.agendaId || ""} onChange={(event) => change("agendaId", event.target.value || null)}><option value="">不限定方向</option>{agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}</select></label>
+      <details><summary>创作方向（可选）</summary><label>创作方向（可选）<select aria-label="创作方向（可选）" value={value.agendaId || ""} onChange={(event) => change("agendaId", event.target.value || null)}><option value="">不限定方向</option>{agendas.map((agenda) => <option key={agenda.id} value={agenda.id}>{agenda.title}</option>)}</select></label>
       <button type="button" className="btn btn-sm" style={{ justifySelf: "start" }} onClick={() => setNewDirection(newDirection ? null : { title: "", desiredJudgment: "", audience: "", problemSpace: "", valueCommitment: "", relatedProduct: "" })}>新建创作方向</button>
       {newDirection ? <div className="project-notebook__fields">{[["title", "方向名称"], ["desiredJudgment", "希望读者形成的认识"], ["audience", "服务谁（可选）"], ["problemSpace", "持续关注的问题（可选）"]].map(([key, label]) => <label key={key}>{label}<input aria-label={label} value={newDirection[key]} onChange={(event) => setNewDirection({ ...newDirection, [key]: event.target.value })} /></label>)}<button type="button" className="btn btn-sm" disabled={directionBusy || !newDirection.title.trim() || !newDirection.desiredJudgment.trim()} onClick={saveDirection}>保存方向并用于这篇</button></div> : null}
       {value.agendaId ? <p>{agendas.find((agenda) => agenda.id === value.agendaId)?.desiredJudgment}</p> : null}
+      </details>
+      <ProjectResearchLinks projectId={projectId} onGo={onGo} />
       <details><summary>比较讲法 · {value.alternatives.length} 个候选</summary>
         {value.discovery?.connection ? <button type="button" className="btn btn-sm" disabled={generating || busy} onClick={compare}>{generating ? "正在比较…" : "根据这个方向生成讲法候选"}</button> : null}
         <p>候选保留在这里。可以改构思，也可以直接继续写，正文不会被替换。</p>

@@ -21,6 +21,8 @@ const audienceProblemMultiQuoteSql = fs.readFileSync(new URL("./migrations/0016-
 const projectNotebooksSql = fs.readFileSync(new URL("./migrations/0017-project-notebooks.sql", import.meta.url), "utf8");
 const projectNotebookRequestKeySql = fs.readFileSync(new URL("./migrations/0018-project-notebook-request-key.sql", import.meta.url), "utf8");
 
+const researchSql = fs.readFileSync(new URL("./migrations/0019-research.sql", import.meta.url), "utf8");
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -130,6 +132,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     sql: projectNotebookRequestKeySql,
     checksum: crypto.createHash("sha256").update(projectNotebookRequestKeySql).digest("hex"),
   }),
+  Object.freeze({ version: 19, name: "research", sql: researchSql, checksum: crypto.createHash("sha256").update(researchSql).digest("hex") }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

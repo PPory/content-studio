@@ -29,6 +29,19 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
+  researches: () => req("/api/workspace/researches"),
+  research: (id) => req(`/api/workspace/researches/${encodeURIComponent(id)}`),
+  createResearch: (body) => postJson("/api/workspace/researches", body),
+  saveResearch: (id, body) => req(`/api/workspace/researches/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  researchReference: (id, body, remove = false) => req(`/api/workspace/researches/${encodeURIComponent(id)}/references`, { method: remove ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  researchConversation: (id, conversationId) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/conversations`, { conversationId }),
+  researchProject: (id, body) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/projects`, body),
+  projectResearches: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/researches`),
+  libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
+  library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
+  quickNote: (body) => postJson("/api/workspace/quick-notes", body),
+  recentWork: () => req("/api/workspace/recent-work?includeHidden=1"),
+  workState: (kind, id, body) => req(`/api/workspace/work-state/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   createExploration: (body) => postJson("/api/workspace/explorations", body),
   projectNotebook: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/notebook`),
   saveProjectNotebook: (id, body) => req(`/api/workspace/projects/${encodeURIComponent(id)}/notebook`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),

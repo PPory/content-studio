@@ -1,0 +1,58 @@
+.task-page,.continue-home,.research-workspace { max-width:1040px; margin:0 auto; padding:32px 28px 80px; }
+.task-page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:28px; }
+.task-page-head h1 { margin:0 0 8px; font-size:28px; font-weight:650; }
+.task-page-head p,.task-empty,.work-list small,.library-results small { color:var(--text-3); }
+.work-list article { display:flex; align-items:center; gap:16px; border-bottom:1px solid var(--border); padding:20px 0; }
+.work-list__open { flex:1; min-width:0; text-align:left; border:0; padding:0; background:transparent; color:inherit; cursor:pointer; }
+.work-list h2 { font-size:20px; margin:8px 0; }
+.work-list p,.library-results p { white-space:pre-wrap; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; color:var(--text-2); }
+.work-list__actions { display:flex; gap:6px; }
+.task-empty { padding:40px 0; }
+.quick-note { width:min(640px,calc(100vw - 32px)); max-height:90dvh; overflow:auto; background:var(--surface); color:var(--text-1); border:1px solid var(--border); border-radius:12px; padding:24px; display:grid; gap:16px; }
+.quick-note header { display:flex; align-items:center; justify-content:space-between; }
+.quick-note h2 { margin:0; font-size:20px; }
+.quick-note label,.research-create label,.research-notes label,.research-question { display:grid; gap:10px; }
+.quick-note textarea,.quick-note input,.research-create input,.research-notes textarea,.research-question input,.library-search input,.library-search select { width:100%; min-width:0; padding:12px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:inherit; font:inherit; }
+.quick-note textarea,.research-notes textarea { resize:vertical; line-height:1.8; }
+.quick-note small { color:var(--text-3); }
+.research-create { display:flex; align-items:end; gap:12px; margin:28px 0; }
+.research-create label { flex:1; }
+.research-question { color:var(--text-3); font-size:12px; }
+.research-question input { font-size:24px; color:var(--text-1); border-color:transparent; padding:12px 0; }
+.task-tabs { display:flex; gap:10px; margin:20px 0; border-bottom:1px solid var(--border); padding-bottom:12px; }
+.task-tabs [aria-pressed=true] { background:var(--sel-bg); color:var(--text-1); }
+.research-notes textarea { border-color:transparent; padding:16px 0; }
+.research-notes textarea:focus { border-color:var(--border); padding:16px; }
+.research-notes details { margin:20px 0; }
+.research-linked { border-top:1px solid var(--border); margin-top:24px; padding:20px 0; }
+.research-linked article { display:flex; justify-content:space-between; gap:12px; padding:10px 0; }
+.research-linked .btn { margin:4px; }
+.research-discussion .assistant-pane { min-height:500px; height:65dvh; }
+.research-discussion details { margin:14px 0; }
+.library-search { display:flex; gap:12px; margin:16px 0 24px; }
+.library-search input { flex:1; }
+.library-search select { width:150px; }
+.library-results article { padding:18px 0; border-bottom:1px solid var(--border); }
+.library-results article > button:first-child { width:100%; text-align:left; border:0; background:transparent; color:inherit; padding:0; cursor:pointer; }
+.library-results h3 { font-size:18px; margin:6px 0; }
+.library-original pre,.quick-note pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.8; }
+.library-original { padding:24px 0; }
+.library-original small { display:block; margin-top:24px; color:var(--text-3); }
+.library-more { margin-top:36px; color:var(--text-3); }
+.library-more .row-actions { margin:14px 0; }
+.research-workspace [hidden] { display:none !important; }
+@media(max-width:900px) {
+ .task-page,.continue-home,.research-workspace { padding:24px 16px 60px; }
+ .task-page-head { flex-wrap:wrap; gap:12px; }
+ .task-page-head h1 { font-size:24px; }
+ .work-list article { align-items:start; flex-direction:column; }
+ .work-list__actions { align-self:flex-end; }
+ .research-create { flex-wrap:wrap; }
+ .research-create label { flex-basis:100%; }
+ .research-question input { font-size:20px; }
+ .library-search select { width:115px; }
+ .app .nav .nav-item__icon { display:none; }
+ .research-discussion .assistant-pane { height:65dvh; }
+}
+
+.modal-backdrop { position:fixed; inset:0; z-index:1200; display:flex; align-items:center; justify-content:center; padding:16px; background:rgb(0 0 0 / .28); }

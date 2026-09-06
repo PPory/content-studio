@@ -1,0 +1,21 @@
+/* Writing remains the primary surface; supporting tools share one column. */
+.project-workspace__grid { position: relative; padding-top: 58px; }
+.writing-tools { position: absolute; top: 12px; right: 20px; z-index: 50; background: var(--surface); display: flex; gap: var(--sp-2); }
+.project-workspace__grid:has(.writing-companion:not([data-collapsed="true"])) .writing-tools { right: 64px; }
+.writing-tools[hidden], .writing-companion [hidden] { display: none !important; }
+.writing-tools button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+.project-workspace__grid:has(.writing-companion[data-collapsed="true"]) { grid-template-columns: minmax(0, 1fr); }
+.project-assistant.writing-companion { display: flex; flex-direction: column; gap: 0; top: 58px; }
+.project-assistant.writing-companion[data-collapsed="true"], .project-assistant.writing-companion[data-reviewing="true"] { display: none; }
+.writing-companion__head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); flex: none; }
+.writing-companion__scroll { min-height: 0; overflow-y: auto; padding: var(--sp-3); }
+.writing-companion__chat { flex: 1; min-height: 0; }
+.writing-companion .project-notebook { margin: 0; border: 0; padding: 0; }
+.writing-companion .project-notebook__fields { grid-template-columns: minmax(0, 1fr); }
+.writing-companion .content-intent { margin: var(--sp-3) 0; }
+.writing-companion .project-writing-help { margin: var(--sp-3) 0; }
+@media (max-width: 900px) {
+  .project-workspace__grid { grid-template-columns: minmax(0, 1fr); padding-top: 58px; }
+  .project-workspace__grid:has(.writing-companion:not([data-collapsed="true"])) .writing-tools { position: fixed; top: 122px; right: 56px; }
+  .project-assistant.writing-companion:not([data-collapsed="true"]) { position: fixed; inset: 110px 0 0 auto; width: min(100%, 440px); height: auto; max-height: none; z-index: 40; background: var(--surface); border-left: 1px solid var(--line); }
+}
