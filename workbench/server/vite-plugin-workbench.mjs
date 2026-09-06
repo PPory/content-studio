@@ -46,8 +46,12 @@ export function workbenchApi(env) {
   return {
     name: "creator-workbench-api",
     configureServer(server) {
+      // 启动失败的原因要留住。只写日志的话，界面上只剩一句「尚未就绪」，
+      // 而 tmp/dev-server.err.log 没有任何入口提到过——用户看到的是一个查不出原因的死局。
+      let startupError = "";
       const localRuntime = startLocalWorkspaceRuntime(env).catch((error) => {
-        server.config.logger.error(`本地工作区启动失败：${error instanceof Error ? error.message : String(error)}`);
+        startupError = error instanceof Error ? error.message : String(error);
+        server.config.logger.error(`本地工作区启动失败：${startupError}`);
         return null;
       });
       server.xenhoWorkspace = localRuntime.then((state) => state?.workspace || null);
@@ -65,7 +69,7 @@ export function workbenchApi(env) {
       });
 
       // 放在最前面：/api/* 和 /tools/* 由我们接管，其余交回 Vite
-      server.middlewares.use(createApi(env, { workspace: server.xenhoWorkspace }));
+      server.middlewares.use(createApi(env, { workspace: server.xenhoWorkspace, startupError: () => startupError }));
       // 公众号排版工具静态托管。放在 Vite 之前，否则会被它的 SPA 回退吃掉
       server.middlewares.use(serveTypeset(env));
       // 当桌面应用用的那次：关掉窗口就把这个进程也收掉（终端 npm run dev 不受影响）

@@ -91,7 +91,7 @@ const ROUTES = [
   ...assistantRoutes,
 ];
 
-export function createApi(env, { workspace = null } = {}) {
+export function createApi(env, { workspace = null, startupError = () => "" } = {}) {
   // 每次工作台启动生成一次配对令牌。网页拿不到带自定义请求头的响应，扩展拿到后只存在
   // chrome.storage.session；工作台重启时自动重新配对，不把任何长期密钥塞进扩展源码。
   const extensionToken = crypto.randomBytes(24).toString("base64url");
@@ -136,6 +136,22 @@ export function createApi(env, { workspace = null } = {}) {
     }
     const hit = matchRoute(ROUTES, req.method, url.pathname);
     if (!hit) return json(res, { ok: false, error: `未知端点 ${req.method} ${url.pathname}` }, 404);
+
+    // 工作区没打开时，每个路由都回同一句「尚未就绪」，读起来像一次可以重试的抖动；
+    // 而真正的原因（比如 migration 校验和不一致）重启一百次也不会变。健康检查这一条
+    // 换成真原因，其余路由保持原样——尤其 /api/settings 必须继续可用，
+    // 配置写错导致打不开时，那是用户唯一能改回来的地方。
+    if (url.pathname === "/api/workspace/status" && !(await workspace)) {
+      const reason = startupError();
+      if (reason) {
+        return json(res, {
+          ok: false,
+          ready: false,
+          error: `本地工作区没能打开：${reason}`,
+          hint: "这不是临时故障，重试不会恢复。完整日志见 workbench/tmp/dev-server.err.log。",
+        }, 503);
+      }
+    }
 
     try {
       await hit.route.handler({ env, req, res, url, params: hit.params, extensionToken, workspace });

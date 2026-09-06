@@ -1,0 +1,5 @@
+# Migration 文件按字节做 SHA-256 校验，校验和写进了 workspace.sqlite 的 schema_migrations。
+# 换行只要被规范化一次（autocrlf、别的机器 clone、一次 checkout），18 条全部失配，
+# 工作台开不了且报的是「本地工作区尚未就绪」——看不出跟换行有关。
+# 所以这些文件按二进制对待：git 存什么、取出来就是什么。
+workbench/server/storage/migrations/*.sql -text
