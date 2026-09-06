@@ -18,6 +18,7 @@ const now = new Date("2026-09-02T08:00:00.000Z");
 let workspace;
 let server;
 let respond = null;
+let lastModelRequest = null;
 
 function check(name, value) {
   assert(value, name);
@@ -40,7 +41,8 @@ function wikiPage(title, summary) {
 
 async function start() {
   const env = {
-    async CONTENT_PROJECT_COMPLETE_JSON() {
+    async CONTENT_PROJECT_COMPLETE_JSON(_env, request) {
+      lastModelRequest = request;
       if (typeof respond === "function") return respond();
       throw new Error("测试没有设置模型响应");
     },
@@ -244,6 +246,7 @@ try {
     body: { outline: outlineResult.data.outline, instruction: "太像科普了，多讲机制" },
   });
   check("可以说一句再起一版", secondPass.data.ok === true && secondPass.data.body.includes("改过的第二版"));
+  check("修改要求确实发送到起稿模型", lastModelRequest.user.includes("太像科普了，多讲机制"));
   check("起稿同样不写正文", draftBytes() === before);
   check("缺证据的地方留下待补标记，不编", draftResult.data.body.includes("【待补："));
 

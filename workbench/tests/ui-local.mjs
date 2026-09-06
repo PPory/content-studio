@@ -185,9 +185,9 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/today`);
-  await page.getByRole("heading", { name: "接着做", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "从一个问题，开始今天", exact: true }).waitFor();
   check("首页显示最近工作而非四条处理队列", await page.getByRole("region", { name: "四条链的下一步" }).count() === 0);
-  check("侧栏保留统一资料入口", await page.locator(".nav").getByRole("button", { name: "资料库", exact: true }).count() === 1);
+  check("侧栏保留统一资料入口", await page.locator(".nav").getByRole("button", { name: "阅读与 Wiki", exact: true }).count() === 1);
 
   // ── 合集：建 → 从文章列表归类 → 在合集中新建 → 排序 → 分节 → 通读 ──
   //

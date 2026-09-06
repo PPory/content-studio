@@ -29,6 +29,7 @@ function ModelGlyph({ id, provider = "" }) {
 }
 
 export function AssistantComposer({
+  placeholder,
   pendingAttachments,
   busy,
   uploadError,
@@ -121,7 +122,7 @@ export function AssistantComposer({
     })}</div> : null}
     {pendingAttachments.length && !busy ? <div className="assistant-attachments">{pendingAttachments.slice(-4).map((item) => <span key={item.id}>{item.kind === "image" ? (item.previewUrl ? <img src={item.previewUrl} alt="" /> : <span className="assistant-attachment-image">▧</span>) : <IconFileText aria-hidden="true" />}<span>{item.name}</span></span>)}</div> : null}
     {uploadError ? <div className="assistant-composer__notice" role="status"><span>{uploadError}</span><button type="button" onClick={onDismissUploadError} aria-label="关闭"><IconX aria-hidden="true" /></button></div> : null}
-    <textarea ref={inputRef} data-autofocus={overlay ? "true" : undefined} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容"} rows="2" disabled={busy} />
+    <textarea ref={inputRef} data-autofocus={overlay ? "true" : undefined} value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} placeholder={placeholder || (scope === "global" ? "问任何问题，或直接输入本地项目路径" : "问当前内容")} rows="2" disabled={busy} />
     {/* ⚠️ **`.assistant-command-menu` 现在只服务模型选择器。** 专家和 Skill 那块
         铺满输入器宽度、顶上写着「选择 Skill ✕」的横幅已经撤了：在 348px 的侧栏里
         它糊住整个输入区，看着不像菜单像报错条。它们搬进了 `+` 自己那颗浮层。 */}

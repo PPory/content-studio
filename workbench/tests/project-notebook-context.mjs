@@ -8,6 +8,7 @@ import { getProjectNotebook, saveProjectNotebook } from "../server/domain/projec
 import { projectCreativeContext, describeCreativeContext } from "../server/domain/content-project.mjs";
 import { buildContentBridgeContext } from "../server/domain/content-bridge-context.mjs";
 import { contentProjectRoutes } from "../server/routes/content-project.mjs";
+import { createResearch, saveResearch, researchProject } from "../server/domain/research.mjs";
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-notebook-context-"));
 let workspace;
 try {
@@ -50,6 +51,19 @@ try {
   const selected = projectCreativeContext(workspace, projectId);
   assert.equal(selected.route.storyline, "采用后的讲法");
   assert.equal(selected.elements.find((item) => item.sourceId === wikiPageId).body, "数据库中的真实知识摘要");
+  const research = createResearch(workspace, { question: "工具与任务如何配合", notes: "创建文章时的旧想法" });
+  researchProject(workspace, research.id, { projectId });
+  saveResearch(workspace, research.id, { expectedVersion: research.version, notes: "后续讨论提出新的边界条件", openQuestions: "这个判断何时不成立" });
+  const currentResearchContext = projectCreativeContext(workspace, projectId);
+  const currentResearchDescription = describeCreativeContext(currentResearchContext);
+  assert.match(currentResearchDescription, /后续讨论提出新的边界条件/);
+  assert.match(currentResearchDescription, /这个判断何时不成立/);
+  assert.doesNotMatch(currentResearchDescription, /创建文章时的旧想法/);
+  assert.match(currentResearchDescription, /关联选题的最新思考笔记（非已核实证据/);
+  assert.equal(currentResearchContext.experiences.length, 0, "notes cannot become personal experience evidence");
+  const hugeContext = { ...currentResearchContext, researches: Array.from({ length: 20 }, () => ({ question: "Q", notes: "x".repeat(100000), openQuestions: "y".repeat(20000) })) };
+  assert(describeCreativeContext(hugeContext).length - describeCreativeContext({ ...hugeContext, researches: [] }).length < 20500, "linked note prompt remains bounded");
+  assert.deepEqual(workspace.db.prepare("SELECT * FROM drafts").all(), before);
   // Legacy opportunity remains readable and only pre-fills an unsaved notebook.
   const agendaId = workspace.contentBridge.createAgenda({ title: "方向", desiredJudgment: "旧意图", actor: "user", confirmed: true });
   const problemId = workspace.contentBridge.createAudienceProblem({ statement: "旧问题", origin: "hypothesis", originAgendaId: agendaId, actor: "user", confirmed: true });

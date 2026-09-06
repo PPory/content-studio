@@ -92,7 +92,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse, embedded = false, emptyMessage = "", onSettled, onExcerpt }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -299,7 +299,10 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     let cancelled = false;
     const poll = async () => {
       const result = await api.assistantConversation(scopeId, conversationId).catch(() => null);
-      if (!cancelled && result?.conversation) applyConversation(result.conversation);
+      if (!cancelled && result?.conversation) {
+        applyConversation(result.conversation);
+        if (result.conversation.activeTurn?.status !== "running") onSettled?.(result.conversation);
+      }
     };
     poll();
     const timer = setInterval(poll, 1_500);
@@ -427,6 +430,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       );
       if (activeRequestRef.current !== requestId) return;
       flushStream(streamingId); applyConversation(result.conversation);
+      onSettled?.(result.conversation);
       await refreshHistory();
     } catch (next) {
       if (activeRequestRef.current === requestId && next.status === 409 && conversationIdRef.current) {
@@ -771,7 +775,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
   const emptyState = !messages.length && !busy && !loading;
   // ⚠️ 必须定义在 `starters` 之前：那儿要用它，const 没有提升，晚一行就是 TDZ 崩整页。
   const prefill = (value) => { setInput(value); requestAnimationFrame(() => inputRef.current?.focus()); };
-  const centeredEmpty = emptyState && surface === "page";
+  const centeredEmpty = emptyState && surface === "page" && !embedded;
   /**
    * 入口卡：
    * - 完整页：在居中的输入器**下面**，作为「不知道说什么」的兜底。
@@ -780,7 +784,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
    * - 全局侧栏：**不给**。那三张是通用入口，而侧栏本来就是顺手问一句的地方，
    *   三张卡把一栏塞满，反而挡住了「直接开口」这条主路径。
    */
-  const starters = emptyState && surface !== "overlay"
+  const starters = !embedded && emptyState && surface !== "overlay"
     ? <AssistantStarters scope={scope} onPrompt={scope === "project" ? prefill : send} />
     : null;
 
@@ -841,7 +845,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     : <header className="assistant-pane__context">{lead}{center}{end}</header>;
 
   const dialog = <div className="assistant-pane__dialog" data-empty={centeredEmpty ? "true" : undefined}>
-    {railHeaderIdle ? null : (projectRail ? <header className="assistant-pane__context">
+    {embedded || railHeaderIdle ? null : (projectRail ? <header className="assistant-pane__context">
       <>
         {/* ⚠️ **项目右栏的头只有一条。**
             上一版是两条：44px 的「协作」和 39px 的「当前稿件 · 已用素材 4」，
@@ -1015,7 +1019,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
         </>}
       </div> : null))}
 
-    <AssistantThread
+    <AssistantThread emptyMessage={emptyMessage} onExcerpt={onExcerpt}
       messages={messages} actions={actions} attachments={attachments} busy={busy} loading={loading}
       error={error} activity={activity} expertActivity={expertActivity} turnStartedAt={turnStartedAt} scope={scope} showRuntime={scope === "global" && surface === "page"}
       policy={policy} target={target} currentVersion={currentVersion} documentLength={String(document.body || "").length}
@@ -1039,7 +1043,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       </div>
     ) : null}
 
-    <AssistantComposer
+    <AssistantComposer placeholder={embedded ? "围绕当前内容继续讨论…" : undefined}
       pendingAttachments={pendingAttachments} busy={busy} uploadError={uploadError} inputRef={inputRef}
       input={input} scope={scope} surface={surface} permissionOpen={permissionOpen} permissionRef={permissionRef}
       permissionModes={permissionModes} permissionMode={permissionMode} modePending={modePending}
@@ -1061,7 +1065,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     <KnowledgeCardDialog open={cardOpen} onClose={() => setCardOpen(false)} messages={messages.map((item) => ({ ...item, role: item.role === "assistant" ? "agent" : item.role }))} source={{ title: document.title || conversationTitle || "AI 助手对话", type: policy.knowledgeCardSource, engine: "Pi Agent SDK" }} scopeId={scopeId} conversationId={conversationId} onConversation={applyConversation} />
   </div>;
 
-  return <div className={`assistant-pane${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
+  return <div className={`assistant-pane${embedded ? " assistant-pane--embedded" : ""}${globalScope ? " assistant-pane--standalone" : ""}${surface === "overlay" ? " assistant-pane--overlay" : ""}${projectRail ? " assistant-pane--project-rail" : ""}`}>
     {/**
       * 历史对话：**一条压着对话滑进来的抽屉**，不是常驻的一列。
       *

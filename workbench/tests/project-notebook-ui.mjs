@@ -73,7 +73,7 @@ try {
   check("刷新恢复同一篇构思", (await thought.inputValue()).includes("更难开始"));
   await page.locator(".nav > .nav-group > button").count();
   const mainLabels = await page.locator(".nav > div > button .nav-item__label").allTextContents();
-  check("业务导航只有首页、研究、内容、资料库", JSON.stringify(mainLabels) === JSON.stringify(["首页", "研究", "内容", "资料库"]));
+  check("业务导航只有首页、研究、内容、资料库", JSON.stringify(mainLabels) === JSON.stringify(["首页", "选题空间", "内容", "阅读与 Wiki"]));
   await page.locator(".nav").getByRole("button", { name: "首页", exact: true }).click();
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
@@ -112,7 +112,7 @@ try {
   await notebook.getByLabel("创作方向（可选）").selectOption("");
   await until(() => request(notebookRoute), (r) => r.notebook.agendaId === null, "移除方向限制");
   await page.screenshot({ path: screenshots.desktop, fullPage: true });
-  for (const [route, selected] of [["assistant", "研究"], ["entries", "资料库"], ["bridge", "内容"], ["series", "内容"], ["typeset", "内容"]]) {
+  for (const [route, selected] of [["assistant", "选题空间"], ["entries", "阅读与 Wiki"], ["bridge", "内容"], ["series", "内容"], ["typeset", "内容"]]) {
     await page.goto(`${base}/#/${route}`);
     await page.locator(`.sidebar button[aria-current="page"]`).filter({ hasText: selected }).waitFor();
     check(`旧深链 ${route} 保持可达与高亮`, true);

@@ -1,4 +1,5 @@
 import { LibraryBrowser } from "../components/LibraryBrowser.jsx";
-export function Library({ onGo, onQuickNote, onImport }) {
- return <section className="task-page"><header className="task-page-head"><div><h1>资料库</h1><p>原文、经历与自己的理解，都能找回来。</p></div><div className="row-actions"><button className="btn" onClick={onImport}>导入资料</button><button className="btn btn-primary" onClick={onQuickNote}>记一下</button></div></header><LibraryBrowser onGo={onGo} /><details className="library-more"><summary>按原有方式浏览</summary><div className="row-actions">{[["materials","素材"],["entries","知识笔记"],["sources","来源"],["shelf","书籍"],["ideas","灵感记录"],["seeds","想法记录"]].map(([view,label]) => <button key={view} className="btn btn-sm" onClick={() => onGo(view)}>{label}</button>)}</div></details></section>;
+import "./workspace-home.css";
+export function Library({ onGo, onQuickNote, onImport, initialItem }) {
+ return <section className="workspace-library"><header className="overview-heading"><div><small>阅读与连接</small><h1>阅读与 Wiki</h1><p>读原文，留下理解；遇到新问题时，让知识重新连接。</p></div><div className="row-actions"><button className="btn" onClick={onImport}>导入资料</button><button className="btn" onClick={onQuickNote}>记下灵感</button></div></header><LibraryBrowser onGo={onGo} initialItem={initialItem} /><nav className="library-browse-links" aria-label="分类浏览">{[["entries","Wiki 知识库"],["shelf","书籍"],["sources","来源"],["materials","素材"],["ideas","灵感记录"]].map(([view,label]) => <button key={view} className="btn btn-sm" onClick={() => onGo(view)}>{label}</button>)}</nav></section>;
 }

@@ -29,6 +29,11 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
+  workspaceActivity: () => req("/api/workspace/activity"),
+  recordActivity: (kind, id, body) => req(`/api/workspace/activity/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  wikiConnections: (q) => req(`/api/workspace/wiki-connections?${new URLSearchParams({q})}`),
+  researchSummary: (id) => req(`/api/workspace/researches/${encodeURIComponent(id)}/summary`),
+  refreshResearchSummary: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/summary`, {}),
   researches: () => req("/api/workspace/researches"),
   research: (id) => req(`/api/workspace/researches/${encodeURIComponent(id)}`),
   createResearch: (body) => postJson("/api/workspace/researches", body),

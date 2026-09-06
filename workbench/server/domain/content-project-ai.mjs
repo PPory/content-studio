@@ -170,6 +170,7 @@ export async function proposeProjectDraft(env, workspace, { projectId, outline, 
     ].filter(Boolean).join("\n"),
     user: [
       describeCreativeContext(context),
+      ask ? `\n# 创作者本次确认的方向与修改要求（不能据此虚构资料）\n${ask}` : "",
       `\n# 已经认过的结构（照这个写）\n${outline.sections.map((section, index) => `${index + 1}. ${section.heading}\n   作用：${section.purpose}\n   用：${(section.uses || []).map((use) => use.label).join("、") || "（这一节靠推理，不引材料）"}`).join("\n")}`,
     ].join("\n"),
     maxTokens: 14_000,

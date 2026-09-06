@@ -683,6 +683,8 @@ export function App() {
               <ViewSlots.Provider value={slots}>
               {route.view === "today" ? (
                 <Today
+                  onForceGo={forceGo}
+                  registerNavigationGuard={registerNavigationGuard}
                   onQuickNote={() => setQuickNote(true)}
                   status={status}
                   statusError={statusError}
@@ -695,7 +697,7 @@ export function App() {
               ) : route.view === "research" ? (
                 <Research researchId={route.state} onGo={go} onForceGo={forceGo} registerNavigationGuard={registerNavigationGuard} />
               ) : route.view === "library" ? (
-                <Library onGo={go} onQuickNote={() => setQuickNote(true)} onImport={() => setIntake({})} />
+                <Library initialItem={route.state} onGo={go} onQuickNote={() => setQuickNote(true)} onImport={() => setIntake({})} />
               ) : route.view === "assistant" ? (
                 <Assistant onGo={go} conversationId={route.state || globalConversationId} onConversationChange={setGlobalConversationId} />
               ) : route.view === "bridge" ? (

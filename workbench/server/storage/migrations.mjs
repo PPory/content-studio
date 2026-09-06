@@ -23,6 +23,8 @@ const projectNotebookRequestKeySql = fs.readFileSync(new URL("./migrations/0018-
 
 const researchSql = fs.readFileSync(new URL("./migrations/0019-research.sql", import.meta.url), "utf8");
 
+const experienceSql = fs.readFileSync(new URL("./migrations/0020-workspace-experience.sql", import.meta.url), "utf8");
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -133,6 +135,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
     checksum: crypto.createHash("sha256").update(projectNotebookRequestKeySql).digest("hex"),
   }),
   Object.freeze({ version: 19, name: "research", sql: researchSql, checksum: crypto.createHash("sha256").update(researchSql).digest("hex") }),
+  Object.freeze({ version: 20, name: "workspace-experience", sql: experienceSql, checksum: crypto.createHash("sha256").update(experienceSql).digest("hex") }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;
