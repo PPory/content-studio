@@ -1,6 +1,17 @@
 import Database from "better-sqlite3";
 import { WORKSPACE_MIGRATIONS } from "./migrations.mjs";
 
+// Exact historical LF/CRLF pairs only. Do not normalize arbitrary SQL: line
+// endings inside string literals may carry data. Never rewrite applied history.
+const VERIFIED_LINE_ENDINGS = [
+  { version: 19, name: "research", hashes: ["4c1d3692f2e3fe1ba18a35c765a93cfc37beee9253458e2b76141becaf527ef9", "26db26c3d3b73c12c46d23c8f5a26bfcf8112a5e44b86c044866da5458454c06"] },
+  { version: 20, name: "workspace-experience", hashes: ["7064ab9525178e9fa0545ed6ad702e74b99524d8369ecb0fa3ae6e79a78418fb", "d5e4a3c9bf2cb2c16a0f44bd9b8af31c422e200bb5c3e5e90287c7f32ddae560"] },
+];
+function sameVerifiedMigration(expected, applied) {
+  return VERIFIED_LINE_ENDINGS.some(item => item.version === expected.version && item.name === expected.name
+    && item.hashes.includes(expected.checksum) && item.hashes.includes(applied.checksum));
+}
+
 const isoNow = (now = new Date()) => new Date(now).toISOString();
 
 function tableExists(db, name) {
@@ -48,7 +59,7 @@ export function migrateWorkspaceDatabase(db, migrations = WORKSPACE_MIGRATIONS, 
   }
   for (const row of applied) {
     const expected = expectedByVersion.get(row.version);
-    if (!expected || expected.name !== row.name || expected.checksum !== row.checksum) {
+    if (!expected || expected.name !== row.name || (expected.checksum !== row.checksum && !sameVerifiedMigration(expected, row))) {
       throw new Error(`SQLite migration ${row.version} 校验和或名称不一致，拒绝继续`);
     }
   }

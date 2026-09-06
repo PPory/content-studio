@@ -6,7 +6,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { createUlid, isUlid } from "../server/storage/ids.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
-import { WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
+import { WORKSPACE_MIGRATIONS, WORKSPACE_SCHEMA_VERSION } from "../server/storage/migrations.mjs";
 import { configureWorkspaceDatabase, migrateWorkspaceDatabase } from "../server/storage/sqlite.mjs";
 import { defaultXenhoHome, resolveWorkspacePaths, runtimeXenhoHome } from "../server/storage/workspace-paths.mjs";
 
@@ -107,6 +107,33 @@ try {
   check("重复打开 migration 幂等", workspace.db.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get().count === WORKSPACE_SCHEMA_VERSION);
   workspace.close();
   workspace = null;
+
+  for (const version of [19, 20]) {
+    const legacyDb = new Database(path.join(root, `legacy-crlf-${version}.sqlite`));
+    try {
+      configureWorkspaceDatabase(legacyDb);
+      const legacy = WORKSPACE_MIGRATIONS.filter(m => m.version <= version).map(m => {
+        if (m.version < 19) return m;
+        const sql = m.sql.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+        return { ...m, sql, checksum: crypto.createHash("sha256").update(sql).digest("hex") };
+      });
+      migrateWorkspaceDatabase(legacyDb, legacy);
+      legacyDb.exec("CREATE TABLE preserved_data(body TEXT); INSERT INTO preserved_data VALUES('keep me');");
+      const history = legacyDb.prepare("SELECT * FROM schema_migrations ORDER BY version").all();
+      migrateWorkspaceDatabase(legacyDb);
+      assert.deepEqual(legacyDb.prepare("SELECT * FROM schema_migrations WHERE version<=? ORDER BY version").all(version), history);
+      assert.equal(legacyDb.prepare("SELECT body FROM preserved_data").get().body, "keep me");
+      const changed = WORKSPACE_MIGRATIONS.map(m => {
+        if (m.version !== version) return m;
+        const sql = m.sql + "\nSELECT 1;";
+        return { ...m, sql, checksum: crypto.createHash("sha256").update(sql).digest("hex") };
+      });
+      assert.throws(() => migrateWorkspaceDatabase(legacyDb, changed), /校验和/);
+      legacyDb.prepare("UPDATE schema_migrations SET checksum=? WHERE version=?").run("0".repeat(64), version);
+      assert.throws(() => migrateWorkspaceDatabase(legacyDb), /校验和/);
+      check(`旧 CRLF migration ${version} 可升级，历史与数据不变，真实漂移仍拒绝`, true);
+    } finally { legacyDb.close(); }
+  }
 
   const checksumDb = new Database(path.join(root, "checksum.sqlite"));
   configureWorkspaceDatabase(checksumDb);
