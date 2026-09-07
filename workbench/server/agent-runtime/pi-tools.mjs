@@ -8,7 +8,6 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { searchWeb } from "../lib/web-search.mjs";
 import { listProjects, projectDto } from "../workspace/workspace-view.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
-import { fetchBoards } from "../lib/sixty.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
 import { WIKI_PAGE_TYPES, wikiSearch } from "../domain/wiki-pages.mjs";
 import { agentAccess, agentPathStamp, resolveAgentMountPath } from "./agent-access.mjs";
@@ -144,7 +143,7 @@ async function workspaceFiles(env, mountId, query, signal, maxResults = 12) {
   }
   return matches;
 }
-export function createPiTools({ env, mode, context, actionsFile = "", reportFile = "", expertKind = "" }) {
+export function createPiTools({ env, mode, context, actionsFile = "", reportFile = "", expertKind = "", dependencies = {} }) {
   const allowed = (name) => assertModeTool(mode, name);
   const tools = [];
 
@@ -306,21 +305,18 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     return text({ mountId, path: resolved.relative, stamp: String(Math.round(stat.mtimeMs)), content: content.slice(0, 160_000), truncated: content.length > 160_000 });
   }));
 
-  tools.push(tool("hotspot_search", "读取工作台热点", "读取工作台已接入的平台热榜和 AI 情报源。只读。", Type.Object({
+  // Keep the tool ID compatible with existing sessions; general platform charts are excluded.
+  tools.push(tool("hotspot_search", "检索 AI 行业情报", "按关注问题检索 AI 行业情报线索，不读取各平台通用热榜。摘要需要回原文核实。只读。", Type.Object({
     query: Type.Optional(Type.String({ maxLength: 200 })),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
   }), async ({ query = "", limit = 15 }) => {
     allowed("hotspot_search");
-    const [boards, ai] = await Promise.all([
-      fetchBoards(env, { limit }).catch((error) => ({ error: error.message, boards: [] })),
-      fetchAiHot({ limit: Math.max(limit, 20) }).catch((error) => ({ ok: false, error: error.message, items: [] })),
-    ]);
+    const ai = await (dependencies.fetchAiHot || fetchAiHot)({ limit: Math.max(limit, 20) })
+      .catch((error) => ({ ok: false, error: error.message, items: [] }));
     const needle = clean(query, 200).toLowerCase();
-    const boardRows = Array.isArray(boards) ? boards : (boards.boards || []);
-    const boardItems = boardRows.flatMap((board) => (board.items || []).map((item) => ({ source: board.label, title: item.title, url: item.url, rank: item.rank })));
-    const aiItems = (ai.items || []).map((item) => ({ source: "AI 情报", title: item.title, summary: item.summary, url: item.url, at: item.at }));
-    const items = [...boardItems, ...aiItems].filter((item) => !needle || JSON.stringify(item).toLowerCase().includes(needle)).slice(0, limit);
-    return text({ query: clean(query, 200), total: items.length, items, warning: boards.error || ai.error || "" });
+    const items = (ai.items || []).map((item) => ({ source: "AI 情报", title: item.title, summary: item.summary, url: item.link, at: item.at }))
+      .filter((item) => !needle || JSON.stringify(item).toLowerCase().includes(needle)).slice(0, limit);
+    return text({ query: clean(query, 200), total: items.length, items, warning: ai.error || "" });
   }));
 
   tools.push(tool("attachment_read", "读取附件", "按当前对话附件 ID 读取内容。文本返回已提取内容，图片返回视觉内容。只读。", Type.Object({ id: Type.String({ maxLength: 160 }) }), async ({ id }, signal) => {

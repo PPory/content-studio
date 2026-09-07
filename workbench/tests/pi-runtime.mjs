@@ -70,6 +70,24 @@ assert(!PERMISSION_MODES.daily.tools.includes("propose_knowledge_update"), "新�
   }
 }
 
+{
+  let calls = 0;
+  const tools = createPiTools({ env: {}, mode: "daily", context: {}, dependencies: {
+    fetchAiHot: async () => { calls++; return { ok: true, items: [
+      { title: "Harness 研究", summary: "任务反馈", link: "https://example.com/original", at: "2026-09-07" },
+      { title: "其他行业消息", summary: "无关内容", link: "https://example.com/other" },
+    ] }; },
+  } });
+  const tool = tools.find(item => item.name === "hotspot_search");
+  const result = JSON.parse((await tool.execute("source-scope", { query: "harness", limit: 3 })).content[0].text);
+  assert.equal(calls, 1);
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].source, "AI 情报");
+  assert.equal(result.items[0].url, "https://example.com/original", "行业线索必须保留原文链接");
+  const empty = JSON.parse((await tool.execute("no-match", { query: "不匹配的问题" })).content[0].text);
+  assert.equal(empty.total, 0, "无匹配不能用通用热点补位");
+}
+
 const skills = await assistantSkills();
 assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "intelligence-research", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
 assert(skills.items.every((item) => item.source === ".agents/skills"));
