@@ -3,7 +3,7 @@ import "./task-workspace.css";
 import { Research } from "./pages/Research.jsx";
 import { Library } from "./pages/Library.jsx";
 import { QuickNote } from "./components/QuickNote.jsx";
-// 一级导航表达今日、积累、创作、复盘；旧路由保留并归到对应工作空间。
+// 首页与 AI 助手独立，知识、内容、情报、运营各自保留目录。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api.js";
@@ -47,8 +47,9 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["bridge", "content", "project", "series", "series-detail", "topics", "drafts"]);
-const KNOWLEDGE_VIEWS = new Set(["assistant", "ideas", "seeds", "materials", "collections", "inbox", "discover", "hot", "insights", "knowledge", "entries", "shelf", "sources"]);
+const CONTENT_VIEWS = new Set(["research", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
+const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources"]);
+const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -82,15 +83,35 @@ const SUBNAV_HOME = {
   collections: "materials",
   inbox: "materials",
   knowledge: "entries",
+  library: "entries",
   discover: "hot",
 };
 
 // 业务导航按用户目的组织，AI 发现只是创作中的可选工具。
 const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
-  { key: "assistant", to: "research", match: (v) => v === "research" || v === "assistant" },
-  { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v) || REVIEW_VIEWS.has(v) || v === "typeset" },
-  { key: "knowledge", to: "library", match: (v) => v === "library" || (KNOWLEDGE_VIEWS.has(v) && v !== "assistant") },
+  { key: "assistant", to: "assistant", match: (v) => v === "assistant" },
+  { key: "knowledge", to: "entries", match: (v) => KNOWLEDGE_VIEWS.has(v), children: [
+    { to: "entries", label: "Wiki" },
+    { to: "shelf", label: "书架" },
+    { to: "sources", label: "来源" },
+  ] },
+  { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v), children: [
+    { to: "bridge", label: "内容机会" },
+    { to: "research", label: "选题空间" },
+    { to: "content", label: "创作" },
+    { to: "series", label: "合集" },
+    { to: "typeset", label: "排版" },
+  ] },
+  { key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v), children: [
+    { to: "hot", label: "热点" },
+    { to: "insights", label: "洞察" },
+    { to: "materials", label: "素材" },
+  ] },
+  { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
+    { to: "review", label: "复盘" },
+    { to: "review-performance", label: "数据" },
+  ] },
 ];
 const TOOL_NAV = { key: "typeset", to: "typeset" };
 

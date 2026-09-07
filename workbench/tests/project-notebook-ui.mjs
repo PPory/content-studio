@@ -73,7 +73,7 @@ try {
   check("刷新恢复同一篇构思", (await thought.inputValue()).includes("更难开始"));
   await page.locator(".nav > .nav-group > button").count();
   const mainLabels = await page.locator(".nav > div > button .nav-item__label").allTextContents();
-  check("业务导航只有首页、研究、内容、资料库", JSON.stringify(mainLabels) === JSON.stringify(["首页", "选题空间", "内容", "阅读与 Wiki"]));
+  check("业务导航恢复首页、AI助手和四条链", JSON.stringify(mainLabels) === JSON.stringify(["首页", "AI助手", "知识", "内容", "情报", "运营"]));
   await page.locator(".nav").getByRole("button", { name: "首页", exact: true }).click();
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
@@ -112,9 +112,9 @@ try {
   await notebook.getByLabel("创作方向（可选）").selectOption("");
   await until(() => request(notebookRoute), (r) => r.notebook.agendaId === null, "移除方向限制");
   await page.screenshot({ path: screenshots.desktop, fullPage: true });
-  for (const [route, selected] of [["assistant", "选题空间"], ["entries", "阅读与 Wiki"], ["bridge", "内容"], ["series", "内容"], ["typeset", "内容"]]) {
+  for (const [route, selected] of [["assistant", "AI助手"], ["entries", "知识"], ["shelf", "知识"], ["sources", "知识"], ["bridge", "内容"], ["series", "内容"], ["typeset", "内容"], ["hot", "情报"], ["review", "运营"]]) {
     await page.goto(`${base}/#/${route}`);
-    await page.locator(`.sidebar button[aria-current="page"]`).filter({ hasText: selected }).waitFor();
+    await page.locator(`.sidebar .nav-item[data-current="true"]`).filter({ hasText: selected }).waitFor();
     check(`旧深链 ${route} 保持可达与高亮`, true);
   }
   await page.route("**/api/assistant/conversation?**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "research-test", title: "持续研究", messages: [{ id: "u1", role: "user", content: "我的真实疑问：为什么难以开始？" }, { id: "a1", role: "assistant", content: "AI 未核实的推测不作为事实。" }], actions: [], attachments: [] } }) }));

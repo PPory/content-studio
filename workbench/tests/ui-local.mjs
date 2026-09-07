@@ -187,7 +187,18 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/today`);
   await page.getByRole("heading", { name: "从一个问题，开始今天", exact: true }).waitFor();
   check("首页显示最近工作而非四条处理队列", await page.getByRole("region", { name: "四条链的下一步" }).count() === 0);
-  check("侧栏保留统一资料入口", await page.locator(".nav").getByRole("button", { name: "阅读与 Wiki", exact: true }).count() === 1);
+  check("侧栏恢复知识目录", await page.locator(".nav").getByRole("button", { name: "知识", exact: true }).count() === 1);
+
+  await page.locator(".nav").getByRole("button", { name: "知识", exact: true }).click();
+  const knowledgeMenu = page.locator('[aria-label="知识下的页面"]');
+  check("知识恢复原来的三个子目录", JSON.stringify(await knowledgeMenu.getByRole("button").allTextContents()) === JSON.stringify(["Wiki", "书架", "来源"]));
+  for (const [name, view] of [["书架", "shelf"], ["来源", "sources"], ["Wiki", "entries"]]) {
+    await knowledgeMenu.getByRole("button", { name, exact: true }).click();
+    await page.waitForURL(new RegExp(`#/${view}`));
+    await knowledgeMenu.getByRole("button", { name, exact: true }).and(page.locator('[aria-current="page"]')).waitFor();
+    check(`知识子目录 ${name} 可点击且正确高亮`, true);
+  }
+  if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(os.tmpdir(), "xenho-restored-navigation.png"), fullPage: true });
 
   // ── 合集：建 → 从文章列表归类 → 在合集中新建 → 排序 → 分节 → 通读 ──
   //
