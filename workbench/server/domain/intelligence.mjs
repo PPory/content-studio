@@ -19,7 +19,12 @@ function profile(w, id) {
   if (!r) throw bad("关注方向不存在", 404);
   return { ...parse(r.config_json), id:r.id, nextDueAt:r.next_due_at, createdAt:r.created_at, updatedAt:r.updated_at };
 }
+export function intelligenceFocus(input) {
+ const name=String(input.name||"").trim(), query=String(input.query||"").trim();
+ return !query || /^(无|没有|暂无|不清楚|none|null|n\/a)$/i.test(query) || query===name ? name : `${name} ${query}`;
+}
 export function saveIntelligenceProfile(w, input) {
+  input={...input,query:intelligenceFocus(input),providers:input.providers??["local","web","aihot","x","reddit"]};
   const frequency = input.frequency || "manual";
   if (!["manual", "daily", "weekly"].includes(frequency)) throw bad("调研频率无效");
   if (!Array.isArray(input.providers) || !input.providers.length || input.providers.some(p => !providers.includes(p))) throw bad("请选择有效调研来源，通用热榜不受支持");
@@ -29,9 +34,9 @@ export function saveIntelligenceProfile(w, input) {
   const config = { name:str(input.name,120,true), query:str(input.query,500,true), frequency, providers:[...new Set(input.providers)],
     accounts:[...new Set(list(input.accounts||[],5,/^@?[A-Za-z0-9_]{1,15}$/).map(x=>x.replace(/^@/,"").toLowerCase()))], subreddits:[...new Set(list(input.subreddits||[],5,/^(?:r\/)?[A-Za-z0-9_]{2,30}$/).map(x=>x.replace(/^r\//,"").toLowerCase()))],
     limit, enabled:input.enabled !== false, paidApproved:input.paidApproved === true };
-  if (config.providers.includes("x") && !config.accounts.length) throw bad("X 调研需要指定账号");
-  if (config.providers.includes("reddit") && !config.subreddits.length) throw bad("Reddit 调研需要指定社区");
-  if (config.providers.some(p => ["x","reddit"].includes(p)) && !config.paidApproved) throw bad("请确认 X / Reddit 按账号、社区及条数执行的付费采集范围");
+
+
+
   const id = input.id ? str(input.id,80,true) : createUlid();
   const old = input.id ? profile(w,id) : null;
   const interval = frequency === "daily" ? 86400000 : 604800000;
@@ -99,7 +104,7 @@ export function addIntelligenceSource(w,input,runId=null) {
   const provider=input.provider||"manual";
   const fingerprint=sha256Json([provider,input.localId||url,body]);
   let row=w.db.prepare("SELECT id,data_json,created_at FROM intel_sources WHERE fingerprint=?").get(fingerprint);
-  if(!row){const id=createUlid(),createdAt=now();const data={title,body,url,provider,publishedAt:input.publishedAt||null,readLevel:input.readLevel||"original",localId:input.localId||null,localKind:input.localKind||null};w.db.prepare("INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)").run(id,fingerprint,json(data),createdAt);row={id,data_json:json(data),created_at:createdAt};}
+  if(!row){const id=createUlid(),createdAt=now();const data={title,body,url,provider,publishedAt:input.publishedAt||null,readLevel:input.readLevel||"original",background:Boolean(input.background),localId:input.localId||null,localKind:input.localKind||null};w.db.prepare("INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)").run(id,fingerprint,json(data),createdAt);row={id,data_json:json(data),created_at:createdAt};}
   if(runId)w.db.prepare("INSERT OR IGNORE INTO intel_run_sources(run_id,source_id) VALUES(?,?)").run(runId,row.id);
   return {id:row.id,...parse(row.data_json),createdAt:row.created_at};
 }
@@ -107,9 +112,9 @@ export function runSources(w,id){return w.db.prepare("SELECT s.* FROM intel_sour
 export function localIntelligenceSources(w,query,limit) {
   const terms=query.split(/[\s，,、；;]+/).filter(Boolean).slice(0,5);
   const found=new Map();for(const term of terms)for(const i of libraryItems(w,{q:term,limit})) {if(i.kind!=="wiki")found.set(i.id,i);}
-  for(const i of libraryItems(w,{limit:100}))if(i.kind!=="wiki"&&!found.has(i.id))found.set(i.id,i);
-  const items=[...found.values()].slice(0,limit).map(i=>{const full=libraryItem(w,i.kind,i.id);return {title:i.title,body:full.body.slice(0,40000),url:i.sourceUrl,localId:i.id,localKind:i.kind,provider:"local",readLevel:"original",publishedAt:i.updatedAt};});
-  const manual=w.db.prepare("SELECT * FROM intel_sources WHERE json_extract(data_json,'$.provider')='manual' ORDER BY created_at DESC LIMIT 100").all().map(r=>({id:r.id,...parse(r.data_json)})).sort((a,b)=>Number(terms.some(t=>(b.title+b.body).toLowerCase().includes(t.toLowerCase())))-Number(terms.some(t=>(a.title+a.body).toLowerCase().includes(t.toLowerCase())))).slice(0,limit);
+
+  const items=[...found.values()].slice(0,limit).map(i=>{const full=libraryItem(w,i.kind,i.id);return {title:i.title,body:String(full.body||"").slice(0,40000),url:i.sourceUrl,localId:i.id,localKind:i.kind,provider:"local",readLevel:"original",publishedAt:i.updatedAt};}).filter(i=>i.body.trim());
+  const manual=w.db.prepare("SELECT * FROM intel_sources WHERE json_extract(data_json,'$.provider')='manual' ORDER BY created_at DESC LIMIT 100").all().map(r=>({id:r.id,...parse(r.data_json)})).filter(a=>a.body?.trim() && terms.some(t=>(a.title+a.body).toLowerCase().includes(t.toLowerCase()))).slice(0,limit);
   return [...manual,...items].slice(0,limit);
 }
 export function saveIntelligenceCards(w,runId,candidates,wikiItems) {
@@ -148,8 +153,13 @@ export function intelligenceSource(w,id) {
 }
 export function intelligenceOverview(w,env={}) {
  const profiles=w.db.prepare("SELECT id FROM intel_profiles ORDER BY updated_at DESC").all().map(r=>profile(w,r.id));
+ const approved=new Map(),screenedRuns=new Set();
+ for(const row of w.db.prepare("SELECT r.id,r.profile_id,r.created_at,s.state_json FROM intel_runs r JOIN intel_steps s ON s.run_id=r.id AND s.provider='screen' ORDER BY r.created_at DESC LIMIT 200").all()) {
+  screenedRuns.add(row.id);
+  for(const item of parse(row.state_json).accepted||[])if(!approved.has(item.sourceId))approved.set(item.sourceId,{runId:row.id,profileId:row.profile_id,profileName:profiles.find(p=>p.id===row.profile_id)?.name||"调研",reason:item.reason,runCreatedAt:row.created_at});
+ }
  return {profiles,runs:w.db.prepare("SELECT id FROM intel_runs ORDER BY created_at DESC LIMIT 50").all().map(r=>intelligenceRun(w,r.id)),
- cards:w.db.prepare("SELECT * FROM intel_cards ORDER BY updated_at DESC LIMIT 200").all().map(r=>({id:r.id,profileId:r.profile_id,runId:r.run_id,...parse(r.data_json),status:r.status,researchId:r.research_id,updatedAt:r.updated_at})),
- sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=parse(r.data_json);return {id:r.id,...d,body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}),
- capabilities:{local:true,aihot:true,web:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),x:Boolean(env.BRIGHTDATA_API_KEY),reddit:Boolean(env.BRIGHTDATA_API_KEY),xiaohongshu:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),douyin:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY)}};
+ cards:w.db.prepare("SELECT * FROM intel_cards ORDER BY updated_at DESC LIMIT 200").all().map(r=>({id:r.id,profileId:r.profile_id,runId:r.run_id,...parse(r.data_json),status:r.status,researchId:r.research_id,updatedAt:r.updated_at})).filter(c=>c.researchId||screenedRuns.has(c.runId)),
+ sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=parse(r.data_json);return {id:r.id,...d,...approved.get(r.id),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
+ capabilities:{local:true,aihot:true,web:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),x:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),reddit:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),xiaohongshu:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),douyin:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY)}};
 }

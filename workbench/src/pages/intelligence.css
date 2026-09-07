@@ -65,3 +65,22 @@
 @media (max-width:640px) {.intelligence {padding:20px 14px 50px;}.intel-header {gap:12px; margin-bottom:20px;}.intel-header h1 {font-size:23px;}.intel-header>.btn {flex-shrink:0; font-size:12px;}.intel-note,.intel-profile-form {padding:16px;}.intel-form-row {grid-template-columns:1fr;}.intel-section-head {align-items:flex-start;flex-direction:column;gap:8px;}.intel-section-head input {max-width:none;}.intel-run>summary {flex-wrap:wrap;}.intel-run>summary>span:last-child {width:100%;}.intel-card h2 {font-size:20px;}.intel-card dl {grid-template-columns:66px minmax(0,1fr);}.intel-active>div {align-items:flex-start;}}
 
 .intel-recovery {max-width:500px; margin:16px 0;}
+.intel-topic-start {margin:0 0 30px;max-width:820px;}
+.intel-topic-start>label {font-size:15px;font-weight:500;color:var(--text-1);margin-bottom:10px;}
+.intel-topic-start>div {display:flex;gap:10px;}
+.intel-topic-start input {height:46px;min-width:0;}
+.intel-topic-start button {white-space:nowrap;padding:0 20px;}
+.intel-result-toolbar {display:flex;gap:20px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:12px;}
+.intel-result-toolbar .intel-filters {margin:0;padding:0;border:0;}
+.intel-result-toolbar>select,.intel-result-toolbar>input {max-width:250px;width:auto;min-width:150px;}
+.intel-source-group {padding:22px 0;}
+.intel-source-group>header {display:flex;align-items:baseline;gap:16px;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.intel-source-group>header h2 {margin:0;}
+.intel-source-group>header span {font-size:12px;color:var(--text-2);}
+.intel-advanced {border-top:1px solid var(--border);padding-top:15px;}
+.intel-advanced>label,.intel-advanced>fieldset,.intel-advanced>p {margin-top:15px;}
+.intel-note {margin-top:16px;}
+@media(max-width:640px){.intel-topic-start>div {flex-wrap:wrap;}.intel-topic-start button {height:40px;}.intel-result-toolbar {flex-wrap:wrap;gap:12px;}.intel-result-toolbar>select,.intel-result-toolbar>input {width:100%;max-width:none;}.intel-source-group>header {display:block;}.intel-source-group>header span {display:block;margin-top:6px;}}
+
+.intel-card-thinking {margin:14px 0;}
+.intel-card-thinking[open]>summary {margin-bottom:14px;}
