@@ -341,7 +341,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     const content = String(item.extractedText || "");
     return text({ id: item.id, name: item.name, text: content.slice(0, 120_000), truncated: content.length > 120_000 });  }));
 
-  tools.push(tool("skill_read", "读取技能说明", "读取本项目八个 Skill 的 SKILL.md 或其引用文件。只读。", Type.Object({ path: Type.String({ maxLength: 500 }) }), async ({ path: requested }, signal) => {
+  tools.push(tool("skill_read", "读取技能说明", "读取本项目 Runtime Skill 的 SKILL.md 或其引用文件。只读。", Type.Object({ path: Type.String({ maxLength: 500 }) }), async ({ path: requested }, signal) => {
     allowed("skill_read");
     const resolved = await resolveProjectPath(`.agents/skills/${clean(requested, 500)}`, { allowSkills: true });
     if (!resolved.relative.startsWith(".agents/skills/")) throw Object.assign(new Error("只能读取项目 Skill 文件"), { status: 403 });

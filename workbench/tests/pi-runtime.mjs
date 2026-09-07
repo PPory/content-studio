@@ -71,7 +71,7 @@ assert(!PERMISSION_MODES.daily.tools.includes("propose_knowledge_update"), "新�
 }
 
 const skills = await assistantSkills();
-assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
+assert.deepEqual(skills.items.map((item) => item.id).sort(), ["fact-check", "idea-dialogue", "intelligence-research", "interview-to-draft", "material-extraction", "material-gap", "publish-review", "topic-clustering", "xenho-quality-nine"]);
 assert(skills.items.every((item) => item.source === ".agents/skills"));
 assert.equal(assistantExperts().items.length, 6);
 assert.notEqual(documentVersion({ title: "A", body: "第一版" }), documentVersion({ title: "A", body: "第二版" }));
