@@ -46,7 +46,7 @@ try {
   const w=await server.xenhoWorkspace;
   const wikiId=createUlid(),stamp=new Date().toISOString();
   w.repository.createEntity({id:wikiId,type:"wiki_page"});
-  w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n"),stamp,stamp);
+  w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",("# Harness 与系统思维\n\n" + Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n")),stamp,stamp);
   await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"从一个问题，开始今天",exact:true}).waitFor();
   check("首页概览与最近阅读存在",await page.getByRole("heading",{name:"最近阅读",exact:true}).count()===1);
@@ -94,7 +94,15 @@ try {
   const download=page.waitForEvent("download");await page.getByRole("button",{name:"导出文章",exact:true}).click();check("可导出文章",(await download).suggestedFilename().endsWith(".md"));
   await page.screenshot({path:path.join(shotDir,"interview-writing-desktop.png"),fullPage:true});
   await page.getByRole("button",{name:"思考",exact:true}).click();
+  const chatBefore=await page.locator(".topic-chat textarea").boundingBox();
+  await page.getByRole("button",{name:/^资料 \d/}).click();
+  const chatAfter=await page.locator(".topic-chat textarea").boundingBox();
+  check("资料切换不挤走讨论输入框",Math.abs(chatBefore.y-chatAfter.y)<2);
+  await page.getByRole("button",{name:"思考",exact:true}).click();
+  check("资料切换后笔记仍在",(await page.getByLabel("我的笔记",{exact:true}).inputValue()).includes("待核对"));
+  await page.setViewportSize({width:1505,height:1045});
   await page.screenshot({path:path.join(shotDir,"interview-topic-desktop.png"),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
   await page.locator(".nav").getByRole("button",{name:"首页",exact:true}).click();
   await page.getByRole("heading",{name:"最近打开",exact:true}).waitFor();
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
@@ -104,6 +112,7 @@ try {
   check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
   await page.goto(`${base}/#/library/wiki:${wikiId}`);
   await page.locator(".reader-document").waitFor();
+  check("阅读标题只显示一次",await page.locator(".reader-document h1").count()===1);
   check("阅读默认专注原文",!await page.locator(".reader-companion").count());
   await page.locator(".reader-document").evaluate(el=>{el.scrollTop=400;el.dispatchEvent(new Event("scroll"));});
   await until(()=>request("/api/workspace/activity"),r=>r.reading.some(x=>x.id===wikiId&&x.position.scrollTop>200),"阅读位置保存");
@@ -118,6 +127,8 @@ try {
   await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("button",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();
   await page.getByRole("button",{name:"AI 讨论",exact:true}).click();await page.locator(".topic-chat textarea").waitFor();
   check("手机可切换对话",await page.locator(".topic-chat textarea").isVisible());
+  const composerBox=await page.locator(".topic-chat textarea").boundingBox();
+  check("手机讨论输入框在屏幕内",composerBox.y+composerBox.height<=844);
   check("选题手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:path.join(shotDir,"interview-topic-mobile.png"),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});

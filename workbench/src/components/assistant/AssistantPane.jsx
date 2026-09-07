@@ -92,7 +92,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse, embedded = false, emptyMessage = "", onSettled, onExcerpt }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse, embedded = false, emptyMessage = "", composerTools = null, onSettled, onExcerpt }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -1043,6 +1043,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
       </div>
     ) : null}
 
+    {composerTools}
     <AssistantComposer placeholder={embedded ? "围绕当前内容继续讨论…" : undefined}
       pendingAttachments={pendingAttachments} busy={busy} uploadError={uploadError} inputRef={inputRef}
       input={input} scope={scope} surface={surface} permissionOpen={permissionOpen} permissionRef={permissionRef}

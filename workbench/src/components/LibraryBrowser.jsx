@@ -16,7 +16,14 @@ export function LibraryBrowser({ onChoose, onGo, initialItem }) {
 function LibraryReader({ item, onChoose, onBack }) {
   const [ai, setAi] = useState(false), [mounted, setMounted] = useState(false), [selection, setSelection] = useState(""), [prompt, setPrompt] = useState(null), [error, setError] = useState(null), [topics, setTopics] = useState(null), [topicId, setTopicId] = useState(""), [status, setStatus] = useState(""), [busy, setBusy] = useState(false);
   const bodyRef = useRef(null), restore = useRef(null), timer = useRef(null), ready = useRef(false), lastPosition = useRef(null);
-  const html = useMemo(() => renderMarkdown(item.body || item.excerpt || "暂无正文"), [item]);
+  const html = useMemo(() => {
+    const document = new DOMParser().parseFromString(renderMarkdown(item.body || item.excerpt || "暂无正文"), "text/html");
+    const first = document.body.firstElementChild;
+    const normalized = value => String(value || "").replace(/\s+/g, "").trim();
+    // Presentation only: keep the stored original intact, show its title once.
+    if (first?.tagName === "H1" && normalized(first.textContent) === normalized(item.title)) first.remove();
+    return document.body.innerHTML;
+  }, [item]);
   useEffect(() => {
     let active = true;
     api.workspaceActivity().then(result => {
