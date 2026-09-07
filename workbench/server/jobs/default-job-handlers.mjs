@@ -1,3 +1,4 @@
+import { executeIntelligence } from "../domain/intelligence-runner.mjs";
 import {
   compileSourceToWiki,
   lintFindingRepairability,
@@ -198,6 +199,7 @@ export function reconcileWikiIngestCandidates(workspace, { now = new Date() } = 
 
 export function createDefaultJobHandlers(workspace, env = {}, dependencies = {}) {
   return {
+    "intelligence.research": (payload, job, execution = {}) => executeIntelligence(workspace, env, payload, {...dependencies.intelligence, assertLease:execution.heartbeat}),
     /** 提炼一份来源。payload.sourceId 指定读哪一份。 */
     "wiki.ingest": async (payload) => {
       const sourceId = String(payload?.sourceId || "");

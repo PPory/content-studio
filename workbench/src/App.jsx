@@ -30,7 +30,7 @@ import { KnowledgeReview } from "./pages/KnowledgeReview.jsx";
 import { EntryDetail } from "./pages/EntryDetail.jsx";
 import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
-import { Hotspots } from "./pages/Hotspots.jsx";
+import { Intelligence } from "./pages/Intelligence.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
 import { Metrics, DATA_TABS } from "./pages/Metrics.jsx";
 import { Review } from "./pages/Review.jsx";
@@ -49,7 +49,7 @@ const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 const CONTENT_VIEWS = new Set(["research", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
 const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources"]);
-const DISCOVER_VIEWS = new Set(["discover", "hot", "insights", "materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["intel", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -84,7 +84,9 @@ const SUBNAV_HOME = {
   inbox: "materials",
   knowledge: "entries",
   library: "entries",
-  discover: "hot",
+  discover: "intel",
+  hot: "intel",
+  insights: "intel",
 };
 
 // 业务导航按用户目的组织，AI 发现只是创作中的可选工具。
@@ -103,10 +105,10 @@ const NAV = [
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },
   ] },
-  { key: "discover", to: "hot", match: (v) => DISCOVER_VIEWS.has(v), children: [
-    { to: "hot", label: "热点" },
-    { to: "insights", label: "洞察" },
-    { to: "materials", label: "素材" },
+  { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
+    { to: "intel", label: "选题发现" },
+    { to: "intel-inbox", label: "收集箱" },
+    { to: "intel-settings", label: "关注与调研" },
   ] },
   { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
     { to: "review", label: "复盘" },
@@ -135,7 +137,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -781,8 +783,8 @@ export function App() {
                   onIntake={() => setQuickNote(true)}
                   onSettings={() => setSettings(true)}
                 />
-              ) : route.view === "hot" ? (
-                <Hotspots onIntake={setIntake} onGo={go} />
+              ) : ["intel", "intel-inbox", "intel-settings", "hot", "insights"].includes(route.view) ? (
+                <Intelligence view={route.view} initialAction={route.state} onGo={go} />
               ) : route.view === "typeset" ? (
                 <Typeset onGo={go} />
               ) : route.view === "shelf" ? (

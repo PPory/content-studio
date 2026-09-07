@@ -29,6 +29,15 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
+  intelligence: () => req("/api/workspace/intelligence"),
+  intelligenceProfile: (body) => postJson("/api/workspace/intelligence/profiles", body),
+  intelligenceRun: (id) => postJson(`/api/workspace/intelligence/profiles/${encodeURIComponent(id)}/run`, {}),
+  intelligenceRetry: (id, body = {}) => postJson(`/api/workspace/intelligence/runs/${encodeURIComponent(id)}/retry`, body),
+  intelligenceCancel: (id) => postJson(`/api/workspace/intelligence/runs/${encodeURIComponent(id)}/cancel`, {}),
+  intelligenceAdopt: (id) => postJson(`/api/workspace/intelligence/cards/${encodeURIComponent(id)}/adopt`, {}),
+  intelligenceCard: (id, body) => req(`/api/workspace/intelligence/cards/${encodeURIComponent(id)}`, {method: "PUT", headers: {"content-type": "application/json"}, body: JSON.stringify(body)}),
+  intelligenceSourceDetail: (id) => req(`/api/workspace/intelligence/sources/${encodeURIComponent(id)}`),
+  intelligenceSource: (body) => postJson("/api/workspace/intelligence/sources", body),
   workspaceActivity: () => req("/api/workspace/activity"),
   recordActivity: (kind, id, body) => req(`/api/workspace/activity/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   wikiConnections: (q) => req(`/api/workspace/wiki-connections?${new URLSearchParams({q})}`),

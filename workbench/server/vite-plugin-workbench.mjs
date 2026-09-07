@@ -1,3 +1,4 @@
+import { scheduleIntelligence } from "./domain/intelligence.mjs";
 // 把本地 API 挂进 Vite dev server 的中间件链，而不是另起一个进程 + 配代理。
 // 一个进程、一条 npm run dev、没有端口对不上的问题，也不需要 concurrently 这类依赖。
 //
@@ -17,7 +18,7 @@ import { serveTypeset } from "./routes/tools.mjs";
 import { openWorkspace } from "./storage/workspace.mjs";
 import { runtimeXenhoHome } from "./storage/workspace-paths.mjs";
 
-export async function startLocalWorkspaceRuntime(env = {}) {
+export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {}) {
   const xenhoHome = runtimeXenhoHome(env);
   const pendingRestore = await applyPendingWorkspaceRestore({ xenhoHome });
   const workspace = await openWorkspace({ xenhoHome });
@@ -25,8 +26,9 @@ export async function startLocalWorkspaceRuntime(env = {}) {
     const recoveredWikiJobs = recoverQueuedWikiIngests(workspace);
     const reconciledWikiCandidates = reconcileWikiIngestCandidates(workspace);
     const runtime = startWorkspaceRuntime(workspace, {
-      handlers: createDefaultJobHandlers(workspace, env),
+      handlers: createDefaultJobHandlers(workspace, env, jobDependencies),
       maintenance: (now) => ({
+        intelligence: scheduleIntelligence(workspace, { now }),
         recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
         reconciledWikiCandidates: reconcileWikiIngestCandidates(workspace, { now }),
       }),
@@ -42,14 +44,14 @@ export async function startLocalWorkspaceRuntime(env = {}) {
   }
 }
 
-export function workbenchApi(env) {
+export function workbenchApi(env, { jobDependencies = {} } = {}) {
   return {
     name: "creator-workbench-api",
     configureServer(server) {
       // 启动失败的原因要留住。只写日志的话，界面上只剩一句「尚未就绪」，
       // 而 tmp/dev-server.err.log 没有任何入口提到过——用户看到的是一个查不出原因的死局。
       let startupError = "";
-      const localRuntime = startLocalWorkspaceRuntime(env).catch((error) => {
+      const localRuntime = startLocalWorkspaceRuntime(env, jobDependencies).catch((error) => {
         startupError = error instanceof Error ? error.message : String(error);
         server.config.logger.error(`本地工作区启动失败：${startupError}`);
         return null;

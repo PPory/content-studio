@@ -22,6 +22,7 @@ export class WorkspaceJobRuntime {
     this.runner = new LocalJobRunner(workspace.jobs, { handlers });
     this.timer = null;
     this.currentTick = null;
+    this.stopping = false;
     this.lastError = null;
     this.lastResult = null;
     this.previousOnEnqueue = null;
@@ -29,13 +30,14 @@ export class WorkspaceJobRuntime {
   }
 
   async tick() {
+    if (this.stopping) return null;
     if (this.currentTick) return this.currentTick;
     this.currentTick = (async () => {
       const current = this.now();
       const maintenance = this.maintenance ? await this.maintenance(current) : null;
       const startupJobs = enqueueStartupCatchup(this.workspace.db, this.workspace.jobs, { now: current });
       const results = [];
-      while (true) {
+      while (!this.stopping) {
         const result = await this.runner.runNext({ leaseOwner: this.leaseOwner, now: () => this.now() });
         if (!result) break;
         results.push(result);
@@ -53,6 +55,7 @@ export class WorkspaceJobRuntime {
   }
 
   start() {
+    this.stopping = false;
     if (this.timer) return this;
     this.previousOnEnqueue = this.workspace.jobs.onEnqueue || null;
     this.enqueueWake = () => {
@@ -69,6 +72,7 @@ export class WorkspaceJobRuntime {
   }
 
   async stop() {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (this.workspace.jobs.onEnqueue === this.enqueueWake) this.workspace.jobs.onEnqueue = this.previousOnEnqueue;

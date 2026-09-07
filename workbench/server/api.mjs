@@ -1,3 +1,4 @@
+import { intelligenceRoutes } from "./routes/intelligence.mjs";
 import { workspaceExperienceRoutes } from "./routes/workspace-experience.mjs";
 import { researchRoutes } from "./routes/research.mjs";
 // 本地 API 的路由表。挂进 Vite dev server 的中间件链（见 vite-plugin-workbench.mjs）。
@@ -80,6 +81,7 @@ const ROUTES = [
   ...contentConstructionRoutes,
   ...contentProjectRoutes,
   ...researchRoutes,
+  ...intelligenceRoutes,
   ...workspaceExperienceRoutes,
   ...contentExperimentRoutes,
   ...localBookRoutes,

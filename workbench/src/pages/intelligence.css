@@ -1,0 +1,67 @@
+.intelligence {max-width:1120px; margin:0 auto; padding:28px 30px 70px; color:var(--text-1);}
+.intel-header {display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:28px;}
+.intel-header h1 {font-size:26px; letter-spacing:-.5px; margin:0 0 9px; font-weight:600;}
+.intel-header p,.intel-hint {color:var(--text-2); font-size:13px; line-height:1.7; margin:0;}
+.intelligence h2 {font-size:17px; font-weight:600; line-height:1.6; margin:0 0 10px;}
+.intelligence p {line-height:1.75; overflow-wrap:anywhere;}
+.intelligence input:not([type=checkbox]),.intelligence textarea,.intelligence select {box-sizing:border-box; width:100%; border:1px solid var(--border-strong); border-radius:7px; padding:10px 12px; background:var(--surface); color:var(--text-1); font:inherit; font-size:14px;}
+.intelligence textarea {resize:vertical; min-height:94px; line-height:1.7;}
+.intelligence label {display:grid; gap:7px; font-size:13px; color:var(--text-2);}
+.intelligence :is(button,a,input,textarea,select,summary):focus-visible {outline:2px solid var(--text-1); outline-offset:3px;}
+.intelligence .btn:disabled {opacity:.45; cursor:not-allowed;}
+.intel-filters {display:flex; flex-wrap:wrap; gap:6px; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:10px;}
+.intel-filters .btn {border-color:transparent; background:transparent; color:var(--text-2);}
+.intel-filters .btn.is-active {background:var(--surface-2); color:var(--text-1); border-color:var(--border);}
+.intel-cards {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 36px;}
+.intel-card {padding:24px 0; border-bottom:1px solid var(--border); min-width:0;}
+.intel-card h2 {font-size:21px; letter-spacing:-.3px; line-height:1.5; margin:12px 0;}
+.intel-meta {display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; font-size:12px; color:var(--text-2);}
+.intel-why {font-size:14px; margin:0 0 16px;}
+.intel-card dl {display:grid; grid-template-columns:74px minmax(0,1fr); gap:10px 8px; font-size:13px; line-height:1.8; margin:0 0 18px;}
+.intel-card dt {color:var(--text-2);}
+.intel-card dd {margin:0; overflow-wrap:anywhere;}
+.intel-link {padding:0; color:inherit; border:0; text-decoration:underline; text-underline-offset:3px; background:none; font:inherit; cursor:pointer;}
+.intelligence summary {cursor:pointer; font-size:13px; line-height:1.7;}
+.intel-card footer,.intel-profile-form footer {display:flex; gap:8px; flex-wrap:wrap; margin-top:20px;}
+.intel-card footer .btn {font-size:12px; padding:7px 10px;}
+.intel-evidence {border-left:2px solid var(--border-strong); margin-top:15px; padding:0 0 0 14px; font-size:13px;}
+.intel-evidence blockquote {margin:10px 0; color:var(--text-2); line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere;}
+.intelligence a {color:var(--text-1); text-underline-offset:3px;}
+.intel-source-body {font-size:14px; white-space:pre-wrap; max-height:440px; overflow:auto;}
+.intel-empty {padding:35px 0; max-width:580px; color:var(--text-2); font-size:14px;}
+.intel-empty h2 {color:var(--text-1);}
+.intel-empty .btn {margin-top:10px;}
+.intel-error {padding:12px 15px; border:1px solid var(--border-strong); border-left:3px solid var(--text-1); border-radius:5px; margin-bottom:16px; overflow-wrap:anywhere; font-size:14px;}
+.intel-error .btn {margin-left:12px;}
+.intel-notice,.intel-schedule-note {padding:12px 16px; background:var(--surface-2); font-size:13px; border-radius:6px;}
+.intel-active {padding:10px 16px; margin-bottom:16px; background:var(--surface-2); border-radius:7px; font-size:13px;}
+.intel-active>div {display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0;}
+.intel-note,.intel-profile-form {display:grid; gap:16px; max-width:720px; padding:22px; border:1px solid var(--border); border-radius:10px; background:var(--surface); margin-bottom:28px;}
+.intel-note>.btn {justify-self:start;}
+.intel-section-head {display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 0; border-bottom:1px solid var(--border);}
+.intel-section-head h2 {margin:0; white-space:nowrap;}
+.intel-section-head input {max-width:280px;}
+.intel-source,.intel-run {padding:17px 0; border-bottom:1px solid var(--border);}
+.intel-source>summary {font-size:15px; font-weight:500;}
+.intel-source>summary>span {display:block; font-size:12px; font-weight:400; color:var(--text-2); padding-left:16px; margin-top:5px;}
+.intel-profile-form fieldset {display:flex; flex-wrap:wrap; gap:14px 22px; border:0; padding:0; margin:0;}
+.intel-profile-form legend {padding:0 0 10px; font-size:13px; color:var(--text-2);}
+.intelligence .intel-check {display:flex; align-items:flex-start; gap:8px; line-height:1.7; cursor:pointer;}
+.intel-check input {width:16px; height:16px; margin:3px 0 0; flex-shrink:0; accent-color:var(--text-1);}
+.intel-paid {padding:14px; background:var(--surface-2); border-radius:6px;}
+.intel-form-row {display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+.intel-profile {display:flex; align-items:center; justify-content:space-between; gap:24px; padding:23px 0; border-bottom:1px solid var(--border);}
+.intel-profile>div:first-child {min-width:0;}
+.intel-profile p {margin:6px 0; font-size:14px;}
+.intel-profile .intel-hint {font-size:12px;}
+.intel-actions {display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0;}
+.intel-history {margin-top:34px;}
+.intel-run>summary {display:flex; justify-content:space-between; gap:16px;}
+.intel-run>summary::before {content:'›';}
+.intel-run[open]>summary::before {content:'⌄';}
+.intel-run>summary>span:first-child {flex:1;}
+.intel-run>summary>span:last-child {color:var(--text-2);}
+@media (max-width:1050px) {.intel-cards {grid-template-columns:1fr;}.intel-profile {align-items:flex-start; flex-direction:column; gap:12px;}}
+@media (max-width:640px) {.intelligence {padding:20px 14px 50px;}.intel-header {gap:12px; margin-bottom:20px;}.intel-header h1 {font-size:23px;}.intel-header>.btn {flex-shrink:0; font-size:12px;}.intel-note,.intel-profile-form {padding:16px;}.intel-form-row {grid-template-columns:1fr;}.intel-section-head {align-items:flex-start;flex-direction:column;gap:8px;}.intel-section-head input {max-width:none;}.intel-run>summary {flex-wrap:wrap;}.intel-run>summary>span:last-child {width:100%;}.intel-card h2 {font-size:20px;}.intel-card dl {grid-template-columns:66px minmax(0,1fr);}.intel-active>div {align-items:flex-start;}}
+
+.intel-recovery {max-width:500px; margin:16px 0;}
