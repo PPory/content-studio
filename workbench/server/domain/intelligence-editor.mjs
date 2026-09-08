@@ -26,7 +26,7 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
    '每张title用清晰陈述句概括信息，不写成泛泛的论文题目或只有问句。title优先30至45字，先说普通读者能理解的变化；不要把C/CUDA、RBAC、低功耗芯片等实现名词堆进标题。summary一两句约100字；reason约60字说明与用户的具体关系，不堆术语、不假定用户在部署硬件或经营企业。',
    'body为完整中文解读：发生了什么/作者实际说了什么、关键机制或观点、适用场景、局限和争议。建议300至600字，必要时用例子，发布者自报性能或公司宣传需明确归因，未复测就不写成已证明；融资不证明商业可行性、行业垄断或形成壁垒。事实、来源自述和AI推断分清。technical为可选深入解释、论文/代码入口，未实际读取不冒充核验。',
    'confidence=reliable表示有充分出处，不等于宣称源头所有观点均属事实；证据不足但值得关注用watch，并在body说明不确定之处。最多两张watch。kind=update/practice/evergreen，旧内容和background:true不冒充近日新变化，要说明为何现在值得看。',
-   'evidence每项必须使用输入sourceId及至少8字符的连续逐字原话，不能翻译改写。wiki只能引用输入真实ID，没有自然连接就空。正文逐字引用编号以[引文1]等人类可读编号对应evidence数组，不输出内部ID。',
+   'evidence每项必须使用输入sourceId及至少8字符的连续逐字原话，不能翻译改写。wiki只能引用输入真实ID，没有自然连接就空。本地知识不完善，缺少Wiki关联不是排除有价值情报的理由；是否保留依据关注方向、信息价值与外部原文，不以已有Wiki覆盖范围限制探索。正文逐字引用编号以[引文1]等人类可读编号对应evidence数组，不输出内部ID。',
    '同一事件沿用历史storyKey；更新已有卡需existingId和明确changeNote，说明实际新增证据、不同观点或实践结果。没实质变化就不再推荐，不生成新storyKey逃过去重。不要让一个兴趣覆盖全部类别。',
    '只返回JSON {"briefs":[{"groupKey":"分组key","existingId":"可选","storyKey":"稳定事件标识","title":"","summary":"","reason":"","body":"Markdown解读","technical":"可选Markdown","confidence":"reliable","kind":"update","changeNote":"仅实质更新","evidence":[{"sourceId":"","quote":""}],"wiki":[{"id":"","reason":""}]}]}'
   ].join('\n'),user:JSON.stringify({step:"compose",groups,directions:preferences.directions,focus:run.config.query,period:run.createdAt,coverage:run.coverage,sources:excerpts,wiki,previous:recent,userDiscussionSignals:discussions}),maxTokens:14000});
