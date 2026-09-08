@@ -1,3 +1,4 @@
+import { intelligenceSourceMeta } from "./intelligence-source-meta.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { sha256Json, sourceContainsVerbatim } from "./integrity.mjs";
 import { createResearch, getResearch, researchReference, libraryItems, libraryItem } from "./research.mjs";
@@ -21,6 +22,7 @@ function profile(w, id) {
 }
 export function intelligenceFocus(input) {
  const name=String(input.name||"").trim(), query=String(input.query||"").trim();
+ if(name && query.startsWith(name+" "))return query;
  return !query || /^(无|没有|暂无|不清楚|none|null|n\/a)$/i.test(query) || query===name ? name : `${name} ${query}`;
 }
 export function saveIntelligenceProfile(w, input) {
@@ -34,7 +36,8 @@ export function saveIntelligenceProfile(w, input) {
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw bad("启用状态无效");
   const config = { name:str(input.name,120,true), query:str(input.query,500,true), frequency, providers:[...new Set(input.providers)],
     accounts:[...new Set(list(input.accounts||[],5,/^@?[A-Za-z0-9_]{1,15}$/).map(x=>x.replace(/^@/,"").toLowerCase()))], subreddits:[...new Set(list(input.subreddits||[],5,/^(?:r\/)?[A-Za-z0-9_]{2,30}$/).map(x=>x.replace(/^r\//,"").toLowerCase()))],
-    limit, output:input.output === "briefs" ? "briefs" : "topics", enabled:input.enabled !== false, paidApproved:input.paidApproved === true };
+    limit, output:input.output === "briefs" ? "briefs" : "topics", enabled:input.enabled !== false, paidApproved:input.paidApproved === true, autoSocial:input.autoSocial === true };
+  if(config.autoSocial && (!config.paidApproved || frequency!=="manual" || config.output!=="briefs"))throw bad("自动选择社媒来源仅用于已确认的单次精选采集");
 
 
 
@@ -105,11 +108,11 @@ export function addIntelligenceSource(w,input,runId=null) {
   const provider=input.provider||"manual";
   const fingerprint=sha256Json([provider,input.localId||url,body]);
   let row=w.db.prepare("SELECT id,data_json,created_at FROM intel_sources WHERE fingerprint=?").get(fingerprint);
-  if(!row){const id=createUlid(),createdAt=now();const data={title,body,url,provider,publishedAt:input.publishedAt||null,readLevel:input.readLevel||"original",background:Boolean(input.background),localId:input.localId||null,localKind:input.localKind||null};w.db.prepare("INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)").run(id,fingerprint,json(data),createdAt);row={id,data_json:json(data),created_at:createdAt};}
+  if(!row){const id=createUlid(),createdAt=now();const data={title,body,url,provider,publishedAt:input.publishedAt||null,readLevel:input.readLevel||"original",background:Boolean(input.background),localId:input.localId||null,localKind:input.localKind||null,dateBasis:input.dateBasis||null,discoveredAt:input.discoveredAt||null,contentKind:input.contentKind||null,author:String(input.author||"").slice(0,200),community:String(input.community||"").slice(0,200),discoveredFrom:String(input.discoveredFrom||"").slice(0,2000),quotedBody:String(input.quotedBody||"").slice(0,12000),quotedAuthor:String(input.quotedAuthor||"").slice(0,200)};w.db.prepare("INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)").run(id,fingerprint,json(data),createdAt);row={id,data_json:json(data),created_at:createdAt};}
   if(runId)w.db.prepare("INSERT OR IGNORE INTO intel_run_sources(run_id,source_id) VALUES(?,?)").run(runId,row.id);
   return {id:row.id,...parse(row.data_json),createdAt:row.created_at};
 }
-export function runSources(w,id){return w.db.prepare("SELECT s.* FROM intel_sources s JOIN intel_run_sources l ON l.source_id=s.id WHERE l.run_id=?").all(id).map(r=>({id:r.id,...parse(r.data_json),createdAt:r.created_at}));}
+export function runSources(w,id){return w.db.prepare("SELECT s.* FROM intel_sources s JOIN intel_run_sources l ON l.source_id=s.id WHERE l.run_id=?").all(id).map(r=>{const source={id:r.id,...parse(r.data_json),createdAt:r.created_at};return {...source,...intelligenceSourceMeta(source)};});}
 export function localIntelligenceSources(w,query,limit) {
   const terms=query.split(/[\s，,、；;]+/).filter(Boolean).slice(0,5);
   const found=new Map();for(const term of terms)for(const i of libraryItems(w,{q:term,limit})) {if(i.kind!=="wiki")found.set(i.id,i);}

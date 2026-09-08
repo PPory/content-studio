@@ -5,7 +5,7 @@ description: 把每周的 Reddit / X / AI 日报 Markdown 材料转成一份有�
 
 # Personal Intelligence Radar
 
-> 历史脚本工作流：本说明仍依赖 vault Markdown 和外部命令，不是现役 Pi 调研入口。现役入口为仓库 `.agents/skills/intelligence-research/SKILL.md`；下方抓取适配器保留供迁移复用，尚未接入当前 AI 工具或定时调研。不要按本说明向旧 vault 自动写报告。
+> 历史脚本工作流：本说明仍依赖 vault Markdown 和外部命令，不是现役 Pi 调研入口。现役入口为仓库 `.agents/skills/intelligence-research/SKILL.md`；下方 Bright Data 抓取适配器已由工作台手动精选调研复用；本说明中的外部命令不是当前 AI 会话工具，也未开启定时调研。不要按本说明向旧 vault 自动写报告。
 
 把已经筛选并渲染为 Markdown 的社媒与行业材料，转化为供创作者阅读的周度个人情报报告。不要只做话题摘要；必须发现变化、解释结构、暴露知识缺口、评估内容供需，并给出可验证的学习与写作行动。
 

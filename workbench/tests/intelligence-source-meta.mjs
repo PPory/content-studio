@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {normalizeSourceDate,intelligenceSourceMeta,intelligencePublicationRange,intelligenceRunWindow,intelligenceSourceStats} from '../server/domain/intelligence-source-meta.mjs';
+const now=new Date('2026-09-08T12:00:00Z');
+assert.equal(normalizeSourceDate('not a date'),null);assert.equal(normalizeSourceDate(0),'1970-01-01T00:00:00.000Z');
+const legacy=intelligenceSourceMeta({id:'ai',provider:'aihot',publishedAt:'2026-09-08T10:00:00Z',createdAt:'2026-09-08T11:00:00Z'},{now});assert.equal(legacy.publishedAt,null,'AI feed discovery is not original publication');assert.equal(legacy.dateBasis,'discovered');assert.equal(legacy.discoveredAt,'2026-09-08T10:00:00.000Z');assert.equal(legacy.collectedAt,'2026-09-08T11:00:00.000Z');
+const local=intelligenceSourceMeta({id:'local',provider:'local',publishedAt:'2026-09-08T11:00:00Z'},{now});assert.equal(local.publishedAt,null);assert.equal(local.background,true);
+const article=intelligenceSourceMeta({id:'post',provider:'x',author:'writer',contentKind:'post',dateBasis:'publication',publishedAt:'2026-09-06T12:00:00Z',createdAt:'2026-09-08T11:00:00Z'},{now});assert.equal(article.ageDays,2);assert.equal(article.author,'writer');
+const unknown=intelligenceSourceMeta({id:'unknown',provider:'reddit',title:'未知旧记录'},{now});assert.equal(unknown.contentKind,'unknown');assert.equal(unknown.publishedAt,null);
+assert.deepEqual(intelligencePublicationRange([article,legacy,unknown],{now}),{from:'2026-09-06T12:00:00.000Z',to:'2026-09-06T12:00:00.000Z',knownCount:1,unknownCount:2,oldestAgeDays:2,newestAgeDays:2});
+const daily=intelligenceRunWindow({createdAt:now.toISOString(),config:{frequency:'daily'}});assert.equal(daily.start,'2026-09-07T12:00:00.000Z');assert.equal(daily.timeZone,'Asia/Shanghai');
+assert.equal(intelligenceRunWindow({createdAt:now.toISOString(),config:{frequency:'weekly'}}).start,'2026-09-01T12:00:00.000Z');
+assert.equal(intelligenceRunWindow({coverage:[{window:{start:'2026-09-01T00:00:00Z',end:'2026-09-07T00:00:00Z'}}]}).end,'2026-09-07T00:00:00Z','persisted executed range wins');
+const rows=[article,{id:'c',provider:'reddit',contentKind:'comment',dateBasis:'unknown'},unknown];const stats=intelligenceSourceStats(rows,['post','c'],['x','reddit','web']);assert.deepEqual(stats.find(s=>s.provider==='reddit'),{provider:'reddit',acquisitionMethod:'public-search',collected:2,adopted:1,posts:0,comments:1,unknownKind:1,adoptedPosts:0,adoptedComments:1,publicationUnknown:2});assert.equal(stats.find(s=>s.provider==='web').collected,0);
+const oldComment=intelligenceSourceMeta({provider:'reddit',title:'评论 · 原帖标题',publishedAt:'2026-09-01T00:00:00Z'});assert.equal(oldComment.contentKind,'comment');assert.equal(oldComment.publishedAt,null);assert.equal(oldComment.dateBasis,'unknown-comment');assert.equal(intelligenceSourceStats(rows,[],['x'],{coverage:[{provider:'x',snapshotId:'s_known'}]})[0].acquisitionMethod,'brightdata');
+console.log('intelligence-source-meta: publication/discovery separation, unknown legacy metadata, run windows and selected post/comment counts passed');

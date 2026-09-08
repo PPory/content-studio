@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {openWorkspace} from '../server/storage/workspace.mjs';
-import {saveIntelligenceProfile,enqueueIntelligence,intelligenceOverview} from '../server/domain/intelligence.mjs';
+import {saveIntelligenceProfile,enqueueIntelligence,intelligenceOverview,runSources} from '../server/domain/intelligence.mjs';
+import {generateDailyBriefs} from '../server/domain/intelligence-editor.mjs';
 import {executeIntelligence} from '../server/domain/intelligence-runner.mjs';
 import {intelligenceFeed,intelligenceBrief,feedbackIntelligenceBrief,blockIntelligenceSource} from '../server/domain/intelligence-feed.mjs';
 import {configureAssistantWorkspace,runAssistantTurn,assistantConversation,createAssistantConversation} from '../server/agent-runtime/assistant-runner.mjs';
@@ -17,7 +18,7 @@ try {
  const quote='Use feedback loops to understand model limitations.';
  const done=await executeIntelligence(w,{}, {runId:r.id},{
   planResearch:async()=>({query:'AI learning',queries:{web:['model feedback','learning practice'],x:'agent practice',reddit:'local models'}}),
-  searchWeb:async(_env,input)=>({sources:[{url:'https://example.com/'+encodeURIComponent(input.query),title:'Model practice'}]}),
+  searchWeb:async(_env,input)=>({sources:[{url:input.query.includes('site:x.com')?'https://x.com/writer/status/123':input.query.includes('site:reddit.com')?'https://reddit.com/r/LocalLLaMA/comments/test/post':'https://example.com/'+encodeURIComponent(input.query),title:'Model practice'}]}),
   readArticle:async url=>{reads.push(url);return {url,title:'Model practice',markdown:quote+' FULL_PUBLIC_BODY_NOT_FOR_CHAT'};},
   completeJson:async(_env,input)=>{const d=JSON.parse(input.user);assert.ok(d.sources.some(s=>s.provider==='x'));assert.ok(d.sources.some(s=>s.provider==='reddit'));return {data:{briefs:[{storyKey:'model-feedback',title:'反馈能帮助理解模型的局限',summary:'测试解读摘要',reason:'连接AI与学习实践',body:'先明确任务，再通过反馈观察局限。[来源1]',confidence:'reliable',kind:'practice',evidence:[{sourceId:d.sources[0].id,quote}],wiki:[]}]}};}
  });
@@ -38,5 +39,10 @@ try {
  const next=enqueueIntelligence(w,p.id);let blockedRead=false;
  await executeIntelligence(w,{}, {runId:next.id},{planResearch:async()=>({query:'AI'}),searchWeb:async()=>({sources:[{url:'https://blocked.example.com/a'}]}),readArticle:async()=>{blockedRead=true;return{};},completeJson:async()=>({data:{briefs:[]}})});
  assert.equal(blockedRead,false,'blocked host is filtered before any read');
+ const originalSources=runSources(w,r.id),sourceId=originalSources[0].id;
+ let repairCalls=0;
+ const candidate=(key,q)=>({storyKey:key,title:key,summary:'有依据的概括',reason:'与学习有关',body:'解释原理。[来源1]',confidence:'reliable',kind:'practice',evidence:[{sourceId,quote:q}],wiki:[]});
+ const repaired=await generateDailyBriefs(w,{},r,originalSources,[],{completeJson:async()=>{repairCalls++;return repairCalls===1?{data:{briefs:[candidate('already-valid',quote),candidate('repairable','This fabricated quotation is not in the source.'),candidate('unrepairable','Another unsupported quotation with no source.')]}}:{data:{repairs:[{index:1,evidence:[{sourceId,quote}]},{index:2,evidence:[{sourceId,quote:'Still not present in the original source.'}]}]}};}});
+ assert.equal(repairCalls,2,'at most one repair model call');assert.equal(repaired.saved.length,2);assert.equal(repaired.repaired,1);assert.equal(repaired.rejected,1,'unsupported repair still rejected');
  console.log('intelligence-editor: provider search, brief generation, chat privacy, persistence and blocking passed');
 } finally {w?.close();await fs.rm(root,{recursive:true,force:true});}

@@ -115,6 +115,7 @@ export async function fetchAiHot({ limit = 50 } = {}) {
       if (exist) {
         if (!exist.summary && item.summary) exist.summary = item.summary;
         if (!exist.category && item.category) exist.category = item.category;
+        if (!exist.publishedAt && item.publishedAt) { exist.publishedAt=item.publishedAt; exist.dateBasis="publication"; }
         if (item.sources.length > exist.sources.length) exist.sources = item.sources;
         return;
       }
@@ -133,6 +134,7 @@ export async function fetchAiHot({ limit = 50 } = {}) {
         sources: [...new Set(sources)].filter(Boolean),
         sourceCount: Number(it.sourceCount) || 1,
         at: it.latestAt || null,
+        publishedAt: null, discoveredAt: it.latestAt || null, dateBasis: "discovered",
         category: "",
         origin: "aihot",
       });
@@ -149,6 +151,7 @@ export async function fetchAiHot({ limit = 50 } = {}) {
         sources: [shortSource(it?.source?.name)],
         sourceCount: 1,
         at: it.discoveredAt || it.publishedAt || null,
+        publishedAt: it.publishedAt || null, discoveredAt: it.discoveredAt || null, dateBasis: it.publishedAt ? "publication" : "discovered",
         category: CATEGORY_LABELS[it.category] || "",
         origin: "aihot",
       });

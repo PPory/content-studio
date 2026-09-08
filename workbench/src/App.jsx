@@ -30,6 +30,7 @@ import { KnowledgeReview } from "./pages/KnowledgeReview.jsx";
 import { EntryDetail } from "./pages/EntryDetail.jsx";
 import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
+import { Hotspots } from "./pages/Hotspots.jsx";
 import { IntelligenceFeed } from "./pages/IntelligenceFeed.jsx";
 import { Intelligence } from "./pages/Intelligence.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
@@ -88,7 +89,7 @@ const SUBNAV_HOME = {
   discover: "intel",
   "intel-detail": "intel",
   "intel-legacy": "intel",
-  hot: "intel",
+  hot: "hot",
   insights: "intel",
 };
 
@@ -110,6 +111,7 @@ const NAV = [
   ] },
   { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
     { to: "intel", label: "今日精选" },
+    { to: "hot", label: "AI热点" },
     { to: "intel-reports", label: "周报" },
     { to: "intel-inbox", label: "我的灵感" },
     { to: "intel-settings", label: "关注方向" },
@@ -787,7 +789,9 @@ export function App() {
                   onIntake={() => setQuickNote(true)}
                   onSettings={() => setSettings(true)}
                 />
-              ) : ["intel", "intel-detail", "intel-reports", "intel-settings", "hot", "insights"].includes(route.view) ? (
+              ) : route.view === "hot" ? (
+                <Hotspots onIntake={setIntake} onGo={go} />
+              ) : ["intel", "intel-detail", "intel-reports", "intel-settings", "insights"].includes(route.view) ? (
                 <IntelligenceFeed view={route.view} state={route.state} onGo={go} />
               ) : ["intel-inbox", "intel-legacy"].includes(route.view) ? (
                 <Intelligence view={route.view === "intel-inbox" || route.state === "inbox" ? "intel-inbox" : route.state === "settings" ? "intel-settings" : "intel"} initialAction={route.view === "intel-inbox" ? "manual" : undefined} onGo={route.view === "intel-legacy" ? (view, state) => go(view === "intel-settings" || view === "intel-inbox" || view === "intel" ? "intel-legacy" : view, view === "intel-settings" ? "settings" : view === "intel-inbox" ? "inbox" : state) : go} />

@@ -1,14 +1,3 @@
-// 近期热点：三个视角，一个药丸切换。
-//
-//   平台热榜   六个大众榜的原始排名，**不过滤**。回答「现在大众在关心什么」。
-//              拿关注词去筛它等于把它筛没了，所以这一侧一个筛子都没有。
-//   AI 情报    AI HOT 精选，按日期分组。**这一侧才过滤**，且一键可看全部。
-//   模型榜     AIHOT 大模型共识分。**它和前两个不是一类东西**——前两个是「今天发生了
-//              什么」看完就过，它是「现在的牌面是什么」几周才动一次。所以这一栏
-//              没有收藏、没有入库：它不是素材，是背景知识。
-//
-// 前两栏共用的动作只有两个：看原文、收进灵感库。这一页不做分析、不替你写。
-
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, Note, FilterHeader, ViewTabs, Toast, relTime } from "../components/ui.jsx";
@@ -21,15 +10,15 @@ import {
   IconChartLine,
   IconBookmark,
   IconBookmarkFilled,
-  IconBrandBilibili,
-  IconBrandTiktok,
-  IconBrandWeibo,
+
+
+
   IconClock,
   IconExternalLink,
-  IconMessageQuestion,
-  IconNews,
-  IconNotebook,
-  IconRadar2,
+
+
+
+
   IconRefresh,
   IconSeedling,
   IconShieldCheck,
@@ -37,46 +26,12 @@ import {
 } from "../components/icons.jsx";
 
 const TABS = [
-  { key: "boards", label: "平台热榜", icon: IconRadar2 },
-  { key: "ai", label: "AI 情报", icon: IconSparkles },
+  { key: "ai", label: "AI 热点", icon: IconSparkles },
   { key: "models", label: "模型榜", icon: IconChartLine },
 ];
 
-/**
- * 榜名前的平台图标。**按 id 精确匹配**，不按 label 关键词——
- * id 来自我们自己的 `server/lib/sixty.mjs`，是稳定的；label 是给人看的，随时会改字。
- * （这和状态图标/字段图标那两处的模糊匹配不一样：那两处的名字来自库里，我们说了不算。）
- *
- * tabler 没有今日头条和小红书的品牌图标，用语义最近的通用图标顶上；
- * 认不出的一律回落到 IconNews——**宁可给个通用的，也不要一排榜里有的有图标有的没有**。
- *
- * ⚠️ **知乎故意不用 `IconBrandZhihu`**：那个图标画的是「知」字本身。一排线性图标里
- * 只有它是个字形，笔画密度和其余五个完全不是一路；而且它就贴在「知乎话题榜」左边，
- * 等于把第一个字说了两遍。换成问答语义的通用图标，一排看着才是一套。
- */
-const BOARD_ICONS = {
-  weibo: IconBrandWeibo,
-  zhihu: IconMessageQuestion,
-  douyin: IconBrandTiktok,
-  bili: IconBrandBilibili,
-  toutiao: IconNews,
-  rednote: IconNotebook,
-};
-const boardIcon = (id) => BOARD_ICONS[id] || IconNews;
-
-// 「六个大众榜」里的数字得跟着 BOARDS 走（写死的话加一个榜这句话就悄悄变成假的），
-// 但夹在中文句子里得是中文数字——「6 个大众榜」读着像半句英文。超出十以内回落到阿拉伯数字。
-const CN_NUM = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-const cnNum = (n) => (Number.isInteger(n) && n >= 0 && n <= 10 ? CN_NUM[n] : String(n));
-
 export function Hotspots({ onIntake, onGo }) {
-  const [tab, setTab] = useState("boards");
-  const [audienceProblems, setAudienceProblems] = useState([]);
-  useEffect(() => {
-    let active = true;
-    api.audienceProblems().then((result) => { if (active) setAudienceProblems(result.problems || []); }).catch(() => {});
-    return () => { active = false; };
-  }, []);
+  const [tab, setTab] = useState("ai");
   /**
    * 种子：这条链的新起点（`docs/工作流.md`）。
    * ⚠️ **反应清单从 Worker 来**（`api.seeds()` 的响应里带 `reactionGroups`），前端不写死。
@@ -145,45 +100,15 @@ export function Hotspots({ onIntake, onGo }) {
 
   return (
     <>
-      {/**
-        * ⚠️ **三个视角在最上面，说明贴在它正下方**（和「选种」「种子」同一个 `FilterHeader`）。
-        * 这一页打开时你要先选看哪个视角（平台热榜 / AI 情报 / 模型榜），
-        * **那一排才是第一件事**，说明是它的注脚——反过来的话你得先读完一句
-        * 早就知道的话，才看到真正要点的东西。
-        */}
       <FilterHeader
-        title="近期热点"
+        title="AI 热点"
         desc="刷新、看原文、收进灵感库。这一页不做分析，也不会替你写。"
         chips={
           <ViewTabs items={TABS} value={tab} onChange={setTab} label="看哪个视角" />
         }
       />
 
-      {audienceProblems.length ? (
-        <section className="radar-problems" aria-labelledby="radar-problems-title">
-          <header>
-            {/* ⚠️ 标题不再写「从洞察确认」：问题也可以从长期议程推导出来，那种没有观察来源。 */}
-            <h2 id="radar-problems-title">已确认的用户问题</h2>
-            <span>这些不是热点标题，观察到的都保留来源</span>
-          </header>
-          <div className="radar-problems__list">
-            {audienceProblems.slice(0, 3).map((problem) => (
-              <button key={problem.id} type="button" onClick={() => onGo?.("bridge", `problem:${problem.id}`)}>
-                <strong>{problem.statement}</strong>
-                <span>{problem.origin === "hypothesis" ? "议程推导 · 待验证" : "看看我的知识能不能解释"}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {tab === "boards" ? (
-        <BoardsPanel stored={stored} onCollect={collect} trace={trace} onTrace={askTrace} />
-      ) : tab === "models" ? (
-        <ModelsPanel />
-      ) : (
-        <AiPanel stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} seeds={seeded} onSeed={setSeeding} />
-      )}
+      {tab === "models" ? <ModelsPanel /> : <AiPanel stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} seeds={seeded} onSeed={setSeeding} />}
 
       <ReactionPicker
         open={!!seeding}
@@ -324,165 +249,14 @@ function CollectButton({ state, onClick, label = "收进灵感库" }) {
   );
 }
 
-// ---- 平台热榜 --------------------------------------------------------------
-
-function BoardsPanel({ stored, onCollect, trace, onTrace }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback((refresh) => {
-    setBusy(true);
-    setError(null);
-    api.hotBoards(refresh).then(setData).catch(setError).finally(() => setBusy(false));
-  }, []);
-  useEffect(() => load(false), [load]);
-
-  // 榜单回来之后问一次转化链（哪几条已经收过、已经写成东西了）
-  useEffect(() => {
-    if (!data?.boards) return;
-    onTrace(data.boards.filter((b) => b.ok).flatMap((b) => b.items.map((it) => it.link)));
-  }, [data, onTrace]);
-
-  const dead = data?.boards.filter((b) => !b.ok) || [];
-  // 「地址没填」和「上游挂了」在界面上要走两条完全不同的路：一条给入口，一条只能等
-  const unset = data ? data.configured === false : false;
-
-  return (
-    <section className="panel-block">
-      <PanelHead
-        title="各平台实时热榜"
-        count={data?.stats.total}
-        desc={`${data ? cnNum(data.boards.length) : "六"}个大众榜的原始排名，不做关键词过滤——这一栏看的是大众在关心什么。`}
-        fetchedAt={data?.fetchedAt}
-        stale={data?.stale}
-        busy={busy}
-        onRefresh={() => load(true)}
-      />
-
-      {/* 只铺读到的源。挂掉的不占版面（长期挂着的那两个会一直杵在这儿很脏），
-          但也不能装作不存在——面板底部有一行如实说明。 */}
-      {data ? (
-        <div className="src-chips">
-          {data.boards.filter((b) => b.ok).map((b) => (
-            /* 不写「已刷新」：**每一枚芯片上都是同一句话，等于没说**。
-               这一排要回答的是「哪几个源是通的」，那颗绿点已经答完了；
-               挂掉的会以 .src-chip--dead（虚线 + 红点）出现在面板底部那行说明里。
-
-               ⚠️ **`stale` 时这排芯片说的是快照里的事，不是现在。** 照旧点绿的话，
-               界面同时在说两句相反的话：上面一条「六个榜都没读到」，下面五枚绿点
-               「这五个是通的」。而绿点更显眼，人只会信绿点。 */
-            <span key={b.id} className={`src-chip${data.stale ? " src-chip--stale" : ""}`} title={data.stale ? "快照里这个榜是通的，不代表现在" : undefined}>
-              <span className="dot" />
-              {b.label}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <ErrorNote error={error} what="加载热榜" />
-      <StaleNote data={data} />
-
-      {!data && !error ? (
-        <Loading rows={5} />
-      ) : unset && data.stats.live === 0 ? (
-        /* 没配地址是个**有下一步**的状态，不该和「上游挂了」共用一句「过会儿再刷新」——
-           刷一万次也不会好。这一屏唯一要说的是去哪儿填。 */
-        <Empty icon={IconShieldCheck}>
-          热榜还没配数据源
-          <div className="page-sub" style={{ margin: "8px auto 0" }}>
-            这{cnNum(data.boards.length)}个榜来自你自己部署的 60s API 实例。去侧栏底下的齿轮 →「可选能力」填上
-            <code>SIXTY_SECONDS_API_BASE_URL</code>，这一栏才会有数据；另外两个 tab 不受影响。
-          </div>
-        </Empty>
-      ) : data && data.stats.live === 0 ? (
-        <Empty icon={IconShieldCheck}>
-          {cnNum(data.boards.length)}个榜现在都读不到
-          <div className="page-sub" style={{ margin: "8px auto 0" }}>
-            {dead.map((b) => `${b.label}（${b.reason || b.error}）`).join("、")}。这类免费聚合接口随时会挂，过一会儿再刷新。
-          </div>
-        </Empty>
-      ) : data ? (
-        <div className="board-grid">
-          {data.boards
-            .filter((b) => b.ok)
-            .map((b) => (
-              <div className="board" key={b.id}>
-                <div className="board__head">
-                  <span>
-                    {(() => {
-                      const Icon = boardIcon(b.id);
-                      return <Icon className="board__icon" stroke={1.7} aria-hidden="true" />;
-                    })()}
-                    {b.label}
-                  </span>
-                  <em>
-                    <span className="micro__v">{b.count}</span> 条
-                  </em>
-                </div>
-                {b.items.map((it) => {
-                  const key = `b:${it.title}`;
-                  return (
-                    <div className="board__row" key={it.rank}>
-                      <span className="board__rank">{it.rank}</span>
-                      <div className="board__body">
-                        <div className="board__title" title={it.title}>{it.title}</div>
-                        <div className="board__hot">
-                          {it.hot ? (
-                            <>
-                              热度 <span className="micro__v micro__v--hot">{it.hot}</span>
-                            </>
-                          ) : null}
-                          <StageChip info={trace.items[it.link]} />
-                        </div>
-                        {stored[key] && !["sending", "done"].includes(stored[key]) ? (
-                          <div className="board__err">收录失败：{stored[key]}</div>
-                        ) : null}
-                      </div>
-                      <div className="board__acts">
-                        {it.link ? (
-                          <a className="collect" href={it.link} target="_blank" rel="noreferrer" title="打开原文" aria-label="打开原文">
-                            <IconArrowUpRight aria-hidden="true" stroke={1.7} />
-                          </a>
-                        ) : null}
-                        <CollectButton
-                          state={stored[key]}
-                          onClick={() =>
-                            onCollect(key, {
-                              target: "inbox",
-                              content: [it.title, it.link].filter(Boolean).join("\n"),
-                              source: `工作台·${b.label} 第${it.rank}名${it.hot ? `，热度 ${it.hot}` : ""}`,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-        </div>
-      ) : null}
-
-      {/* ⚠️ **stale 时不画这一行。** `dead` 是从快照里读出来的「那时候哪个榜挂了」，
-          而此刻是**全都挂了**——照旧写「只有 B 站暂时读不到」就是拿一句旧事实盖住新事实。
-          现在的失败原因由上面那条 StaleNote 说。 */}
-      {dead.length > 0 && !data?.stale && !unset ? (
-        <p className="panel-note">
-          {dead.map((b) => `${b.label}（${b.reason || b.error}）`).join("、")} 暂时读不到，上游恢复后会自动出现。
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
 // ---- AI 情报 ---------------------------------------------------------------
 
 function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, onSeed }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [all, setAll] = useState(false);
+  const all = true;
+  const [search, setSearch] = useState("");
   const [reading, setReading] = useState(null); // 正在工作台里读的那一条
 
   const load = useCallback(
@@ -501,24 +275,19 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
     onTrace(data.groups.flatMap((g) => g.items.map((it) => it.link)));
   }, [data, onTrace]);
 
+  const groups=(data?.groups || []).map(group=>({...group,items:group.items.filter(item=>`${item.title} ${item.summary || ""}`.toLowerCase().includes(search.trim().toLowerCase()))})).filter(group=>group.items.length);
+
   return (
     <section className="panel-block">
       <PanelHead
         title="AI HOT 精选"
-        count={data?.stats.shown}
-        desc="按日期分组，新的在上。分类只作条目标记，不改变阅读顺序。"
+        count={data ? groups.reduce((sum,group)=>sum+group.items.length,0) : undefined}
+        desc="按 AI Hot 收录日期分组，新的在上；收录时间不代表原文发布时间。"
         fetchedAt={data?.fetchedAt}
         stale={data?.stale}
         busy={busy}
         onRefresh={() => load(true, all)}
-        extra={
-          data ? (
-            <div className="switch" role="group" aria-label="过滤方式">
-              <button aria-pressed={!all} onClick={() => setAll(false)}>只看命中 {data.stats.matched}</button>
-              <button aria-pressed={all} onClick={() => setAll(true)}>全部 {data.stats.total}</button>
-            </div>
-          ) : null
-        }
+        extra={<input type="search" aria-label="搜索 AI 热点" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索标题与摘要" className="ai-hot-search"/>}
       />
 
       <ErrorNote error={error} what="加载 AI 情报" />
@@ -529,22 +298,13 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
 
       {!data && !error ? (
         <Loading rows={5} />
-      ) : data && !data.groups.length ? (
+      ) : data && !groups.length ? (
         <Empty icon={IconShieldCheck}>
-          {all ? "AI HOT 这次没返回内容" : "没有命中关注词的条目"}
-          <div className="page-sub" style={{ margin: "8px auto 0" }}>
-            {all ? (
-              data.error || "过一会儿再刷新。"
-            ) : (
-              <>
-                这次抓到 {data.stats.total} 条，一条都没匹配上。点上面的「全部」看原样，
-                或者改 <code>config/attention.json</code> 里的关键词。
-              </>
-            )}
-          </div>
+          <p>{search ? "没有匹配的 AI 热点" : "AI HOT 这次没有返回内容"}</p>
+          <div className="page-sub" style={{ margin: "8px auto 0" }}>{search ? "试试其他关键词，或清空搜索查看全部。" : data.error || "稍后可以再刷新。"}</div>
         </Empty>
       ) : data ? (
-        data.groups.map((g) => (
+        groups.map((g) => (
           <div className="day-group" key={g.day}>
             <div className="day-group__head">
               <span>{formatDay(g.day)}</span>
@@ -556,13 +316,12 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
               const key = `a:${it.title}`;
               return (
                 <article className="ai-item" key={it.title}>
-                  <time className="ai-item__time">{formatTime(it.at)}</time>
+                  <time className="ai-item__time" title="AI Hot 收录时间，不代表原文发布时间">{formatTime(it.at)}</time>
                   <div className="ai-item__body">
                     <div className="ai-item__meta">
                       {it.category ? <span className="tag">{it.category}</span> : null}
                       <span>{it.sources.slice(0, 2).join(" · ")}</span>
                       {it.sourceCount > 1 ? <span className="strong">{it.sourceCount} 个独立信源</span> : null}
-                      {it.hits?.length ? <span className="strong">命中 {it.hits[0].word}</span> : null}
                       <StageChip info={trace.items[it.link]} />
                     </div>
                     <h3>{it.title}</h3>
@@ -638,7 +397,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
       ) : null}
 
       <div className="hot-footnote">
-        <span>来源：AI HOT · 平台热榜来自自建 60s API</span>
+        <span>来源：AI HOT</span>
         <span>摘要可能由 AI 生成；数字、政策与原话请点进原文核对。</span>
       </div>
 

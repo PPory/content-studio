@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {normalizeSocialRows,isSocialPost} from '../server/domain/intelligence-social.mjs';
+const window={start:'2026-09-01T12:00:00Z',end:'2026-09-08T12:00:00Z'};
+assert(!isSocialPost('https://x.com/Someone','x'));
+assert(!isSocialPost('https://reddit.com/r/LocalLLaMA/','reddit'));
+assert(!isSocialPost('https://example.com/status/123','x'));
+const result=normalizeSocialRows([{url:'https://reddit.com/r/LocalLLaMA/comments/one/post',title:'有价值的链接讨论',description:'',date_posted:'2026-09-07T00:00:00Z',comments:[{comment:'没有正文的帖子也能保留有意义的讨论。',user_commenting:'human',num_upvotes:20},{comment:'TL;DR of the discussion generated automatically: do things'},{comment:'这是一条机器人自动生成的内容，不应该采用',user_commenting:'AutoModerator'},{comment:'这是一条过期的旧评论，应被时间过滤',date_posted:'2026-08-01T00:00:00Z'}]},{url:'https://reddit.com/r/LocalLLaMA/comments/two/post',description:'过期帖子中的内容',date_posted:'2026-08-31T00:00:00Z'}],'reddit',{window,limit:2,subreddits:['LocalLLaMA']});
+assert.equal(result.sources.length,1);assert.equal(result.sources[0].contentKind,'comment');assert.equal(result.sources[0].publishedAt,null,'comment date is not inherited from parent');assert.equal(result.stats.emptyPosts,1);assert.equal(result.stats.outOfRange,1);
+const x=normalizeSocialRows([{url:'https://x.com/writer/status/123',description:'中文有内容的短观点也应保留',date_posted:'2026-09-08T01:00:00Z',user_posted:'writer',discovery_input:{url:'https://x.com/followed'},quoted_post:{description:'被引用的观点',user_posted:'another'}}],'x',{window,limit:2,accounts:['followed']});
+assert.equal(x.sources[0].author,'writer');assert.equal(x.sources[0].discoveredFrom,'https://x.com/followed');assert.equal(x.sources[0].quotedBody,'被引用的观点');
+console.log('intelligence-social: concrete posts, date window, empty-link comments, bot exclusion, author and quoted text passed');
