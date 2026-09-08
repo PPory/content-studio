@@ -50,7 +50,7 @@ export function IntelligenceFeed({view,state,onGo}) {
     {error && <div className="brief-error" role="alert">{error}<button className="btn" onClick={load}>重新读取</button></div>}{notice&&<p className="brief-notice" role="status">{notice}</p>}
     {loading ? <p role="status">正在读取…</p> : <>
       {!detail&&!settings&&!reports&&<>
-        <p className="brief-meta">{data.preferences.nativeSocialEnabled ? "手动采集 · 最多 6 个 X 账号、4 个 Reddit 社区，各 3 篇 · 不定时运行" : "手动整理 · 公开搜索与 AI Hot · 不定时运行"}</p>
+        <button className="brief-text-action" onClick={()=>onGo("bridge")}>发现方向 · 从情报和积累中找连接 →</button><p className="brief-meta">{data.preferences.nativeSocialEnabled ? "手动采集 · 最多 6 个 X 账号、4 个 Reddit 社区，各 3 篇 · 不定时运行" : "手动整理 · 公开搜索与 AI Hot · 不定时运行"}</p>
         {latestRun?.window&&<p className="brief-meta">本次查找：{sourceDate(latestRun.window.start)} — {sourceDate(latestRun.window.end)}（北京时间）。较早或日期未知的资料单独标明。</p>}
         <nav className="brief-tabs" aria-label="精选范围">{[["today","本期精选"],["unread",`未读补看${data.unreadEarlierCount?` · ${data.unreadEarlierCount}`:""}`],["saved","我的收藏"]].map(([key,label])=><button key={key} className={tab===key?"is-active":""} aria-pressed={tab===key} onClick={()=>{setTab(key);setSelected([]);}}>{label}</button>)}</nav>
         {data.activeRuns.length>0&&<p className="brief-notice" role="status">正在阅读资料、筛选和整理精选。完成后会自动显示。</p>}

@@ -177,6 +177,10 @@ export const api = {
   // 从一段原话直接读用户问题：不必等 Discovery 恰好挑中它。
   voiceProblemCandidates: (id) => postJson(`/api/workspace/audience-voices/${encodeURIComponent(id)}/problem-candidates`, {}),
   // AI 发现：读一次缓存，扫描是显式动作——进页面不自动烧模型。
+  intelligenceDirections:()=>req('/api/workspace/intelligence/directions'),
+  intelligenceDirection:id=>req(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}`),
+  keepIntelligenceDirection:id=>postJson('/api/workspace/intelligence/directions',{id}),
+  developIntelligenceDirection:(id,body)=>postJson(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}/develop`,body),
   contentDiscovery: (query = "") => req(`/api/workspace/content-discovery${query}`),
   scanContentDiscovery: (body) => postJson("/api/workspace/content-discovery/scan", body),
   // 最近在助手里聊过什么。⚠️ 只含用户自己打的字：AI 的回答不是事实来源。

@@ -1,3 +1,4 @@
+import {directionKey,directionDetail,savedDirections,keepDirection,developDirection} from '../domain/intelligence-directions.mjs';
 // AI Discovery 的本地 API。
 //
 // ⚠️ **扫描一律不写业务数据。** 唯一允许留下的痕迹是：这次读过哪几段原话
@@ -48,6 +49,10 @@ function businessCounts(workspace) {
 }
 
 export const contentDiscoveryRoutes = [
+ {method:'GET',path:'/api/workspace/intelligence/directions',handler:guard(async({workspace,res})=>json(res,{ok:true,directions:savedDirections(workspace)}))},
+ {method:'GET',path:'/api/workspace/intelligence/directions/:id',handler:guard(async({workspace,res,params})=>json(res,{ok:true,direction:directionDetail(workspace,params.id)}))},
+ {method:'POST',path:'/api/workspace/intelligence/directions',handler:guard(async({workspace,res,req})=>{const body=await readJsonBody(req);json(res,{ok:true,direction:keepDirection(workspace,body.id)});})},
+ {method:'POST',path:'/api/workspace/intelligence/directions/:id/develop',handler:guard(async({workspace,res,req,params})=>{const body=await readJsonBody(req);json(res,{ok:true,research:developDirection(workspace,params.id,body)});})},
   {
     method: "GET",
     path: "/api/workspace/content-discovery",
@@ -57,7 +62,7 @@ export const contentDiscoveryRoutes = [
       const state = discoveryCacheState(workspace, { agendaId, focus });
       json(res, {
         ok: true,
-        scan: state.cached,
+        scan: state.cached?{...state.cached,connections:state.cached.connections.map(c=>({...c,directionId:directionKey(c)}))}:null,
         stale: state.stale,
         staleReason: state.reason,
         voices: workspace.audienceRaw.stats(),
@@ -78,7 +83,7 @@ export const contentDiscoveryRoutes = [
        * 会让人以为自己错过了什么，然后一遍遍点重新扫描。
        */
       if (!body.force && state.cached && !state.stale) {
-        return json(res, { ok: true, reused: true, scan: state.cached, stale: false, staleReason: "" });
+        return json(res, { ok: true, reused: true, scan: {...state.cached,connections:state.cached.connections.map(c=>({...c,directionId:directionKey(c)}))}, stale: false, staleReason: "" });
       }
 
       const context = buildDiscoveryContext(workspace, { agendaId, focus });
@@ -98,7 +103,7 @@ export const contentDiscoveryRoutes = [
           fingerprint: context.fingerprint,
         };
         writeDiscoveryCache(workspace, scan);
-        return json(res, { ok: true, reused: false, scan, stale: false, staleReason: "" });
+        return json(res, { ok: true, reused: false, scan: {...scan,connections:scan.connections.map(c=>({...c,directionId:directionKey(c)}))}, stale: false, staleReason: "" });
       }
 
       const before = businessCounts(workspace);
@@ -126,7 +131,7 @@ export const contentDiscoveryRoutes = [
        */
       workspace.audienceRaw.markAnalyzed(context.voices.map((voice) => voice.id));
       writeDiscoveryCache(workspace, scan);
-      json(res, { ok: true, reused: false, scan, stale: false, staleReason: "" });
+      json(res, { ok: true, reused: false, scan: {...scan,connections:scan.connections.map(c=>({...c,directionId:directionKey(c)}))}, stale: false, staleReason: "" });
     }),
   },
   {

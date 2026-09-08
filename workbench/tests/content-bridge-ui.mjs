@@ -268,7 +268,7 @@ try {
    * 「我已经知道想连哪两个」是一条真实的路，只是不该是每天打开内容看到的第一件事。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
   check("内容首页提供发现新方向和手动探索两个入口",
     await page.locator(".bridge-picker").count() === 0
     && await page.getByRole("button", { name: /发现新方向/ }).count() === 1);
@@ -352,14 +352,14 @@ try {
   // 经历型那条路线现在压根不摆出来，自然也存不进一条标着经历型的机会。
   check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "judgment");
   // 退回内容首页：已保存的机会现在长在 AI 发现下面的「进行中」里
-  await page.getByRole("button", { name: "← 内容" }).click();
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /已保存/ }).click();
+  await page.getByRole("button", { name: "← 发现方向" }).click();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
   await page.locator(".opportunity-saved-list").waitFor();
   check("已保存视图不会同时显示发现区", !await page.locator(".opportunity-scan").isVisible());
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-opportunity-saved.png"), fullPage: true });
   check("保存后回到内容首页，可从已保存视图重开机会", (await page.locator(".opportunity-saved-list").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
     && (await page.locator(".opportunity-saved-list").innerText()).includes("认知卸载")
-    && (await page.locator(".discovery-saved").innerText()).includes("已保存的机会"));
+    && (await page.locator(".discovery-saved").innerText()).includes("已保存的方向"));
   // 从首页点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
   await page.locator(".opportunity-saved-list button").first().click();
   await page.getByRole("heading", { name: "核心判断" }).waitFor();
@@ -805,8 +805,8 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /研究线索/ }).click();
+  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /研究线索/ }).click();
   await page.getByRole("button", { name: /最近你在助手里想的/ }).click();
   const researchText = await page.locator(".discovery-research").innerText();
   check("最近在助手里想的东西摆出来了，扫描会参考它",
@@ -836,9 +836,9 @@ try {
 
   const problemsBeforeDiscovery = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "内容机会", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
   check("进页面不自动烧模型", scanCalls === 0);
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /发现方向/ }).click();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
   await page.getByRole("button", { name: /发现新方向/ }).click();
   await page.locator(".opportunity-option").first().waitFor();
 
@@ -862,8 +862,8 @@ try {
   check("切换方向同步简报且不会调用模型", (await page.locator(".opportunity-brief").innerText()).includes("先保留判断过程") && scanCalls === callsBeforeSelect);
   check("假设详情不伪装成真实原话", (await page.locator(".opportunity-evidence").innerText()).includes("尚待真实反馈") && await page.locator(".opportunity-quotes").count() === 0);
   await page.locator(".opportunity-option").first().click();
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /已保存/ }).click();
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /已保存/ }).focus();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).focus();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   check("键盘可切换到研究线索视图", await page.locator(".opportunity-context").isVisible());
@@ -873,7 +873,7 @@ try {
   check("保存机会搜索无结果时给出明确反馈", await page.getByText("没有找到匹配的机会，试试其他关键词。").count() === 1);
   await page.getByLabel("搜索已保存的机会").fill("");
   check("清空搜索恢复已保存机会", await page.locator(".opportunity-saved-list li").count() === 1);
-  await page.getByRole("navigation", { name: "内容机会视图" }).getByRole("button", { name: /发现方向/ }).click();
+  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
   const cardText = await page.locator(".opportunity-brief").innerText();
   check("卡片说清谁在困惑什么、用我的什么知识、可能留下什么判断",
     cardText.includes("AI 工具每周都在出新的") && cardText.includes("认知卸载")
@@ -985,13 +985,14 @@ try {
 
   const projectCount = workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n;
   const opportunityCount = workspace.db.prepare("SELECT COUNT(*) AS n FROM content_opportunities").get().n;
-  await page.getByRole("button", { name: "发展这条" }).click();
+  const notebookStart=await request('/api/workspace/explorations',{method:'POST',body:JSON.stringify({title:'AI 工具的选择',thought:'从真实任务开始',requestKey:crypto.randomUUID(),discovery:{connection:{problem:{statement:'AI 工具每周都在出新的，我到底该学哪个？',origin:'observed',evidence:[{rawSourceId:rawVoice.id,quote:discoveryQuote}]},knowledgeAnchors:[{wikiPageId:cognitiveWiki.id,title:'认知卸载'}],coreClaim:'从任务出发',knowledgeExplanation:'先理解任务',cognitiveGap:'学习顺序',fit:'medium',fitReason:'值得探索'}}})});
+  await page.goto(`http://127.0.0.1:${PORT}/#/project/${notebookStart.projectId}`);
   await page.waitForURL(/#\/project\//);
   const explorationId = decodeURIComponent(page.url().split("#/project/")[1]);
   if (await page.getByRole("button", { name: "构思", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.getByRole("region", { name: "这篇的构思" }).waitFor();
   const notebook = page.getByRole("region", { name: "这篇的构思" });
-  check("发展方向直接进入同一篇可写内容", workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n === projectCount + 1);
+  check("原有构思入口仍可创建同一篇可写内容", workspace.db.prepare("SELECT COUNT(*) AS n FROM projects").get().n === projectCount + 1);
   check("保存探索不生成正式机会或用户问题", workspace.db.prepare("SELECT COUNT(*) AS n FROM content_opportunities").get().n === opportunityCount
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery);
   const draftBeforeCompare = workspace.db.prepare("SELECT body_markdown FROM drafts WHERE project_id=?").all(explorationId);

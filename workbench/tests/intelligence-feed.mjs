@@ -13,7 +13,7 @@ import {saveIntelligenceBriefs,intelligenceFeed,intelligenceBrief,feedbackIntell
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-intel-feed-'));let w;
 async function call(method,suffix,params={},body){let status,result;await intelligenceFeedRoutes.find(r=>r.method===method&&r.path==='/api/workspace/intelligence'+suffix).handler({workspace:w,env:{},params,req:Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]),res:{writeHead(s){status=s;},end(s){result=JSON.parse(s);}}});return {status,...result};}
 try{w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});
- assert.equal(w.db.pragma('user_version',{simple:true}),22);assert.equal(feedPreferences(w).pilotOnly,true);assert.equal(feedPreferences(w).directions.length,3);
+ assert.equal(w.db.pragma('user_version',{simple:true}),23);assert.equal(feedPreferences(w).pilotOnly,true);assert.equal(feedPreferences(w).directions.length,3);
  assert.throws(()=>saveFeedPreferences(w,{directions:[]}),e=>e.status===400);assert.throws(()=>saveFeedPreferences(w,{directions:[9]}),e=>e.status===400);saveFeedPreferences(w,{directions:['AI 上下文'],pilotOnly:false});assert.equal(feedPreferences(w).pilotOnly,true);
  const profile=saveIntelligenceProfile(w,{name:'精选验收',query:'AI',providers:['web'],frequency:'manual',limit:3,output:'briefs'}),run=enqueueIntelligence(w,profile.id);
  const raw='这份原文明确介绍了上下文管理与反馈流程，说明不能只依靠模型评分判断实际任务效果。此处只作为隔离测试资料。';

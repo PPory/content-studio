@@ -1,3 +1,4 @@
+import {intelligenceFeed,intelligenceBrief,isBlockedIntelligenceSource} from './intelligence-feed.mjs';
 /**
  * AI Discovery 的上下文、缓存与就绪判断。
  *
@@ -62,6 +63,8 @@ export function discoveryFingerprint(workspace, { agendaId = "", focus = "" } = 
     FROM ai_conversations c JOIN entities e ON e.id = c.id AND e.deleted_at IS NULL
     WHERE c.archived_at IS NULL`).get();
   return sha256Json({
+    intelligence: one("SELECT count(*) total,max(updated_at) latest FROM intel_briefs"),
+    captures: one("SELECT count(*) total,max(e.updated_at) latest FROM captures c JOIN entities e ON e.id=c.id WHERE e.deleted_at IS NULL AND c.status!='discarded'"),
     wiki: { total: wiki.total, latest: wiki.latest || "" },
     problems: { total: problems.total, latest: problems.latest || "" },
     agendas: { total: agendas.total, latest: agendas.latest || "" },
@@ -149,7 +152,19 @@ export function buildDiscoveryContext(workspace, { agendaId = "", focus = "" } =
    */
   const research = recentResearchSignals(workspace);
 
+  const discoveries=[];const seen=new Set();
+  for(const brief of intelligenceFeed(workspace).briefs.filter(b=>!b.dismissed).slice(0,20)){
+    for(const source of intelligenceBrief(workspace,brief.id).sources){
+      if(seen.has(source.id)||discoveries.length>=30||isBlockedIntelligenceSource(workspace,source.url))continue;seen.add(source.id);
+      discoveries.push({kind:'intelligence',id:source.id,briefId:brief.id,title:source.title,url:source.url,body:source.body.slice(0,2000)});
+    }
+  }
+  const manual=db.prepare("SELECT id,data_json FROM intel_sources WHERE json_extract(data_json,'$.provider')='manual' ORDER BY created_at DESC LIMIT 10").all();
+  for(const row of manual){if(seen.has(row.id))continue;const item=JSON.parse(row.data_json);discoveries.push({kind:'intelligence',id:row.id,title:item.title,url:item.url,body:item.body.slice(0,2000)});}
+  const captures=db.prepare("SELECT c.id,c.title,c.body_markdown body,c.source_url url FROM captures c JOIN entities e ON e.id=c.id WHERE e.deleted_at IS NULL AND c.status!='discarded' ORDER BY e.updated_at DESC LIMIT 10").all();
+  discoveries.push(...captures.map(c=>({...c,kind:'capture',body:c.body.slice(0,2000)})));
   return {
+    discoveries,
     wikiPages,
     problems,
     voices,
@@ -159,6 +174,7 @@ export function buildDiscoveryContext(workspace, { agendaId = "", focus = "" } =
     focus: clean(focus, 500),
     // 有多少张 Wiki、多少条问题、几段原话真的进了这次上下文——回执要说得出来。
     read: {
+      discoveries: discoveries.length,
       wikiPages: wikiPages.length,
       problems: problems.length,
       voices: voices.length,
@@ -181,7 +197,7 @@ export function buildDiscoveryContext(workspace, { agendaId = "", focus = "" } =
 export function discoveryReadiness(context) {
   const knowledge = context.wikiPages.length > 0;
   const reality = context.voices.length > 0 || context.problems.length > 0;
-  if (knowledge && reality) return { ready: true, reason: "", missing: [] };
+  if (knowledge || reality || context.discoveries?.length) return { ready: true, reason: "", missing: [] };
   const missing = [];
   if (!knowledge) missing.push("knowledge");
   if (!reality) missing.push("reality");
@@ -223,6 +239,6 @@ export function discoveryCacheState(workspace, { agendaId = "", focus = "" } = {
   return {
     cached,
     stale: true,
-    reason: added > 0 ? `上次扫描之后又记了 ${added} 段原话` : "知识、用户问题或议程有更新",
+    reason: added > 0 ? `上次扫描之后又记了 ${added} 段原话` : "情报、灵感、知识或讨论有更新",
   };
 }

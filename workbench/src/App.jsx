@@ -49,9 +49,9 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["research", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
+const CONTENT_VIEWS = new Set(["research", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
 const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources"]);
-const DISCOVER_VIEWS = new Set(["intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["bridge", "intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -78,6 +78,7 @@ const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", 
  * 合集目录和合集详情属于「合集」。
  */
 const SUBNAV_HOME = {
+  bridge: "intel",
   project: "content",
   "series-detail": "series",
   topics: "content",
@@ -103,7 +104,6 @@ const NAV = [
     { to: "sources", label: "来源" },
   ] },
   { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v), children: [
-    { to: "bridge", label: "内容机会" },
     { to: "research", label: "选题空间" },
     { to: "content", label: "创作" },
     { to: "series", label: "合集" },
@@ -660,7 +660,7 @@ export function App() {
               // ⚠️ 归属判据只写在 `SUBNAV_HOME` 那一张表里，别在这儿再列一遍 view 名
               const child = item?.children?.find((c) => c.to === (SUBNAV_HOME[route.view] || route.view));
               // 审阅是 Wiki 底下的一层，所以是第三段而不是另起一栏
-              const leaf = route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
+              const leaf = route.view === "bridge" ? "发现方向" : route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
               return (
                 <>
                   {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
@@ -736,7 +736,7 @@ export function App() {
                  * 仍然是一条真实的路，只是不该是每天打开内容时看到的第一件事。
                  * `wiki:` / `problem:` / `opportunity:` 这些老深链照旧直接进工作台。
                  */
-                route.state === "develop" ? (
+                route.state.startsWith("direction:") ? <ContentDiscovery initialDirection={route.state.slice(10)} onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} /> : route.state === "develop" ? (
                   /**
                    * ⚠️ **「发展这条」的落点是构造工作台，不是那份完整分析。**
                    * 完整分析（01/02/03/04）没有删，退到 `#/bridge/analyze`——

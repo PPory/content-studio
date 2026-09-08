@@ -86,9 +86,11 @@ try {
   const learnWiki = createWikiPage("真实问题驱动学习", "从自己真正要解决的问题倒推该学什么，而不是照工具清单学。");
   const unrelatedWiki = createWikiPage("CSS 网格布局", "用行列关系组织网页布局的方法。");
 
+  respond=()=>({data:{connections:[]}});
   const onlyKnowledge = await call(base, "/api/workspace/content-discovery/scan", { method: "POST", body: { force: true } });
-  check("只有知识没有现实声音时，说清缺的是另一头", onlyKnowledge.data.scan.missing.includes("reality"));
-  check("仍然没有调用模型", calls === 0);
+  check("只有知识也可以探索候选问题", onlyKnowledge.data.scan.missing.length===0);
+  check("Wiki起点已调用模型", calls === 1);
+  calls=0;
 
   const voice = await call(base, "/api/workspace/audience-voices", {
     method: "POST",
@@ -142,10 +144,10 @@ try {
 
   const scan = await call(base, "/api/workspace/content-discovery/scan", { method: "POST", body: { force: true } });
   check("模型被调用了一次", calls === 1);
-  check("编造的原话和不存在的知识都被丢掉，只留下站得住的那条", scan.data.scan.connections.length === 1);
+  check("伪造原话被拒绝，失效Wiki仅过滤关联，保留有依据的方向", scan.data.scan.connections.length === 2);
   check("自称观察到却验证不出原话的那条被整条丢掉，没有被洗成「假设」",
     !scan.data.scan.connections.some((item) => item.problem.statement === "编的问题"));
-  const connection = scan.data.scan.connections[0];
+  const connection = scan.data.scan.connections.find(c=>c.knowledgeAnchors.length);
   check("留下的那条带着可逐字回溯的原话", connection.problem.evidence.length === 1
     && connection.problem.evidence[0].quote === QUOTE
     && connection.problem.evidence[0].sourceName === "读者群");
@@ -180,7 +182,7 @@ try {
   const failed = await call(base, "/api/workspace/content-discovery/scan", { method: "POST", body: { force: true } });
   check("模型失败时如实报错", failed.data.ok === false && /不可用/.test(failed.data.error));
   const afterFailure = await call(base, "/api/workspace/content-discovery");
-  check("失败不清空上次的结果", afterFailure.data.scan.connections.length === 1);
+  check("失败不清空上次的结果", afterFailure.data.scan.connections.length === 2);
   check("失败不动任何业务数据", counts().problems === 0 && counts().opportunities === 0);
 
   /**

@@ -209,7 +209,7 @@ export function ContentConstruction({ onGo }) {
 
   if (!connection) {
     return <div className="view-body content-bridge content-construction">
-      <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+      <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 发现方向</button>
       <Note title="从一个内容方向开始">这份未保存的简报已不在当前会话中。回到内容机会，选择一个方向继续。</Note>
       <button type="button" className="btn btn-primary" onClick={() => onGo?.("bridge", "")}>寻找内容方向</button>
     </div>;
@@ -221,7 +221,7 @@ export function ContentConstruction({ onGo }) {
   return (
     <div className="view-body content-bridge content-construction">
       <nav className="construction-nav" aria-label="当前位置">
-        <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 内容机会</button>
+        <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 发现方向</button>
         <span>{selected ? "完善创作简报" : "选择讲法"}</span>
         <button type="button" className="btn btn-sm" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "analyze")}>查看完整分析</button>
       </nav>

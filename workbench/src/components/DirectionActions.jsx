@@ -1,0 +1,8 @@
+import {useEffect,useRef,useState} from 'react';
+import {api} from '../lib/api.js';
+export function DirectionActions({direction,onClose,onGo}){
+ const ref=useRef(null),[researches,setResearches]=useState([]),[target,setTarget]=useState(''),[question,setQuestion]=useState(direction.connection.problem.statement),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{ref.current.showModal();api.researches().then(r=>setResearches(r.researches||[])).catch(e=>setError(e.message));},[]);
+ const submit=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{const r=await api.developIntelligenceDirection(direction.id,{confirmed:true,question,...(target?{researchId:target}:{})});onGo('research',r.research.id);}catch(e){setError(e.message);}finally{setBusy(false);}};
+ return <dialog ref={ref} className="direction-merge" aria-label="带入选题" onCancel={onClose}><form onSubmit={submit}><h2>把这个方向带入选题</h2><p>确认后，将候选分析、原始依据和方向讨论一起带入；已有笔记保留，不生成文章。</p>{error&&<p role="alert">{error}</p>}{direction.researchId?<p>这个方向已带入选题，继续打开即可。</p>:<><label>放到哪里<select aria-label="目标选题" value={target} onChange={e=>setTarget(e.target.value)}><option value="">新建选题</option>{researches.map(r=><option value={r.id} key={r.id}>{r.question}</option>)}</select></label>{!target&&<label>想研究的问题<input required maxLength={1000} value={question} onChange={e=>setQuestion(e.target.value)}/></label>}</>}<footer><button className="btn btn-primary" disabled={busy}>{busy?'正在带入…':direction.researchId?'打开选题':'确认带入'}</button><button type="button" className="btn" disabled={busy} onClick={onClose}>取消</button></footer></form></dialog>;
+}
