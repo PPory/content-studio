@@ -14,3 +14,5 @@
 .brief-run-result{font-size:13px;color:var(--text-2);margin:0 0 20px}.brief-run-result summary{cursor:pointer;line-height:1.8}.brief-run-result summary span{margin-left:14px;text-decoration:underline;text-underline-offset:3px}.brief-run-result p{margin:10px 0}.brief-report-evidence{margin-top:30px;border-top:1px solid var(--border);padding-top:15px}.brief-report-evidence h2{font-size:17px}.brief-report-evidence ol{list-style:none;padding:0}.brief-report-evidence li{font-size:13px;line-height:1.8;margin:16px 0}.brief-report-evidence a{color:var(--text-1)}
 
 .brief-provenance{display:flex;gap:5px 16px;flex-wrap:wrap;color:var(--text-2);font-size:11px;line-height:1.7;margin-top:9px}.brief-provenance>span:first-child{font-weight:500}.brief-reading>.brief-provenance{font-size:12px;}
+
+.brief-source-quotes{margin:16px 0 22px;font-size:13px;line-height:1.8}.brief-source-quotes blockquote{margin:10px 0;padding:8px 12px;border-left:2px solid var(--border-strong);color:var(--text-2)}.brief-source-quotes blockquote span{font-weight:600;color:var(--text-1)}

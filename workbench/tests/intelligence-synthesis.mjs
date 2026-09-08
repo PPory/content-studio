@@ -1,0 +1,33 @@
+import {organizeIntelligenceSources} from '../server/domain/intelligence-synthesis.mjs';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {openWorkspace} from '../server/storage/workspace.mjs';
+import {saveIntelligenceProfile,enqueueIntelligence,addIntelligenceSource,runSources,stepState} from '../server/domain/intelligence.mjs';
+import {generateDailyBriefs} from '../server/domain/intelligence-editor.mjs';
+import {saveIntelligenceBriefs,intelligenceBrief} from '../server/domain/intelligence-feed.mjs';
+import {uniqueIntelligenceSources,intelligenceDocumentCount} from '../server/domain/intelligence-evidence.mjs';
+const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-synthesis-'));let w;
+try{
+ w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});const p=saveIntelligenceProfile(w,{name:'综合验证',query:'模型使用与学习',providers:['x','reddit','aihot'],frequency:'manual',output:'briefs'}),run=enqueueIntelligence(w,p.id);
+ const add=(provider,url,body)=>addIntelligenceSource(w,{provider,url,title:provider+'原文',body,readLevel:'original'},run.id);
+ const a=add('x','https://x.com/writer/status/123','外部反馈帮助识别模型错误。连续检查任务输出，能够改善工作过程。');
+ const duplicate=add('web','https://x.com/writer/status/123?utm_source=test',a.body);
+ const b=add('reddit','https://reddit.com/r/AI/comments/abc/post','真实使用发现，缺少外部验证会让错误不断累积。');
+ const c=add('aihot','https://example.com/new','一种新的模型压缩方法已经公开，适用边界仍待进一步验证。');
+ const sources=runSources(w,run.id),calls=[];
+ const groups=[{key:'feedback',focus:'怎样判断模型是否真的完成任务',connection:'机制解释与真实失败经验互补',relationship:'complementary',sourceIds:[a.id,b.id]},{key:'compression',focus:'压缩方法有哪些适用边界',connection:'独立的新方法值得单独解释',relationship:'standalone',sourceIds:[c.id]}];
+ const brief=(groupKey,evidence)=>({groupKey,storyKey:groupKey,title:groupKey,summary:'综合机制与实践判断任务效果',reason:'帮助理解使用边界',body:'综合来看，需要独立校验。[来源1]另一份实践补充了失败情形。[来源2]',confidence:'reliable',kind:'practice',evidence,wiki:[]});
+ await assert.rejects(()=>organizeIntelligenceSources({}, {sources,directions:[],previous:[]},{completeJson:async()=>({data:{groups:[{...groups[0],sourceIds:['invented']}]}})}),/来源校验/);
+ const result=await generateDailyBriefs(w,{},run,sources,[],{completeJson:async(_env,input)=>{const d=JSON.parse(input.user);calls.push(d.step);if(d.step==='organize'){assert(!d.sources.some(s=>s.id===duplicate.id),'tracking-link duplicate not sent twice');assert(d.sources.some(s=>s.provider==='x')&&d.sources.some(s=>s.provider==='reddit'));return {data:{groups}};}assert.deepEqual(d.groups,groups);return {data:{briefs:[brief('feedback',[{sourceId:a.id,quote:'外部反馈帮助识别模型错误'},{sourceId:b.id,quote:'缺少外部验证会让错误不断累积'}]),brief('compression',[{sourceId:c.id,quote:'一种新的模型压缩方法已经公开'}])]}};}});
+ assert.deepEqual(calls,['organize','compose']);assert.equal(result.saved.length,2);assert.equal(result.saved[0].analysis.documentCount,2);assert.equal(result.saved[1].analysis.documentCount,1);assert.equal(stepState(w,run.id,'organize').groups.length,2);
+ const onlyOne=brief('feedback',[{sourceId:a.id,quote:'外部反馈帮助识别模型错误'},{sourceId:a.id,quote:'连续检查任务输出'}]);assert.equal(saveIntelligenceBriefs(w,run.id,[onlyOne],[],groups).rejected,1,'multiple quotations cannot fake multi-document synthesis');
+ assert.equal(saveIntelligenceBriefs(w,run.id,[brief('feedback',[{sourceId:a.id,quote:'外部反馈帮助识别模型错误'},{sourceId:c.id,quote:'一种新的模型压缩方法已经公开'}])],[],groups).rejected,1,'unrelated source cannot be substituted from another group');
+ const legacy=saveIntelligenceBriefs(w,run.id,[{...brief('legacy',[{sourceId:a.id,quote:'外部反馈帮助识别模型错误'},{sourceId:a.id,quote:'连续检查任务输出'},{sourceId:a.id,quote:'能够改善工作过程'}]),body:'第一段[来源1]，第二段[来源2]，第三段[来源3]。'}]).saved[0];
+ const read=intelligenceBrief(w,legacy.id);assert.equal(read.sourceDocuments.length,1);assert.equal(read.sources.length,1);assert.equal(read.sources[0].quotes.length,3);assert.equal(read.sourceCount,1);assert.match(read.body,/\[引文3\]/);assert.match(read.history[0].body,/\[来源3\]/,'historical text remains intact');
+ assert.equal(uniqueIntelligenceSources([{...a,body:'评论甲的不同内容'},{...a,id:'other',body:'评论乙的不同内容'}]).length,2);assert.equal(intelligenceDocumentCount([a,duplicate]),1);
+ const comment1=add('reddit',b.url,'评论作者甲说明了不同的使用经验。'),comment2=add('reddit',b.url,'评论作者乙提供了相反的实践结果。');
+ const discussion=saveIntelligenceBriefs(w,run.id,[{...brief('discussion',[{sourceId:comment1.id,quote:'评论作者甲说明了不同的使用经验'},{sourceId:comment2.id,quote:'评论作者乙提供了相反的实践结果'}])}]).saved[0];assert.equal(discussion.sourceDocuments.length,1,'one discussion URL appears once');assert.equal(discussion.sourceDocuments[0].records.length,2,'distinct comments survive');assert.equal(discussion.sources.length,2,'chat and downstream references retain source IDs');
+ console.log('synthesis: cross-platform grouping before composition, distinct sources enforced, single-source exception, duplicate URL filtering and all quotations preserved passed');
+}finally{w?.close();const rel=path.relative(os.tmpdir(),root);assert(rel&&!rel.startsWith('..'));await fs.rm(root,{recursive:true,force:true});}
