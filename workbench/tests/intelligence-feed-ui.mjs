@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
+import { workbenchApi } from "../server/vite-plugin-workbench.mjs";
+const ROOT=path.resolve(import.meta.dirname,"..");
+const temp=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-intelligence-feed-ui-"));
+const vars={XENHO_HOME:path.join(temp,"Xenho"),WB_KEEP_ALIVE:"1",HTTP_PROXY:"http://127.0.0.1:9",HTTPS_PROXY:"http://127.0.0.1:9",NO_PROXY:"127.0.0.1,localhost"};
+const previous=Object.fromEntries(Object.keys(vars).map(k=>[k,process.env[k]]));Object.assign(process.env,vars);
+const require=createRequire(import.meta.url);let pw;
+for(const root of [ROOT,"C:/Users/Lenovo",process.env.APPDATA && path.join(process.env.APPDATA,"npm","node_modules")].filter(Boolean)){try{pw=require(require.resolve("playwright",{paths:[root]}));break;}catch{}}
+assert(pw,"Playwright available");
+let server,browser,page;
+const stamp=new Date().toISOString().slice(0,10);
+const base="http://127.0.0.1:5242";
+const state={ok:true,briefs:[{id:"brief-one",title:"模型更新后，哪些变化影响实际使用？",summary:"先核对真实变化，再看它们对日常任务的影响。",reason:"与你关注的 AI 使用方式有关。",body:"## 发生了什么\n\n这是一条隔离测试的 AI 解读。\n\n## 可以怎么用\n\n先用熟悉的任务比较结果。",technical:"细节默认折叠。",confidence:"reliable",kind:"update",editionDate:stamp,read:false,saved:false,helpful:false,sources:[{id:"source-one",title:"模型官方说明（测试）",body:"仅用于测试的公开原文。",url:"https://example.com/model"}],scopeId:"intelligence:brief-one",conversations:[]},{id:"brief-watch",title:"一个值得继续观察的新用法",summary:"目前只有初步线索。",reason:"可能带来新的创作方法。",body:"线索尚未验证。",confidence:"watch",editionDate:stamp,read:false,saved:false,sources:[]},{id:"brief-earlier",title:"上期还没读完的内容",summary:"留到有时间再看。",reason:"保留阅读连续性。",confidence:"reliable",editionDate:"2026-09-01",read:false,saved:false,sources:[]}],reports:[],blockedSources:[],preferences:{directions:["AI 模型进展"],pilotOnly:true},activeRuns:[],latestEditionDate:stamp,unreadEarlierCount:1};
+let merged=null,refreshes=0,failDetailOnce=true;
+try{
+ server=await createServer({root:ROOT,configFile:false,plugins:[react(),workbenchApi({XENHO_HOME:vars.XENHO_HOME})],server:{host:"127.0.0.1",port:5242,strictPort:true,open:false},logLevel:"error"});await server.listen();browser=await pw.chromium.launch();page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on("pageerror",e=>errors.push(e.message));
+ await page.route("**/api/workspace/intelligence/**",async route=>{const req=route.request(),url=new URL(req.url()),body=req.method()==="GET"?{}:req.postDataJSON();let result={ok:true};
+ if(url.pathname.endsWith("/feed"))result=state;
+ else if(url.pathname.endsWith("/feed/refresh")){refreshes++;result={ok:true,run:{id:"run-one"}};}
+ else if(url.pathname.includes("/briefs/")){const id=url.pathname.split("/briefs/")[1].split("/")[0],brief=state.briefs.find(b=>b.id===id);if(req.method()==="GET"&&failDetailOnce){failDetailOnce=false;await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:"模拟详情暂不可用"})});return;}if(url.pathname.endsWith("/feedback"))Object.assign(brief,body);result={ok:true,brief};}
+ else if(url.pathname.endsWith("/preferences")){state.preferences={...state.preferences,...body};}
+ else if(url.pathname.endsWith("/reports")){const report={id:"report-one",title:"这一周的变化与实践",body:"## 本周回顾\n\n完整周报内容。",periodStart:"2026-09-01",periodEnd:stamp,evidence:[{sourceId:"source-one",title:"周报测试出处",url:"https://example.com/model",quote:"仅用于测试的公开原文。"}]};state.reports.push(report);result={ok:true,report};}
+ else if(url.pathname.endsWith("/merge")){merged=body;result={ok:true,research:{id:"research-merged"}};}
+ await route.fulfill({contentType:"application/json",body:JSON.stringify(result)});});
+ await page.goto(base+"/#/intel");await page.getByRole("heading",{name:"可靠信息",exact:true}).waitFor();assert.equal(refreshes,0,"打开首页不自动采集");assert.equal(await page.locator(".nav").count(),1);assert.equal(await page.locator(".brief-card").count(),2);await page.getByRole("button",{name:"获取一批精选",exact:true}).click();await page.getByText("已开始整理这一批精选",{exact:true}).waitFor();assert.equal(refreshes,1);
+ await page.getByRole("button",{name:/未读补看/}).click();await page.getByRole("button",{name:"上期还没读完的内容",exact:true}).waitFor();await page.getByRole("button",{name:"本期精选",exact:true}).click();
+ const shots=path.join(ROOT,"output","playwright");await fs.mkdir(shots,{recursive:true});await page.screenshot({path:path.join(shots,"intelligence-feed-desktop.png"),fullPage:true});
+ await page.getByRole("button",{name:state.briefs[0].title,exact:true}).click();await page.getByRole("heading",{name:"这条解读暂时无法打开",exact:true}).waitFor();assert(!await page.getByText("正在打开解读…",{exact:true}).count());await page.getByRole("button",{name:"重试打开",exact:true}).click();await page.getByRole("heading",{name:"AI 解读",exact:true}).waitFor();await page.getByText("来源 1 · 模型官方说明（测试）",{exact:true}).click();await page.getByText("原文发布时间未知",{exact:true}).waitFor();assert(await page.getByRole("button",{name:"屏蔽 example.com 网站",exact:true}).count());assert.equal(state.briefs[0].read,true);assert.equal(merged,null,"读解读不创建选题");assert(!await page.getByText("细节默认折叠。",{exact:true}).isVisible());
+ await page.getByRole("button",{name:"和 AI 聊聊",exact:true}).click();await page.locator(".brief-chat textarea").waitFor();assert.equal(merged,null,"直接讨论不创建选题");await page.getByRole("button",{name:"收起讨论",exact:true}).click();await page.getByRole("button",{name:"有启发",exact:true}).click();await page.getByRole("button",{name:"已记为有启发",exact:true}).waitFor();await page.getByRole("button",{name:"收藏",exact:true}).click();await page.getByRole("button",{name:"已收藏",exact:true}).waitFor();
+ await page.screenshot({path:path.join(shots,"intelligence-feed-detail.png"),fullPage:true});await page.setViewportSize({width:390,height:844});await page.getByRole("button",{name:"和 AI 聊聊",exact:true}).click();await page.locator(".brief-chat textarea").waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,"intelligence-feed-chat-mobile.png"),fullPage:true});
+ await page.goto(base+"/#/intel-settings");await page.getByLabel("关注方向",{exact:true}).fill("AI 模型进展\n内容创作方法");await page.getByRole("button",{name:"保存关注方向",exact:true}).click();await page.getByText("关注方向已保存",{exact:true}).waitFor();assert.equal(state.preferences.pilotOnly,true);assert(!await page.locator('select').count(),"关注设置没有定时配置");
+ await page.goto(base+"/#/intel-reports");await page.getByRole("button",{name:"生成本周回顾",exact:true}).click();await page.getByRole("button",{name:/这一周的变化与实践/}).click();await page.getByRole("heading",{name:"本周回顾",exact:true}).waitFor();await page.getByRole("heading",{name:"引用来源",exact:true}).waitFor();assert.equal(await page.locator(".brief-report-evidence a").getAttribute("href"),"https://example.com/model");
+ await page.setViewportSize({width:1440,height:1000});await page.goto(base+"/#/intel");await page.getByRole("button",{name:"我的收藏",exact:true}).click();assert.equal(await page.locator(".brief-card").count(),1);await page.getByRole("button",{name:"本期精选",exact:true}).click();await page.getByLabel(`选择：${state.briefs[0].title}`).check();await page.getByLabel(`选择：${state.briefs[1].title}`).check();await page.getByRole("button",{name:"一起展开成选题",exact:true}).click();await page.getByRole("dialog",{name:"汇入选题"}).waitFor();await page.getByLabel("想研究的问题",{exact:true}).fill("如何判断新模型是否改善了创作？");await page.getByRole("button",{name:"汇入并继续",exact:true}).click();await page.waitForURL(/research-merged/);assert.deepEqual(merged.briefIds,["brief-one","brief-watch"]);assert.equal(errors.length,0,errors.join("\n"));console.log("精选 UI：手动获取、可靠/观察、补看收藏、详情直聊、反馈、方向、周报、多条汇入与手机通过");
+}catch(error){console.log(await page?.locator("body").innerText());throw error;}
+finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}const rel=path.relative(os.tmpdir(),temp);assert(rel && !rel.startsWith("..") && !path.isAbsolute(rel));await fs.rm(temp,{recursive:true,force:true});}

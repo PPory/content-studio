@@ -42,6 +42,7 @@ export async function trigger(key, datasetId, rows, { discoverBy, limitPerInput 
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify(rows),
+    signal: AbortSignal.timeout(30000),
   });
   const text = await r.text();
   if (!r.ok) {
@@ -106,7 +107,7 @@ export async function waitReady(key, id, label, log) {
 }
 
 export async function download(key, id) {
-  const r = await proxyFetch(`${API}/snapshot/${id}?format=json`, { headers: { Authorization: `Bearer ${key}` } });
+  const r = await proxyFetch(`${API}/snapshot/${id}?format=json`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(60000) });
   const text = await r.text();
   if (!r.ok) throw new BrightDataError(`下载 snapshot 失败（HTTP ${r.status}）：${text.slice(0, 300)}`);
   let data;

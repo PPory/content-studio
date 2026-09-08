@@ -30,6 +30,7 @@ import { KnowledgeReview } from "./pages/KnowledgeReview.jsx";
 import { EntryDetail } from "./pages/EntryDetail.jsx";
 import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
+import { IntelligenceFeed } from "./pages/IntelligenceFeed.jsx";
 import { Intelligence } from "./pages/Intelligence.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
 import { Metrics, DATA_TABS } from "./pages/Metrics.jsx";
@@ -49,7 +50,7 @@ const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 const CONTENT_VIEWS = new Set(["research", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
 const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources"]);
-const DISCOVER_VIEWS = new Set(["intel", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -85,6 +86,8 @@ const SUBNAV_HOME = {
   knowledge: "entries",
   library: "entries",
   discover: "intel",
+  "intel-detail": "intel",
+  "intel-legacy": "intel",
   hot: "intel",
   insights: "intel",
 };
@@ -106,9 +109,10 @@ const NAV = [
     { to: "typeset", label: "排版" },
   ] },
   { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
-    { to: "intel", label: "选题发现" },
-    { to: "intel-inbox", label: "收集箱" },
-    { to: "intel-settings", label: "关注与调研" },
+    { to: "intel", label: "今日精选" },
+    { to: "intel-reports", label: "周报" },
+    { to: "intel-inbox", label: "我的灵感" },
+    { to: "intel-settings", label: "关注方向" },
   ] },
   { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
     { to: "review", label: "复盘" },
@@ -137,7 +141,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["intel-detail", "intel-reports", "intel-legacy", "intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -783,8 +787,10 @@ export function App() {
                   onIntake={() => setQuickNote(true)}
                   onSettings={() => setSettings(true)}
                 />
-              ) : ["intel", "intel-inbox", "intel-settings", "hot", "insights"].includes(route.view) ? (
-                <Intelligence view={route.view} initialAction={route.state} onGo={go} />
+              ) : ["intel", "intel-detail", "intel-reports", "intel-settings", "hot", "insights"].includes(route.view) ? (
+                <IntelligenceFeed view={route.view} state={route.state} onGo={go} />
+              ) : ["intel-inbox", "intel-legacy"].includes(route.view) ? (
+                <Intelligence view={route.view === "intel-inbox" || route.state === "inbox" ? "intel-inbox" : route.state === "settings" ? "intel-settings" : "intel"} initialAction={route.view === "intel-inbox" ? "manual" : undefined} onGo={route.view === "intel-legacy" ? (view, state) => go(view === "intel-settings" || view === "intel-inbox" || view === "intel" ? "intel-legacy" : view, view === "intel-settings" ? "settings" : view === "intel-inbox" ? "inbox" : state) : go} />
               ) : route.view === "typeset" ? (
                 <Typeset onGo={go} />
               ) : route.view === "shelf" ? (

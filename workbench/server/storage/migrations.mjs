@@ -27,6 +27,8 @@ const experienceSql = fs.readFileSync(new URL("./migrations/0020-workspace-exper
 
 const intelligenceSql = fs.readFileSync(new URL("./migrations/0021-intelligence.sql", import.meta.url), "utf8");
 
+const intelligenceFeedSql = fs.readFileSync(new URL("./migrations/0022-intelligence-feed.sql", import.meta.url), "utf8");
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -139,6 +141,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 19, name: "research", sql: researchSql, checksum: crypto.createHash("sha256").update(researchSql).digest("hex") }),
   Object.freeze({ version: 20, name: "workspace-experience", sql: experienceSql, checksum: crypto.createHash("sha256").update(experienceSql).digest("hex") }),
   Object.freeze({ version: 21, name: "intelligence", sql: intelligenceSql, checksum: crypto.createHash("sha256").update(intelligenceSql).digest("hex") }),
+  Object.freeze({ version: 22, name: "intelligence-feed", sql: intelligenceFeedSql, checksum: crypto.createHash("sha256").update(intelligenceFeedSql).digest("hex") }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

@@ -29,6 +29,14 @@ function postJson(path, body) {
 const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
 
 export const api = {
+  intelligenceFeed: () => req("/api/workspace/intelligence/feed"),
+  intelligenceBrief: id => req(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}`),
+  intelligenceFeedback: (id, body) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/feedback`, body),
+  intelligenceRefreshFeed: () => postJson("/api/workspace/intelligence/feed/refresh", {}),
+  intelligenceReport: () => postJson("/api/workspace/intelligence/reports", {}),
+  intelligencePreferences: body => postJson("/api/workspace/intelligence/preferences", body),
+  intelligenceMerge: body => postJson("/api/workspace/intelligence/merge", body),
+  intelligenceBlockSource: body => postJson("/api/workspace/intelligence/blocked-sources", body),
   intelligence: () => req("/api/workspace/intelligence"),
   intelligenceProfile: (body) => postJson("/api/workspace/intelligence/profiles", body),
   intelligenceRun: (id) => postJson(`/api/workspace/intelligence/profiles/${encodeURIComponent(id)}/run`, {}),

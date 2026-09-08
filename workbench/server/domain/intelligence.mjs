@@ -27,13 +27,14 @@ export function saveIntelligenceProfile(w, input) {
   input={...input,query:intelligenceFocus(input),providers:input.providers??["local","web","aihot","x","reddit"]};
   const frequency = input.frequency || "manual";
   if (!["manual", "daily", "weekly"].includes(frequency)) throw bad("调研频率无效");
+  if(input.output === "briefs" && frequency !== "manual")throw bad("精选当前按次验证，尚未开启持续采集");
   if (!Array.isArray(input.providers) || !input.providers.length || input.providers.some(p => !providers.includes(p))) throw bad("请选择有效调研来源，通用热榜不受支持");
   const limit = input.limit ?? 5;
   if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw bad("每来源条数应为 1 到 20");
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw bad("启用状态无效");
   const config = { name:str(input.name,120,true), query:str(input.query,500,true), frequency, providers:[...new Set(input.providers)],
     accounts:[...new Set(list(input.accounts||[],5,/^@?[A-Za-z0-9_]{1,15}$/).map(x=>x.replace(/^@/,"").toLowerCase()))], subreddits:[...new Set(list(input.subreddits||[],5,/^(?:r\/)?[A-Za-z0-9_]{2,30}$/).map(x=>x.replace(/^r\//,"").toLowerCase()))],
-    limit, enabled:input.enabled !== false, paidApproved:input.paidApproved === true };
+    limit, output:input.output === "briefs" ? "briefs" : "topics", enabled:input.enabled !== false, paidApproved:input.paidApproved === true };
 
 
 
