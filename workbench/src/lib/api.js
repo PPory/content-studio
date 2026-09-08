@@ -30,6 +30,7 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 
 export const api = {
   intelligenceFeed: () => req("/api/workspace/intelligence/feed"),
+  intelligenceAngles: id => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/angles`, {}),
   intelligenceBrief: id => req(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}`),
   intelligenceFeedback: (id, body) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/feedback`, body),
   intelligenceRefreshFeed: () => postJson("/api/workspace/intelligence/feed/refresh", {}),
