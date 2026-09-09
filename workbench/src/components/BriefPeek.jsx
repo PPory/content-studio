@@ -9,12 +9,18 @@
 // 那边踩过的坑在这儿一样成立：动作条跟着内容滚的话，正文长一点就得先滚到底才能点
 //「加入选题」，而按钮的位置每条都不一样，肌肉记忆立不住。
 //
+// ⚠️ **头上那一条只放「走到哪儿 / 这一栏本身」，不放对这条情报的评价。**
+// 上一版把「收藏」也塞进去了，于是头上五颗描边图标排成一排、每颗都长得一样重，
+// 而其中三颗（收藏 / 有启发 / 不感兴趣）本来是同一类动作，却被拆到了上下两端。
+// 现在头上是两组：左边翻页（配着序号），右边这一栏自己的开关（全屏 / 关闭）；
+// 三颗评价一起待在底下，和卡片页脚同一套语汇。
+//
 // 键盘不在这里监听——↑/↓/Esc/s/e 由列表那一层统一处理（见 `IntelligenceFeed.jsx`）。
 // 拆成两处的话，面板有焦点和没焦点时会是两套行为，而用户不知道焦点在哪儿。
 
 import { BriefReading } from "./BriefReading.jsx";
 import { ErrorNote, Loading } from "./ui.jsx";
-import { IconArrowsDiagonal, IconArrowUp, IconArrowDown, IconBookmark, IconBookmarkFilled, IconX } from "./icons.jsx";
+import { IconArrowsDiagonal, IconArrowUp, IconArrowDown, IconX } from "./icons.jsx";
 
 export function BriefPeek({
   brief,
@@ -33,38 +39,28 @@ export function BriefPeek({
   onGo,
   onBlock,
 }) {
-  const saved = Boolean(brief?.saved);
   return (
     <aside className="brief-peek" aria-label="情报详情">
       <header className="brief-peek__head">
-        <span className="brief-peek__pos">
-          {position} / {total}
-        </span>
+        {/* 翻页和序号是一组：一颗按钮和它旁边那个数字回答的是同一个问题
+            ——我在这一批的第几条、怎么走到下一条。 */}
+        <div className="brief-peek__nav">
+          <button type="button" className="icon-btn" onClick={onPrev} disabled={!onPrev} title="上一条（↑）" aria-label="上一条">
+            <IconArrowUp aria-hidden="true" stroke={1.8} />
+          </button>
+          <button type="button" className="icon-btn" onClick={onNext} disabled={!onNext} title="下一条（↓）" aria-label="下一条">
+            <IconArrowDown aria-hidden="true" stroke={1.8} />
+          </button>
+          <span className="brief-peek__pos">
+            {position} / {total}
+          </span>
+        </div>
         <div className="brief-peek__tools">
-          <button type="button" className="btn-icon" onClick={onPrev} disabled={!onPrev} title="上一条（↑）" aria-label="上一条">
-            <IconArrowUp size={15} stroke={1.8} aria-hidden="true" />
+          <button type="button" className="icon-btn" onClick={onFull} disabled={!brief} title="全屏打开（Enter）" aria-label="全屏打开">
+            <IconArrowsDiagonal aria-hidden="true" stroke={1.8} />
           </button>
-          <button type="button" className="btn-icon" onClick={onNext} disabled={!onNext} title="下一条（↓）" aria-label="下一条">
-            <IconArrowDown size={15} stroke={1.8} aria-hidden="true" />
-          </button>
-          {brief ? (
-            <button
-              type="button"
-              className="btn-icon"
-              aria-pressed={saved}
-              disabled={Boolean(busy)}
-              onClick={() => onFeedback({ saved: !saved })}
-              title={saved ? "取消收藏（S）" : "收藏（S）"}
-              aria-label={saved ? "已收藏" : "收藏"}
-            >
-              {saved ? <IconBookmarkFilled size={15} aria-hidden="true" /> : <IconBookmark size={15} stroke={1.8} aria-hidden="true" />}
-            </button>
-          ) : null}
-          <button type="button" className="btn-icon" onClick={onFull} disabled={!brief} title="全屏打开（Enter）" aria-label="全屏打开">
-            <IconArrowsDiagonal size={15} stroke={1.8} aria-hidden="true" />
-          </button>
-          <button type="button" className="btn-icon" onClick={onClose} title="关闭（Esc）" aria-label="关闭详情">
-            <IconX size={15} stroke={1.8} aria-hidden="true" />
+          <button type="button" className="icon-btn" onClick={onClose} title="关闭（Esc）" aria-label="关闭详情">
+            <IconX aria-hidden="true" stroke={1.8} />
           </button>
         </div>
       </header>
@@ -80,9 +76,18 @@ export function BriefPeek({
         {loading && brief ? <p role="status">正在读取…</p> : null}
       </div>
 
-      {/* 反馈是安静的两颗，「加入选题」是这一栏唯一的主操作——
-          三颗一样重的描边按钮读起来是三个并列的选项，而实际上只有一颗会改变你手上的活。 */}
+      {/* 三颗评价是安静的文字，「加入选题」是这一栏唯一的主操作——
+          四颗一样重的描边按钮读起来是四个并列的选项，而只有一颗会改变你手上的活。 */}
       <footer className="brief-peek__foot">
+        <button
+          type="button"
+          className="brief-text-action"
+          disabled={!brief || Boolean(busy)}
+          aria-pressed={Boolean(brief?.saved)}
+          onClick={() => onFeedback({ saved: !brief.saved })}
+        >
+          {brief?.saved ? "已收藏" : "收藏"}
+        </button>
         <button
           type="button"
           className="brief-text-action"

@@ -136,15 +136,39 @@
   display: flex; flex-direction: column; overflow: hidden;
   border-left: 1px solid var(--border); background: var(--surface);
 }
-.brief-peek__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--border); }
-.brief-peek__pos { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.08em; color: var(--text-3); }
-.brief-peek__tools { display: flex; gap: 2px; }
+.brief-peek__head {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: var(--view-head-h); padding: 0 8px; border-bottom: 1px solid var(--border);
+}
+.brief-peek__nav, .brief-peek__tools { display: flex; align-items: center; gap: 2px; }
+.brief-peek__pos { margin-left: 6px; font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.06em; color: var(--text-3); }
+/**
+ * ⚠️ **这一排是纯图标，就别再画一排框。**
+ *
+ * 上一版用的是 `.btn-icon`——那是 `.btn` 的**修饰类**（只写了 `padding:0;width:29px`），
+ * 单独挂上去拿不到 `.btn` 的高度、边框和底色，于是落回浏览器默认按钮：
+ * 一排灰底方块，五颗一样重，而它们里没有一颗是这一栏的主操作。
+ *
+ * 现在走 `.icon-btn`（那才是独立的图标钮），并且**默认把边框调成透明**：
+ * 和 `.note-item__acts` 同一套——安静地待着，指上去才浮起来。
+ */
+.brief-peek__head .icon-btn {
+  width: 28px; height: 28px;
+  border-color: transparent; background: none; color: var(--text-3);
+}
+.brief-peek__head .icon-btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-2); color: var(--text-1); }
+.brief-peek__head .icon-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.brief-peek__head .icon-btn svg { width: 14px; height: 14px; }
+
 .brief-peek__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px 24px; scrollbar-gutter: stable; }
-.brief-peek__foot { flex: none; display: flex; align-items: center; gap: 18px; padding: 9px 12px 9px 14px; border-top: 1px solid var(--border); }
+.brief-peek__foot {
+  flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px;
+  padding: 10px 14px; border-top: 1px solid var(--border);
+}
 .brief-peek__foot .btn-primary { margin-left: auto; }
-/* ⚠️ 反馈那两颗不用 `.btn-quiet`：那一档是**删除入口**的语汇（hover 变红），
+/* ⚠️ 评价那几颗不用 `.btn-quiet`：那一档是**删除入口**的语汇（hover 变红），
    挂在「有启发」上等于把一个记一笔的动作画成危险动作。 */
-:is(.brief-peek__foot, .brief-reading-actions) .brief-text-action { font-size: var(--fs-sm); padding: 6px 0; }
+:is(.brief-peek__foot, .brief-reading-actions) .brief-text-action { font-size: var(--fs-sm); padding: 4px 0; }
 
 /* ---------- 阅读排版（peek 与整页详情共用 `BriefReading`） ---------- */
 .brief-peek__body, .brief-reading { min-width: 0; }
