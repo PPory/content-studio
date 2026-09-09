@@ -268,7 +268,7 @@ try {
    * 「我已经知道想连哪两个」是一条真实的路，只是不该是每天打开内容看到的第一件事。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
+  await page.locator(".opportunity-views").waitFor();
   check("内容首页提供发现新方向和手动探索两个入口",
     await page.locator(".bridge-picker").count() === 0
     && await page.getByRole("button", { name: /发现新方向/ }).count() === 1);
@@ -831,7 +831,7 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
+  await page.locator(".opportunity-views").waitFor();
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /研究线索/ }).click();
   await page.getByRole("button", { name: /最近你在助手里想的/ }).click();
   const researchText = await page.locator(".discovery-research").innerText();
@@ -862,7 +862,7 @@ try {
 
   const problemsBeforeDiscovery = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.getByRole("heading", { name: "发现方向", exact: true }).waitFor();
+  await page.locator(".opportunity-views").waitFor();
   check("进页面不自动烧模型", scanCalls === 0);
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
   await page.getByRole("button", { name: /发现新方向/ }).click();

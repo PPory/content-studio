@@ -4,7 +4,7 @@ import {DirectionEvidence} from '../components/DirectionEvidence.jsx';
 import {DirectionActions} from '../components/DirectionActions.jsx';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, SearchBox, relTime } from "../components/ui.jsx";
+import { ErrorNote, Loading, PageHeader, SearchBox, relTime } from "../components/ui.jsx";
 import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -138,10 +138,21 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
   const browserItems=view==='saved'?[...filteredDirections.map(savedEntry),...savedItems.map(o=>({key:`legacy:${o.id}`,group:'saved',legacy:o,title:o.coreClaim||o.audienceProblemStatement,summary:o.audienceProblemStatement,reason:o.knowledgeExplanation|| (o.wikiTitle?`与已有知识「${o.wikiTitle}」连接`: '此前保存的方向简报'),status:o.hasProject?'已进入创作':'已保存'}))]:connections.map((c,i)=>{const saved=directions.find(d=>d.id===c.directionId);return {key:c.directionId||`candidate:${i}`,group:'discover',connection:c,saved,title:c.coreClaim,summary:c.problem.statement,reason:c.fitReason,status:saved?.researchId?'已带入选题':saved?'已保存':'待讨论'};});
   return (
     <div className={`view-body content-bridge content-discovery opportunity-home ${reading?"direction-reading-mode":""}`}>
-      <header className="opportunity-header">
-        <div className="opportunity-header__identity"><IconSparkles aria-hidden="true" /><h2>发现方向</h2></div>
-        <div className="opportunity-header__actions"><button className="btn btn-sm" onClick={()=>onGo("intel")}>← 今日精选</button><button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />收集声音</button><button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button></div>
-      </header>
+      {/**
+        * ⚠️ **这一页不再自我介绍。** 页名在外壳页头（`情报 / 发现方向`）已经写过一次，
+        * 页内那个 `✧ 发现方向` 是第二次；而 `← 今日精选` 在它升成侧栏一项之后
+        * 也不再是「返回」——它是横着跳到一个平级的去处，那归侧栏。
+        * 读方向时动作条本来就是隐藏的，所以 `reading` 时不传 `aside`。
+        */}
+      <PageHeader
+        title="发现方向"
+        aside={reading ? null : (
+          <>
+            <button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />收集声音</button>
+            <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button>
+          </>
+        )}
+      />
       <nav className="opportunity-views" aria-label="方向视图">
         {[['discover', '发现方向', connections.length], ['saved', '已保存', opportunities.length+directions.length], ['research', '研究线索', research.length]].map(([id, label, count]) => <button key={id} type="button" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>{label}<span>{count}</span></button>)}
       </nav>

@@ -667,8 +667,16 @@ export function App() {
               const Icon = item ? NAV_ICONS[item.key] : null;
               // ⚠️ 归属判据只写在 `SUBNAV_HOME` 那一张表里，别在这儿再列一遍 view 名
               const child = item?.children?.find((c) => c.to === (SUBNAV_HOME[route.view] || route.view));
-              // 审阅是 Wiki 底下的一层，所以是第三段而不是另起一栏
-              const leaf = route.view === "bridge" ? "发现方向" : route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
+              /**
+               * 第三段：**只给没有自己那一项的下一层用。**
+               * 审阅是 Wiki 底下的一层，所以是第三段而不是另起一栏。
+               *
+               * ⚠️ **`bridge` 曾经在这儿。** 那时它没有侧栏项，第二段取的是
+               * 「今日精选」，第三段才写「发现方向」。它升成侧栏一项之后
+               * 第二段已经是「发现方向」了——两段一起画就成了
+               * 「情报 / 发现方向 / 发现方向」。加二级项时要顺手看这一行。
+               */
+              const leaf = route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
               return (
                 <>
                   {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
