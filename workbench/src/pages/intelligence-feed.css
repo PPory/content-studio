@@ -1,23 +1,278 @@
-.intel-feed{max-width:1140px;margin:auto;padding:28px 30px 80px;color:var(--text-1)}
-.brief-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:28px}.brief-page-header h1{font-size:26px;font-weight:600;letter-spacing:-.5px;margin:0 0 10px}.brief-page-header p{font-size:14px;color:var(--text-2);margin:0;line-height:1.8}
-.intel-feed .btn:disabled{opacity:.5}.intel-feed :is(button,a,input,textarea,select,summary):focus-visible{outline:2px solid var(--text-1);outline-offset:3px}.brief-error{padding:14px;border:1px solid var(--border);border-left:3px solid var(--text-1);font-size:14px}.brief-error button{margin-left:15px}.brief-notice{font-size:13px;background:var(--surface-2);padding:12px 15px;border-radius:6px;line-height:1.7}
-.brief-tabs{display:flex;gap:24px;border-bottom:1px solid var(--border);margin-bottom:26px}.brief-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:12px 0;font:inherit;font-size:14px;color:var(--text-2);cursor:pointer}.brief-tabs .is-active{border-bottom-color:var(--text-1);color:var(--text-1);font-weight:600}
-.brief-group{margin-bottom:30px}.brief-group>header{display:flex;align-items:baseline;gap:14px;margin-bottom:14px}.brief-group h2{font-size:17px;font-weight:600;margin:0}.brief-group>header span{font-size:12px;color:var(--text-2)}.brief-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.brief-card{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:22px 24px;min-width:0}.brief-card:only-child{grid-column:1/-1}.brief-card:only-child :is(.brief-title,.brief-summary,.brief-reason){max-width:820px}.brief-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--text-2)}.brief-select{display:flex;align-items:center;gap:8px}.brief-select input{width:15px;height:15px;accent-color:var(--text-1)}.brief-title{font:inherit;font-size:20px;font-weight:600;line-height:1.55;text-align:left;border:0;background:none;padding:12px 0 0;color:var(--text-1);cursor:pointer}.brief-summary{font-size:14px;line-height:1.9;margin:10px 0}.brief-reason{font-size:13px;line-height:1.7;color:var(--text-2);margin:0 0 18px}.brief-card footer{display:flex;align-items:center;gap:17px}.brief-card.is-read .brief-title{color:var(--text-2)}.brief-text-action{border:0;padding:0;background:none;font:inherit;font-size:12px;color:var(--text-2);cursor:pointer}.brief-text-action[aria-pressed=true]{color:var(--text-1);font-weight:600}.brief-empty{max-width:580px;padding:25px 0}.brief-empty h2{font-size:20px}.brief-empty p{font-size:14px;line-height:1.8;color:var(--text-2)}
-.brief-selection-bar{position:sticky;bottom:12px;display:flex;gap:12px;align-items:center;padding:14px 18px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;font-size:13px}
-.intel-feed--detail{max-width:none;padding:0;height:100%;display:flex;flex-direction:column}.main:has(.intel-feed--detail){overflow:hidden}.main:has(.intel-feed--detail)>.main__inner{height:100%;max-width:none;padding:0}.app__frame:has(.intel-feed--detail)>.view-head{display:none}.brief-detail-toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface)}.brief-detail-toolbar>div{display:flex;gap:8px}.brief-detail-layout{flex:1;min-height:0;display:flex;overflow:hidden;background:var(--surface)}.brief-reading{flex:1;min-width:0;overflow:auto;padding:34px max(28px,calc((100% - 760px)/2)) 70px;scrollbar-gutter:stable}.brief-reading h1{font-size:29px;line-height:1.5;margin:15px 0}.brief-lead{font-size:16px;line-height:1.9;color:var(--text-2);margin-bottom:30px}.brief-reading h2{font-size:17px;margin:28px 0 14px}.brief-reading .markdown-body{font-size:15px;line-height:1.95}.brief-reading details{border-top:1px solid var(--border);padding:16px 0}.brief-reading summary{font-size:14px;cursor:pointer;line-height:1.8}.brief-source-actions{display:flex;align-items:center;gap:20px;font-size:13px}.brief-source-actions a{color:var(--text-1)}.brief-reading-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:35px}.brief-wiki .btn{margin:0 8px 8px 0}.with-chat .brief-reading{padding:28px 32px 70px;flex:1.25}.brief-chat{flex:1;min-width:370px;max-width:600px;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--surface-2);min-height:0}.brief-chat>header{display:flex;justify-content:space-between;align-items:center;padding:17px 20px;border-bottom:1px solid var(--border);font-size:14px}.brief-chat .assistant-pane{flex:1;min-height:0}.brief-chat .assistant-thread{padding:20px}.brief-chat .assistant-composer{margin:12px 16px;width:calc(100% - 32px)}
-.brief-reports>button{display:flex;justify-content:space-between;gap:20px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text-1);padding:22px 0;cursor:pointer;font:inherit}.brief-reports span{color:var(--text-2);font-size:13px}.brief-report{max-width:760px;margin:auto}.brief-report h1{font-size:27px;margin-top:30px}.brief-report .markdown-body{font-size:15px;line-height:1.9}.brief-preferences{max-width:680px}.brief-preferences label,.brief-merge label{display:grid;gap:9px;font-size:14px}.brief-preferences textarea,.brief-merge input,.brief-merge select{width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--text-1);padding:12px;font:inherit;line-height:1.7}.brief-preferences p,.brief-pilot p{font-size:13px;line-height:1.8;color:var(--text-2)}.brief-pilot{margin-top:35px;border-top:1px solid var(--border);padding-top:20px}.brief-pilot h2,.brief-blocked h2{font-size:16px}.brief-blocked>div{display:flex;justify-content:space-between;padding:10px 0;max-width:680px;font-size:14px}.brief-merge{border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-1);max-width:540px;width:calc(100% - 40px);padding:26px}.brief-merge::backdrop{background:#0006}.brief-merge h2{font-size:20px;margin-top:0}.brief-merge p{font-size:14px;line-height:1.7;color:var(--text-2)}.brief-merge label{margin:18px 0}.brief-merge footer{display:flex;gap:10px;margin-top:22px}
-@media(max-width:1000px){.brief-grid{grid-template-columns:1fr}.with-chat .brief-reading{padding:24px}.brief-chat{min-width:340px}}
-@media(max-width:700px){.intel-feed{padding:20px 16px 50px}.brief-page-header{gap:12px}.brief-page-header h1{font-size:23px}.brief-page-header>.btn{flex-shrink:0;font-size:12px}.brief-tabs{gap:20px}.brief-group>header{display:block}.brief-group>header span{display:block;margin-top:5px}.brief-selection-bar{flex-wrap:wrap}.intel-feed--detail{padding:0}.brief-detail-toolbar{padding:12px}.brief-detail-toolbar .btn{font-size:12px}.brief-reading{padding:24px 20px 50px}.brief-reading h1{font-size:25px}.with-chat .brief-reading{display:none}.brief-chat{min-width:0;max-width:none;border:0}.brief-reports>button{display:grid;gap:8px}.brief-merge{padding:20px}}
+/* 情报 · 今日精选 / 解读 / 每周回顾。
+ *
+ * ⚠️ **这里不再画页头、页签、空态、错误框和提示条。** 那五样全在 `styles.css`
+ * 和 `components/ui.jsx` 里，这一页曾经各写了一份 —— 于是同一个动作在情报和别的
+ * 模块长两个样子，而两边都不会报错。这个文件只负责三件事：卡片、peek 面板、阅读排版。
+ *
+ * ⚠️ **不要在这儿再写 `max-width` 和 `padding`。** 外面的 `.main__inner` 已经给了
+ * 32px 顶边、`clamp(22px,3.4vw,52px)` 侧边和 1320px 上限。上一版又叠了一层
+ * `max-width:1140px; padding:28px 30px`，结果左边距是两层加出来的 80px。
+ */
 
-@media(max-width:700px){.brief-card{padding:18px;border-radius:10px}.brief-grid{gap:14px}}
+.intel-feed { color: var(--text-1); }
 
-.brief-run-result{font-size:13px;color:var(--text-2);margin:0 0 20px}.brief-run-result summary{cursor:pointer;line-height:1.8}.brief-run-result summary span{margin-left:14px;text-decoration:underline;text-underline-offset:3px}.brief-run-result p{margin:10px 0}.brief-report-evidence{margin-top:30px;border-top:1px solid var(--border);padding-top:15px}.brief-report-evidence h2{font-size:17px}.brief-report-evidence ol{list-style:none;padding:0}.brief-report-evidence li{font-size:13px;line-height:1.8;margin:16px 0}.brief-report-evidence a{color:var(--text-1)}
+/* ---------- 这一批的系统状态：一行说完 ---------- */
+/* 采集方式、查找窗口、整理了几条，原来是三到四条各自成行的灰字，
+   把第一条情报推到了首屏 536px 处。它们是注解，不是这一页的主角。 */
+.brief-status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
+  margin: 0 0 18px; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-3);
+}
+.brief-run-result { min-width: 0; }
+.brief-run-result summary { cursor: pointer; list-style: none; }
+.brief-run-result summary::-webkit-details-marker { display: none; }
+.brief-run-result summary span { margin-left: 10px; text-decoration: underline; text-underline-offset: 3px; }
+.brief-run-result p { margin: 8px 0; }
+.brief-run-result[open] {
+  flex: 1 0 100%; margin-top: 6px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+}
 
-.brief-provenance{display:flex;gap:5px 16px;flex-wrap:wrap;color:var(--text-2);font-size:11px;line-height:1.7;margin-top:9px}.brief-provenance>span:first-child{font-weight:500}.brief-reading>.brief-provenance{font-size:12px;}
+/* ---------- 列表 + 右侧 peek ---------- */
+.intel-feed__body { display: flex; align-items: flex-start; gap: 20px; min-width: 0; }
+.intel-feed__list { flex: 1 1 auto; min-width: 0; }
 
-.brief-source-quotes{margin:16px 0 22px;font-size:13px;line-height:1.8}.brief-source-quotes blockquote{margin:10px 0;padding:8px 12px;border-left:2px solid var(--border-strong);color:var(--text-2)}.brief-source-quotes blockquote span{font-weight:600;color:var(--text-1)}
+.brief-group { margin-bottom: 26px; }
+/* ⚠️ **说明贴着组名，不甩到一千多像素外的右边缘。** `SectionHead` 默认是
+   `space-between`（右端通常放条数，那是一个数字，隔多远都读得出）；
+   这里右端是一整句注解，离开标题一千像素就和标题读不成一句话了。
+   它仍然走 `aside` 而不是塞进 `<h2>`：塞进去的话，读屏念出的组名会变成
+   「可靠信息 有依据，可以进一步了解」——注解混进了名字。 */
+.brief-group .section-head { justify-content: flex-start; gap: 10px; margin: 0 0 12px; }
+.brief-group__hint { font-size: var(--fs-xs); color: var(--text-3); }
 
-.brief-reading-reason{margin:22px 0 30px;padding-left:14px;border-left:2px solid var(--border-strong);font-size:14px;line-height:1.9;color:var(--text-2)}.brief-reading .brief-interpretation-label{font-size:12px;color:var(--text-2);font-weight:500;letter-spacing:.08em;margin-bottom:20px}.brief-wiki>div{margin:16px 0}.brief-wiki p{font-size:14px;line-height:1.8;color:var(--text-2);margin:8px 0}.brief-continue{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:30px 0;padding:20px 0;border-top:1px solid var(--border)}.brief-continue p{font-size:16px}.brief-angle-section{border-top:1px solid var(--border);padding:22px 0}.brief-angle-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;color:var(--text-1);font:inherit;font-weight:600;text-align:left;padding:0;cursor:pointer}.brief-angle-hint{font-size:13px;color:var(--text-2);line-height:1.8;margin:10px 0}.brief-angle{padding:22px 0;border-top:1px solid var(--border);margin-top:20px}.brief-angle h3{font-size:19px;line-height:1.6;margin:10px 0 20px}.brief-angle dl{font-size:14px;line-height:1.85}.brief-angle dt{font-size:12px;color:var(--text-2);margin-top:18px}.brief-angle dd{margin:5px 0}.brief-angle blockquote{margin:14px 0;padding-left:14px;border-left:2px solid var(--border-strong);font-size:13px;line-height:1.8}.brief-angle cite{display:block;font-size:12px;color:var(--text-2);font-style:normal}.brief-angle .btn{margin-top:12px}.brief-angle-toggle:focus-visible{outline:2px solid var(--text-1);outline-offset:6px}
+/* ⚠️ `auto-fill` 不是 `auto-fit`，也**不要**给单张卡 `grid-column:1/-1`。
+   上一版为了不留空位让唯一那张卡跨满整行，一句判断被拉成 1080px 宽的一条。
+   容器塞得下几列就开几列，右边空着是正常的；peek 打开时左栏变窄，列数自己会降。 */
+.brief-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 
-.brief-angle-preview{padding:14px 0;margin:12px 0;border-block:1px solid var(--border);font-size:14px;line-height:1.8}.brief-angle-preview small{color:var(--text-2)}
-@media(max-width:600px){.brief-continue{align-items:flex-start}.brief-continue .btn{flex-shrink:0}.brief-angle h3{font-size:18px}}
+.brief-card {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  padding: 13px 15px 11px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  transition: border-color 0.14s var(--ease);
+}
+.brief-card:hover { border-color: var(--border-strong); }
+/* 正在读的那一张：一圈近黑的描边，和芯片选中态同一套语汇——
+   一排里唯一像控件的那颗。不叠底色，卡本来就是白的。 */
+.brief-card.is-active { border-color: var(--accent); }
+
+.brief-card__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 16px; }
+.brief-card__kind { font-size: var(--fs-2xs); color: var(--text-3); }
+/* 一屏九张卡各挂一个空方框的话，那九个框会是屏幕上最先被看见的东西。
+   选中的那张要一直显示，否则勾完鼠标一移开就看不出勾了哪几张。 */
+.brief-card__pick { display: inline-flex; opacity: 0; transition: opacity 0.14s var(--ease); }
+.brief-card:hover .brief-card__pick,
+.brief-card:focus-within .brief-card__pick,
+.brief-card.is-picked .brief-card__pick { opacity: 1; }
+.brief-card__pick input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.brief-card__sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.brief-card__title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: calc(2 * 1.5 * var(--fs-base));
+  border: 0; padding: 0; background: none; text-align: left; cursor: pointer;
+  font: inherit; font-size: var(--fs-base); font-weight: 600; line-height: 1.5; color: var(--text-1);
+}
+.brief-card__dot {
+  display: inline-block; width: 6px; height: 6px; margin-right: 7px;
+  border-radius: 50%; background: var(--accent); vertical-align: middle; transform: translateY(-1px);
+}
+.brief-card.is-read .brief-card__title { color: var(--text-2); font-weight: 500; }
+
+.brief-card__summary {
+  margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.65;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: calc(2 * 1.65 * var(--fs-sm));
+}
+
+/* 页脚贴卡底，几张并排时才有可比的基准线 */
+.brief-card footer { margin-top: auto; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; }
+.brief-card__meta { min-width: 0; font-size: var(--fs-2xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brief-card__acts { display: flex; flex: none; gap: 12px; opacity: 0; transition: opacity 0.14s var(--ease); }
+.brief-card:hover .brief-card__acts,
+.brief-card:focus-within .brief-card__acts,
+/* 已收藏要一直看得见——它是状态，不是等着被点的动作 */
+.brief-card__acts:has([aria-pressed="true"]) { opacity: 1; }
+
+.brief-text-action { border: 0; padding: 0; background: none; font: inherit; font-size: var(--fs-xs); color: var(--text-3); cursor: pointer; }
+.brief-text-action:hover { color: var(--text-1); }
+.brief-text-action[aria-pressed="true"] { color: var(--text-1); font-weight: 600; }
+
+.brief-selection-bar {
+  position: sticky; bottom: 12px; z-index: 2;
+  display: flex; gap: 12px; align-items: center; padding: 10px 14px; margin-top: 16px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); font-size: var(--fs-sm);
+}
+.empty-acts { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+
+/* ---------- peek 面板 ---------- */
+/* 三段：固定的上下文 → 滚动的正文 → 固定的动作条（同 `SideRail.jsx`）。
+   动作条跟着内容滚的话，正文长一点就得先滚到底才能点「加入选题」。 */
+.brief-peek {
+  flex: none; width: clamp(340px, 34%, 460px);
+  position: sticky; top: 0; align-self: flex-start;
+  max-height: calc(100vh - var(--view-head-h) - 56px);
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+}
+.brief-peek__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--border); }
+.brief-peek__pos { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.08em; color: var(--text-3); }
+.brief-peek__tools { display: flex; gap: 2px; }
+.brief-peek__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 18px 24px; scrollbar-gutter: stable; }
+.brief-peek__foot { flex: none; display: flex; align-items: center; gap: 18px; padding: 9px 12px 9px 14px; border-top: 1px solid var(--border); }
+.brief-peek__foot .btn-primary { margin-left: auto; }
+/* ⚠️ 反馈那两颗不用 `.btn-quiet`：那一档是**删除入口**的语汇（hover 变红），
+   挂在「有启发」上等于把一个记一笔的动作画成危险动作。 */
+:is(.brief-peek__foot, .brief-reading-actions) .brief-text-action { font-size: var(--fs-sm); padding: 6px 0; }
+
+/* ---------- 阅读排版（peek 与整页详情共用 `BriefReading`） ---------- */
+.brief-peek__body, .brief-reading { min-width: 0; }
+:is(.brief-peek__body, .brief-reading) .brief-meta { font-size: var(--fs-2xs); color: var(--text-3); }
+.brief-reading-title { font-size: var(--fs-md); line-height: 1.5; margin: 8px 0 6px; }
+:is(.brief-peek__body, .brief-reading) .brief-lead { font-size: var(--fs-sm); line-height: 1.8; color: var(--text-2); margin: 0 0 14px; }
+:is(.brief-peek__body, .brief-reading) .brief-provenance {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 16px;
+  font-size: var(--fs-2xs); line-height: 1.7; color: var(--text-3);
+}
+:is(.brief-peek__body, .brief-reading) .brief-provenance > span:first-child { font-weight: 500; }
+:is(.brief-peek__body, .brief-reading) .brief-reading-reason {
+  margin: 0 0 18px; padding-left: 12px; border-left: 2px solid var(--border-strong);
+  font-size: var(--fs-sm); line-height: 1.8; color: var(--text-2);
+}
+:is(.brief-peek__body, .brief-reading) .brief-change { font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2); margin: 0 0 16px; }
+:is(.brief-peek__body, .brief-reading) .brief-interpretation-label {
+  font-size: var(--fs-2xs); font-weight: 500; letter-spacing: 0.08em; color: var(--text-3); margin: 0 0 10px;
+}
+:is(.brief-peek__body, .brief-reading) .markdown-body { font-size: var(--fs-sm); line-height: 1.85; }
+/* 一条 400px 的窄栏里，正文小标题按全局那档（h2 = fs-xl）会比面板标题还大，
+   读起来像是每一段都在开新的一页。跟着正文降两档。 */
+.brief-peek__body .markdown-body :is(h1, h2) { font-size: var(--fs-base); margin: 18px 0 8px; }
+.brief-peek__body .markdown-body h3 { font-size: var(--fs-sm); margin: 14px 0 6px; }
+:is(.brief-peek__body, .brief-reading) :is(.brief-wiki, .brief-originals) h2 { font-size: var(--fs-sm); margin: 24px 0 10px; }
+:is(.brief-peek__body, .brief-reading) .brief-wiki > div { margin: 10px 0; }
+:is(.brief-peek__body, .brief-reading) .brief-wiki p { font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2); margin: 5px 0; }
+:is(.brief-peek__body, .brief-reading) details { border-top: 1px solid var(--border); padding: 11px 0; }
+:is(.brief-peek__body, .brief-reading) summary { font-size: var(--fs-sm); line-height: 1.7; cursor: pointer; }
+:is(.brief-peek__body, .brief-reading) .brief-source-record h3 {
+  font-size: var(--fs-2xs); font-weight: 500; letter-spacing: 0.06em; color: var(--text-3);
+  margin: 16px 0 4px;
+}
+:is(.brief-peek__body, .brief-reading) .brief-source-quotes { margin: 12px 0 18px; font-size: var(--fs-sm); line-height: 1.75; }
+:is(.brief-peek__body, .brief-reading) .brief-source-quotes blockquote { margin: 8px 0; padding: 6px 10px; border-left: 2px solid var(--border-strong); color: var(--text-2); }
+:is(.brief-peek__body, .brief-reading) .brief-source-quotes blockquote span { font-weight: 600; color: var(--text-1); }
+:is(.brief-peek__body, .brief-reading) .brief-source-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: var(--fs-xs); }
+:is(.brief-peek__body, .brief-reading) .brief-source-actions a { color: var(--text-1); }
+
+/* ---------- 整页详情 ---------- */
+.intel-feed--detail { height: 100%; display: flex; flex-direction: column; }
+.main:has(.intel-feed--detail) { overflow: hidden; }
+.main__inner:has(.intel-feed--detail) { height: 100%; max-width: none; padding: 0; --main-pad: 0px; --main-pad-top: 0px; }
+.app__frame:has(.intel-feed--detail) > .view-head { display: none; }
+.brief-detail-fallback { padding: 60px 24px; }
+.brief-detail-toolbar {
+  flex: none; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.brief-detail-toolbar > div { display: flex; gap: 8px; }
+.brief-detail-layout { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--surface); }
+.brief-reading { flex: 1; min-width: 0; overflow: auto; padding: 30px max(24px, calc((100% - 720px) / 2)) 64px; scrollbar-gutter: stable; }
+.brief-reading h1 { font-size: var(--fs-2xl); line-height: 1.45; margin: 10px 0 12px; }
+.with-chat .brief-reading { padding: 26px 28px 64px; flex: 1.25; }
+.brief-reading-actions { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+.brief-chat { flex: 1; min-width: 360px; max-width: 580px; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--surface-2); min-height: 0; }
+.brief-chat > header { display: flex; justify-content: space-between; align-items: center; padding: 15px 18px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.brief-chat .assistant-pane { flex: 1; min-height: 0; }
+.brief-chat .assistant-thread { padding: 18px; }
+.brief-chat .assistant-composer { margin: 12px 16px; width: calc(100% - 32px); }
+
+/* ---------- 表达角度 ---------- */
+/* ⚠️ **眉标砍到两个。** 上一版一屏挂四个灰标签（可能回应的困惑 / 已有理解能补充什么 /
+   还需要验证 / 这个角度的依据），380px 的宽度里光标签就占四行——
+   而一个问句不用标注「这是个问题」。受众和连接合成角度问句底下的一句话。 */
+.brief-angle-section { border-top: 1px solid var(--border); padding: 20px 0; margin-top: 24px; }
+.brief-angle-toggle {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: none; border: 0; padding: 0; color: var(--text-1);
+  font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.brief-angle-toggle:focus-visible { outline: 2px solid var(--text-1); outline-offset: 6px; }
+.brief-angle-hint { font-size: var(--fs-sm); line-height: 1.7; color: var(--text-3); margin: 8px 0 0; }
+.brief-angle { padding: 18px 0 0; border-top: 1px solid var(--border); margin-top: 18px; }
+.brief-angle h3 { font-size: var(--fs-md); line-height: 1.55; margin: 8px 0 10px; }
+.brief-angle__fit { font-size: var(--fs-sm); line-height: 1.8; color: var(--text-2); margin: 0 0 14px; }
+.brief-angle dl { font-size: var(--fs-sm); line-height: 1.8; margin: 0; }
+.brief-angle dt { font-size: var(--fs-2xs); color: var(--text-3); margin-top: 12px; }
+.brief-angle dd { margin: 4px 0; }
+.brief-angle blockquote { margin: 10px 0; padding-left: 12px; border-left: 2px solid var(--border-strong); font-size: var(--fs-xs); line-height: 1.75; }
+.brief-angle cite { display: block; font-size: var(--fs-2xs); color: var(--text-3); font-style: normal; }
+.brief-angle .btn { margin-top: 12px; }
+.brief-angle-preview { padding: 12px 0; margin: 12px 0; border-block: 1px solid var(--border); font-size: var(--fs-sm); line-height: 1.75; }
+.brief-angle-preview small { color: var(--text-3); }
+
+/* ---------- 每周回顾 ---------- */
+.brief-reports .row-head { width: 100%; }
+.brief-report { max-width: 720px; }
+.brief-back { margin-bottom: 12px; }
+.brief-report h1 { font-size: var(--fs-xl); margin: 8px 0 6px; }
+.brief-report .markdown-body { font-size: var(--fs-base); line-height: 1.85; }
+.brief-report-evidence { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 14px; }
+.brief-report-evidence h2 { font-size: var(--fs-md); }
+.brief-report-evidence ol { list-style: none; padding: 0; }
+.brief-report-evidence li { font-size: var(--fs-sm); line-height: 1.75; margin: 14px 0; }
+.brief-report-evidence a { color: var(--text-1); }
+
+/* ---------- 两个弹层 ---------- */
+.brief-merge, .brief-settings {
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text-1);
+  max-width: 540px; width: calc(100% - 40px); padding: 24px;
+}
+/* ⚠️ token 名是 `--scrim-bg`。写错名字时 `background` 整条失效，
+   弹层背后那一层就一点都不暗——而它不会报错，看着只是「浮层没浮起来」。 */
+.brief-merge::backdrop, .brief-settings::backdrop { background: var(--scrim-bg); }
+.brief-merge h2, .brief-settings h2 { font-size: var(--fs-lg); margin: 0 0 8px; }
+.brief-merge p { font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2); }
+.brief-merge label, .brief-settings label { display: grid; gap: 8px; margin: 16px 0; font-size: var(--fs-sm); }
+.brief-merge :is(input, select), .brief-settings textarea {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--text-1); font: inherit; line-height: 1.7;
+}
+.brief-settings__hint { font-size: var(--fs-xs); line-height: 1.75; color: var(--text-3); margin: 0; }
+.brief-blocked { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+.brief-blocked h3 { font-size: var(--fs-sm); margin: 0 0 8px; }
+.brief-blocked > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: var(--fs-sm); }
+.brief-merge footer, .brief-settings footer { display: flex; gap: 8px; margin-top: 20px; }
+
+/* ---------- 窄屏 ---------- */
+/* 页头那一条是固定 44px、不换行的（见 `styles.css` 的 `.view-head`）。
+   情报往里放了三样东西，390px 下会互相压住。条数先撤，「关注方向」收成图标。 */
+@media (max-width: 760px) {
+  .brief-head-count { display: none; }
+  .brief-head-settings { padding: 0 8px; }
+  .brief-head-settings > span { display: none; }
+}
+/* peek 在窄屏盖住整块工作区：并排的话正文只剩不到 300px，读中文全是短行。 */
+@media (max-width: 1000px) {
+  .intel-feed__body.has-peek .intel-feed__list { display: none; }
+  .brief-peek { width: 100%; max-height: calc(100vh - var(--view-head-h) - 40px); }
+  .with-chat .brief-reading { padding: 22px; }
+  .brief-chat { min-width: 320px; }
+}
+@media (max-width: 700px) {
+  .brief-grid { grid-template-columns: 1fr; }
+  .brief-selection-bar { flex-wrap: wrap; }
+  .brief-detail-toolbar { padding: 10px 12px; }
+  .brief-detail-toolbar .btn { font-size: var(--fs-xs); }
+  .brief-reading { padding: 22px 18px 48px; }
+  .brief-reading h1 { font-size: var(--fs-xl); }
+  .with-chat .brief-reading { display: none; }
+  .brief-chat { min-width: 0; max-width: none; border: 0; }
+  .brief-merge, .brief-settings { padding: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intel-feed * { transition: none !important; }
+}

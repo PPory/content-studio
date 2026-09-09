@@ -78,7 +78,8 @@ const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", 
  * 合集目录和合集详情属于「合集」。
  */
 const SUBNAV_HOME = {
-  bridge: "intel",
+  // 关注方向现在是今日精选上的一层设置，不是一个去处——所以它高亮「今日精选」。
+  "intel-settings": "intel",
   project: "content",
   "series-detail": "series",
   topics: "content",
@@ -109,12 +110,19 @@ const NAV = [
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },
   ] },
+  /**
+   * ⚠️ **「关注方向」不在这儿了，「发现方向」进来了。** 上一版正好反着：
+   * `#/intel-settings` 一整页只放一个 textarea 和一句「持续采集：关闭」——那是配置，
+   * 不是一个去处，现在它是今日精选页头右端那颗按钮打开的一层；
+   * 而真正一整页的「发现方向」当时只能从今日精选正文里一行文字链接进去。
+   * 判据是「这一项是不是一个你会想去的地方」，不是「它有没有自己的路由」。
+   */
   { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
     { to: "intel", label: "今日精选" },
+    { to: "bridge", label: "发现方向" },
     { to: "hot", label: "AI热点" },
     { to: "intel-reports", label: "周报" },
     { to: "intel-inbox", label: "我的灵感" },
-    { to: "intel-settings", label: "关注方向" },
   ] },
   { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
     { to: "review", label: "复盘" },
