@@ -1,86 +1,147 @@
-.intelligence {max-width:1120px; margin:0 auto; padding:28px 30px 70px; color:var(--text-1);}
-.intel-header {display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:28px;}
-.intel-header h1 {font-size:26px; letter-spacing:-.5px; margin:0 0 9px; font-weight:600;}
-.intel-header p,.intel-hint {color:var(--text-2); font-size:13px; line-height:1.7; margin:0;}
-.intelligence h2 {font-size:17px; font-weight:600; line-height:1.6; margin:0 0 10px;}
-.intelligence p {line-height:1.75; overflow-wrap:anywhere;}
-.intelligence input:not([type=checkbox]),.intelligence textarea,.intelligence select {box-sizing:border-box; width:100%; border:1px solid var(--border-strong); border-radius:7px; padding:10px 12px; background:var(--surface); color:var(--text-1); font:inherit; font-size:14px;}
-.intelligence textarea {resize:vertical; min-height:94px; line-height:1.7;}
-.intelligence label {display:grid; gap:7px; font-size:13px; color:var(--text-2);}
-.intelligence :is(button,a,input,textarea,select,summary):focus-visible {outline:2px solid var(--text-1); outline-offset:3px;}
-.intelligence .btn:disabled {opacity:.45; cursor:not-allowed;}
-.intel-filters {display:flex; flex-wrap:wrap; gap:6px; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:10px;}
-.intel-filters .btn {border-color:transparent; background:transparent; color:var(--text-2);}
-.intel-filters .btn.is-active {background:var(--surface-2); color:var(--text-1); border-color:var(--border);}
-.intel-cards {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 36px;}
-.intel-card {padding:24px 0; border-bottom:1px solid var(--border); min-width:0;}
-.intel-card h2 {font-size:21px; letter-spacing:-.3px; line-height:1.5; margin:12px 0;}
-.intel-meta {display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; font-size:12px; color:var(--text-2);}
-.intel-why {font-size:14px; margin:0 0 16px;}
-.intel-card dl {display:grid; grid-template-columns:74px minmax(0,1fr); gap:10px 8px; font-size:13px; line-height:1.8; margin:0 0 18px;}
-.intel-card dt {color:var(--text-2);}
-.intel-card dd {margin:0; overflow-wrap:anywhere;}
-.intel-link {padding:0; color:inherit; border:0; text-decoration:underline; text-underline-offset:3px; background:none; font:inherit; cursor:pointer;}
-.intelligence summary {cursor:pointer; font-size:13px; line-height:1.7;}
-.intel-card footer,.intel-profile-form footer {display:flex; gap:8px; flex-wrap:wrap; margin-top:20px;}
-.intel-card footer .btn {font-size:12px; padding:7px 10px;}
-.intel-evidence {border-left:2px solid var(--border-strong); margin-top:15px; padding:0 0 0 14px; font-size:13px;}
-.intel-evidence blockquote {margin:10px 0; color:var(--text-2); line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere;}
-.intelligence a {color:var(--text-1); text-underline-offset:3px;}
-.intel-source-body {font-size:14px; white-space:pre-wrap; max-height:440px; overflow:auto;}
-.intel-empty {padding:35px 0; max-width:580px; color:var(--text-2); font-size:14px;}
-.intel-empty h2 {color:var(--text-1);}
-.intel-empty .btn {margin-top:10px;}
-.intel-error {padding:12px 15px; border:1px solid var(--border-strong); border-left:3px solid var(--text-1); border-radius:5px; margin-bottom:16px; overflow-wrap:anywhere; font-size:14px;}
-.intel-error .btn {margin-left:12px;}
-.intel-notice,.intel-schedule-note {padding:12px 16px; background:var(--surface-2); font-size:13px; border-radius:6px;}
-.intel-active {padding:10px 16px; margin-bottom:16px; background:var(--surface-2); border-radius:7px; font-size:13px;}
-.intel-active>div {display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0;}
-.intel-note,.intel-profile-form {display:grid; gap:16px; max-width:720px; padding:22px; border:1px solid var(--border); border-radius:10px; background:var(--surface); margin-bottom:28px;}
-.intel-note>.btn {justify-self:start;}
-.intel-section-head {display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 0; border-bottom:1px solid var(--border);}
-.intel-section-head h2 {margin:0; white-space:nowrap;}
-.intel-section-head input {max-width:280px;}
-.intel-source,.intel-run {padding:17px 0; border-bottom:1px solid var(--border);}
-.intel-source>summary {font-size:15px; font-weight:500;}
-.intel-source>summary>span {display:block; font-size:12px; font-weight:400; color:var(--text-2); padding-left:16px; margin-top:5px;}
-.intel-profile-form fieldset {display:flex; flex-wrap:wrap; gap:14px 22px; border:0; padding:0; margin:0;}
-.intel-profile-form legend {padding:0 0 10px; font-size:13px; color:var(--text-2);}
-.intelligence .intel-check {display:flex; align-items:flex-start; gap:8px; line-height:1.7; cursor:pointer;}
-.intel-check input {width:16px; height:16px; margin:3px 0 0; flex-shrink:0; accent-color:var(--text-1);}
-.intel-paid {padding:14px; background:var(--surface-2); border-radius:6px;}
-.intel-form-row {display:grid; grid-template-columns:1fr 1fr; gap:18px;}
-.intel-profile {display:flex; align-items:center; justify-content:space-between; gap:24px; padding:23px 0; border-bottom:1px solid var(--border);}
-.intel-profile>div:first-child {min-width:0;}
-.intel-profile p {margin:6px 0; font-size:14px;}
-.intel-profile .intel-hint {font-size:12px;}
-.intel-actions {display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0;}
-.intel-history {margin-top:34px;}
-.intel-run>summary {display:flex; justify-content:space-between; gap:16px;}
-.intel-run>summary::before {content:'›';}
-.intel-run[open]>summary::before {content:'⌄';}
-.intel-run>summary>span:first-child {flex:1;}
-.intel-run>summary>span:last-child {color:var(--text-2);}
-@media (max-width:1050px) {.intel-cards {grid-template-columns:1fr;}.intel-profile {align-items:flex-start; flex-direction:column; gap:12px;}}
-@media (max-width:640px) {.intelligence {padding:20px 14px 50px;}.intel-header {gap:12px; margin-bottom:20px;}.intel-header h1 {font-size:23px;}.intel-header>.btn {flex-shrink:0; font-size:12px;}.intel-note,.intel-profile-form {padding:16px;}.intel-form-row {grid-template-columns:1fr;}.intel-section-head {align-items:flex-start;flex-direction:column;gap:8px;}.intel-section-head input {max-width:none;}.intel-run>summary {flex-wrap:wrap;}.intel-run>summary>span:last-child {width:100%;}.intel-card h2 {font-size:20px;}.intel-card dl {grid-template-columns:66px minmax(0,1fr);}.intel-active>div {align-items:flex-start;}}
+/* 情报 · 我的灵感（现役）与 `#/intel-legacy` 的选题发现 / 关注与调研（历史路由）。
+ *
+ * ⚠️ **页头、筛选芯片、搜索框、错误框、回执条不在这儿画。** 那五样在 `styles.css`
+ * 和 `components/ui.jsx` 里，这一页曾经各写了一份（`.intel-header` / `.intel-filters` /
+ * `.intel-error` / `.intel-notice`）——同一个动作在情报和别的模块长两个样子。
+ *
+ * ⚠️ **也不要再写 `max-width` 和 `padding`。** `.main__inner` 已经给了 32px 顶边、
+ * `clamp(22px,3.4vw,52px)` 侧边和 1320px 上限；上一版又叠了 `max-width:1120px;
+ * padding:28px 30px`，左边距是两层加出来的。
+ */
 
-.intel-recovery {max-width:500px; margin:16px 0;}
-.intel-topic-start {margin:0 0 30px;max-width:820px;}
-.intel-topic-start>label {font-size:15px;font-weight:500;color:var(--text-1);margin-bottom:10px;}
-.intel-topic-start>div {display:flex;gap:10px;}
-.intel-topic-start input {height:46px;min-width:0;}
-.intel-topic-start button {white-space:nowrap;padding:0 20px;}
-.intel-result-toolbar {display:flex;gap:20px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:12px;}
-.intel-result-toolbar .intel-filters {margin:0;padding:0;border:0;}
-.intel-result-toolbar>select,.intel-result-toolbar>input {max-width:250px;width:auto;min-width:150px;}
-.intel-source-group {padding:22px 0;}
-.intel-source-group>header {display:flex;align-items:baseline;gap:16px;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:8px;}
-.intel-source-group>header h2 {margin:0;}
-.intel-source-group>header span {font-size:12px;color:var(--text-2);}
-.intel-advanced {border-top:1px solid var(--border);padding-top:15px;}
-.intel-advanced>label,.intel-advanced>fieldset,.intel-advanced>p {margin-top:15px;}
-.intel-note {margin-top:16px;}
-@media(max-width:640px){.intel-topic-start>div {flex-wrap:wrap;}.intel-topic-start button {height:40px;}.intel-result-toolbar {flex-wrap:wrap;gap:12px;}.intel-result-toolbar>select,.intel-result-toolbar>input {width:100%;max-width:none;}.intel-source-group>header {display:block;}.intel-source-group>header span {display:block;margin-top:6px;}}
+.intelligence { color: var(--text-1); }
+.intelligence h2 { font-size: var(--fs-md); font-weight: 600; line-height: 1.55; margin: 0 0 10px; }
+.intelligence p { line-height: 1.75; overflow-wrap: anywhere; }
+.intelligence a { color: var(--text-1); text-underline-offset: 3px; }
+.intelligence .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.intelligence summary { cursor: pointer; font-size: var(--fs-sm); line-height: 1.7; }
+.intel-hint { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; margin: 0; }
 
-.intel-card-thinking {margin:14px 0;}
-.intel-card-thinking[open]>summary {margin-bottom:14px;}
+/* 表单控件跟着全局那一档走：**文字输入框的焦点不画黑框**，边框往下走一档就够
+   （见 `docs/design-system.md`「控件」那一节）。
+ *
+ * ⚠️ **按「哪几块是表单」列出来，不要写 `.intelligence input` 再挖洞。**
+ * 上一版是「全页所有 input」加一串 `:not()`，而共用的 `SearchBox` 自己已经是
+ * 一颗描边药丸——里面那个 input 又被套上边框、圆角和 9px 内边距，
+ * 屏幕上就是两个叠在一起的框，占位文字还从下边漏出来。
+ * 而 `:not()` 那条的特异度比任何一条 `.intelligence .search-box input` 都高，
+ * 补一条覆盖是补不回来的。 */
+:is(.intel-note, .intel-profile-form, .intel-topic-start, .intel-recovery, .intel-advanced) :is(input:not([type=checkbox]), textarea, select),
+.intel-result-toolbar > select {
+  box-sizing: border-box; width: 100%;
+  padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--r-ctl); background: var(--surface); color: var(--text-1);
+  font: inherit; font-size: var(--fs-sm);
+}
+:is(.intel-note, .intel-profile-form, .intel-topic-start, .intel-recovery, .intel-advanced) :is(input:not([type=checkbox]), textarea, select):focus-visible {
+  outline: none; border-color: var(--border-strong);
+}
+.intelligence textarea { resize: vertical; min-height: 92px; line-height: 1.7; }
+:is(.intel-note, .intel-profile-form, .intel-topic-start, .intel-recovery, .intel-advanced, .intel-check) label,
+:is(.intel-note, .intel-profile-form, .intel-topic-start, .intel-recovery, .intel-advanced) > label {
+  display: grid; gap: 6px; font-size: var(--fs-sm); color: var(--text-2);
+}
+
+/* ---------- 工具带 ---------- */
+.intel-result-toolbar {
+  display: flex; gap: 16px; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.intel-result-toolbar .chips-sm { margin: 0; }
+.intel-result-toolbar > select { width: auto; min-width: 150px; max-width: 250px; }
+
+/* ---------- 正在跑的调研 ---------- */
+.intel-active {
+  display: grid; gap: 6px; margin-bottom: 16px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  font-size: var(--fs-sm);
+}
+.intel-active > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* ---------- 选题候选（历史路由） ---------- */
+.intel-topic-start { margin: 0 0 26px; max-width: 760px; }
+.intel-topic-start > label { margin-bottom: 8px; font-size: var(--fs-base); font-weight: 500; color: var(--text-1); }
+.intel-topic-start > div { display: flex; gap: 10px; }
+.intel-topic-start input { height: 42px; min-width: 0; }
+.intel-topic-start button { white-space: nowrap; padding: 0 18px; }
+
+.intel-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 32px; }
+.intel-card { min-width: 0; padding: 20px 0; border-bottom: 1px solid var(--border); }
+.intel-card h2 { font-size: var(--fs-lg); letter-spacing: -0.02em; line-height: 1.5; margin: 10px 0; }
+.intel-meta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-size: var(--fs-2xs); color: var(--text-3); }
+.intel-why { font-size: var(--fs-sm); color: var(--text-2); margin: 0 0 14px; }
+.intel-card dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; font-size: var(--fs-sm); line-height: 1.8; margin: 0 0 16px; }
+.intel-card dt { color: var(--text-3); }
+.intel-card dd { margin: 0; overflow-wrap: anywhere; }
+.intel-card-thinking { margin: 12px 0; }
+.intel-card-thinking[open] > summary { margin-bottom: 12px; }
+.intel-card footer, .intel-profile-form footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.intel-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.intel-evidence { margin-top: 14px; padding-left: 12px; border-left: 2px solid var(--border-strong); font-size: var(--fs-sm); }
+.intel-evidence blockquote { margin: 8px 0; color: var(--text-2); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- 收集到的资料与灵感 ---------- */
+/* 一条条目就是一行：hover 才浮起底色，靠间距和一道 1px 线分开——
+   白底容器里再给每条画一圈边框，那圈边框会成为屏幕上唯一在说话的东西。 */
+.intel-source, .intel-run { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.intel-source > summary { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-sm); font-weight: 500; }
+.intel-source > summary::-webkit-details-marker { display: none; }
+.intel-source > summary::before { content: "›"; flex: none; color: var(--text-3); font-weight: 400; }
+.intel-source[open] > summary::before { content: "⌄"; }
+.intel-source > summary > span { flex: none; margin-left: auto; font-size: var(--fs-2xs); font-weight: 400; color: var(--text-3); }
+.intel-source[open] > summary { margin-bottom: 8px; }
+.intel-source-body { font-size: var(--fs-sm); white-space: pre-wrap; max-height: 420px; overflow: auto; }
+.intel-source-group { padding: 18px 0 0; }
+.intel-source-group > header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-strong); }
+.intel-source-group > header h2 { margin: 0; }
+.intel-source-group > header span { font-size: var(--fs-2xs); color: var(--text-3); }
+
+.intel-empty { max-width: 560px; padding: 28px 0; color: var(--text-2); font-size: var(--fs-sm); }
+.intel-empty h2 { color: var(--text-1); }
+.intel-empty .btn { margin-top: 10px; }
+
+/* ---------- 表单卡 ---------- */
+.intel-note, .intel-profile-form {
+  display: grid; gap: 14px; max-width: 700px; margin-bottom: 24px; padding: 18px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+}
+.intel-note > .btn { justify-self: start; }
+.intel-profile-form fieldset { display: flex; flex-wrap: wrap; gap: 12px 20px; border: 0; padding: 0; margin: 0; }
+.intel-profile-form legend { padding: 0 0 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.intelligence .intel-check { display: flex; align-items: flex-start; gap: 8px; line-height: 1.7; cursor: pointer; }
+.intel-check input { width: 16px; height: 16px; margin: 3px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+.intel-advanced { border-top: 1px solid var(--border); padding-top: 14px; }
+.intel-advanced > label, .intel-advanced > fieldset, .intel-advanced > p { margin-top: 14px; }
+.intel-recovery { max-width: 500px; margin: 14px 0; }
+
+/* ---------- 关注的主题与调研记录 ---------- */
+.intel-profile { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--border); }
+.intel-profile > div:first-child { min-width: 0; }
+.intel-profile p { margin: 5px 0; font-size: var(--fs-sm); }
+.intel-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.intel-schedule-note { margin-top: 16px; }
+.intel-history { margin-top: 30px; }
+.intel-run > summary { display: flex; justify-content: space-between; gap: 16px; }
+.intel-run > summary::before { content: "›"; }
+.intel-run[open] > summary::before { content: "⌄"; }
+.intel-run > summary > span:first-child { flex: 1; }
+.intel-run > summary > span:last-child { color: var(--text-3); }
+
+@media (max-width: 1050px) {
+  .intel-cards { grid-template-columns: 1fr; }
+  .intel-profile { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
+@media (max-width: 640px) {
+  .intel-topic-start > div { flex-wrap: wrap; }
+  .intel-topic-start button { height: 40px; }
+  .intel-result-toolbar { flex-wrap: wrap; gap: 12px; }
+  .intel-result-toolbar > select { width: 100%; max-width: none; }
+  .intel-source-group > header { display: block; }
+  .intel-source-group > header span { display: block; margin-top: 6px; }
+  .intel-note, .intel-profile-form { padding: 14px; }
+  .intel-run > summary { flex-wrap: wrap; }
+  .intel-run > summary > span:last-child { width: 100%; }
+  .intel-card h2 { font-size: var(--fs-md); }
+  .intel-card dl { grid-template-columns: 66px minmax(0, 1fr); }
+  .intel-active > div { align-items: flex-start; }
+}
