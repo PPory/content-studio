@@ -29,8 +29,14 @@
 }
 
 /* ---------- 列表 + 右侧 peek ---------- */
-.intel-feed__body { display: flex; align-items: flex-start; gap: 20px; min-width: 0; }
-.intel-feed__list { flex: 1 1 auto; min-width: 0; }
+.intel-feed__body { --peek-w: clamp(340px, 28vw, 460px); min-width: 0; }
+.intel-feed__list { min-width: 0; }
+/* 面板贴着窗口右缘，正文这边**自己让出**那一栏的宽度。
+   `--main-pad` 要减掉：`.main__inner` 已经给过一次右内边距了。 */
+.intel-feed__body.has-peek { padding-right: max(0px, calc(var(--peek-w) + 20px - var(--main-pad))); }
+/* ⚠️ **peek 开着时这一页要整块工作区的宽度。** 1320px 的正文上限在 1920 屏上
+   把内容停在 x=1521，而面板贴的是窗口右缘——那两个数不相等，面板会压住最后一列卡片。 */
+.main__inner:has(.intel-feed__body.has-peek) { max-width: none; }
 
 .brief-group { margin-bottom: 26px; }
 /* ⚠️ **说明贴着组名，不甩到一千多像素外的右边缘。** `SectionHead` 默认是
@@ -110,12 +116,25 @@
 /* ---------- peek 面板 ---------- */
 /* 三段：固定的上下文 → 滚动的正文 → 固定的动作条（同 `SideRail.jsx`）。
    动作条跟着内容滚的话，正文长一点就得先滚到底才能点「加入选题」。 */
+/**
+ * ⚠️ **它是钉在窗口上的一栏，不是跟着正文流走的一张卡。**
+ *
+ * 上一版是 `position: sticky; top: 0` 加 `max-height: calc(100vh - 页头 - 56px)`。
+ * 那条 `max-height` 假设面板已经吸在视口顶上了——**但页面没滚动时它待在 y=188**
+ *（上面还压着胶囊和那行状态），于是面板底边落在 `188 + 100vh - 100`，
+ * 正好**掉出视口 88px**，而掉出去的那一截就是固定动作条。
+ * 量出来的结果：1920×1000 / 1536×864 / 1440×900 三个尺寸下
+ * 「加入选题」全都在屏幕外，得先滚一段页面才点得到——
+ * 那正是三段结构要解决的问题，实现却把它又造了一遍。
+ *
+ * 钉住之后高度就是**看得见的那一段**，和滚到哪儿无关。
+ */
 .brief-peek {
-  flex: none; width: clamp(340px, 34%, 460px);
-  position: sticky; top: 0; align-self: flex-start;
-  max-height: calc(100vh - var(--view-head-h) - 56px);
+  position: fixed; z-index: 3;
+  top: var(--view-head-h); right: 0; bottom: 0;
+  width: var(--peek-w, clamp(340px, 28vw, 460px));
   display: flex; flex-direction: column; overflow: hidden;
-  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  border-left: 1px solid var(--border); background: var(--surface);
 }
 .brief-peek__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--border); }
 .brief-peek__pos { font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.08em; color: var(--text-3); }
@@ -256,8 +275,14 @@
 }
 /* peek 在窄屏盖住整块工作区：并排的话正文只剩不到 300px，读中文全是短行。 */
 @media (max-width: 1000px) {
+  .intel-feed__body.has-peek { padding-right: 0; }
   .intel-feed__body.has-peek .intel-feed__list { display: none; }
-  .brief-peek { width: 100%; max-height: calc(100vh - var(--view-head-h) - 40px); }
+  /* 窄屏面板就是这一页的正文：回到文档流、跟着页面滚，动作条落在内容末尾。
+     钉住 + 内部滚动会在手机上造出嵌套滚动，而那一栏本来就占满整屏。 */
+  .brief-peek {
+    position: static; width: auto; border: 1px solid var(--border); border-radius: var(--r-md);
+  }
+  .brief-peek__body { overflow: visible; }
   .with-chat .brief-reading { padding: 22px; }
   .brief-chat { min-width: 320px; }
 }
