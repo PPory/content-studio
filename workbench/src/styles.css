@@ -3919,6 +3919,10 @@ kbd {
   gap: 20px; flex-wrap: wrap; margin-bottom: 16px;
 }
 .panel-head__main { min-width: 0; }
+/* 不带标题的那一档（见 `Hotspots.jsx` 的 `PanelHead`）：条数、搜索、刷新是同一条工具带，
+   不该因为 `align-items: flex-end` 和换行拆成上下两行。 */
+.panel-head--slim { align-items: center; margin-bottom: 12px; }
+.panel-head--slim .panel-head__aside { flex-wrap: nowrap; }
 /* ⚠️ **分区标题比页标题小一档**（21 / 26）。同尺寸时一屏上有两个「最大的字」，
    而它们说的不是同一层的事——页标题说「你在哪个库」，分区标题说「这一块是什么」。 */
 .panel-head__main h2 {
@@ -4063,6 +4067,11 @@ kbd {
 .ai-item__latest { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
 .ai-item__latest b { margin-right: 6px; color: var(--text-1); }
 .ai-item__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+/* 次要出口平时收起来（见 `Hotspots.jsx` 里那段判据）。用 opacity 不用 display：
+   位置留着，浮上去时那一行不会跳。 */
+.ai-item__more { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; opacity: 0; transition: opacity 0.14s var(--ease); }
+.ai-item:hover .ai-item__more, .ai-item:focus-within .ai-item__more { opacity: 1; }
+@media (hover: none) { .ai-item__more { opacity: 1; } }
 
 /* 两段式开关。原来只显示当前状态（「只看命中 15/16」），看着像一句说明，
    没人知道它可以点，更看不出还有「全部」这个选项。 */

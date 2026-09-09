@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Empty, Loading, Note, FilterHeader, ViewTabs, Toast, relTime } from "../components/ui.jsx";
+import { ErrorNote, Empty, Loading, Note, FilterHeader, SearchBox, ViewTabs, Toast, relTime } from "../components/ui.jsx";
 import "./hotspot-bridge.css";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
@@ -166,25 +166,37 @@ function StaleNote({ data }) {
   );
 }
 
-// 卡片头：眉标 + 标题 + 条数 + 说明，右边是「检查于」和刷新。
+// 卡片头：条数在左，「检查于」和刷新在右。
 // 两个 tab 长一样，所以刷新按钮永远在同一个位置。
+//
+// ⚠️ **`title` 和 `desc` 是可选的，热点那一档故意不传。**
+// 上面那颗胶囊已经写着「AI 热点」了，底下再来一个 23px 的「AI HOT 精选」
+// 是同一件事说第二遍，而它把第一条热点又往下推了 90px。
+// 模型榜留着：「大模型共识分」是**读了内容也猜不出来**的东西（那个分数怎么来的），
+// 判据是这个，不是「有没有位置放」。
 //
 // ⚠️ **`stale` 时那一行不能再写「检查于」**：检查是刚刚做的、而且失败了，
 // 那个时间戳说的是快照有多老。同一个数字配错动词，读出来正好是反的意思。
 function PanelHead({ eyebrow, title, count, desc, fetchedAt, stale, busy, onRefresh, extra }) {
   return (
-    <div className="panel-head">
+    <div className={`panel-head${title ? "" : " panel-head--slim"}`}>
       <div className="panel-head__main">
-        <span className="eyebrow">{eyebrow}</span>
-        <h2>
-          {title}
-          {count != null ? (
-            <span className="panel-head__count">
-              <span className="micro__v">{count}</span> 条
-            </span>
-          ) : null}
-        </h2>
-        <p>{desc}</p>
+        {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
+        {title ? (
+          <h2>
+            {title}
+            {count != null ? (
+              <span className="panel-head__count">
+                <span className="micro__v">{count}</span> 条
+              </span>
+            ) : null}
+          </h2>
+        ) : count != null ? (
+          <span className="panel-head__count">
+            <span className="micro__v">{count}</span> 条
+          </span>
+        ) : null}
+        {desc ? <p>{desc}</p> : null}
       </div>
       <div className="panel-head__aside">
         {extra}
@@ -280,14 +292,12 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
   return (
     <section className="panel-block">
       <PanelHead
-        title="AI HOT 精选"
         count={data ? groups.reduce((sum,group)=>sum+group.items.length,0) : undefined}
-        desc="按 AI Hot 收录日期分组，新的在上；收录时间不代表原文发布时间。"
         fetchedAt={data?.fetchedAt}
         stale={data?.stale}
         busy={busy}
         onRefresh={() => load(true, all)}
-        extra={<input type="search" aria-label="搜索 AI 热点" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索标题与摘要" className="ai-hot-search"/>}
+        extra={<SearchBox value={search} onChange={setSearch} ariaLabel="搜索 AI 热点" placeholder="搜索标题与摘要" />}
       />
 
       <ErrorNote error={error} what="加载 AI 情报" />
@@ -342,18 +352,26 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                           在这里读
                         </button>
                       ) : null}
-                      {it.link ? (
-                        <a className="btn btn-sm" href={it.link} target="_blank" rel="noreferrer">
-                          <IconArrowUpRight aria-hidden="true" stroke={1.8} />
-                          原网页
-                        </a>
-                      ) : null}
-                      {it.aihot ? (
-                        <a className="btn btn-sm" href={it.aihot} target="_blank" rel="noreferrer">
-                          <IconExternalLink aria-hidden="true" stroke={1.7} />
-                          AI HOT 详情
-                        </a>
-                      ) : null}
+                      {/**
+                        * ⚠️ **次要出口默认收起来（hover / 键盘聚焦才出）。**
+                        * 一屏二三十条，每条挂三颗描边按钮就是六七十颗——
+                        * 「一屏只保留一个最强主操作」在这一页量得最清楚：
+                        * 真正的动线是「扫标题 → 在这里读」，另外那几个是你**决定要这一条之后**
+                        * 才会想起来的东西。`:focus-within` 一起给，键盘用户不会因此丢掉出口。
+                        */}
+                      <span className="ai-item__more">
+                        {it.link ? (
+                          <a className="btn btn-sm" href={it.link} target="_blank" rel="noreferrer">
+                            <IconArrowUpRight aria-hidden="true" stroke={1.8} />
+                            原网页
+                          </a>
+                        ) : null}
+                        {it.aihot ? (
+                          <a className="btn btn-sm" href={it.aihot} target="_blank" rel="noreferrer">
+                            <IconExternalLink aria-hidden="true" stroke={1.7} />
+                            AI HOT 详情
+                          </a>
+                        ) : null}
                       {/**
                         * ⚠️ **「聊一聊」和「收录」不是一回事，别合并。**
                         * 收录 = 这东西以后可能有用（进灵感库，等 AI 拆素材）；
@@ -364,16 +382,20 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                         * ⚠️ **反应过的要看得出来**：不然你每天扫这一批时会重复反应同一条。
                         * 判据按 `link` 比对（热点不在库里，url 是它唯一稳定的身份）。
                         */}
+                        {seeds.has(it.link) ? null : (
+                          <button className="btn btn-sm" onClick={() => onSeed(it)}>
+                            <IconSeedling aria-hidden="true" size={14} stroke={1.8} />
+                            聊一聊
+                          </button>
+                        )}
+                      </span>
+                      {/* 「说过了」是状态不是动作，一直留着——收起来的话
+                          你明天扫这一批时会对同一条再说一遍。 */}
                       {seeds.has(it.link) ? (
                         <span className="ai-item__seeded" title="你已经对它说过一句了">
                           <IconSeedling aria-hidden="true" size={14} stroke={1.8} />说过了
                         </span>
-                      ) : (
-                        <button className="btn btn-sm" onClick={() => onSeed(it)}>
-                          <IconSeedling aria-hidden="true" size={14} stroke={1.8} />
-                          聊一聊
-                        </button>
-                      )}
+                      ) : null}
                       {stored[key] && !["sending", "done"].includes(stored[key]) ? (
                         <span className="board__err">收录失败：{stored[key]}</span>
                       ) : null}
@@ -398,7 +420,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
 
       <div className="hot-footnote">
         <span>来源：AI HOT</span>
-        <span>摘要可能由 AI 生成；数字、政策与原话请点进原文核对。</span>
+        <span>时间是 AI Hot 的收录时间，不是原文发布时间；摘要可能由 AI 生成，数字、政策与原话请点进原文核对。</span>
       </div>
 
       {reading ? (
