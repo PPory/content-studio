@@ -28,10 +28,13 @@
 .route-card header h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.5; letter-spacing: -.03em; }
 .route-field > span { display: block; margin-bottom: var(--sp-2); color: var(--text-3); font-size: var(--fs-xs); }
 .route-field p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; white-space: pre-line; }
-.route-field--claim p { color: var(--text-1); font-weight: 600; }
 .route-field--risk { border-top: 1px solid var(--border); padding-top: var(--sp-4); }
 .route-field--risk > span { color: var(--emph); }
 .route-field--risk p, .route-field--gaps li { font-size: var(--fs-xs); line-height: 1.75; }
+/* 引题和结论靠排版分层，不靠上面挂灰标签（见 `ContentConstruction.jsx` 里的判据）。 */
+.route-card__entry { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; white-space: pre-line; }
+.route-card__claim { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.8; white-space: pre-line; }
+.route-card[data-selected] .route-card__claim { padding-left: var(--sp-5); border-left: 3px solid var(--text-1); font-size: var(--fs-lg); font-weight: 500; line-height: 1.7; }
 .route-gaps { margin: 0; padding-left: 1.15em; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; }
 .route-card footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: auto; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
 .route-card footer > span { color: var(--text-3); font-size: var(--fs-xs); }
@@ -43,8 +46,6 @@
 .construction-document { min-width: 0; padding-right: var(--sp-7); border-right: 1px solid var(--border); }
 .route-card[data-selected] { border: 0; border-radius: 0; padding: 0; background: transparent; gap: var(--sp-7); }
 .route-card[data-selected] header h3 { scroll-margin-top: 80px; max-width: 700px; font-size: 24px; line-height: 1.5; }
-.route-card[data-selected] .route-field--claim { padding-left: var(--sp-5); border-left: 3px solid var(--text-1); }
-.route-card[data-selected] .route-field--claim p { font-size: var(--fs-lg); font-weight: 500; line-height: 1.7; }
 .route-card[data-selected] .route-field--risk p, .route-card[data-selected] .route-field--gaps li { font-size: var(--fs-sm); }
 .route-sources { padding-top: var(--sp-6); border-top: 1px solid var(--border); }
 .route-sources__heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-4); }
@@ -114,6 +115,6 @@
   .construction-intent__agenda select { max-width: 100%; }
   .route-card { padding: var(--sp-5); }
   .construction-routes__head { margin-bottom: var(--sp-4); }
-  .route-card[data-selected] .route-field--claim { padding-left: var(--sp-4); }
+  .route-card[data-selected] .route-card__claim { padding-left: var(--sp-4); }
   .construction-heading h1 { font-size: 20px; }
 }

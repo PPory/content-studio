@@ -268,7 +268,7 @@ try {
    * 「我已经知道想连哪两个」是一条真实的路，只是不该是每天打开内容看到的第一件事。
    */
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.locator(".opportunity-views").waitFor();
+  await page.locator(".opportunity-home .view-tabs").waitFor();
   check("内容首页提供发现新方向和手动探索两个入口",
     await page.locator(".bridge-picker").count() === 0
     && await page.getByRole("button", { name: /发现新方向/ }).count() === 1);
@@ -316,16 +316,22 @@ try {
     && await page.getByRole("button", { name: "选择用户问题：AI 越用越方便，为什么我越来越不愿意自己想？", pressed: true }).count() === 1);
 
   await page.getByRole("button", { name: "看看怎么连接" }).click();
-  await page.getByRole("heading", { name: "核心判断" }).waitFor();
-  const resultHeadings = await page.locator(".bridge-result-section h3").allTextContents();
-  check("简报先呈现核心判断，再展开问题和依据", resultHeadings.slice(0, 4).join("|") === "核心判断|用户真正的问题|我的知识能提供什么解释|最大的认知差");
+  await page.locator(".bridge-claim").waitFor();
+  // 核心判断、读者问题、解释、认知差合成一块正文：一句大字断言就是这一屏的标题，
+  // 一个问号自己会说话——四个灰标签里没有一个是「读了还猜不出这是什么」的。
+  const claim = await page.locator(".bridge-claim").innerText();
+  check("简报先呈现核心判断，再展开问题和解释",
+    claim.indexOf("AI 正从信息工具进入人的判断链") === 0
+    && claim.includes("我应该把哪些判断交给 AI")
+    && claim.includes("大多数人把会用 AI 理解成尽量多交给 AI"));
+  check("这一屏没有多余的段名", (await page.locator(".bridge-result-section h3").allTextContents()).every((t) => ["怎么开篇"].includes(t)));
   check("Preview 明确保持候选且不产生写入", await page.getByText("目前仍是候选", { exact: true }).count() === 1
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 0);
 
   // 有结果之后这一页从「选」切到「读和决定」：两栏塌成一行，结果不再被压到第二屏。
   const resultTop = (await page.locator(".bridge-result").boundingBox()).y;
   check("有结果时选择区收起，结果落在第一屏", await page.locator(".bridge-picker").count() === 0
-    && (await page.locator(".opportunity-analysis-aside").innerText()).includes("认知卸载")
+    && (await page.locator(".bridge-anchor").innerText()).includes("认知卸载")
     && resultTop < 500, `结果顶边 ${resultTop}px`);
   await page.getByRole("button", { name: "重新选择" }).click();
   check("重新选择把两栏放回来", await page.locator(".bridge-picker").count() === 1
@@ -350,13 +356,13 @@ try {
     await page.getByRole("button", { name: "经历型" }).count() === 0
     && await page.getByRole("button", { name: "判断型" }).count() === 1);
 
-  const claimBeforeAgenda = await page.locator(".bridge-result-section blockquote").textContent();
+  const claimBeforeAgenda = await page.locator(".bridge-claim h3").textContent();
   const callsBeforeAgenda = previewCalls;
   await page.locator(".bridge-agenda-field select").selectOption(agendaId);
   await page.getByText("高质量使用 AI，核心是保留人的判断权。", { exact: true }).waitFor();
   check("选择长期议程只计算 Agenda Fit，不重写整个 Candidate", await page.locator(".bridge-agenda-field select").inputValue() === agendaId
     && agendaFitCalls === 1 && previewCalls === callsBeforeAgenda
-    && await page.locator(".bridge-result-section blockquote").textContent() === claimBeforeAgenda);
+    && await page.locator(".bridge-claim h3").textContent() === claimBeforeAgenda);
   check("按议程重新构造需要明确点击", await page.getByRole("button", { name: "按这个议程重新构造" }).count() === 1);
 
   /**
@@ -380,7 +386,7 @@ try {
   check("用户确认后才把结构化机会写入 SQLite", Boolean(saved?.id) && saved.agendaId === agendaId && saved.dominantAction === "judgment");
   // 退回内容首页：已保存的机会现在长在 AI 发现下面的「进行中」里
   await page.getByRole("button", { name: "← 发现方向" }).click();
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
+  await page.getByRole("tab", { name: /已保存/ }).click();
   await page.locator(".direction-card-grid").waitFor();
   check("已保存视图不会同时显示发现区", !await page.locator(".opportunity-scan").isVisible());
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-opportunity-saved.png"), fullPage: true });
@@ -388,9 +394,9 @@ try {
     && (await page.locator(".discovery-saved").innerText()).includes("已保存的方向"));
   // 从首页点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
   await page.locator(".direction-overview-card").first().click();
-  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  await page.locator(".bridge-claim").waitFor();
   check("从概览点进去能还原已保存的机会", await page.getByRole("button", { name: "建立内容项目" }).count() === 1
-    && (await page.locator(".opportunity-analysis-aside").innerText()).includes("认知卸载"));
+    && (await page.locator(".bridge-anchor").innerText()).includes("认知卸载"));
 
   if (process.argv.includes("--shots")) {
     await fs.mkdir(shotDir, { recursive: true });
@@ -580,7 +586,7 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge/${encodeURIComponent(`opportunity:${saved.id}`)}`);
   await page.reload();
   await page.getByText("内容机会已保存", { exact: true }).waitFor();
-  await page.getByRole("heading", { name: "核心判断" }).waitFor();
+  await page.locator(".bridge-claim").waitFor();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   const overflowNodes = await page.evaluate(() => [...document.querySelectorAll("body *")]
     .map((element) => ({ tag: element.tagName, className: String(element.className || ""), text: String(element.textContent || "").trim().slice(0, 60), right: element.getBoundingClientRect().right }))
@@ -831,8 +837,8 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.locator(".opportunity-views").waitFor();
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /研究线索/ }).click();
+  await page.locator(".opportunity-home .view-tabs").waitFor();
+  await page.getByRole("tab", { name: /研究线索/ }).click();
   await page.getByRole("button", { name: /最近你在助手里想的/ }).click();
   const researchText = await page.locator(".discovery-research").innerText();
   check("最近在助手里想的东西摆出来了，扫描会参考它",
@@ -862,9 +868,9 @@ try {
 
   const problemsBeforeDiscovery = workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count;
   await page.goto(`http://127.0.0.1:${PORT}/#/bridge`);
-  await page.locator(".opportunity-views").waitFor();
+  await page.locator(".opportunity-home .view-tabs").waitFor();
   check("进页面不自动烧模型", scanCalls === 0);
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
+  await page.getByRole("tab", { name: /新发现/ }).click();
   await page.getByRole("button", { name: /发现新方向/ }).click();
   await page.locator(".direction-overview-card").first().waitFor();
 
@@ -877,7 +883,7 @@ try {
   await page.locator(".direction-overview-card").first().click();
   check("手机详情第一屏可以返回方向列表", await page.getByRole("button", { name: "← 返回卡片总览" }).evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
   check("小屏展开候选不会生成越界网格列", await page.locator(".opportunity-brief").evaluate((el) => el.getBoundingClientRect().right <= innerWidth));
-  check("展开后核心判断和问题可以完整阅读", await page.locator(".discovery-card__q").first().evaluate((el) => getComputedStyle(el).whiteSpace === "normal"));
+  check("展开后核心判断和问题可以完整阅读", await page.locator(".opportunity-brief__q").first().evaluate((el) => getComputedStyle(el).whiteSpace === "normal"));
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-discovery-mobile.png"), fullPage: true });
   await page.getByRole("button", { name: "← 返回卡片总览" }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -889,8 +895,8 @@ try {
   check("假设详情不伪装成真实原话", (await page.locator('[data-reader-active="true"] .opportunity-evidence').innerText()).includes("尚待真实反馈") && await page.locator('[data-reader-active="true"] .opportunity-quotes').count() === 0);
   await page.getByRole("navigation",{name:"切换方向"}).getByRole("button").first().click();
   await page.getByRole("button",{name:"← 返回卡片总览",exact:true}).click();
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).focus();
+  await page.getByRole("tab", { name: /已保存/ }).click();
+  await page.getByRole("tab", { name: /已保存/ }).focus();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   check("键盘可切换到研究线索视图", await page.locator(".opportunity-context").isVisible());
@@ -900,7 +906,7 @@ try {
   check("保存机会搜索无结果时给出明确反馈", await page.getByText("没有找到匹配的机会，试试其他关键词。").count() === 1);
   await page.getByLabel("搜索已保存的机会").fill("");
   check("清空搜索恢复已保存机会", await page.locator(".direction-overview-card").count() === 1);
-  await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
+  await page.getByRole("tab", { name: /新发现/ }).click();
   await page.locator(".direction-overview-card").first().click();
   const cardText = await page.locator('[data-reader-active="true"] .opportunity-brief').innerText();
   check("卡片说清谁在困惑什么、用我的什么知识、可能留下什么判断",
@@ -910,8 +916,9 @@ try {
     cardText.includes("1 段可逐字回溯的真实原话"));
   check("不显示分数、热度或爆款概率",
     !/\d+\s*分|热度|爆款/.test(cardText) && cardText.includes("很自然"));
-  await page.locator(".opportunity-quotes summary").click();
-  check("原话可以当场展开核对", (await page.locator(".discovery-quotes").innerText()).includes(discoveryQuote));
+  // 原话和 basis 现在合在同一个折叠里（上一版「看原话」和「这个方向如何形成」渲染的是同一批引文）
+  await page.locator(".opportunity-basis > summary").click();
+  check("原话可以当场展开核对", (await page.locator(".opportunity-basis").innerText()).includes(discoveryQuote));
   check("扫描一条业务数据都没写",
     workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 1);

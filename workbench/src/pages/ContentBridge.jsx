@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, Note, SearchBox } from "../components/ui.jsx";
+import { ErrorNote, Loading, Note, PageStage, SearchBox } from "../components/ui.jsx";
 import { peekDiscoveryHandoff } from "../lib/discovery-handoff.js";
 import "./content-bridge.css";
 import "./opportunity-workspace.css";
@@ -722,8 +722,9 @@ export function ContentBridge({ state = "", onGo }) {
     <div className="view-body content-bridge content-bridge-workspace">
       <div className="bridge-bar bridge-bar--sticky">
         <button type="button" className="bridge-back" onClick={() => onGo?.("bridge", "")}>← 发现方向</button>
+        {/* 页名归页头（`PageStage` → 情报 / 发现方向 / 内容简报），正文里不再重复一遍。 */}
+        <PageStage>{savedOpportunity ? "内容简报" : preview ? "方向分析" : "手动探索"}</PageStage>
         <div className="bridge-bar__title">
-          <h2>{savedOpportunity ? "内容简报" : preview ? "方向分析" : "手动探索"}</h2>
           {problemCandidate ? <span className="bridge-bar__pending">用户问题还没保存</span> : null}
         </div>
         <div className="bridge-bar__actions">
@@ -739,7 +740,10 @@ export function ContentBridge({ state = "", onGo }) {
               * design-system 的「disabled 必须有真实原因，需要理解时直接说明」说的就是这个。
               * ⚠️ 两边都选齐之后文案必须回到「看看怎么连接」——冒烟测试按这个名字点它。
               */
-            <button type="button" className="btn btn-primary" disabled={previewBusy || !wikiId || !hasProblem} onClick={() => runPreview()}>
+            /* ⚠️ **还不能点的时候不画实心黑。** 那是这套界面里最重的一块颜色，
+               意思是「这一屏最该点的就是它」——而它此刻恰恰点不动。
+               两边选齐之后它才变黑，这本身就是一次「现在可以了」的反馈。 */
+            <button type="button" className={`btn${wikiId && hasProblem ? " btn-primary" : ""}`} disabled={previewBusy || !wikiId || !hasProblem} onClick={() => runPreview()}>
               {previewBusy ? "正在判断连接…"
                 : !wikiId && !hasProblem ? "先选知识和问题"
                 : !wikiId ? "还需要选择知识"
@@ -828,15 +832,22 @@ export function ContentBridge({ state = "", onGo }) {
 
           <div className="opportunity-analysis-layout">
           <div className="opportunity-analysis-body">
-          <ResultSection title="核心判断" id="opportunity-claim"><blockquote>{preview.coreClaim}</blockquote></ResultSection>
-          <ResultSection title="用户真正的问题" id="opportunity-reader">
-            <p>{preview.audienceProblem.underlying}</p>
+          {/**
+            * ⚠️ **四个眉标合成一段正文。** 上一版是「核心判断 / 用户真正的问题 /
+            * 我的知识能提供什么解释 / 最大的认知差」四节，每节一个灰标签加一句话，
+            * 而它们是同一个判断的四个侧面，不是四份并列的材料。
+            * 判据是 `docs/design-system.md` 那条：读了内容还猜不出这是什么才值得挂标签——
+            * 一句大字断言就是这一屏的标题，一个问号自己会说话，一段解释读了就知道是解释。
+            */}
+          <section className="bridge-claim" id="opportunity-claim" tabIndex={-1}>
+            <h3>{preview.coreClaim}</h3>
+            <p className="bridge-claim__q" id="opportunity-reader">{preview.audienceProblem.underlying}</p>
             {preview.audienceProblem.surface && preview.audienceProblem.surface !== preview.audienceProblem.underlying
               ? <small>表层表现：{preview.audienceProblem.surface}</small>
               : null}
-          </ResultSection>
-          <ResultSection title="我的知识能提供什么解释" id="opportunity-knowledge"><p>{preview.knowledgeExplanation}</p></ResultSection>
-          <ResultSection title="最大的认知差"><p>{preview.cognitiveGap}</p></ResultSection>
+            <p className="bridge-claim__body" id="opportunity-knowledge">{preview.knowledgeExplanation}</p>
+            <p className="bridge-claim__gap">{preview.cognitiveGap}</p>
+          </section>
           <section className="bridge-result-agenda" aria-label="长期议程">
             <label className="bridge-agenda-field">
               <span>这条内容会继续强化什么长期判断</span>
@@ -862,15 +873,14 @@ export function ContentBridge({ state = "", onGo }) {
               />
             ) : null}
           </section>
-          <ResultSection title="从哪儿进入" id="opportunity-entry">
+          <ResultSection title="怎么开篇" id="opportunity-entry">
             <p>{activeEntry?.text || preview.audienceProblem.surface}</p>
             {activeEntry?.scope_check?.status === "too_broad"
               ? <em className="bridge-scope-warn">范围过大：{activeEntry.scope_check.reason}</em>
               : null}
+            <p className="bridge-relations">{(construction.relations || []).map((item) => `${RELATION_LABELS[item.type] || item.type}：${item.explanation}`).filter(Boolean).join("；") || "当前还没有足够自然的关系。"}</p>
           </ResultSection>
-          <ResultSection title="怎么串起来">
-            <p>{(construction.relations || []).map((item) => `${RELATION_LABELS[item.type] || item.type}：${item.explanation}`).filter(Boolean).join("；") || "当前还没有足够自然的关系。"}</p>
-          </ResultSection>
+          {selectedWiki ? <section className="bridge-anchor"><h3>知识依据</h3><button type="button" className="linkish" onClick={() => onGo?.("entries", selectedWiki.id)}>{selectedWiki.title}</button><p>{selectedWiki.summary}</p></section> : null}
 
           <div className="bridge-action-bar" aria-label="调整内容连接">
             <button
@@ -908,15 +918,10 @@ export function ContentBridge({ state = "", onGo }) {
                 </button>
               </>
             ) : (
-              <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会。</Note>
+              <Note title="目前仍是候选">预览不会创建项目、修改知识库或写入正文。只有你确认保存后，才会写入内容机会；保存时这份判断和所用材料一起保留，建立内容项目后再决定结构和正文。</Note>
             )}
           </footer>
           </div>
-          <aside className="opportunity-analysis-aside">
-            <div><span className="opportunity-eyebrow">这份简报</span><nav aria-label="简报目录"><a href="#opportunity-claim" onClick={(event) => { event.preventDefault(); document.getElementById("opportunity-claim")?.scrollIntoView(); document.getElementById("opportunity-claim")?.focus({ preventScroll: true }); }}>核心判断</a><a href="#opportunity-reader" onClick={(event) => { event.preventDefault(); document.getElementById("opportunity-reader")?.scrollIntoView(); document.getElementById("opportunity-reader")?.focus({ preventScroll: true }); }}>读者与问题</a><a href="#opportunity-entry" onClick={(event) => { event.preventDefault(); document.getElementById("opportunity-entry")?.scrollIntoView(); document.getElementById("opportunity-entry")?.focus({ preventScroll: true }); }}>写作入口</a></nav></div>
-            {selectedWiki ? <div><h3>知识依据</h3><button type="button" className="linkish" onClick={() => onGo?.("entries", selectedWiki.id)}>{selectedWiki.title}</button><p>{selectedWiki.summary}</p></div> : null}
-            <div><h3>保存之后</h3><p>这份判断和所用材料会一起保留。建立内容项目后，再决定结构和正文。</p></div>
-          </aside>
           </div>
         </div>
       ) : null}

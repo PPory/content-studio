@@ -292,6 +292,25 @@
 /* 核心判断是这一页的产物，给它整页唯一的大字号 */
 .bridge-result-section blockquote { max-width: 920px; margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.6; letter-spacing: -.015em; }
 .bridge-scope-warn { display: block; margin-top: var(--sp-3); color: var(--emph); font-style: normal; font-size: var(--fs-sm); }
+/**
+ * 核心判断那一块：四段正文按排版分层，不再是四节各挂一个灰标签。
+ * 断言最大，读者问题用引号和字号说明「这是别人问的话」，解释是正文，
+ * 认知差加重收尾——判据见 `docs/design-system.md`「眉标要挣它占的那一行」。
+ */
+.bridge-claim { padding: var(--sp-6) 0; border-bottom: 1px solid var(--border); scroll-margin: var(--sp-10); }
+.bridge-claim:focus { outline: 2px solid var(--text-1); outline-offset: 4px; }
+.bridge-claim h3 { max-width: 920px; margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.6; letter-spacing: -.015em; }
+.bridge-claim__q { max-width: 820px; margin: var(--sp-5) 0 0; color: var(--text-1); font-size: var(--fs-md); line-height: 1.7; }
+.bridge-claim__q::before { content: "「"; }
+.bridge-claim__q::after { content: "」"; }
+.bridge-claim > small { display: block; margin-top: var(--sp-2); color: var(--text-3); }
+.bridge-claim__body { max-width: 820px; margin: var(--sp-5) 0 0; color: var(--text-1); font-size: var(--fs-base); line-height: 1.85; }
+.bridge-claim__gap { max-width: 820px; margin: var(--sp-3) 0 0; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; line-height: 1.8; }
+.bridge-relations { margin-top: var(--sp-4) !important; color: var(--text-2) !important; font-size: var(--fs-sm) !important; }
+.bridge-anchor { padding: var(--sp-6) 0; border-bottom: 1px solid var(--border); }
+.bridge-anchor h3 { margin: 0 0 var(--sp-3); color: var(--text-3); font-size: var(--fs-xs); font-weight: 500; }
+.bridge-anchor p { margin: var(--sp-2) 0 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+
 
 /*
  * 议程条：这里是**决定**（这条判断归到哪条长期议程），不是正文的第五段。

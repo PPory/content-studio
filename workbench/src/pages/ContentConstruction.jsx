@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Note } from "../components/ui.jsx";
+import { ErrorNote, Note, PageStage } from "../components/ui.jsx";
 import { peekConstructionSession, peekDiscoveryHandoff, setConstructionSession } from "../lib/discovery-handoff.js";
 import { IconArrowRight, IconSparkles } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -35,8 +35,12 @@ function RouteCard({ route, selected = false, onSelect, compact = false, number,
         <div className="route-card__meta"><span className="route-card__id">{selected ? "创作简报" : `讲法 ${number || route.id}`}</span><span className="route-card__action">{ACTION_LABELS[route.dominantAction] || route.dominantAction}</span></div>
         <h3 ref={titleRef} tabIndex={selected ? -1 : undefined}>{route.label}</h3>
       </header>
-      <div className="route-field"><span>从这里开篇</span><p>{route.entry}</p></div>
-      <div className="route-field route-field--claim"><span>让读者带走的判断</span><p>{route.coreClaim}</p></div>
+      {/* ⚠️ **两个眉标撤了。** `entry` 是一个钩子问句、`coreClaim` 是一句加粗的结论——
+          `docs/design-system.md` 的原话：一个问句不用标注「这是个问题」，
+          一句加粗的结论不用标注「这是结论」。两张卡并排时那四行灰标签占掉的
+          正是你要横着比的那块地方。留下的「需要留意 / 还需要补充」看不出语气和性质，值那一行。 */}
+      <p className="route-card__entry">{route.entry}</p>
+      <p className="route-card__claim">{route.coreClaim}</p>
       {selected ? <>
         <div className="route-field"><span>文章怎样展开</span><p>{route.storyline}</p></div>
         {route.keyRelation ? <div className="route-field"><span>为什么这样讲</span><p>{route.keyRelation}</p></div> : null}
@@ -44,7 +48,7 @@ function RouteCard({ route, selected = false, onSelect, compact = false, number,
       {route.risk ? <div className="route-field route-field--risk"><span>需要留意</span><p>{route.risk}</p></div> : null}
       {route.evidenceGaps?.length ? <div className="route-field route-field--gaps"><span>还需要补充</span><ul className="route-gaps">{route.evidenceGaps.map((gap, index) => <li key={`${gap}:${index}`}>{gap}</li>)}</ul></div> : null}
       {selected ? <section className="route-sources" aria-label="材料与来源">
-        <div className="route-sources__heading"><h4>材料与来源</h4><span>{sourceCount} 个关联来源</span></div>
+        <div className="route-sources__heading"><h4>材料与来源</h4></div>
         {elements.length ? <ul className="route-elements">{elements.map((element) => <li key={element.id}>
           <em>{ELEMENT_LABELS[element.type] || element.type}</em>
           <div><strong>{element.label}</strong>{element.role ? <p>{element.role}</p> : null}<small>{element.sourceId ? `来源：${SOURCE_LABELS[element.sourceKind] || element.sourceKind}` : "AI 组织的表达，不是来源证据"}</small></div>
@@ -222,13 +226,14 @@ export function ContentConstruction({ onGo }) {
     <div className="view-body content-bridge content-construction">
       <nav className="construction-nav" aria-label="当前位置">
         <button type="button" className="bridge-back" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "")}>← 发现方向</button>
-        <span>{selected ? "完善创作简报" : "选择讲法"}</span>
         <button type="button" className="btn btn-sm" disabled={refining || saveBusy} onClick={() => onGo?.("bridge", "analyze")}>查看完整分析</button>
       </nav>
 
+      {/* 页名归页头。正文里原来是「选择讲法」（导航）+「比较讲法」（大标题）+ 一句说明
+          三段说同一件事，而说明句只在你第一次来时有用——它现在跟着阶段名走。 */}
+      <PageStage>{selected ? "创作简报" : "比较讲法"}</PageStage>
       <header className="construction-heading">
         {saved ? <div className="construction-heading__eyebrow">已保存到内容机会</div> : null}
-        <h1>{selected ? "创作简报" : "比较讲法"}</h1>
         <p>{selected ? "确认核心判断与依据，保存后进入创作。" : "从切入点、核心判断和依据中，选定一个创作方向。"}</p>
       </header>
 

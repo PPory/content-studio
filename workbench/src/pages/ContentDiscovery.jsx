@@ -4,7 +4,7 @@ import {DirectionEvidence} from '../components/DirectionEvidence.jsx';
 import {DirectionActions} from '../components/DirectionActions.jsx';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, PageHeader, SearchBox, relTime } from "../components/ui.jsx";
+import { ErrorNote, FilterHeader, Loading, SearchBox, ViewTabs, relTime } from "../components/ui.jsx";
 import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -16,40 +16,77 @@ function dateLabel(value) {
   return value && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date) : "";
 }
 
+/**
+ * 一个方向读起来该是什么样。
+ *
+ * ⚠️ **眉标从六个砍到两个。** 上一版是「为什么值得关注 / 可以怎样理解 /
+ * 与已有积累的连接 / 可能带来的新认识 / 还需要验证 / 这个方向如何形成」，
+ * 一屏光灰色标签就占六行——而 `docs/design-system.md` 里那条判据
+ *（「读了内容还猜不出这是什么」才值得挂标签）当初就是从这张卡上总结出来的。
+ *
+ * 逐个过一遍：一个**问号**不用标注「这是个问题」，何况它底下那行
+ * `evidenceLabel` 已经说了它是「你认为的受众问题，尚待验证」——两句连着出现是
+ * 文档里点名批过的重复；一段**解释**读了就知道是解释；一句**加粗的结论**不用
+ * 标注「这是结论」。留下来的两个是猜不出来的：一列词条名要说清是什么列表，
+ * 几行待办要说清它们还没做。
+ *
+ * ⚠️ **原话只摆一处。** 上一版「看原话」和「这个方向如何形成」渲染的是同一批
+ * `problem.evidence`，同一段引文在一屏上出现两遍。现在合到底部那个折叠里，
+ * 和 `basis` 一起——它们回答的是同一个问题：这条方向凭什么。
+ */
 function OpportunityBrief({ connection, onDiscuss, onGo, busy }) {
   const anchors = connection.knowledgeAnchors || [];
+  const basis = connection.basis || [];
+  const quotes = connection.problem.evidence || [];
   return (
     <article className="opportunity-brief" aria-label="方向详情">
       <header className="opportunity-brief__head">
-        <div className="opportunity-brief__toolbar"><span>方向详情</span><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDiscuss(connection)}>聊聊这个方向<IconArrowRight aria-hidden="true" /></button></div>
+        {/* ⚠️ **一屏只有一颗实心黑，那颗是页脚的「带入选题」。**
+            这里原来也是实心黑，于是同一屏上下各一块最重的颜色，读起来是两个「最该点的」。
+            「方向详情」那个眉标也撤了：面包屑写着「情报 / 发现方向」，左边列表指着是哪一条，
+            这四个字回答的问题没有人在问。 */}
+        <div className="opportunity-brief__toolbar">
+          <button type="button" className="btn btn-sm" disabled={busy} onClick={() => onDiscuss(connection)}>聊聊这个方向<IconArrowRight aria-hidden="true" /></button>
+        </div>
         <h3 tabIndex={-1}>{connection.coreClaim}</h3>
         <p className="opportunity-brief__reason"><span className="opportunity-fit" data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</span>{connection.fitReason}</p>
       </header>
 
-      <section className="opportunity-brief__section">
-        <h4>为什么值得关注</h4>
-        <p className="discovery-card__q">{connection.problem.statement}</p>
-        <small className="opportunity-evidence" data-origin={connection.problem.origin}>{connection.problem.evidenceLabel}</small>
-        {connection.problem.evidence?.length ? (
-          <details className="opportunity-quotes"><summary>看原话</summary>
-            <ul className="discovery-quotes">{connection.problem.evidence.map((item, index) => (
-              <li key={`${item.rawSourceId}:${index}`}><q>{item.quote}</q><small>{item.kindLabel}{item.sourceName ? ` · ${item.sourceName}` : ""}{item.observedAt ? ` · ${dateLabel(item.observedAt)}` : ""}</small></li>
-            ))}</ul>
-          </details>
-        ) : null}
-      </section>
-      <section className="opportunity-brief__section">
-        <h4>可以怎样理解</h4>
-        <p>{connection.knowledgeExplanation}</p>
-        {anchors.length>0&&<h4>与已有积累的连接</h4>}<ul className="opportunity-sources">{anchors.map((anchor) => (
-          <li key={anchor.wikiPageId}><button type="button" onClick={() => onGo("entries", anchor.wikiPageId)}>{anchor.title}<IconArrowRight aria-hidden="true" /></button>{anchor.reason ? <p>{anchor.reason}</p> : null}</li>
-        ))}</ul>
-      </section>
-      <section className="opportunity-brief__section"><h4>可能带来的新认识</h4><p>{connection.cognitiveGap}</p></section>
-      {connection.evidenceGaps?.length ? <section className="opportunity-brief__section opportunity-brief__gaps"><h4>还需要验证</h4><ul>{connection.evidenceGaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></section> : null}
-      {(connection.basis?.length>0||connection.problem.evidence?.length>0)&&<section className="opportunity-brief__section"><h4>这个方向如何形成</h4><p>以下是实际引用的资料；上面的解释和方向仍待讨论验证。</p>{(connection.basis||[]).map((b,i)=><DirectionEvidence key={i} basis={b} onGo={onGo}/>)}{(connection.problem.evidence||[]).map((e,i)=><blockquote key={i}>{e.quote}<small>{e.sourceName||e.kindLabel||'已有记录'}</small></blockquote>)}</section>}
-      {connection.agendaSuggestion?.reason ? <p className="opportunity-brief__agenda">{connection.agendaSuggestion.reason}</p> : null}
+      {/* 读者问题：问号自己会说话，底下那行才是它的身份说明 */}
+      <p className="opportunity-brief__q">{connection.problem.statement}</p>
+      <small className="opportunity-evidence" data-origin={connection.problem.origin}>{connection.problem.evidenceLabel}</small>
 
+      <p className="opportunity-brief__body">{connection.knowledgeExplanation}</p>
+      <p className="opportunity-brief__claim">{connection.cognitiveGap}</p>
+
+      {anchors.length > 0 ? (
+        <section className="opportunity-brief__section">
+          <h4>与已有积累的连接</h4>
+          <ul className="opportunity-sources">{anchors.map((anchor) => (
+            <li key={anchor.wikiPageId}><button type="button" onClick={() => onGo("entries", anchor.wikiPageId)}>{anchor.title}<IconArrowRight aria-hidden="true" /></button>{anchor.reason ? <p>{anchor.reason}</p> : null}</li>
+          ))}</ul>
+        </section>
+      ) : null}
+
+      {connection.evidenceGaps?.length ? (
+        <section className="opportunity-brief__section opportunity-brief__gaps">
+          <h4>还需要验证</h4>
+          <ul>{connection.evidenceGaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
+        </section>
+      ) : null}
+
+      {basis.length + quotes.length > 0 ? (
+        <details className="opportunity-basis">
+          <summary>这个方向的依据 · {basis.length + quotes.length} 条</summary>
+          <p className="opportunity-basis__note">以下是实际引用的资料；上面的解释和方向仍待讨论验证。</p>
+          {basis.map((b, i) => <DirectionEvidence key={i} basis={b} onGo={onGo} />)}
+          {quotes.map((e, i) => (
+            <blockquote key={i}>{e.quote}<small>{e.kindLabel}{e.sourceName ? ` · ${e.sourceName}` : ""}{e.observedAt ? ` · ${dateLabel(e.observedAt)}` : ""}</small></blockquote>
+          ))}
+        </details>
+      ) : null}
+
+      {connection.agendaSuggestion?.reason ? <p className="opportunity-brief__agenda">{connection.agendaSuggestion.reason}</p> : null}
     </article>
   );
 }
@@ -62,7 +99,7 @@ function DirectionDetail({item,onGo,onSaved}){
   if(mode==='chat'||mode==='research'){setPrompt(mode==='research'?{id:crypto.randomUUID(),text:'请围绕这个方向的证据缺口，先提出需要查证的问题与资料范围，和我确定后再采集。缺口：'+(connection.evidenceGaps||[]).join('；')}:null);setChat(true);}
   else if(mode==='merge')setMerge(true);else setNotice('方向已保存，仍是待讨论的候选。');
  }catch(e){setError(e);}finally{setBusy(false);}};
- return <><OpportunityBrief connection={connection} onDiscuss={()=>act('chat')} onGo={onGo} busy={busy}/><ErrorNote error={error} what="打开方向"/>{notice&&<p role="status">{notice}</p>}<div className="direction-actions"><button className="btn" disabled={busy} onClick={()=>act('save')}>{record?'已保存方向':'保存方向'}</button><button className="btn" disabled={busy} onClick={()=>act('research')}>补充调研</button><button className="btn" disabled={busy} onClick={()=>act('merge')}>{record?.researchId?'打开选题':'带入选题'}</button></div>
+ return <><OpportunityBrief connection={connection} onDiscuss={()=>act('chat')} onGo={onGo} busy={busy}/><ErrorNote error={error} what="打开方向"/>{notice&&<p role="status">{notice}</p>}<div className="direction-actions"><button type="button" className="text-action" aria-pressed={Boolean(record)} disabled={busy} onClick={()=>act('save')}>{record?'已保存方向':'保存方向'}</button><button type="button" className="text-action" disabled={busy} onClick={()=>act('research')}>补充调研</button><button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={()=>act('merge')}>{record?.researchId?'打开选题':'带入选题'}</button></div>
  {chat&&record&&<section className="direction-chat"><header><h3>聊聊这个方向</h3><button className="btn btn-sm" onClick={()=>setChat(false)}>收起讨论</button></header><AssistantPane key={record.id} embedded scope="global" surface="page" scopeId={record.scopeId} promptRequest={prompt} initialConversationId={record.conversations?.[0]?.id||''} document={{title:connection.coreClaim,body:JSON.stringify(connection)}} materials={[]} target={{kind:'none',editable:false}} emptyMessage="从你的疑问开始，也可以请 AI 根据缺口补充调研。" draftStorageKey={record.scopeId}/></section>}
  {merge&&record&&<DirectionActions direction={record} onClose={()=>setMerge(false)} onGo={onGo}/>}</>;
 }
@@ -144,18 +181,31 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
         * 也不再是「返回」——它是横着跳到一个平级的去处，那归侧栏。
         * 读方向时动作条本来就是隐藏的，所以 `reading` 时不传 `aside`。
         */}
-      <PageHeader
+      {/* ⚠️ **胶囊走 `ui.jsx` 那一份，别再画第四种页签。** 这里原来是下划线式的一排，
+          而找题 / 选题 / 复盘 / 数据 / 热点 五个页面用的是同一颗胶囊——同一个问题
+         （「这一页现在看哪一档」）在这个工作台里只该有一种长相。
+          第一档改叫「新发现」：叫「发现方向」和页名同名，选中时读起来像面包屑不像筛选。 */}
+      <FilterHeader
         title="发现方向"
-        aside={reading ? null : (
+        chips={
+          <ViewTabs
+            label="方向视图"
+            value={view}
+            onChange={setView}
+            items={[
+              { key: "discover", label: "新发现", count: connections.length },
+              { key: "saved", label: "已保存", count: opportunities.length + directions.length },
+              { key: "research", label: "研究线索", count: research.length },
+            ]}
+          />
+        }
+        action={reading ? null : (
           <>
             <button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />收集声音</button>
             <button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button>
           </>
         )}
       />
-      <nav className="opportunity-views" aria-label="方向视图">
-        {[['discover', '发现方向', connections.length], ['saved', '已保存', opportunities.length+directions.length], ['research', '研究线索', research.length]].map(([id, label, count]) => <button key={id} type="button" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>{label}<span>{count}</span></button>)}
-      </nav>
       <ErrorNote error={error} what="读取方向" onRetry={load} />
       {loading && !data ? <Loading rows={3} /> : null}
       <div hidden={view !== "discover"} className="opportunity-discover-view">

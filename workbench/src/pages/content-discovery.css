@@ -1,11 +1,6 @@
 /* 内容机会：左侧挑方向，右侧读完整判断。选择不触发 AI，也不写业务数据。 */
 .opportunity-home { --opportunity-rule: var(--border); }
 .opportunity-eyebrow { color: var(--text-3); font-size: 12px; }
-.opportunity-views { display: flex; gap: 22px; border-bottom: 1px solid var(--border); margin: 0 -28px; padding: 0 28px; }
-.opportunity-views button { position: relative; display: flex; align-items: center; gap: 8px; height: 43px; padding: 0; border: 0; background: transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; }
-.opportunity-views button[aria-current] { color: var(--text-1); font-weight: 600; }
-.opportunity-views button[aria-current]::after { content: ''; position: absolute; bottom: -1px; height: 2px; left: 0; right: 0; background: var(--text-1); border-radius: 2px; }
-.opportunity-views button > span { padding: 1px 5px; border-radius: 4px; background: var(--sunken); color: var(--text-3); font-size: 10px; font-variant-numeric: tabular-nums; }
 .opportunity-scan { padding: 18px 0; }
 .opportunity-scan form { display: flex; gap: 10px; align-items: center; }
 .opportunity-scan form > svg { flex: none; width: 15px; color: var(--text-3); }
@@ -34,7 +29,7 @@
 .opportunity-option__read { grid-column: 2; display: none; align-items: center; gap: 6px; font-size: var(--fs-xs); }
 .opportunity-option__read svg { width: 14px; }
 .opportunity-brief { min-width: 0; background: var(--surface); padding: 20px clamp(24px, 3vw, 48px) 48px; }
-.opportunity-brief__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; color: var(--text-3); font-size: 11px; }
+.opportunity-brief__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 20px; }
 .opportunity-brief__head h3 { margin: 0 0 16px; max-width: 760px; font-weight: 600; font-size: 22px; letter-spacing: -.025em; line-height: 1.5; }
 .opportunity-brief__reason { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.8; }
 .opportunity-fit { display: inline-block; padding: 0 7px; border-radius: 4px; margin-right: 8px; background: var(--sunken); color: var(--text-2); font-size: 11px; }
@@ -42,13 +37,24 @@
 .opportunity-brief__section { margin-top: 26px; padding-top: 0; }
 .opportunity-brief__section h4 { margin: 0 0 10px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
 .opportunity-brief__section > p { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.85; }
-.opportunity-evidence { display: block; margin-top: 10px; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
+/* 读者问题：靠字号和引号说明「这是一句别人问的话」，不靠上面挂一个灰标签。 */
+.opportunity-brief__q {
+  margin: 26px 0 0; color: var(--text-1); font-size: var(--fs-md); line-height: 1.7;
+}
+.opportunity-brief__q::before { content: "「"; }
+.opportunity-brief__q::after { content: "」"; }
+.opportunity-brief__body { margin: 22px 0 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.85; }
+/* 认知差是这条方向的落点，加重就够——「一句加粗的结论不用标注这是结论」。 */
+.opportunity-brief__claim { margin: 14px 0 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.8; }
+.opportunity-evidence { display: block; margin-top: 8px; color: var(--brand-strong); font-size: var(--fs-xs); line-height: 1.6; }
 .opportunity-evidence[data-origin="hypothesis"] { color: var(--text-2); }
-.opportunity-quotes { margin-top: 12px; font-size: var(--fs-xs); }
-.opportunity-quotes summary { cursor: pointer; color: var(--text-2); }
-.discovery-quotes { display: grid; gap: 16px; margin: 16px 0 0; padding: 0 0 0 14px; list-style: none; border-left: 2px solid var(--border); }
-.discovery-quotes q { font-size: var(--fs-sm); line-height: 1.8; }
-.discovery-quotes small { display: block; margin-top: 6px; color: var(--text-3); }
+/* 依据是折叠的：它回答「这条方向凭什么」，是读完之后才要查的东西。 */
+.opportunity-basis { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.opportunity-basis > summary { cursor: pointer; color: var(--text-2); line-height: 1.7; }
+.opportunity-basis__note { margin: 12px 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; }
+.opportunity-basis > div { margin: 14px 0; }
+.opportunity-basis blockquote { margin: 10px 0; padding-left: 12px; border-left: 2px solid var(--border-strong); font-size: var(--fs-sm); line-height: 1.8; }
+.opportunity-basis blockquote small { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-2xs); }
 .opportunity-sources { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
 .opportunity-sources button { display: inline-flex; align-items: center; gap: 8px; padding: 0; background: transparent; border: 0; font: inherit; font-size: var(--fs-sm); cursor: pointer; text-decoration: underline; text-underline-offset: 4px; color: var(--text-1); }
 .opportunity-sources svg { width: 14px; height: 14px; }
@@ -102,11 +108,9 @@
   .opportunity-workspace:not([data-mobile-detail="true"]) .opportunity-brief { display: none; }
   .opportunity-workspace[data-mobile-detail="true"] .opportunity-index { display: none; }
   .opportunity-option__read { display: flex; }
-  .opportunity-brief__toolbar > span { display: none; }
   .opportunity-mobile-back { display: block; border: 0; background: transparent; padding: 0; margin-bottom: 0; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
 }
 @media (max-width: 640px) {
-  .opportunity-views { margin-inline: -16px; padding-inline: 16px; gap: 24px; }
   .opportunity-workspace { margin-inline: -16px; }
   .opportunity-index { border-right: 0; }
   .opportunity-scan form { gap: 8px; }
@@ -158,7 +162,9 @@
 .opportunity-brief__head h3 { scroll-margin-top: 80px; }
 .opportunity-brief__head h3:focus { outline: none; }
 
-.direction-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding:18px 28px;border-top:1px solid var(--border)}
+.direction-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:18px;padding:14px 28px;border-top:1px solid var(--border)}
+.direction-actions .text-action{font-size:var(--fs-sm)}
+.direction-actions .btn-primary{margin-left:6px}
 .direction-actions p{margin-right:auto;font-size:13px;color:var(--text-2)}
 .direction-chat{border-top:1px solid var(--border);height:650px;display:flex;flex-direction:column;margin:0 24px 24px}
 .direction-chat>header{display:flex;align-items:center;justify-content:space-between;padding:16px 0}.direction-chat>header h3{font-size:16px}
@@ -168,15 +174,18 @@
 @media(max-width:600px){.direction-actions{padding:14px}.direction-chat{margin:0 12px 20px;height:600px}.direction-actions p{width:100%}}
 
 /* Direction overview and focused reader share the same saved objects. */
-.direction-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:24px 0 32px}
-.direction-overview-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;min-height:270px;padding:24px;text-align:left;color:var(--text-1);font:inherit;border:1px solid var(--border);border-radius:12px;background:var(--surface);cursor:pointer}
-.direction-overview-card:hover{border-color:var(--text-3);background:var(--surface-2)}
+/* ⚠️ `auto-fill` 而不是写死两列：容器塞得下几列就开几列，右边空着是正常的。
+   上一版是 580×270 的大卡装三行字，一屏看得到两条半。 */
+.direction-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:4px 0 32px}
+.direction-overview-card{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;padding:13px 15px 11px;text-align:left;color:var(--text-1);font:inherit;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);cursor:pointer;transition:border-color .14s var(--ease)}
+.direction-overview-card:hover{border-color:var(--border-strong)}
 .direction-overview-card:focus-visible,.direction-reader-list button:focus-visible{outline:2px solid var(--text-1);outline-offset:3px}
-.direction-overview-card strong{font-size:19px;line-height:1.55;font-weight:600}
-.direction-overview-card p{margin:0;color:var(--text-2);font-size:14px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.direction-card-status{font-size:11px;color:var(--text-2);background:var(--sunken);padding:3px 7px;border-radius:4px}
-.direction-card-reason{font-size:13px;line-height:1.7;color:var(--text-2);margin-top:auto}.direction-card-reason>span{display:block;font-size:11px;margin-bottom:5px;color:var(--text-3)}
-.direction-card-open{font-size:12px;color:var(--text-2)}
+.direction-overview-card strong{font-size:var(--fs-base);line-height:1.5;font-weight:600;min-height:calc(2 * 1.5 * var(--fs-base))}
+.direction-overview-card p{margin:0;color:var(--text-2);font-size:var(--fs-sm);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 状态 pill **不画底色**：一列同色底块竖着排下来会成为整屏最亮的东西，
+   而这一页的主角是旁边那些判断。 */
+.direction-card-status{font-size:var(--fs-2xs);color:var(--text-3)}
+.direction-card-reason{margin-top:auto;padding-top:8px;color:var(--text-3);font-size:var(--fs-xs);line-height:1.6}
 .direction-reader-toolbar{display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}.direction-reader-toolbar>span{font-size:12px;color:var(--text-2)}.direction-reader-paging{display:flex;gap:8px;margin-left:auto}
 .direction-reader-layout{display:grid;grid-template-columns:260px minmax(0,1fr);height:calc(100dvh - 165px);min-height:420px;border-bottom:1px solid var(--border)}
 .direction-reader-layout[hidden],.direction-reader[hidden]{display:none}
@@ -184,10 +193,10 @@
 .direction-reader-list button{display:block;width:100%;padding:14px;text-align:left;font:inherit;color:var(--text-1);border:0;border-radius:8px;background:transparent;cursor:pointer;margin-bottom:5px}
 .direction-reader-list button[aria-current]{background:var(--sunken)}.direction-reader-list strong{font-size:13px;line-height:1.6;font-weight:500}.direction-reader-list p{font-size:12px;color:var(--text-2);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.direction-reader-list small{font-size:11px;color:var(--text-3)}
 .direction-reader-panes{min-height:0;min-width:0}.direction-reader{height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.direction-reader:focus{outline:none}.direction-reader .opportunity-brief{padding:28px clamp(20px,3vw,42px) 32px}.direction-reader .direction-actions{padding:18px 24px}.direction-reader .bridge-back{display:none}
-.direction-reading-mode>.opportunity-views,.direction-reading-mode>.opportunity-discover-view,.direction-reading-mode>.opportunity-saved{display:none}
-@media(min-width:1650px){.direction-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:850px){.direction-card-grid{grid-template-columns:minmax(0,1fr)}.direction-reader-layout{display:block;height:calc(100dvh - 280px);min-height:380px}.direction-reader-list{display:none}.direction-reader-panes{height:100%}.direction-reader-toolbar{gap:8px}.direction-reader-toolbar .btn{font-size:12px;padding-inline:9px}.direction-reader-toolbar>span{display:none}.direction-overview-card{min-height:230px;padding:20px}.direction-overview-card strong{font-size:18px}.direction-reader .opportunity-brief{padding:20px 10px 28px}.direction-reader .direction-actions{padding:16px 10px}.direction-reader .direction-chat{margin-inline:0}}
+.direction-reading-mode>.view-switch,.direction-reading-mode>.opportunity-discover-view,.direction-reading-mode>.opportunity-saved{display:none}
+@media(max-width:850px){.direction-reader-layout{display:block;height:calc(100dvh - 280px);min-height:380px}.direction-reader-list{display:none}.direction-reader-panes{height:100%}.direction-reader-toolbar{gap:8px}.direction-reader-toolbar .btn{font-size:12px;padding-inline:9px}.direction-reader-toolbar>span{display:none}.direction-reader .opportunity-brief{padding:20px 10px 28px}.direction-reader .direction-actions{padding:16px 10px}.direction-reader .direction-chat{margin-inline:0}}
 
 .direction-reader-toolbar{position:sticky;top:0;z-index:4;background:var(--surface)}
-.direction-overview-card strong,.direction-card-reason{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.direction-overview-card strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.direction-card-reason{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @media(max-width:850px){.direction-reader-layout{height:calc(100dvh - 380px);min-height:280px}}

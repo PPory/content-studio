@@ -29,7 +29,8 @@
 .content-bridge-workspace .bridge-result-head > div { display: flex; align-items: baseline; gap: 14px; }
 .content-bridge-workspace .bridge-result-head p { font-size: var(--fs-sm); line-height: 1.7; }
 .content-bridge-workspace .bridge-fit { padding: 0; border-radius: 0; background: transparent; white-space: nowrap; }
-.opportunity-analysis-layout { display: grid; grid-template-columns: minmax(0,1fr) 240px; gap: 40px; align-items: start; max-width: 1100px; margin: 0 auto; }
+/* ⚠️ 右栏目录撤了（见 `ContentBridge.jsx`），这里不再是两列。 */
+.opportunity-analysis-layout { display: block; max-width: 1100px; margin: 0 auto; }
 .opportunity-analysis-body { min-width: 0; background: var(--surface); padding: 0 0 28px; border: 0; border-radius: 0; }
 .content-bridge-workspace .bridge-result-section { padding: 24px 0; scroll-margin-top: 140px; }
 .content-bridge-workspace .bridge-result-section blockquote { font-size: 22px; line-height: 1.6; letter-spacing: -.025em; }
@@ -37,18 +38,10 @@
 .content-bridge-workspace .bridge-result-agenda { background: transparent; padding: 24px 0; }
 .content-bridge-workspace .bridge-checks { grid-template-columns: minmax(0,1fr); gap: 24px; padding: 24px 0; }
 .content-bridge-workspace .bridge-checks h3 { font-size: var(--fs-sm); }
-.opportunity-analysis-aside { position: sticky; top: 80px; display: grid; gap: 24px; padding: 24px 0 24px 24px; border-left: 1px solid var(--border); }
-.opportunity-analysis-aside nav { display: grid; gap: 14px; margin-top: 20px; }
-.opportunity-analysis-aside a { color: var(--text-2); font-size: var(--fs-sm); text-decoration: none; }
-.opportunity-analysis-aside a:hover { color: var(--text-1); text-decoration: underline; }
-.opportunity-analysis-aside h3 { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); margin: 0 0 12px; }
-.opportunity-analysis-aside p { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.8; }
 @media (max-width: 1000px) {
-  .content-bridge-workspace .bridge-picker, .opportunity-analysis-layout { grid-template-columns: minmax(0,1fr); }
+  .content-bridge-workspace .bridge-picker { grid-template-columns: minmax(0,1fr); }
   .opportunity-picker-summary { padding: 0; }
   .opportunity-picker-summary h3, .opportunity-picker-summary__connector, .opportunity-picker-summary > p { display: none; }
-  .opportunity-analysis-aside { position: static; grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .opportunity-analysis-aside > div:first-child { display: none; }
 }
 @media (max-width: 640px) {
   .content-bridge-workspace .bridge-bar { margin-inline: -16px; padding-inline: 16px; }
