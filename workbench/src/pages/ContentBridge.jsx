@@ -14,6 +14,8 @@ const WIKI_FILTERS = [
   { key: "synthesis", label: "综合" },
 ];
 
+const WIKI_PAGE_SIZE = 6;
+
 const ACTIONS = [
   { key: "knowledge", label: "知识型" },
   { key: "judgment", label: "判断型" },
@@ -158,6 +160,7 @@ export function ContentBridge({ state = "", onGo }) {
   const [agendaId, setAgendaId] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
   const [wikiFilter, setWikiFilter] = useState("recent");
+  const [wikiPage, setWikiPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -311,8 +314,13 @@ export function ContentBridge({ state = "", onGo }) {
     const term = wikiQuery.trim().toLowerCase();
     return (wikiData?.pages || [])
       .filter((page) => wikiFilter === "recent" || page.pageType === wikiFilter)
-      .filter((page) => !term || `${page.title} ${page.summary}`.toLowerCase().includes(term));
+      .filter((page) => !term || `${page.title} ${page.summary || ""}`.toLowerCase().includes(term))
+      .sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
   }, [wikiData, wikiFilter, wikiQuery]);
+
+  const wikiPageCount = Math.max(1, Math.ceil(wikiPages.length / WIKI_PAGE_SIZE));
+  const currentWikiPage = Math.min(wikiPage, wikiPageCount - 1);
+  const visibleWikiPages = wikiPages.slice(currentWikiPage * WIKI_PAGE_SIZE, (currentWikiPage + 1) * WIKI_PAGE_SIZE);
 
   const selectedWiki = (wikiData?.pages || []).find((item) => item.id === wikiId) || null;
   const selectedProblem = problems.find((item) => item.id === problemId) || null;
@@ -757,23 +765,24 @@ export function ContentBridge({ state = "", onGo }) {
           <div className="opportunity-picker-panel" hidden={pickerStep !== "knowledge"}>
         <section className="bridge-side" aria-labelledby="bridge-wiki-title">
           <div className="bridge-panel-head">
-            <h3 id="bridge-wiki-title">我搞懂了什么</h3>
+            <h3 id="bridge-wiki-title">从哪条知识开始？</h3>
             <small>{wikiPages.length} / {wikiData?.pages?.length || 0} 条长期知识</small>
           </div>
-          <SearchBox value={wikiQuery} onChange={setWikiQuery} placeholder="搜索我的知识" ariaLabel="搜索长期知识" />
+          <p className="bridge-knowledge-hint">搜索一个概念或想法，也可以从最近更新的知识中挑选。</p>
+          <SearchBox value={wikiQuery} onChange={(value) => { setWikiQuery(value); setWikiPage(0); }} placeholder="搜索全部知识的标题、摘要…" ariaLabel="搜索长期知识" />
           <div className="bridge-filter" role="tablist" aria-label="筛选知识类型">
             {WIKI_FILTERS.map((item) => (
-              <button key={item.key} type="button" role="tab" aria-selected={wikiFilter === item.key} onClick={() => setWikiFilter(item.key)}>{item.label}</button>
+              <button key={item.key} type="button" role="tab" aria-selected={wikiFilter === item.key} onClick={() => { setWikiFilter(item.key); setWikiPage(0); }}>{item.label}</button>
             ))}
           </div>
-          <div className="bridge-side-list">
+          <div className="bridge-side-list bridge-knowledge-grid">
             {!wikiData?.pages?.length ? (
               <EmptySide action={<button type="button" className="btn" onClick={() => onGo?.("entries")}>去知识库</button>}>
                 先把真正值得长期保留的知识整理进知识库。
               </EmptySide>
             ) : !wikiPages.length ? (
-              <EmptySide>当前筛选下没有匹配的知识页面。</EmptySide>
-            ) : wikiPages.map((page) => (
+              <EmptySide action={<button type="button" className="btn btn-sm" onClick={() => { setWikiQuery(""); setWikiFilter("recent"); setWikiPage(0); }}>清除搜索和筛选</button>}>没有找到匹配的知识，试试更短的关键词或其他类型。</EmptySide>
+            ) : visibleWikiPages.map((page) => (
               <SelectionRow key={page.id} selected={wikiId === page.id} onClick={() => selectWiki(page.id)} ariaLabel={`选择知识：${page.title}`}>
                 <strong>{page.title}</strong>
                 <p>{page.summary || "这页还没有一句摘要。"}</p>
@@ -781,17 +790,23 @@ export function ContentBridge({ state = "", onGo }) {
               </SelectionRow>
             ))}
           </div>
+          {wikiPages.length > 0 ? <nav className="bridge-knowledge-pagination" aria-label="知识分页">
+            <span aria-live="polite">{currentWikiPage * WIKI_PAGE_SIZE + 1}–{Math.min((currentWikiPage + 1) * WIKI_PAGE_SIZE, wikiPages.length)} / {wikiPages.length} 条</span>
+            <div><button type="button" className="btn btn-sm" disabled={currentWikiPage === 0} onClick={() => setWikiPage(currentWikiPage - 1)}>上一页</button>
+            <span>{currentWikiPage + 1} / {wikiPageCount}</span>
+            <button type="button" className="btn btn-sm" disabled={currentWikiPage + 1 >= wikiPageCount} onClick={() => setWikiPage(currentWikiPage + 1)}>下一页</button></div>
+          </nav> : null}
         </section>
           </div>
           <div className="opportunity-picker-panel" hidden={pickerStep !== "problem"}>{problemsPanel(true)}</div>
-          <aside className="opportunity-picker-summary" aria-label="当前选择">
+          {selectedWiki && pickerStep === "problem" ? <aside className="opportunity-picker-summary" aria-label="当前选择">
             <span className="opportunity-eyebrow">正在寻找的连接</span>
             <h3>{selectedWiki?.title || "你的一个理解"}</h3>
             <span className="opportunity-picker-summary__connector" aria-hidden="true">↓</span>
             <p>{activeProblem?.statement || "读者的一个困惑"}</p>
             <small>{wikiId && hasProblem ? "选择已齐。点击上方「看看怎么连接」，得到一份待你判断的分析。" : "不需要先写标题。把你知道的，与读者需要的放在一起看。"}</small>
             {selectedWiki ? <button type="button" className="linkish" onClick={() => onGo?.("entries", selectedWiki.id)}>阅读这条知识的完整内容</button> : null}
-          </aside>
+          </aside> : null}
         </div>
       )}
 

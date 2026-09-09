@@ -61,3 +61,27 @@
   .content-bridge-workspace .bridge-result-head { flex-wrap: wrap; }
   .content-bridge-workspace .bridge-result-head > div { flex-direction: column; gap: 8px; }
 }
+
+/* 知识积累增加时，选择区保持有界；搜索覆盖全部结果。 */
+.content-bridge-workspace .bridge-picker { grid-template-columns: minmax(0, 1fr); max-width: 1000px; }
+.bridge-knowledge-hint { color: var(--text-3); font-size: var(--fs-sm); margin: 0 0 18px; }
+.opportunity-picker-panel .search-box { max-width: none; width: 100%; }
+.content-bridge-workspace .bridge-knowledge-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-height: none; overflow: visible; border: 0; }
+.bridge-knowledge-grid .bridge-side-empty { grid-column: 1 / -1; }
+.content-bridge-workspace .bridge-knowledge-grid .bridge-select-row { border: 1px solid var(--border); border-radius: 10px; padding: 18px; min-height: 138px; gap: 8px; }
+.bridge-knowledge-grid .bridge-select-row strong, .bridge-knowledge-grid .bridge-select-row p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 0; }
+.bridge-knowledge-grid .bridge-select-row small { margin-top: auto; }
+.bridge-knowledge-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 16px; color: var(--text-3); font-size: var(--fs-xs); }
+.bridge-knowledge-pagination > div { display: flex; align-items: center; gap: 12px; }
+.bridge-knowledge-grid button:focus-visible, .bridge-knowledge-pagination button:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.content-bridge-workspace .opportunity-picker-summary { background: transparent; border-top: 1px solid var(--border); padding: 16px 0; }
+@media (max-width: 640px) {
+  .content-bridge-workspace .bridge-knowledge-grid { grid-template-columns: minmax(0, 1fr); }
+  .content-bridge-workspace .bridge-knowledge-grid .bridge-select-row { min-height: 112px; padding: 14px; }
+  .content-bridge-workspace .opportunity-picker-panel { padding: 0; }
+  .opportunity-picker-steps button { min-width: 0; padding-inline: 0; }
+  .opportunity-picker-steps button > div { min-width: 0; }
+  .opportunity-picker-steps small { max-width: 130px; }
+}
+
+.bridge-knowledge-grid .bridge-select-row p { white-space: normal; }

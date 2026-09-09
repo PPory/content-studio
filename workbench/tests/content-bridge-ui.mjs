@@ -279,7 +279,34 @@ try {
     await page.getByRole("button", { name: "手动探索" }).count() === 1);
 
   if (process.argv.includes("--shots")) { await fs.mkdir(shotDir, { recursive: true }); await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: path.join(shotDir, "content-opportunity-empty.png"), fullPage: true }); }
+  // 大知识库只替换浏览器读响应，不写入业务数据。
+  await page.route("**/api/workspace/wiki", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.pages = Array.from({ length: 95 }, (_, i) => ({ id: `picker-${i}`, title: `探索知识 ${i + 1}`, summary: `知识摘要 ${i + 1}`, pageType: i % 2 ? "method" : "concept", updatedAt: new Date(2026, 0, 95 - i).toISOString(), sourceCount: 2 }));
+    await route.fulfill({ response, json: data });
+  });
   await page.getByRole("button", { name: "手动探索" }).click();
+  await page.getByRole("button", { name: "选择知识：探索知识 1", exact: true }).waitFor();
+  check("95 条知识默认只呈现 6 张卡片", await page.locator(".bridge-knowledge-grid .bridge-select-row").count() === 6);
+  await page.getByRole("button", { name: "下一页", exact: true }).click();
+  check("翻页展示下一组知识", await page.getByRole("button", { name: "选择知识：探索知识 7", exact: true }).count() === 1);
+  await page.getByRole("textbox", { name: "搜索长期知识" }).fill("探索知识 95");
+  check("搜索覆盖全部知识并回到第一页", await page.getByRole("button", { name: "选择知识：探索知识 95", exact: true }).count() === 1 && await page.getByRole("button", { name: "上一页", exact: true }).isDisabled());
+  await page.getByRole("tab", { name: "方法", exact: true }).click();
+  await page.getByRole("button", { name: "清除搜索和筛选" }).click();
+  check("无结果可一键恢复", await page.locator(".bridge-knowledge-grid .bridge-select-row").count() === 6);
+  if (process.argv.includes("--shots")) {
+    await fs.mkdir(shotDir, { recursive: true });
+    await page.screenshot({ path: path.join(shotDir, "manual-knowledge-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: path.join(shotDir, "manual-knowledge-mobile.png"), fullPage: true });
+    check("手机选择区没有横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  }
+  await page.unroute("**/api/workspace/wiki");
+  await page.reload();
+
   await page.locator(".bridge-picker").waitFor();
   check("手动探索走 #/bridge/manual，老深链不受影响", page.url().endsWith("#/bridge/manual"));
   if (process.argv.includes("--shots")) { await fs.mkdir(shotDir, { recursive: true }); await page.screenshot({ path: path.join(shotDir, "content-opportunity-manual.png"), fullPage: true }); }
