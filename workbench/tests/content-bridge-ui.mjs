@@ -354,14 +354,13 @@ try {
   // 退回内容首页：已保存的机会现在长在 AI 发现下面的「进行中」里
   await page.getByRole("button", { name: "← 发现方向" }).click();
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
-  await page.locator(".opportunity-saved-list").waitFor();
+  await page.locator(".direction-card-grid").waitFor();
   check("已保存视图不会同时显示发现区", !await page.locator(".opportunity-scan").isVisible());
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-opportunity-saved.png"), fullPage: true });
-  check("保存后回到内容首页，可从已保存视图重开机会", (await page.locator(".opportunity-saved-list").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
-    && (await page.locator(".opportunity-saved-list").innerText()).includes("认知卸载")
+  check("保存后回到内容首页，可从已保存视图重开机会", (await page.locator(".direction-card-grid").innerText()).includes("AI 正从信息工具进入人的判断链，关键不是少用，而是保留判断权。")
     && (await page.locator(".discovery-saved").innerText()).includes("已保存的方向"));
   // 从首页点回这一条：这是真实回来的路径，同时验证已保存机会能被还原
-  await page.locator(".opportunity-saved-list button").first().click();
+  await page.locator(".direction-overview-card").first().click();
   await page.getByRole("heading", { name: "核心判断" }).waitFor();
   check("从概览点进去能还原已保存的机会", await page.getByRole("button", { name: "建立内容项目" }).count() === 1
     && (await page.locator(".opportunity-analysis-aside").innerText()).includes("认知卸载"));
@@ -840,7 +839,7 @@ try {
   check("进页面不自动烧模型", scanCalls === 0);
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
   await page.getByRole("button", { name: /发现新方向/ }).click();
-  await page.locator(".opportunity-option").first().waitFor();
+  await page.locator(".direction-overview-card").first().waitFor();
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator(".content-discovery").evaluate((el) => el.closest(".main").scrollTo(0, 0));
@@ -848,20 +847,21 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   check("手机保留收集声音入口", await page.getByRole("button", { name: "收集声音" }).isVisible());
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-opportunity-mobile-list.png"), fullPage: true });
-  await page.locator(".opportunity-option").first().click();
-  check("手机详情第一屏可以返回方向列表", await page.getByRole("button", { name: "返回方向列表" }).evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
+  await page.locator(".direction-overview-card").first().click();
+  check("手机详情第一屏可以返回方向列表", await page.getByRole("button", { name: "← 返回卡片总览" }).evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
   check("小屏展开候选不会生成越界网格列", await page.locator(".opportunity-brief").evaluate((el) => el.getBoundingClientRect().right <= innerWidth));
   check("展开后核心判断和问题可以完整阅读", await page.locator(".discovery-card__q").first().evaluate((el) => getComputedStyle(el).whiteSpace === "normal"));
   if (process.argv.includes("--shots")) await page.screenshot({ path: path.join(shotDir, "content-discovery-mobile.png"), fullPage: true });
-  await page.getByRole("button", { name: "返回方向列表" }).click();
+  await page.getByRole("button", { name: "← 返回卡片总览" }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.locator(".opportunity-brief").waitFor();
+  await page.locator(".direction-overview-card").first().click();
 
   const callsBeforeSelect = scanCalls;
-  await page.locator(".opportunity-option").nth(1).click();
-  check("切换方向同步简报且不会调用模型", (await page.locator(".opportunity-brief").innerText()).includes("先保留判断过程") && scanCalls === callsBeforeSelect);
-  check("假设详情不伪装成真实原话", (await page.locator(".opportunity-evidence").innerText()).includes("尚待真实反馈") && await page.locator(".opportunity-quotes").count() === 0);
-  await page.locator(".opportunity-option").first().click();
+  await page.getByRole("navigation",{name:"切换方向"}).getByRole("button").nth(1).click();
+  check("切换方向同步简报且不会调用模型", (await page.locator('[data-reader-active="true"] .opportunity-brief').innerText()).includes("先保留判断过程") && scanCalls === callsBeforeSelect);
+  check("假设详情不伪装成真实原话", (await page.locator('[data-reader-active="true"] .opportunity-evidence').innerText()).includes("尚待真实反馈") && await page.locator('[data-reader-active="true"] .opportunity-quotes').count() === 0);
+  await page.getByRole("navigation",{name:"切换方向"}).getByRole("button").first().click();
+  await page.getByRole("button",{name:"← 返回卡片总览",exact:true}).click();
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).click();
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /已保存/ }).focus();
   await page.keyboard.press("Tab");
@@ -872,9 +872,10 @@ try {
   await page.getByLabel("搜索已保存的机会").fill("绝不会匹配的内容");
   check("保存机会搜索无结果时给出明确反馈", await page.getByText("没有找到匹配的机会，试试其他关键词。").count() === 1);
   await page.getByLabel("搜索已保存的机会").fill("");
-  check("清空搜索恢复已保存机会", await page.locator(".opportunity-saved-list li").count() === 1);
+  check("清空搜索恢复已保存机会", await page.locator(".direction-overview-card").count() === 1);
   await page.getByRole("navigation", { name: "方向视图" }).getByRole("button", { name: /发现方向/ }).click();
-  const cardText = await page.locator(".opportunity-brief").innerText();
+  await page.locator(".direction-overview-card").first().click();
+  const cardText = await page.locator('[data-reader-active="true"] .opportunity-brief').innerText();
   check("卡片说清谁在困惑什么、用我的什么知识、可能留下什么判断",
     cardText.includes("AI 工具每周都在出新的") && cardText.includes("认知卸载")
     && cardText.includes("学 AI 不该从工具清单开始"));
@@ -887,10 +888,11 @@ try {
   check("扫描一条业务数据都没写",
     workspace.db.prepare("SELECT COUNT(*) AS count FROM audience_problems").get().count === problemsBeforeDiscovery
     && workspace.db.prepare("SELECT COUNT(*) AS count FROM content_opportunities").get().count === 1);
+  await page.getByRole("button",{name:"← 返回卡片总览",exact:true}).click();
   scanShouldFail = true;
   await page.getByRole("button", { name: "重新扫描", exact: true }).click();
   await page.getByText("模拟扫描暂时不可用", { exact: false }).waitFor();
-  check("重新扫描失败仍保留已有方向与保存机会", await page.locator(".opportunity-option").count() === 2 && await page.locator(".opportunity-saved-list li").count() === 1);
+  check("重新扫描失败仍保留已有方向与保存机会", await page.locator(".direction-overview-card").count() === 2);
   scanShouldFail = false;
 
 

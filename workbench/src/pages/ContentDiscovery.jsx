@@ -1,7 +1,8 @@
+import {DirectionBrowser} from '../components/DirectionBrowser.jsx';
 import {AssistantPane} from '../components/assistant/AssistantPane.jsx';
 import {DirectionEvidence} from '../components/DirectionEvidence.jsx';
 import {DirectionActions} from '../components/DirectionActions.jsx';
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote, Loading, SearchBox, relTime } from "../components/ui.jsx";
 import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
@@ -15,20 +16,13 @@ function dateLabel(value) {
   return value && !Number.isNaN(date.getTime()) ? new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date) : "";
 }
 
-function OpportunityBrief({ connection, onDiscuss, onGo, busy, onBack, mobileDetail }) {
-  const headingRef = useRef(null);
-  useEffect(() => {
-    if (mobileDetail && window.matchMedia("(max-width: 1000px)").matches) {
-      headingRef.current?.closest("article")?.scrollIntoView({ block: "start", behavior: "instant" });
-      headingRef.current?.focus({ preventScroll: true });
-    }
-  }, [mobileDetail]);
+function OpportunityBrief({ connection, onDiscuss, onGo, busy }) {
   const anchors = connection.knowledgeAnchors || [];
   return (
     <article className="opportunity-brief" aria-label="方向详情">
       <header className="opportunity-brief__head">
-        <div className="opportunity-brief__toolbar"><span>方向详情</span><button className="opportunity-mobile-back" type="button" onClick={onBack}>← 返回方向列表</button><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDiscuss(connection)}>聊聊这个方向<IconArrowRight aria-hidden="true" /></button></div>
-        <h3 ref={headingRef} tabIndex={-1}>{connection.coreClaim}</h3>
+        <div className="opportunity-brief__toolbar"><span>方向详情</span><button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDiscuss(connection)}>聊聊这个方向<IconArrowRight aria-hidden="true" /></button></div>
+        <h3 tabIndex={-1}>{connection.coreClaim}</h3>
         <p className="opportunity-brief__reason"><span className="opportunity-fit" data-fit={connection.fit}>{FIT_LABELS[connection.fit] || connection.fit}</span>{connection.fitReason}</p>
       </header>
 
@@ -60,26 +54,31 @@ function OpportunityBrief({ connection, onDiscuss, onGo, busy, onBack, mobileDet
   );
 }
 
-export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) {
+function DirectionDetail({item,onGo,onSaved}){
+ const connection=item.connection;
+ const [record,setRecord]=useState(item.saved||null),[chat,setChat]=useState(false),[prompt,setPrompt]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(null),[notice,setNotice]=useState(''),[merge,setMerge]=useState(false);
+ const act=async mode=>{if(busy)return;setBusy(true);setError(null);try{
+  const result=await api.keepIntelligenceDirection(connection.directionId||record?.id);setRecord(result.direction);onSaved(result.direction);
+  if(mode==='chat'||mode==='research'){setPrompt(mode==='research'?{id:crypto.randomUUID(),text:'请围绕这个方向的证据缺口，先提出需要查证的问题与资料范围，和我确定后再采集。缺口：'+(connection.evidenceGaps||[]).join('；')}:null);setChat(true);}
+  else if(mode==='merge')setMerge(true);else setNotice('方向已保存，仍是待讨论的候选。');
+ }catch(e){setError(e);}finally{setBusy(false);}};
+ return <><OpportunityBrief connection={connection} onDiscuss={()=>act('chat')} onGo={onGo} busy={busy}/><ErrorNote error={error} what="打开方向"/>{notice&&<p role="status">{notice}</p>}<div className="direction-actions"><button className="btn" disabled={busy} onClick={()=>act('save')}>{record?'已保存方向':'保存方向'}</button><button className="btn" disabled={busy} onClick={()=>act('research')}>补充调研</button><button className="btn" disabled={busy} onClick={()=>act('merge')}>{record?.researchId?'打开选题':'带入选题'}</button></div>
+ {chat&&record&&<section className="direction-chat"><header><h3>聊聊这个方向</h3><button className="btn btn-sm" onClick={()=>setChat(false)}>收起讨论</button></header><AssistantPane key={record.id} embedded scope="global" surface="page" scopeId={record.scopeId} promptRequest={prompt} initialConversationId={record.conversations?.[0]?.id||''} document={{title:connection.coreClaim,body:JSON.stringify(connection)}} materials={[]} target={{kind:'none',editable:false}} emptyMessage="从你的疑问开始，也可以请 AI 根据缺口补充调研。" draftStorageKey={record.scopeId}/></section>}
+ {merge&&record&&<DirectionActions direction={record} onClose={()=>setMerge(false)} onGo={onGo}/>}</>;
+}
+
+export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", renderLegacy }) {
   const [data, setData] = useState(null);
   const [opportunities, setOpportunities] = useState([]);
   const [error, setError] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [developing, setDeveloping] = useState(false);
-  const [directions,setDirections]=useState([]);
-  const [openedDirection,setOpenedDirection]=useState(null);
-  const [chat,setChat]=useState(false);
-  const [prompt,setPrompt]=useState(null);
-  const [notice,setNotice]=useState('');
-  const [mergeDirection,setMergeDirection]=useState(null);
-  useEffect(()=>{if(!initialDirection){setOpenedDirection(null);return;}api.intelligenceDirection(initialDirection).then(r=>setOpenedDirection(r.direction)).catch(setError);},[initialDirection]);
+  const [directions,setDirections]=useState([]),[reading,setReading]=useState(false);
+  useEffect(()=>{if(initialDirection)api.intelligenceDirection(initialDirection).then(r=>{setDirections(old=>[r.direction,...old.filter(d=>d.id!==r.direction.id)]);setView('saved');}).catch(setError);},[initialDirection]);
   const [focus, setFocus] = useState(() => takeDiscoveryFocus());
   const [research, setResearch] = useState([]);
   const [researchOpen, setResearchOpen] = useState(false);
-  const [openConnection, setOpenConnection] = useState(0);
-  const [mobileDetail, setMobileDetail] = useState(false);
   const [view, setView] = useState("discover");
   const [savedQuery, setSavedQuery] = useState("");
   const [savedError, setSavedError] = useState(null);
@@ -108,8 +107,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) 
     try {
       const result = await api.scanContentDiscovery({ force, focus: focusOverride || focus || undefined });
       setData((current) => ({ ...(current || {}), ...result }));
-      setOpenedDirection(null);setChat(false);setOpenConnection(0);
-      setMobileDetail(false);
+      setReading(false);
     } catch (failure) {
       setScanError(failure);
     } finally {
@@ -117,17 +115,6 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) 
     }
   }, [focus]);
 
-  const keep = async(connection)=>{
-    const id=connection.directionId||openedDirection?.id;
-    const result=await api.keepIntelligenceDirection(id);
-    setDirections(items=>[result.direction,...items.filter(d=>d.id!==result.direction.id)]);
-    return result.direction;
-  };
-  const act=async(connection,mode)=>{
-    if(developing)return;setDeveloping(true);setScanError(null);
-    try{const d=await keep(connection);setOpenedDirection(d);if(mode==='chat'||mode==='research'){setPrompt(mode==='research'?{id:crypto.randomUUID(),text:'请围绕这个方向的证据缺口，先提出需要查证的问题与可能的资料范围，和我确定后再采集。缺口：'+(connection.evidenceGaps||[]).join('；')}:null);setChat(true);}else if(mode==='merge')setMergeDirection(d);else setNotice('方向已保存，仍是待讨论的候选。');}
-    catch(e){setScanError(e);}finally{setDeveloping(false);}
-  };
   const scan_ = data?.scan || null;
   const connections = scan_?.connections || [];
   const read = scan_?.read || null;
@@ -143,12 +130,14 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) 
     return parts.join(" · ");
   }, [read]);
 
-  const activeConnection = openedDirection?{...openedDirection.connection,directionId:openedDirection.id}:connections[openConnection] || connections[0];
   const filteredDirections=directions.filter(d=>`${d.connection.coreClaim} ${d.connection.problem.statement}`.toLowerCase().includes(savedQuery.toLowerCase()));
   const savedItems = opportunities.filter((item) => `${item.coreClaim} ${item.wikiTitle} ${item.audienceProblemStatement}`.toLowerCase().includes(savedQuery.toLowerCase()));
 
+  const onSaved=d=>setDirections(old=>[d,...old.filter(v=>v.id!==d.id)]);
+  const savedEntry=d=>({key:d.id,group:'saved',saved:d,connection:{...d.connection,directionId:d.id},title:d.connection.coreClaim,summary:d.connection.problem.statement,reason:d.connection.fitReason,status:d.researchId?'已带入选题':'已保存'});
+  const browserItems=view==='saved'?[...filteredDirections.map(savedEntry),...savedItems.map(o=>({key:`legacy:${o.id}`,group:'saved',legacy:o,title:o.coreClaim||o.audienceProblemStatement,summary:o.audienceProblemStatement,reason:o.knowledgeExplanation|| (o.wikiTitle?`与已有知识「${o.wikiTitle}」连接`: '此前保存的方向简报'),status:o.hasProject?'已进入创作':'已保存'}))]:connections.map((c,i)=>{const saved=directions.find(d=>d.id===c.directionId);return {key:c.directionId||`candidate:${i}`,group:'discover',connection:c,saved,title:c.coreClaim,summary:c.problem.statement,reason:c.fitReason,status:saved?.researchId?'已带入选题':saved?'已保存':'待讨论'};});
   return (
-    <div className="view-body content-bridge content-discovery opportunity-home">
+    <div className={`view-body content-bridge content-discovery opportunity-home ${reading?"direction-reading-mode":""}`}>
       <header className="opportunity-header">
         <div className="opportunity-header__identity"><IconSparkles aria-hidden="true" /><h2>发现方向</h2></div>
         <div className="opportunity-header__actions"><button className="btn btn-sm" onClick={()=>onGo("intel")}>← 今日精选</button><button type="button" className="btn btn-sm" onClick={() => onCaptureVoice?.("")}><IconMessageQuestion aria-hidden="true" />收集声音</button><button type="button" className="btn btn-sm" onClick={() => onGo("bridge", "manual")}>手动探索<IconArrowRight aria-hidden="true" /></button></div>
@@ -157,7 +146,6 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) 
         {[['discover', '发现方向', connections.length], ['saved', '已保存', opportunities.length+directions.length], ['research', '研究线索', research.length]].map(([id, label, count]) => <button key={id} type="button" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>{label}<span>{count}</span></button>)}
       </nav>
       <ErrorNote error={error} what="读取方向" onRetry={load} />
-      {notice&&<p role="status">{notice}</p>}
       {loading && !data ? <Loading rows={3} /> : null}
       <div hidden={view !== "discover"} className="opportunity-discover-view">
       <div className="opportunity-scan">
@@ -173,31 +161,14 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="" }) 
       {scanError ? <div className="discovery-failed"><ErrorNote error={scanError} what="寻找新方向" onRetry={() => scan({ force: true })} /><p>已有机会没有被改动。你可以继续看上次的结果，或手动探索。</p></div> : null}
       {scanning ? <div className="opportunity-pending" role="status"><IconRefresh aria-hidden="true" /><div><strong>正在连接情报、积累和你关心的问题</strong><p>寻找有依据的方向；没有自然连接就不凑数。你可以继续浏览已有结果。</p></div></div> : null}
       {data && neverScanned && !scanning ? <section className="opportunity-welcome"><span className="opportunity-eyebrow">从好奇和积累里开始</span><h3>看看哪些问题值得再想一想。</h3><p>把情报、知识和记录放在一起看，先理解、先讨论，需要时再发展成选题。</p><ol><li><b>找方向</b><span>从情报与积累中发现连接</span></li><li><b>接着讨论</b><span>保存候选，想写时再带入选题</span></li></ol></section> : null}
-      {activeConnection ? (
-        <section className="opportunity-workspace" aria-label="值得发展的连接" data-mobile-detail={mobileDetail}>
-          <div className="opportunity-index">
-            <div className="opportunity-section-heading"><h3>发现的方向</h3><span>{connections.length} 条候选</span></div>
-            <div className="opportunity-options">{connections.map((connection, index) => (
-              <button type="button" className="opportunity-option" key={`${connection.problem.statement}:${index}`} aria-pressed={openedDirection?connection.directionId===openedDirection.id:activeConnection === connection} onClick={() => { setOpenedDirection(null);setChat(false);setOpenConnection(index); setMobileDetail(true); }}>
-                <span className="opportunity-option__number" aria-hidden="true">◇</span><strong>{connection.coreClaim}</strong><p>{connection.problem.statement}</p><small>{connection.problem.origin === "hypothesis" ? "受众假设 · 待验证" : "有真实用户声音"}{connection.knowledgeAnchors?.length?` · ${connection.knowledgeAnchors.length} 条知识`:""}{connection.basis?.length?` · ${connection.basis.length} 条依据`:""}</small><span className="opportunity-option__read">查看方向<IconArrowRight aria-hidden="true" /></span>
-              </button>
-            ))}</div>
-
-          </div>
-          <OpportunityBrief key={openConnection} connection={activeConnection} onDiscuss={c=>act(c,"chat")} onGo={onGo} busy={scanning || developing} mobileDetail={mobileDetail} onBack={() => { setMobileDetail(false); requestAnimationFrame(() => document.querySelector(".opportunity-option[aria-pressed=true]")?.focus()); }} />
-        </section>
-      ) : null}
-      {activeConnection&&<div className="direction-actions"><p>保存或开始讨论会留下这个候选，不创建文章。</p><button className="btn" disabled={developing} onClick={()=>act(activeConnection,'save')}>保存方向</button><button className="btn" disabled={developing} onClick={()=>act(activeConnection,'research')}>补充调研</button><button className="btn" disabled={developing} onClick={()=>act(activeConnection,'merge')}>带入选题</button></div>}
-      {chat&&openedDirection&&<section className="direction-chat"><header><h3>聊聊这个方向</h3><button className="btn btn-sm" onClick={()=>setChat(false)}>收起讨论</button></header><AssistantPane key={openedDirection.id} embedded scope="global" surface="page" scopeId={openedDirection.scopeId} promptRequest={prompt} initialConversationId={openedDirection.conversations?.[0]?.id||''} document={{title:openedDirection.connection.coreClaim,body:JSON.stringify(openedDirection.connection)}} materials={[]} target={{kind:'none',editable:false}} emptyMessage="从你的疑问开始，也可以请 AI 根据缺口补充调研。" draftStorageKey={openedDirection.scopeId}/></section>}
-      {mergeDirection&&<DirectionActions direction={mergeDirection} onClose={()=>setMergeDirection(null)} onGo={onGo}/>}
       {scan_ && !scanning && !connections.length ? <section className="opportunity-welcome"><h3>这次还没有值得展开的新方向</h3><p>{scan_.nothingFoundReason || "暂时没有足够依据形成自然的新方向。"}</p><div className="row-actions"><button type="button" className="btn" onClick={() => onCaptureVoice?.("", "find")}>去找找有没有人在说</button><button type="button" className="btn" onClick={() => onGo("entries")}>补充我的知识</button></div></section> : null}
       </div>
       <section hidden={view !== "saved"} id="opportunity-saved" tabIndex={-1} className="discovery-saved opportunity-saved" aria-label="进行中的内容机会">
         <header className="opportunity-section-heading"><div><h3>已保存的方向</h3><p>候选方向与此前保存的简报，需要时继续讨论</p></div>{opportunities.length+directions.length ? <SearchBox value={savedQuery} onChange={setSavedQuery} placeholder="搜索已保存的机会" ariaLabel="搜索已保存的机会" /> : null}</header>
         <ErrorNote error={savedError} what="读取已保存机会" onRetry={load} />
-        {filteredDirections.map(d=><div className="direction-saved" key={d.id}><button className="brief-text-action" onClick={()=>{setOpenedDirection(d);setView('discover');setChat(false);setMobileDetail(true);}}>{d.connection.coreClaim}</button><p>{d.connection.problem.statement}</p><small>{d.researchId?'已带入选题':'待讨论'} · {dateLabel(d.updatedAt)}</small></div>)}
-        {savedItems.length ? <ul className="opportunity-saved-list">{savedItems.map((item) => <li key={item.id}><button type="button" onClick={() => onGo("bridge", `opportunity:${item.id}`)} aria-label={`打开内容机会：${item.wikiTitle} × ${item.audienceProblemStatement}`}><div><strong>{item.coreClaim || item.audienceProblemStatement}</strong><p>{item.wikiTitle || "知识已移除"}<span> · </span>{item.audienceProblemStatement}</p></div><span className="opportunity-saved-list__status">{item.hasProject ? "已进入创作" : "待继续探索"}<small>{dateLabel(item.updatedAt)}更新</small></span><IconArrowRight aria-hidden="true" /></button></li>)}</ul> : !filteredDirections.length && !savedError && !loading ? <p className="opportunity-saved-empty">{savedQuery ? "没有找到匹配的机会，试试其他关键词。" : "还没有保存的机会。选一个方向，打磨讲法后，它会留在这里。"}</p> : null}
+        {!browserItems.length&&!savedError&&!loading&&<p className="opportunity-saved-empty">{savedQuery?'没有找到匹配的机会，试试其他关键词。':'还没有保存的方向。'}</p>}
       </section>
+      <div hidden={view==='research'}><DirectionBrowser items={browserItems} initialKey={initialDirection} onReadingChange={setReading} renderDetail={item=>item.legacy?renderLegacy?.(item.legacy.id):<DirectionDetail item={item} onGo={onGo} onSaved={onSaved}/>}/></div>
       <aside hidden={view !== "research"} className="opportunity-context" aria-label="研究方向与长期议程">
       {research.length ? (
         <section className="discovery-research" aria-label="最近你在想的">

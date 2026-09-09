@@ -172,3 +172,29 @@
 .direction-saved{padding:20px 0;border-bottom:1px solid var(--border)}.direction-saved button{font:inherit;text-align:left;background:none;border:0;cursor:pointer;font-weight:600}.direction-saved p,.direction-saved small{color:var(--text-2)}
 .direction-merge{width:min(560px,calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;padding:24px;color:var(--text-1);background:var(--surface)}.direction-merge::backdrop{background:#0005}.direction-merge form{display:grid;gap:16px}.direction-merge label{display:grid;gap:8px}.direction-merge input,.direction-merge select{width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:inherit}.direction-merge footer{display:flex;gap:8px;justify-content:flex-end}.opportunity-brief__section blockquote{margin:12px 0;font-size:14px;line-height:1.8}.opportunity-brief__section blockquote small{display:block;color:var(--text-2)}
 @media(max-width:600px){.direction-actions{padding:14px}.direction-chat{margin:0 12px 20px;height:600px}.direction-actions p{width:100%}}
+
+/* Direction overview and focused reader share the same saved objects. */
+.direction-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:24px 0 32px}
+.direction-overview-card{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;min-height:270px;padding:24px;text-align:left;color:var(--text-1);font:inherit;border:1px solid var(--border);border-radius:12px;background:var(--surface);cursor:pointer}
+.direction-overview-card:hover{border-color:var(--text-3);background:var(--surface-2)}
+.direction-overview-card:focus-visible,.direction-reader-list button:focus-visible{outline:2px solid var(--text-1);outline-offset:3px}
+.direction-overview-card strong{font-size:19px;line-height:1.55;font-weight:600}
+.direction-overview-card p{margin:0;color:var(--text-2);font-size:14px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.direction-card-status{font-size:11px;color:var(--text-2);background:var(--sunken);padding:3px 7px;border-radius:4px}
+.direction-card-reason{font-size:13px;line-height:1.7;color:var(--text-2);margin-top:auto}.direction-card-reason>span{display:block;font-size:11px;margin-bottom:5px;color:var(--text-3)}
+.direction-card-open{font-size:12px;color:var(--text-2)}
+.direction-reader-toolbar{display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}.direction-reader-toolbar>span{font-size:12px;color:var(--text-2)}.direction-reader-paging{display:flex;gap:8px;margin-left:auto}
+.direction-reader-layout{display:grid;grid-template-columns:260px minmax(0,1fr);height:calc(100dvh - 165px);min-height:420px;border-bottom:1px solid var(--border)}
+.direction-reader-layout[hidden],.direction-reader[hidden]{display:none}
+.direction-reader-list{overflow:auto;padding:14px 10px 20px 0;border-right:1px solid var(--border)}
+.direction-reader-list button{display:block;width:100%;padding:14px;text-align:left;font:inherit;color:var(--text-1);border:0;border-radius:8px;background:transparent;cursor:pointer;margin-bottom:5px}
+.direction-reader-list button[aria-current]{background:var(--sunken)}.direction-reader-list strong{font-size:13px;line-height:1.6;font-weight:500}.direction-reader-list p{font-size:12px;color:var(--text-2);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.direction-reader-list small{font-size:11px;color:var(--text-3)}
+.direction-reader-panes{min-height:0;min-width:0}.direction-reader{height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.direction-reader:focus{outline:none}.direction-reader .opportunity-brief{padding:28px clamp(20px,3vw,42px) 32px}.direction-reader .direction-actions{padding:18px 24px}.direction-reader .bridge-back{display:none}
+.direction-reading-mode>.opportunity-views,.direction-reading-mode>.opportunity-discover-view,.direction-reading-mode>.opportunity-saved{display:none}
+.direction-reading-mode .opportunity-header__actions{display:none}
+@media(min-width:1650px){.direction-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:850px){.direction-card-grid{grid-template-columns:minmax(0,1fr)}.direction-reader-layout{display:block;height:calc(100dvh - 280px);min-height:380px}.direction-reader-list{display:none}.direction-reader-panes{height:100%}.direction-reader-toolbar{gap:8px}.direction-reader-toolbar .btn{font-size:12px;padding-inline:9px}.direction-reader-toolbar>span{display:none}.direction-overview-card{min-height:230px;padding:20px}.direction-overview-card strong{font-size:18px}.direction-reader .opportunity-brief{padding:20px 10px 28px}.direction-reader .direction-actions{padding:16px 10px}.direction-reader .direction-chat{margin-inline:0}}
+
+.direction-reader-toolbar{position:sticky;top:0;z-index:4;background:var(--surface)}
+.direction-overview-card strong,.direction-card-reason{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+@media(max-width:850px){.direction-reader-layout{height:calc(100dvh - 380px);min-height:280px}}

@@ -736,7 +736,7 @@ export function App() {
                  * 仍然是一条真实的路，只是不该是每天打开内容时看到的第一件事。
                  * `wiki:` / `problem:` / `opportunity:` 这些老深链照旧直接进工作台。
                  */
-                route.state.startsWith("direction:") ? <ContentDiscovery initialDirection={route.state.slice(10)} onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} /> : route.state === "develop" ? (
+                route.state.startsWith("direction:") ? <ContentDiscovery renderLegacy={id=><ContentBridge state={`opportunity:${id}`} onGo={go}/>} initialDirection={route.state.slice(10)} onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} /> : route.state === "develop" ? (
                   /**
                    * ⚠️ **「发展这条」的落点是构造工作台，不是那份完整分析。**
                    * 完整分析（01/02/03/04）没有删，退到 `#/bridge/analyze`——
@@ -746,7 +746,7 @@ export function App() {
                 ) : route.state ? (
                   <ContentBridge state={route.state} onGo={go} />
                 ) : (
-                  <ContentDiscovery onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} />
+                  <ContentDiscovery renderLegacy={id=><ContentBridge state={`opportunity:${id}`} onGo={go}/>} onGo={go} onCaptureVoice={(term, mode) => setVoice({ term, mode })} />
                 )
               ) : route.view === "ideas" ? (
                 <Ideas onGo={go} onChanged={() => setIntakeVersion((v) => v + 1)} />
