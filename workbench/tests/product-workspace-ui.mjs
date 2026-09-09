@@ -142,6 +142,34 @@ try {
   await page.getByRole("button",{name:"保存并离开",exact:true}).click();
   await page.getByRole("heading",{name:"选题空间",exact:true}).waitFor();
   check("保存后才离开首页",true);
+  for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
+  await page.goto(`${base}/#/research`); await page.reload();
+  await page.locator(".research-card").first().waitFor();
+  check("选题总览每页最多六张卡片", await page.locator(".research-card").count() === 6);
+  const firstTitle = await page.locator(".research-card h2").first().innerText();
+  await page.getByRole("button", { name: "下一页", exact: true }).click();
+  check("翻页切换选题", await page.locator(".research-card h2").first().innerText() !== firstTitle);
+  await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("第 1 个问题的笔记");
+  check("可用笔记搜索全部选题", await page.locator(".research-card").count() === 1 && await page.getByRole("button", { name: "上一页", exact: true }).isDisabled());
+  await page.locator(".research-card").focus(); await page.keyboard.press("Enter");
+  await page.getByLabel("我的笔记", { exact: true }).waitFor();
+  check("键盘打开卡片回到选题工作区", (await page.getByLabel("我的笔记", { exact: true }).inputValue()).includes("第 1 个问题"));
+  await page.goto(`${base}/#/research`);
+  await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("完全没有的选题");
+  await page.getByRole("heading", { name: "没有找到匹配的选题", exact: true }).waitFor();
+  await page.locator(".research-overview-empty").getByRole("button", { name: "清空搜索", exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: path.join(shotDir, "research-cards-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: path.join(shotDir, "research-cards-mobile.png"), fullPage: true });
+  check("手机卡片无横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole("button", { name: "＋ 新建选题", exact: true }).click();
+  check("空问题不能创建选题", await page.getByRole("button", { name: "开始展开", exact: true }).isDisabled());
+  await page.getByLabel("你想弄明白什么", { exact: true }).fill("卡片视图中新建的真实测试选题");
+  await page.getByRole("button", { name: "开始展开", exact: true }).click();
+  await page.getByLabel("我的笔记", { exact: true }).waitFor();
+  check("展开新建后仍可创建并进入选题", (await request("/api/workspace/researches")).researches.some(r => r.question === "卡片视图中新建的真实测试选题"));
+
   check("浏览器无页面错误",errors.length===0);
   console.log("访谈版实际产品流程验收通过");
 } catch (error) {

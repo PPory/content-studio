@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TopicArticle } from "../components/TopicArticle.jsx";
 import "./topic-workspace.css";
+import "./research-list.css";
 import { renderMarkdown } from "../lib/markdown.js";
 import { IconChevronLeft, IconFileText, IconLink, IconSearch } from "../components/icons.jsx";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading } from "../components/ui.jsx";
+import { ErrorNote, Loading, SearchBox } from "../components/ui.jsx";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { LibraryBrowser } from "../components/LibraryBrowser.jsx";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
@@ -14,11 +15,52 @@ export function Research({ researchId, onGo, onForceGo, registerNavigationGuard 
   return researchId ? <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} /> : <ResearchList onGo={onGo} />;
 }
 function ResearchList({ onGo }) {
-  const [items, setItems] = useState(null); const [question, setQuestion] = useState(""); const [error, setError] = useState(null); const [busy, setBusy] = useState(false);
-  const load = useCallback(() => api.researches().then((r) => setItems(r.researches || [])).catch(setError), []);
+  const [items, setItems] = useState(null);
+  const [question, setQuestion] = useState("");
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(0);
+  const [error, setError] = useState(null);
+  const [createError, setCreateError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const input = useRef(null);
+  function openCreate() { setCreating(true); requestAnimationFrame(() => input.current?.focus()); }
+  const load = useCallback(async () => {
+    setError(null);
+    try { const r = await api.researches(); setItems(r.researches || []); }
+    catch (e) { setError(e); }
+  }, []);
   useEffect(() => { load(); }, [load]);
-  async function create(e) { e.preventDefault(); if (!question.trim() || busy) return; setBusy(true); try { const r = await api.createResearch({ question }); onGo("research", r.research.id); } catch (e) { setError(e); } finally { setBusy(false); } }
-  return <section className="task-page"><header className="task-page-head"><div><h1>选题空间</h1><p>围绕一个问题，读资料、记想法、讨论和写作。</p></div><button className="btn btn-sm" onClick={() => onGo("assistant")}>查看以前的对话</button></header><form className="research-create" onSubmit={create}><label>你想弄明白什么？<input aria-label="你想弄明白什么" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="从一个真实的疑问开始" /></label><button className="btn btn-primary" disabled={busy || !question.trim()}>开始展开</button></form><ErrorNote error={error} what="读取研究" onRetry={load} />{items === null && !error ? <Loading rows={3} /> : null}<div className="work-list">{(items || []).map((item) => <article key={item.id}><button className="work-list__open" onClick={() => onGo("research", item.id)}><h2>{item.question || item.title}</h2><p>{item.notes?.slice(0, 180) || item.excerpt || "还没有留下研究笔记"}</p><small>{new Date(item.updatedAt).toLocaleDateString("zh-CN")}</small></button></article>)}</div></section>;
+  async function create(e) {
+    e.preventDefault(); if (!question.trim() || busy) return;
+    setBusy(true); setCreateError(null);
+    try { const r = await api.createResearch({ question: question.trim() }); onGo("research", r.research.id); }
+    catch (e) { setCreateError(e); } finally { setBusy(false); }
+  }
+  const term = query.trim().toLowerCase();
+  const filtered = (items || []).filter(item => !term || `${item.question || item.title} ${item.notes || item.excerpt || ""}`.toLowerCase().includes(term))
+    .sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
+  const pages = Math.max(1, Math.ceil(filtered.length / 6));
+  const currentPage = Math.min(page, pages - 1);
+  return <section className="task-page research-overview">
+    <header className="task-page-head"><div><h1>选题空间</h1><p>围绕一个问题，读资料、记想法、讨论和写作。</p></div><div className="research-overview-actions"><button className="btn btn-sm" onClick={() => onGo("assistant")}>以前的对话</button><button className="btn btn-primary btn-sm" aria-expanded={creating || items?.length === 0} onClick={() => creating ? setCreating(false) : openCreate()}>{creating ? "收起新建" : "＋ 新建选题"}</button></div></header>
+    <form className="research-create" hidden={!creating && items?.length !== 0} onSubmit={create}><label>你想弄明白什么？<input ref={input} aria-label="你想弄明白什么" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="从一个真实的疑问开始" /></label><button className="btn btn-primary" disabled={busy || !question.trim()}>{busy ? "正在创建…" : "开始展开"}</button></form>
+    <ErrorNote error={createError} what="创建选题" />
+    <div className="research-overview-toolbar"><h2>我的选题 <span>{items?.length ?? "—"}</span></h2><SearchBox value={query} onChange={value => { setQuery(value); setPage(0); }} placeholder="搜索选题或笔记…" ariaLabel="搜索选题" /></div>
+    <ErrorNote error={error} what="读取选题" onRetry={load} />
+    {items === null && !error ? <Loading rows={3} /> : null}
+    {items !== null && !filtered.length ? <div className="research-overview-empty"><h3>{term ? "没有找到匹配的选题" : "从你想弄明白的问题开始"}</h3><p>{term ? "试试更短的关键词，或清空搜索查看全部选题。" : "资料、想法和讨论会留在同一个空间，需要时再写成文章。"}</p><button className="btn btn-sm" onClick={() => { setQuery(""); setPage(0); if (!term) openCreate(); }}>{term ? "清空搜索" : "写下一个问题"}</button></div> : null}
+    <div className="research-card-grid">{filtered.slice(currentPage * 6, (currentPage + 1) * 6).map(item => {
+      const title = item.question || item.title;
+      const date = new Date(item.updatedAt);
+      return <button key={item.id} type="button" className="research-card" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>
+        <h2>{title}</h2><p>{item.notes?.trim() || item.excerpt || "还没有留下笔记，可以先和 AI 聊聊这个问题。"}</p>
+        <div className="research-card-counts"><span>{item.references?.length || 0} 份资料</span><span>{item.conversations?.length || 0} 段讨论</span><span>{item.projects?.length || 0} 篇文章</span></div>
+        <footer><span>{Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`}</span><span>继续展开 →</span></footer>
+      </button>;
+    })}</div>
+    {filtered.length > 0 ? <nav className="research-pagination" aria-label="选题分页"><span aria-live="polite">{currentPage * 6 + 1}–{Math.min((currentPage + 1) * 6, filtered.length)} / {filtered.length} 个选题 · 最近更新优先</span><div><button className="btn btn-sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages}</span><button className="btn btn-sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></div></nav> : null}
+  </section>;
 }
 function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard }) {
   const [record,setRecord]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[edited,setEdited]=useState(false),[status,setStatus]=useState("");
