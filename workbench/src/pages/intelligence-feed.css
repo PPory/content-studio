@@ -101,9 +101,6 @@
 /* 已收藏要一直看得见——它是状态，不是等着被点的动作 */
 .brief-card__acts:has([aria-pressed="true"]) { opacity: 1; }
 
-.brief-text-action { border: 0; padding: 0; background: none; font: inherit; font-size: var(--fs-xs); color: var(--text-3); cursor: pointer; }
-.brief-text-action:hover { color: var(--text-1); }
-.brief-text-action[aria-pressed="true"] { color: var(--text-1); font-weight: 600; }
 
 .brief-selection-bar {
   position: sticky; bottom: 12px; z-index: 2;
@@ -168,7 +165,7 @@
 .brief-peek__foot .btn-primary { margin-left: auto; }
 /* ⚠️ 评价那几颗不用 `.btn-quiet`：那一档是**删除入口**的语汇（hover 变红），
    挂在「有启发」上等于把一个记一笔的动作画成危险动作。 */
-:is(.brief-peek__foot, .brief-reading-actions) .brief-text-action { font-size: var(--fs-sm); padding: 4px 0; }
+:is(.brief-peek__foot, .brief-reading-actions) .text-action { font-size: var(--fs-sm); padding: 4px 0; }
 
 /* ---------- 阅读排版（peek 与整页详情共用 `BriefReading`） ---------- */
 .brief-peek__body, .brief-reading { min-width: 0; }

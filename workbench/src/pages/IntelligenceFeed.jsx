@@ -319,14 +319,14 @@ export function IntelligenceFeed({ view, state, onGo }) {
                 <footer className="brief-reading-actions">
                   <button
                     type="button"
-                    className="brief-text-action"
+                    className="text-action"
                     disabled={Boolean(busy)}
                     aria-pressed={Boolean(brief.helpful)}
                     onClick={() => feedback(brief, { helpful: !brief.helpful })}
                   >
                     {brief.helpful ? "已记为有启发" : "有启发"}
                   </button>
-                  <button type="button" className="brief-text-action" disabled={Boolean(busy)} onClick={() => feedback(brief, { dismissed: !brief.dismissed })}>
+                  <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => feedback(brief, { dismissed: !brief.dismissed })}>
                     {brief.dismissed ? "恢复推荐" : "不感兴趣"}
                   </button>
                 </footer>
@@ -657,14 +657,14 @@ export function IntelligenceFeed({ view, state, onGo }) {
           <span className="brief-card__acts">
             <button
               type="button"
-              className="brief-text-action"
+              className="text-action"
               disabled={Boolean(busy)}
               aria-pressed={Boolean(item.saved)}
               onClick={() => feedback(item, { saved: !item.saved })}
             >
               {item.saved ? "已收藏" : "收藏"}
             </button>
-            <button type="button" className="brief-text-action" disabled={Boolean(busy)} onClick={() => feedback(item, { dismissed: true })}>
+            <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => feedback(item, { dismissed: true })}>
               不感兴趣
             </button>
           </span>

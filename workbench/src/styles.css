@@ -935,6 +935,10 @@ select:focus-visible {
 .view-head__name i { font-style: normal; color: var(--text-3); }
 .view-head__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .view-head__lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* `ui.jsx` 的 `PageStage` 画在这一格里：读起来是面包屑的下一段
+   （情报 / 发现方向 / 内容简报），所以字号和颜色跟着 `.view-head__name` 走。 */
+.view-head__stage { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.view-head__stage i { font-style: normal; color: var(--text-3); }
 /**
  * 正中那一格：给「自己接管整条页头」的页用（现在只有 AI 助手）。
  *
@@ -1749,6 +1753,21 @@ html[data-scroll-lock] .main { overflow: hidden; }
 /* 只有图标的按钮：压成正方形，否则左右各 11px 内边距会让一个 13px 的图标
    坐在一个 35×29 的横条里，跟旁边的文字按钮排在一起像是没写完的那一个。 */
 .btn-icon { padding: 0; width: 29px; justify-content: center; }
+
+/**
+ * 安静的文字动作：一句可点的话，不是一颗按钮。
+ *
+ * 用在**卡片和面板的页脚**——那儿一行里往往有两三个「记一笔」的动作
+ *（收藏 / 有启发 / 不感兴趣 / 保存方向），画成描边按钮的话它们和旁边真正的
+ * 主操作一样重，读起来是三四个并列的选项，而只有一颗会改变你手上的活。
+ *
+ * ⚠️ **`aria-pressed="true"` 要看得出来。** 这类动作大半是开关（已收藏 / 已保存），
+ * 只换文案不换重量的话，点完屏幕上几乎没有变化。
+ */
+.text-action { border: 0; padding: 0; background: none; font: inherit; font-size: var(--fs-xs); color: var(--text-3); cursor: pointer; }
+.text-action:hover { color: var(--text-1); }
+.text-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.text-action[aria-pressed="true"] { color: var(--text-1); font-weight: 600; }
 
 .icon-btn {
   width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center;

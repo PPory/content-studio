@@ -398,6 +398,28 @@ export function ViewTabs({ items, value, onChange, label }) {
   );
 }
 
+/**
+ * 页名的下一级：外壳页头里紧挨着面包屑那一格（`view-head__lead`）。
+ *
+ * ⚠️ **给「同一条路由下有几个阶段」的页用**——发现方向底下那三页就是：
+ * `#/bridge/manual` 一路走过去是「手动探索 → 方向分析 → 内容简报」，
+ * 而阶段只有页面自己知道，写进 App 里那张按路由查的表会和真实状态错开。
+ *
+ * 它替掉的是页面正文里那个大标题。页名在页头出现一次就够，
+ * 正文顶上再来一个是同一件事说第二遍（见 `docs/design-system.md`「页面不介绍自己」）。
+ */
+export function PageStage({ children }) {
+  const slots = useViewSlots();
+  if (!children || !slots?.lead) return null;
+  return createPortal(
+    <span className="view-head__stage">
+      <i aria-hidden="true">/</i>
+      {children}
+    </span>,
+    slots.lead,
+  );
+}
+
 export function SectionHead({ icon: Icon, eyebrow, title, count, aside }) {
   return (
     <div className="section-head">

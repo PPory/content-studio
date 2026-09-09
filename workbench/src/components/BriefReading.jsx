@@ -95,7 +95,7 @@ export function BriefReading({ brief, onGo, onBlock, dense = false }) {
           <h2>与你已有理解的连接</h2>
           {brief.wiki.map((w) => (
             <div key={w.id}>
-              <button type="button" className="brief-text-action" onClick={() => onGo("entries", w.id)}>
+              <button type="button" className="text-action" onClick={() => onGo("entries", w.id)}>
                 {w.title} →
               </button>
               {w.reason ? <p>{w.reason}</p> : null}
@@ -147,7 +147,7 @@ export function BriefReading({ brief, onGo, onBlock, dense = false }) {
                 <a href={safeUrl(source.url)} target="_blank" rel="noreferrer">
                   打开原文 ↗
                 </a>
-                <button type="button" className="brief-text-action" onClick={() => onBlock(new URL(source.url).hostname)}>
+                <button type="button" className="text-action" onClick={() => onBlock(new URL(source.url).hostname)}>
                   屏蔽 {new URL(source.url).hostname} 网站
                 </button>
               </div>

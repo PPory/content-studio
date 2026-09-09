@@ -81,7 +81,7 @@ export function BriefPeek({
       <footer className="brief-peek__foot">
         <button
           type="button"
-          className="brief-text-action"
+          className="text-action"
           disabled={!brief || Boolean(busy)}
           aria-pressed={Boolean(brief?.saved)}
           onClick={() => onFeedback({ saved: !brief.saved })}
@@ -90,7 +90,7 @@ export function BriefPeek({
         </button>
         <button
           type="button"
-          className="brief-text-action"
+          className="text-action"
           disabled={!brief || Boolean(busy)}
           aria-pressed={Boolean(brief?.helpful)}
           onClick={() => onFeedback({ helpful: !brief.helpful })}
@@ -99,7 +99,7 @@ export function BriefPeek({
         </button>
         <button
           type="button"
-          className="brief-text-action"
+          className="text-action"
           disabled={!brief || Boolean(busy)}
           onClick={() => onFeedback({ dismissed: !brief.dismissed })}
         >
