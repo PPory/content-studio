@@ -223,6 +223,23 @@ try {
   await page.getByText("已放进 1 个合集").waitFor();
   check("从文章列表就能归类，并在行上显示所属合集", await page.locator(".ptable__series").filter({ hasText: "本地内容工作台" }).count() === 1);
 
+  // ── 创作列表：不画零信息的那一列、跨页去处不藏在折叠里、删除有回头路 ──
+  check("没有素材时「素材」那一列表头和单元格都不画",
+    await page.getByRole("columnheader", { name: "素材" }).count() === 0
+    && await page.locator(".ptable__headgrid > *").count() === await page.locator(".ptable__row").first().locator("> *").count());
+  check("创作列表不再把跨页去处藏在「更多」折叠里", await page.locator(".content-more-tools").count() === 0);
+
+  await page.getByRole("button", { name: "删除「阶段六隔离稿」" }).click();
+  await page.getByRole("button", { name: "删掉整篇" }).click();
+  await page.getByText("「阶段六隔离稿」已移入回收站").waitFor();
+  check("删掉一篇的回执说清带走了几篇稿子，并留一条撤销",
+    (await page.locator(".toast").innerText()).includes("篇稿子")
+    && await page.getByRole("button", { name: "撤销" }).count() === 1);
+  await page.getByRole("button", { name: "撤销" }).click();
+  await page.locator(".ptable__series").filter({ hasText: "本地内容工作台" }).waitFor();
+  check("撤销把这一篇连同它的合集归类一起拿回来",
+    await page.locator(".ptable__series").filter({ hasText: "本地内容工作台" }).count() === 1);
+
   await page.goto(`http://127.0.0.1:${PORT}/#/series`);
   await page.locator(".series-card__open").filter({ hasText: "本地内容工作台" }).click();
   await seriesTitle.waitFor();
@@ -266,6 +283,50 @@ try {
     && readerText.includes("入门"));
   if (process.argv.includes("--shots")) await page.screenshot({ path: seriesReadShotFile, fullPage: true });
   await reader.getByRole("button", { name: "关闭通读" }).click();
+
+  // ── 合集列表：页名、双视图、两步删除、撤销 ──
+  await page.goto(`http://127.0.0.1:${PORT}/#/series`);
+  await page.locator(".series-card").first().waitFor();
+  // ⚠️ `exact: true`：Playwright 的 name 默认按**子串**匹配，而删除钮的提示里
+  // 就带着「留在全部文章里」——不加它这条会一直是假红。
+  check("合集列表不再在页内放会换整页的「全部文章」开关",
+    await page.getByRole("button", { name: "全部文章", exact: true }).count() === 0);
+  check("合集列表的说明句不常驻第一屏（只在空态出现）",
+    !(await page.locator(".main__inner").innerText()).includes("它就是那本书的目录"));
+
+  const seriesCardCount = await page.locator(".series-card").count();
+  await page.getByRole("button", { name: "列表视图" }).click();
+  await page.locator(".series-list__open").first().waitFor();
+  check("切到列表视图后条目一条不少",
+    await page.locator(".series-list__open").count() === seriesCardCount
+    && await page.locator(".series-card").count() === 0);
+  await page.reload();
+  await page.locator(".series-list__open").first().waitFor();
+  check("列表 / 卡片这个选择刷新后还记得", await page.locator(".series-card").count() === 0);
+
+  // 两步删除：第一下只是武装，紧接着的第二下不该删掉任何东西
+  const seriesTrash = page.getByRole("button", { name: /^删除合集「本地内容工作台」/ });
+  await seriesTrash.click();
+  const seriesConfirm = page.getByRole("button", { name: "只删合集，留下文章" });
+  await seriesConfirm.click();
+  check("连点两下垃圾桶不会删掉合集",
+    await page.locator(".series-list__open").filter({ hasText: "本地内容工作台" }).count() === 1);
+
+  await page.waitForTimeout(420);
+  await seriesConfirm.click();
+  await page.getByText("合集「本地内容工作台」已移入回收站").waitFor();
+  check("确认之后合集移入回收站，且回执说清文章留在哪儿",
+    await page.locator(".series-list__open").filter({ hasText: "本地内容工作台" }).count() === 0
+    && (await page.locator(".toast").innerText()).includes("篇文章保留在全部文章里"));
+
+  await page.getByRole("button", { name: "撤销" }).click();
+  await page.locator(".series-list__open").filter({ hasText: "本地内容工作台" }).waitFor();
+  check("撤销把合集原样拿回来",
+    await page.locator(".series-list__open").filter({ hasText: "本地内容工作台" }).count() === 1);
+
+  // 回到卡片视图：下面的截图和后续步骤都按卡片来
+  await page.getByRole("button", { name: "卡片视图" }).click();
+  await page.locator(".series-card").first().waitFor();
 
   if (process.argv.includes("--shots")) {
     await page.screenshot({ path: seriesShotFile, fullPage: true });

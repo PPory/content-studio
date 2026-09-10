@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, Toast } from "../components/ui.jsx";
+import { useUndoToast } from "../lib/use-undo-toast.js";
 import { IconFileText, IconRefresh } from "../components/icons.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
@@ -13,7 +14,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState("");
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useUndoToast();
   const [stage, setStage] = useState("进行中");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
   const [filing, setFiling] = useState(null);
@@ -47,6 +48,9 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
    *
    * ⚠️ **回执要说清删掉了几篇**，不能只说「已删除」——你以为删的是一个壳，
    * 而它可能带走了三篇写过的稿。
+   *
+   * ⚠️ **而且要给回头路。** 界面上没有回收站页面，所以「点错了怎么办」的唯一
+   * 答案就是这条回执上的「撤销」——它走 `/projects/:id/restore`，稿子一起回来。
    */
   const remove = useCallback(async (p) => {
     if (removing) return;
@@ -54,7 +58,9 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     try {
       const r = await api.removeProject(p.id);
       setToast({
-        text: r.deleted ? `已移入回收站，连同 ${r.deleted} 篇稿子` : "已移入回收站",
+        text: `「${p.title || "未命名内容"}」已移入回收站`,
+        detail: r.deleted ? `连同 ${r.deleted} 篇稿子。` : undefined,
+        undo: async () => { await api.restoreProject(p.id); setToast(null); onChanged?.(); load(); },
       });
       onChanged?.();
       await load();
@@ -63,7 +69,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     } finally {
       setRemoving("");
     }
-  }, [removing, load, onChanged]);
+  }, [removing, load, onChanged, setToast]);
 
   return (
     <>
@@ -104,15 +110,13 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
 
       {result ? (
         <>
+          {/* ⚠️ 「更多」那个折叠撤了：里面三条（合集 / 找灵感 / 查看发布数据）
+              都是**会换整页的去处**，而三个去处都在侧栏里。导航不待在正文的折叠里
+              （判据同 `Series.jsx` 撤掉的那颗「全部文章 / 合集」）。 */}
           <div className="list-bar">
             <div className="chips chips-sm" aria-label="内容状态">
               {["进行中", "已发布", "归档"].map((key) => <button key={key} className="chip" aria-pressed={stage === key} onClick={() => setStage(key)}>{key}{grouped[key].length ? ` ${grouped[key].length}` : ""}</button>)}
             </div>
-            <details className="content-more-tools"><summary>更多</summary><div className="project-notebook__actions">
-              <button className="btn btn-sm" onClick={() => onGo("series", "")}>合集</button>
-              <button className="btn btn-sm" onClick={() => onGo("bridge", "")}>找灵感</button>
-              <button className="btn btn-sm" onClick={() => onGo("review-performance", "")}>查看发布数据</button>
-            </div></details>
           </div>
           {!projects.length ? (
             <Empty icon={IconFileText}>写下第一句话就可以开始，不必先定选题或填写计划。</Empty>
@@ -136,7 +140,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
           onChanged?.();
         }}
       />
-      <Toast text={toast?.text} onClose={() => setToast(null)} />
+      <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
     </>
   );
 }

@@ -15,7 +15,7 @@ import { IconAlertTriangle, IconArrowRight, IconFolder, IconLoader2, IconTrash }
  * 一行 = 一个项目。
  *
  * 列的顺序是按「扫的时候按什么找」排的：
- * **状态 → 标题 →〔平台〕→ 素材 → 多久没动**。
+ * **状态 → 标题 →〔平台〕→〔素材〕→ 多久没动**（方括号那两列按需出现，见下）。
  * 状态在最左边，因为一列 pill 竖着排下来，哪一档堆了多少一眼就看出来了。
  *
  * ⚠️ **「下一步」那一列撤了，别加回来。** 它逐行写着「写完了，去发布」——
@@ -23,8 +23,9 @@ import { IconAlertTriangle, IconArrowRight, IconFolder, IconLoader2, IconTrash }
  * 现在它只在**指到这一行时**出现，占的是「更新」那一格（见下面的 `.ptable__tail`）：
  * 那时候它才是有用的，因为你正要点下去，而它说的就是点下去要干的事。
  *
- * ⚠️ **一整列的值全都一样就整列不画**（现在的「平台」：六行全是「公众号」）。
- * 一列相同的值携带的信息是零，但它照样吃掉横向空间、把标题挤窄。
+ * ⚠️ **一整列的值全都一样就整列不画**（现在的「平台」：六行全是「公众号」；
+ * 「素材」：一行都没挂过）。一列相同的值携带的信息是零，但它照样吃掉横向空间、
+ * 把标题挤窄。这条对**每一列**成立，不是只对当初写它的那一列。
  */
 export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = "" }) {
   // 正在等第二下确认的那一行。**一次只有一行**：留着多行确认态，
@@ -43,6 +44,19 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
   const showPlatform = new Set(projects.map((p) => (p.brief?.platform || "").trim()).filter(Boolean)).size > 1;
 
   /**
+   * ⚠️ **同一条判据对每一列都成立，不是只对「平台」那一列。**
+   *
+   * 「素材」以前是无条件画的，于是在真实数据下它是**一整列 `—`**：56px 宽、
+   * 一个表头、每行一格，说出口的信息量是零。判据和上面那一句是同一句话——
+   * 一列没有在分辨任何东西，就不画它（`docs/design-system.md`
+   * 「一整列的值全都相同就不画那一列」）。
+   *
+   * 计数列的「空」是 0，而 0 按下面那条规则显示成 `—`；所以这里问的是
+   * **有没有任何一行真的挂过素材**。挂过的行数多少不重要，一行都没有就整列撤掉。
+   */
+  const showMaterials = projects.some((p) => (p.materials?.length || 0) > 0);
+
+  /**
    * 列宽只写这一处。
    *
    * ⚠️ **以前表头和行各写一份 `grid-template-columns`，而且必须一字不差。**
@@ -50,7 +64,7 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
    * `.doc-rows__head` 那次一模一样）。改成一个自定义属性挂在容器上、
    * 两边都 `var(--ptable-cols)` 之后，**结构上就不可能只改一处**。
    */
-  const cols = ["92px", "minmax(0, 1fr)", showPlatform ? "88px" : "", "56px", "150px"]
+  const cols = ["92px", "minmax(0, 1fr)", showPlatform ? "88px" : "", showMaterials ? "56px" : "", "150px"]
     .filter(Boolean)
     .join(" ");
 
@@ -91,7 +105,7 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
           <span role="columnheader">阶段</span>
           <span role="columnheader">标题</span>
           {showPlatform ? <span role="columnheader">平台</span> : null}
-          <span role="columnheader">素材</span>
+          {showMaterials ? <span role="columnheader">素材</span> : null}
           <span role="columnheader">更新</span>
         </div>
         {onFile ? <span aria-hidden="true" /> : null}
@@ -138,7 +152,7 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
             {showPlatform ? <span className="ptable__dim" role="cell">{p.brief?.platform || "—"}</span> : null}
 
             {/* ⚠️ 0 写成「—」不写「0」：一列 0 在扫视时和真实数字一样重，而它什么都不说 */}
-            <span className="ptable__dim" role="cell">{p.materials?.length || "—"}</span>
+            {showMaterials ? <span className="ptable__dim" role="cell">{p.materials?.length || "—"}</span> : null}
 
             {/**
               * 最后一格：平时是「多久没动」，指到这一行（hover / 键盘 focus）时换成下一步。
