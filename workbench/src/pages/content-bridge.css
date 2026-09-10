@@ -1,18 +1,29 @@
-.main__inner:has(.content-bridge) { max-width: none; padding: 0; --main-pad-top: 0px; }
+/**
+ * ⚠️ **只有那两个工作区去掉外壳的内边距。**
+ *
+ * 手动探索和完整分析顶上那条 `.bridge-bar--sticky` 要贴边贴顶，所以它们需要
+ * `padding: 0`。而**发现方向是一个普通列表页**，上一版把它一起算进去了，
+ * 于是它的筛选胶囊落在 44px、别的页在 76px——量出来正好差一整个 `--main-pad-top`。
+ * 同一颗共用组件在两页不在同一条线上，而这种偏差不会报错。
+ */
+.main__inner:has(.content-bridge-workspace),
+.main__inner:has(.content-construction) { max-width: none; padding: 0; --main-pad-top: 0px; }
+.main__inner:has(.content-bridge) { max-width: none; }
 .main:has(.content-bridge) { background: var(--surface); }
+/**
+ * ⚠️ **这一页不再自带一套字号刻度。**
+ *
+ * 上一版在这里重定义了 `--fs-xs` 到 `--fs-xl` 五个 token，还压了 `.btn` 的高度和字号。
+ * 那等于给这一页开了第二套设计系统：`ViewTabs` 的 `font-size: var(--fs-md)` 放进来
+ * 解析成 14px 而别处是 16px，`.btn` 从 36px 变成 30px——**共用组件一进这一页就变形，
+ * 而且不会报错**。这也是这几页一直「像另一个应用」的根因。
+ * 要调某一处的字号，就在那一处写，不要动刻度本身。
+ */
 .content-bridge {
-  --fs-xs: 12px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 20px;
   max-width: none;
   margin: 0;
   padding: 0 28px 48px;
-  font-size: 13px;
 }
-.content-bridge .btn { min-height: 30px; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 12px; gap: 6px; }
-.content-bridge .btn svg { width: 14px; height: 14px; }
 .content-bridge [hidden] { display: none !important; }
 
 /*
