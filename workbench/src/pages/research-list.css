@@ -5,9 +5,18 @@
 .research-overview-toolbar h2 span { color: var(--text-3); margin-left: 8px; font-size: 13px; font-weight: 400; }
 .research-overview-toolbar .search-box { width: 320px; max-width: 100%; }
 .research-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.research-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 230px; padding: 24px; text-align: left; background: var(--surface); color: var(--text-1); border: 1px solid var(--border); border-radius: 12px; font: inherit; cursor: pointer; }
+/* 外层只是容器，内层那颗按钮才是「打开」——为什么不能整张卡一颗 button，见 `Research.jsx`。 */
+.research-card { position: relative; display: block; min-width: 0; }
+.research-card__open { display: flex; flex-direction: column; gap: 16px; width: 100%; min-height: 230px; padding: 24px; text-align: left; background: transparent; color: inherit; border: 0; border-radius: inherit; cursor: pointer; font: inherit; }
+/* 删除平时收起来：一屏六张卡各挂一个垃圾桶，那六个图标会比问题本身还抢眼。
+   确认态整张卡钉住，否则鼠标一挪走按钮就没了。 */
+.research-card__acts { position: absolute; top: 10px; right: 10px; display: flex; opacity: 0; transition: opacity 0.14s var(--ease); }
+.research-card:hover .research-card__acts,
+.research-card:focus-within .research-card__acts,
+.research-card[data-confirm] .research-card__acts { opacity: 1; }
+.research-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .research-card:hover { border-color: var(--text-3); background: var(--sunken); }
-.research-card:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.research-card__open:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 .research-card h2 { font-size: 18px; font-weight: 600; line-height: 1.6; margin: 0; }
 .research-card p { margin: 0; font-size: 13px; line-height: 1.8; color: var(--text-2); white-space: pre-wrap; }
 .research-card h2, .research-card p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
@@ -21,7 +30,7 @@
 .research-overview-empty p { color: var(--text-3); font-size: 13px; line-height: 1.8; }
 @media (max-width: 680px) {
   .research-card-grid { grid-template-columns: minmax(0, 1fr); }
-  .research-card { padding: 20px; min-height: 210px; }
+  .research-card__open { padding: 20px; min-height: 210px; }
   .research-overview-toolbar, .research-pagination { flex-wrap: wrap; }
   .research-overview-toolbar .search-box { width: 100%; }
   .research-overview .research-create { padding: 16px; }

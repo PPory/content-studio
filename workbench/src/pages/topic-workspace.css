@@ -8,15 +8,15 @@
 .topic-heading { padding:25px 36px 0; flex:none; }
 .topic-breadcrumb { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
 .topic-breadcrumb .btn { padding:0; border:0; color:var(--text-3); background:transparent; }
-.topic-breadcrumb small { color:var(--text-3); font-size:12px; }
+.topic-notebook header small { margin-left:auto; color:var(--text-3); font-size:12px; }
 .topic-title-row { display:flex; align-items:start; gap:18px; }
 .topic-title-row textarea { flex:1; min-width:0; width:100%; border:0; background:transparent; font:600 24px/1.45 var(--font); color:var(--text-1); resize:none; padding:0; min-height:35px; max-height:105px; field-sizing:content; }
 .topic-title-row .btn { margin-top:0; flex:none; }
 .topic-title-row textarea:focus-visible { outline:2px solid var(--border-strong); outline-offset:4px; border-radius:3px; }
-.topic-tabs { display:flex; align-items:center; gap:25px; margin:13px 36px 0; border-bottom:1px solid var(--border); flex:none; min-height:48px; }
-.topic-tabs > button { min-height:48px; border:0; border-bottom:2px solid transparent; background:transparent; padding:0 2px; font:inherit; color:var(--text-3); cursor:pointer; }
-.topic-tabs > button[aria-pressed=true] { color:var(--text-1); font-weight:600; border-bottom-color:var(--text-1); }
-.topic-tabs span,.topic-detail summary span { font-size:12px; margin-left:4px; color:var(--text-3); }
+/* 下划线那一排换成共用胶囊（`ui.jsx` 的 `ViewTabs`）之后，这一条只管**位置**，
+   不再管页签自己长什么样——那一份在 `styles.css` 里。 */
+.topic-tabs { display:flex; align-items:center; gap:12px; margin:12px 36px 0; border-bottom:1px solid var(--border); flex:none; min-height:56px; }
+.topic-detail summary span { font-size:12px; margin-left:4px; color:var(--text-3); }
 .topic-tabs select { min-width:0; max-width:160px; margin-left:auto; font-size:12px; }
 .topic-tabs .topic-add-article { font-size:12px; margin-left:auto; }
 .topic-scroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
@@ -35,9 +35,9 @@
 .topic-summary blockquote { margin:14px 0; padding-left:12px; border-left:2px solid var(--border-strong); line-height:1.8; }
 .topic-summary blockquote small { display:block; }
 .topic-notebook { border-top:1px solid var(--border); padding-top:20px; }
-.topic-notebook > header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.topic-notebook > header { display:flex; justify-content:flex-start; align-items:baseline; gap:12px; }
 .topic-notebook h2 { font-size:19px; font-weight:600; }
-.topic-notebook header .btn { background:transparent; border-color:transparent; font-size:12px; }
+.topic-notebook header .btn { margin-left:0; background:transparent; border-color:transparent; font-size:12px; }
 .topic-notebook header .btn:disabled { visibility:hidden; }
 .topic-notes { display:block; width:100%; font:15px/1.95 var(--font); color:var(--text-1); min-height:190px; border:0; resize:none; padding:16px 0 26px; background:transparent; overflow:hidden; }
 .topic-notes:focus { outline:0; }

@@ -93,12 +93,12 @@ try {
   await page.getByRole("button",{name:"暂不采用",exact:true}).click();
   const download=page.waitForEvent("download");await page.getByRole("button",{name:"导出文章",exact:true}).click();check("可导出文章",(await download).suggestedFilename().endsWith(".md"));
   await page.screenshot({path:path.join(shotDir,"interview-writing-desktop.png"),fullPage:true});
-  await page.getByRole("button",{name:"思考",exact:true}).click();
+  await page.getByRole("tab",{name:"思考",exact:true}).click();
   const chatBefore=await page.locator(".topic-chat textarea").boundingBox();
-  await page.getByRole("button",{name:/^资料 \d/}).click();
+  await page.getByRole("tab",{name:/^资料 \d/}).click();
   const chatAfter=await page.locator(".topic-chat textarea").boundingBox();
   check("资料切换不挤走讨论输入框",Math.abs(chatBefore.y-chatAfter.y)<2);
-  await page.getByRole("button",{name:"思考",exact:true}).click();
+  await page.getByRole("tab",{name:"思考",exact:true}).click();
   check("资料切换后笔记仍在",(await page.getByLabel("我的笔记",{exact:true}).inputValue()).includes("待核对"));
   await page.setViewportSize({width:1505,height:1045});
   await page.screenshot({path:path.join(shotDir,"interview-topic-desktop.png"),fullPage:true});
@@ -124,7 +124,7 @@ try {
   await page.screenshot({path:path.join(shotDir,"interview-reading-desktop.png"),fullPage:true});
   await page.setViewportSize({width:390,height:844});
   check("阅读手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("button",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();
+  await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("tab",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();
   await page.getByRole("button",{name:"AI 讨论",exact:true}).click();await page.locator(".topic-chat textarea").waitFor();
   check("手机可切换对话",await page.locator(".topic-chat textarea").isVisible());
   const composerBox=await page.locator(".topic-chat textarea").boundingBox();
@@ -151,9 +151,41 @@ try {
   check("翻页切换选题", await page.locator(".research-card h2").first().innerText() !== firstTitle);
   await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("第 1 个问题的笔记");
   check("可用笔记搜索全部选题", await page.locator(".research-card").count() === 1 && await page.getByRole("button", { name: "上一页", exact: true }).isDisabled());
-  await page.locator(".research-card").focus(); await page.keyboard.press("Enter");
+  await page.locator(".research-card__open").focus(); await page.keyboard.press("Enter");
   await page.getByLabel("我的笔记", { exact: true }).waitFor();
   check("键盘打开卡片回到选题工作区", (await page.getByLabel("我的笔记", { exact: true }).inputValue()).includes("第 1 个问题"));
+  // 详情页也有同一颗，删完把回执交接回列表页（外壳页头在这一页是藏起来的，
+  // 所以它落在页面自己那条动作栏上）。
+  await page.goto(`${base}/#/research/${researchId}`);
+  await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
+  {
+    const detailTitle = await page.getByLabel("选题问题", { exact: true }).inputValue();
+    await page.getByRole("button", { name: `移入回收站：${detailTitle}` }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: "移入回收站", exact: true }).click();
+    await page.locator(".research-card").first().waitFor();
+    check("详情页删掉之后回到列表，并在那一页给出回执", (await page.getByText(`「${detailTitle}」已移入回收站`, { exact: true }).count()) === 1);
+    await page.getByRole("button", { name: "撤销", exact: true }).click();
+    await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
+    check("撤销把选题拿回来并回到它自己那一页", page.url().includes(researchId));
+  }
+
+  // 选题也能移入回收站，而且能一步撤销回来（软删除，资料和讨论都留着）。
+  await page.goto(`${base}/#/research`);
+  {
+    // ⚠️ 别数卡片：这一页每页固定六张，删掉一条会有第七条补上来，数字不会变。
+    const titles = () => page.locator(".research-card h2").allInnerTexts();
+    const card = page.locator(".research-card").first();
+    const title = await card.locator("h2").innerText();
+    await card.getByRole("button", { name: `移入回收站：${title}` }).click();
+    await page.waitForTimeout(400);
+    await card.getByRole("button", { name: "移入回收站", exact: true }).click();
+    await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
+    check("选题可以移入回收站", (await titles()).includes(title) === false);
+    await page.getByRole("button", { name: "撤销", exact: true }).click();
+    await page.locator(".research-card h2").filter({ hasText: title }).first().waitFor();
+    check("撤销把选题一步拿回来", (await titles()).includes(title));
+  }
   await page.goto(`${base}/#/research`);
   await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("完全没有的选题");
   await page.getByRole("heading", { name: "没有找到匹配的选题", exact: true }).waitFor();

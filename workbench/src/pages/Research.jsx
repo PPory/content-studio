@@ -5,11 +5,12 @@ import "./research-list.css";
 import { renderMarkdown } from "../lib/markdown.js";
 import { IconChevronLeft, IconFileText, IconLink, IconSearch } from "../components/icons.jsx";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, SearchBox } from "../components/ui.jsx";
+import { ErrorNote, Loading, RowDelete, SearchBox, Toast, ViewTabs } from "../components/ui.jsx";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { LibraryBrowser } from "../components/LibraryBrowser.jsx";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { useDialog } from "../lib/use-dialog.js";
+import { handOffUndo, useUndoToast } from "../lib/use-undo-toast.js";
 
 export function Research({ researchId, onGo, onForceGo, registerNavigationGuard }) {
   return researchId ? <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} /> : <ResearchList onGo={onGo} />;
@@ -24,12 +25,32 @@ function ResearchList({ onGo }) {
   const [createError, setCreateError] = useState(null);
   const [busy, setBusy] = useState(false);
   const input = useRef(null);
+  // 确认态让整张卡钉住，不再靠 hover 显形
+  const [confirmRow, setConfirmRow] = useState("");
+  const [toast, setToast] = useUndoToast();
   function openCreate() { setCreating(true); requestAnimationFrame(() => input.current?.focus()); }
   const load = useCallback(async () => {
     setError(null);
     try { const r = await api.researches(); setItems(r.researches || []); }
     catch (e) { setError(e); }
   }, []);
+
+  /**
+   * 移入回收站。**软删除**：资料引用、讨论和已带入的记录都留着，
+   * 恢复回来还是原来那一条——所以回执上那颗「撤销」是真的能一步走回去。
+   */
+  async function trash(item) {
+    const title = item.question || item.title;
+    try {
+      await api.trashResearch(item.id);
+      setToast({
+        text: `「${title}」已移入回收站`,
+        detail: "资料、讨论和已写的文章都还在。",
+        undo: async () => { await api.restoreResearch(item.id); setToast(null); load(); },
+      });
+      load();
+    } catch (e) { setError(e); }
+  }
   useEffect(() => { load(); }, [load]);
   async function create(e) {
     e.preventDefault(); if (!question.trim() || busy) return;
@@ -53,12 +74,24 @@ function ResearchList({ onGo }) {
     <div className="research-card-grid">{filtered.slice(currentPage * 6, (currentPage + 1) * 6).map(item => {
       const title = item.question || item.title;
       const date = new Date(item.updatedAt);
-      return <button key={item.id} type="button" className="research-card" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>
-        <h2>{title}</h2><p>{item.notes?.trim() || item.excerpt || "还没有留下笔记，可以先和 AI 聊聊这个问题。"}</p>
-        <div className="research-card-counts"><span>{item.references?.length || 0} 份资料</span><span>{item.conversations?.length || 0} 段讨论</span><span>{item.projects?.length || 0} 篇文章</span></div>
-        <footer><span>{Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`}</span><span>继续展开 →</span></footer>
-      </button>;
+      /* ⚠️ 整张卡不再是一颗 `<button>`：删除入口要待在卡里，而按钮里套按钮是非法 HTML。
+         和 Wiki 列表行、素材列表行同一个形状。 */
+      return <article key={item.id} className="research-card" data-confirm={confirmRow === item.id ? "" : undefined}>
+        <button type="button" className="research-card__open" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>
+          <h2>{title}</h2><p>{item.notes?.trim() || item.excerpt || "还没有留下笔记，可以先和 AI 聊聊这个问题。"}</p>
+          <div className="research-card-counts"><span>{item.references?.length || 0} 份资料</span><span>{item.conversations?.length || 0} 段讨论</span><span>{item.projects?.length || 0} 篇文章</span></div>
+          <footer><span>{Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`}</span><span>继续展开 →</span></footer>
+        </button>
+        <span className="research-card__acts">
+          <RowDelete
+            onDelete={() => trash(item)}
+            title={`移入回收站：${title}`}
+            onOpenChange={(open) => setConfirmRow(open ? item.id : "")}
+          />
+        </span>
+      </article>;
     })}</div>
+    <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
     {filtered.length > 0 ? <nav className="research-pagination" aria-label="选题分页"><span aria-live="polite">{currentPage * 6 + 1}–{Math.min((currentPage + 1) * 6, filtered.length)} / {filtered.length} 个选题 · 最近更新优先</span><div><button className="btn btn-sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages}</span><button className="btn btn-sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></div></nav> : null}
   </section>;
 }
@@ -121,13 +154,41 @@ function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard })
     <div className={`topic-split${mobileChat?" is-chat":""}`}>
       <div className="topic-left">
         <header className="topic-heading">
-          <div className="topic-breadcrumb"><button className="btn btn-sm" onClick={()=>onGo("research")}><IconChevronLeft size={15}/>所有选题</button><small role="status">{busy?"保存中…":status||"已保存"}</small></div>
+          {/* ⚠️ **删除不能走 `PageHeader` 的插槽。** 这一页把外壳页头整条藏了
+              （`topic-workspace.css`: `.app__frame:has(.topic-workspace) > .view-head{display:none}`），
+              portal 进去等于画在一个 `display:none` 的容器里——不会报错，只是按钮不存在。
+              所以它落在这一页自己的那条动作栏上，和「所有选题」分坐两端。
+              删完把回执交接给列表页：它该出现在你被送到的那一页上。 */}
+          <div className="topic-breadcrumb"><button className="btn btn-sm" onClick={()=>onGo("research")}><IconChevronLeft size={15}/>所有选题</button><RowDelete
+            label="移入回收站"
+            title={`移入回收站：${record.question || "这个选题"}`}
+            onDelete={async()=>{
+              try {
+                await api.trashResearch(id);
+                handOffUndo({
+                  text: `「${record.question || "这个选题"}」已移入回收站`,
+                  detail: "资料、讨论和已写的文章都还在。",
+                  undo: async()=>{await api.restoreResearch(id);onForceGo("research",id);},
+                });
+                onForceGo("research");
+              } catch(e) { setError(e); }
+            }}
+          /></div>
           <div className="topic-title-row"><textarea rows={1} aria-label="选题问题" value={record.question} maxLength={300} onChange={e=>change("question",e.target.value)} onBlur={save}/>{!articleMode?<button className="btn btn-primary" aria-label="开始写文章" onClick={()=>switchTab("article")}>{projectId?"继续写作":"写成文章"}</button>:null}</div>
         </header>
+        {/* ⚠️ 页签走 `ui.jsx` 的 `ViewTabs`。这里原来是第五种页签长相——而
+            「这一页现在看哪一档」在这个工作台里只该有一个样子（找题 / 选题 / 复盘 / 数据 / 热点 共用那一颗）。 */}
         <nav className="topic-tabs" aria-label="选题工作区">
-          <button aria-pressed={!articleMode&&!showSources} onClick={()=>switchTab("notes")}>思考</button>
-          <button aria-pressed={articleMode&&!showSources} onClick={()=>switchTab("article")}>文章</button>
-          <button aria-pressed={showSources} onClick={async()=>{if(await saveAll())setShowSources(true);}}>资料 <span>{record.references?.length||0}</span></button>
+          <ViewTabs
+            label="选题工作区"
+            value={showSources?"sources":articleMode?"article":"notes"}
+            onChange={async key=>{if(key==="sources"){if(await saveAll())setShowSources(true);}else switchTab(key);}}
+            items={[
+              {key:"notes",label:"思考"},
+              {key:"article",label:"文章"},
+              {key:"sources",label:"资料",count:record.references?.length||0},
+            ]}
+          />
           {articleMode&&record.projects?.length>1?<select aria-label="切换文章" value={projectId} onChange={async e=>{const value=e.target.value;if(await saveAll()){setArticleContext(null);setProjectId(value);}}}>{record.projects.map(p=><option key={p.id} value={p.id}>{p.title||"未命名文章"}</option>)}</select>:null}
           {articleMode?<button className="topic-add-article" onClick={async()=>{if(await saveAll()){requestKey.current=crypto.randomUUID();setTransfer(record.notes||record.question);}}}>另写一篇</button>:null}
         </nav>
@@ -144,7 +205,8 @@ function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard })
                 {summary?.sources?.length?<details className="topic-evidence"><summary>查看讨论依据</summary>{summary.sources.map((source,index)=><blockquote key={index}>{source.quote||source.text}<small>依据 {index+1} · {source.role==="user"?"你的表达":"AI 的分析"}</small><button className="btn btn-sm" onClick={()=>selectConversation(source.conversationId)}>回到这次讨论</button></blockquote>)}</details>:null}
                 {summaryError?<div role="status"><small>摘要暂时没有更新：{summaryError.message}</small><button className="btn btn-sm" disabled={summaryBusy} onClick={refreshSummary}>重试整理</button></div>:null}
               </details>
-              <section className="topic-notebook"><header><h2>我的笔记</h2><button className="btn btn-sm" disabled={!edited||busy} onClick={save}>保存笔记</button></header><textarea ref={notesRef} aria-label="我的笔记" className="topic-notes" rows={6} value={record.notes||""} onChange={e=>change("notes",e.target.value)} onBlur={save} placeholder="写下自己的判断，或从右侧讨论中摘录。"/></section>
+              <section className="topic-notebook">{/* 保存的结果贴着保存动作。它原来吊在左上角「所有选题」旁边——离你刚才动手的地方一整屏远。 */}
+              <header><h2>我的笔记</h2><small role="status">{busy?"保存中…":status||"已保存"}</small><button className="btn btn-sm" disabled={!edited||busy} onClick={save}>保存笔记</button></header><textarea ref={notesRef} aria-label="我的笔记" className="topic-notes" rows={6} value={record.notes||""} onChange={e=>change("notes",e.target.value)} onBlur={save} placeholder="写下自己的判断，或从右侧讨论中摘录。"/></section>
               <details className="topic-detail"><summary>未解的问题{record.openQuestions?.trim()?" · 有记录":""}</summary><textarea aria-label="未解问题" rows={4} placeholder="还有哪些地方需要核实或继续讨论？" value={record.openQuestions||""} onChange={e=>change("openQuestions",e.target.value)} onBlur={save}/></details>
               <details className="topic-detail" open><summary>关联资料 <span>{record.references?.length||0}</span></summary><div className="topic-linked">{record.references?.map(r=><article key={r.id}><button disabled={r.missing} onClick={()=>onGo("library",`${r.kind}:${r.id}`)}><IconFileText size={16}/>{r.title||"来源已失效"}</button></article>)}</div><button className="btn btn-sm" onClick={()=>setShowSources(true)}>{record.references?.length?"管理资料":"关联一份资料"}</button></details>
             </div>}
