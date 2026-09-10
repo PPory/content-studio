@@ -963,6 +963,21 @@ select:focus-visible {
 /* 页头里的按钮压一档高度：40px 的一条里塞 34px 的默认按钮会顶到边线上 */
 .view-head .btn { height: 30px; padding: 0 11px; font-size: var(--fs-sm); }
 .view-head .btn svg { width: 14px; height: 14px; }
+
+/**
+ * ⚠️ **页头是一行，所以里面没有任何东西可以换行。**
+ * `.view-head__end` 是 flex 且 `min-width: 0`，默认允许子项被压缩——窄屏上一挤，
+ * 主按钮就把「新建合集」折成两行塞进 44px 里，字直接压到边线外面
+ *（合集页加了那颗「卡片 / 列表」之后在 390px 上量到过）。
+ * 主操作不许被压窄；**宽度不够时该让路的是计数**，它只是个数字，
+ * 而列表本身第一行就在下面。
+ */
+.view-head .btn { flex: none; white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .view-head .project-total,
+  .view-head .view-head__count { display: none; }
+}
 /**
  * 分隔线**只在真有东西从底下过去时才加深**——没滚动时它只是一条界线，
  * 滚起来之后它得压住从下面钻过去的内容。`data-scrolled` 由 `.main` 的滚动直写 DOM。
@@ -5557,6 +5572,36 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 /* 不给动效的那一档：直接换，不淡入淡出。换的是文字内容，本来也不需要过渡 */
 @media (prefers-reduced-motion: reduce) {
   .ptable__tail > time, .ptable__next { transition: none; }
+}
+
+/**
+ * ⚠️ **窄屏上这张表退成两栏，不然标题那一列宽度会被压到 0。**
+ *
+ * 列宽里除了标题全是定宽（92 + 88 + 56 + 150），加上左右内边距和末尾两颗按钮，
+ * 在 390px 上 `minmax(0, 1fr)` 分到的是 0——**屏幕上七行只剩状态和时间，
+ * 一个标题都看不见**（量到过；「素材」列撤掉之后腾出 56px，仍然不够）。
+ *
+ * 留下的是「状态 ｜ 标题」：一行里做决定要用的就这两件。
+ * 时间落到标题下面，和阻塞、所属合集同一处——它是这一行里最不常用来做决定的那一列。
+ * 表头撤掉：两栏的表头说的话，两栏本身已经说清了。
+ */
+@media (max-width: 640px) {
+  .ptable__head { display: none !important; }
+  .ptable__row {
+    grid-template-columns: 74px minmax(0, 1fr);
+    /* ⚠️ 行间距要单独压：横向那 14px 是列与列之间的，竖着照抄就在标题和时间之间
+       撑出一道 14px 的空档——而时间在这儿是标题的附注，该贴着它，
+       和阻塞、所属合集那两行一样（`.ptable__title` 的 `gap: 3px`）。 */
+    gap: 3px 14px;
+    align-items: start;
+    padding: 10px;
+  }
+  .ptable__row > [role="cell"]:first-child { padding-top: 1px; }
+  /* 数值列在两栏里没有位置：它们右对齐、定宽，本来就是给横着比用的 */
+  .ptable__dim { display: none; }
+  .ptable__tail { grid-column: 2; justify-content: flex-start; font-size: var(--fs-xs); }
+  /* 「下一步」靠 hover 显形，触屏上没有 hover——绝对定位的它会盖住时间 */
+  .ptable__next { display: none; }
 }
 
 /* ── 看板 ────────────────────────────────────────────────────────── */
