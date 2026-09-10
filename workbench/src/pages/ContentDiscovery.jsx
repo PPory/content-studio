@@ -4,8 +4,9 @@ import {DirectionEvidence} from '../components/DirectionEvidence.jsx';
 import {DirectionActions} from '../components/DirectionActions.jsx';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, FilterHeader, Loading, SearchBox, Toast, ViewTabs, relTime } from "../components/ui.jsx";
+import { ErrorNote, FilterHeader, LayoutToggle, Loading, SearchBox, Toast, ViewTabs, relTime } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
+import { useLayoutMode } from "../lib/use-layout-mode.js";
 import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -125,6 +126,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
   const [agendaBusy, setAgendaBusy] = useState(false);
   const [agendaKept, setAgendaKept] = useState([]);
   const [toast, setToast] = useUndoToast();
+  const [layout, setLayout] = useLayoutMode("directions");
 
   /**
    * 移除一个已保存的方向。**只动标记位**（`intel_directions.dismissed`）——
@@ -240,7 +242,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
           <input id="opportunity-focus" value={focus} maxLength={500} onChange={(event) => setFocus(event.target.value)} disabled={scanning} placeholder="输入关注方向，或留空探索最近的积累" />
           <button type="submit" className={`btn${connections.length ? "" : " btn-primary"}`} disabled={scanning || loading || !data}>{scanning ? "正在寻找…" : scan_ ? "重新扫描" : "发现新方向"}</button>
         </form>
-        <div className="opportunity-scan__meta"><span>{scan_ ? `${relTime(scan_.scannedAt)}扫描${summary ? ` · 读了 ${summary}` : ""}` : "结合近期情报、知识、灵感和讨论，寻找值得深入的问题。"}</span></div>
+        <div className="opportunity-scan__meta"><span>{scan_ ? `${relTime(scan_.scannedAt)}扫描${summary ? ` · 读了 ${summary}` : ""}` : "结合近期情报、知识、灵感和讨论，寻找值得深入的问题。"}</span><LayoutToggle value={layout} onChange={setLayout} /></div>
         {stale && data?.staleReason ? <p className="opportunity-update">{data.staleReason}</p> : null}
       </div>
       {scanError ? <div className="discovery-failed"><ErrorNote error={scanError} what="寻找新方向" onRetry={() => scan({ force: true })} /><p>已有机会没有被改动。你可以继续看上次的结果，或手动探索。</p></div> : null}
@@ -253,7 +255,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
         <ErrorNote error={savedError} what="读取已保存机会" onRetry={load} />
         {!browserItems.length&&!savedError&&!loading&&<p className="opportunity-saved-empty">{savedQuery?'没有找到匹配的机会，试试其他关键词。':'还没有保存的方向。'}</p>}
       </section>
-      <div hidden={view==='research'}><DirectionBrowser items={browserItems} initialKey={initialDirection} onReadingChange={setReading} onRemove={removeDirection} renderDetail={item=>item.legacy?renderLegacy?.(item.legacy.id):<DirectionDetail item={item} onGo={onGo} onSaved={onSaved}/>}/></div>
+      <div hidden={view==='research'}><DirectionBrowser items={browserItems} initialKey={initialDirection} onReadingChange={setReading} onRemove={removeDirection} layout={layout} renderDetail={item=>item.legacy?renderLegacy?.(item.legacy.id):<DirectionDetail item={item} onGo={onGo} onSaved={onSaved}/>}/></div>
       <aside hidden={view !== "research"} className="opportunity-context" aria-label="研究方向与长期议程">
       {research.length ? (
         <section className="discovery-research" aria-label="最近你在想的">

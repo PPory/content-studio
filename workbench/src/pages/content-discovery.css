@@ -7,7 +7,7 @@
 .opportunity-scan input { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-1); font: inherit; font-size: 12px; padding: 8px 10px; }
 .opportunity-scan input:focus-visible { outline: 2px solid var(--text-3); outline-offset: 2px; }
 .opportunity-scan .btn { flex: none; }
-.opportunity-scan__meta { display: flex; justify-content: space-between; gap: 16px; padding: 10px 2px 0; color: var(--text-3); font-size: var(--fs-xs); }
+.opportunity-scan__meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 2px 0; color: var(--text-3); font-size: var(--fs-xs); }
 .opportunity-scan__meta button { display: inline-flex; align-items: center; gap: 6px; flex: none; border: 0; background: transparent; color: var(--text-2); font: inherit; cursor: pointer; }
 .opportunity-scan__meta svg { width: 15px; height: 15px; }
 .opportunity-update { margin: 6px 0; font-size: var(--fs-xs); color: var(--text-2); }
@@ -177,6 +177,17 @@
 /* ⚠️ `auto-fill` 而不是写死两列：容器塞得下几列就开几列，右边空着是正常的。
    上一版是 580×270 的大卡装三行字，一屏看得到两条半。 */
 .direction-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:4px 0 32px}
+/* 列表视图：行走 `styles.css` 的 `.rows / .row / .row-head`（Wiki、来源、选题同一种）。 */
+.direction-rows{margin:4px 0 32px}
+.direction-rows .row-head{gap:16px}
+.direction-row__open{flex:1 1 auto;min-width:0;padding:0;border:0;background:none;font:inherit;font-weight:500;color:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.direction-rows .row-meta{display:flex;gap:16px;flex:none;max-width:52%;min-width:0}
+.direction-row__problem{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.direction-row__acts{flex:none;display:flex;opacity:0;transition:opacity .14s var(--ease)}
+.direction-rows .row:hover .direction-row__acts,
+.direction-rows .row:focus-within .direction-row__acts,
+.direction-rows .row[data-confirm] .direction-row__acts{opacity:1}
+@media(max-width:850px){.direction-rows .row-meta{display:none}.direction-row__acts{opacity:1}}
 /* 外层只是容器，内层那颗按钮才是「打开」——为什么不能整张卡一颗 button，见 `DirectionBrowser.jsx`。 */
 .direction-overview-card{position:relative;display:block;min-width:0;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);transition:border-color .14s var(--ease)}
 .direction-overview-card__open{display:flex;flex-direction:column;align-items:flex-start;gap:7px;width:100%;min-width:0;padding:13px 15px 11px;text-align:left;color:var(--text-1);font:inherit;border:0;border-radius:inherit;background:transparent;cursor:pointer}

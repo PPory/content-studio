@@ -15,10 +15,12 @@
 /* 采集方式、查找窗口、整理了几条，原来是三到四条各自成行的灰字，
    把第一条情报推到了首屏 536px 处。它们是注解，不是这一页的主角。 */
 .brief-status {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
   margin: 0 0 18px; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-3);
 }
 .brief-run-result { min-width: 0; }
+/* 显示方式挪到这一条的右端：左边那一串说的是「这一批怎么来的」，它不是其中一件。 */
+.brief-status > .layout-toggle { order: 9; margin-left: auto; }
 .brief-run-result summary { cursor: pointer; list-style: none; }
 .brief-run-result summary::-webkit-details-marker { display: none; }
 .brief-run-result summary span { margin-left: 10px; text-decoration: underline; text-underline-offset: 3px; }
@@ -105,6 +107,37 @@
 /* 忽略过的那几条整体退一档：它们在这一档里是「等着你决定要不要拿回来」，不是主角 */
 .brief-card.is-dismissed { background: var(--canvas); }
 
+
+/* ---------- 列表视图 ---------- */
+/* 行走 `styles.css` 的 `.rows / .row / .row-head`（Wiki、来源、选题同一种），
+   这里只补它没有的三件事：未读点的位置、中间那段摘要、右端的动作。 */
+.brief-rows { margin-bottom: 26px; }
+.brief-rows .row-head { gap: 12px; }
+.brief-row__open {
+  flex: 0 1 auto; min-width: 0; max-width: 46%;
+  padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--text-1);
+  text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.brief-row.is-read .brief-row__open { color: var(--text-2); font-weight: 500; }
+/* 中间那一列放摘要——遮住它还能不能做决定？能，所以它只截一行、不抢标题 */
+.brief-row__summary { flex: 1 1 auto; min-width: 0; color: var(--text-3); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-row.is-active { box-shadow: inset 2px 0 0 var(--accent); }
+.brief-row.is-dismissed { background: var(--canvas); }
+.brief-rows .row-meta { display: flex; align-items: center; gap: 14px; flex: none; }
+/* ⚠️ **勾选框占位不能跟着 hover 收放。** 只有出现时才占宽度的话，鼠标扫过一行、
+   标题就往右跳 22px——一列扫下来全在抖。位置留着，只让它透明。 */
+.brief-rows .brief-card__pick { flex: none; width: 14px; }
+.brief-rows .row:hover .brief-card__pick,
+.brief-rows .row:focus-within .brief-card__pick,
+.brief-rows .row.is-picked .brief-card__pick { opacity: 1; }
+.brief-rows .row:hover .brief-card__acts,
+.brief-rows .row:focus-within .brief-card__acts,
+.brief-rows .row.is-dismissed .brief-card__acts { opacity: 1; }
+@media (max-width: 900px) {
+  .brief-row__summary { display: none; }
+  .brief-row__open { max-width: none; flex: 1 1 auto; }
+  .brief-rows .brief-card__acts, .brief-rows .brief-card__pick { opacity: 1; }
+}
 
 .brief-selection-bar {
   position: sticky; bottom: 12px; z-index: 2;

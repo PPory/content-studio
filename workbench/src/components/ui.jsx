@@ -33,7 +33,9 @@ import {
   IconFlag,
   IconInbox,
   IconList,
+  IconLayoutGrid,
   IconLoader2,
+  IconListDetails,
   IconShieldCheck,
   IconMessageQuestion,
   IconNotebook,
@@ -426,6 +428,42 @@ export function ViewTabs({ items, value, onChange, label }) {
  * `label` 默认「移入回收站」：本地工作区的删除都是软删除，文案要照实说。
  * 真的不进回收站的地方（比如「移除方向」只是取消保存）自己传。
  */
+/**
+ * 卡片 / 列表切换。
+ *
+ * ⚠️ **它不进筛选胶囊。** 胶囊回答「这一页现在看哪一部分」，这一对回答
+ *「同样这些东西怎么摆」——两件事长成一个样，点之前就分不出哪个会换掉内容。
+ * 所以它是列表工具带**右端**一对安静的图标，和搜索框、条数待在一起。
+ *
+ * 选择记在 `lib/use-layout-mode.js`（每页各一份，localStorage）。
+ */
+export function LayoutToggle({ value, onChange }) {
+  return (
+    <div className="layout-toggle" role="group" aria-label="显示方式">
+      <button
+        type="button"
+        className="icon-btn"
+        aria-pressed={value === "card"}
+        onClick={() => onChange("card")}
+        title="卡片视图"
+        aria-label="卡片视图"
+      >
+        <IconLayoutGrid aria-hidden="true" stroke={1.7} />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        aria-pressed={value === "list"}
+        onClick={() => onChange("list")}
+        title="列表视图"
+        aria-label="列表视图"
+      >
+        <IconListDetails aria-hidden="true" stroke={1.7} />
+      </button>
+    </div>
+  );
+}
+
 export function RowDelete({ onDelete, label = "移入回收站", title, onOpenChange }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);

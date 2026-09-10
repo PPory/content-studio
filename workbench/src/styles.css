@@ -5361,6 +5361,19 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
    于是选择器指向一个已经不存在的祖先，按钮再也不显形，而且不报错。 */
 /* 共用删除入口（`ui.jsx` 的 `RowDelete`）。平时是一颗安静的灰图标，
    指上去才变红——它是这一行里唯一不可逆方向的动作。 */
+/**
+ * 卡片 / 列表切换（`ui.jsx` 的 `LayoutToggle`）。
+ *
+ * ⚠️ **它不长得像那颗筛选胶囊。** 胶囊是浮起来的药丸、选中态给底色；这一对是
+ * 一个方角小分段，选中的那颗给底色、另一颗退成灰图标。两件事回答的问题不同
+ *（看哪一部分 / 怎么摆），长相就不能撞。
+ */
+.layout-toggle { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); }
+.layout-toggle .icon-btn { width: 26px; height: 26px; border-color: transparent; background: transparent; color: var(--text-3); }
+.layout-toggle .icon-btn:hover { color: var(--text-1); }
+.layout-toggle .icon-btn[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); }
+.layout-toggle .icon-btn svg { width: 15px; height: 15px; }
+
 .row-delete__trigger { width: 26px; height: 26px; border-color: transparent; color: var(--text-3);
   background: transparent; }
 .row-delete__trigger:hover { border-color: var(--danger); color: var(--danger); }

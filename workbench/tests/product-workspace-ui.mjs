@@ -145,7 +145,20 @@ try {
   for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
   await page.goto(`${base}/#/research`); await page.reload();
   await page.locator(".research-card").first().waitFor();
-  check("选题总览每页最多六张卡片", await page.locator(".research-card").count() === 6);
+  check("选题总览每页最多十二张卡片", await page.locator(".research-card").count() === 12);
+  // 卡片 / 列表双视图，而且这个选择要记住（localStorage，每页一份）。
+  await page.getByRole("button", { name: "列表视图", exact: true }).click();
+  check("能切成列表，条目一条不少", await page.locator(".research-rows .row").count() === 12
+    && await page.locator(".research-card").count() === 0);
+  await page.reload();
+  await page.locator(".research-rows .row").first().waitFor();
+  check("刷新之后还是列表——视图偏好被记住了", await page.locator(".research-card").count() === 0);
+  await page.locator(".research-rows .row-title").first().click();
+  await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
+  check("列表里点标题照样打开选题", page.url().includes("#/research/"));
+  await page.goBack();
+  await page.getByRole("button", { name: "卡片视图", exact: true }).click();
+  check("切回卡片", await page.locator(".research-card").count() === 12);
   const firstTitle = await page.locator(".research-card h2").first().innerText();
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   check("翻页切换选题", await page.locator(".research-card h2").first().innerText() !== firstTitle);

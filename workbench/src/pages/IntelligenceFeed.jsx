@@ -17,8 +17,9 @@ import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { IntelligenceAngles } from "../components/IntelligenceAngles.jsx";
 import { BriefPeek } from "../components/BriefPeek.jsx";
 import { BriefReading, briefCardMeta, briefDate, confidenceLabel, markdown, platformName, safeUrl, sourceDate } from "../components/BriefReading.jsx";
-import { Empty, ErrorNote, FilterHeader, Loading, Note, PageHeader, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
+import { Empty, ErrorNote, FilterHeader, LayoutToggle, Loading, Note, PageHeader, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
+import { useLayoutMode } from "../lib/use-layout-mode.js";
 import { IconRadar2, IconSettings } from "../components/icons.jsx";
 import "./intelligence-feed.css";
 
@@ -56,6 +57,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useUndoToast();
   const [tab, setTab] = useState("today");
+  const [layout, setLayout] = useLayoutMode("briefs");
 
   // 整页详情（`#/intel-detail/<id>`）：长文阅读 + 和 AI 聊聊需要一整屏的宽度。
   const [brief, setBrief] = useState(null);
@@ -497,6 +499,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           {/* 系统状态一行说完：这批什么时候采的、覆盖了哪些来源、整理了几条。
               这四件事原来是四条独立的灰字，把第一条情报推到了首屏 536px 处。 */}
           <div className="brief-status">
+            <LayoutToggle value={layout} onChange={setLayout} />
             <span>{data.preferences.nativeSocialEnabled ? "手动采集 · X / Reddit 原生" : "手动整理 · 公开搜索与 AI Hot"}</span>
             {latestRun?.window ? (
               <span>本次查找：{sourceDate(latestRun.window.start)} — {sourceDate(latestRun.window.end)}（北京时间）</span>
@@ -585,7 +588,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
                       title={confidenceLabel(confidence)}
                       aside={<span className="brief-group__hint">{confidence === "reliable" ? "有依据，可以进一步了解" : "保留线索，结论仍需验证"}</span>}
                     />
-                    <div className="brief-grid">{group.map(card)}</div>
+                    <div className={layout === "list" ? "rows brief-rows" : "brief-grid"}>{group.map(layout === "list" ? row : card)}</div>
                   </section>
                 );
               })}
@@ -636,6 +639,63 @@ export function IntelligenceFeed({ view, state, onGo }) {
    * AI 的推荐理由和「首次收集」日期是**读完之后**才需要的注解，进 peek。
    * 上一版把它们全摊在卡上，一条 240px 高，一屏看得到一条半。
    */
+  /**
+   * 同一条情报的列表形态。
+   *
+   * ⚠️ **和卡片共用全部行为**：勾选、点标题开 peek、`is-active` 高亮、↑/↓ 键盘流、
+   * hover 才出的动作。换的只是摆法——所以这两个分支不能各写一套逻辑，
+   * 差异只在结构和类名上。`data-brief` 必须留着：键盘流靠它把当前那条滚进视野。
+   */
+  function row(item) {
+    const active = item.id === peekId;
+    const picked = selected.includes(item.id);
+    return (
+      <div
+        key={item.id}
+        data-brief={item.id}
+        className={`row brief-row ${item.read ? "is-read" : ""} ${active ? "is-active" : ""} ${picked ? "is-picked" : ""} ${item.dismissed ? "is-dismissed" : ""}`}
+      >
+        <div className="row-head">
+          <label className="brief-card__pick">
+            <input
+              type="checkbox"
+              aria-label={`选择：${item.title}`}
+              checked={picked}
+              onChange={(e) => setSelected((ids) => (e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id)))}
+            />
+          </label>
+          <span className="brief-card__sr">{item.read ? "已读" : "未读"}</span>
+          <button type="button" className="row-title brief-row__open" onClick={() => setPeekId(item.id)}>
+            {item.read ? null : <span className="brief-card__dot" aria-hidden="true" />}
+            {item.title}
+          </button>
+          <span className="brief-row__summary">{item.summary}</span>
+          <span className="row-meta">
+            <span className="brief-card__meta">{briefCardMeta(item)}</span>
+            <span className="brief-card__acts">
+              {item.dismissed ? (
+                <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, false)}>恢复推荐</button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="text-action"
+                    disabled={Boolean(busy)}
+                    aria-pressed={Boolean(item.saved)}
+                    onClick={() => feedback(item, { saved: !item.saved })}
+                  >
+                    {item.saved ? "已收藏" : "收藏"}
+                  </button>
+                  <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, true)}>不感兴趣</button>
+                </>
+              )}
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   function card(item) {
     const active = item.id === peekId;
     const picked = selected.includes(item.id);

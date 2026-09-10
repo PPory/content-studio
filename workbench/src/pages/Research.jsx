@@ -5,12 +5,16 @@ import "./research-list.css";
 import { renderMarkdown } from "../lib/markdown.js";
 import { IconChevronLeft, IconFileText, IconLink, IconSearch } from "../components/icons.jsx";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, RowDelete, SearchBox, Toast, ViewTabs } from "../components/ui.jsx";
+import { ErrorNote, LayoutToggle, Loading, RowDelete, SearchBox, Toast, ViewTabs } from "../components/ui.jsx";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { LibraryBrowser } from "../components/LibraryBrowser.jsx";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { handOffUndo, useUndoToast } from "../lib/use-undo-toast.js";
+import { useLayoutMode } from "../lib/use-layout-mode.js";
+
+// 一屏放得下多少张。卡片按情报卡收紧之后 6 张会剩一大片空白。
+const PAGE_SIZE = 12;
 
 export function Research({ researchId, onGo, onForceGo, registerNavigationGuard }) {
   return researchId ? <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} /> : <ResearchList onGo={onGo} />;
@@ -28,6 +32,7 @@ function ResearchList({ onGo }) {
   // 确认态让整张卡钉住，不再靠 hover 显形
   const [confirmRow, setConfirmRow] = useState("");
   const [toast, setToast] = useUndoToast();
+  const [layout, setLayout] = useLayoutMode("research");
   function openCreate() { setCreating(true); requestAnimationFrame(() => input.current?.focus()); }
   const load = useCallback(async () => {
     setError(null);
@@ -61,19 +66,34 @@ function ResearchList({ onGo }) {
   const term = query.trim().toLowerCase();
   const filtered = (items || []).filter(item => !term || `${item.question || item.title} ${item.notes || item.excerpt || ""}`.toLowerCase().includes(term))
     .sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
-  const pages = Math.max(1, Math.ceil(filtered.length / 6));
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages - 1);
   return <section className="task-page research-overview">
     <header className="task-page-head"><div><h1>选题空间</h1><p>围绕一个问题，读资料、记想法、讨论和写作。</p></div><div className="research-overview-actions"><button className="btn btn-sm" onClick={() => onGo("assistant")}>以前的对话</button><button className="btn btn-primary btn-sm" aria-expanded={creating || items?.length === 0} onClick={() => creating ? setCreating(false) : openCreate()}>{creating ? "收起新建" : "＋ 新建选题"}</button></div></header>
     <form className="research-create" hidden={!creating && items?.length !== 0} onSubmit={create}><label>你想弄明白什么？<input ref={input} aria-label="你想弄明白什么" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="从一个真实的疑问开始" /></label><button className="btn btn-primary" disabled={busy || !question.trim()}>{busy ? "正在创建…" : "开始展开"}</button></form>
     <ErrorNote error={createError} what="创建选题" />
-    <div className="research-overview-toolbar"><h2>我的选题 <span>{items?.length ?? "—"}</span></h2><SearchBox value={query} onChange={value => { setQuery(value); setPage(0); }} placeholder="搜索选题或笔记…" ariaLabel="搜索选题" /></div>
+    <div className="research-overview-toolbar"><h2>我的选题 <span>{items?.length ?? "—"}</span></h2><div className="research-overview-tools"><SearchBox value={query} onChange={value => { setQuery(value); setPage(0); }} placeholder="搜索选题或笔记…" ariaLabel="搜索选题" /><LayoutToggle value={layout} onChange={setLayout} /></div></div>
     <ErrorNote error={error} what="读取选题" onRetry={load} />
     {items === null && !error ? <Loading rows={3} /> : null}
     {items !== null && !filtered.length ? <div className="research-overview-empty"><h3>{term ? "没有找到匹配的选题" : "从你想弄明白的问题开始"}</h3><p>{term ? "试试更短的关键词，或清空搜索查看全部选题。" : "资料、想法和讨论会留在同一个空间，需要时再写成文章。"}</p><button className="btn btn-sm" onClick={() => { setQuery(""); setPage(0); if (!term) openCreate(); }}>{term ? "清空搜索" : "写下一个问题"}</button></div> : null}
-    <div className="research-card-grid">{filtered.slice(currentPage * 6, (currentPage + 1) * 6).map(item => {
+    {/* 列表视图走共用的 `.rows`（Wiki、来源、周报同一种行），不新造列表语汇。
+        一行里装的是做决定要用的东西：问题、有多少材料、什么时候动过。 */}
+    <div className={layout === "list" ? "rows research-rows" : "research-card-grid"}>{filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => {
       const title = item.question || item.title;
       const date = new Date(item.updatedAt);
+      const when = Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`;
+      if (layout === "list") return <div className="row" key={item.id} data-confirm={confirmRow === item.id ? "" : undefined}>
+        <div className="row-head">
+          <button type="button" className="row-title research-row__open" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>{title}</button>
+          <span className="row-meta">
+            <span>{item.references?.length || 0} 份资料 · {item.conversations?.length || 0} 段讨论 · {item.projects?.length || 0} 篇文章</span>
+            <span>{when}</span>
+          </span>
+          <span className="research-row__acts">
+            <RowDelete onDelete={() => trash(item)} title={`移入回收站：${title}`} onOpenChange={(open) => setConfirmRow(open ? item.id : "")} />
+          </span>
+        </div>
+      </div>;
       /* ⚠️ 整张卡不再是一颗 `<button>`：删除入口要待在卡里，而按钮里套按钮是非法 HTML。
          和 Wiki 列表行、素材列表行同一个形状。 */
       return <article key={item.id} className="research-card" data-confirm={confirmRow === item.id ? "" : undefined}>
@@ -92,7 +112,7 @@ function ResearchList({ onGo }) {
       </article>;
     })}</div>
     <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
-    {filtered.length > 0 ? <nav className="research-pagination" aria-label="选题分页"><span aria-live="polite">{currentPage * 6 + 1}–{Math.min((currentPage + 1) * 6, filtered.length)} / {filtered.length} 个选题 · 最近更新优先</span><div><button className="btn btn-sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages}</span><button className="btn btn-sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></div></nav> : null}
+    {filtered.length > 0 ? <nav className="research-pagination" aria-label="选题分页"><span aria-live="polite">{currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, filtered.length)} / {filtered.length} 个选题 · 最近更新优先</span><div><button className="btn btn-sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</button><span>{currentPage + 1} / {pages}</span><button className="btn btn-sm" disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button></div></nav> : null}
   </section>;
 }
 function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard }) {
