@@ -595,7 +595,29 @@ try {
     && await page.getByText("完成后会在这里生成诊断报告，不会自动修改 Wiki。", { exact: true }).count() === 1);
   await page.unroute("**/api/workspace/knowledge/lint/run");
   if (process.argv.includes("--shots")) await page.screenshot({ path: wikiHomeShotFile, fullPage: true });
-  await page.getByRole("button", { name: /来源精准跳转/ }).click();
+
+  // 列表里也能删。三件事一起验：**连点两下删不掉**（`useConfirmGuard` 存在的全部理由）、
+  // 回执照实说「移入回收站」、撤销能一步走回去。
+  {
+    const rows = () => page.locator(".wiki-page-row").count();
+    const before = await rows();
+    const row = page.locator(".wiki-page-row").first();
+    const title = await row.locator(".wiki-page-row__title").innerText();
+    // 手快连点两下：第二下落在哪一颗上都不该删掉——「取消」排在最右（也就是指针
+    // 停着的那个位置），而万一它落在「移入回收站」上，`useConfirmGuard` 的 320ms 会挡住。
+    await row.getByRole("button", { name: `移入回收站：${title}` }).dblclick();
+    check("连点两下垃圾桶不会直接删掉", (await rows()) === before);
+    await row.getByRole("button", { name: `移入回收站：${title}` }).click();
+    await page.waitForTimeout(400);
+    await row.getByRole("button", { name: "移入回收站", exact: true }).click();
+    await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
+    check("列表里可以移入回收站，回执照实说不是「已删除」", (await rows()) === before - 1);
+    await page.getByRole("button", { name: "撤销", exact: true }).click();
+    await page.locator(".wiki-page-row").nth(before - 1).waitFor();
+    check("撤销把词条一步拿回来", (await rows()) === before
+      && (await page.locator(".wiki-page-row__title").allInnerTexts()).includes(title));
+  }
+  await page.locator(".wiki-page-row__open").filter({ hasText: "来源精准跳转" }).click();
   await page.locator(".wiki-article__body").waitFor();
   check("Wiki 详情展示完整正文、连接、来源和演化版本", (await page.locator(".wiki-article").innerText()).includes("验收标准")
     && (await page.getByRole("heading", { name: "连接" }).count()) === 1

@@ -5,6 +5,7 @@ import { IconArrowLeft, IconChevronRight, IconTrash, IconX } from "../components
 import { renderMarkdown } from "../lib/markdown.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { ScrollToTop } from "../components/ScrollToTop.jsx";
+import { handOffUndo } from "../lib/use-undo-toast.js";
 
 /**
  * 页头那几个计数以前是纯文字。「7 个来源」是这一页最该被追问的数字
@@ -49,6 +50,12 @@ export function EntryDetail({ entryId, onBack, onGo, onOpenSource, onBridge }) {
     try {
       await api.trashWikiPage(page.id);
       setConfirmDelete(false);
+      // 回执要出现在被送回去的那个列表上，不是在正在卸载的这一页上。
+      handOffUndo({
+        text: `「${page.title}」已移入回收站`,
+        detail: "正文、关系和 Raw 来源都还在。",
+        undo: async () => { await api.restoreWikiPage(page.id); onGo?.(`entries/${page.id}`); },
+      });
       onBack?.();
     } catch (cause) {
       setError(cause);

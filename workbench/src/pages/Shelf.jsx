@@ -12,6 +12,7 @@
 // 每章读到百分之多少。它那套的核心不是好看，是**让你能随时接着上次读**。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUndoToast } from "../lib/use-undo-toast.js";
 import { SHELF } from "../lib/sources.js";
 import { api } from "../lib/api.js";
 import { noteOpened } from "../lib/recent.js";
@@ -65,7 +66,7 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState(null);
   const [progressTick, setProgressTick] = useState(0); // 进度变了要重画卡片上的「上次读到」
-  const [toast, setToast] = useState(null);   // { text, undo? }
+  const [toast, setToast] = useUndoToast();
 
   const [coverFor, setCoverFor] = useState(null);   // 正在给哪本换封面
   const coverRef = useRef(null);
@@ -286,12 +287,6 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
     [reload]
   );
 
-  // 带撤销的多留一会儿：8 秒是「读完一句话再决定」需要的时间，2 秒只够看见有东西闪过
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.undo ? 8000 : 5000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // 进度：滚一下就记一次会把 localStorage 写爆，节流到 1 秒
   const lastSave = useRef(0);

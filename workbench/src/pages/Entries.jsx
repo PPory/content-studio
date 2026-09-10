@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { Empty, ErrorNote, Loading, Note, PageHeader, SearchBox } from "../components/ui.jsx";
+import { Empty, ErrorNote, Loading, Note, PageHeader, RowDelete, SearchBox, Toast } from "../components/ui.jsx";
 import { IconArrowRight, IconNotebook } from "../components/icons.jsx";
 import { summarize } from "../lib/knowledge-candidates.js";
 import { ScrollToTop } from "../components/ScrollToTop.jsx";
+import { useUndoToast } from "../lib/use-undo-toast.js";
 
 const TYPE_ORDER = ["overview", "topic", "synthesis", "comparison", "concept", "method", "person", "organization", "work", "stance", "source_summary"];
 
@@ -24,7 +25,32 @@ export function Entries({ onGo, focusBookId = "" }) {
 
   const [pending, setPending] = useState(null);
 
+  // 确认态要让整行钉住（不再靠 hover 显形），所以这里记的是「哪一行在确认」
+  const [confirmRow, setConfirmRow] = useState("");
+  const [toast, setToast] = useUndoToast();
   const load = () => api.wiki().then(setData).catch(setError);
+
+  /**
+   * 移入回收站。**软删除**：正文、关系和 Raw 来源都留着，
+   * 所以回执上那颗「撤销」是真的能一步走回去（见 `lib/use-undo-toast.js`）。
+   */
+  async function trashPage(page) {
+    try {
+      await api.trashWikiPage(page.id);
+      setToast({
+        text: `「${page.title}」已移入回收站`,
+        detail: "正文、关系和 Raw 来源都还在。",
+        undo: async () => {
+          await api.restoreWikiPage(page.id);
+          setToast(null);
+          load();
+        },
+      });
+      load();
+    } catch (cause) {
+      setError(cause);
+    }
+  }
   useEffect(() => { load(); }, []);
 
   /**
@@ -223,14 +249,29 @@ export function Entries({ onGo, focusBookId = "" }) {
                   : "这份来源还没有影响任何 Wiki 页面。"}
               </div>
             ) : listed.map((page) => (
-              <button key={page.id} type="button" className="wiki-page-row" onClick={() => onGo?.(`entries/${page.id}`)}>
-                <span className="wiki-page-row__title">{page.title}</span>
-                <span className="wiki-page-row__summary">{page.summary}</span>
-                {/* 类型跟着行走：筛到「全部」时它才是这一行唯一说不清的东西 */}
-                <span className="wiki-page-row__type">{data?.typeLabels?.[page.pageType] || page.pageType}</span>
-                {/* ⚠️ 连接数排在前面，因为列表就是按它排的——扫下来能看出这一列在递减 */}
-                <span className="wiki-page-row__meta">{page.linkCount} 连接 · {page.sourceCount} 来源 · v{page.revision}</span>
-              </button>
+              /**
+               * ⚠️ **整行不能再是一颗 `<button>`。** 删除入口要待在行里，而按钮里套按钮
+               * 是非法 HTML——浏览器会把内层那颗拎出去，点击落点整个乱掉。
+               * 所以外层是 `<article>`、打开是内层铺满的那颗、动作在右端；
+               * 和素材列表那一行（`studio/DocRow.jsx`）是同一个形状。
+               */
+              <article key={page.id} className="wiki-page-row" data-confirm={confirmRow === page.id ? "" : undefined}>
+                <button type="button" className="wiki-page-row__open" onClick={() => onGo?.(`entries/${page.id}`)} aria-label={`打开：${page.title}`}>
+                  <span className="wiki-page-row__title">{page.title}</span>
+                  <span className="wiki-page-row__summary">{page.summary}</span>
+                  {/* 类型跟着行走：筛到「全部」时它才是这一行唯一说不清的东西 */}
+                  <span className="wiki-page-row__type">{data?.typeLabels?.[page.pageType] || page.pageType}</span>
+                  {/* ⚠️ 连接数排在前面，因为列表就是按它排的——扫下来能看出这一列在递减 */}
+                  <span className="wiki-page-row__meta">{page.linkCount} 连接 · {page.sourceCount} 来源 · v{page.revision}</span>
+                </button>
+                <span className="wiki-page-row__acts">
+                  <RowDelete
+                    onDelete={() => trashPage(page)}
+                    title={`移入回收站：${page.title}`}
+                    onOpenChange={(open) => setConfirmRow(open ? page.id : "")}
+                  />
+                </span>
+              </article>
             ))}
           </main>
 
@@ -249,6 +290,7 @@ export function Entries({ onGo, focusBookId = "" }) {
           </aside>
         </div>
       )}
+      <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
       <ScrollToTop label="返回 Wiki 顶部" />
     </div>
   );

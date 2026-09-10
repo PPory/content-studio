@@ -7461,13 +7461,22 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .wiki-section__head h3 { font-size: var(--fs-sm); font-weight: 650; }
 .wiki-section__head span { color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-2xs); }
 /* 词条名 | 一句定义 | 类型 | 连接 · 来源 · 版本 */
-.wiki-page-row {
+/* 外层是行，内层那颗按钮才是「打开」——为什么不能整行一颗 button，见 `Entries.jsx`。 */
+.wiki-page-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.wiki-page-row__open {
+  flex: 1 1 auto; min-width: 0;
   display: grid; grid-template-columns: minmax(150px, .62fr) minmax(260px, 1.6fr) 74px 160px;
-  gap: 18px; align-items: baseline; width: 100%; min-height: 56px; padding: 12px 8px;
-  border: 0; border-bottom: 1px solid var(--border); border-radius: var(--r-sm);
-  background: transparent; color: var(--text-1); text-align: left; cursor: pointer;
+  gap: 18px; align-items: baseline; min-height: 56px; padding: 12px 8px;
+  border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-1); text-align: left; cursor: pointer; font: inherit;
 }
 .wiki-page-row:hover { background: var(--surface); }
+/* 删除平时收起来：九十多行各挂一个垃圾桶，那一列会比词条名还抢眼。
+   确认态整行钉住，否则鼠标一挪走按钮就没了。 */
+.wiki-page-row__acts { flex: none; display: flex; padding-right: 6px; opacity: 0; transition: opacity 0.14s var(--ease); }
+.wiki-page-row:hover .wiki-page-row__acts,
+.wiki-page-row:focus-within .wiki-page-row__acts,
+.wiki-page-row[data-confirm] .wiki-page-row__acts { opacity: 1; }
 .wiki-page-row__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 /* 类型退成一个词，不做胶囊：一列九十多枚小方块会比词条名还抢眼 */
 .wiki-page-row__type { color: var(--text-3); font-size: var(--fs-xs); }
@@ -7522,7 +7531,9 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   .wiki-log { position: static; padding-left: 0; border-left: 0; border-top: 1px solid var(--border-strong); padding-top: 14px; }
 }
 @media (max-width: 900px) {
-  .wiki-page-row { grid-template-columns: minmax(120px, .7fr) minmax(0, 1.6fr) 140px; gap: 14px; }
+  .wiki-page-row__open { grid-template-columns: minmax(120px, .7fr) minmax(0, 1.6fr) 140px; gap: 14px; }
+  /* 窄屏没有 hover，动作常驻 */
+  .wiki-page-row__acts { opacity: 1; }
   .wiki-page-row__type { display: none; }
 }
 
