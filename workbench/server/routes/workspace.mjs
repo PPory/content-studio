@@ -216,6 +216,14 @@ export const workspaceRoutes = [
     workspace.domain.softDeleteEntity(params.id, { actor, now: now() });
     json(res, { ok: true, deleted: 1, preservedProjects: series.progress.total, recoverable: true });
   }) },
+  // 回头路。删除一律是软删除，界面上又没有回收站页面，所以「点错了」的唯一出口
+  // 就是回执上那颗「撤销」——它需要这条路存在。
+  { method: "POST", path: "/api/workspace/series/:id/restore", handler: guarded(async ({ workspace, res, params }) => {
+    workspace.domain.restoreEntity(params.id, { actor, now: now() });
+    const series = seriesDto(workspace, params.id);
+    if (!series) throw new Error("合集不存在");
+    json(res, { ok: true, series });
+  }) },
   { method: "POST", path: "/api/workspace/projects/:id/series", handler: guarded(async ({ workspace, req, res, params }) => {
     const body = await readJsonBody(req);
     workspace.domain.setProjectSeries(params.id, body.seriesIds, { actor, now: now() });
@@ -317,6 +325,7 @@ export const workspaceRoutes = [
     json(res, { ok: true, project: projectDto(workspace, params.id) });
   }) },  { method: "POST", path: "/api/workspace/projects/:id/review", handler: guarded(async ({ workspace, req, res, params }) => { const body = await readJsonBody(req); const project = projectDto(workspace, params.id); const publication = workspace.db.prepare("SELECT id FROM publication_records WHERE draft_id=? ORDER BY published_at DESC LIMIT 1").get(body.draftId || project.publication?.latest?.draftId); if (!publication) throw new Error("尚无发布记录"); const result = workspace.domain.submitPublicationReview(publication.id, { metrics: body.metrics, status: body.status, basisMarkdown: body.basis, conclusionMarkdown: body.conclusion, nextExperimentMarkdown: body.nextExperiment, actor, now: now() }); let feedbackCreated = 0; if (body.captureFeedback) { const current = projectDto(workspace, params.id); const title = current.publication.latest?.title || current.title; const feedback = [{ type: "标题样本", title: `有效标题｜${title}`, bodyMarkdown: title }, { type: "内容角度", title: `有效角度｜${current.title}`, bodyMarkdown: current.brief?.viewpoint || current.title }, { type: "平台反馈", title: `平台反馈｜${title}`, bodyMarkdown: body.basis }]; workspace.domain.settleReview(result.reviewId, { feedback, storyMaterialIds: current.materials.filter((item) => ["案例/故事", "个人经历"].includes(item.type)).map((item) => item.id), confirmed: true, actor, now: now() }); feedbackCreated = 3; } json(res, { ok: true, feedbackCreated, project: projectDto(workspace, params.id) }); }) },
   { method: "POST", path: "/api/workspace/projects/:id/trash", handler: guarded(async ({ workspace, res, params }) => { const count = workspace.db.prepare("SELECT COUNT(*) AS count FROM drafts d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.project_id=?").get(params.id).count; workspace.domain.softDeleteEntity(params.id, { actor, now: now() }); json(res, { ok: true, deleted: count, recoverable: true }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/restore", handler: guarded(async ({ workspace, res, params }) => { workspace.domain.restoreEntity(params.id, { actor, now: now() }); const project = projectDto(workspace, params.id); if (!project) throw new Error("稿子不存在"); json(res, { ok: true, project }); }) },
   { method: "GET", path: "/api/workspace/materials", handler: guarded(async ({ workspace, res, url }) => json(res, { ok: true, ...listMaterials(workspace, Object.fromEntries(url.searchParams)) })) },
   { method: "GET", path: "/api/workspace/items/:view", handler: guarded(async ({ workspace, res, params, url }) => { let items = sourceRows(workspace, params.view); const state = url.searchParams.get("state"); if (state) items = items.filter((item) => item.status === state || item.reviewStatus === state); json(res, { ok: true, items, nextCursor: null }); }) },
   { method: "GET", path: "/api/workspace/search/:view", handler: guarded(async ({ workspace, res, params, url }) => { const q = clean(url.searchParams.get("q")).toLowerCase(); const items = sourceRows(workspace, params.view).filter((item) => `${item.title || ""}\n${item.note || item.content || ""}`.toLowerCase().includes(q)); json(res, { ok: true, items }); }) },

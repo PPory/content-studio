@@ -148,6 +148,25 @@ try {
   await call(base, `/api/workspace/projects/${disposable.value.project.id}/trash`, { method: "POST", body: {} });
   const visibleDrafts = await call(base, "/api/workspace/items/drafts");
   check("回收项目后子稿不再出现在活动稿件列表", !visibleDrafts.value.items.some((item) => item.id === disposableDraftId));
+
+  // 回头路：删除是软删除，回执上那颗「撤销」要有一条路可以走
+  const restoredProject = await call(base, `/api/workspace/projects/${disposable.value.project.id}/restore`, { method: "POST", body: {} });
+  const draftsAfterRestore = await call(base, "/api/workspace/items/drafts");
+  check("撤销回收项目会把稿子一起带回来",
+    restoredProject.response.status === 200
+    && restoredProject.value.project.id === disposable.value.project.id
+    && draftsAfterRestore.value.items.some((item) => item.id === disposableDraftId));
+
+  const disposableSeries = await call(base, "/api/workspace/series", { method: "POST", body: { title: "待回收合集" } });
+  const disposableSeriesId = disposableSeries.value.series.id;
+  const trashedSeries = await call(base, `/api/workspace/series/${disposableSeriesId}/trash`, { method: "POST", body: {} });
+  const seriesAfterTrash = await call(base, "/api/workspace/series");
+  await call(base, `/api/workspace/series/${disposableSeriesId}/restore`, { method: "POST", body: {} });
+  const seriesAfterRestore = await call(base, "/api/workspace/series");
+  check("合集移入回收站后列表里没有，撤销后回来",
+    trashedSeries.value.recoverable === true
+    && !seriesAfterTrash.value.series.some((item) => item.id === disposableSeriesId)
+    && seriesAfterRestore.value.series.some((item) => item.id === disposableSeriesId));
   const seedCatalog = await call(base, "/api/workspace/seeds");
   check("本地种子接口返回分组反应真源", seedCatalog.value.reactionGroups.length === 3 && seedCatalog.value.reactions.length === 10);
 

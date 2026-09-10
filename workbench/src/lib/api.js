@@ -85,6 +85,7 @@ export const api = {
   seriesRead: (id) => req(`/api/workspace/series/${encodeURIComponent(id)}/read`),
   exportSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/export`, {}),
   removeSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/trash`, {}),
+  restoreSeries: (id) => postJson(`/api/workspace/series/${encodeURIComponent(id)}/restore`, {}),
   /** 一次写定这篇文章属于哪些合集。⚠️ 别在前端拆成「先删两条再加三条」，中途失败会留一半状态。 */
   setProjectSeries: (projectId, seriesIds) => postJson(`/api/workspace/projects/${encodeURIComponent(projectId)}/series`, { seriesIds }),
   projects: (stage = "") => req(`/api/workspace/projects${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`),
@@ -100,6 +101,7 @@ export const api = {
    * 界面上必须点两下并且把这件事说出来。
    */
   removeProject: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/trash`, {}),
+  restoreProject: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/restore`, {}),
   updateProjectMaterials: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/materials`, body),
   createProjectVariant: (id, platform) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/variants`, { platform }),
   removeProjectVariant: (id, draftId) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/variants/${encodeURIComponent(draftId)}/remove`, {}),
