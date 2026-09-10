@@ -4,33 +4,51 @@
 .research-overview-toolbar h2 { font-size: 16px; margin: 0; white-space: nowrap; }
 .research-overview-toolbar h2 span { color: var(--text-3); margin-left: 8px; font-size: 13px; font-weight: 400; }
 .research-overview-toolbar .search-box { width: 320px; max-width: 100%; }
-.research-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.research-overview-tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* 列表视图。行本身走 `styles.css` 的 `.rows / .row / .row-head`——那是 Wiki、来源、
+   周报共用的那一种；这里只补「整行可点」和右端动作这两件它没有的事。 */
+.research-rows .row-head { gap: 16px; }
+.research-row__open { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: none; font: inherit; font-weight: 500; color: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.research-rows .row-meta { display: flex; gap: 16px; flex: none; }
+.research-row__acts { flex: none; display: flex; opacity: 0; transition: opacity 0.14s var(--ease); }
+.research-rows .row:hover .research-row__acts,
+.research-rows .row:focus-within .research-row__acts,
+.research-rows .row[data-confirm] .research-row__acts { opacity: 1; }
+@media (max-width: 680px) {
+  .research-overview-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .research-rows .row-meta > span:first-child { display: none; }
+  .research-row__acts { opacity: 1; }
+}
+/* ⚠️ 抄情报卡那一套，不新造数值：`auto-fill` 按容器宽自己决定开几列，
+   条数少就少几张，右边空着是正常的（见 `docs/design-system.md`「卡片就该是卡片的尺寸」）。
+   上一版是写死两列 + `min-height: 230px`，一张卡装三行字，而情报卡量出来是 181px。 */
+.research-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 /* 外层只是容器，内层那颗按钮才是「打开」——为什么不能整张卡一颗 button，见 `Research.jsx`。 */
 .research-card { position: relative; display: block; min-width: 0; }
-.research-card__open { display: flex; flex-direction: column; gap: 16px; width: 100%; min-height: 230px; padding: 24px; text-align: left; background: transparent; color: inherit; border: 0; border-radius: inherit; cursor: pointer; font: inherit; }
+.research-card__open { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 13px 15px 11px; text-align: left; background: transparent; color: inherit; border: 0; border-radius: inherit; cursor: pointer; font: inherit; }
 /* 删除平时收起来：一屏六张卡各挂一个垃圾桶，那六个图标会比问题本身还抢眼。
    确认态整张卡钉住，否则鼠标一挪走按钮就没了。 */
 .research-card__acts { position: absolute; top: 10px; right: 10px; display: flex; opacity: 0; transition: opacity 0.14s var(--ease); }
 .research-card:hover .research-card__acts,
 .research-card:focus-within .research-card__acts,
 .research-card[data-confirm] .research-card__acts { opacity: 1; }
-.research-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-.research-card:hover { border-color: var(--text-3); background: var(--sunken); }
+.research-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); transition: border-color 0.14s var(--ease); }
+.research-card:hover { border-color: var(--border-strong); }
 .research-card__open:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
-.research-card h2 { font-size: 18px; font-weight: 600; line-height: 1.6; margin: 0; }
-.research-card p { margin: 0; font-size: 13px; line-height: 1.8; color: var(--text-2); white-space: pre-wrap; }
+.research-card h2 { margin: 0; font-size: var(--fs-base); font-weight: 600; line-height: 1.5; min-height: calc(2 * 1.5 * var(--fs-base)); }
+.research-card p { margin: 0; font-size: var(--fs-sm); line-height: 1.65; min-height: calc(2 * 1.65 * var(--fs-sm)); color: var(--text-2); white-space: pre-wrap; }
 .research-card h2, .research-card p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-.research-card-counts { display: flex; gap: 14px; flex-wrap: wrap; margin-top: auto; color: var(--text-3); font-size: 12px; }
-.research-card footer { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 14px; font-size: 12px; color: var(--text-3); }
-.research-card footer > span:last-child { color: var(--text-1); }
+.research-card-counts { display: flex; gap: 12px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
+.research-card footer { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-2xs); color: var(--text-3); }
+.research-card footer > span:last-child { color: var(--text-2); }
 .research-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 22px; font-size: 12px; color: var(--text-3); }
 .research-pagination > div { display: flex; gap: 12px; align-items: center; }
 .research-overview-empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border); border-radius: 12px; }
 .research-overview-empty h3 { font-size: 17px; }
 .research-overview-empty p { color: var(--text-3); font-size: 13px; line-height: 1.8; }
 @media (max-width: 680px) {
-  .research-card-grid { grid-template-columns: minmax(0, 1fr); }
-  .research-card__open { padding: 20px; min-height: 210px; }
+
+
   .research-overview-toolbar, .research-pagination { flex-wrap: wrap; }
   .research-overview-toolbar .search-box { width: 100%; }
   .research-overview .research-create { padding: 16px; }
