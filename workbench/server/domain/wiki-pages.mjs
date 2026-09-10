@@ -560,6 +560,19 @@ export function trashWikiPage(workspace, pageId, { now = new Date() } = {}) {
   return { id: page.id, title: page.title, recoverable: true };
 }
 
+/**
+ * 从回收站把一页拿回来。
+ *
+ * ⚠️ **`trash` 有回头路才算做完。** 少了它，界面上那条「撤销」就只能是句空话——
+ * 而这个工作台的删除全是软删除，本来就该能一步走回去。
+ */
+export function restoreWikiPage(workspace, pageId, { now = new Date() } = {}) {
+  const page = workspace.db.prepare("SELECT p.id,p.title FROM wiki_pages p WHERE p.id=?").get(pageId);
+  if (!page) throw Object.assign(new Error("Wiki 页面不存在"), { status: 404 });
+  workspace.domain.restoreEntity(pageId, { actor: "user", now });
+  return { id: page.id, title: page.title };
+}
+
 export function wikiSearch(workspace, query, { limit = 12 } = {}) {
   const needle = clean(query, 300);
   if (!needle) return [];

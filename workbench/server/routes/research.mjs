@@ -1,5 +1,5 @@
 import { fail,json,readJsonBody } from "../lib/http.mjs";
-import { createResearch,getResearch,listResearches,saveResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
+import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
 function route(method,path,action) {
   return {method,path,handler:async context=>{
     try {
@@ -14,6 +14,8 @@ export const researchRoutes=[
  route("GET","/api/workspace/researches",({workspace})=>({researches:listResearches(workspace)})),
  route("POST","/api/workspace/researches",({workspace,body})=>({research:createResearch(workspace,body)})),
  route("GET","/api/workspace/researches/:id",({workspace,params})=>({research:getResearch(workspace,params.id)})),
+ route("POST","/api/workspace/researches/:id/trash",({workspace,params})=>({research:trashResearch(workspace,params.id)})),
+ route("POST","/api/workspace/researches/:id/restore",({workspace,params})=>({research:restoreResearch(workspace,params.id)})),
  route("PUT","/api/workspace/researches/:id",({workspace,params,body})=>({research:saveResearch(workspace,params.id,body)})),
  route("POST","/api/workspace/researches/:id/references",({workspace,params,body})=>({research:researchReference(workspace,params.id,body)})),
  route("DELETE","/api/workspace/researches/:id/references",({workspace,params,body})=>({research:researchReference(workspace,params.id,body,true)})),

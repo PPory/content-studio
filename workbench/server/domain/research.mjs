@@ -44,6 +44,26 @@ export function getResearch(w,id) {
 export function listResearches(w) {
   return w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240)};});
 }
+/**
+ * 把一个选题移入回收站 / 拿回来。
+ *
+ * ⚠️ **软删除，不删行。** `listResearches` 已经在过滤 `deleted_at IS NULL`，
+ * 所以这里只要动 entity 那一层；引用（`research_references` 是 ON DELETE RESTRICT）、
+ * 讨论、带入记录都原样留着，恢复之后还是原来那一条。
+ */
+export function trashResearch(w,id){
+ const row=w.db.prepare("SELECT r.id,r.question FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE r.id=?").get(id);
+ if(!row)throw Object.assign(new Error("选题不存在或已经移入回收站"),{status:404});
+ w.domain.softDeleteEntity(id,{actor:"user",now:new Date()});
+ return {id:row.id,question:row.question,recoverable:true};
+}
+export function restoreResearch(w,id){
+ const row=w.db.prepare("SELECT id,question FROM researches WHERE id=?").get(id);
+ if(!row)throw Object.assign(new Error("选题不存在"),{status:404});
+ w.domain.restoreEntity(id,{actor:"user",now:new Date()});
+ return {id:row.id,question:row.question};
+}
+
 export function createResearch(w,input) {
   inputObject(input,["question","notes","openQuestions"]);
   const question=text(input.question ?? "",1000),notes=text(input.notes ?? ""),openQuestions=text(input.openQuestions ?? "",20000);

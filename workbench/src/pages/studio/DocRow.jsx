@@ -17,9 +17,8 @@
 // **外壳不是按钮**：主动作是 `.doc-row__open`，删除是它的兄弟——button 套 button 是非法结构。
 
 import { useState } from "react";
-import { relTime, stateIcon, stateTone } from "../../components/ui.jsx";
-import { IconArrowUpRight, IconFileText, IconTrash } from "../../components/icons.jsx";
-import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
+import { RowDelete, relTime, stateIcon, stateTone } from "../../components/ui.jsx";
+import { IconArrowUpRight, IconFileText } from "../../components/icons.jsx";
 
 /**
  * 规格 vs 标签。**「3,180 字」「12 分钟」这类不是标签，是规格**——
@@ -31,10 +30,9 @@ import { useConfirmGuard } from "../../lib/use-confirm-guard.js";
 export const isSpec = (t) => /(?:字|分钟|条|篇)$/.test(String(t || "").trim());
 
 export function DocRow({ item, onOpen, onDelete, removeLabel, onOpenSource }) {
+  // `confirm` 只用来给整行挂 `data-confirm`（确认态不再靠 hover 显形）；
+  // 两步确认和防连点都在 `RowDelete` 里，见那儿的注释。
   const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  // 挡住一次物理双击直接删掉——为什么需要它、320ms 是怎么来的，见 hook 里的注释
-  const armed = useConfirmGuard(confirm);
   const StateIcon = stateIcon(item.badge || "");
   const specs = [item.sub, ...(item.tags || []).filter(isSpec)].filter(Boolean);
   const labels = (item.tags || []).filter((t) => !isSpec(t));
@@ -136,39 +134,11 @@ export function DocRow({ item, onOpen, onDelete, removeLabel, onOpenSource }) {
             </a>
           ) : null}
         </span>
-        {onDelete ? (
-          confirm ? (
-            /**
-             * ⚠️ **「取消」排在最右**，也就是行里最靠手的那个落点——让最熟的位置落在安全的那颗上。
-             * 确认态整行不再 hover 才显形（`data-confirm`），否则鼠标一挪走按钮就没了。
-             */
-            <>
-              <button
-                className="btn btn-sm btn-danger"
-                disabled={busy}
-                onClick={async () => {
-                  // ⚠️ **挡住连点。** 见 `armed` 的注释——这不是防抖，是防误删。
-                  if (!armed.current) return;
-                  setBusy(true);
-                  try {
-                    await onDelete();
-                  } finally {
-                    setBusy(false);
-                    setConfirm(false);
-                  }
-                }}
-              >
-                {busy ? "删除中…" : removeLabel || "确认删除"}
-              </button>
-              {/* 反悔的路必须一直在。少了它，点错第一下就只剩「删」和「离开这一页」两条路 */}
-              <button className="btn btn-sm" disabled={busy} onClick={() => setConfirm(false)}>取消</button>
-            </>
-          ) : (
-            <button className="icon-btn doc-row__del" onClick={() => setConfirm(true)} title={removeLabel || "删除"} aria-label="删除">
-              <IconTrash aria-hidden="true" size={15} stroke={1.7} />
-            </button>
-          )
-        ) : null}
+        {/* 垃圾桶 → 两步确认那一套搬进了 `ui.jsx` 的 `RowDelete`：
+            Wiki 列表、选题卡、方向卡要的是同一个东西，这儿原来那份是它的原型。
+            `onOpenChange` 用来给整行挂 `data-confirm`——确认态不能再靠 hover 才显形，
+            否则鼠标一挪走按钮就没了。 */}
+        {onDelete ? <RowDelete onDelete={onDelete} label={removeLabel || "确认删除"} onOpenChange={setConfirm} /> : null}
       </div>
     </article>
   );

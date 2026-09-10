@@ -1,7 +1,7 @@
 import {addIntelligenceSource} from '../server/domain/intelligence.mjs';
 import {buildDiscoveryContext,writeDiscoveryCache,readDiscoveryCache,discoveryReadiness} from '../server/domain/content-discovery.mjs';
 import {discoverConnections} from '../server/domain/content-discovery-ai.mjs';
-import {directionKey,keepDirection,developDirection} from '../server/domain/intelligence-directions.mjs';
+import {directionKey,keepDirection,dismissDirection,savedDirections,developDirection} from '../server/domain/intelligence-directions.mjs';
 import {createResearch,getResearch} from '../server/domain/research.mjs';
 import {createUlid} from '../server/storage/ids.mjs';
 import assert from "node:assert/strict";
@@ -53,5 +53,15 @@ try{
  await page.getByRole('button',{name:'带入选题',exact:true}).click();await page.getByRole('button',{name:'确认带入',exact:true}).click();await page.waitForURL(/#\/research\//);const researchId=decodeURIComponent(page.url().split('#/research/')[1]);const research=getResearch(w,researchId);assert(research.notes.includes(candidate.evidence_gaps[0]));assert(research.references.length===1);assert(research.conversations.some(c=>c.id===cid));assert.equal(counts().projects,before.projects);assert.equal(developDirection(w,id,{confirmed:true}).id,research.id);assert.throws(()=>developDirection(w,id,{}),e=>e.status===400);
  // Existing research append and stale-cache preservation.
  const second={...connection,coreClaim:'另一条待讨论的问题'};writeDiscoveryCache(w,{...readDiscoveryCache(w),connections:[second]});const kept=keepDirection(w,directionKey(second));const target=createResearch(w,{question:'原有选题',notes:'保留已有笔记'});developDirection(w,kept.id,{confirmed:true,researchId:target.id});assert(getResearch(w,target.id).notes.startsWith('保留已有笔记'));assert.equal(errors.length,0,errors.join('\n'));
- console.log('方向：无Wiki生成、逐字证据、保存不建文、持续讨论、刷新恢复、取消、确认汇入、已有笔记与手机通过');
+ // 移除方向：只动标记位，行还在，能恢复；而「再保存一次」本身就是恢复
+ // （不清 dismissed 的话保存会「成功」而列表里查无此条，且不报错）。
+ const removable=directionKey(second);
+ assert.equal(dismissDirection(w,removable).dismissed,true);
+ assert.equal(savedDirections(w).some(d=>d.id===removable),false,'移除过的方向不出现在已保存里');
+ assert.equal(dismissDirection(w,removable,false).dismissed,false);
+ assert.equal(savedDirections(w).some(d=>d.id===removable),true);
+ dismissDirection(w,removable);
+ assert.equal(keepDirection(w,removable).dismissed,false,'再保存一次就是要它回来');
+ assert.throws(()=>dismissDirection(w,'y'.repeat(64)),e=>e.status===404);
+ console.log('方向：无Wiki生成、逐字证据、保存不建文、持续讨论、刷新恢复、取消、确认汇入、已有笔记、移除与恢复、手机通过');
 }finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}const rel=path.relative(os.tmpdir(),temp);assert(rel&&!rel.startsWith('..')&&!path.isAbsolute(rel));await fs.rm(temp,{recursive:true,force:true});}

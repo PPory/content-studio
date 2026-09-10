@@ -1,4 +1,4 @@
-import {directionKey,directionDetail,savedDirections,keepDirection,developDirection} from '../domain/intelligence-directions.mjs';
+import {directionKey,directionDetail,savedDirections,keepDirection,dismissDirection,developDirection} from '../domain/intelligence-directions.mjs';
 // AI Discovery 的本地 API。
 //
 // ⚠️ **扫描一律不写业务数据。** 唯一允许留下的痕迹是：这次读过哪几段原话
@@ -52,6 +52,7 @@ export const contentDiscoveryRoutes = [
  {method:'GET',path:'/api/workspace/intelligence/directions',handler:guard(async({workspace,res})=>json(res,{ok:true,directions:savedDirections(workspace)}))},
  {method:'GET',path:'/api/workspace/intelligence/directions/:id',handler:guard(async({workspace,res,params})=>json(res,{ok:true,direction:directionDetail(workspace,params.id)}))},
  {method:'POST',path:'/api/workspace/intelligence/directions',handler:guard(async({workspace,res,req})=>{const body=await readJsonBody(req);json(res,{ok:true,direction:keepDirection(workspace,body.id)});})},
+ {method:'POST',path:'/api/workspace/intelligence/directions/:id/dismiss',handler:guard(async({workspace,res,req,params})=>{const body=await readJsonBody(req);json(res,{ok:true,direction:dismissDirection(workspace,params.id,body.dismissed!==false)});})},
  {method:'POST',path:'/api/workspace/intelligence/directions/:id/develop',handler:guard(async({workspace,res,req,params})=>{const body=await readJsonBody(req);json(res,{ok:true,research:developDirection(workspace,params.id,body)});})},
   {
     method: "GET",

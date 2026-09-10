@@ -8,12 +8,22 @@ export function directionDetail(w,id){
  if(!row)throw bad('方向不存在',404);
  const scopeId=`direction:${id}`;
  const conversations=w.db.prepare('SELECT c.id,c.title FROM ai_conversations c JOIN entities e ON e.id=c.id WHERE c.scope_id=? AND e.deleted_at IS NULL ORDER BY e.updated_at DESC').all(scopeId);
- return {id,connection:JSON.parse(row.connection_json),researchId:row.research_id,updatedAt:row.updated_at,scopeId,conversations};
+ return {id,connection:JSON.parse(row.connection_json),researchId:row.research_id,dismissed:Boolean(row.dismissed),updatedAt:row.updated_at,scopeId,conversations};
 }
-export function savedDirections(w){return w.db.prepare('SELECT id FROM intel_directions ORDER BY updated_at DESC').all().map(r=>directionDetail(w,r.id));}
+// `dismissed=0`：移除过的方向不再出现在「已保存」里，但行还在，可以恢复。
+export function savedDirections(w){return w.db.prepare('SELECT id FROM intel_directions WHERE dismissed=0 ORDER BY updated_at DESC').all().map(r=>directionDetail(w,r.id));}
+/** 移除 / 恢复一个已保存的方向。只动标记位——已带入选题的正文在 researches 里，不受影响。 */
+export function dismissDirection(w,id,dismissed=true){
+ if(typeof id!=='string'||id.length!==64)throw bad('方向标识无效');
+ if(!w.db.prepare('SELECT id FROM intel_directions WHERE id=?').get(id))throw bad('方向不存在',404);
+ w.db.prepare('UPDATE intel_directions SET dismissed=?,updated_at=? WHERE id=?').run(dismissed?1:0,new Date().toISOString(),id);
+ return directionDetail(w,id);
+}
 export function keepDirection(w,id){
  if(typeof id!=='string'||id.length!==64)throw bad('方向标识无效');
- if(w.db.prepare('SELECT id FROM intel_directions WHERE id=?').get(id))return directionDetail(w,id);
+ // ⚠️ **行已经在了就顺手清掉 `dismissed`。** 再保存一次的意思就是要它回来；
+ // 不清的话这次保存会「成功」，而「已保存」列表里查无此条——而且不会报错。
+ if(w.db.prepare('SELECT id FROM intel_directions WHERE id=?').get(id))return dismissDirection(w,id,false);
  const connection=readDiscoveryCache(w)?.connections?.find(c=>directionKey(c)===id);
  if(!connection)throw bad('候选已更新，请重新选择方向',409);
  const now=new Date().toISOString();

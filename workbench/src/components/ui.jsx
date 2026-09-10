@@ -5,6 +5,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useViewSlots } from "../lib/view-slots.js";
 import { useClearDissolve } from "../lib/use-clear-dissolve.js";
+import { useConfirmGuard } from "../lib/use-confirm-guard.js";
 import "./clear-dissolve.css";
 import {
   IconAlertCircle,
@@ -41,6 +42,7 @@ import {
   IconSearch,
   IconSitemap,
   IconTag,
+  IconTrash,
   IconTarget,
   IconUser,
   IconUsers,
@@ -408,6 +410,62 @@ export function ViewTabs({ items, value, onChange, label }) {
  * 它替掉的是页面正文里那个大标题。页名在页头出现一次就够，
  * 正文顶上再来一个是同一件事说第二遍（见 `docs/design-system.md`「页面不介绍自己」）。
  */
+/**
+ * 一行 / 一张卡上的删除入口：垃圾桶 → 两步确认。
+ *
+ * ⚠️ **同一条规则只能有一份实现。** 这套（图标钮 → 确认展开两颗 → 取消排最右 →
+ * 挡一次物理双击）原来长在 `pages/studio/DocRow.jsx` 里，而 Wiki 列表、选题卡、
+ * 方向卡都要同一个东西——再各写一遍就是四份，而这个项目的事故清一色是
+ *「同一件事写在两个地方」。`components/ReaderOverlay.jsx` 还有一份没收进来
+ * （它的确认长在阅读区自己的动作条里，形状不同），那是下一个该收的。
+ *
+ * ⚠️ **「取消」排在最右。** 那是行里最靠手的落点，让最熟的位置落在安全的那颗上。
+ * ⚠️ **`useConfirmGuard` 不是防抖，是防误删**——两步确认本身挡不住一次物理双击，
+ * 为什么、320ms 是怎么来的，见 `lib/use-confirm-guard.js` 顶上那段，别重新推导。
+ *
+ * `label` 默认「移入回收站」：本地工作区的删除都是软删除，文案要照实说。
+ * 真的不进回收站的地方（比如「移除方向」只是取消保存）自己传。
+ */
+export function RowDelete({ onDelete, label = "移入回收站", title, onOpenChange }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const armed = useConfirmGuard(confirm);
+  const open = (next) => {
+    setConfirm(next);
+    onOpenChange?.(next);
+  };
+  if (!confirm) {
+    return (
+      <button type="button" className="icon-btn row-delete__trigger" onClick={() => open(true)} title={title || label} aria-label={title || label}>
+        <IconTrash aria-hidden="true" size={15} stroke={1.7} />
+      </button>
+    );
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-sm btn-danger"
+        disabled={busy}
+        onClick={async () => {
+          if (!armed.current) return;
+          setBusy(true);
+          try {
+            await onDelete();
+          } finally {
+            setBusy(false);
+            open(false);
+          }
+        }}
+      >
+        {busy ? "处理中…" : label}
+      </button>
+      {/* 反悔的路必须一直在。少了它，点错第一下就只剩「删」和「离开这一页」两条路 */}
+      <button type="button" className="btn btn-sm" disabled={busy} onClick={() => open(false)}>取消</button>
+    </>
+  );
+}
+
 export function PageStage({ children }) {
   const slots = useViewSlots();
   if (!children || !slots?.lead) return null;

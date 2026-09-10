@@ -7,7 +7,7 @@ import {Readable} from "node:stream";
 import {openWorkspace} from "../server/storage/workspace.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
 import {researchRoutes} from "../server/routes/research.mjs";
-import {createResearch,saveResearch,getResearch,researchReference,researchConversation,researchProject,projectResearches,quickNote,libraryItems,libraryItem,workState,recentWork} from "../server/domain/research.mjs";
+import {createResearch,saveResearch,getResearch,researchReference,researchConversation,researchProject,projectResearches,quickNote,libraryItems,libraryItem,workState,recentWork,listResearches,trashResearch,restoreResearch} from "../server/domain/research.mjs";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-research-"));
 let w;
 async function call(method,routePath,params={},body,query="") {
@@ -90,5 +90,15 @@ try {
  w.close();w=await openWorkspace({xenhoHome:path.join(root,"Xenho")});
  assert.deepEqual(getResearch(w,r.id),persisted);
  assert.equal(recentWork(w).find(x=>x.id===r.id).position.scrollTop,345);
- console.log("research: persistence, CAS, references, multi-session, many-to-many, selected text, quick capture and restoration passed");
+ // 移入回收站 → 列表里没了、单条读不到；恢复 → 原来那一条整个回来（引用也在）。
+ const snapshot=getResearch(w,r.id);
+ assert.equal(trashResearch(w,r.id).recoverable,true);
+ assert.equal(listResearches(w).some(x=>x.id===r.id),false,"回收站里的选题不出现在列表里");
+ assert.equal((await call("GET","/api/workspace/researches/:id",{id:r.id})).status,404);
+ assert.throws(()=>trashResearch(w,r.id),e=>e.status===404,"已经在回收站里的不能再删一次");
+ assert.equal(restoreResearch(w,r.id).id,r.id);
+ assert.deepEqual(getResearch(w,r.id),snapshot,"恢复之后是原来那一条，引用和讨论都还在");
+ assert.equal((await call("POST","/api/workspace/researches/:id/trash",{id:r.id},{})).research.recoverable,true);
+ assert.equal((await call("POST","/api/workspace/researches/:id/restore",{id:r.id},{})).research.id,r.id);
+ console.log("research: persistence, CAS, references, multi-session, many-to-many, selected text, quick capture, restoration and trash/restore passed");
 } finally {w?.close();await fs.rm(root,{recursive:true,force:true});}

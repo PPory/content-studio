@@ -5359,9 +5359,11 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
    ⚠️ 别再给它单独写一份 opacity 规则——那正是上一版留下的问题：
    卡片时代 `.wall-card:hover .wall-card__del` 和这条各管一半，改名时漏了一处，
    于是选择器指向一个已经不存在的祖先，按钮再也不显形，而且不报错。 */
-.doc-row__del { width: 26px; height: 26px; border-color: transparent; color: var(--text-3);
-  transition: border-color .12s ease, color .12s ease; }
-.doc-row__del:hover { border-color: var(--danger); color: var(--danger); }
+/* 共用删除入口（`ui.jsx` 的 `RowDelete`）。平时是一颗安静的灰图标，
+   指上去才变红——它是这一行里唯一不可逆方向的动作。 */
+.row-delete__trigger { width: 26px; height: 26px; border-color: transparent; color: var(--text-3);
+  background: transparent; }
+.row-delete__trigger:hover { border-color: var(--danger); color: var(--danger); }
 .doc-row__src { width: 26px; height: 26px; border-color: transparent; color: var(--text-3); }
 .doc-row__src:hover { border-color: var(--border-strong); color: var(--text-1); }
 @media (hover: none) { .doc-row__acts { opacity: 1; pointer-events: auto; } }

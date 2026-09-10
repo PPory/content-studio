@@ -58,6 +58,9 @@ export const api = {
   saveResearch: (id, body) => req(`/api/workspace/researches/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   researchReference: (id, body, remove = false) => req(`/api/workspace/researches/${encodeURIComponent(id)}/references`, { method: remove ? "DELETE" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   researchConversation: (id, conversationId) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/conversations`, { conversationId }),
+  // 选题是 entity，所以走全库那套软删除：引用、讨论和带入记录都留着，恢复就是原来那一条。
+  trashResearch: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/trash`, {}),
+  restoreResearch: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/restore`, {}),
   researchProject: (id, body) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/projects`, body),
   projectResearches: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/researches`),
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
@@ -119,7 +122,9 @@ export const api = {
   entry: (id) => req(`/api/workspace/entries/${encodeURIComponent(id)}`),
   wiki: (query = "") => req(`/api/workspace/wiki${query ? `?q=${encodeURIComponent(query)}` : ""}`),
   wikiPage: (id) => req(`/api/workspace/wiki/${encodeURIComponent(id)}`),
+  // 删除一律是**移入回收站**（软删除），界面文案照实说，并且给一条带撤销的回执。
   trashWikiPage: (id) => postJson(`/api/workspace/wiki/${encodeURIComponent(id)}/trash`, {}),
+  restoreWikiPage: (id) => postJson(`/api/workspace/wiki/${encodeURIComponent(id)}/restore`, {}),
   knowledgeSources: () => req("/api/workspace/knowledge/sources"),
   knowledgeSourceDocs: (id) => req(`/api/workspace/knowledge/sources/${encodeURIComponent(id)}`),
   importKnowledgeSource: (body) => postJson("/api/workspace/knowledge/sources/import", body),
@@ -180,6 +185,7 @@ export const api = {
   intelligenceDirections:()=>req('/api/workspace/intelligence/directions'),
   intelligenceDirection:id=>req(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}`),
   keepIntelligenceDirection:id=>postJson('/api/workspace/intelligence/directions',{id}),
+  dismissIntelligenceDirection:(id,dismissed=true)=>postJson(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}/dismiss`,{dismissed}),
   developIntelligenceDirection:(id,body)=>postJson(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}/develop`,body),
   contentDiscovery: (query = "") => req(`/api/workspace/content-discovery${query}`),
   scanContentDiscovery: (body) => postJson("/api/workspace/content-discovery/scan", body),

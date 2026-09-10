@@ -11,6 +11,7 @@ import {
   wikiPage,
   wikiHealth,
   trashWikiPage,
+  restoreWikiPage,
 } from "../domain/wiki-pages.mjs";
 import { resolveIngestSource } from "../domain/wiki-ingest.mjs";
 // ⚠️ 这两个原来没 import，而这个文件里有四处在用它们。ESM 里引一个不存在的名字**不报编译错**，
@@ -225,6 +226,10 @@ export const wikiRoutes = [
 
   { method: "POST", path: "/api/workspace/wiki/:id/trash", handler: guard(async ({ workspace, res, params }) => {
     json(res, { ok: true, page: trashWikiPage(workspace, params.id) });
+  }) },
+
+  { method: "POST", path: "/api/workspace/wiki/:id/restore", handler: guard(async ({ workspace, res, params }) => {
+    json(res, { ok: true, page: restoreWikiPage(workspace, params.id) });
   }) },
 
   { method: "GET", path: "/api/workspace/entries", handler: guard(async ({ workspace, res }) => {
