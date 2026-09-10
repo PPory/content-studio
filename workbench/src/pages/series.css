@@ -7,13 +7,6 @@
  * 分区只靠留白和一道 1px 线。
  */
 
-/* 「全部文章 / 合集」那颗开关。⚠️ 左对齐——它是页头的延续，
-   居中会让它变成一个和上下都没关系的浮岛。`Content.jsx` 共用这条。 */
-.content-kind-switch {
-  width: max-content;
-  margin: 0 0 20px;
-}
-
 /* ───────────────────────── 合集列表 ───────────────────────── */
 
 .series-grid {
@@ -117,41 +110,66 @@
 
 .series-card__open footer time { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-2xs); }
 
-/* 删除：平时只在 hover / focus 时露头，武装之后写清删的是什么 */
-.series-card__del {
+/* 删除平时收起来：一屏卡片各挂一个垃圾桶，那几个图标会比合集名还抢眼。
+   确认态整张卡钉住（`data-confirm`），否则鼠标一挪走「取消」就没了。
+   ⚠️ 按钮本身是共用的 `RowDelete`——两步确认只实现一次，
+   连同它那道 320ms 的防连点闸（见 `ui.jsx`）。 */
+.series-card__acts {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  display: grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
   opacity: 0;
+  transition: opacity .14s var(--ease);
 }
 
-.series-card:hover .series-card__del,
-.series-card__del:focus-visible,
-.series-card__del.is-armed { opacity: 1; }
-.series-card__del:hover { background: var(--surface-2); color: var(--danger); }
+.series-card:hover .series-card__acts,
+.series-card:focus-within .series-card__acts,
+.series-card[data-confirm] .series-card__acts { opacity: 1; }
 
-.series-card__del.is-armed {
-  width: auto;
-  height: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
-  background: var(--surface);
-  color: var(--danger);
-  font-size: var(--fs-xs);
+/* ───────────────────────── 合集列表（列表视图） ─────────────────────────
+   行走 `styles.css` 共用的 `.rows / .row / .row-head`——Wiki、来源、周报、
+   选题同一种；这里只补「整行可点」和右端动作。一行装的是做决定要用的东西：
+   合集名 ｜ 篇数 · 已发布 ｜ 多久没动。预览是卡片视图的事，列表里塞它只会挤成一团。
+
+   ⚠️ 叫 `.series-list__*` 不叫 `.series-row__*`：这个文件里 `.series-row`
+   已经被**目录页里的一条文章**占了（下面那一段）。差一个字母的两套语汇
+   读起来分不清，改动时也容易改错那一处。 */
+
+.series-list .row-head { gap: 16px; }
+
+.series-list__open {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.series-list .row-meta { flex: none; gap: 16px; }
+.series-list .row-meta time { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.series-list__acts { flex: none; display: flex; opacity: 0; transition: opacity .14s var(--ease); }
+.series-list .row:hover .series-list__acts,
+.series-list .row:focus-within .series-list__acts,
+.series-list .row[data-confirm] .series-list__acts { opacity: 1; }
+
+@media (hover: none) {
+  .series-card__acts,
+  .series-list__acts { opacity: 1; }
+}
+
+@media (max-width: 680px) {
+  .series-list .row-meta > span:first-child { display: none; }
+  .series-list__acts { opacity: 1; }
 }
 
 /* ───────────────────────── 新建合集弹层 ───────────────────────── */
