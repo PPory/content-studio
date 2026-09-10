@@ -36,6 +36,16 @@ try{
  else if(url.pathname.endsWith("/merge")){merged=body;result={ok:true,research:{id:"research-merged"}};}
  await route.fulfill({contentType:"application/json",body:JSON.stringify(result)});});
  await page.goto(base+"/#/intel");await page.getByRole("heading",{name:"可靠信息",exact:true}).waitFor();assert.equal(refreshes,0,"打开首页不自动采集");await page.getByText(/本次查找：2026\/09\/01/).waitFor();await page.locator(".brief-run-result summary").click();await page.getByText("X 范围：karpathy、swyx",{exact:true}).waitFor();assert((await page.locator(".brief-run-result").innerText()).includes("原生采集"));await page.locator(".brief-run-result summary").click();assert.equal(await page.locator(".nav").count(),1);assert.equal(await page.locator(".brief-card").count(),2);assert.equal(await page.locator(".brief-card .brief-provenance").count(),0,"出处是读完才要的注解，不占卡片");assert.equal(await page.locator(".subnav").getByText("关注方向").count(),0,"关注方向不再是侧栏一项");await page.getByRole("button",{name:"获取一批精选",exact:true}).click();await page.getByText("已开始整理这一批精选",{exact:true}).waitFor();assert.equal(refreshes,1);
+ // 「不感兴趣」不再是「按下去就此消失」：它进「已忽略」那一档，回执带撤销。
+ await page.locator(".brief-card").filter({hasText:state.briefs[1].title}).getByRole("button",{name:"不感兴趣",exact:true}).click();
+ await page.getByText("已移到「已忽略」",{exact:true}).waitFor();
+ assert.equal(await page.locator(".brief-card").count(),1,"忽略之后本期精选里就没有它了");
+ await page.getByRole("tab",{name:/已忽略/}).click();
+ assert.equal(await page.locator(".brief-card").count(),1,"忽略过的在「已忽略」里找得到");
+ await page.getByRole("button",{name:"恢复推荐",exact:true}).click();
+ await page.getByText("已恢复推荐",{exact:true}).waitFor();
+ await page.getByRole("tab",{name:"本期精选",exact:true}).click();
+ assert.equal(await page.locator(".brief-card").count(),2,"恢复之后回到本期精选");
  await page.getByRole("tab",{name:/未读补看/}).click();await page.getByRole("button",{name:"上期还没读完的内容",exact:true}).waitFor();await page.getByRole("tab",{name:"本期精选",exact:true}).click();
  const shots=path.join(ROOT,"output","playwright");await fs.mkdir(shots,{recursive:true});await page.screenshot({path:path.join(shots,"intelligence-feed-desktop.png"),fullPage:true});
  await page.getByRole("button",{name:state.briefs[0].title,exact:true}).click();await page.locator(".brief-peek").getByText("模拟详情暂不可用",{exact:false}).waitFor();await page.locator(".brief-peek").getByRole("button",{name:"重试",exact:true}).click();await page.locator(".brief-peek").getByRole("heading",{name:"综合理解",exact:true}).waitFor();assert.equal(state.briefs[0].read,true);assert.equal(merged,null,"读解读不创建选题");

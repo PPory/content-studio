@@ -18,14 +18,21 @@ import { IntelligenceAngles } from "../components/IntelligenceAngles.jsx";
 import { BriefPeek } from "../components/BriefPeek.jsx";
 import { BriefReading, briefCardMeta, briefDate, confidenceLabel, markdown, platformName, safeUrl, sourceDate } from "../components/BriefReading.jsx";
 import { Empty, ErrorNote, FilterHeader, Loading, Note, PageHeader, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
+import { useUndoToast } from "../lib/use-undo-toast.js";
 import { IconRadar2, IconSettings } from "../components/icons.jsx";
 import "./intelligence-feed.css";
 
 const empty = { briefs: [], reports: [], blockedSources: [], preferences: { directions: [] }, activeRuns: [] };
+/**
+ * ⚠️ **「已忽略」不是新概念，是缺了的那个出口。** `intel_briefs.dismissed` 一直都在，
+ * 而列表把它整条过滤掉了——按下「不感兴趣」之后那一条就此消失，没有地方看到、
+ * 也没有地方恢复。归档而没有归档箱，等于按下去之前得先想清楚，那不该是一次判断的成本。
+ */
 const TABS = [
   { key: "today", label: "本期精选" },
   { key: "unread", label: "未读补看" },
   { key: "saved", label: "我的收藏" },
+  { key: "dismissed", label: "已忽略" },
 ];
 const acquisitionName = (key) =>
   ({ brightdata: "原生采集", aihot: "AI Hot 信息流", "industry-feed": "AI Hot 信息流", "public-search": "公开搜索", local: "本地检索" }[key] || key);
@@ -47,7 +54,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useUndoToast();
   const [tab, setTab] = useState("today");
 
   // 整页详情（`#/intel-detail/<id>`）：长文阅读 + 和 AI 聊聊需要一整屏的宽度。
@@ -104,19 +111,14 @@ export function IntelligenceFeed({ view, state, onGo }) {
   useEffect(() => { if (view === "intel-settings") setSettingsOpen(true); }, [view]);
   useEffect(() => { if (settingsOpen) settingsRef.current?.showModal(); else settingsRef.current?.close(); }, [settingsOpen]);
   useEffect(() => { if (merge) mergeRef.current?.showModal(); }, [merge]);
-  useEffect(() => {
-    if (!notice) return undefined;
-    const timer = setTimeout(() => setNotice(""), 4000);
-    return () => clearTimeout(timer);
-  }, [notice]);
 
   const action = async (key, fn, message = "") => {
     setBusy(key);
     setError("");
-    setNotice("");
+    setNotice(null);
     try {
       const result = await fn();
-      setNotice(message);
+      if (message) setNotice({ text: message });
       return result;
     } catch (e) {
       setError(e.message);
@@ -134,6 +136,18 @@ export function IntelligenceFeed({ view, state, onGo }) {
   const feedback = async (item, patch) => {
     const result = await action(item.id, () => api.intelligenceFeedback(item.id, patch));
     if (result?.brief) applyBrief(result.brief);
+  };
+  /**
+   * 忽略 / 恢复。**一定带撤销**：这是一次点击就让它从列表上消失的动作，
+   * 而「已忽略」那一档虽然找得回来，代价是先想起它在哪儿。
+   */
+  const dismiss = async (item, dismissed) => {
+    const result = await action(item.id, () => api.intelligenceFeedback(item.id, { dismissed }));
+    if (!result?.brief) return;
+    applyBrief(result.brief);
+    setNotice(dismissed
+      ? { text: "已移到「已忽略」", detail: "这一档随时能翻回来。", undo: async () => { setNotice(null); await dismiss(item, false); } }
+      : { text: "已恢复推荐" });
   };
   const blockHost = (host) =>
     action("block", () => api.intelligenceBlockSource({ host, blocked: true }), `已屏蔽 ${host} 网站`);
@@ -177,11 +191,14 @@ export function IntelligenceFeed({ view, state, onGo }) {
 
   // ---- 列表与 peek --------------------------------------------------------
   const items = useMemo(
-    () => data.briefs
-      .filter((b) => !b.dismissed)
-      .filter((b) => (tab === "saved" ? b.saved : tab === "unread" ? !b.read && b.editionDate !== data.latestEditionDate : b.editionDate === data.latestEditionDate)),
+    () => (tab === "dismissed"
+      ? data.briefs.filter((b) => b.dismissed)
+      : data.briefs
+        .filter((b) => !b.dismissed)
+        .filter((b) => (tab === "saved" ? b.saved : tab === "unread" ? !b.read && b.editionDate !== data.latestEditionDate : b.editionDate === data.latestEditionDate))),
     [data.briefs, data.latestEditionDate, tab],
   );
+  const dismissedCount = useMemo(() => data.briefs.filter((b) => b.dismissed).length, [data.briefs]);
   const peekIndex = items.findIndex((b) => b.id === peekId);
 
   useEffect(() => {
@@ -354,7 +371,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           </>
         )}
         {mergeDialog()}
-        <Toast text={notice} onClose={() => setNotice("")} />
+        <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
       </div>
     );
   }
@@ -425,7 +442,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           </div>
         )}
         {mergeDialog()}
-        <Toast text={notice} onClose={() => setNotice("")} />
+        <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
       </div>
     );
   }
@@ -544,10 +561,11 @@ export function IntelligenceFeed({ view, state, onGo }) {
             <div className="intel-feed__list">
               {!items.length ? (
                 <Empty icon={IconRadar2}>
-                  <h2>{tab === "saved" ? "还没有收藏" : tab === "unread" ? "未读已经看完了" : data.activeRuns.length ? "这一批正在整理" : "从第一批精选开始"}</h2>
+                  <h2>{tab === "saved" ? "还没有收藏" : tab === "dismissed" ? "还没有忽略过任何一条" : tab === "unread" ? "未读已经看完了" : data.activeRuns.length ? "这一批正在整理" : "从第一批精选开始"}</h2>
                   <p>
                     {tab === "today"
                       ? "根据关注方向阅读相关资料，留下可靠的信息和值得观察的线索。点右上角开始一次试用。"
+                      : tab === "dismissed" ? "按过「不感兴趣」的会留在这里，随时可以恢复推荐。"
                       : "有价值的内容可以留着慢慢看。"}
                   </p>
                   {!data.preferences.directions?.length ? (
@@ -585,7 +603,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
                 onFull={() => onGo("intel-detail", peekId)}
                 onPrev={peekIndex > 0 ? () => step(-1) : undefined}
                 onNext={peekIndex >= 0 && peekIndex < items.length - 1 ? () => step(1) : undefined}
-                onFeedback={(patch) => feedback(peek || { id: peekId }, patch)}
+                onFeedback={(patch) => ("dismissed" in patch ? dismiss(peek || { id: peekId }, patch.dismissed) : feedback(peek || { id: peekId }, patch))}
                 onMerge={() => startMerge([peekId])}
                 onGo={onGo}
                 onBlock={blockHost}
@@ -605,7 +623,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
 
       {settingsDialog()}
       {mergeDialog()}
-      <Toast text={notice} onClose={() => setNotice("")} />
+      <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
     </div>
   );
 
@@ -625,7 +643,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
       <article
         key={item.id}
         data-brief={item.id}
-        className={`brief-card ${item.read ? "is-read" : ""} ${active ? "is-active" : ""} ${picked ? "is-picked" : ""}`}
+        className={`brief-card ${item.read ? "is-read" : ""} ${active ? "is-active" : ""} ${picked ? "is-picked" : ""} ${item.dismissed ? "is-dismissed" : ""}`}
       >
         <div className="brief-card__top">
           {/* 选择和已读是两件事，不共用一枚标签。checkbox 平时收起来——
@@ -654,19 +672,28 @@ export function IntelligenceFeed({ view, state, onGo }) {
         <p className="brief-card__summary">{item.summary}</p>
         <footer>
           <span className="brief-card__meta">{briefCardMeta(item)}</span>
+          {/* 「已忽略」那一档里，这一行唯一要回答的问题是「要不要拿回来」 */}
           <span className="brief-card__acts">
-            <button
-              type="button"
-              className="text-action"
-              disabled={Boolean(busy)}
-              aria-pressed={Boolean(item.saved)}
-              onClick={() => feedback(item, { saved: !item.saved })}
-            >
-              {item.saved ? "已收藏" : "收藏"}
-            </button>
-            <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => feedback(item, { dismissed: true })}>
-              不感兴趣
-            </button>
+            {item.dismissed ? (
+              <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, false)}>
+                恢复推荐
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="text-action"
+                  disabled={Boolean(busy)}
+                  aria-pressed={Boolean(item.saved)}
+                  onClick={() => feedback(item, { saved: !item.saved })}
+                >
+                  {item.saved ? "已收藏" : "收藏"}
+                </button>
+                <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, true)}>
+                  不感兴趣
+                </button>
+              </>
+            )}
           </span>
         </footer>
       </article>

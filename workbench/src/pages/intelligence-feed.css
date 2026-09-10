@@ -98,8 +98,12 @@
 .brief-card__acts { display: flex; flex: none; gap: 12px; opacity: 0; transition: opacity 0.14s var(--ease); }
 .brief-card:hover .brief-card__acts,
 .brief-card:focus-within .brief-card__acts,
-/* 已收藏要一直看得见——它是状态，不是等着被点的动作 */
-.brief-card__acts:has([aria-pressed="true"]) { opacity: 1; }
+/* 已收藏要一直看得见——它是状态，不是等着被点的动作。
+   「已忽略」那一档里那颗「恢复推荐」同理：它是这一档存在的全部意义，不该藏在 hover 后面。 */
+.brief-card__acts:has([aria-pressed="true"]),
+.brief-card.is-dismissed .brief-card__acts { opacity: 1; }
+/* 忽略过的那几条整体退一档：它们在这一档里是「等着你决定要不要拿回来」，不是主角 */
+.brief-card.is-dismissed { background: var(--canvas); }
 
 
 .brief-selection-bar {
