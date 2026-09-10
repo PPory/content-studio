@@ -177,9 +177,16 @@
 /* ⚠️ `auto-fill` 而不是写死两列：容器塞得下几列就开几列，右边空着是正常的。
    上一版是 580×270 的大卡装三行字，一屏看得到两条半。 */
 .direction-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:4px 0 32px}
-.direction-overview-card{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;padding:13px 15px 11px;text-align:left;color:var(--text-1);font:inherit;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);cursor:pointer;transition:border-color .14s var(--ease)}
+/* 外层只是容器，内层那颗按钮才是「打开」——为什么不能整张卡一颗 button，见 `DirectionBrowser.jsx`。 */
+.direction-overview-card{position:relative;display:block;min-width:0;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);transition:border-color .14s var(--ease)}
+.direction-overview-card__open{display:flex;flex-direction:column;align-items:flex-start;gap:7px;width:100%;min-width:0;padding:13px 15px 11px;text-align:left;color:var(--text-1);font:inherit;border:0;border-radius:inherit;background:transparent;cursor:pointer}
+/* 移除平时收起来；确认态整张卡钉住，否则鼠标一挪走按钮就没了 */
+.direction-overview-card__acts{position:absolute;top:8px;right:8px;display:flex;opacity:0;transition:opacity .14s var(--ease)}
+.direction-overview-card:hover .direction-overview-card__acts,
+.direction-overview-card:focus-within .direction-overview-card__acts,
+.direction-overview-card[data-confirm] .direction-overview-card__acts{opacity:1}
 .direction-overview-card:hover{border-color:var(--border-strong)}
-.direction-overview-card:focus-visible,.direction-reader-list button:focus-visible{outline:2px solid var(--text-1);outline-offset:3px}
+.direction-overview-card__open:focus-visible,.direction-reader-list button:focus-visible{outline:2px solid var(--text-1);outline-offset:3px}
 .direction-overview-card strong{font-size:var(--fs-base);line-height:1.5;font-weight:600;min-height:calc(2 * 1.5 * var(--fs-base))}
 .direction-overview-card p{margin:0;color:var(--text-2);font-size:var(--fs-sm);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* 状态 pill **不画底色**：一列同色底块竖着排下来会成为整屏最亮的东西，

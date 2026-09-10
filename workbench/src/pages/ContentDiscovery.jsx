@@ -4,7 +4,8 @@ import {DirectionEvidence} from '../components/DirectionEvidence.jsx';
 import {DirectionActions} from '../components/DirectionActions.jsx';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, FilterHeader, Loading, SearchBox, ViewTabs, relTime } from "../components/ui.jsx";
+import { ErrorNote, FilterHeader, Loading, SearchBox, Toast, ViewTabs, relTime } from "../components/ui.jsx";
+import { useUndoToast } from "../lib/use-undo-toast.js";
 import { takeDiscoveryFocus } from "../lib/discovery-handoff.js";
 import { IconSparkles, IconArrowRight, IconMessageQuestion, IconRefresh } from "../components/icons.jsx";
 import "./content-bridge.css";
@@ -123,6 +124,29 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
   const [agendaCandidates, setAgendaCandidates] = useState(null);
   const [agendaBusy, setAgendaBusy] = useState(false);
   const [agendaKept, setAgendaKept] = useState([]);
+  const [toast, setToast] = useUndoToast();
+
+  /**
+   * 移除一个已保存的方向。**只动标记位**（`intel_directions.dismissed`）——
+   * 已带入选题的正文在 researches 里，不受影响；而「再保存一次」本身就是恢复。
+   */
+  const removeDirection = async (item) => {
+    const id = item.saved?.id;
+    if (!id) return;
+    try {
+      await api.dismissIntelligenceDirection(id, true);
+      setDirections((old) => old.filter((d) => d.id !== id));
+      setToast({
+        text: "方向已移除",
+        detail: "已带入选题的内容不受影响。",
+        undo: async () => {
+          const back = await api.dismissIntelligenceDirection(id, false);
+          setToast(null);
+          setDirections((old) => [back.direction, ...old.filter((d) => d.id !== id)]);
+        },
+      });
+    } catch (failure) { setSavedError(failure); }
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -229,7 +253,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
         <ErrorNote error={savedError} what="读取已保存机会" onRetry={load} />
         {!browserItems.length&&!savedError&&!loading&&<p className="opportunity-saved-empty">{savedQuery?'没有找到匹配的机会，试试其他关键词。':'还没有保存的方向。'}</p>}
       </section>
-      <div hidden={view==='research'}><DirectionBrowser items={browserItems} initialKey={initialDirection} onReadingChange={setReading} renderDetail={item=>item.legacy?renderLegacy?.(item.legacy.id):<DirectionDetail item={item} onGo={onGo} onSaved={onSaved}/>}/></div>
+      <div hidden={view==='research'}><DirectionBrowser items={browserItems} initialKey={initialDirection} onReadingChange={setReading} onRemove={removeDirection} renderDetail={item=>item.legacy?renderLegacy?.(item.legacy.id):<DirectionDetail item={item} onGo={onGo} onSaved={onSaved}/>}/></div>
       <aside hidden={view !== "research"} className="opportunity-context" aria-label="研究方向与长期议程">
       {research.length ? (
         <section className="discovery-research" aria-label="最近你在想的">
@@ -332,6 +356,7 @@ export function ContentDiscovery({ onGo, onCaptureVoice, initialDirection="", re
         </section>
       ) : null}
       </aside>
+      <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
     </div>
   );
 }

@@ -48,7 +48,22 @@ try{
  const id=directionKey(connection),cid=createUlid();w.repository.createEntity({id:cid,type:'ai_conversation'});w.db.prepare("INSERT INTO ai_conversations(id,title,scope_type,scope_id,record_json) VALUES(?,?,'global',?,?)").run(cid,'方向讨论',`direction:${id}`,JSON.stringify({messages:[]}));
  const shots=path.join(ROOT,'output','playwright');await fs.mkdir(shots,{recursive:true});await page.screenshot({path:path.join(shots,'intelligence-directions-desktop.png'),fullPage:true});
  await page.getByRole('button',{name:'带入选题',exact:true}).click();await page.getByRole('dialog',{name:'带入选题',exact:true}).waitFor();await page.getByRole('button',{name:'取消',exact:true}).click();assert.deepEqual(counts(),before);
- await page.reload();await page.getByRole('tab',{name:/已保存/}).click();await page.getByLabel('搜索已保存的机会').fill('不匹配的搜索');await page.getByText('没有找到匹配的机会，试试其他关键词。',{exact:true}).waitFor();await page.getByLabel('搜索已保存的机会').fill('读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'← 返回卡片总览',exact:true}).click();assert.equal(await page.getByLabel('搜索已保存的机会').inputValue(),'读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'聊聊这个方向',exact:true}).click();await page.locator('.direction-chat textarea').waitFor();await page.getByRole('button',{name:'收起讨论',exact:true}).click();
+ // 已保存那一档里能移除一条，回执带撤销；新发现那一档没有「移除」——那儿还没有对象。
+ await page.reload();await page.getByRole('tab',{name:/已保存/}).click();
+ await page.locator('.direction-overview-card').first().waitFor();
+ assert.equal(await page.getByRole('button',{name:/^移除方向：/}).count(),1,'已保存的方向能移除');
+ await page.getByRole('button',{name:/^移除方向：/}).click();await page.waitForTimeout(400);
+ await page.getByRole('button',{name:'移除方向',exact:true}).click();
+ await page.getByText('方向已移除',{exact:true}).waitFor();
+ assert.equal(await page.locator('.direction-overview-card').count(),0,'移除之后已保存里就没有它了');
+ await page.getByRole('button',{name:'撤销',exact:true}).click();
+ await page.locator('.direction-overview-card').first().waitFor();
+ // 新发现那一档里只有**已经保存过**的那张才给「移除」——其余候选还没落库，没有对象可移除。
+ await page.getByRole('tab',{name:/新发现/}).click();
+ await page.locator('.direction-overview-card').first().waitFor();
+ assert.equal(await page.locator('.direction-overview-card').count(),3);
+ assert.equal(await page.getByRole('button',{name:/^移除方向：/}).count(),1,'只有已保存的那张能移除');
+ await page.getByRole('tab',{name:/已保存/}).click();await page.getByLabel('搜索已保存的机会').fill('不匹配的搜索');await page.getByText('没有找到匹配的机会，试试其他关键词。',{exact:true}).waitFor();await page.getByLabel('搜索已保存的机会').fill('读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'← 返回卡片总览',exact:true}).click();assert.equal(await page.getByLabel('搜索已保存的机会').inputValue(),'读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'聊聊这个方向',exact:true}).click();await page.locator('.direction-chat textarea').waitFor();await page.getByRole('button',{name:'收起讨论',exact:true}).click();
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'带入选题',exact:true}).scrollIntoViewIfNeeded();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));const backBox=await page.getByRole('button',{name:'← 返回卡片总览',exact:true}).boundingBox();assert(backBox.y>=0&&backBox.y+backBox.height<=844);await page.screenshot({path:path.join(shots,'intelligence-directions-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'带入选题',exact:true}).click();await page.getByRole('button',{name:'确认带入',exact:true}).click();await page.waitForURL(/#\/research\//);const researchId=decodeURIComponent(page.url().split('#/research/')[1]);const research=getResearch(w,researchId);assert(research.notes.includes(candidate.evidence_gaps[0]));assert(research.references.length===1);assert(research.conversations.some(c=>c.id===cid));assert.equal(counts().projects,before.projects);assert.equal(developDirection(w,id,{confirmed:true}).id,research.id);assert.throws(()=>developDirection(w,id,{}),e=>e.status===400);
  // Existing research append and stale-cache preservation.
