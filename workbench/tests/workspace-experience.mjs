@@ -174,5 +174,43 @@ try {
   assert.equal(workspaceSetup(w).done,true,"拿回来之后又完成了");
  }
 
+ // ── 「本月产出」：真实发布记录，没有就整块不画 ──
+ {
+  assert.equal(workspaceAgenda(w).output,null,"一篇都没发过时整块不画（0 不是一个值得报的数）");
+
+  // 发布记录的外键要一份真实的稿 + 修订版本（`publication_records` 两条 FK 都是 RESTRICT）
+  const pubProject=w.domain.createProject({title:"发过的那一篇",audience:"读者",viewpoint:"观点",confirmed:true,actor:"user",now:new Date()});
+  const pubDraftId=w.domain.createDraft({projectId:pubProject,title:"发过的那一篇",bodyMarkdown:"正文。",actor:"user",now:new Date()});
+  const pubRevisionId=w.domain.saveRevision(pubDraftId,{title:"发过的那一篇",bodyMarkdown:"正文。",now:new Date()});
+  // ⚠️ `publication_revision_guard` 那个触发器要求发布记录的 content_sha256
+  // **和那一版修订的完全一致**，不能随手编一个——发出去的内容必须可追溯到具体哪一版。
+  const pubHash=w.db.prepare("SELECT content_sha256 AS h FROM revisions WHERE id=?").get(pubRevisionId).h;
+  const mk=(publishedAt)=>{
+   const id=createUlid();
+   w.repository.createEntity({id,type:"publication"});
+   // 直接插行：这一段只数数，不走发布流程（那条路要 revision、幂等键和平台校验）
+   w.db.prepare(`INSERT INTO publication_records(id,draft_id,revision_id,content_sha256,platform,title,published_url,published_at,idempotency_key)
+     VALUES(?,?,?,?,'公众号','一篇','https://example.com/x',?,?)`)
+     .run(id,pubDraftId,pubRevisionId,pubHash,publishedAt,`key-${id}`);
+   return id;
+  };
+  const thisM=new Date();thisM.setUTCDate(1);
+  const lastM=new Date();lastM.setUTCDate(1);lastM.setUTCMonth(lastM.getUTCMonth()-1);
+  const iso=(d)=>d.toISOString().slice(0,10);
+  mk(`${iso(thisM)}T09:00:00.000Z`);
+  mk(`${iso(thisM)}T10:00:00.000Z`);
+  mk(iso(lastM));                    // ⚠️ 只有日期、没有时间：`strftime` 解析不了这种，`substr` 能
+  const output=workspaceAgenda(w).output;
+  assert.equal(output.thisMonth,2,`本月应该是 2，实际 ${output?.thisMonth}`);
+  assert.equal(output.lastMonth,1,`上月应该是 1（那条只有日期没有时间，正是不能用 strftime 的原因）`);
+  assert.equal(output.total,3);
+  assert.equal(output.pendingReview,workspaceAgenda(w).stages.find(s=>s.stage==="待复盘")?.count||0,"待复盘不另算一遍，用阶段计数");
+
+  // 软删一条就不该再数
+  w.db.prepare("UPDATE entities SET deleted_at=? WHERE entity_type='publication' AND id=(SELECT id FROM publication_records WHERE substr(published_at,1,7)=? LIMIT 1)")
+   .run(new Date().toISOString(),iso(thisM).slice(0,7));
+  assert.equal(workspaceAgenda(w).output.thisMonth,1,"回收掉的发布记录不再计入");
+ }
+
  console.log("workspace experience: true activity, validated positions, real wiki matching, persisted AI summary, quote provenance, stale guard and cache passed");
 }finally{w?.close();await fs.rm(root,{recursive:true,force:true});}

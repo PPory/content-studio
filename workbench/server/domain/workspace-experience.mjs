@@ -308,7 +308,7 @@ export function workspaceAgenda(w) {
    * 读过才出现，没读过就让这一块空着并说清原因。
    */
   const reading = workspaceActivity(w).reading.filter((item) => item.kind === "book");
-  return { resume, waiting, stages, inHand, reading, setup: workspaceSetup(w) };
+  return { resume, waiting, stages, inHand, reading, setup: workspaceSetup(w), output: publishedOutput(w, stageCount("待复盘")) };
 }
 
 /**
@@ -354,4 +354,39 @@ export function workspaceSetup(w) {
     },
   ];
   return { done: steps.every((step) => step.done), steps };
+}
+
+/**
+ * 「本月产出」：真实发布记录。
+ *
+ * ⚠️ **首页缺的一整类东西是「结果」。** 前几版从上到下全是「你拥有的对象」——
+ * 库存清单再怎么排也是库存管理。一个内容工作台的首页不提产出，就没有任何一块在回答
+ *「做这事是为了什么」。这一段是那一块里唯一不用外部数据就能给的：发了几篇。
+ *
+ * ⚠️ **只给两个数（本月 / 上月），不给趋势图。** 画图要外部同步进来的 metrics 行
+ *（`account_metrics`），那份数据可能根本没有；两个数能比出方向，而且永远是真的。
+ *
+ * ⚠️ **一篇都没发过时返回 `null`，整块不画**（判据：0 不是一个值得报的数）。
+ * 「本月 0 篇 · 上月 0 篇」是首页上信息量最低的一行。
+ *
+ * ⚠️ **按月份用 `substr(published_at, 1, 7)`，不要用 `strftime`。**
+ * 这一列是 `TEXT NOT NULL`，值由调用方传进来（`workspace-domain.mjs` 那条 INSERT 直接
+ * 存 `payload.publishedAt`，别处也只 `.slice(0, 10)` 当日期用），**不保证是 SQLite
+ * 认得的 datetime**。`strftime` 解析不了就返回 NULL，那一条会**静静地漏掉**——
+ * 首页少报一篇而不报错。
+ */
+function publishedOutput(w, pendingReview) {
+  const month = (offset) => {
+    const at = new Date();
+    at.setUTCDate(1);
+    at.setUTCMonth(at.getUTCMonth() + offset);
+    return at.toISOString().slice(0, 7);
+  };
+  const count = (prefix) => w.db.prepare(`SELECT COUNT(*) n FROM publication_records p
+    JOIN entities e ON e.id = p.id AND e.deleted_at IS NULL
+    WHERE substr(p.published_at, 1, 7) = ?`).get(prefix).n;
+  const total = w.db.prepare(`SELECT COUNT(*) n FROM publication_records p
+    JOIN entities e ON e.id = p.id AND e.deleted_at IS NULL`).get().n;
+  if (!total) return null;
+  return { thisMonth: count(month(0)), lastMonth: count(month(-1)), pendingReview, total };
 }
