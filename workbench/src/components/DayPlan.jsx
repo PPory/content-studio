@@ -22,19 +22,19 @@ import { IconCheck, IconClipboardList, IconPlus, IconTrash } from "./icons.jsx";
 // 签名和职责都不同；而且它那儿的注释明写着「写死字面量是有意的，
 // 不该因为 import 了常量就跟着布局变量走」。合并只会把两件事绑在一起。
 // 跟着 `DayPlan` 一起从 `Overview.jsx` 搬过来的，那边现在没人用了，已删。
-const WB_PREFIX = "99 - 个人工作台/";
-function shortPath(path) {
-  const p = String(path || "");
-  return p.startsWith(WB_PREFIX) ? p.slice(WB_PREFIX.length) : p;
-}
 
 /**
  * 每日计划的取数与改写。
  *
- * **清单落 vault 的 `05 - 计划/<日期>.md`，不落 localStorage**：手写的任务是你自己的字，
- * 是内容，而红线写着「不用 localStorage 存内容」。落 vault 换来的是——打钩就是把
- * `- [ ]` 改成 `- [x]`（Obsidian 原生就认，两边是同一份），躺床上用手机在 Obsidian 里
- * 列明天的清单，第二天早上工作台里就有它。
+ * **清单落工作区数据库，不落 localStorage**：手写的任务是你自己的字，是内容，
+ * 而红线写着「不用 localStorage 存内容」。落库换来的是跟着备份走、换台机器还在。
+ *
+ * ⚠️ **这段注释以前写的是「落 vault 的 `05 - 计划/<日期>.md`，Obsidian 原生就认、
+ * 两边是同一份」——那已经不成立了。** 实现早就迁到
+ * `repository.getSetting('plan:<date>')`（见 `routes/local-content.mjs` 的 `planPayload`），
+ * 而注释没跟着改，于是它在承诺一个不存在的互操作。同一句话的界面版（那个
+ * `plan-where` 路径标签）也一起撤掉了：它显示的是 `workspace:plan:<日期>`，
+ * 一个数据库键伪装成文件路径，谁照着它去找都找不到。
  *
  * **「今天 / 明天」两个日期串由服务端给**（`today` / `tomorrow`），前端不自己 `new Date()`：
  * 文件名是按**服务端本机日期**建的，两边各算各的话，跨零点或时区一错就会写进另一个文件，
@@ -207,12 +207,6 @@ export function DayPlan({ plan }) {
                 >
                   <IconPlus size={16} stroke={2.2} aria-hidden="true" />
                 </button>
-                {/* **如实说明这份清单存到哪了**（和批注那条「保存前就该知道东西落在哪」同一条），
-                    但不再单独占一行——挂在这一排的最右端。显示路径掐掉 `99 - 个人工作台/`：
-                    那一段在每份文档上都一样，占的是最值钱的开头几个字。 */}
-                <span className="plan-where mono" title={data.path}>
-                  {shortPath(data.path)}
-                </span>
               </>
             ) : null}
           </div>

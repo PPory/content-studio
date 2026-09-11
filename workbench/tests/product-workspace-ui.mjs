@@ -60,15 +60,15 @@ try {
         done:li.hasAttribute("data-done"),
       })),
       // ⚠️ 首启时这些都该不在：「接着写」没有对象可写，空的区块也只是再说一遍同一件事
-      resume:document.querySelectorAll(".agenda-resume").length,
-      hand:document.querySelectorAll(".agenda-hand").length,
-      rail:document.querySelectorAll(".overview-rail").length,
+      resume:document.querySelectorAll(".agenda-line").length,
+      hand:document.querySelectorAll(".agenda-flow").length,
+      rail:document.querySelectorAll(".agenda-reading").length,
       zero:(document.querySelector(".view-head__count")?.textContent||"").includes("0 件"),
     };
   });
   check("全新工作区的首页画三步开局卡",firstRun.count==="0 / 3"&&firstRun.steps.length===3,JSON.stringify(firstRun));
   check("每一步都说清是什么、为什么、点什么",firstRun.steps.every(s=>s.title&&s.why&&s.action&&!s.done),JSON.stringify(firstRun.steps));
-  check("首启不画「接着写」那张卡",firstRun.resume===0);
+  check("首启不画那三条提要（没有新的、没产出、没在写的）",firstRun.resume===0);
   check("首启不摆空的区块",firstRun.hand===0&&firstRun.rail===0,JSON.stringify(firstRun));
   check("首启页头不报「0 件在手」",!firstRun.zero);
 
@@ -159,8 +159,8 @@ try {
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
   // 选题和文章现在在同一条列表里，所以按标题挑那一篇——顺便证明它真的在这条列表上
-  // 行以阶段 pill 开头（「写作中」），按它挑那一篇文章——顺带证明那一列真的在渲染
-  await page.locator(".agenda-rows:not(.agenda-rows--rail) .row").filter({has:page.locator(".pill",{hasText:"写作中"})}).first().locator(".agenda-row__open").click();
+  // ⚠️ 首页不再有全量列表（它在创作页）。这一篇从「接着写」那一行进去。
+  await page.locator(".agenda-line").filter({hasText:"接着写"}).click();
   await page.getByLabel("文章标题",{exact:true}).waitFor();
   check("首页文章回到同一选题的写作位置",page.url().includes(researchId));
   check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
@@ -241,105 +241,71 @@ try {
   await page.getByRole("heading",{name:"选题空间",exact:true}).waitFor();
   check("保存后才离开首页",true);
 
-  // ── 首页：三层、层次来自状态、放久了才有时间戳 ──
-  // 造一条「AI 提了、等你审阅」的候选，好让「在等你决定」那一块真的有东西可点。
+  // ── 首页：承诺 + 信号 + 结果 + 续上 ──
+  //
+  // ⚠️ 这一段钉的是「它到底算不算首页」：**不能整页都是「你拥有的对象」的投影**。
+  // 清单是你自己定的承诺（不是对象），产出是结果（不是对象）；这两种少一个，
+  // 剩下的无论怎么排序、怎么加状态，读起来都是库存管理。
   w.db.prepare("INSERT INTO action_candidates(id,action_type,target_id,payload_json,payload_sha256,status,proposed_by,proposed_at) VALUES(?,'wiki.lint.review',?,'{}',?,'proposed','ai',?)")
     .run(createUlid(),wikiId,"c".repeat(64),new Date().toISOString());
   await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
 
-  const HAND=".agenda-rows:not(.agenda-rows--rail)";
-  const homeRows=()=>page.evaluate(sel=>[...document.querySelectorAll(`${sel} .row .agenda-row__open`)].map(b=>b.textContent.trim()),HAND);
-  const shown=await homeRows();
+  // 1. 承诺排最前，而且首页不再有全量列表
+  const order=await page.evaluate(()=>[...document.querySelectorAll(".overview-main > *")]
+    .map(n=>(n.className?.toString?.()||n.tagName).split(" ")[0]).filter(Boolean));
+  check("承诺排在最前：清单在三条提要和流水线之前",
+    order[0]==="day-plan"&&order.indexOf("day-plan")<order.indexOf("agenda-lines"),JSON.stringify(order));
+  check("首页不再有全量列表",await page.locator(".agenda-rows").count()===0);
 
-  // 1. 同一个东西不再被列两遍（上一版量到 15 行 / 8 个东西）
-  check("首页不再把同一个东西列两遍",shown.length>0&&new Set(shown).size===shown.length,JSON.stringify(shown));
-  const everyRow=await page.evaluate(()=>[...document.querySelectorAll(".agenda-rows .row .agenda-row__open")].map(b=>b.textContent.trim()));
-  check("两块列表也不互相重复",new Set(everyRow).size===everyRow.length,JSON.stringify(everyRow));
-
-  // 2. **层次来自状态**：每一行以阶段 pill 开头，而不是以相对时间戳结尾
-  const rowShape=await page.evaluate(sel=>{
-    const rows=[...document.querySelectorAll(`${sel} .row`)];
-    return {
-      withPill:rows.filter(r=>r.querySelector(".pill")).length,
-      total:rows.length,
-      stamped:rows.filter(r=>r.querySelector(".agenda-row__stale")).length,
-      withProgress:rows.filter(r=>r.querySelector(".agenda-row__progress")?.textContent.trim()).length,
-    };
-  },HAND);
-  check("每一行都以阶段开头",rowShape.withPill===rowShape.total,JSON.stringify(rowShape));
-  check("每一行中间那一列是进展，不是摘要",rowShape.withProgress===rowShape.total);
-  // ⚠️ 这一条是「看着像流水」的直接反面：一周以内的行**一个时间戳都不该有**
-  check("刚动过的那些行不带时间戳",rowShape.stamped===0,`带时间戳的行数 ${rowShape.stamped}`);
-
-  // 3. 第一层那张卡说的是状态和下一步的动词，不是时间
-  const card=await page.evaluate(()=>{
-    const el=document.querySelector(".agenda-resume");
-    if(!el)return null;
-    return {
-      stage:el.querySelector(".pill")?.textContent.trim()||"",
-      action:el.querySelector("footer .btn")?.textContent.trim()||"",
-      top:Math.round(el.getBoundingClientRect().top),
-      hasStamp:Boolean(el.querySelector(".agenda-resume__stale")),
-      text:el.innerText,
-    };
-  });
-  check("第一层那张卡带阶段和一个下一步动词",Boolean(card&&card.stage&&card.action),JSON.stringify(card));
-  check("那张卡落在首屏上半屏",card.top<420,`卡 y=${card.top}`);
-  check("那张卡上没有相对时间戳",!card.hasStamp&&!/前$/m.test(card.text.trim()));
-  // 空壳不该被选成「接着写」——你没法接着一件还不存在的事
-  check("那张卡不是一个还没起名字的空壳",!(card.text.includes("还没起名字")&&card.text.includes("还是空的")),card.text);
-
-  // 4. 阶段轴：流水线顺序、计数等于真实条数、点一档只剩那一档
-  const chips=await page.evaluate(()=>[...document.querySelectorAll(".agenda-hand .chip")].map(c=>c.textContent.trim()));
-  check("阶段轴按流水线顺序排（选题在最前）",chips.length>1&&chips[0].startsWith("全部")&&chips[1].startsWith("选题"),JSON.stringify(chips));
-  const pickedStage=chips[1].replace(/\s+\d+$/,"");
-  const pickedCount=Number(chips[1].match(/(\d+)$/)[1]);
-  await page.getByRole("button",{name:chips[1],exact:true}).click();
-  const filtered=await page.evaluate(sel=>[...document.querySelectorAll(`${sel} .row`)].map(r=>r.querySelector(".pill")?.textContent.trim()),HAND);
-  check("点一档只剩那一档，条数和芯片上的数一致",filtered.length===pickedCount&&filtered.every(v=>v===pickedStage),JSON.stringify({pickedStage,pickedCount,filtered}));
-  await page.getByRole("button",{name:chips[0],exact:true}).click();
-
-  // 5. 「在等你决定」：只列真有在等的，每条都点得过去
-  const waiting=await page.evaluate(()=>[...document.querySelectorAll(".agenda-waiting li")].map(l=>l.innerText.replace(/\n/g," ").trim()));
-  check("在等你决定只列真有在等的",waiting.every(line=>!/^0/.test(line)),JSON.stringify(waiting));
-  check("「在等你决定」把 AI 提的候选抬上来了",waiting.some(line=>line.includes("待审阅")),JSON.stringify(waiting));
-  if(waiting.length){
-    await page.locator(".agenda-waiting li > button").first().click();
-    await page.waitForFunction(()=>!location.hash.startsWith("#/today"));
-    check("点「在等你决定」的一条会离开首页，落在对应那一页",!page.url().includes("#/today"),page.url());
-    await page.goto(`${base}/#/today`);
-    await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
-  }
-
-  // 6. 置顶：那一条排到最前，刷新之后还在最前——也就是「卡挑错了」有解
-  const lastTitle=(await homeRows()).at(-1);
-  const rowOf=(title)=>page.locator(`${HAND} .row`).filter({has:page.locator(".agenda-row__open",{hasText:title})}).first();
-  await rowOf(lastTitle).hover();
-  await rowOf(lastTitle).getByRole("button",{name:/^置顶/}).click();
-  await page.waitForFunction(([sel,t])=>document.querySelector(`${sel} .row .agenda-row__open`)?.textContent.includes(t),[HAND,lastTitle]);
+  // 2. 清单：加一条 → 勾上 → 计数跟着变 → 刷新还在（落工作区数据库，不落 localStorage）
+  await page.locator(".plan-plus").click();
+  await page.locator(".day-plan form input").first().fill("把 harness 那篇的中间三段补完");
+  await page.keyboard.press("Enter");
+  await page.getByText("把 harness 那篇的中间三段补完").waitFor();
+  const ringText=()=>page.locator(".plan-ring__label").innerText().then(t=>t.replace(/\s+/g,""));
+  check("加完之后计数从 0 起",(await ringText()).startsWith("0"),await ringText());
+  // ⚠️ 那一行不是 <input>：整行是一颗 `aria-pressed` 的 button（12px 的小方框
+  // 在一个每天点好几次的控件上太苛刻了，理由写在 `DayPlan.jsx`）
+  await page.locator(".plan-task__main").first().click();
+  await page.waitForFunction(()=>document.querySelector(".plan-ring__label")?.innerText.replace(/\s+/g,"").startsWith("1"));
   await page.reload();
+  await page.getByText("把 harness 那篇的中间三段补完").waitFor();
+  check("勾上的状态刷新后还在（清单落库）",(await ringText()).startsWith("1"),await ringText());
+
+  // 3. 三条提要：同一种形状，标签 + 一句话
+  const lines=await page.evaluate(()=>[...document.querySelectorAll(".agenda-line")].map(b=>({
+    key:b.querySelector(".agenda-line__key")?.textContent.trim(),
+    say:b.querySelector(".agenda-line__say")?.textContent.trim(),
+  })));
+  check("三条提要都有标签和一句话",lines.length>0&&lines.every(l=>l.key&&l.say),JSON.stringify(lines));
+  check("「今天新的」把 AI 提的候选抬上来了",lines.some(l=>l.key==="今天新的"&&l.say.includes("待审阅")),JSON.stringify(lines));
+
+  // 4. 产出：一篇都没发过时整块不给（0 不是一个值得报的数）
+  check("一篇都没发过时不画「本月产出」",!lines.some(l=>l.key==="本月产出"),JSON.stringify(lines));
+  check("agenda 在没有发布记录时把 output 给成 null",(await request("/api/workspace/agenda")).output===null);
+
+  // 5. 流水线：只有计数，点一档去对应那一页（选题不在创作页里）
+  const agendaNow=await request("/api/workspace/agenda");
+  const flow=await page.evaluate(()=>[...document.querySelectorAll(".agenda-flow__bar button")]
+    .map(b=>({n:Number(b.querySelector("b").textContent),stage:b.querySelector("span").textContent.trim()})));
+  check("流水线的计数等于真实条数",
+    flow.length===agendaNow.stages.length&&flow.every((f,k)=>f.n===agendaNow.stages[k].count&&f.stage===agendaNow.stages[k].stage),
+    JSON.stringify({flow,stages:agendaNow.stages}));
+  await page.locator(".agenda-flow__bar button").filter({hasText:"选题"}).click();
+  await page.waitForFunction(()=>location.hash.includes("#/research"));
+  check("点「选题」那一档去的是选题空间，不是创作页",page.url().includes("#/research"),page.url());
+  await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
-  check("置顶把那一条排到最前，而且刷新后仍在最前",(await homeRows())[0]===lastTitle);
-  check("置顶之后第一层那张卡就是它",(await page.locator(".agenda-resume h2").innerText()).trim()===lastTitle);
 
-  // 7. 从首页收起：列表里没了，撤销拿回来
-  await rowOf(lastTitle).hover();
-  await rowOf(lastTitle).getByRole("button",{name:/从首页收起$/}).click();
-  await page.getByText("不在首页出现了",{exact:false}).waitFor();
-  check("收起之后这条不在首页列表里",!(await homeRows()).includes(lastTitle));
-  await page.getByRole("button",{name:"撤销",exact:true}).click();
-  await page.waitForFunction(([sel,t])=>[...document.querySelectorAll(`${sel} .row .agenda-row__open`)].some(b=>b.textContent.includes(t)),[HAND,lastTitle]);
-  check("撤销把它拿回首页",(await homeRows()).includes(lastTitle));
-
-  // 8. 这一屏的数据一次给完，而且不含正文
-  const agenda=await request("/api/workspace/agenda");
-  check("首页一个请求拿到阶段、在等你决定和阶段轴",Array.isArray(agenda.inHand)&&Array.isArray(agenda.stages)&&Array.isArray(agenda.waiting)&&Boolean(agenda.resume));
-  check("agenda 不把正文发出来",!JSON.stringify(agenda).includes("这是一段自己写的内容"));
+  // 6. 「记一个想法」和清单的「＋加一条」是两个不同的入口
+  check("记灵感和加任务是两个入口",
+    await page.getByLabel("记下灵感",{exact:true}).count()===1&&await page.locator(".plan-plus").count()===1);
 
   check("首页手机无横向溢出",await page.setViewportSize({width:390,height:844}).then(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)));
   await page.screenshot({path:path.join(shotDir,"interview-home-mobile.png"),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
+
   for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
   await page.goto(`${base}/#/research`); await page.reload();
   await page.locator(".research-card").first().waitFor();

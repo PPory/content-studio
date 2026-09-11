@@ -20,13 +20,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
-import { Empty, ErrorNote, Loading, PageHeader, StatePill, Toast } from "../components/ui.jsx";
-import { IconAlertTriangle, IconArrowRight, IconBook2, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFolder, IconPin, IconPinFilled } from "../components/icons.jsx";
+import { DayPlan, usePlan } from "../components/DayPlan.jsx";
+import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui.jsx";
+import { IconArrowRight, IconBook2, IconBulb, IconCircleCheck, IconCircleDashed } from "../components/icons.jsx";
 import { Cover } from "../components/Cover.jsx";
 import { pct } from "../lib/reading.js";
-import { useUndoToast } from "../lib/use-undo-toast.js";
 import "./workspace-home.css";
 import { useDialog } from "../lib/use-dialog.js";
+
+/**
+ * 点某一档去哪一页。⚠️ **选题不在创作页里**，它有自己那一页；待复盘归运营下的复盘。
+ * 现在只跳到页，不预选那一档——`Content.jsx` 的芯片不接外部 stage（那是另一件事）。
+ */
+const STAGE_VIEW = { 选题: "research", 策划中: "content", 写作中: "content", 待发布: "content", 待复盘: "review" };
+
+/**
+ * 「比上月多 N」。⚠️ **持平也要说出来**，不然这一行只在变好或变差时才有第二句，
+ * 读起来像「这个月没数据」。上月是 0 时不说「多 N」——从 0 涨上来说「比上月多」很怪。
+ */
+function monthTrend({ thisMonth, lastMonth }) {
+  if (!lastMonth) return thisMonth ? "" : " · 这个月还没发";
+  if (thisMonth === lastMonth) return " · 和上月持平";
+  return thisMonth > lastMonth ? ` · 比上月多 ${thisMonth - lastMonth}` : ` · 比上月少 ${lastMonth - thisMonth}`;
+}
 
 /**
  * 一条的可读名字。
@@ -54,9 +70,10 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [stage, setStage] = useState("");
-  const [toast, setToast] = useUndoToast();
   const field = useRef(null);
+  // 「今天」那份清单。落工作区数据库（`repository.getSetting('plan:<date>')`），
+  // 所以它跟着备份走、换台机器还在——见 `components/DayPlan.jsx`。
+  const plan = usePlan(true);
 
   /**
    * 让输入框跟着内容长高。
@@ -122,52 +139,26 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
     } catch (e) { setError(e); }
   }
 
-  /**
-   * 置顶 / 从首页收起，走已有的 `api.workState`。
-   *
-   * 置顶在这一页有一件别处没有的用处：**它决定第一层那张卡是谁**
-   *（`recentWork` 按 `pinned DESC` 排）。所以「系统挑错了」是有解的。
-   * 「收起」不是删除，文案说清；但仍然要给撤销——界面上没有「被收起的那些」这一页。
-   */
-  const setWork = async (item, patch) => {
-    try { await api.workState(item.kind, item.id, patch); await load(); }
-    catch (e) { setError(e); }
-  };
-  const hide = async (item) => {
-    await setWork(item, { hidden: true });
-    setToast({
-      text: `「${nameOf(item)}」不在首页出现了`,
-      detail: "东西还在，只是不再排进这条列表。",
-      undo: async () => { await api.workState(item.kind, item.id, { hidden: false }); setToast(null); load(); },
-    });
-  };
-
   const resume = agenda?.resume || null;
   const stages = agenda?.stages || [];
   const inHand = agenda?.inHand || [];
   const waiting = agenda?.waiting || [];
   const reading = agenda?.reading || [];
   const setup = agenda?.setup || null;
-  const shown = useMemo(() => (stage ? inHand.filter((row) => row.stage === stage) : inHand), [inHand, stage]);
+  const output = agenda?.output || null;
 
-  const acts = (item) => <span className="agenda-row__acts">
-    <button
-      type="button" className="icon-btn" aria-pressed={Boolean(item.pinned)}
-      title={item.pinned ? "取消置顶" : "置顶——它同时决定上面那张卡是谁"}
-      aria-label={item.pinned ? `取消置顶「${nameOf(item)}」` : `置顶「${nameOf(item)}」`}
-      onClick={() => setWork(item, { pinned: !item.pinned })}
-    >
-      {item.pinned ? <IconPinFilled size={15} stroke={1.7} aria-hidden="true" /> : <IconPin size={15} stroke={1.7} aria-hidden="true" />}
-    </button>
-    <button
-      type="button" className="icon-btn"
-      title="从首页收起——东西还在，只是不再排进这条列表"
-      aria-label={`把「${nameOf(item)}」从首页收起`}
-      onClick={() => hide(item)}
-    >
-      <IconEyeOff size={15} stroke={1.7} aria-hidden="true" />
-    </button>
-  </span>;
+  /**
+   * 「今天新的」那一行说什么。把「在等你决定」里**属于新输入**的两项合起来说一句：
+   * 精选未读和待审阅的候选。待发布 / 待复盘不算「新的」——那是你自己的存货，
+   * 它们归下面那条流水线和产出那一行。
+   */
+  const signal = useMemo(() => {
+    const say = waiting
+      .filter((entry) => entry.key === "briefs" || entry.key === "wiki")
+      .map((entry) => `${entry.count} ${entry.unit}${entry.text}`);
+    return say.length ? say.join(" · ") : "";
+  }, [waiting]);
+
 
   return <section className="workspace-overview">
     <PageHeader
@@ -225,45 +216,21 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
         窄屏和 1920 上 grid 的 `auto` track 撑不下就溢出——**行直接压到窄栏上面**。
         搬到底部之后主列是整幅宽度，那一类重叠也就没有了。 */}
     {agenda ? <div className="overview-main">
-        {/* ── 第一层：接着写 ──
-            ⚠️ **这一张不是「最近那一条」，是「接着做那一条」。** 差别全在它说什么：
-            阶段、卡在哪儿、进展、下一步的动词。没有时间戳（放久了才在角上标一句）。 */}
-        {/* ⚠️ **不要再加「setup 没做完就别画这张卡」的条件。** 试过，是错的：
-            只是没设过关注方向、但手上已经有稿子的人会永远看不到「接着写」。
-            「两张卡不同时出现」这件事**已经由数据保证了**——`resume` 取自 `inHand`，
-            而首启时 `inHand` 是空的，`resume` 自然是 null。 */}
-        {resume ? (
-          <article className="agenda-resume">
-            <header>
-              <StatePill state={resume.stage} />
-              {/* ⚠️ **只画 blockers，不画 `stageReason`。** 那句话要么和阶段 pill 说的是
-                  同一件事（「主稿已完成，可以发布」vs 待发布），要么和下面那行进展说的是
-                  同一件事（「主稿还是空的」vs「还是空的」）——同一张卡上同一个事实两遍。 */}
-              {resume.blockers?.length ? (
-                <em className="agenda-resume__blocker">
-                  <IconAlertTriangle size={13} stroke={1.9} aria-hidden="true" />
-                  卡在「{resume.blockers[0]}」
-                </em>
-              ) : null}
-              {resume.staleDays ? <span className="agenda-resume__stale">放了 {resume.staleDays} 天</span> : null}
-            </header>
-            <h2>{nameOf(resume)}</h2>
-            <p className="agenda-resume__meta">
-              <span>{resume.progress}</span>
-              {resume.collections?.length ? <span><IconFolder size={13} stroke={1.8} aria-hidden="true" />{resume.collections.join(" · ")}</span> : null}
-            </p>
-            <footer>
-              <button type="button" className="btn btn-primary" onClick={() => open(resume)}>
-                {resume.nextAction}<IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
-              </button>
-            </footer>
-          </article>
-        ) : null}
+        {/* ── 承诺：我今天答应自己要做什么 ──
+            ⚠️ **这是这一页唯一不是「你拥有的对象」的一块，所以它排第一。**
+            前几版从上到下全是对象的投影（接着写、在手上、接着读），那样无论怎么排序、
+            怎么加状态、怎么上封面，读起来都是库存管理。清单是**你自己定的**，
+            也是唯一能回答「今天干了活没有」的东西。
+            ⚠️ 组件是现成的（`components/DayPlan.jsx`，当初就是为了「`Today.jsx` 也要用」
+            才从 `Overview.jsx` 里搬出来的，而那之后一直没接上）。
+            ⚠️ **它的「＋加一条」和页顶那个「记一个想法」不是一回事**：这里加的是
+            **今天的任务**，上面记的是**灵感**（进 captures，存完还会去找 Wiki 关联）。
+            所以两者一个在块里、一个在页顶，不并排。 */}
+        <DayPlan plan={plan} />
 
         {/* ── 先把工作台跑起来 ──
-            ⚠️ **排在「接着写」后面，不是前面。** 全新工作区里 `resume` 是 null，
-            所以这一块自然就是第一屏的第一件事；而手上已经有稿子、只是没设过关注方向的人，
-            第一位仍然该是「接着写」——**没配完的设置是个提醒，不该压住今天要干的活**。
+            ⚠️ **排在「今天」那份清单后面。** 清单是你自己定的承诺，永远该在最前；
+            而没配完的设置是**一个提醒**，不该压住今天要干的活。
             ⚠️ **勾没勾上只看真实数据**（`domain/workspace-experience.mjs` 的 `workspaceSetup`），
             不记「我点过了」——一个会说谎的进度条比没有更坏。三条全满足整块不再出现。 */}
         {setup && !setup.done ? (
@@ -299,84 +266,79 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
           </section>
         ) : null}
 
-        {/* ── 第二层：在等你决定 ──
-            跨模块，只列真有在等的。一个都没有时整块不画——「都处理完了」是状态不是
-            待办，而首页每一行都该是能动手的东西。 */}
-        {waiting.length ? (
-          <section className="agenda-waiting" aria-label="在等你决定">
-            <h2>在等你决定</h2>
-            <ul>
-              {waiting.map((entry) => (
-                <li key={entry.key}>
-                  <button type="button" onClick={() => onGo(entry.view, entry.state || "")}>
-                    <b>{entry.count}</b>
-                    <span>{entry.unit}{entry.text}</span>
-                    <IconArrowRight size={14} stroke={1.8} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+        {/* ── 三条登记行：信号 / 结果 / 续上 ──
+            同一种形状、各一行。⚠️ **「接着写」从一张卡降成一行**：承诺块在上面之后，
+            它不再是这一页最强的落点了，而两个大块会打架。三条同形状的行读起来是
+            「三个性质不同的提要」，正是首页该有的那种混合。
+            每一条**没有内容就不画那一条**（判据：0 不是一个值得报的数）。 */}
+        {signal || output || resume ? (
+          <section className="agenda-lines" aria-label="今天的提要">
+            {signal ? (
+              <button type="button" className="agenda-line" onClick={() => onGo("intel")}>
+                <span className="agenda-line__key">今天新的</span>
+                <span className="agenda-line__say">{signal}</span>
+                <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {/* ⚠️ 产出这一行**一篇都没发过时整块不给**（服务端返回 null）——
+                「本月 0 篇 · 上月 0 篇」是首页上信息量最低的一行。 */}
+            {output ? (
+              <button type="button" className="agenda-line" onClick={() => onGo("review")}>
+                <span className="agenda-line__key">本月产出</span>
+                <span className="agenda-line__say">
+                  发了 {output.thisMonth} 篇
+                  <em>{monthTrend(output)}</em>
+                  {output.pendingReview ? ` · ${output.pendingReview} 篇待复盘` : ""}
+                </span>
+                <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {resume ? (
+              <button type="button" className="agenda-line" onClick={() => open(resume)}>
+                <span className="agenda-line__key">接着写</span>
+                <span className="agenda-line__say">
+                  <b>{nameOf(resume)}</b>
+                  {/* ⚠️ 分隔号要显式写出来：紧挨着的 `</b><em>` 之间没有空白，
+                      量到的是「…更重要写作中 · 1,240 字」——标题和状态黏成一个词。 */}
+                  <em>
+                    {" · "}{resume.stage} · {resume.progress}
+                    {resume.blockers?.length ? ` · 卡在「${resume.blockers[0]}」` : ""}
+                    {resume.staleDays ? ` · 放了 ${resume.staleDays} 天` : ""}
+                  </em>
+                </span>
+                <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
+              </button>
+            ) : null}
           </section>
         ) : null}
 
-        {/* ── 第三层：在手上 ──
-            阶段轴按**流水线顺序**排（服务端给的顺序，别在这儿重排），点一档只看那一档。
-            芯片用 `.chips chips-sm`——和创作页那一排同一种，不新造语汇。 */}
-        {/* ⚠️ **首启时这一块整个不画。** 上面那张开局卡已经在说下一步了；
-            再摆一个「在手上」标题 + 一句「东西会排进这里」，就是同一件事说第二遍，
-            而且又是一个空框（判据：空白不能建立层次就该收紧）。
-            一有东西就出现——所以判断的是**它自己空不空**，不是 setup 的状态。 */}
-        {inHand.length || setup?.done !== false ? (
-        <section className="agenda-hand" aria-label="在手上">
-          <header>
+        {/* ── 在手上：只留一条流水线 ──
+            ⚠️ **全量列表撤了。** 创作页那张全量表已经存在，首页再摆一份是同一件事两遍，
+            而它正是「首页看着像列表页」的那一大块（判据：全量列表不进首页，
+            首页放的是摘要和入口）。这一条要回答的是**堵在哪一档**，那只需要计数。
+            ⚠️ 行尾那两颗「置顶 / 从首页收起」跟着列表一起没了：不在首页留
+            管不到东西的按钮。`api.workState` 仍然决定上面那一行「接着写」挑谁
+            （`recentWork` 按 `pinned DESC`），入口挪到创作页才合理。 */}
+        {stages.length ? (
+          <section className="agenda-flow" aria-label="在手上">
             <h2>在手上</h2>
-            {stages.length ? (
-              <div className="chips chips-sm" role="group" aria-label="按阶段筛选">
-                <button type="button" className="chip" aria-pressed={stage === ""} onClick={() => setStage("")}>全部 {inHand.length}</button>
-                {stages.map((entry) => (
-                  <button key={entry.stage} type="button" className="chip" aria-pressed={stage === entry.stage} onClick={() => setStage(entry.stage)}>
-                    {entry.stage} {entry.count}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </header>
-
-          {shown.length ? (
-            <div className="rows agenda-rows">
-              {shown.map((item) => (
-                <div className="row" key={`${item.kind}:${item.id}`}>
-                  <div className="row-head">
-                    <StatePill state={item.stage} />
-                    <button type="button" className="row-title agenda-row__open" onClick={() => open(item)}>
-                      {item.pinned ? <IconPinFilled size={12} stroke={1.8} aria-label="已置顶" /> : null}
-                      {nameOf(item)}
-                    </button>
-                    {/* 中间那一列放能做决定的东西：进展。**不是摘要**——摘要在这个
-                        工作台里是正文第一行的截断，句子从中间断掉。 */}
-                    <span className="row-meta">
-                      <span className="agenda-row__progress">{item.progress}</span>
-                      {item.staleDays ? <span className="agenda-row__stale">放了 {item.staleDays} 天</span> : null}
-                    </span>
-                    {acts(item)}
-                  </div>
-                </div>
+            <div className="agenda-flow__bar">
+              {stages.map((entry, at) => (
+                <button
+                  key={entry.stage}
+                  type="button"
+                  onClick={() => onGo(STAGE_VIEW[entry.stage] || "content")}
+                  title={`去看${entry.stage}那一档`}
+                >
+                  <b>{entry.count}</b>
+                  <span>{entry.stage}</span>
+                  {at < stages.length - 1 ? <i aria-hidden="true">›</i> : null}
+                </button>
               ))}
             </div>
-          ) : inHand.length ? (
-            <p className="overview-empty">「{stage}」这一档现在空着。切到别的阶段看看。</p>
-          ) : setup && !setup.done ? (
-            /* 首启时上面那块开局卡已经在教下一步了，这儿再写一句就是同一件事说两遍 */
-            <p className="overview-empty">选题和文章都会排进这里，按阶段分。</p>
-          ) : (
-            <Empty
-              icon={IconBulb}
-              action={<NewContentButton label="写第一篇" className="btn btn-sm" onGo={onGo} onChanged={onChanged} />}
-            >
-              记一句疑问就可以开始，不必先起标题或分类。想直接表达时，写一篇文章。
-            </Empty>
-          )}
-        </section>
+          </section>
         ) : null}
 
         {/* ── 接着读 ──
@@ -420,6 +382,5 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
     </div> : null}
 
     {pending ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="home-leave-title" ref={leaveDialog}><h2 id="home-leave-title">这条想法还没有保存</h2><p>先留下它，下次可以在阅读与 Wiki 中找回。</p><div className="row-actions"><button className="btn" disabled={busy} onClick={() => setPending(null)}>继续记录</button><button className="btn btn-primary" disabled={busy} onClick={async () => { if (await capture({ preventDefault() {} })) onForceGo(pending.view, pending.state); }}>保存并离开</button></div><ErrorNote error={error} what="保存想法" /></section></div> : null}
-    <Toast text={toast?.text} detail={toast?.detail} onUndo={toast?.undo} onClose={() => setToast(null)} />
   </section>;
 }

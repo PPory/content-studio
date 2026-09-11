@@ -64,45 +64,6 @@
    1440 上 meta 短（「450 字」）所以看不出来，1920 上一眼就是重叠。 */
 .overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:26px; }
 
-/* ── 第一层：接着写 ──
-   ⚠️ **这一张是页面上唯一有底色的块，所以它必须真的更重要。** 层次不能靠把
-   所有东西都加粗一点来做——上一版就是九行一样重，结果是一条流水。
-   它不画边框（白底上再画一圈白盒子是「框里画框」），靠 `--canvas` 的底色和内边距站住。 */
-.agenda-resume {
-  padding:18px 20px 16px;
-  border-radius:var(--r-md);
-  background:var(--canvas);
-}
-.agenda-resume > header {
-  display:flex; align-items:center; flex-wrap:wrap; gap:10px;
-  font-size:var(--fs-xs);
-}
-.agenda-resume__blocker,
-.agenda-resume__why {
-  display:inline-flex; align-items:center; gap:5px; min-width:0;
-  overflow:hidden; color:var(--text-2); font-style:normal; text-overflow:ellipsis; white-space:nowrap;
-}
-.agenda-resume__blocker { color:var(--danger); }
-.agenda-resume__blocker svg { flex:none; }
-/* 「放了 N 天」推到最右，而且是这张卡上最淡的一行字：它是提醒，不是标题 */
-.agenda-resume__stale { margin-left:auto; flex:none; color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-2xs); }
-
-.agenda-resume h2 {
-  margin:10px 0 0;
-  font-family:var(--font-display);
-  /* ⚠️ `--fs-lg` 不是 `--fs-xl`：中文长问句用 23px 会折两行、把这张卡撑到 215px 高，
-     读起来像广告牌。它只要**明显比列表里的行重**就够了——那才是层次要表达的东西。 */
-  font-size:var(--fs-lg); font-weight:650; line-height:1.5; letter-spacing:-0.02em;
-  overflow-wrap:anywhere;
-}
-.agenda-resume__meta {
-  display:flex; align-items:center; flex-wrap:wrap; gap:14px;
-  margin:8px 0 0; color:var(--text-3); font-size:var(--fs-sm);
-}
-.agenda-resume__meta > span { display:inline-flex; align-items:center; gap:5px; min-width:0; }
-.agenda-resume__meta svg { flex:none; }
-.agenda-resume > footer { margin-top:16px; }
-
 /* ── 第一层（首启）：先把工作台跑起来 ──
    和「接着写」那张卡共用底色和内边距：它们占的是同一个位置、二选一出现，
    长得不一样反而会让人以为是两种东西。 */
@@ -132,73 +93,54 @@
 .agenda-setup li[data-done] b { color:var(--text-3); text-decoration:line-through; text-decoration-thickness:1px; }
 .agenda-setup li[data-done] small { color:var(--text-3); opacity:.7; }
 
-/* ── 第二层：在等你决定 ──
-   一队一行，行首是那个数。**只在真有在等的时候出现**（见 `Today.jsx`）。 */
-.agenda-waiting h2,
-.agenda-hand h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
-.agenda-waiting ul { display:grid; gap:1px; margin:10px 0 0; padding:0; list-style:none; }
-.agenda-waiting li > button {
-  display:flex; align-items:center; gap:10px; width:100%;
-  padding:9px 10px 9px 4px;
+/* ── 承诺：「我的清单」在首页里收一档 ──
+   ⚠️ **这一块是从 `Overview.jsx` 借来的，那一页它是整个上半屏**，所以那枚进度环是
+   176px。首页上它只是五块里的一块，照原尺寸量出来要吃掉 330px，光那个环就比
+   下面三条提要加起来还高。**不改组件，只在这一页压一档**（`Overview` 那边不受影响）。 */
+.workspace-overview .day-plan { margin-bottom: 0; }
+.workspace-overview .plan-body { grid-template-columns: minmax(0, 1fr) 132px; gap: 24px; }
+.workspace-overview .plan-ring__dial { width: 104px; height: 104px; }
+.workspace-overview .plan-ring { gap: 6px; }
+.workspace-overview .plan-ring__note { font-size: var(--fs-xs); }
+.workspace-overview .plan-side { align-items: flex-start; padding-top: 4px; }
+
+/* ── 三条登记行：信号 / 结果 / 续上 ──
+   ⚠️ **同一种形状。** 它们性质不同（有什么新的 / 做出去的怎么样 / 现在动哪个），
+   但都是「一句提要 + 一个去处」，画成同一种行读起来才是「三条提要」而不是三个小功能。
+   「接着写」从一张卡降到这里：承诺块在上面之后，两个大块会打架。 */
+.agenda-lines { display:grid; gap:1px; }
+.agenda-line {
+  display:flex; align-items:baseline; gap:14px; width:100%;
+  padding:11px 10px 11px 2px;
   border:0; border-radius:var(--r-sm); background:none; color:inherit;
-  font:inherit; font-size:var(--fs-sm); text-align:left; cursor:pointer;
+  font:inherit; text-align:left; cursor:pointer;
 }
-.agenda-waiting li > button:hover { background:var(--surface-2); }
-/* 那个数是这一行的主语，所以它比后面那句话重 */
-.agenda-waiting b {
-  flex:none; min-width:22px;
-  font-family:var(--font-mono); font-size:var(--fs-md); font-weight:650; text-align:right;
+.agenda-line:hover { background:var(--surface-2); }
+/* 左边那一列定宽：三行的说明因此落在同一条竖线上，一眼看出是三条并列的提要 */
+.agenda-line__key { flex:none; width:64px; color:var(--text-3); font-size:var(--fs-xs); }
+.agenda-line__say { flex:1 1 auto; min-width:0; font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agenda-line__say b { font-weight:600; }
+/* 次要那半句压淡：一行里「是什么」在前、「什么状态」在后，颜色替代括号 */
+.agenda-line__say em { color:var(--text-3); font-style:normal; }
+.agenda-line > svg { flex:none; color:var(--text-3); }
+
+/* ── 在手上：一条流水线 ──
+   ⚠️ **只有计数，没有列表。** 全量表在创作页已经有了，首页放第二份就是同一件事两遍
+   ——而它正是「首页看着像列表页」的那一大块。这一条要回答的是**堵在哪一档**。 */
+.agenda-flow h2 { margin:0 0 10px; font-size:var(--fs-base); font-weight:600; }
+.agenda-flow__bar { display:flex; align-items:stretch; flex-wrap:wrap; gap:2px; }
+.agenda-flow__bar button {
+  display:flex; align-items:baseline; gap:7px;
+  padding:8px 12px 8px 10px;
+  border:0; border-radius:var(--r-sm); background:none; color:inherit;
+  font:inherit; cursor:pointer;
 }
-.agenda-waiting span { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.agenda-waiting svg { flex:none; color:var(--text-3); }
-
-/* ── 第三层：在手上 ── */
-.agenda-hand > header {
-  display:flex; align-items:center; flex-wrap:wrap; gap:14px;
-  padding-bottom:8px; border-bottom:1px solid var(--border);
-}
-/* 那一排芯片的下外边距归零：它在页头这一行里，不是一段独立内容 */
-.agenda-hand .chips { margin:0; }
-
-/* ── 行 ──
-   ⚠️ 走 `styles.css` 共用的 `.rows / .row / .row-head`。要 `.rows.agenda-rows`
-   两个类：这个文件在 `styles.css` 之前加载，同等特异度下 `.rows` 那份
-  （1px 边框 + 14px 圆角 + 白底）会赢，而首页整页本来就是白的。
-   ⚠️ **行以阶段 pill 开头，不以时间结尾。** 这一条是上一版「看着像流水」的直接解药：
-   一列 pill 竖着排下来，哪一档堆了多少一眼就看出来（和创作页那张表同一条判据）。 */
-.rows.agenda-rows { border:0; border-radius:0; background:transparent; overflow:visible; }
-.agenda-rows .row-head { align-items:center; gap:12px; padding:11px 0; }
-.agenda-rows .row:hover .row-head,
-.agenda-rows .row:focus-within .row-head { background:transparent; }
-.agenda-rows .pill { flex:none; }
-
-.agenda-row__open {
-  display:flex; align-items:center; gap:6px;
-  flex:1 1 auto; min-width:0; overflow:hidden;
-  padding:0; border:0; background:none; color:inherit;
-  font:inherit; font-size:var(--fs-sm); font-weight:500;
-  text-align:left; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;
-}
-.agenda-row__open svg { flex:none; color:var(--text-3); }
-.agenda-row__open:hover { text-decoration:underline; text-underline-offset:3px; }
-
-/* ⚠️ **`flex:none` 换成「可以缩」。** 这一格原来撑得住 200 多像素不让位，
-   于是整行的 min-content 到了 735px。窄的时候进展那句该省略号，而不是把行撑爆。
-   时间（`放了 N 天`）不许缩：那是这一格里最短也最该看见的东西。 */
-.agenda-rows .row-meta { flex:0 1 auto; min-width:0; gap:12px; }
-.agenda-row__progress { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.agenda-row__stale { flex:none; }
-.agenda-row__progress { color:var(--text-2); }
-.agenda-row__stale { color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-2xs); }
-
-/* 行尾两颗：平时收起来。一列图标竖排下来会比它旁边的标题更抢眼 */
-.agenda-row__acts { flex:none; display:flex; gap:2px; opacity:0; transition:opacity .14s var(--ease); }
-.agenda-rows .row:hover .agenda-row__acts,
-.agenda-rows .row:focus-within .agenda-row__acts { opacity:1; }
-.agenda-row__acts .icon-btn { width:26px; height:26px; border-color:transparent; background:none; color:var(--text-3); }
-.agenda-row__acts .icon-btn:hover { border-color:var(--border-strong); color:var(--text-1); }
-.agenda-row__acts .icon-btn[aria-pressed="true"] { color:var(--text-1); }
-@media (hover:none) { .agenda-row__acts { opacity:1; } }
+.agenda-flow__bar button:hover { background:var(--surface-2); }
+/* 数字用等宽、比标签重：这一条是拿来比大小的 */
+.agenda-flow__bar b { font-family:var(--font-mono); font-size:var(--fs-md); font-weight:650; }
+.agenda-flow__bar span { color:var(--text-2); font-size:var(--fs-sm); }
+/* 档与档之间那个 ›：它才是「这是一条流水线」而不是「四个并列的数」的唯一记号 */
+.agenda-flow__bar i { margin-left:7px; color:var(--border-strong); font-style:normal; }
 
 /* ── 接着读 ──
    整幅宽度的一排封面。⚠️ `auto-fill` 不是 `auto-fit`：书少的时候就少几张、
@@ -305,18 +247,17 @@
   .overview-capture__foot { align-items:flex-start; }
   .overview-saved>span:first-child { flex:1 1 100%; }
   .overview-saved>.btn { margin-left:0; }
-  .agenda-resume { padding:15px 16px 14px; }
   .agenda-setup { padding:14px 16px 12px; }
   /* 窄屏上按钮换到第二行，别把「为什么」挤成一列窄字 */
   .agenda-setup li { flex-wrap:wrap; }
   .agenda-setup li > .btn { margin-left:27px; }
-  .agenda-resume h2 { font-size:var(--fs-md); }
   /* ⚠️ 窄屏上一行装不下「pill + 标题 + 进展 + 两颗动作」：进展换到第二行，
      和标题左缘对齐。阶段 pill 留在第一行——它是这一行的主语。 */
-  .agenda-rows .row-head { flex-wrap:wrap; gap:8px 10px; }
-  .agenda-rows .row-meta { flex:1 1 100%; padding-left:2px; }
+  /* 窄屏上那一句提要换行，不挤在 64px 的标签右边 */
+  .agenda-line { align-items:flex-start; flex-wrap:wrap; gap:4px 10px; }
+  .agenda-line__say { flex:1 1 100%; white-space:normal; }
+  .agenda-flow__bar i { display:none; }
   .agenda-reading ul { grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:14px 12px; }
-  .agenda-row__acts { opacity:1; }
   .agenda-hand > header { align-items:flex-start; flex-direction:column; gap:8px; }
   .library-browse-links { gap:2px; margin-bottom:18px; }
   .library-search select { max-width:120px; }
