@@ -100,6 +100,35 @@
 .agenda-resume__meta svg { flex:none; }
 .agenda-resume > footer { margin-top:16px; }
 
+/* ── 第一层（首启）：先把工作台跑起来 ──
+   和「接着写」那张卡共用底色和内边距：它们占的是同一个位置、二选一出现，
+   长得不一样反而会让人以为是两种东西。 */
+.agenda-setup {
+  padding:16px 20px 14px;
+  border-radius:var(--r-md);
+  background:var(--canvas);
+}
+.agenda-setup > header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.agenda-setup h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
+/* 「0 / 3」用等宽：它是个计数，而且会一位一位地变 */
+.agenda-setup__count { flex:none; color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-xs); }
+
+.agenda-setup ol { display:grid; gap:2px; margin:12px 0 0; padding:0; list-style:none; }
+.agenda-setup li {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:8px 0;
+}
+.agenda-setup li > svg { flex:none; margin-top:1px; color:var(--text-3); }
+.agenda-setup li > div { flex:1 1 auto; min-width:0; display:grid; gap:2px; }
+.agenda-setup b { font-size:var(--fs-sm); font-weight:600; }
+/* 「为什么从这里开始」——一个空着的引导步骤最缺的就是这一句 */
+.agenda-setup small { color:var(--text-3); font-size:var(--fs-xs); line-height:1.65; }
+.agenda-setup li > .btn { flex:none; margin-top:1px; }
+/* 做完的那一条压淡并划掉，但**留在原位**：三条一共几步、走到第几步要一直看得见 */
+.agenda-setup li[data-done] > svg { color:var(--st-done, var(--text-2)); }
+.agenda-setup li[data-done] b { color:var(--text-3); text-decoration:line-through; text-decoration-thickness:1px; }
+.agenda-setup li[data-done] small { color:var(--text-3); opacity:.7; }
+
 /* ── 第二层：在等你决定 ──
    一队一行，行首是那个数。**只在真有在等的时候出现**（见 `Today.jsx`）。 */
 .agenda-waiting h2,
@@ -249,6 +278,10 @@
   .overview-saved>span:first-child { flex:1 1 100%; }
   .overview-saved>.btn { margin-left:0; }
   .agenda-resume { padding:15px 16px 14px; }
+  .agenda-setup { padding:14px 16px 12px; }
+  /* 窄屏上按钮换到第二行，别把「为什么」挤成一列窄字 */
+  .agenda-setup li { flex-wrap:wrap; }
+  .agenda-setup li > .btn { margin-left:27px; }
   .agenda-resume h2 { font-size:var(--fs-md); }
   /* ⚠️ 窄屏上一行装不下「pill + 标题 + 进展 + 两颗动作」：进展换到第二行，
      和标题左缘对齐。阶段 pill 留在第一行——它是这一行的主语。 */

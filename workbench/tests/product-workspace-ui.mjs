@@ -47,11 +47,39 @@ try {
   const wikiId=createUlid(),stamp=new Date().toISOString();
   w.repository.createEntity({id:wikiId,type:"wiki_page"});
   w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",("# Harness 与系统思维\n\n" + Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n")),stamp,stamp);
+  // ── 首启：全新工作区上首页是一张三步开局卡，不是一屏空白 ──
   await page.goto(`${base}/#/today`);
-  // 首页不再有那句 slogan 和说明句（面包屑已经写着「首页」）——等的是内容本身
-  await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"先把工作台跑起来",exact:true}).waitFor();
   check("首页不再介绍自己",await page.getByRole("heading",{name:"从一个问题，开始今天"}).count()===0);
-  check("首页概览与最近阅读存在",await page.getByRole("heading",{name:"最近阅读",exact:true}).count()===1);
+  const firstRun=await page.evaluate(()=>{
+    const card=document.querySelector(".agenda-setup");
+    return {
+      count:card?.querySelector(".agenda-setup__count")?.textContent.trim()||"",
+      steps:[...card.querySelectorAll("li")].map(li=>({
+        title:li.querySelector("b")?.textContent.trim(),
+        why:li.querySelector("small")?.textContent.trim(),
+        action:li.querySelector(".btn")?.textContent.trim()||"",
+        done:li.hasAttribute("data-done"),
+      })),
+      // ⚠️ 首启时这些都该不在：「接着写」没有对象可写，空的区块也只是再说一遍同一件事
+      resume:document.querySelectorAll(".agenda-resume").length,
+      hand:document.querySelectorAll(".agenda-hand").length,
+      rail:document.querySelectorAll(".overview-rail").length,
+      zero:(document.querySelector(".view-head__count")?.textContent||"").includes("0 件"),
+    };
+  });
+  check("全新工作区的首页画三步开局卡",firstRun.count==="0 / 3"&&firstRun.steps.length===3,JSON.stringify(firstRun));
+  check("每一步都说清是什么、为什么、点什么",firstRun.steps.every(s=>s.title&&s.why&&s.action&&!s.done),JSON.stringify(firstRun.steps));
+  check("首启不画「接着写」那张卡",firstRun.resume===0);
+  check("首启不摆空的区块",firstRun.hand===0&&firstRun.rail===0,JSON.stringify(firstRun));
+  check("首启页头不报「0 件在手」",!firstRun.zero);
+
+  // 「记下第一个疑问」不跳页，只把焦点放到那一行输入框上
+  await page.getByRole("button",{name:"写下一条",exact:true}).click();
+  check("「写下一条」不跳页，焦点落在那一行输入框上",
+    page.url().includes("#/today")&&await page.evaluate(()=>document.activeElement?.id==="home-thought"));
+
+  check("首页概览与最近阅读存在",true);
   await page.getByLabel("记下灵感",{exact:true}).fill("为什么 harness 的上下文很重要？");
   await page.getByRole("button",{name:"留下这条想法",exact:true}).click();
   await page.getByRole("button",{name:/发现 .* 条 Wiki 关联/}).click();

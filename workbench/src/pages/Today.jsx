@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, StatePill, Toast } from "../components/ui.jsx";
-import { IconAlertTriangle, IconArrowRight, IconBulb, IconEyeOff, IconFolder, IconPin, IconPinFilled } from "../components/icons.jsx";
+import { IconAlertTriangle, IconArrowRight, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFolder, IconPin, IconPinFilled } from "../components/icons.jsx";
 import { pct } from "../lib/reading.js";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import "./workspace-home.css";
@@ -146,6 +146,7 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
   const inHand = agenda?.inHand || [];
   const waiting = agenda?.waiting || [];
   const reading = agenda?.reading || [];
+  const setup = agenda?.setup || null;
   const shown = useMemo(() => (stage ? inHand.filter((row) => row.stage === stage) : inHand), [inHand, stage]);
 
   const acts = (item) => <span className="agenda-row__acts">
@@ -170,7 +171,9 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
   return <section className="workspace-overview">
     <PageHeader
       title="首页"
-      count={agenda ? `${inHand.length} 件在手` : null}
+      /* ⚠️ **首启不报「0 件在手」。** 新用户看到的第一个数字不该是 0——
+         那一格是给「你手上有多少」用的，手上还什么都没有的时候它只是在宣布这件事。 */
+      count={inHand.length ? `${inHand.length} 件在手` : null}
       /* ⚠️ `className="btn"` 把它降一档：这一页唯一的实心主按钮是那张卡上的
          「继续写」——它是**带着具体对象的**动作，比「随便新开一篇」强得多。 */
       aside={<NewContentButton label="直接写文章" className="btn" onGo={onGo} onChanged={onChanged} />}
@@ -221,6 +224,10 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
         {/* ── 第一层：接着写 ──
             ⚠️ **这一张不是「最近那一条」，是「接着做那一条」。** 差别全在它说什么：
             阶段、卡在哪儿、进展、下一步的动词。没有时间戳（放久了才在角上标一句）。 */}
+        {/* ⚠️ **不要再加「setup 没做完就别画这张卡」的条件。** 试过，是错的：
+            只是没设过关注方向、但手上已经有稿子的人会永远看不到「接着写」。
+            「两张卡不同时出现」这件事**已经由数据保证了**——`resume` 取自 `inHand`，
+            而首启时 `inHand` 是空的，`resume` 自然是 null。 */}
         {resume ? (
           <article className="agenda-resume">
             <header>
@@ -249,6 +256,45 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
           </article>
         ) : null}
 
+        {/* ── 先把工作台跑起来 ──
+            ⚠️ **排在「接着写」后面，不是前面。** 全新工作区里 `resume` 是 null，
+            所以这一块自然就是第一屏的第一件事；而手上已经有稿子、只是没设过关注方向的人，
+            第一位仍然该是「接着写」——**没配完的设置是个提醒，不该压住今天要干的活**。
+            ⚠️ **勾没勾上只看真实数据**（`domain/workspace-experience.mjs` 的 `workspaceSetup`），
+            不记「我点过了」——一个会说谎的进度条比没有更坏。三条全满足整块不再出现。 */}
+        {setup && !setup.done ? (
+          <section className="agenda-setup" aria-label="先把工作台跑起来">
+            <header>
+              <h2>先把工作台跑起来</h2>
+              <span className="agenda-setup__count">{setup.steps.filter((s) => s.done).length} / {setup.steps.length}</span>
+            </header>
+            <ol>
+              {setup.steps.map((step) => (
+                <li key={step.key} data-done={step.done ? "" : undefined}>
+                  {step.done
+                    ? <IconCircleCheck size={17} stroke={1.8} aria-label="已完成" />
+                    : <IconCircleDashed size={17} stroke={1.8} aria-hidden="true" />}
+                  <div>
+                    <b>{step.title}</b>
+                    <small>{step.why}</small>
+                  </div>
+                  {step.done ? null : (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      /* ⚠️ 「记下第一个疑问」**不跳页**：那一行输入框就在这一屏顶上，
+                         按钮只把焦点放过去。跳到别处再回来是更长的一条路。 */
+                      onClick={() => (step.view ? onGo(step.view, step.state || "") : field.current?.focus())}
+                    >
+                      {step.action}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
         {/* ── 第二层：在等你决定 ──
             跨模块，只列真有在等的。一个都没有时整块不画——「都处理完了」是状态不是
             待办，而首页每一行都该是能动手的东西。 */}
@@ -272,6 +318,11 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
         {/* ── 第三层：在手上 ──
             阶段轴按**流水线顺序**排（服务端给的顺序，别在这儿重排），点一档只看那一档。
             芯片用 `.chips chips-sm`——和创作页那一排同一种，不新造语汇。 */}
+        {/* ⚠️ **首启时这一块整个不画。** 上面那张开局卡已经在说下一步了；
+            再摆一个「在手上」标题 + 一句「东西会排进这里」，就是同一件事说第二遍，
+            而且又是一个空框（判据：空白不能建立层次就该收紧）。
+            一有东西就出现——所以判断的是**它自己空不空**，不是 setup 的状态。 */}
+        {inHand.length || setup?.done !== false ? (
         <section className="agenda-hand" aria-label="在手上">
           <header>
             <h2>在手上</h2>
@@ -310,12 +361,22 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
             </div>
           ) : inHand.length ? (
             <p className="overview-empty">「{stage}」这一档现在空着。切到别的阶段看看。</p>
+          ) : setup && !setup.done ? (
+            /* 首启时上面那块开局卡已经在教下一步了，这儿再写一句就是同一件事说两遍 */
+            <p className="overview-empty">选题和文章都会排进这里，按阶段分。</p>
           ) : (
-            <Empty icon={IconBulb}>记一句疑问就可以开始，不必先起标题或分类。想直接表达时，写一篇文章。</Empty>
+            <Empty
+              icon={IconBulb}
+              action={<NewContentButton label="写第一篇" className="btn btn-sm" onGo={onGo} onChanged={onChanged} />}
+            >
+              记一句疑问就可以开始，不必先起标题或分类。想直接表达时，写一篇文章。
+            </Empty>
           )}
         </section>
+        ) : null}
       </div>
 
+      {reading.length || setup?.done !== false ? (
       <aside className="overview-rail">
         <section className="overview-panel">
           <header><h2>最近阅读</h2></header>
@@ -332,6 +393,7 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
           ) : <p className="overview-empty">读过的资料会出现在这里，方便接着读。</p>}
         </section>
       </aside>
+      ) : null}
     </div> : null}
 
     {pending ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="home-leave-title" ref={leaveDialog}><h2 id="home-leave-title">这条想法还没有保存</h2><p>先留下它，下次可以在阅读与 Wiki 中找回。</p><div className="row-actions"><button className="btn" disabled={busy} onClick={() => setPending(null)}>继续记录</button><button className="btn btn-primary" disabled={busy} onClick={async () => { if (await capture({ preventDefault() {} })) onForceGo(pending.view, pending.state); }}>保存并离开</button></div><ErrorNote error={error} what="保存想法" /></section></div> : null}
