@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
-import { libraryItem, getResearch } from "./research.mjs";
+import { libraryItem, getResearch, recentWork } from "./research.mjs";
+import { projectDto } from "../workspace/workspace-view.mjs";
+import { intelligenceFeedSummary } from "./intelligence-feed.mjs";
+import { WIKI_REVIEW_ACTION_SQL } from "./wiki-pages.mjs";
+import { countWords } from "../../src/lib/reading.js";
 import { completeJson } from "../lib/model-json.mjs";
 const fail = (message,status=400) => Object.assign(new Error(message),{status});
 const hash = value => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -88,4 +92,138 @@ export async function refreshResearchSummary(env,w,id) {
  return researchSummary(w,id);
  })();tasks.set(id,task);
  try{return await task;}finally{tasks.delete(id);}
+}
+
+/**
+ * 首页那一屏要的全部东西，一个查询给完。
+ *
+ * ⚠️ **为什么要有这个函数，而不是让首页自己拼。**
+ * 上一版首页建在 `recentWork` 上——那是个 feed 查询（`标题 + 摘要 + 时间戳`），
+ * 而**一个 feed 查询只能画出 feed**：9 行一样重、按时间倒序、每行一个「22 天前」，
+ * 那是 changelog 的语言。可这个工作台其实有一套真实状态机
+ *（`state-rules.mjs` 的 `deriveProjectStage`：策划中 / 写作中 / 待发布 / 待复盘…），
+ * 每一档还带 `reason`、`blockers` 和下一步动词——首页一个都没用上。
+ *
+ * ⚠️ **只组合，不新写业务规则。** 顺序来自 `recentWork`（`pinned → max(updatedAt,
+ * visitedAt)`），阶段来自 `projectStage`，未读来自 `intelligenceFeedSummary`，
+ * 待审阅那一队的类型清单来自 `WIKI_REVIEW_ACTION_TYPES`。这里不判断任何一件
+ * 别处已经判断过的事。
+ *
+ * ⚠️ **不把正文发出去。** 字数在服务端用 `countWords` 数完只发那个数；
+ * 首页显示一行「1,240 字」没有理由搬一遍稿子（和 `intelligenceFeedSummary` 同一条）。
+ */
+
+/** 选题是流水线的第一档，排在「策划中」之前。**不给它硬凑一个 stage**，它就是它自己那一档。 */
+export const TOPIC_STAGE = "选题";
+
+/**
+ * 首页阶段轴的顺序：从「还只是个问题」一路到「发出去之后」。
+ *
+ * ⚠️ 这是**流水线顺序**，不是 `PROJECT_STAGES` 的声明顺序，也不是按条数排。
+ * 首页那一排芯片要能当一条轴读——顺序一乱，它就只是几个数字。
+ * 「已完成 / 已搁置 / 生成中 / 需处理」不进这条轴：前两个已经离开手上了，
+ * 后两个是瞬时或异常态，给它们一格会让常态那几档挤在一起。
+ */
+export const HOME_STAGE_ORDER = Object.freeze([TOPIC_STAGE, "策划中", "写作中", "待发布", "待复盘"]);
+
+/** 一周。**一周以内的时间戳什么也没告诉你**，只是把每一行都变成日志里的一条。 */
+const STALE_DAYS = 7;
+const daysSince = (iso, now) => {
+  const at = Date.parse(iso || "");
+  if (!Number.isFinite(at)) return null;
+  const days = Math.floor((now - at) / 86400000);
+  return days >= STALE_DAYS ? days : null;
+};
+
+/**
+ * 一条「在手上」的行。**中间那一列放能做决定的东西**——不是摘要。
+ *
+ * 上一版那一列是正文第一行的截断，屏幕上是「在工程现实中：如果你预算有限、追求高吞吐
+ * 或私有化部署，"精细的 Harness（状态机＋确定…」——句子从中间断掉，读起来像数据库
+ * dump。真正帮你决定「要不要现在动它」的是**进展**：写了多少字、攒了几份资料。
+ */
+function agendaRow(w, item, now) {
+  const stale = daysSince(item.touchedAt || item.updatedAt, now);
+  if (item.kind === "research") {
+    const r = getResearch(w, item.id);
+    const parts = [];
+    if (r.references.length) parts.push(`${r.references.length} 份资料`);
+    if (r.conversations.length) parts.push(`${r.conversations.length} 段讨论`);
+    parts.push(r.projects.length ? `已带出 ${r.projects.length} 篇` : "还没写成文章");
+    return { kind: "research", id: item.id, title: item.title, stage: TOPIC_STAGE,
+      progress: parts.join(" · "), staleDays: stale, pinned: item.pinned,
+      openedAt: r.createdAt, hasTitle: Boolean(String(r.question || "").trim()) };
+  }
+  const stage = w.domain.projectStage(item.id);
+  // ⚠️ 主稿被回收时它的正文不算数（`de.deleted_at`），否则字数会报一个看不见的稿子的
+  const row = w.db.prepare(`SELECT d.body_markdown AS body, de.deleted_at AS draftDeleted, e.created_at AS createdAt
+    FROM projects pr
+    JOIN entities e ON e.id = pr.id
+    LEFT JOIN project_primary_drafts pd ON pd.project_id = pr.id
+    LEFT JOIN drafts d ON d.id = pd.draft_id
+    LEFT JOIN entities de ON de.id = d.id
+    WHERE pr.id = ?`).get(item.id);
+  const words = countWords(row?.draftDeleted ? "" : row?.body || "");
+  return { kind: "project", id: item.id, title: item.title, stage: stage.stage,
+    // ⚠️ 0 字要说「还是空的」，不说「0 字」：一个是「还没开始」，一个看着像个数字
+    progress: words ? `${words.toLocaleString("zh-CN")} 字` : "还是空的",
+    staleDays: stale, pinned: item.pinned, openedAt: row?.createdAt || null,
+    hasTitle: Boolean(String(item.title || "").trim()) };
+}
+
+export function workspaceAgenda(w) {
+  const now = Date.now();
+  const items = recentWork(w);
+
+  // 「在手上」= 还在这条轴上的那些。已完成 / 已搁置 / 生成中 / 需处理不进首页那排芯片。
+  const rows = items.map((item) => agendaRow(w, item, now));
+  const inHand = rows.filter((row) => HOME_STAGE_ORDER.includes(row.stage));
+  const stages = HOME_STAGE_ORDER
+    .map((stage) => ({ stage, count: inHand.filter((row) => row.stage === stage).length }))
+    .filter((entry) => entry.count > 0);
+
+  /**
+   * 第一层那张卡：排序最前的那一条。
+   *
+   * ⚠️ **取的是 `inHand` 的第一条，不是 `items` 的第一条**——已完成或已搁置的那一条
+   * 排在最前时（刚复盘完的那一篇就会），把它画成「接着写」是错的。
+   * 「系统挑错了」的解法是置顶（`api.workState`，`recentWork` 按 `pinned DESC` 排）。
+   */
+  const head = inHand[0] || null;
+  /**
+   * ⚠️ **卡上不放摘要。** 那张卡要回答的是「这一条现在什么状态、下一步干什么」，
+   * 而摘要在这个工作台里是**正文第一行的截断**——上一版首页上量到的是
+   *「在工程现实中：如果你预算有限、追求高吞吐或私有化部署，"精细的 Harness（状态机＋确定…」，
+   * 句子从中间断掉。不放它还顺带让这个接口**一个字正文都不发出去**，
+   * 于是「不搬正文」变成一条能断言的性质，而不是一句愿望。
+   */
+  const resume = head ? (() => {
+    if (head.kind === "research") {
+      return { ...head, stageReason: "", blockers: [], nextAction: "继续展开", collections: [] };
+    }
+    const stage = w.domain.projectStage(head.id);
+    const project = projectDto(w, head.id);
+    return { ...head, stageReason: stage.reason, blockers: stage.blockers,
+      nextAction: project?.nextAction || "打开这一篇",
+      collections: (project?.collections || []).map((c) => c.title) };
+  })() : null;
+
+  /**
+   * 「在等你决定」。**只列真有在等的**，一个都没有时整块不画——
+   * 「都处理完了」是状态不是待办，而首页每一行都该是能动手的东西。
+   */
+  const stageCount = (name) => rows.filter((row) => row.stage === name).length;
+  const feed = intelligenceFeedSummary(w);
+  const reviewQueue = w.db.prepare(`SELECT COUNT(*) n FROM action_candidates
+    WHERE status = 'proposed' AND action_type IN (${WIKI_REVIEW_ACTION_SQL})`).get().n;
+  // ⚠️ 给的是 `count + unit + text` 三段，不是拼好的一句话：量词和措辞是界面的事，
+  // 这一层只负责「有几个在等、点过去是哪一页」。前端拼成「2 篇写完了，去发布」。
+  const waiting = [
+    { key: "publish", count: stageCount("待发布"), unit: "篇", text: "写完了，去发布", view: "content", state: "" },
+    { key: "review", count: stageCount("待复盘"), unit: "篇", text: "发出去了，还没复盘", view: "review", state: "" },
+    { key: "wiki", count: reviewQueue, unit: "个", text: "AI 提的 Wiki 改动等你审阅", view: "entries", state: "review" },
+    { key: "briefs", count: (feed.todayUnread || 0) + (feed.earlierUnread || 0), unit: "条", text: "精选还没读", view: "intel", state: "" },
+  ].filter((entry) => entry.count > 0);
+
+  return { resume, waiting, stages, inHand, reading: workspaceActivity(w).reading };
 }

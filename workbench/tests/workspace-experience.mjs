@@ -5,7 +5,7 @@ import path from "node:path";
 import {openWorkspace} from "../server/storage/workspace.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
 import {createResearch,quickNote,getResearch} from "../server/domain/research.mjs";
-import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary} from "../server/domain/workspace-experience.mjs";
+import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda,HOME_STAGE_ORDER,TOPIC_STAGE} from "../server/domain/workspace-experience.mjs";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-experience-"));let w;
 try {
  w=await openWorkspace({xenhoHome:path.join(root,"Xenho")});
@@ -45,5 +45,59 @@ try {
  assert.equal(workspaceActivity(w).reading.length,0);
  assert.equal(wikiConnections(w,"harness").items.length,0);
  w.close();w=await openWorkspace({xenhoHome:path.join(root,"Xenho")});assert.equal(workspaceActivity(w).opened[0].id,research.id);assert.equal(researchSummary(w,research.id).stale,false);
+ // ── 首页那一屏：状态、阶段轴、在等你决定、放久了才有时间戳 ──
+ //
+ // 上一版首页拿到的是 `标题 + 摘要 + 时间戳`，所以只能画出一条流水。这里断言的是
+ // 它现在真的拿到了**状态**：哪一档、卡在什么上、下一步是什么。
+ {
+  const stampNow=new Date();
+  const draft=w.domain.createProject({title:"写到一半的那一篇",audience:"个人创作者",viewpoint:"本地优先",confirmed:true,actor:"user",now:stampNow});
+  const draftId=w.domain.createDraft({projectId:draft,title:"写到一半的那一篇",bodyMarkdown:"# 写到一半的那一篇\n\n这里有一些正文。",actor:"user",now:stampNow});
+  w.domain.setPrimaryDraft(draft,draftId,{actor:"user",now:stampNow});
+
+  const agenda=workspaceAgenda(w);
+  assert.ok(agenda.resume,"首页第一层要有东西");
+  assert.ok(HOME_STAGE_ORDER.includes(agenda.resume.stage),`resume 的阶段要在流水线上，实际 ${agenda.resume.stage}`);
+  assert.equal(typeof agenda.resume.nextAction,"string");
+  assert.ok("stageReason" in agenda.resume&&Array.isArray(agenda.resume.blockers),"卡在哪儿要发出来");
+
+  // ⚠️ **一个字正文都不发出去**：字数在服务端数完，只发那个数。
+  // 卡上也不放摘要（理由见 workspaceAgenda），于是这条能直接断言而不是靠自觉。
+  const payload=JSON.stringify(agenda);
+  assert.ok(!payload.includes("这里有一些正文"),"agenda 不能把稿子正文一起发出去");
+  assert.ok(!("masterDraft" in agenda.resume)&&!("excerpt" in agenda.resume),"agenda 不返回 masterDraft，也不放摘要");
+  const draftRow=agenda.inHand.find(row=>row.id===draft);
+  // 17 = `#写到一半的那一篇这里有一些正文。`（`countWords` 去空白后数字符，
+  // 和合集目录、编辑器用的是同一个口径——这里不另数一遍）
+  assert.equal(draftRow.progress,"17 字",`字数要数好，实际 ${draftRow?.progress}`);
+
+  // 选题是流水线第一档，行里是它真实的计数，不是硬凑的 stage
+  const topicRow=agenda.inHand.find(row=>row.kind==="research");
+  assert.equal(topicRow.stage,TOPIC_STAGE);
+  assert.match(topicRow.progress,/还没写成文章/);
+
+  // 阶段轴：流水线顺序、只含有东西的那几档、计数等于真实条数
+  assert.deepEqual(agenda.stages.map(s=>s.stage),HOME_STAGE_ORDER.filter(stage=>agenda.inHand.some(r=>r.stage===stage)),"阶段轴按流水线顺序，且只列非空的");
+  for(const entry of agenda.stages)assert.equal(entry.count,agenda.inHand.filter(r=>r.stage===entry.stage).length);
+
+  // 一周以内不带时间戳；把它改成 10 天前，那句「放了 N 天」才出现
+  assert.equal(draftRow.staleDays,null,"刚动过的那一条不该带时间戳");
+  const old=new Date(Date.now()-10*86400000).toISOString();
+  // ⚠️ 时间在 `entities` 上，`drafts` 自己没有 updated_at（`projectDto` 也是 join 过去取的）。
+  // 项目和主稿两条都要改——`recentWork` 取的是两者的 max。
+  w.db.prepare("UPDATE entities SET updated_at=? WHERE id IN (?,?)").run(old,draft,draftId);
+  assert.equal(workspaceAgenda(w).inHand.find(row=>row.id===draft).staleDays,10,"放了 10 天要报出来");
+
+  // 「在等你决定」只列真有在等的；一个都没有时整块是空数组
+  assert.ok(Array.isArray(agenda.waiting));
+  assert.ok(agenda.waiting.every(entry=>entry.count>0),"不列 count 为 0 的");
+  assert.ok(agenda.waiting.every(entry=>entry.view&&entry.unit&&entry.text),"每条都要有去处和措辞");
+  w.db.prepare("INSERT INTO action_candidates(id,action_type,target_id,payload_json,payload_sha256,status,proposed_by,proposed_at) VALUES(?,'wiki.lint.review',?,'{}',?,'proposed','ai',?)")
+    .run(createUlid(),research.id,"a".repeat(64),new Date().toISOString());
+  const withQueue=workspaceAgenda(w).waiting.find(entry=>entry.key==="wiki");
+  assert.equal(withQueue.count,1,"AI 提的候选要出现在「在等你决定」里");
+  assert.equal(withQueue.view,"entries");
+ }
+
  console.log("workspace experience: true activity, validated positions, real wiki matching, persisted AI summary, quote provenance, stale guard and cache passed");
 }finally{w?.close();await fs.rm(root,{recursive:true,force:true});}

@@ -50,6 +50,9 @@ export const api = {
   intelligenceSourceDetail: (id) => req(`/api/workspace/intelligence/sources/${encodeURIComponent(id)}`),
   intelligenceSource: (body) => postJson("/api/workspace/intelligence/sources", body),
   workspaceActivity: () => req("/api/workspace/activity"),
+  // 首页那一屏：接着写的那一条、在等你决定的几队、阶段轴、在手上的列表、最近阅读。
+  // ⚠️ 一个请求给完，而且不含正文——判据见 domain/workspace-experience.mjs 的 workspaceAgenda
+  workspaceAgenda: () => req("/api/workspace/agenda"),
   recordActivity: (kind, id, body) => req(`/api/workspace/activity/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   wikiConnections: (q) => req(`/api/workspace/wiki-connections?${new URLSearchParams({q})}`),
   researchSummary: (id) => req(`/api/workspace/researches/${encodeURIComponent(id)}/summary`),

@@ -1,5 +1,5 @@
 import {fail,json,readJsonBody} from "../lib/http.mjs";
-import {workspaceActivity,recordActivity,wikiConnections,researchSummary,refreshResearchSummary} from "../domain/workspace-experience.mjs";
+import {workspaceActivity,recordActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda} from "../domain/workspace-experience.mjs";
 function route(method,path,action) {return {method,path,handler:async context=>{
  try {const workspace=await context.workspace;if(!workspace?.db?.open)throw Object.assign(new Error("本地工作区尚未就绪"),{status:503});
  const body=["POST","PUT"].includes(method)?await readJsonBody(context.req,16000):{};
@@ -8,6 +8,8 @@ function route(method,path,action) {return {method,path,handler:async context=>{
 }};}
 export const workspaceExperienceRoutes=[
  route("GET","/api/workspace/activity",({workspace})=>workspaceActivity(workspace)),
+ // 首页那一屏的全部数据。⚠️ 别叫 agenda-candidates——那个名字是 content-bridge 的 AI 议程
+ route("GET","/api/workspace/agenda",({workspace})=>workspaceAgenda(workspace)),
  route("PUT","/api/workspace/activity/:kind/:id",({workspace,params,body})=>({item:recordActivity(workspace,params.kind,params.id,body)})),
  route("GET","/api/workspace/wiki-connections",({workspace,url})=>wikiConnections(workspace,url.searchParams.get("q")||"")),
  route("GET","/api/workspace/researches/:id/summary",({workspace,params})=>({summary:researchSummary(workspace,params.id)})),

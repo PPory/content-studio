@@ -8,6 +8,20 @@ export const WIKI_PAGE_TYPES = Object.freeze([
   "comparison", "overview", "synthesis", "work", "stance",
 ]);
 
+/**
+ * 「AI 提了，等你审阅」那一队候选的类型清单。
+ *
+ * `action_candidates` 这张表装着所有受控写操作的授权记录，但**只有这三种会停在
+ * `status='proposed'` 等人拍板**（`server/jobs/default-job-handlers.mjs` 里那四处
+ * `actions.propose`，其余写操作是授权即应用）。
+ *
+ * ⚠️ **两个地方要数同一队**：Wiki 的待审阅列表（`routes/wiki-local.mjs`）和首页
+ *「在等你决定」那一行（`domain/workspace-experience.mjs`）。清单抄第二份的话，
+ * 将来加一种候选类型，Wiki 页会列出来、首页数不到——而且不会报错。
+ */
+export const WIKI_REVIEW_ACTION_TYPES = Object.freeze(["wiki.pages.apply", "wiki.lint.review", "wiki.sources.import"]);
+export const WIKI_REVIEW_ACTION_SQL = WIKI_REVIEW_ACTION_TYPES.map((type) => `'${type}'`).join(",");
+
 export const WIKI_PAGE_TYPE_LABELS = Object.freeze({
   source_summary: "来源资料卡",
   concept: "概念",
