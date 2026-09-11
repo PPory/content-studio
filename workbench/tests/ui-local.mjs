@@ -230,7 +230,12 @@ try {
   check("创作列表不再把跨页去处藏在「更多」折叠里", await page.locator(".content-more-tools").count() === 0);
 
   await page.getByRole("button", { name: "删除「阶段六隔离稿」" }).click();
-  await page.getByRole("button", { name: "删掉整篇" }).click();
+  const projectConfirm = page.getByRole("button", { name: "删掉整篇" });
+  await projectConfirm.click();
+  check("连点两下垃圾桶不会删掉这一篇",
+    await page.locator(".ptable__row").filter({ hasText: "阶段六隔离稿" }).count() === 1);
+  await page.waitForTimeout(420);
+  await projectConfirm.click();
   await page.getByText("「阶段六隔离稿」已移入回收站").waitFor();
   check("删掉一篇的回执说清带走了几篇稿子，并留一条撤销",
     (await page.locator(".toast").innerText()).includes("篇稿子")

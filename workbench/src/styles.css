@@ -5477,20 +5477,31 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
  */
 .ptable__line { display: flex; align-items: stretch; gap: 2px; }
 .ptable__line > .ptable__row { flex: 1 1 auto; min-width: 0; }
-.ptable__del {
+/**
+ * 删除那一格。**按钮本身是共用的 `RowDelete`**（见 `ProjectTable.jsx`），
+ * 这里只管这一格在行里占多宽、什么时候露头。
+ *
+ * ⚠️ **收起时宽度必须是 34px**，和表头末尾那块占位一样
+ *（`.ptable__head > [aria-hidden]`）——两边不一致的话行的网格和表头的网格
+ * 分到的宽度差一截，就是这张表出过两次的列错位。
+ */
+.ptable__acts {
   flex: none; width: 34px; display: grid; place-items: center;
-  border: 0; border-bottom: 1px solid var(--border); background: none;
-  color: var(--text-3); cursor: pointer; opacity: 0;
-  transition: opacity .12s var(--ease), color .12s var(--ease);
+  border-bottom: 1px solid var(--border);
+  opacity: 0; transition: opacity .12s var(--ease);
 }
-/* 平时不出现：一列垃圾桶竖着排下来，比它保护的那件事更显眼 */
-.ptable__line:hover .ptable__del, .ptable__del:focus-visible, .ptable__del.is-armed { opacity: 1; }
-.ptable__del:hover { color: var(--danger); }
-/* ⚠️ 第二下的按钮上写的是**删的是什么**（「删掉整篇」），不是「确定吗」——
-   要点两下的动作，写的必须是最不可逆的那部分 */
-.ptable__del.is-armed {
-  width: auto; padding: 0 10px; gap: 5px; grid-auto-flow: column;
-  color: var(--danger); font-size: var(--fs-2xs); white-space: nowrap;
+/* 平时不出现：一列垃圾桶竖着排下来，比它保护的那件事更显眼。
+   确认态把那一行钉住（`data-confirm`），否则鼠标一挪走「取消」就没了。 */
+.ptable__line:hover .ptable__acts,
+.ptable__line:focus-within .ptable__acts,
+.ptable__line[data-confirm] .ptable__acts { opacity: 1; }
+/* 确认态要放得下「删掉整篇」和「取消」两颗，34px 那一格让开 */
+.ptable__line[data-confirm] .ptable__acts {
+  width: auto; padding: 0 6px; gap: 6px; grid-auto-flow: column;
+}
+/* 触屏没有 hover：不给这一条，删除在手机上根本摸不到 */
+@media (hover: none) {
+  .ptable__acts, .ptable__file { opacity: 1; }
 }
 
 .ptable__row {
@@ -5600,8 +5611,27 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   /* 数值列在两栏里没有位置：它们右对齐、定宽，本来就是给横着比用的 */
   .ptable__dim { display: none; }
   .ptable__tail { grid-column: 2; justify-content: flex-start; font-size: var(--fs-xs); }
-  /* 「下一步」靠 hover 显形，触屏上没有 hover——绝对定位的它会盖住时间 */
+  /* 「下一步」靠 hover 显形，触屏上没有 hover——绝对定位的它会盖住时间。
+     ⚠️ **撤了它就得把时间的淡出一起撤掉**：那条 hover 规则是为了给下一步腾位置的，
+     下一步没了还留着它，窄屏的桌面窗口里一 hover 时间就凭空消失、也没有东西替上。 */
   .ptable__next { display: none; }
+  .ptable__row:hover .ptable__tail > time,
+  .ptable__row:focus-visible .ptable__tail > time { opacity: 1; }
+
+  /**
+   * ⚠️ **确认那两颗按钮在窄屏上换到整行，不和标题挤同一行。**
+   * 挤在一起量到的是标题被压成「第 7 ⋯」——你正要做一件不可逆的事，
+   * 却看不见要删的是哪一篇。整行摊开之后标题完好，按钮靠右。
+   */
+  /* ⚠️ **只有确认中的那一行允许换行。** 整张表都 `flex-wrap: wrap` 的话，
+     每一行的归类钮都会被挤到第二行去——量到的就是一列孤零零的文件夹图标。 */
+  .ptable__line[data-confirm] { flex-wrap: wrap; }
+  /* 正在删这一篇，就别同时请人给它归类：让开，好让标题占满第一行 */
+  .ptable__line[data-confirm] .ptable__file { display: none; }
+  .ptable__line[data-confirm] > .ptable__row { border-bottom: 0; }
+  .ptable__line[data-confirm] .ptable__acts {
+    width: 100%; padding: 0 10px 10px; justify-content: end;
+  }
 }
 
 /* ── 看板 ────────────────────────────────────────────────────────── */

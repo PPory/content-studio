@@ -8,8 +8,8 @@
 // 顶上那三张「需要你处理的」仍然是卡片（`ProjectCard`），因为它们是**要动手的少数**。
 
 import { useState } from "react";
-import { StatePill, relTime } from "../../components/ui.jsx";
-import { IconAlertTriangle, IconArrowRight, IconFolder, IconLoader2, IconTrash } from "../../components/icons.jsx";
+import { RowDelete, StatePill, relTime } from "../../components/ui.jsx";
+import { IconAlertTriangle, IconArrowRight, IconFolder } from "../../components/icons.jsx";
 
 /**
  * 一行 = 一个项目。
@@ -27,9 +27,10 @@ import { IconAlertTriangle, IconArrowRight, IconFolder, IconLoader2, IconTrash }
  * 「素材」：一行都没挂过）。一列相同的值携带的信息是零，但它照样吃掉横向空间、
  * 把标题挤窄。这条对**每一列**成立，不是只对当初写它的那一列。
  */
-export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = "" }) {
+export function ProjectTable({ projects, onOpen, onRemove, onFile }) {
   // 正在等第二下确认的那一行。**一次只有一行**：留着多行确认态，
-  // 你会分不清刚才点的是哪一行
+  // 你会分不清刚才点的是哪一行。这个 id 只用来把那一行钉住
+  //（`data-confirm`），确认本身的状态在 `RowDelete` 自己身上。
   const [confirming, setConfirming] = useState("");
 
   /**
@@ -115,9 +116,8 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
       {projects.map((p) => {
         const blockers = Array.isArray(p.blockers) ? p.blockers : [];
         const title = p.title || "未命名内容";
-        const asking = confirming === p.id;
         return (
-          <div className="ptable__line" key={p.id}>
+          <div className="ptable__line" key={p.id} data-confirm={confirming === p.id ? "" : undefined}>
           <button className="ptable__row" role="row" onClick={() => onOpen(p)}>
             <span role="cell"><StatePill state={p.stage} /></span>
 
@@ -197,32 +197,24 @@ export function ProjectTable({ projects, onOpen, onRemove, onFile, removing = ""
             * ⚠️ **删除是行的兄弟节点，不在行里面**——行本身是个 `<button>`，
             * button 套 button 是非法结构。
             *
-            * ⚠️ **点两下，而且第二下的按钮上要写清删的是什么。**
+            * 两步确认走共用的 `RowDelete`（`components/ui.jsx`），**这一页原来是第五份
+            * 手写实现**：写法各不相同，而其中没有一份带防连点——垃圾桶点下去之后，
+            * 确认钮就长在它原来的位置上，手快连点两下就是删掉。换成共用那颗之后拿到
+            * 三件事：320ms 的闸、排在右边的「取消」、以及「改一处四处都跟着变」。
+            *
+            * ⚠️ **第二下的按钮上写的是删的是什么**（「删掉整篇」），不是「确定吗」。
             * 这一下会**连级删掉这个项目底下所有稿子**（`drafts.topic_id` 是 CASCADE），
-            * 而且**软删除、可从本地回收站恢复**。写「确定吗」是没用的——要写「删掉这一篇」。
+            * 软删除、可恢复——而「可恢复」那条路是回执上那颗「撤销」（`Content.jsx`）。
             */}
           {onRemove ? (
-            asking ? (
-              <button
-                className="ptable__del is-armed"
-                onClick={() => { setConfirming(""); onRemove(p); }}
-                disabled={removing === p.id}
-                title="连同它底下的稿子一起移入本地回收站，可恢复"
-              >
-                {removing === p.id ? <IconLoader2 size={13} className="spin" aria-hidden="true" /> : null}
-                删掉整篇
-              </button>
-            ) : (
-              <button
-                className="ptable__del"
-                onClick={() => setConfirming(p.id)}
-                onBlur={() => setConfirming((v) => (v === p.id ? "" : v))}
-                aria-label={`删除「${title}」`}
-                title="删除这个项目"
-              >
-                <IconTrash size={14} stroke={1.7} aria-hidden="true" />
-              </button>
-            )
+            <span className="ptable__acts">
+              <RowDelete
+                onDelete={() => onRemove(p)}
+                label="删掉整篇"
+                title={`删除「${title}」——连同它底下的稿子一起移入回收站，可恢复`}
+                onOpenChange={(open) => setConfirming(open ? p.id : "")}
+              />
+            </span>
           ) : null}
           </div>
         );

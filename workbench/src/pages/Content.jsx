@@ -13,7 +13,6 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [removing, setRemoving] = useState("");
   const [toast, setToast] = useUndoToast();
   const [stage, setStage] = useState("进行中");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
@@ -51,10 +50,11 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
    *
    * ⚠️ **而且要给回头路。** 界面上没有回收站页面，所以「点错了怎么办」的唯一
    * 答案就是这条回执上的「撤销」——它走 `/projects/:id/restore`，稿子一起回来。
+   *
+   * 「正在删」的忙态和防重入归 `RowDelete` 自己管（它 await 这个函数），
+   * 所以这一层不再留 `removing`——同一件事两处各记一份，迟早有一处忘了改。
    */
   const remove = useCallback(async (p) => {
-    if (removing) return;
-    setRemoving(p.id);
     try {
       const r = await api.removeProject(p.id);
       setToast({
@@ -66,10 +66,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
       await load();
     } catch (e) {
       setError(e);
-    } finally {
-      setRemoving("");
     }
-  }, [removing, load, onChanged, setToast]);
+  }, [load, onChanged, setToast]);
 
   return (
     <>
@@ -121,7 +119,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
           {!projects.length ? (
             <Empty icon={IconFileText}>写下第一句话就可以开始，不必先定选题或填写计划。</Empty>
           ) : shown.length ? (
-            <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} removing={removing} />
+            <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
           ) : (
             <Empty icon={IconFileText}>{stage === "进行中" ? "没有正在写的内容，可以开始新的一篇。" : stage === "已发布" ? "发布后的作品会留在这里。" : "暂时搁置的内容会留在这里，随时可以继续。"}</Empty>
           )}
