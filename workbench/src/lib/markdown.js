@@ -242,3 +242,24 @@ export function markGlyphImages(html) {
     return words ? block.replace(/<img\b/g, '<img class="glyph"') : block;
   });
 }
+
+/**
+ * 去掉正文开头那个和标题重复的 H1。
+ *
+ * 稿子里普遍第一行就是 `# 同名标题`，而**显示它的地方自己已经给了一层标题**——
+ * 不去掉的话同一句话会连着出现两遍。两个调用点：
+ * 合集通读 / 导出（`server/workspace/workspace-view.mjs`），
+ * 以及首页那一条列表的摘要（`pages/Today.jsx`）——首页上量到的是
+ *「AI 写作里那条真实性硬闸 AI 写作里那条真实性硬闸 这一篇的开头…」。
+ *
+ * ⚠️ **只去掉字面相同的那一个**：内容不一样的 H1 是作者写的东西，不能替他删。
+ *
+ * ⚠️ 放在这儿而不是两边各写一份：服务端 import `src/lib/` 是既有做法
+ *（见 `workspace-view.mjs` 取 `countWords`），而反过来让 `domain` 依赖 view 层
+ * 会把分层调过来。
+ */
+export function stripDuplicateHeading(body, title) {
+  const match = /^\s*#\s+(.+?)\s*(?:\n|$)/.exec(body || "");
+  if (!match || match[1].trim() !== String(title || "").trim()) return body || "";
+  return body.slice(match[0].length).replace(/^\s*\n/, "");
+}

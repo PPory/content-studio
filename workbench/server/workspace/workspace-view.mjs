@@ -2,6 +2,8 @@ import { PLATFORMS, PROJECT_STAGES } from "../domain/values.mjs";
 // 字数口径只有一处（中文按非空白字符数）。合集目录里的字数在服务端数完再给前端，
 // 别在前端对着 body 再数一遍——同一篇会显示两个数。
 import { countWords } from "../../src/lib/reading.js";
+// 「去掉和标题重复的那个 H1」首页也要用，所以真身在 `src/lib/markdown.js`，两处同一份。
+import { stripDuplicateHeading } from "../../src/lib/markdown.js";
 
 const parseJson = (value, fallback) => {
   try { return JSON.parse(String(value ?? "")); } catch { return fallback; }
@@ -279,19 +281,6 @@ export function listSeries(workspace) {
     progress: { total: countOf.get(row.id).value, published: publishedOf.get(row.id).value },
   }));
   return { series, total: series.length, nextCursor: null };
-}
-
-/**
- * 去掉正文开头那个和标题重复的 H1。
- *
- * 稿子里普遍第一行就是 `# 同名标题`，而通读和导出**自己已经给了一层标题**——
- * 不去掉的话每一篇都会连着出现两遍同一句话。
- * ⚠️ **只去掉字面相同的那一个**：内容不一样的 H1 是作者写的东西，不能替他删。
- */
-function stripDuplicateHeading(body, title) {
-  const match = /^\s*#\s+(.+?)\s*(?:\n|$)/.exec(body || "");
-  if (!match || match[1].trim() !== String(title || "").trim()) return body || "";
-  return body.slice(match[0].length).replace(/^\s*\n/, "");
 }
 
 /**

@@ -96,6 +96,12 @@ export {
   IconCalendarEvent,
   IconTag,
   IconTrash,
+  // 首页那一条列表行尾的两颗：置顶（实心那个是按下态）和「从首页收起」。
+  // ⚠️ 收起不用 IconArchive——这个应用里「归档」是创作页的一个真实阶段，
+  // 而这一颗只是「不在首页出现」，两件事不能共用一个图标。
+  IconPin,
+  IconPinFilled,
+  IconEyeOff,
   IconHighlight,
   IconLanguage,
   IconArrowsDiagonal,
