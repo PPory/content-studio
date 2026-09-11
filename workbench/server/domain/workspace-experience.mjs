@@ -292,7 +292,23 @@ export function workspaceAgenda(w) {
     { key: "briefs", count: (feed.todayUnread || 0) + (feed.earlierUnread || 0), unit: "条", text: "精选还没读", view: "intel", state: "" },
   ].filter((entry) => entry.count > 0);
 
-  return { resume, waiting, stages, inHand, reading: workspaceActivity(w).reading, setup: workspaceSetup(w) };
+  /**
+   * 「接着读」**只放书**。
+   *
+   * ⚠️ 这一块是封面块，而只有书有封面（`books.metadata_json.coverAssetId`）。
+   * 混进 Wiki 页和素材的话，一半格子是回落图标——那时它既不是封面墙，
+   * 也不如一行纯文字来得清楚。Wiki 和来源有阅读区自己的续读，不靠首页。
+   *
+   * ⚠️ **不在 `workspaceActivity` 里过滤**：那个函数还给阅读区还原滚动位置用
+   *（`components/LibraryBrowser.jsx` 直接调它找自己那一条），在那儿滤掉
+   * 非书的项目会把阅读区的续读弄坏。只在首页这一层挑。
+   *
+   * ⚠️ **不拿书架上没动过的书填空。** 那会把「你正在读这些」变成「书架上有这些」，
+   * 而后者是书架自己的事（判据抄 `pages/shelf/ContinueCard.jsx` 那段注释）。
+   * 读过才出现，没读过就让这一块空着并说清原因。
+   */
+  const reading = workspaceActivity(w).reading.filter((item) => item.kind === "book");
+  return { resume, waiting, stages, inHand, reading, setup: workspaceSetup(w) };
 }
 
 /**

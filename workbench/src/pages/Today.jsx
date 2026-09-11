@@ -21,15 +21,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, StatePill, Toast } from "../components/ui.jsx";
-import { IconAlertTriangle, IconArrowRight, IconBook2, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFileText, IconFolder, IconNotebook, IconPin, IconPinFilled, IconStack2 } from "../components/icons.jsx";
+import { IconAlertTriangle, IconArrowRight, IconBook2, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFolder, IconPin, IconPinFilled } from "../components/icons.jsx";
 import { Cover } from "../components/Cover.jsx";
 import { pct } from "../lib/reading.js";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import "./workspace-home.css";
 import { useDialog } from "../lib/use-dialog.js";
-
-/** 没有封面时那个格子里放什么图标。**混着书和 Wiki 的列表不能一律画书。** */
-const READING_ICON = { book: IconBook2, wiki: IconNotebook, material: IconStack2, capture: IconBulb, seed: IconBulb };
 
 /**
  * 一条的可读名字。
@@ -223,8 +220,11 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
     <ErrorNote error={error} what="读取工作台" onRetry={load} />
     {!agenda && !error ? <Loading rows={4} /> : null}
 
-    {agenda ? <div className="overview-columns">
-      <div className="overview-main">
+    {/* ⚠️ **一栏，不是两栏。** 上一版「接着读」放在右侧窄栏里，而主列那些行的
+        min-content 量到 735px（`.row-meta` 是 `flex:none`，长 meta 撑不动），
+        窄屏和 1920 上 grid 的 `auto` track 撑不下就溢出——**行直接压到窄栏上面**。
+        搬到底部之后主列是整幅宽度，那一类重叠也就没有了。 */}
+    {agenda ? <div className="overview-main">
         {/* ── 第一层：接着写 ──
             ⚠️ **这一张不是「最近那一条」，是「接着做那一条」。** 差别全在它说什么：
             阶段、卡在哪儿、进展、下一步的动词。没有时间戳（放久了才在角上标一句）。 */}
@@ -378,48 +378,45 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
           )}
         </section>
         ) : null}
-      </div>
 
-      {reading.length || setup?.done !== false ? (
-      <aside className="overview-rail">
-        <section className="overview-panel">
-          <header><h2>最近阅读</h2></header>
-          {/**
-            * ⚠️ **这一栏是这个应用里唯一真有封面的列表**，所以它是唯一值得上封面的
-            * ——「卡片适合有封面」那条判据的前提是**封面真的存在于数据里**，
-            * 不是「想让它好看」。没有封面的卡片只是一个大号的行加一圈边框。
-            *
-            * ⚠️ 封面走共用的 `components/Cover.jsx`，**不在这儿新写一份**：
-            * 它连「没有封面就退成书本图标 + 书名」都写好了，而 Wiki 页正好没有封面
-            * ——那个组件的注释说得准：空白格子会让人以为那本书没加载出来。
-            */}
-          {reading.length ? (
-            <ul className="agenda-reading">
-              {reading.slice(0, 5).map(item => (
+        {/* ── 接着读 ──
+            ⚠️ **只放书，所以它才有资格做封面块。** 「卡片适合有封面」那条判据的前提是
+            封面**真的存在于数据里**——只有书有（`books.metadata_json.coverAssetId`）。
+            混进 Wiki 页的话一半格子是回落图标，那时它既不是封面墙、也不如一行纯文字清楚，
+            所以过滤放在服务端（`workspaceAgenda`）。
+            ⚠️ **不拿书架上没动过的书填空**：那会把「你在读这些」变成「书架上有这些」。
+            封面走共用的 `components/Cover.jsx`，不在这儿新写一份。 */}
+        {reading.length ? (
+          <section className="agenda-reading" aria-label="接着读">
+            <header><h2>接着读</h2></header>
+            <ul>
+              {reading.slice(0, 6).map(item => (
                 <li key={`${item.kind}:${item.id}`}>
                   <button type="button" onClick={() => open(item)}>
-                    {/* ⚠️ **`name` 传空串。** `Cover` 的回落分支会把书名排在格子里
-                        （书架那面封面墙需要，因为那儿旁边没有标题）；而这一行**右边就是标题**，
-                        再排一遍就是同一个事实出现两次——没封面的那几条会显示两遍书名。 */}
-                    <Cover book={{ cover: item.cover || "", name: "" }} size="cover--sm" icon={READING_ICON[item.kind] || IconFileText} />
-                    <span>
-                      <b>{item.title || "未命名"}</b>
-                      {/* 书说得出第几章就说第几章；说不出就只说百分比。
-                          这一格原来是一列全都写着「Wiki」的徽章。 */}
-                      <small className="agenda-reading__at">
-                        {item.chapter
-                          ? `第 ${item.chapter.at} 章${item.position?.progress ? ` · ${pct(item.position.progress)}` : ""}`
-                          : item.position?.progress ? `读到 ${pct(item.position.progress)}` : "刚开始"}
-                      </small>
-                    </span>
+                    {/* ⚠️ **`name` 传空串。** `Cover` 的回落分支会把书名排在格子里——
+                        书架那面墙需要（那儿封面下面没有标题），而这里**标题就在封面下面**，
+                        传了就会出现两遍。 */}
+                    <Cover book={{ cover: item.cover || "", name: "" }} />
+                    <b>{item.title || "未命名"}</b>
+                    <small className="agenda-reading__at">
+                      {item.chapter
+                        ? `第 ${item.chapter.at} 章${item.position?.progress ? ` · ${pct(item.position.progress)}` : ""}`
+                        : item.position?.progress ? `读到 ${pct(item.position.progress)}` : "刚开始"}
+                    </small>
                   </button>
                 </li>
               ))}
             </ul>
-          ) : <p className="overview-empty">读过的资料会出现在这里，方便接着读。</p>}
-        </section>
-      </aside>
-      ) : null}
+          </section>
+        ) : setup?.done !== false ? (
+          /* 首启时不画（开局卡在说别的事）；之后空着要说清为什么空 */
+          <section className="agenda-reading agenda-reading--empty" aria-label="接着读">
+            <header><h2>接着读</h2></header>
+            <Empty icon={IconBook2} action={<button type="button" className="btn btn-sm" onClick={() => onGo("shelf")}>去书架</button>}>
+              读过的书会排在这里，带封面和读到第几章。导入一本，或者接着读书架上那本。
+            </Empty>
+          </section>
+        ) : null}
     </div> : null}
 
     {pending ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="home-leave-title" ref={leaveDialog}><h2 id="home-leave-title">这条想法还没有保存</h2><p>先留下它，下次可以在阅读与 Wiki 中找回。</p><div className="row-actions"><button className="btn" disabled={busy} onClick={() => setPending(null)}>继续记录</button><button className="btn btn-primary" disabled={busy} onClick={async () => { if (await capture({ preventDefault() {} })) onForceGo(pending.view, pending.state); }}>保存并离开</button></div><ErrorNote error={error} what="保存想法" /></section></div> : null}

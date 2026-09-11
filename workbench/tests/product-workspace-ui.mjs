@@ -5,6 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { createServer } from "vite";
 import { createUlid } from "../server/storage/ids.mjs";
+import { createBookRecord } from "../server/routes/books-local.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "xenho-product-ui-"));
@@ -176,24 +177,49 @@ try {
   await until(()=>page.locator(".reader-document").evaluate(el=>el.scrollTop),v=>v>200,"阅读位置恢复");
   await page.screenshot({path:path.join(shotDir,"interview-reading-desktop.png"),fullPage:true});
 
-  // ── 首页窄栏：读过的东西以封面行出现（没封面就走 Cover 的回落，不是一块空白） ──
+  // ── 首页底部「接着读」：**只放书**，带封面和读到第几章 ──
+  //
+  // ⚠️ 这一块曾经混进 Wiki 页和素材，于是一半格子是回落图标——它既不是封面墙，
+  // 也不如一行纯文字清楚。只有书有封面（`books.metadata_json.coverAssetId`），
+  // 所以过滤在服务端（`workspaceAgenda`）。这里连「Wiki 不该出现」一起钉住。
+  const bookWithCover=await createBookRecord(w,{title:"本地优先应用设计",kind:"藏书",sourceKind:"文章",
+    coverAssetId:(await w.assets.importBuffer({bytes:Buffer.from("89504e470d0a1a0a0000000d49484452","hex"),type:"image",originalName:"cover.png"})).id,
+    chapters:[{title:"开头",text:"# 开头\n\n第一章。"},{title:"同步的代价",text:"# 同步的代价\n\n冲突是产品问题。"}]});
+  const bookChapters=w.db.prepare("SELECT id FROM book_documents WHERE book_id=? ORDER BY document_order").all(bookWithCover.id);
+  await request(`/api/workspace/activity/book/${bookWithCover.id}`,{mode:"read",position:{progress:0.44,scrollTop:100,docId:bookChapters[1].id}},"PUT");
+
   await page.goto(`${base}/#/today`);
   await page.locator(".agenda-reading li").first().waitFor();
-  const rail=await page.evaluate(()=>[...document.querySelectorAll(".agenda-reading li")].map(li=>({
+  const shelfRow=await page.evaluate(()=>[...document.querySelectorAll(".agenda-reading li")].map(li=>({
     cover:Boolean(li.querySelector(".cover")),
     img:Boolean(li.querySelector(".cover img")),
     fallback:Boolean(li.querySelector(".cover__fallback svg")),
     title:li.querySelector("b")?.textContent.trim()||"",
     // ⚠️ 不能用 li.querySelector("small")：DOM 里先出现的是**封面回落里那个空的**
-    // （旁边已经有标题，所以传了空串），会把这一条断言变成假红
+    // （标题就在封面下面，所以传了空串），会把这一条断言变成假红
     progress:li.querySelector(".agenda-reading__at")?.textContent.trim()||"",
-    // 回落格子里不该再排一遍书名——右边就是标题
+    // 回落格子里不该再排一遍书名——下面就是标题
     dupName:(li.querySelector(".cover__fallback small")?.textContent||"").trim(),
   })));
-  check("读过的东西出现在首页窄栏，且每条都有封面位",rail.length>0&&rail.every(r=>r.cover),JSON.stringify(rail));
-  check("没有封面的走回落图标，不是一块空白",rail.every(r=>r.img||r.fallback),JSON.stringify(rail));
-  check("回落格子里不重复排标题",rail.every(r=>!r.dupName),JSON.stringify(rail));
-  check("窄栏说得出读到哪儿",rail.every(r=>r.progress),JSON.stringify(rail));
+  check("读过的书出现在「接着读」，每条都有封面位",shelfRow.length>0&&shelfRow.every(r=>r.cover),JSON.stringify(shelfRow));
+  check("「接着读」只放书，Wiki 页不混进来",!shelfRow.some(r=>r.title.includes("Harness 与系统思维")),JSON.stringify(shelfRow));
+  check("有封面的那本真的画出了封面",shelfRow.some(r=>r.img),JSON.stringify(shelfRow));
+  check("回落格子里不重复排标题",shelfRow.every(r=>!r.dupName),JSON.stringify(shelfRow));
+  check("说得出读到第几章",shelfRow.some(r=>/第 \d+ 章/.test(r.progress)),JSON.stringify(shelfRow));
+
+  // ⚠️ 1920 上那次重叠的回归闸：主列那些行的 min-content 是 735px，
+  // grid 的 `auto` track 撑不下会**溢出容器**而不是压缩内容。
+  await page.setViewportSize({width:1920,height:1000});
+  await page.waitForTimeout(300);
+  const spill=await page.evaluate(()=>{
+    const box=document.querySelector(".workspace-overview").getBoundingClientRect();
+    return [...document.querySelectorAll(".workspace-overview *")]
+      .filter(n=>n.getBoundingClientRect().right>box.right+1)
+      .map(n=>(n.className?.toString?.()||n.tagName).slice(0,40));
+  });
+  check("1920 上没有任何东西溢出页面容器",spill.length===0,JSON.stringify(spill));
+  await page.setViewportSize({width:1440,height:1000});
+
   await page.setViewportSize({width:390,height:844});
   check("阅读手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("tab",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();

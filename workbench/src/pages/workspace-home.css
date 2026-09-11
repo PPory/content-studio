@@ -56,10 +56,13 @@
 .overview-saved>span[role="status"] { color:var(--text-3); font-size:var(--fs-xs); }
 .overview-saved>.btn { margin-left:auto; }
 
-/* ── 两栏：主列 + 窄栏 ── */
-.overview-columns { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(260px,1fr); gap:42px; align-items:start; }
-.overview-main { min-width:0; display:grid; gap:26px; }
-.overview-rail { min-width:0; }
+/* ── 一栏 ──
+   ⚠️ **`minmax(0, 1fr)` 不能写成默认的 `auto`。** grid 的 `auto` track 撑不下
+   min-content 时**会溢出容器**（而不是压缩内容）：`.agenda-hand` 里那个 `.row-head`
+   量出来 min-content 是 735px（`.row-meta` 是 `flex:none`，长 meta 撑不动），
+   而上一版右边还有个窄栏、主列 track 只有 670px——于是那些行直接**压到窄栏上面**。
+   1440 上 meta 短（「450 字」）所以看不出来，1920 上一眼就是重叠。 */
+.overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:26px; }
 
 /* ── 第一层：接着写 ──
    ⚠️ **这一张是页面上唯一有底色的块，所以它必须真的更重要。** 层次不能靠把
@@ -179,7 +182,12 @@
 .agenda-row__open svg { flex:none; color:var(--text-3); }
 .agenda-row__open:hover { text-decoration:underline; text-underline-offset:3px; }
 
-.agenda-rows .row-meta { flex:none; gap:12px; }
+/* ⚠️ **`flex:none` 换成「可以缩」。** 这一格原来撑得住 200 多像素不让位，
+   于是整行的 min-content 到了 735px。窄的时候进展那句该省略号，而不是把行撑爆。
+   时间（`放了 N 天`）不许缩：那是这一格里最短也最该看见的东西。 */
+.agenda-rows .row-meta { flex:0 1 auto; min-width:0; gap:12px; }
+.agenda-row__progress { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agenda-row__stale { flex:none; }
 .agenda-row__progress { color:var(--text-2); }
 .agenda-row__stale { color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-2xs); }
 
@@ -192,26 +200,31 @@
 .agenda-row__acts .icon-btn[aria-pressed="true"] { color:var(--text-1); }
 @media (hover:none) { .agenda-row__acts { opacity:1; } }
 
-/* ── 窄栏：接着读 ──
-   封面行，不是纯文字行。那一栏只有 260px，所以封面用 `cover--sm`（62px），
-   标题和进度竖着排在右边。 */
-.agenda-reading { display: grid; gap: 2px; margin: 10px 0 0; padding: 0; list-style: none; }
+/* ── 接着读 ──
+   整幅宽度的一排封面。⚠️ `auto-fill` 不是 `auto-fit`：书少的时候就少几张、
+   右边空着是对的，不要把三本书拉成一排巨幅封面（判据同「卡片就该是卡片的尺寸」）。 */
+.agenda-reading > header { padding-bottom:8px; border-bottom:1px solid var(--border); }
+.agenda-reading h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
+.agenda-reading ul {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(108px, 132px));
+  gap:18px 16px; margin:16px 0 0; padding:0; list-style:none;
+}
 .agenda-reading li > button {
-  display: flex; align-items: center; gap: 11px; width: 100%;
-  padding: 7px 8px 7px 2px;
-  border: 0; border-radius: var(--r-sm); background: none; color: inherit;
-  font: inherit; text-align: left; cursor: pointer;
+  display:grid; gap:7px; width:100%; padding:0;
+  border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer;
 }
-.agenda-reading li > button:hover { background: var(--surface-2); }
-.agenda-reading li > button > span { min-width: 0; display: grid; gap: 3px; }
+.agenda-reading .cover { width:100%; }
 .agenda-reading b {
-  display: -webkit-box; overflow: hidden;
-  font-size: var(--fs-sm); font-weight: 500; line-height: 1.5;
-  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  display:-webkit-box; overflow:hidden;
+  font-size:var(--fs-sm); font-weight:500; line-height:1.5;
+  -webkit-box-orient:vertical; -webkit-line-clamp:2;
 }
-.agenda-reading__at { color: var(--text-3); font-size: var(--fs-xs); }
-/* 封面自己已经有边框和投影（`.cover`），这儿不再加一层 */
-.agenda-reading .cover { box-shadow: none; }
+.agenda-reading__at { color:var(--text-3); font-size:var(--fs-xs); }
+.agenda-reading li > button:hover b { text-decoration:underline; text-underline-offset:3px; }
+.agenda-reading li > button:hover .cover { border-color:var(--border-strong); }
+/* 空着的时候不摆一排灰格子，就一句话加一个去处 */
+.agenda-reading--empty .empty { padding:24px 0; }
+
 
 
 .overview-empty { margin:14px 0; color:var(--text-3); font-size:var(--fs-sm); line-height:1.8; }
@@ -279,7 +292,6 @@
 .overview-capture textarea:focus-visible { outline:0; }
 @media(max-width:1100px) {
   .workspace-overview,.workspace-library { padding:24px; }
-  .overview-columns { gap:28px; grid-template-columns:minmax(0,1.3fr) minmax(230px,1fr); }
   .reader-columns.with-ai { grid-template-columns:minmax(0,1fr) minmax(340px,.9fr); }
   .reader-columns.with-ai .reader-document { padding:25px; }
 }
@@ -289,7 +301,6 @@
   .overview-heading h1 { font-size:21px; }
   .overview-heading p { line-height:1.8; }
   .overview-heading>.btn,.overview-heading>.row-actions { font-size:12px; }
-  .overview-columns { grid-template-columns:1fr; gap:24px; }
   .overview-main { gap:22px; }
   .overview-capture__foot { align-items:flex-start; }
   .overview-saved>span:first-child { flex:1 1 100%; }
@@ -304,6 +315,7 @@
      和标题左缘对齐。阶段 pill 留在第一行——它是这一行的主语。 */
   .agenda-rows .row-head { flex-wrap:wrap; gap:8px 10px; }
   .agenda-rows .row-meta { flex:1 1 100%; padding-left:2px; }
+  .agenda-reading ul { grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:14px 12px; }
   .agenda-row__acts { opacity:1; }
   .agenda-hand > header { align-items:flex-start; flex-direction:column; gap:8px; }
   .library-browse-links { gap:2px; margin-bottom:18px; }
