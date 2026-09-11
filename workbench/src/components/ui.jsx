@@ -580,13 +580,27 @@ export function ErrorNote({ error, what, onRetry }) {
   );
 }
 
-export function Empty({ icon: Icon = IconSearch, children }) {
+/**
+ * 空态。
+ *
+ * ⚠️ **一个空态至少要回答两件事：这儿本来会有什么、下一步点哪儿。**
+ * 上一版只能放一句话（没有 `action`），于是全应用的首启空态一律是「一句灰字」，
+ * 第二件事留给用户猜。首启空态是绝大多数人第一次见到这个产品的样子。
+ *
+ * ⚠️ **筛选空态和首启空态不是一回事。** 筛选空态该给的是「清掉筛选」，
+ * 首启空态该给的是「开始第一件」。别把两者写成同一句话。
+ *
+ * ⚠️ **不要在文案里用位置指路**（「点右上角」）：窄屏上它直接是错的，
+ * 而且一个空态如果必须描述按钮在哪儿，那颗按钮就该长在空态里——也就是放进 `action`。
+ */
+export function Empty({ icon: Icon = IconSearch, children, action }) {
   return (
     <div className="empty">
       <div className="empty-icon">
         <Icon aria-hidden="true" stroke={1.6} />
       </div>
       {children}
+      {action ? <div className="empty-acts">{action}</div> : null}
     </div>
   );
 }

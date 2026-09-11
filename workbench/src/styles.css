@@ -2174,6 +2174,10 @@ svg[data-tone] { color: var(--tone); }
 .empty { text-align: center; color: var(--text-3); padding: 40px 16px; max-width: 56ch; margin-inline: auto; }
 .empty-icon { color: var(--accent-soft); margin-bottom: 10px; }
 .empty-icon svg { width: 26px; height: 26px; }
+/* 空态里那颗「下一步」。⚠️ **这条原来长在 `intelligence-feed.css` 里**，
+   而类名是通用的——任何没 import 情报那个 CSS 的页面用 `Empty action`
+   都会渲染出一坨没排版的按钮，而且不报错。它属于共用组件，所以在这儿。 */
+.empty-acts { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--border-strong); }
 .dot-ok { background: var(--ok); }

@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import {openWorkspace} from "../server/storage/workspace.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
-import {createResearch,quickNote,getResearch} from "../server/domain/research.mjs";
-import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda,HOME_STAGE_ORDER,TOPIC_STAGE} from "../server/domain/workspace-experience.mjs";
+import {createResearch,quickNote,getResearch,trashResearch,restoreResearch} from "../server/domain/research.mjs";
+import {feedPreferences,saveFeedPreferences} from "../server/domain/intelligence-feed.mjs";
+import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda,workspaceSetup,HOME_STAGE_ORDER,TOPIC_STAGE} from "../server/domain/workspace-experience.mjs";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-experience-"));let w;
 try {
  w=await openWorkspace({xenhoHome:path.join(root,"Xenho")});
@@ -101,6 +102,40 @@ try {
   const withQueue=workspaceAgenda(w).waiting.find(entry=>entry.key==="wiki");
   assert.equal(withQueue.count,1,"AI 提的候选要出现在「在等你决定」里");
   assert.equal(withQueue.view,"entries");
+ }
+
+ // ── 首启那三步：完成与否只看真实数据 ──
+ {
+  // 这个工作区里已经有 capture 和 research 了（上面建的），关注方向还没自己设过
+  assert.equal(feedPreferences(w).customized,false,"默认的三个方向不算「自己设过」");
+  assert.ok(feedPreferences(w).directions.length>0,"没设过也仍然给默认方向——所以不能用「空不空」判断");
+  // 上面那条 capture 已经被软删了，所以这会儿它是未完成——正好用来看它怎么翻过来
+  let setup=workspaceSetup(w);
+  assert.deepEqual(setup.steps.map(s=>[s.key,s.done]),[["directions",false],["capture",false],["research",true]]);
+  assert.equal(setup.done,false);
+  for(const step of setup.steps)assert.ok(step.title&&step.why&&step.action,`每一步都要说清是什么、为什么、点什么：${step.key}`);
+  // ⚠️ 「记下第一个疑问」那一条**不跳页**（那一行输入框就在首页顶上），所以它没有 view
+  assert.equal(setup.steps.find(s=>s.key==="capture").view,"");
+  for(const step of setup.steps.filter(s=>s.key!=="capture"))assert.ok(step.view,`${step.key} 要有一个去处`);
+
+  quickNote(w,{text:"存一条新的灵感，看那一步翻过来"});
+  assert.equal(workspaceSetup(w).steps.find(s=>s.key==="capture").done,true,"存完之后那一条就勾上了");
+
+  // 存过之后第一条才勾上，整块才收起来
+  saveFeedPreferences(w,{directions:["本地优先应用","写作系统"]});
+  setup=workspaceSetup(w);
+  assert.equal(setup.steps.find(s=>s.key==="directions").done,true);
+  assert.equal(setup.done,true,"三条都满足之后整块不再出现");
+  assert.equal(workspaceAgenda(w).setup.done,true,"首页那一个请求里就带着它");
+
+  // ⚠️ **删掉数据，引导要诚实地回来。** 这是「只看真实数据」的代价，也是它的价值：
+  // 勾上了就一定是真配好了。
+  const throwaway=createResearch(w,{question:"临时问题"});
+  for(const row of w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL").all())trashResearch(w,row.id);
+  assert.equal(workspaceSetup(w).steps.find(s=>s.key==="research").done,false,"选题都回收之后那一条要回到未完成");
+  assert.equal(workspaceSetup(w).done,false);
+  restoreResearch(w,research.id);restoreResearch(w,throwaway.id);
+  assert.equal(workspaceSetup(w).done,true,"拿回来之后又完成了");
  }
 
  console.log("workspace experience: true activity, validated positions, real wiki matching, persisted AI summary, quote provenance, stale guard and cache passed");

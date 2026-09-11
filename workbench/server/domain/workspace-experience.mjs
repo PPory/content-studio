@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { libraryItem, getResearch, recentWork } from "./research.mjs";
 import { projectDto } from "../workspace/workspace-view.mjs";
-import { intelligenceFeedSummary } from "./intelligence-feed.mjs";
+import { intelligenceFeedSummary, feedPreferences } from "./intelligence-feed.mjs";
 import { WIKI_REVIEW_ACTION_SQL } from "./wiki-pages.mjs";
 import { countWords } from "../../src/lib/reading.js";
 import { UNTITLED } from "./values.mjs";
@@ -246,5 +246,50 @@ export function workspaceAgenda(w) {
     { key: "briefs", count: (feed.todayUnread || 0) + (feed.earlierUnread || 0), unit: "条", text: "精选还没读", view: "intel", state: "" },
   ].filter((entry) => entry.count > 0);
 
-  return { resume, waiting, stages, inHand, reading: workspaceActivity(w).reading };
+  return { resume, waiting, stages, inHand, reading: workspaceActivity(w).reading, setup: workspaceSetup(w) };
+}
+
+/**
+ * 首启那三步。
+ *
+ * ⚠️ **完成与否只看真实数据，不记「我点过了」。** 一个会说谎的进度条比没有进度条更坏：
+ * 勾上了但其实没配好，你会以为下一步跑不起来是产品的问题。代价是删掉数据之后引导会回来
+ * ——那是**诚实**，不是 bug。
+ *
+ * ⚠️ **第一条不能用「关注方向是不是空的」判断**：`feedPreferences` 没有那一行时会返回
+ * 三个默认方向，所以永远非空（情报页那颗按钮就是这么挂掉的）。看 `customized`。
+ *
+ * ⚠️ 三条按**流水线顺序**排：让情报知道你关心什么 → 记下第一个疑问 → 展开成选题。
+ * 不按「哪条最容易做完」排——那样第一屏教的就不是这个产品怎么转。
+ *
+ * ⚠️ **不碰 `runChecks`。** 那是设置页的自检（要 `env`、会打网络）。首启这三条只看本地
+ * 数据，所以它可以跟着首页那一个请求一起回来，不额外发请求、也不会因为断网而假报未完成。
+ */
+export function workspaceSetup(w) {
+  const count = (sql) => w.db.prepare(sql).get().n;
+  const steps = [
+    {
+      key: "directions",
+      title: "让情报知道你关心什么",
+      why: "没有关注方向，今日精选只能按默认的三条帮你筛",
+      action: "选方向", view: "intel-settings", state: "",
+      done: feedPreferences(w).customized,
+    },
+    {
+      key: "capture",
+      title: "记下第一个疑问",
+      why: "不用起标题；存完会自动找相关 Wiki",
+      // ⚠️ 这一条**不跳页**：那一行输入框就在首页顶上，按钮只负责把焦点放过去。
+      action: "写下一条", view: "", state: "",
+      done: count("SELECT COUNT(*) n FROM captures c JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL") > 0,
+    },
+    {
+      key: "research",
+      title: "把一个疑问展开成选题",
+      why: "资料、讨论、初稿都留在同一个空间",
+      action: "新建选题", view: "research", state: "",
+      done: count("SELECT COUNT(*) n FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL") > 0,
+    },
+  ];
+  return { done: steps.every((step) => step.done), steps };
 }

@@ -145,7 +145,6 @@
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-md);
   box-shadow: var(--shadow-sm); font-size: var(--fs-sm);
 }
-.empty-acts { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
 
 /* ---------- peek 面板 ---------- */
 /* 三段：固定的上下文 → 滚动的正文 → 固定的动作条（同 `SideRail.jsx`）。

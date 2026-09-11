@@ -14,7 +14,15 @@ function hostOf(url){try{return new URL(url).hostname.toLowerCase().replace(/^ww
 export function blockedIntelligenceSources(w){return w.db.prepare('SELECT host,created_at createdAt FROM intel_blocked_sources ORDER BY created_at DESC').all();}
 export function isBlockedIntelligenceSource(w,url){const host=hostOf(url);return blockedIntelligenceSources(w).some(b=>host===b.host||host.endsWith('.'+b.host));}
 export function blockIntelligenceSource(w,input){object(input);const host=text(input.host,253,true).toLowerCase().replace(/^www\./,'');if(!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)||typeof input.blocked!=='boolean')throw bad('来源域名或屏蔽状态无效');if(input.blocked)w.db.prepare('INSERT OR IGNORE INTO intel_blocked_sources(host,created_at) VALUES(?,?)').run(host,stamp());else w.db.prepare('DELETE FROM intel_blocked_sources WHERE host=?').run(host);return blockedIntelligenceSources(w);}
-export function feedPreferences(w){const r=w.db.prepare('SELECT data_json FROM intel_feed_preferences WHERE id=1').get();return {nativeSocialEnabled:false,...(r?JSON.parse(r.data_json):{directions:defaults}),pilotOnly:true};}
+/**
+ * 关注方向等偏好。
+ *
+ * ⚠️ **`customized` 才是「你自己设过吗」。** 没有那一行时这个函数返回三个**默认方向**，
+ * 所以 `directions` **永远非空**——拿 `!directions.length` 当「还没设过」的判断一定是死的。
+ * 情报页空态里那颗「设置关注方向」就是这么挂掉的（条件永不成立），
+ * 于是文案只能退而写「点右上角」。首页那张开局卡的第一条同样靠这个字段。
+ */
+export function feedPreferences(w){const r=w.db.prepare('SELECT data_json FROM intel_feed_preferences WHERE id=1').get();return {nativeSocialEnabled:false,...(r?JSON.parse(r.data_json):{directions:defaults}),customized:Boolean(r),pilotOnly:true};}
 export function saveFeedPreferences(w,input){object(input);if(input.nativeSocialEnabled!==undefined&&typeof input.nativeSocialEnabled!=='boolean')throw bad('原生采集开关无效');if(!Array.isArray(input.directions)||!input.directions.length||input.directions.length>8)throw bad('请填写1到8个关注方向');const directions=[...new Set(input.directions.map(d=>text(d,500,true)))];w.db.prepare('INSERT INTO intel_feed_preferences(id,data_json,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at').run(JSON.stringify({directions,nativeSocialEnabled:input.nativeSocialEnabled??feedPreferences(w).nativeSocialEnabled}),stamp());return feedPreferences(w);}
 /**
  * 「这一条还没看」是什么意思——**成对定义，改一个必须改另一个**。
