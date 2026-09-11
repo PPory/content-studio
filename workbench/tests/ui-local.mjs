@@ -185,8 +185,9 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${PORT}/#/today`);
-  // 首页不再有那句 slogan；这个工作区是新的，所以等的是区块本身，不是某一行
-  await page.getByRole("heading", { name: "在手上", exact: true }).waitFor();
+  // 首页不再有那句 slogan；这个工作区是新的，所以等的是那张开局卡
+  await page.getByRole("heading", { name: "先把工作台跑起来", exact: true }).waitFor();
+
   check("首页显示最近工作而非四条处理队列", await page.getByRole("region", { name: "四条链的下一步" }).count() === 0);
   check("侧栏恢复知识目录", await page.locator(".nav").getByRole("button", { name: "知识", exact: true }).count() === 1);
 

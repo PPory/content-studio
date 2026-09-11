@@ -233,9 +233,14 @@ export function Entries({ onGo, focusBookId = "" }) {
         /* ⚠️ 这一页唯一解释自己的地方，页头那句说明撤到了这里。
            用 `Empty` 不用 `Note`：`Note` 默认是 warn 语气（带感叹号图标），
            而「还没开始」不是警告——空态该说的是怎么开始。 */
-        <Empty icon={IconNotebook}>
+        /* ⚠️ 原来那句写着「先从**侧栏的**「来源」挑一份资料」——位置指路。
+           那颗按钮该长在空态里，于是这句话也不用再描述它在哪儿了。 */
+        <Empty
+          icon={IconNotebook}
+          action={<button type="button" className="btn btn-sm" onClick={() => onGo?.("sources")}>去挑一份来源</button>}
+        >
           这里不是原文仓库，而是 AI 根据你读过的资料持续维护的当前认识。
-          还没有 Wiki 页面——先从侧栏的「来源」挑一份资料开始编译，
+          还没有 Wiki 页面——挑一份读过的资料开始编译，
           一次编译会生成来源资料卡，并更新所有相关知识页面。
         </Empty>
       ) : (

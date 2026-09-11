@@ -296,13 +296,12 @@ export function IntelligenceFeed({ view, state, onGo }) {
         {!brief ? (
           detailError ? (
             <section className="brief-detail-fallback">
-              <Empty icon={IconRadar2}>
+              <Empty icon={IconRadar2} action={<>
+                <button type="button" className="btn" disabled={Boolean(busy)} onClick={retryDetail}>重试打开</button>
+                <button type="button" className="btn" onClick={() => onGo("intel")}>返回精选</button>
+              </>}>
                 <h2>这条解读暂时无法打开</h2>
                 <p>{detailError}</p>
-                <div className="empty-acts">
-                  <button type="button" className="btn" disabled={Boolean(busy)} onClick={retryDetail}>重试打开</button>
-                  <button type="button" className="btn" onClick={() => onGo("intel")}>返回精选</button>
-                </div>
               </Empty>
             </section>
           ) : (
@@ -469,7 +468,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
         }
         action={
           <>
-            <span className="view-head__count brief-head-count">{items.length} 条</span>
+            {/* ⚠️ 0 条就不画这一格。它是给「这一档有多少」用的，
+                一条都没有时它只是在宣布这件事——而空态已经把该说的说完了。 */}
+            {items.length ? <span className="view-head__count brief-head-count">{items.length} 条</span> : null}
             {/* 窄屏只留图标（文字由 CSS 收起来）。`aria-label` always 在，
                 所以可访问名不会跟着屏幕宽度变。 */}
             <button type="button" className="btn brief-head-settings" aria-label="关注方向设置" onClick={() => setSettingsOpen(true)}>
@@ -563,19 +564,47 @@ export function IntelligenceFeed({ view, state, onGo }) {
           <div className={`intel-feed__body ${peekId ? "has-peek" : ""}`}>
             <div className="intel-feed__list">
               {!items.length ? (
-                <Empty icon={IconRadar2}>
+                /**
+                  * ⚠️ **这个空态的动作原来是死的。** 条件写的是
+                  * `!data.preferences.directions?.length`，而 `feedPreferences` 在没有那一行时
+                  * 会返回三个**默认方向**——`directions` 永远非空，所以那颗按钮从没渲染过。
+                  * 那也正是文案不得不写「**点右上角**开始一次试用」的原因：
+                  * 就地没有按钮，只能描述别处那一颗在哪儿。
+                  *
+                  * 现在看 `preferences.customized`（那一行存不存在），并且**把动作放进空态里**
+                  * ——一个空态如果必须描述按钮在哪儿，那颗按钮就该长在空态里。
+                  */
+                <Empty
+                  icon={IconRadar2}
+                  action={tab === "today" && !data.activeRuns.length ? (
+                    <>
+                      {data.preferences.customized ? null : (
+                        <button type="button" className="btn" onClick={() => setSettingsOpen(true)}>先选关注方向</button>
+                      )}
+                      <button
+                        type="button"
+                        className={data.preferences.customized ? "btn btn-primary" : "btn"}
+                        disabled={Boolean(busy)}
+                        onClick={() => action("refresh", async () => {
+                          const result = await api.intelligenceRefreshFeed();
+                          await load();
+                          return result;
+                        }, "已开始整理这一批精选")}
+                      >
+                        {busy === "refresh" ? "正在整理…" : "获取第一批精选"}
+                      </button>
+                    </>
+                  ) : null}
+                >
                   <h2>{tab === "saved" ? "还没有收藏" : tab === "dismissed" ? "还没有忽略过任何一条" : tab === "unread" ? "未读已经看完了" : data.activeRuns.length ? "这一批正在整理" : "从第一批精选开始"}</h2>
                   <p>
                     {tab === "today"
-                      ? "根据关注方向阅读相关资料，留下可靠的信息和值得观察的线索。点右上角开始一次试用。"
+                      ? data.preferences.customized
+                        ? "根据关注方向阅读相关资料，留下可靠的信息和值得观察的线索。"
+                        : "还没设过关注方向，现在会按默认的三条来筛。先选方向，筛出来的东西会准得多。"
                       : tab === "dismissed" ? "按过「不感兴趣」的会留在这里，随时可以恢复推荐。"
                       : "有价值的内容可以留着慢慢看。"}
                   </p>
-                  {!data.preferences.directions?.length ? (
-                    <div className="empty-acts">
-                      <button type="button" className="btn" onClick={() => setSettingsOpen(true)}>设置关注方向</button>
-                    </div>
-                  ) : null}
                 </Empty>
               ) : null}
 

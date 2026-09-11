@@ -117,7 +117,14 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             </div>
           </div>
           {!projects.length ? (
-            <Empty icon={IconFileText}>写下第一句话就可以开始，不必先定选题或填写计划。</Empty>
+            /* ⚠️ **首启空态要带一颗能点的**：只有一句灰字的话「下一步点哪儿」
+               还是留给用户猜。和下面那个「这一档空着」的筛选空态不是一回事。 */
+            <Empty
+              icon={IconFileText}
+              action={workerReady ? <NewContentButton label="写第一篇" className="btn btn-sm" onGo={onGo} onChanged={onChanged} /> : null}
+            >
+              写下第一句话就可以开始，不必先定选题或填写计划。
+            </Empty>
           ) : shown.length ? (
             <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
           ) : (

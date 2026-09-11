@@ -44,9 +44,6 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   const w=await server.xenhoWorkspace;
-  const wikiId=createUlid(),stamp=new Date().toISOString();
-  w.repository.createEntity({id:wikiId,type:"wiki_page"});
-  w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",("# Harness 与系统思维\n\n" + Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n")),stamp,stamp);
   // ── 首启：全新工作区上首页是一张三步开局卡，不是一屏空白 ──
   await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"先把工作台跑起来",exact:true}).waitFor();
@@ -80,6 +77,30 @@ try {
     page.url().includes("#/today")&&await page.evaluate(()=>document.activeElement?.id==="home-thought"));
 
   check("首页概览与最近阅读存在",true);
+
+  // ── 首启空态：每一页都得有一颗能点的，而且不许用位置指路 ──
+  // ⚠️ 只有一句灰字的空态把「下一步点哪儿」留给用户猜；而「点右上角」这种指路
+  // 在窄屏上直接是错的——一个空态如果必须描述按钮在哪儿，那颗按钮就该长在空态里。
+  for (const [name,hash] of [["创作","content"],["合集","series"],["书架","shelf"],["Wiki","entries"],["今日精选","intel"]]) {
+    await page.goto(`${base}/#/${hash}`);
+    await page.locator(".empty").first().waitFor();
+    const acts=await page.locator(".empty-acts button, .empty-acts .btn").count();
+    const text=await page.locator(".empty").first().innerText();
+    check(`${name} 的首启空态带一颗能点的`,acts>0,`${name}：${acts} 颗`);
+    check(`${name} 的首启空态不用位置指路`,!/右上角|左上角|右下角|侧栏的/.test(text),text);
+  }
+  // 情报那颗「设置关注方向」以前因为判断写错而永不渲染（默认方向让 directions 永远非空）
+  await page.goto(`${base}/#/intel`);
+  await page.locator(".empty").first().waitFor();
+  check("没设过关注方向时那颗按钮真的出现了",await page.getByRole("button",{name:"先选关注方向",exact:true}).count()===1);
+
+  // 回首页，下面接着走原来的流程（记一条想法 → Wiki 关联 → 带着这个角度讨论）
+  await page.goto(`${base}/#/today`);
+  await page.getByRole("heading",{name:"先把工作台跑起来",exact:true}).waitFor();
+
+  const wikiId=createUlid(),stamp=new Date().toISOString();
+  w.repository.createEntity({id:wikiId,type:"wiki_page"});
+  w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",("# Harness 与系统思维\n\n" + Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n")),stamp,stamp);
   await page.getByLabel("记下灵感",{exact:true}).fill("为什么 harness 的上下文很重要？");
   await page.getByRole("button",{name:"留下这条想法",exact:true}).click();
   await page.getByRole("button",{name:/发现 .* 条 Wiki 关联/}).click();

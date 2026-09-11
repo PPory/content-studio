@@ -84,7 +84,10 @@ export function Series({ onGo, onChanged }) {
       {loading && !result ? <Loading rows={3} /> : null}
       {/* 说明句只在这儿出现：第一次来的人需要「合集是什么」，第一百次不需要 */}
       {result && !items.length ? (
-        <Empty icon={IconBook}>
+        <Empty
+          icon={IconBook}
+          action={<button type="button" className="btn btn-sm" onClick={() => setCreating(true)}>新建合集</button>}
+        >
           合集把同一系列的文章收在一起——写教程或知识库时，它就是那本书的目录。
           建一个，再把已有文章放进去，或者直接在合集里开始写第一篇。
         </Empty>

@@ -567,7 +567,18 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
                 </div>
               </>
             ) : (
-              <Empty icon={IconBooks}>{query ? `没有匹配「${query}」的书` : "书架还是空的，先导入一本"}</Empty>
+              /* ⚠️ 两种空态分开：**筛选空态**该给「清掉搜索」，**首启空态**该给「导入一本」。
+                 上一版两句挤在一个三元里，而首启那一句只是一句灰字。
+                 导入那颗走共用的 `ShelfActions`（`variant="buttons"`），不在这儿再拼一份。 */
+              query ? (
+                <Empty icon={IconBooks} action={<button type="button" className="btn btn-sm" onClick={() => setQuery("")}>清空搜索</button>}>
+                  没有匹配「{query}」的书
+                </Empty>
+              ) : (
+                <Empty icon={IconBooks} action={<ShelfActions onDone={reload} variant="buttons" />}>
+                  书架还是空的。导入 Markdown、EPUB 或 PDF，它会被拆成章节，读到哪儿都记着。
+                </Empty>
+              )
             )}
           </section>
         </>

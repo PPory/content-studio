@@ -620,7 +620,8 @@ export function Studio({ sourceKey, state, onState, onGo, onIntake, onChanged, r
         // 条数挂在库名旁边。**下面不再画第二个写着同一个库名的小标题**——
         // 页头刚说完「选题库」、正文顶上再来一个「TOPICS / 选题库 1 条」，
         // 同一个名字一屏出现两次，中间只隔一行描述
-        count={list ? `${list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条` : ""}
+        /* 0 条不画这一格——空态已经把该说的说完了（同 `Today.jsx` 那条） */
+        count={list?.items.length ? `${list.total ?? `${list.items.length}${list.nextCursor ? "+" : ""}`} 条` : ""}
         /**
          * ⚠️ **有筛选条的库，那句说明不进页头。**
          *
