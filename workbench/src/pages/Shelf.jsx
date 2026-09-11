@@ -56,6 +56,9 @@ const KIND_HINTS = {
  * 和每本书那个「藏书 / 资料」不是一回事：后者管正文能不能改（引用可信度），
  * 一门课同样是只读的。两个维度正交，不要合并。
  */
+/** 一章的文档 id。`bookDto` 给的是 `file`；`path` 是 `bookdoc:<同一个 id>`，两条都兜住。 */
+const chapterDocId = (entry) => entry?.file || String(entry?.path || "").replace(/^bookdoc:/, "") || "";
+
 export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = false }) {
   const [list, setList] = useState(null);
   const [listError, setListError] = useState(null);
@@ -288,17 +291,52 @@ export function Shelf({ onIntake, state = "", sourceKinds = null, catalogOnly = 
   );
 
 
-  // 进度：滚一下就记一次会把 localStorage 写爆，节流到 1 秒
+  /**
+   * 进度记两处，**分工不一样，谁也不能删**：
+   *
+   * - `saveReading`（localStorage）负责**这台机器上续读到哪个字**。
+   *   `resumeEntry` 要靠它存的 `docPath` 才能还原到具体那一章那个位置。
+   * - `api.recordActivity`（`workspace_activity`）负责**跨设备、进备份、
+   *   让首页那一栏看得见你在读什么**。在这之前书进不了这张表，所以首页
+   *   「最近阅读」只可能是 Wiki 和素材——那一栏没有封面就是这么来的。
+   *
+   * ⚠️ **两种节流不能用同一个数。** localStorage 写一次几乎免费，1 秒一次没问题；
+   * 而每秒打一个 HTTP PUT 是另一回事。服务端那一笔按
+   * `components/LibraryBrowser.jsx` 那套来：滚动时 debounce，**离开时 flush 一次**
+   * ——不 flush 的话，「读到 44%」永远差最后那一段。
+   */
   const lastSave = useRef(0);
+  const activityTimer = useRef(null);
+  const pendingActivity = useRef(null);
+  const flushActivity = useCallback(() => {
+    clearTimeout(activityTimer.current);
+    const pending = pendingActivity.current;
+    if (!pending) return;
+    pendingActivity.current = null;
+    // 记账失败不能影响阅读：这一笔只是为了别处显示得准，读书本身不依赖它。
+    api.recordActivity("book", pending.id, { mode: "read", position: pending.position })
+      .catch((err) => console.warn("阅读进度没记到工作区（本机续读不受影响）:", err.message));
+  }, []);
+  useEffect(() => flushActivity, [flushActivity]);
+
   const onProgress = useCallback(
     ({ progress, scrollTop }) => {
       if (!reading || !book) return;
       const now = Date.now();
-      if (now - lastSave.current < 1000) return;
-      lastSave.current = now;
-      saveReading(book.dir, { docPath: reading.entry.path, title: reading.entry.title, scrollTop, progress });
+      if (now - lastSave.current >= 1000) {
+        lastSave.current = now;
+        saveReading(book.dir, { docPath: reading.entry.path, title: reading.entry.title, scrollTop, progress });
+      }
+      // `dir` 是 `book:<entityId>`，服务端要的是那个 id
+      pendingActivity.current = {
+        id: String(book.dir || "").replace(/^book:/, ""),
+        // 章节的文档 id：`bookDto` 把它放在 `file`，`path` 是 `bookdoc:<同一个 id>`
+        position: { scrollTop, progress, ...(chapterDocId(reading.entry) ? { docId: chapterDocId(reading.entry) } : {}) },
+      };
+      clearTimeout(activityTimer.current);
+      activityTimer.current = setTimeout(flushActivity, 2500);
     },
-    [reading, book]
+    [reading, book, flushActivity]
   );
 
   // ---- 批注 / AI（和内容工作台同一套，差异全在 SHELF 适配器里） ----
