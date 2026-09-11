@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {openWorkspace} from "../server/storage/workspace.mjs";
+import {createBookRecord} from "../server/routes/books-local.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
 import {createResearch,quickNote,getResearch,trashResearch,restoreResearch} from "../server/domain/research.mjs";
 import {feedPreferences,saveFeedPreferences} from "../server/domain/intelligence-feed.mjs";
@@ -102,6 +103,41 @@ try {
   const withQueue=workspaceAgenda(w).waiting.find(entry=>entry.key==="wiki");
   assert.equal(withQueue.count,1,"AI 提的候选要出现在「在等你决定」里");
   assert.equal(withQueue.view,"entries");
+ }
+
+ // ── 书能进「最近阅读」，而且带封面和读到第几章 ──
+ //
+ // ⚠️ 这一段钉的是**一个结构性的洞**：在这之前白名单里没有 `book`，所以书进不了
+ // `workspace_activity`——首页那一栏只可能是 Wiki 和素材，于是永远没有封面可画。
+ {
+  const withCover=await createBookRecord(w,{title:"本地优先应用设计",kind:"藏书",sourceKind:"文章",
+   coverAssetId:(await w.assets.importBuffer({bytes:Buffer.from("89504e470d0a1a0a","hex"),type:"image",originalName:"cover.png"})).id,
+   chapters:[{title:"为什么本地优先",text:"# 为什么本地优先\n\n数据放在本机。"},{title:"同步的代价",text:"# 同步的代价\n\n冲突是产品问题。"}]});
+  const plain=await createBookRecord(w,{title:"手建的空书",kind:"资料",sourceKind:"文章",chapters:[{title:"只有一章",text:"# 只有一章\n\n正文。"}]});
+  const chapters=w.db.prepare("SELECT id,title,document_order AS at FROM book_documents WHERE book_id=? ORDER BY document_order").all(withCover.id);
+
+  recordActivity(w,"book",withCover.id,{mode:"read",position:{progress:0.44,scrollTop:120,docId:chapters[1].id}});
+  recordActivity(w,"book",plain.id,{mode:"read",position:{progress:0.1}});
+  const reading=workspaceActivity(w).reading;
+  const cover=reading.find(x=>x.id===withCover.id);
+  assert.ok(cover,"书要能出现在最近阅读里");
+  assert.match(cover.cover,/^asset:\/\//,"有封面的书要带 asset:// 地址");
+  assert.deepEqual(cover.chapter,{at:chapters[1].at,title:"同步的代价"},"要说得出读到第几章");
+  assert.deepEqual(cover.route,{view:"shelf",state:`book:${withCover.id}`},"书在书架里读，不在阅读区");
+
+  // 没有封面不是错，走 Cover 的回落分支——所以给的是空串，不是 undefined
+  assert.equal(reading.find(x=>x.id===plain.id).cover,"","没封面给空串");
+  assert.equal(reading.find(x=>x.id===plain.id).chapter,null,"没记章就不报章");
+
+  // ⚠️ 那道位置校验没有被放开：不认识的键仍然要拒
+  assert.throws(()=>recordActivity(w,"book",plain.id,{mode:"read",position:{note:"随便塞"}}),/阅读位置无效/);
+  assert.throws(()=>recordActivity(w,"book",plain.id,{mode:"read",position:{progress:2}}),/阅读位置无效/);
+  assert.throws(()=>recordActivity(w,"book",plain.id,{mode:"read",position:{docId:"x".repeat(200)}}),/文字格式无效/);
+
+  // 回收之后不该还挂在首页那一栏上（`domain.entity` 不挡 deleted_at，这一支自己挡）
+  w.db.prepare("UPDATE entities SET deleted_at=? WHERE id=?").run(new Date().toISOString(),plain.id);
+  assert.ok(!workspaceActivity(w).reading.some(x=>x.id===plain.id),"回收掉的书要从最近阅读里消失");
+  w.db.prepare("UPDATE entities SET deleted_at=NULL WHERE id=?").run(plain.id);
  }
 
  // ── 首启那三步：完成与否只看真实数据 ──

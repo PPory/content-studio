@@ -13,25 +13,71 @@ function activityItem(w,kind,id) {
  validText(kind,30);validText(id,160);
  if(kind==="research") { const r=getResearch(w,id);return {id,kind,title:r.title,excerpt:r.notes.slice(0,180),route:{view:"research",state:id}}; }
  if(kind==="project") { w.domain.entity(id,"project");const p=w.db.prepare("SELECT title FROM projects WHERE id=?").get(id);return {id,kind,title:p.title,excerpt:"",route:{view:"project",state:id}}; }
+ /**
+  * 书。
+  *
+  * ⚠️ **这一支是首页那一栏能出现封面的唯一原因。** 在它之前白名单里没有 `book`，
+  * 所以书**结构上进不了** `workspace_activity`——首页「最近阅读」只可能是 Wiki 和素材，
+  * 于是那一栏永远没有封面可画。不是没做封面，是那种东西进不来。
+  *
+  * ⚠️ **必须自己查 `deleted_at`。** `w.domain.entity(id, type)` 选了这一列
+  * 却不据此拒绝（见 `workspace-domain.mjs`），回收掉的书照样通过。
+  * wiki / source 那几支是靠 `libraryItem` 挡的；这一支没有那层，所以在 SQL 里挡。
+  * 查不到就抛「书不存在」，交给 `workspaceActivity` 那个 `/不存在/` 的 flatMap 滤掉
+  * ——不这么写的表现是：回收一本书之后首页那一栏还挂着它，点进去打不开。
+  */
+ if(kind==="book") {
+  const row=w.db.prepare("SELECT b.title,b.metadata_json AS metadata FROM books b JOIN entities e ON e.id=b.id AND e.deleted_at IS NULL WHERE b.id=?").get(id);
+  if(!row) throw fail("书不存在",404);
+  let coverAssetId="";
+  try { coverAssetId=JSON.parse(row.metadata)?.coverAssetId||""; } catch { coverAssetId=""; }
+  // 封面写法和 `routes/books-local.mjs` 的 `bookDto` 一致；没有就给空串，
+  // 由 `components/Cover.jsx` 退成「书本图标 + 书名」。
+  return {id,kind,title:row.title,excerpt:"",cover:coverAssetId?`asset://${coverAssetId}`:"",
+   // 书在**书架**里读，不在阅读区；`Shelf` 的 `state` 就是 `dir`（`book:<id>`）
+   route:{view:"shelf",state:`book:${id}`}};
+ }
  if(!["wiki","source","capture","material","seed"].includes(kind)) throw fail("资料类型无效");
  const item=libraryItem(w,kind,id);return {id,kind,title:item.title,excerpt:item.body.slice(0,180),route:{view:"library",state:`${kind}:${id}`}};
+}
+
+/** 「读到第几章」。`position.docId` 指的那一章可能已经不在这本书里了（重新导入过），那就不报。 */
+function readingChapter(w,bookId,docId) {
+ if(!docId) return null;
+ const row=w.db.prepare("SELECT title,document_order AS at FROM book_documents WHERE id=? AND book_id=?").get(docId,bookId);
+ return row ? {at:row.at,title:row.title||""} : null;
 }
 export function recordActivity(w,kind,id,input={}) {
  const item=activityItem(w,kind,id);
  if(!input || typeof input!=="object" || Array.isArray(input) || Object.keys(input).some(k=>!["mode","position"].includes(k))) throw fail("活动格式无效");
  const mode=input.mode;
+ // 「读过」只对 research / project 没意义（那是在写，不是在读）；书和 Wiki 都走 read
  if(!["open","read"].includes(mode)||mode==="read"&&["research","project"].includes(kind)) throw fail("活动类型无效");
  const old=w.db.prepare("SELECT position_json FROM workspace_activity WHERE entity_id=? AND mode=?").get(id,mode);
  const position=input.position??JSON.parse(old?.position_json||"{}");
- if(!position||typeof position!=="object"||Array.isArray(position)||Object.keys(position).some(k=>!["scrollTop","progress"].includes(k))) throw fail("阅读位置无效");
- for(const [key,value] of Object.entries(position)) if(!Number.isFinite(value)||value<0||value>(key==="progress"?1:10000000)) throw fail("阅读位置无效");
+ /**
+  * ⚠️ **这道校验是故意收紧的，加字段要逐个判类型，不能把它放开。**
+  * `docId` 是为了「读到第几章」：书的进度是**本章**的百分比，光有那个数字说不出
+  * 你在哪一章。它是 id 不是数字，所以不能跟着下面那个「必须是有限数字」的循环走。
+  */
+ if(!position||typeof position!=="object"||Array.isArray(position)||Object.keys(position).some(k=>!["scrollTop","progress","docId"].includes(k))) throw fail("阅读位置无效");
+ if(Object.hasOwn(position,"docId")) validText(position.docId,160);
+ for(const [key,value] of Object.entries(position)) {
+  if(key==="docId") continue;
+  if(!Number.isFinite(value)||value<0||value>(key==="progress"?1:10000000)) throw fail("阅读位置无效");
+ }
  const visitedAt=new Date().toISOString();
  w.db.prepare("INSERT INTO workspace_activity(entity_id,kind,mode,visited_at,position_json) VALUES(?,?,?,?,?) ON CONFLICT(entity_id,mode) DO UPDATE SET kind=excluded.kind,visited_at=excluded.visited_at,position_json=excluded.position_json").run(id,kind,mode,visitedAt,JSON.stringify(position));
  return {...item,visitedAt,position};
 }
 export function workspaceActivity(w) {
  const read=mode=>w.db.prepare("SELECT * FROM workspace_activity WHERE mode=? ORDER BY visited_at DESC LIMIT 100").all(mode).flatMap(row=>{
-  try {return [{...activityItem(w,row.kind,row.entity_id),visitedAt:row.visited_at,position:JSON.parse(row.position_json)}];}
+  try {
+   const position=JSON.parse(row.position_json);
+   const item=activityItem(w,row.kind,row.entity_id);
+   return [{...item,visitedAt:row.visited_at,position,
+    ...(row.kind==="book"?{chapter:readingChapter(w,row.entity_id,position.docId)}:{})}];
+  }
   catch(e){if(e.status===404||/不存在/.test(e.message))return [];throw e;}
  }).slice(0,12);
  return {opened:read("open"),reading:read("read")};
