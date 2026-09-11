@@ -59,7 +59,11 @@ try {
   assert.ok(agenda.resume,"首页第一层要有东西");
   assert.ok(HOME_STAGE_ORDER.includes(agenda.resume.stage),`resume 的阶段要在流水线上，实际 ${agenda.resume.stage}`);
   assert.equal(typeof agenda.resume.nextAction,"string");
-  assert.ok("stageReason" in agenda.resume&&Array.isArray(agenda.resume.blockers),"卡在哪儿要发出来");
+  // ⚠️ 只发 `blockers`，**不发 `stageReason`**：那句话要么和阶段 pill 说的是同一件事
+  // （「主稿已完成，可以发布」vs 待发布），要么和进展说的是同一件事（「主稿还是空的」vs
+  // 「还是空的」）——同一张卡上同一个事实两遍。
+  assert.ok(Array.isArray(agenda.resume.blockers),"卡在哪儿要发出来");
+  assert.ok(!("stageReason" in agenda.resume),"不发和 pill 或进展重复的那句话");
 
   // ⚠️ **一个字正文都不发出去**：字数在服务端数完，只发那个数。
   // 卡上也不放摘要（理由见 workspaceAgenda），于是这条能直接断言而不是靠自觉。

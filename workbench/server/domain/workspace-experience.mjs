@@ -4,6 +4,7 @@ import { projectDto } from "../workspace/workspace-view.mjs";
 import { intelligenceFeedSummary } from "./intelligence-feed.mjs";
 import { WIKI_REVIEW_ACTION_SQL } from "./wiki-pages.mjs";
 import { countWords } from "../../src/lib/reading.js";
+import { UNTITLED } from "./values.mjs";
 import { completeJson } from "../lib/model-json.mjs";
 const fail = (message,status=400) => Object.assign(new Error(message),{status});
 const hash = value => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -126,6 +127,9 @@ export const TOPIC_STAGE = "选题";
  */
 export const HOME_STAGE_ORDER = Object.freeze([TOPIC_STAGE, "策划中", "写作中", "待发布", "待复盘"]);
 
+/** 真的起过名字吗。空的和那个哨兵（`UNTITLED`）都算没起——见 `values.mjs` 那段注释。 */
+const named = (title) => { const clean = String(title || "").trim(); return Boolean(clean) && clean !== UNTITLED; };
+
 /** 一周。**一周以内的时间戳什么也没告诉你**，只是把每一行都变成日志里的一条。 */
 const STALE_DAYS = 7;
 const daysSince = (iso, now) => {
@@ -152,7 +156,7 @@ function agendaRow(w, item, now) {
     parts.push(r.projects.length ? `已带出 ${r.projects.length} 篇` : "还没写成文章");
     return { kind: "research", id: item.id, title: item.title, stage: TOPIC_STAGE,
       progress: parts.join(" · "), staleDays: stale, pinned: item.pinned,
-      openedAt: r.createdAt, hasTitle: Boolean(String(r.question || "").trim()) };
+      openedAt: r.createdAt, hasTitle: named(r.question) };
   }
   const stage = w.domain.projectStage(item.id);
   // ⚠️ 主稿被回收时它的正文不算数（`de.deleted_at`），否则字数会报一个看不见的稿子的
@@ -168,7 +172,7 @@ function agendaRow(w, item, now) {
     // ⚠️ 0 字要说「还是空的」，不说「0 字」：一个是「还没开始」，一个看着像个数字
     progress: words ? `${words.toLocaleString("zh-CN")} 字` : "还是空的",
     staleDays: stale, pinned: item.pinned, openedAt: row?.createdAt || null,
-    hasTitle: Boolean(String(item.title || "").trim()) };
+    hasTitle: named(item.title) };
 }
 
 export function workspaceAgenda(w) {
@@ -183,13 +187,21 @@ export function workspaceAgenda(w) {
     .filter((entry) => entry.count > 0);
 
   /**
-   * 第一层那张卡：排序最前的那一条。
+   * 第一层那张卡挑谁。
    *
-   * ⚠️ **取的是 `inHand` 的第一条，不是 `items` 的第一条**——已完成或已搁置的那一条
-   * 排在最前时（刚复盘完的那一篇就会），把它画成「接着写」是错的。
-   * 「系统挑错了」的解法是置顶（`api.workState`，`recentWork` 按 `pinned DESC` 排）。
+   * ⚠️ **取的是 `inHand` 里的，不是 `items` 里的**——已完成或已搁置的那一条排在最前时
+   *（刚复盘完的那一篇就会），把它画成「接着写」是错的。
+   *
+   * ⚠️ **跳过一点进展都没有的那些。** 量到过：点一次「新建内容」就会留下一个
+   * 标题是哨兵、正文是空的壳；它最新，于是永远排第一，于是首页那张卡长期是
+   *「还没起名字 / 还是空的 / 开始写」——**你没法「接着」一件还不存在的事**。
+   * 这不是替用户排优先级，是排除掉一个没有内容可续的空壳。
+   *
+   * 优先级：**置顶的 → 有进展的 → 随便第一条**（全是空壳时也得给一张，不然首页没有落点）。
+   * 「系统挑错了」的解法是置顶，`recentWork` 已经按 `pinned DESC` 排。
    */
-  const head = inHand[0] || null;
+  const started = (row) => row.progress !== "还是空的" && !/^还没写成文章$/.test(row.progress);
+  const head = inHand.find((row) => row.pinned) || inHand.find(started) || inHand[0] || null;
   /**
    * ⚠️ **卡上不放摘要。** 那张卡要回答的是「这一条现在什么状态、下一步干什么」，
    * 而摘要在这个工作台里是**正文第一行的截断**——上一版首页上量到的是
@@ -199,12 +211,19 @@ export function workspaceAgenda(w) {
    */
   const resume = head ? (() => {
     if (head.kind === "research") {
-      return { ...head, stageReason: "", blockers: [], nextAction: "继续展开", collections: [] };
+      return { ...head, blockers: [], nextAction: "继续展开", collections: [] };
     }
     const stage = w.domain.projectStage(head.id);
     const project = projectDto(w, head.id);
-    return { ...head, stageReason: stage.reason, blockers: stage.blockers,
-      nextAction: project?.nextAction || "打开这一篇",
+    /**
+     * ⚠️ **空稿子的下一步不是「写完了，去发布」。** `projectDto` 的 `nextAction`
+     * 只按阶段查表，而「写作中」既包括写了一半也包括**一个字都没有**
+     *（`deriveProjectStage` 自己分得清：reason 是「主稿还是空的」还是「主稿正在编辑」）。
+     * 那张卡上一句「还是空的」配一句「写完了，去发布」，读起来是荒谬的。
+     */
+    const empty = head.progress === "还是空的";
+    return { ...head, blockers: stage.blockers,
+      nextAction: empty && stage.stage === "写作中" ? "开始写" : project?.nextAction || "打开这一篇",
       collections: (project?.collections || []).map((c) => c.title) };
   })() : null;
 
@@ -221,7 +240,9 @@ export function workspaceAgenda(w) {
   const waiting = [
     { key: "publish", count: stageCount("待发布"), unit: "篇", text: "写完了，去发布", view: "content", state: "" },
     { key: "review", count: stageCount("待复盘"), unit: "篇", text: "发出去了，还没复盘", view: "review", state: "" },
-    { key: "wiki", count: reviewQueue, unit: "个", text: "AI 提的 Wiki 改动等你审阅", view: "entries", state: "review" },
+    // ⚠️ 措辞要让量词后面**不紧跟拉丁字母**：「1 个AI 提的…」中间会挤在一起。
+    // 「AI 提的」也省了——这一块的标题已经是「在等你决定」，而待审阅的 Wiki 改动本来就是 AI 提的。
+    { key: "wiki", count: reviewQueue, unit: "个", text: "待审阅的 Wiki 改动", view: "entries", state: "review" },
     { key: "briefs", count: (feed.todayUnread || 0) + (feed.earlierUnread || 0), unit: "条", text: "精选还没读", view: "intel", state: "" },
   ].filter((entry) => entry.count > 0);
 

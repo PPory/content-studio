@@ -30,6 +30,23 @@ export const PUBLICATION_STATUS = Object.freeze({ UNPUBLISHED: "未发布", PUBL
 export const REVIEW_STATUS = Object.freeze(["样本不足", "普通", "表现突出"]);
 export const PROJECT_STAGES = Object.freeze(["策划中", "生成中", "写作中", "待发布", "待复盘", "已完成", "已搁置", "需处理"]);
 
+/**
+ * 还没起名字的那个占位标题。
+ *
+ * ⚠️ **它是故意的**：新建内容时不拿正文第一句顶上（理由写在
+ * `src/lib/start-writing.js`——标题框里放一句四十字的判断，你得先删掉才能起名，
+ * 比空着更烦）。所以「未命名」在数据层是个**哨兵值**，不是用户写的标题。
+ *
+ * ⚠️ 认出它才能在界面上换一句有信息的说法：首页量到过一整行就写着「未命名」，
+ * 那是屏幕上信息量最低的一行。
+ *
+ * ⚠️ **这个字面量目前散在 11 处**（`routes/workspace.mjs`、`domain/project-notebook.mjs`、
+ * `src/lib/start-writing.js`、`src/lib/temporary-project.js`、`pages/ProjectWorkspace.jsx`…），
+ * 其中两处已经各写了一遍「等于它就当没起名字」的判断。这一轮只把常量立在这儿并在首页用上，
+ * 收拢其余调用点是另一件事。
+ */
+export const UNTITLED = "未命名";
+
 export const ENTRY_KINDS = Object.freeze(["concept", "product", "method", "person", "work", "stance"]);
 export const ENTRY_KIND_SET = new Set(ENTRY_KINDS);
 export const ENTRY_KIND_LABELS = Object.freeze({
