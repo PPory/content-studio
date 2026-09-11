@@ -30,6 +30,8 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 
 export const api = {
   intelligenceFeed: () => req("/api/workspace/intelligence/feed"),
+  // 首页那一行的三个数。别在首页调 intelligenceFeed——那会为了一行字搬 300 条简报正文
+  intelligenceFeedSummary: () => req("/api/workspace/intelligence/feed/summary"),
   intelligenceAngles: id => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/angles`, {}),
   intelligenceBrief: id => req(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}`),
   intelligenceFeedback: (id, body) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/feedback`, body),
@@ -66,7 +68,9 @@ export const api = {
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
   library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
   quickNote: (body) => postJson("/api/workspace/quick-notes", body),
-  recentWork: () => req("/api/workspace/recent-work?includeHidden=1"),
+  // ⚠️ 不传 includeHidden：「从首页收起」要真的收起，由服务端决定发哪些，
+  // 前端不再拿到全部再滤一遍。反悔的路是回执上那颗「撤销」。
+  recentWork: () => req("/api/workspace/recent-work"),
   workState: (kind, id, body) => req(`/api/workspace/work-state/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
   createExploration: (body) => postJson("/api/workspace/explorations", body),
   projectNotebook: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/notebook`),

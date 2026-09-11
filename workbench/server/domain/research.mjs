@@ -150,9 +150,24 @@ export function workState(w,kind,id,input) {
   w.db.prepare("INSERT INTO work_states(entity_id,pinned,hidden,position_json) VALUES(?,?,?,?) ON CONFLICT(entity_id) DO UPDATE SET pinned=excluded.pinned,hidden=excluded.hidden,position_json=excluded.position_json").run(id,Number(state.pinned),Number(state.hidden),JSON.stringify(state.position));
   return state;
 }
+/**
+ * 首页那一条「接着做」。
+ *
+ * ⚠️ **「最近打开」不是一个面板，是一个排序键。** 上一版首页把同一批对象按另一个时间
+ * 又列了一遍，于是屏幕上 15 行里只有 8 个东西（量过）。这里 join 一次
+ * `workspace_activity`（`mode='open'`），把**打开过但没改过**这件事并进排序——
+ * 那正是那个面板存在的唯一理由，并进来之后它就不需要存在了。
+ *
+ * ⚠️ `workspace_activity` 上有 `UNIQUE(entity_id, mode)`，所以这个 join 是 1:1，
+ * 不会把行数放大。`touchedAt` 必须和 `ORDER BY` 用**同一个表达式**：分别写两遍的话，
+ * 前端显示的时间和实际排序依据会各算一次，而且不会报错。
+ *
+ * `pinned` 仍然排在最前（`api.workState` 写的），`hidden` 直接不返回——
+ * 反悔的路是首页回执上那颗「撤销」，不是把隐藏的也发过去让前端再滤一遍。
+ */
 export function recentWork(w,{includeHidden=false}={}) {
-  return w.db.prepare(`SELECT a.*,coalesce(s.pinned,0) pinned,coalesce(s.hidden,0) hidden,coalesce(s.position_json,'{}') position FROM (
+  return w.db.prepare(`SELECT a.*,coalesce(s.pinned,0) pinned,coalesce(s.hidden,0) hidden,coalesce(s.position_json,'{}') position,max(a.updatedAt,coalesce(v.visited_at,a.updatedAt)) touchedAt FROM (
     SELECT r.id,'research' kind,CASE WHEN r.question='' THEN '未命名研究' ELSE r.question END title,substr(r.notes,1,240) excerpt,max(r.updated_at,coalesce((SELECT max(json_extract(message.value,'$.createdAt')) FROM ai_conversations c JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL,json_each(c.record_json,'$.messages') message WHERE (c.scope_id='research:'||r.id OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=r.id)) AND json_extract(message.value,'$.role')='user'),r.updated_at)) updatedAt FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL
     UNION ALL SELECT p.id,'project',p.title,substr(coalesce(nullif(d.body_markdown,''),json_extract(n.notes_json,'$.thought'),''),1,240),max(e.updated_at,coalesce(de.updated_at,e.updated_at),coalesce(n.updated_at,e.updated_at)) FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL LEFT JOIN project_primary_drafts pd ON pd.project_id=p.id LEFT JOIN drafts d ON d.id=pd.draft_id LEFT JOIN entities de ON de.id=d.id LEFT JOIN project_notebooks n ON n.project_id=p.id WHERE p.status!='parked' AND (d.id IS NULL OR (de.deleted_at IS NULL AND d.workflow_status NOT IN ('已发布','已弃用')))
-  ) a LEFT JOIN work_states s ON s.entity_id=a.id WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,updatedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>({...row,pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)}));
+  ) a LEFT JOIN work_states s ON s.entity_id=a.id LEFT JOIN workspace_activity v ON v.entity_id=a.id AND v.mode='open' WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,touchedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>({...row,pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)}));
 }

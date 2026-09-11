@@ -1,3 +1,4 @@
+import {intelBriefUnread} from '../server/domain/intelligence-feed.mjs';
 import {exploreIntelligenceAngles} from '../server/domain/intelligence-angles.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -47,6 +48,12 @@ try{w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});
  const capture=w.db.prepare('SELECT body_markdown,source_url FROM captures WHERE id=?').get(research.references[0].id);assert.equal(capture.body_markdown,raw);assert.equal(capture.source_url,intelligenceBrief(w,brief.id).sources[0].url);
  await assert.rejects(()=>createIntelligenceReport(w,{}, {},{completeJson:async()=>({data:{title:'虚构',body:'虚构报告',briefIds:['missing'],evidence:[]}})}),e=>e.status===400);
  const report=await createIntelligenceReport(w,{}, {},{completeJson:async(_env,request)=>{assert.ok(JSON.parse(request.user).briefs.some(b=>b.id===brief.id));return {data:{title:'本期观察',body:'## 本期变化\n\n原文介绍了上下文管理实践。[1]',briefIds:[brief.id],evidence:[{sourceId:external.id,quote:'上下文管理与反馈流程'}]}};}});assert.equal(report.coverage.days,1);assert.equal(report.coverage.requestedDays,7);assert.equal(report.evidence[0].url,external.url);assert.equal((await createIntelligenceReport(w,{}, {},{completeJson:async()=>{throw new Error('must reuse');}})).id,report.id);
+ // 首页那一行的三个数：和精选页对同一个「未读」判据，而且不搬正文。
+ const summaryRead=await call('GET','/feed/summary');assert.equal(summaryRead.status,200);
+ assert.equal(summaryRead.latestEditionDate,intelligenceFeed(w).latestEditionDate);
+ assert.equal(summaryRead.todayUnread,intelligenceFeed(w).briefs.filter(b=>intelBriefUnread(b)&&b.editionDate===summaryRead.latestEditionDate).length,'首页计数和精选页同一判据');
+ assert.equal(summaryRead.earlierUnread,intelligenceFeed(w).unreadEarlierCount);
+ assert.ok(!('briefs' in summaryRead),'摘要不返回简报本体');
  const api=await call('GET','/feed');assert.equal(api.status,200);assert.equal(api.reports.length,1);assert.ok(api.latestRun.window.start);assert.equal(api.latestRun.sourceStats.find(s=>s.provider==='web').acquisitionMethod,'public-search');assert.equal((await call('POST','/briefs/:id/feedback',{id:brief.id},{saved:false})).brief.saved,false);assert.equal((await call('POST','/merge',{}, {briefIds:[]})).status,400);
  w.db.prepare("UPDATE intel_runs SET status='done' WHERE id=?").run(run.id);const refresh=await call('POST','/feed/refresh',{},{});assert.equal(refresh.status,200);assert.equal(refresh.run.config.output,'briefs');assert.equal(refresh.run.config.frequency,'manual');assert.ok(refresh.run.config.providers.includes('x'));assert.equal(refresh.run.config.paidApproved,false);assert.equal((await call('POST','/feed/refresh',{},{})).run.id,refresh.run.id);
  const capped=saveIntelligenceBriefs(w,run.id,[make(external,{storyKey:'watch-a'}),make(external,{storyKey:'watch-b'}),make(external,{storyKey:'watch-c'})]);assert.equal(capped.saved.length,2);assert.equal(capped.rejected,1,'watch recommendations are capped per edition generation');w.close();w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});assert.equal(intelligenceBrief(w,brief.id).history.length,2);assert.equal(intelligenceFeed(w).reports[0].id,report.id);

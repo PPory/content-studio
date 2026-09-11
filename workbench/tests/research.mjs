@@ -7,6 +7,7 @@ import {Readable} from "node:stream";
 import {openWorkspace} from "../server/storage/workspace.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
 import {researchRoutes} from "../server/routes/research.mjs";
+import {recordActivity} from "../server/domain/workspace-experience.mjs";
 import {createResearch,saveResearch,getResearch,researchReference,researchConversation,researchProject,projectResearches,quickNote,libraryItems,libraryItem,workState,recentWork,listResearches,trashResearch,restoreResearch} from "../server/domain/research.mjs";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-research-"));
 let w;
@@ -78,6 +79,16 @@ try {
  workState(w,"research",r.id,{hidden:true});assert.ok(!recentWork(w).some(x=>x.id===r.id));
  assert.equal(recentWork(w,{includeHidden:true}).find(x=>x.id===r.id).position.scrollTop,345);
  workState(w,"research",r.id,{hidden:false});
+ // 「最近打开」不再是一个面板，而是排序键的另一半：只打开过、没改过的那一条也要升上来。
+ // 先建一条更新的（于是它按 updated_at 本来在前），再去「打开」一条更旧的，看后者是否越过它。
+ const fresher=createResearch(w,{question:"更新的那一条，但没有被打开过"});
+ const older=createResearch(w,{question:"更旧的那一条，但刚刚打开过"});
+ w.db.prepare("UPDATE researches SET updated_at=? WHERE id=?").run("2020-01-01T00:00:00.000Z",older.id);
+ w.db.prepare("UPDATE entities SET updated_at=? WHERE id=?").run("2020-01-01T00:00:00.000Z",older.id);
+ assert.ok(recentWork(w).findIndex(x=>x.id===fresher.id)<recentWork(w).findIndex(x=>x.id===older.id),"没打开过时旧的排在后面");
+ recordActivity(w,"research",older.id,{mode:"open"});
+ assert.ok(recentWork(w).findIndex(x=>x.id===older.id)<recentWork(w).findIndex(x=>x.id===fresher.id),"打开过之后它越过更新的那一条");
+ assert.equal(recentWork(w)[0].id,r.id,"置顶仍然压在最前面");
  assert.throws(()=>workState(w,"research",r.id,{pinned:"yes"}),e=>e.status===400);
  assert.equal((await call("PUT","/api/workspace/researches/:id",{id:r.id},{expectedVersion:1,notes:"conflict"})).status,409);
  assert.equal((await call("GET","/api/workspace/library/:kind/:id",{kind:"capture",id:item.id})).item.body,raw);
