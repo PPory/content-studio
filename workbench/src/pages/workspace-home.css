@@ -23,6 +23,8 @@
    默认一行高，打字之后才长成多行并露出提交那一条。 */
 .overview-capture {
   display:flex; align-items:flex-start; gap:9px;
+  /* 和下面那一列同一个测宽，否则输入框比它底下所有东西都宽一截 */
+  max-width:760px;
   margin:0 0 16px; padding:0 12px;
   border:1px solid var(--border-strong); border-radius:var(--r-ctl);
   background:var(--canvas); cursor:text;
@@ -62,15 +64,20 @@
    量出来 min-content 是 735px（`.row-meta` 是 `flex:none`，长 meta 撑不动），
    而上一版右边还有个窄栏、主列 track 只有 670px——于是那些行直接**压到窄栏上面**。
    1440 上 meta 短（「450 字」）所以看不出来，1920 上一眼就是重叠。 */
-.overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:26px; }
+/* ⚠️ **这一页要有正文测宽。** 量过：不加的话容器是 1216px，而「发了 1 篇」这种一句话
+   加一个右端箭头，中间会空 **906px**——屏幕上最明显的「没做完」的信号。
+   760px 是扫读一列摘要的常见测宽（Linear 的内容列、Notion 的正文都在这一档）。
+   ⚠️ 是**测宽**不是居中：`margin` 不给 auto，这一页左对齐，和其余各页的内容起点对齐。 */
+.overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:26px; max-width:760px; }
 
 /* ── 第一层（首启）：先把工作台跑起来 ──
    和「接着写」那张卡共用底色和内边距：它们占的是同一个位置、二选一出现，
    长得不一样反而会让人以为是两种东西。 */
+/* ⚠️ **不再给底色。** 有底色时它是整页唯一的实心块，于是比上面那份清单还重
+   ——而它只是个提醒。改成一道上边框分隔，重量回到提醒该有的那一档。 */
 .agenda-setup {
-  padding:16px 20px 14px;
-  border-radius:var(--r-md);
-  background:var(--canvas);
+  padding:14px 0 0;
+  border-top:1px solid var(--border);
 }
 .agenda-setup > header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
 .agenda-setup h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
@@ -93,16 +100,41 @@
 .agenda-setup li[data-done] b { color:var(--text-3); text-decoration:line-through; text-decoration-thickness:1px; }
 .agenda-setup li[data-done] small { color:var(--text-3); opacity:.7; }
 
-/* ── 承诺：「我的清单」在首页里收一档 ──
-   ⚠️ **这一块是从 `Overview.jsx` 借来的，那一页它是整个上半屏**，所以那枚进度环是
-   176px。首页上它只是五块里的一块，照原尺寸量出来要吃掉 330px，光那个环就比
-   下面三条提要加起来还高。**不改组件，只在这一页压一档**（`Overview` 那边不受影响）。 */
+/* ── 承诺：让「我的清单」说这一页的话 ──
+   ⚠️ **这一块是从 `Overview.jsx` 借来的，它带着那一页的视觉语汇**：
+   圆框图标 + `--fs-xl` 标题、实心黑的胶囊日期、176px 的仪表盘环、满宽的输入框。
+   而这一页其余几块是轻的（朴素标题 + 一道线、一行式提要、计数条）。
+   **一页上两套语言，就是「看着不像成熟产品」的那个感觉的来源。**
+   所以这儿只做一件事：把它压成和邻居同一档。**组件不动，`Overview` 那边不受影响。** */
 .workspace-overview .day-plan { margin-bottom: 0; }
-.workspace-overview .plan-body { grid-template-columns: minmax(0, 1fr) 132px; gap: 24px; }
-.workspace-overview .plan-ring__dial { width: 104px; height: 104px; }
-.workspace-overview .plan-ring { gap: 6px; }
-.workspace-overview .plan-ring__note { font-size: var(--fs-xs); }
-.workspace-overview .plan-side { align-items: flex-start; padding-top: 4px; }
+
+/* 块头和「在手上」「接着读」同一档：不要圆框图标，标题不要 --fs-xl */
+.workspace-overview .day-plan .section-head__icon { display: none; }
+.workspace-overview .day-plan .section-head h2 { margin: 0; font-size: var(--fs-base); font-weight: 600; letter-spacing: 0; }
+.workspace-overview .day-plan .section-head { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+/* 今天 / 明天走这一页的芯片语汇（描边 + 浅底），不要实心黑——
+   实心黑在这个设计里是留给「一屏唯一的主操作」的 */
+.workspace-overview .plan-day[data-on="true"] {
+  background: var(--surface); border-color: var(--border-strong); color: var(--text-1); font-weight: 600;
+}
+
+/* 环收成一个进度记号：量到过「一条任务、一枚比任务本身还大的环」。
+   ⚠️ 同时撤掉它下面那句「还剩 N 条」——环上已经写着 `0/1`，那是同一个事实两遍。 */
+.workspace-overview .plan-body { grid-template-columns: minmax(0, 1fr) 72px; gap: 18px; }
+.workspace-overview .plan-ring__dial { width: 56px; height: 56px; }
+.workspace-overview .plan-ring__label { font-size: var(--fs-sm); }
+.workspace-overview .plan-ring__note { display: none; }
+.workspace-overview .plan-side { align-items: flex-start; padding-top: 2px; }
+
+/* ⚠️ 展开态那颗 `+` 也不许是实心黑：这一页的实心黑只有页头那一颗
+   （判据：一屏只保留一个最强主操作）。展开与否用描边加深表示就够了。 */
+.workspace-overview .plan-plus[aria-expanded="true"] {
+  background: var(--surface); border-color: var(--text-1); color: var(--text-1);
+}
+
+/* 加一条：一句短任务不需要 650px 的输入框 */
+.workspace-overview .plan-add { max-width: 440px; }
 
 /* ── 三条登记行：信号 / 结果 / 续上 ──
    ⚠️ **同一种形状。** 它们性质不同（有什么新的 / 做出去的怎么样 / 现在动哪个），
@@ -118,7 +150,10 @@
 .agenda-line:hover { background:var(--surface-2); }
 /* 左边那一列定宽：三行的说明因此落在同一条竖线上，一眼看出是三条并列的提要 */
 .agenda-line__key { flex:none; width:64px; color:var(--text-3); font-size:var(--fs-xs); }
-.agenda-line__say { flex:1 1 auto; min-width:0; font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ⚠️ **`flex:0 1 auto` 不是 `1 1 auto`。** 让它长满的话，短句子后面那段空白会把箭头
+   顶到行尾去；一句「发了 1 篇」和它的箭头中间隔着几百像素，两者就不像同一行的东西了。
+   现在箭头紧跟在话后面，而整行仍然是可点区域（hover 底色照样铺满）。 */
+.agenda-line__say { flex:0 1 auto; min-width:0; font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .agenda-line__say b { font-weight:600; }
 /* 次要那半句压淡：一行里「是什么」在前、「什么状态」在后，颜色替代括号 */
 .agenda-line__say em { color:var(--text-3); font-style:normal; }
@@ -247,7 +282,7 @@
   .overview-capture__foot { align-items:flex-start; }
   .overview-saved>span:first-child { flex:1 1 100%; }
   .overview-saved>.btn { margin-left:0; }
-  .agenda-setup { padding:14px 16px 12px; }
+  .agenda-setup { padding:12px 0 0; }
   /* 窄屏上按钮换到第二行，别把「为什么」挤成一列窄字 */
   .agenda-setup li { flex-wrap:wrap; }
   .agenda-setup li > .btn { margin-left:27px; }

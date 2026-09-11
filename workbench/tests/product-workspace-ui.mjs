@@ -160,7 +160,8 @@ try {
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
   // 选题和文章现在在同一条列表里，所以按标题挑那一篇——顺便证明它真的在这条列表上
   // ⚠️ 首页不再有全量列表（它在创作页）。这一篇从「接着写」那一行进去。
-  await page.locator(".agenda-line").filter({hasText:"接着写"}).click();
+  // ⚠️ 标签是「接着做」不是「接着写」：这一条挑的可能是待发布 / 待复盘 / 一个选题
+  await page.locator(".agenda-line").filter({hasText:"接着做"}).click();
   await page.getByLabel("文章标题",{exact:true}).waitFor();
   check("首页文章回到同一选题的写作位置",page.url().includes(researchId));
   check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());

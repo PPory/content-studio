@@ -6816,11 +6816,6 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 }
 .plan-plus:hover { border-style: solid; border-color: var(--text-1); color: var(--text-1); }
 .plan-plus[aria-expanded="true"] { border-style: solid; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-/* 路径挂在这一排最右端，不再单独占一行。它是唯一说明「清单存到哪了」的地方，不能删 */
-.plan-where {
-  margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: var(--fs-xs); color: var(--text-3);
-}
 .plan-add { display: flex; gap: 8px; margin-top: 6px; }
 .plan-add input {
   flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-strong);

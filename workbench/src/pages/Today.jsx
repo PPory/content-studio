@@ -228,44 +228,6 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
             所以两者一个在块里、一个在页顶，不并排。 */}
         <DayPlan plan={plan} />
 
-        {/* ── 先把工作台跑起来 ──
-            ⚠️ **排在「今天」那份清单后面。** 清单是你自己定的承诺，永远该在最前；
-            而没配完的设置是**一个提醒**，不该压住今天要干的活。
-            ⚠️ **勾没勾上只看真实数据**（`domain/workspace-experience.mjs` 的 `workspaceSetup`），
-            不记「我点过了」——一个会说谎的进度条比没有更坏。三条全满足整块不再出现。 */}
-        {setup && !setup.done ? (
-          <section className="agenda-setup" aria-label="先把工作台跑起来">
-            <header>
-              <h2>先把工作台跑起来</h2>
-              <span className="agenda-setup__count">{setup.steps.filter((s) => s.done).length} / {setup.steps.length}</span>
-            </header>
-            <ol>
-              {setup.steps.map((step) => (
-                <li key={step.key} data-done={step.done ? "" : undefined}>
-                  {step.done
-                    ? <IconCircleCheck size={17} stroke={1.8} aria-label="已完成" />
-                    : <IconCircleDashed size={17} stroke={1.8} aria-hidden="true" />}
-                  <div>
-                    <b>{step.title}</b>
-                    <small>{step.why}</small>
-                  </div>
-                  {step.done ? null : (
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      /* ⚠️ 「记下第一个疑问」**不跳页**：那一行输入框就在这一屏顶上，
-                         按钮只把焦点放过去。跳到别处再回来是更长的一条路。 */
-                      onClick={() => (step.view ? onGo(step.view, step.state || "") : field.current?.focus())}
-                    >
-                      {step.action}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
-
         {/* ── 三条登记行：信号 / 结果 / 续上 ──
             同一种形状、各一行。⚠️ **「接着写」从一张卡降成一行**：承诺块在上面之后，
             它不再是这一页最强的落点了，而两个大块会打架。三条同形状的行读起来是
@@ -297,7 +259,10 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
 
             {resume ? (
               <button type="button" className="agenda-line" onClick={() => open(resume)}>
-                <span className="agenda-line__key">接着写</span>
+                {/* ⚠️ **叫「接着做」不叫「接着写」。** 这一条挑的是排最前那一件，
+                    它可能是待发布、待复盘或一个选题——截图里就指着一条「待复盘」，
+                    而标签写着「接着写」。标签是**类目**，动词在句子里（`nextAction`）。 */}
+                <span className="agenda-line__key">接着做</span>
                 <span className="agenda-line__say">
                   <b>{nameOf(resume)}</b>
                   {/* ⚠️ 分隔号要显式写出来：紧挨着的 `</b><em>` 之间没有空白，
@@ -306,6 +271,7 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
                     {" · "}{resume.stage} · {resume.progress}
                     {resume.blockers?.length ? ` · 卡在「${resume.blockers[0]}」` : ""}
                     {resume.staleDays ? ` · 放了 ${resume.staleDays} 天` : ""}
+                    {resume.nextAction ? ` · ${resume.nextAction}` : ""}
                   </em>
                 </span>
                 <IconArrowRight size={15} stroke={1.8} aria-hidden="true" />
@@ -338,6 +304,45 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
                 </button>
               ))}
             </div>
+          </section>
+        ) : null}
+
+        {/* ── 先把工作台跑起来 ──
+            ⚠️ **排在提要和流水线之后。** 试过放在清单正下方：它有底色、有三行步骤，
+            于是成了整页最重的一块，压过了上面那份清单——正是「同一页上两个大块会打架」。
+            没配完的设置是**一个提醒**，提醒放在今天的正事后面。
+            ⚠️ **勾没勾上只看真实数据**（`domain/workspace-experience.mjs` 的 `workspaceSetup`），
+            不记「我点过了」——一个会说谎的进度条比没有更坏。三条全满足整块不再出现。 */}
+        {setup && !setup.done ? (
+          <section className="agenda-setup" aria-label="先把工作台跑起来">
+            <header>
+              <h2>先把工作台跑起来</h2>
+              <span className="agenda-setup__count">{setup.steps.filter((s) => s.done).length} / {setup.steps.length}</span>
+            </header>
+            <ol>
+              {setup.steps.map((step) => (
+                <li key={step.key} data-done={step.done ? "" : undefined}>
+                  {step.done
+                    ? <IconCircleCheck size={17} stroke={1.8} aria-label="已完成" />
+                    : <IconCircleDashed size={17} stroke={1.8} aria-hidden="true" />}
+                  <div>
+                    <b>{step.title}</b>
+                    <small>{step.why}</small>
+                  </div>
+                  {step.done ? null : (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      /* ⚠️ 「记下第一个疑问」**不跳页**：那一行输入框就在这一屏顶上，
+                         按钮只把焦点放过去。跳到别处再回来是更长的一条路。 */
+                      onClick={() => (step.view ? onGo(step.view, step.state || "") : field.current?.focus())}
+                    >
+                      {step.action}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
           </section>
         ) : null}
 
