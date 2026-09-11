@@ -5,36 +5,131 @@
 .overview-heading h1 { font-size:25px; font-weight:600; line-height:1.5; margin:0 0 5px; }
 .overview-heading p { color:var(--text-3); font-size:13px; margin:0; }
 .overview-heading .btn { white-space:nowrap; }
+/* ───────────────────────── 首页 ─────────────────────────
+   ⚠️ 这个文件是首页、阅读区和 Wiki 浏览共用的。下面只改首页自己的 `.overview-*`；
+   `.overview-heading`（`Library.jsx` 还在用）和 `.library-* / .reader-*` 的数值不动。 */
+
 .overview-panel { min-width:0; padding:0; background:transparent; }
 .overview-panel>header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
-.overview-panel h2 { font-size:16px; font-weight:600; margin:0; }
-.overview-panel>header .btn { border:0; background:transparent; color:var(--text-3); font-size:12px; }
-.overview-capture { margin-bottom:28px; padding:17px 20px 12px; border:1px solid var(--border); border-radius:8px; background:var(--canvas); }
-.overview-capture>label { display:block; font-size:14px; font-weight:600; }
-.overview-capture textarea { display:block; width:100%; resize:vertical; min-height:54px; max-height:220px; border:0; background:transparent; padding:10px 0; font:14px/1.7 var(--font); color:inherit; }
+.overview-panel h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
+
+/* ── 一行记录 ──
+   ⚠️ **上一版不是「一个输入框」，是一整块容器**：白底 + 一圈边框 + 8px 圆角，
+   里面装着 label、两行 textarea、一句说明和一颗按钮。量到的是第一条内容在 y=418，
+   而视口只有 856——**上半屏没有内容**（判据：空白不是默认价值）。
+   ⚠️ 但**控件是可以有边框的**——「不要框里画框」管的是容器。这里直接用这个应用
+   自己的输入语汇（`.search-box`：`--canvas` 填色 + 一圈边、一颗前置图标），
+   人一眼就知道能往里打字；上一版那块灰底大盒子反而像一段说明。
+   默认一行高，打字之后才长成多行并露出提交那一条。 */
+.overview-capture {
+  display:flex; align-items:flex-start; gap:9px;
+  margin:0 0 16px; padding:0 12px;
+  border:1px solid var(--border-strong); border-radius:var(--r-ctl);
+  background:var(--canvas); cursor:text;
+  transition:border-color .14s var(--ease);
+}
+.overview-capture:focus-within { border-color:var(--text-3); }
+.overview-capture.is-open { padding-bottom:2px; }
+.overview-capture>svg { flex:none; margin-top:11px; color:var(--text-3); }
+.overview-capture__field { flex:1 1 auto; min-width:0; }
+.overview-capture textarea {
+  /* ⚠️ 高度按**一行字算出来**，不写死：`--fs-base` 改过之后写死的那个数就会切字。
+     真正的高度由 `Today.jsx` 跟着内容改，这里只给下限和上限。 */
+  display:block; width:100%; padding:8px 0;
+  min-height:calc(var(--fs-base) * 1.65 + 16px); max-height:220px;
+  border:0; background:transparent; color:var(--text-1);
+  font:var(--fs-base)/1.65 var(--font); resize:none; overflow:auto;
+}
 .overview-capture textarea:focus { outline:0; }
-.overview-capture:focus-within { border-color:var(--border-strong); box-shadow:0 0 0 1px var(--border-strong); }
-.overview-capture-footer,.overview-saved { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.overview-capture-footer>span { color:var(--text-3); font-size:12px; }
-.overview-capture-footer>span button { margin-left:8px; }
-.overview-capture-footer>.btn { font-size:12px; min-height:30px; }
-.overview-saved { border-top:1px solid var(--border); margin-top:12px; padding-top:12px; font-size:13px; }
-.overview-saved>span { max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.overview-columns { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,1fr); gap:42px; }
-.overview-stack { display:flex; flex-direction:column; gap:26px; min-width:0; }
-.overview-items>button { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; padding:13px 0; text-align:left; border:0; border-bottom:1px solid var(--border); background:transparent; color:inherit; cursor:pointer; }
-.overview-items>button:last-child { border-bottom:0; }
-.overview-items>button>span { min-width:0; }
-.overview-items strong { font-size:14px; font-weight:500; line-height:1.65; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.overview-items small { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; line-height:1.7; color:var(--text-3); margin-top:3px; }
-.overview-items em { font-size:11px; flex:none; font-style:normal; color:var(--text-3); }
-.overview-items>button:hover { background:var(--surface-2); }
-.overview-empty { font-size:13px; color:var(--text-3); line-height:1.8; margin:16px 0; }
-.overview-connections { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; }
-.overview-connections>p { color:var(--text-3); font-size:12px; }
+.overview-capture__foot {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:0 0 10px; color:var(--text-3); font-size:var(--fs-xs);
+}
+
+/* 存完之后那一条：标题 + 状态 + 两条去处 */
+.overview-saved {
+  display:flex; align-items:center; flex-wrap:wrap; gap:12px;
+  margin:0 0 18px; padding-bottom:14px;
+  border-bottom:1px solid var(--border); font-size:var(--fs-sm);
+}
+.overview-saved>span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.overview-saved>span[role="status"] { color:var(--text-3); font-size:var(--fs-xs); }
+.overview-saved>.btn { margin-left:auto; }
+
+/* ── 情报那一行 ──
+   整行可点，但**不是一张卡**：一道线上面一行字。它是这一页唯一「今天才有」的东西，
+   所以排在主列表上面；没有待看的时候这一行整个不画（见 `Today.jsx`）。 */
+.overview-signal {
+  display:flex; align-items:center; gap:9px; width:100%;
+  margin:0 0 18px; padding:9px 10px;
+  border:0; border-radius:var(--r-sm); background:var(--surface-2);
+  color:var(--text-1); font:inherit; font-size:var(--fs-sm); text-align:left; cursor:pointer;
+}
+.overview-signal:hover { background:var(--sunken); }
+.overview-signal svg { flex:none; color:var(--text-3); }
+.overview-signal>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.overview-signal em { margin-left:auto; flex:none; color:var(--text-3); font-size:var(--fs-xs); font-style:normal; }
+
+/* ── 两栏：一条主列表 + 一个窄栏 ── */
+.overview-columns { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(270px,1fr); gap:42px; align-items:start; }
+
+/* ── 行 ──
+   ⚠️ 走 `styles.css` 共用的 `.rows / .row / .row-head / .row-title / .row-meta`
+   ——Wiki、来源、周报、选题、合集同一种。上一版首页是自己一套
+   （`.overview-items > button`），全站只有它这么长。 */
+/* ⚠️ **要 `.rows.overview-rows` 两个类**：这个文件在 `styles.css` 之前加载，
+   同等特异度下 `.rows` 那份（1px 边框 + 14px 圆角 + 白底）会赢。
+   而首页整页本来就是白的——白底上再画一圈白盒子，那圈边框就成了屏幕上唯一在说话的
+   东西（判据：不要框里画框）。共用的是**行的语汇**，不是那只盒子。 */
+.rows.overview-rows { border:0; border-radius:0; background:transparent; overflow:visible; }
+.overview-rows .row-head { align-items:flex-start; gap:14px; padding:12px 0; }
+.overview-rows .row:hover .row-head,
+.overview-rows .row:focus-within .row-head { background:transparent; }
+
+.overview-row__open {
+  flex:1 1 auto; min-width:0; display:grid; gap:3px;
+  padding:0; border:0; background:none; color:inherit; font:inherit;
+  text-align:left; cursor:pointer;
+}
+.overview-row__open b {
+  display:flex; align-items:center; gap:6px; min-width:0;
+  font-size:var(--fs-sm); font-weight:500; line-height:1.6;
+}
+.overview-row__open b svg { flex:none; color:var(--text-3); }
+.overview-row__open small {
+  display:-webkit-box; overflow:hidden;
+  color:var(--text-3); font-size:var(--fs-xs); line-height:1.7;
+  -webkit-box-orient:vertical; -webkit-line-clamp:1;
+}
+.overview-row__open:hover b { text-decoration:underline; text-underline-offset:3px; }
+
+.overview-rows .row-meta { flex:none; gap:12px; padding-top:1px; }
+/* 「选题 / 文章」那一格：定宽，好让一列竖着扫。它只在真有两种取值时才渲染 */
+.overview-row__kind { width:28px; color:var(--text-3); }
+.overview-rows .row-meta time { font-family:var(--font-mono); font-size:var(--fs-2xs); }
+
+/* 行尾两颗：平时收起来。一列图标竖排下来会比它旁边的标题更抢眼 */
+.overview-row__acts { flex:none; display:flex; gap:2px; opacity:0; transition:opacity .14s var(--ease); }
+.overview-rows .row:hover .overview-row__acts,
+.overview-rows .row:focus-within .overview-row__acts { opacity:1; }
+.overview-row__acts .icon-btn { width:26px; height:26px; border-color:transparent; background:none; color:var(--text-3); }
+.overview-row__acts .icon-btn:hover { border-color:var(--border-strong); color:var(--text-1); }
+.overview-row__acts .icon-btn[aria-pressed="true"] { color:var(--text-1); }
+@media (hover:none) { .overview-row__acts { opacity:1; } }
+
+/* 窄栏的行：一行一个标题 + 读到哪儿，不放摘要（那一栏只有 270px） */
+.overview-rows--rail .row-head { gap:10px; padding:11px 0; }
+.overview-rows--rail .row-meta { font-size:var(--fs-2xs); }
+
+.overview-empty { margin:14px 0; color:var(--text-3); font-size:var(--fs-sm); line-height:1.8; }
+.overview-panel .empty { padding:30px 0; border:0; }
+
+.overview-connections { margin:0 0 18px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+.overview-connections>p { color:var(--text-3); font-size:var(--fs-xs); }
 .overview-connections article { padding:12px 0; }
-.overview-connections h3 { font-size:15px; font-weight:600; }
-.overview-connections article p { font-size:13px; line-height:1.8; }
+.overview-connections h3 { font-size:var(--fs-md); font-weight:600; }
+.overview-connections article p { font-size:var(--fs-sm); line-height:1.8; }
+
 .library-browse-links { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 24px; padding-bottom:16px; border-bottom:1px solid var(--border); }
 .library-browse-links .btn { border:0; background:transparent; font-size:13px; color:var(--text-2); }
 .library-browse-links .btn:hover { background:var(--surface-2); }
@@ -84,7 +179,11 @@
 .reader-associate select { max-width:320px; }
 .reader-status:empty { display:none; }
 .reader-status { color:var(--text-3); padding:8px 28px; margin:0; font-size:12px; }
-.workspace-overview :is(button,textarea):focus-visible,.workspace-library :is(button,summary):focus-visible { outline:2px solid var(--text-3); outline-offset:3px; }
+.workspace-overview button:focus-visible,.workspace-library :is(button,summary):focus-visible { outline:2px solid var(--text-3); outline-offset:3px; }
+/* ⚠️ **记录框那颗 textarea 不画自己的焦点框。** 它外面那一圈已经是控件的边界，
+   再给里面一个 2px 的轮廓就是框里画框——量到的是一个方框里套着第二个方框。
+   焦点由外圈 `:focus-within` 变色表示，和这个应用的 `.search-box` 同一套。 */
+.overview-capture textarea:focus-visible { outline:0; }
 @media(max-width:1100px) {
   .workspace-overview,.workspace-library { padding:24px; }
   .overview-columns { gap:28px; grid-template-columns:minmax(0,1.3fr) minmax(230px,1fr); }
@@ -98,12 +197,12 @@
   .overview-heading p { line-height:1.8; }
   .overview-heading>.btn,.overview-heading>.row-actions { font-size:12px; }
   .overview-columns { grid-template-columns:1fr; gap:24px; }
-  .overview-capture { padding:15px; }
-  .overview-capture-footer { align-items:start; }
-  .overview-capture-footer>span { max-width:60%; line-height:1.8; }
-  .overview-capture-footer>span button { margin:6px 0; }
-  .overview-saved { flex-wrap:wrap; }
-  .overview-saved>span { max-width:100%; }
+  .overview-capture__foot { align-items:flex-start; }
+  .overview-saved>span:first-child { flex:1 1 100%; }
+  .overview-saved>.btn { margin-left:0; }
+  /* 窄屏行尾那两颗常驻（没有 hover），摘要让位给它们 */
+  .overview-rows .row-head { gap:10px; }
+  .overview-row__open small { display:none; }
   .library-browse-links { gap:2px; margin-bottom:18px; }
   .library-search select { max-width:120px; }
   .library-card-grid article>button:first-child { grid-template-columns:45px minmax(0,1fr); column-gap:8px; }

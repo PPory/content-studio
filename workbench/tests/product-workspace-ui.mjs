@@ -48,7 +48,9 @@ try {
   w.repository.createEntity({id:wikiId,type:"wiki_page"});
   w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,schema_version,created_at,updated_at) VALUES(?,?,'concept',?,?,1,?,?)").run(wikiId,"Harness 与系统思维","真实测试 Wiki",("# Harness 与系统思维\n\n" + Array.from({length:35},(_,i)=>`## 段落 ${i}\n\nHarness 的分析需要回到具体任务，核对模型与使用条件。`).join("\n\n")),stamp,stamp);
   await page.goto(`${base}/#/today`);
-  await page.getByRole("heading",{name:"从一个问题，开始今天",exact:true}).waitFor();
+  // 首页不再有那句 slogan 和说明句（面包屑已经写着「首页」）——等的是内容本身
+  await page.getByRole("heading",{name:"接着做",exact:true}).waitFor();
+  check("首页不再介绍自己",await page.getByRole("heading",{name:"从一个问题，开始今天"}).count()===0);
   check("首页概览与最近阅读存在",await page.getByRole("heading",{name:"最近阅读",exact:true}).count()===1);
   await page.getByLabel("记下灵感",{exact:true}).fill("为什么 harness 的上下文很重要？");
   await page.getByRole("button",{name:"留下这条想法",exact:true}).click();
@@ -104,9 +106,10 @@ try {
   await page.screenshot({path:path.join(shotDir,"interview-topic-desktop.png"),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
   await page.locator(".nav").getByRole("button",{name:"首页",exact:true}).click();
-  await page.getByRole("heading",{name:"最近打开",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"接着做",exact:true}).waitFor();
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
-  await page.locator(".overview-panel").filter({has:page.getByRole("heading",{name:"文章",exact:true})}).locator(".overview-items button").first().click();
+  // 选题和文章现在在同一条列表里，所以按标题挑那一篇——顺便证明它真的在这条列表上
+  await page.locator(".overview-rows .row").filter({has:page.locator(".overview-row__kind",{hasText:"文章"})}).first().locator(".overview-row__open").click();
   await page.getByLabel("文章标题",{exact:true}).waitFor();
   check("首页文章回到同一选题的写作位置",page.url().includes(researchId));
   check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
@@ -134,14 +137,62 @@ try {
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(`${base}/#/today`);
   await page.getByLabel("记下灵感",{exact:true}).fill("切换页面之前，也要留下这个想法");
-  await page.getByRole("button",{name:"全部选题 →",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"选题空间",exact:true}).click();
   await page.getByRole("heading",{name:"这条想法还没有保存"}).waitFor();
   await page.getByRole("button",{name:"继续记录",exact:true}).click();
   check("取消离开保留想法",await page.getByLabel("记下灵感",{exact:true}).inputValue()==="切换页面之前，也要留下这个想法");
-  await page.getByRole("button",{name:"全部选题 →",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"选题空间",exact:true}).click();
   await page.getByRole("button",{name:"保存并离开",exact:true}).click();
   await page.getByRole("heading",{name:"选题空间",exact:true}).waitFor();
   check("保存后才离开首页",true);
+
+  // ── 首页：一条列表、不重复、置顶、从首页收起、情报一行 ──
+  await page.goto(`${base}/#/today`);
+  await page.getByRole("heading",{name:"接着做",exact:true}).waitFor();
+
+  // 1. 同一个东西不再被列两遍。上一版量到的是 15 行、去重后 8 个东西。
+  const homeRows=()=>page.evaluate(()=>[...document.querySelectorAll(".overview-rows--main .row .overview-row__open b")].map(b=>b.textContent.trim()));
+  const shown=await homeRows();
+  check("首页不再把同一个东西列两遍",shown.length>0&&new Set(shown).size===shown.length,JSON.stringify(shown));
+  const everyRow=await page.evaluate(()=>[...document.querySelectorAll(".overview-rows .row .overview-row__open b")].map(b=>b.textContent.trim()));
+  check("两块列表也不互相重复",new Set(everyRow).size===everyRow.length,JSON.stringify(everyRow));
+
+  // 2. 没有哪一列徽章只有一种取值（判据：一整列的值全都相同就不画那一列）
+  const badgeValues=await page.evaluate(()=>[...new Set([...document.querySelectorAll(".overview-row__kind")].map(n=>n.textContent.trim()))]);
+  check("类型那一列真的在分辨东西，不是一列同一个词",badgeValues.length!==1,JSON.stringify(badgeValues));
+
+  // 3. 第一屏上半屏要有内容。上一版第一条在 y=418，视口 856。
+  const firstRowTop=await page.evaluate(()=>Math.round(document.querySelector(".overview-rows--main .row").getBoundingClientRect().top));
+  check("第一条内容落在首屏上半屏",firstRowTop<500,`第一条 y=${firstRowTop}`);
+
+  // 4. 置顶：那一条排到最前，刷新之后还在最前
+  const lastTitle=shown[shown.length-1];
+  const lastRow=page.locator(".overview-rows--main .row").filter({has:page.locator(".overview-row__open b",{hasText:lastTitle})}).first();
+  await lastRow.hover();
+  await lastRow.getByRole("button",{name:/^置顶/}).click();
+  await page.waitForFunction(t=>document.querySelector(".overview-rows--main .row .overview-row__open b")?.textContent.includes(t),lastTitle);
+  await page.reload();
+  await page.getByRole("heading",{name:"接着做",exact:true}).waitFor();
+  check("置顶把那一条排到最前，而且刷新后仍在最前",(await homeRows())[0]===lastTitle);
+
+  // 5. 从首页收起：列表里没了，撤销拿回来
+  const pinnedRow=page.locator(".overview-rows--main .row").filter({has:page.locator(".overview-row__open b",{hasText:lastTitle})}).first();
+  await pinnedRow.hover();
+  await pinnedRow.getByRole("button",{name:/从首页收起$/}).click();
+  await page.getByText("不在首页出现了",{exact:false}).waitFor();
+  check("收起之后这条不在首页列表里",!(await homeRows()).includes(lastTitle));
+  await page.getByRole("button",{name:"撤销",exact:true}).click();
+  await page.waitForFunction(t=>[...document.querySelectorAll(".overview-rows--main .row .overview-row__open b")].some(b=>b.textContent.includes(t)),lastTitle);
+  check("撤销把它拿回首页",(await homeRows()).includes(lastTitle));
+
+  // 6. 情报那一行：有未读才画、点过去是今日精选
+  check("没有待看的精选时首页不画那一行",await page.locator(".overview-signal").count()===0);
+  const feedRun=await request("/api/workspace/intelligence/feed/summary");
+  check("情报摘要只返回计数，不搬简报正文",!("briefs" in feedRun)&&feedRun.todayUnread===0);
+
+  check("首页手机无横向溢出",await page.setViewportSize({width:390,height:844}).then(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)));
+  await page.screenshot({path:path.join(shotDir,"interview-home-mobile.png"),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
   for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
   await page.goto(`${base}/#/research`); await page.reload();
   await page.locator(".research-card").first().waitFor();
