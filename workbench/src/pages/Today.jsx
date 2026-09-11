@@ -21,11 +21,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, Loading, PageHeader, StatePill, Toast } from "../components/ui.jsx";
-import { IconAlertTriangle, IconArrowRight, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFolder, IconPin, IconPinFilled } from "../components/icons.jsx";
+import { IconAlertTriangle, IconArrowRight, IconBook2, IconBulb, IconCircleCheck, IconCircleDashed, IconEyeOff, IconFileText, IconFolder, IconNotebook, IconPin, IconPinFilled, IconStack2 } from "../components/icons.jsx";
+import { Cover } from "../components/Cover.jsx";
 import { pct } from "../lib/reading.js";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import "./workspace-home.css";
 import { useDialog } from "../lib/use-dialog.js";
+
+/** 没有封面时那个格子里放什么图标。**混着书和 Wiki 的列表不能一律画书。** */
+const READING_ICON = { book: IconBook2, wiki: IconNotebook, material: IconStack2, capture: IconBulb, seed: IconBulb };
 
 /**
  * 一条的可读名字。
@@ -380,16 +384,38 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
       <aside className="overview-rail">
         <section className="overview-panel">
           <header><h2>最近阅读</h2></header>
+          {/**
+            * ⚠️ **这一栏是这个应用里唯一真有封面的列表**，所以它是唯一值得上封面的
+            * ——「卡片适合有封面」那条判据的前提是**封面真的存在于数据里**，
+            * 不是「想让它好看」。没有封面的卡片只是一个大号的行加一圈边框。
+            *
+            * ⚠️ 封面走共用的 `components/Cover.jsx`，**不在这儿新写一份**：
+            * 它连「没有封面就退成书本图标 + 书名」都写好了，而 Wiki 页正好没有封面
+            * ——那个组件的注释说得准：空白格子会让人以为那本书没加载出来。
+            */}
           {reading.length ? (
-            <div className="rows agenda-rows agenda-rows--rail">
-              {reading.slice(0, 6).map(item => <div className="row" key={`${item.kind}:${item.id}`}>
-                <div className="row-head">
-                  <button type="button" className="row-title agenda-row__open" onClick={() => open(item)}>{item.title || "未命名"}</button>
-                  {/* 这里原来是一列全都写着「Wiki」的徽章。换成读到哪儿——每行不一样。 */}
-                  <span className="row-meta">{item.position?.progress ? <span>读到 {pct(item.position.progress)}</span> : <span>刚开始</span>}</span>
-                </div>
-              </div>)}
-            </div>
+            <ul className="agenda-reading">
+              {reading.slice(0, 5).map(item => (
+                <li key={`${item.kind}:${item.id}`}>
+                  <button type="button" onClick={() => open(item)}>
+                    {/* ⚠️ **`name` 传空串。** `Cover` 的回落分支会把书名排在格子里
+                        （书架那面封面墙需要，因为那儿旁边没有标题）；而这一行**右边就是标题**，
+                        再排一遍就是同一个事实出现两次——没封面的那几条会显示两遍书名。 */}
+                    <Cover book={{ cover: item.cover || "", name: "" }} size="cover--sm" icon={READING_ICON[item.kind] || IconFileText} />
+                    <span>
+                      <b>{item.title || "未命名"}</b>
+                      {/* 书说得出第几章就说第几章；说不出就只说百分比。
+                          这一格原来是一列全都写着「Wiki」的徽章。 */}
+                      <small className="agenda-reading__at">
+                        {item.chapter
+                          ? `第 ${item.chapter.at} 章${item.position?.progress ? ` · ${pct(item.position.progress)}` : ""}`
+                          : item.position?.progress ? `读到 ${pct(item.position.progress)}` : "刚开始"}
+                      </small>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : <p className="overview-empty">读过的资料会出现在这里，方便接着读。</p>}
         </section>
       </aside>

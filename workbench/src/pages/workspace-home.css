@@ -192,10 +192,27 @@
 .agenda-row__acts .icon-btn[aria-pressed="true"] { color:var(--text-1); }
 @media (hover:none) { .agenda-row__acts { opacity:1; } }
 
-/* 窄栏的行：一个标题 + 读到哪儿，不放阶段和动作（那一栏只有 260px） */
-.agenda-rows--rail .row-head { gap:10px; padding:10px 0; }
-.agenda-rows--rail .row-meta { font-size:var(--fs-2xs); }
-.agenda-rows--rail .agenda-row__open { white-space:normal; }
+/* ── 窄栏：接着读 ──
+   封面行，不是纯文字行。那一栏只有 260px，所以封面用 `cover--sm`（62px），
+   标题和进度竖着排在右边。 */
+.agenda-reading { display: grid; gap: 2px; margin: 10px 0 0; padding: 0; list-style: none; }
+.agenda-reading li > button {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 7px 8px 7px 2px;
+  border: 0; border-radius: var(--r-sm); background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.agenda-reading li > button:hover { background: var(--surface-2); }
+.agenda-reading li > button > span { min-width: 0; display: grid; gap: 3px; }
+.agenda-reading b {
+  display: -webkit-box; overflow: hidden;
+  font-size: var(--fs-sm); font-weight: 500; line-height: 1.5;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.agenda-reading__at { color: var(--text-3); font-size: var(--fs-xs); }
+/* 封面自己已经有边框和投影（`.cover`），这儿不再加一层 */
+.agenda-reading .cover { box-shadow: none; }
+
 
 .overview-empty { margin:14px 0; color:var(--text-3); font-size:var(--fs-sm); line-height:1.8; }
 .overview-panel .empty { padding:30px 0; border:0; }

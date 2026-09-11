@@ -6167,6 +6167,8 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
   font-size: var(--fs-2xs); line-height: 1.45; color: var(--text-2); font-weight: 600;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* 调用方不传书名时（旁边已经有标题了）不要留一行空白 —— flex 的 gap 会照样算它一份 */
+.cover__fallback small:empty { display: none; }
 
 /**
  * ⚠️ **「正在阅读」不再是一个框。** 它原来是 `1px solid var(--text-1)` ——一道**纯黑**

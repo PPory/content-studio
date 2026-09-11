@@ -11,14 +11,19 @@
 import { api } from "../lib/api.js";
 import { IconBook2 } from "./icons.jsx";
 
-export function Cover({ book, size = "" }) {
+/**
+ * ⚠️ `icon` 可选，默认书本。**书架那面墙上全是书，而首页「最近阅读」里混着
+ * Wiki 页和素材**——给一页 Wiki 画一个书本图标是在说一件不对的事。
+ * 有封面的时候这个参数用不上。
+ */
+export function Cover({ book, size = "", icon: Icon = IconBook2 }) {
   return (
     <span className={`cover ${size}`}>
       {book.cover ? (
         <img src={api.imageUrl(book.cover)} alt="" loading="lazy" />
       ) : (
         <span className="cover__fallback">
-          <IconBook2 size={size === "cover--sm" ? 22 : 30} stroke={1.3} aria-hidden="true" />
+          <Icon size={size === "cover--sm" ? 22 : 30} stroke={1.3} aria-hidden="true" />
           <small>{book.name}</small>
         </span>
       )}

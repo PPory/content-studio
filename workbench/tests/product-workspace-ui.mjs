@@ -175,6 +175,25 @@ try {
   await page.reload();await page.locator(".reader-document").waitFor();
   await until(()=>page.locator(".reader-document").evaluate(el=>el.scrollTop),v=>v>200,"阅读位置恢复");
   await page.screenshot({path:path.join(shotDir,"interview-reading-desktop.png"),fullPage:true});
+
+  // ── 首页窄栏：读过的东西以封面行出现（没封面就走 Cover 的回落，不是一块空白） ──
+  await page.goto(`${base}/#/today`);
+  await page.locator(".agenda-reading li").first().waitFor();
+  const rail=await page.evaluate(()=>[...document.querySelectorAll(".agenda-reading li")].map(li=>({
+    cover:Boolean(li.querySelector(".cover")),
+    img:Boolean(li.querySelector(".cover img")),
+    fallback:Boolean(li.querySelector(".cover__fallback svg")),
+    title:li.querySelector("b")?.textContent.trim()||"",
+    // ⚠️ 不能用 li.querySelector("small")：DOM 里先出现的是**封面回落里那个空的**
+    // （旁边已经有标题，所以传了空串），会把这一条断言变成假红
+    progress:li.querySelector(".agenda-reading__at")?.textContent.trim()||"",
+    // 回落格子里不该再排一遍书名——右边就是标题
+    dupName:(li.querySelector(".cover__fallback small")?.textContent||"").trim(),
+  })));
+  check("读过的东西出现在首页窄栏，且每条都有封面位",rail.length>0&&rail.every(r=>r.cover),JSON.stringify(rail));
+  check("没有封面的走回落图标，不是一块空白",rail.every(r=>r.img||r.fallback),JSON.stringify(rail));
+  check("回落格子里不重复排标题",rail.every(r=>!r.dupName),JSON.stringify(rail));
+  check("窄栏说得出读到哪儿",rail.every(r=>r.progress),JSON.stringify(rail));
   await page.setViewportSize({width:390,height:844});
   check("阅读手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("tab",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();
