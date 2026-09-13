@@ -59,18 +59,38 @@ try {
         action:li.querySelector(".btn")?.textContent.trim()||"",
         done:li.hasAttribute("data-done"),
       })),
-      // ⚠️ 首启时这些都该不在：「接着写」没有对象可写，空的区块也只是再说一遍同一件事
-      resume:document.querySelectorAll(".agenda-line").length,
-      hand:document.querySelectorAll(".agenda-flow").length,
+      // ⚠️ 首启时这些都该不在：明细表没有行、封面墙没有书，空的区块只是再说一遍同一件事
+      hand:document.querySelectorAll(".agenda-hand").length,
       rail:document.querySelectorAll(".agenda-reading").length,
+      // ⚠️ **12 格全空的柱图也不画。** 那排 KPI 卡可以报 0（一个形状 + 每张带参照），
+      // 一张空图带不了参照，它只是个空框。
+      chart:document.querySelectorAll(".home-chart").length,
+      // ⚠️ **但那排 KPI 卡要画，而且允许全是 0。** 成排的卡是一个形状，缺一张下沿就参差。
+      kpi:[...document.querySelectorAll(".stat")].map(c=>({
+        label:c.querySelector(".stat__label")?.textContent.trim()||"",
+        value:c.querySelector(".stat__value")?.textContent.trim()||"",
+        note:c.querySelector(".stat__note")?.textContent.trim()||"",
+      })),
       zero:(document.querySelector(".view-head__count")?.textContent||"").includes("0 件"),
     };
   });
   check("全新工作区的首页画三步开局卡",firstRun.count==="0 / 3"&&firstRun.steps.length===3,JSON.stringify(firstRun));
   check("每一步都说清是什么、为什么、点什么",firstRun.steps.every(s=>s.title&&s.why&&s.action&&!s.done),JSON.stringify(firstRun.steps));
-  check("首启不画那三条提要（没有新的、没产出、没在写的）",firstRun.resume===0);
-  check("首启不摆空的区块",firstRun.hand===0&&firstRun.rail===0,JSON.stringify(firstRun));
+  check("首启不摆空的区块（明细表、封面墙、空柱图）",
+    firstRun.hand===0&&firstRun.rail===0&&firstRun.chart===0,JSON.stringify(firstRun));
+  check("首启仍然画满四张 KPI 卡",firstRun.kpi.length===4,JSON.stringify(firstRun.kpi));
+  check("四张 KPI 卡各有主数字和一句参照",
+    firstRun.kpi.every(c=>c.label&&c.value&&c.note),JSON.stringify(firstRun.kpi));
+  check("一篇都没发过时「本月产出」照样画，参照写「上月 0 篇」",
+    firstRun.kpi.some(c=>c.label==="本月产出"&&c.value==="0"&&c.note==="上月 0 篇"),JSON.stringify(firstRun.kpi));
   check("首启页头不报「0 件在手」",!firstRun.zero);
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({width,height:1000});
+    await page.screenshot({path:path.join(shotDir, 'home-empty-'+width+'.png'),fullPage:true});
+    check('首启 '+width+' 无横向溢出',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  }
+  await page.setViewportSize({width:1440,height:1000});
 
   // 「记下第一个疑问」不跳页，只把焦点放到那一行输入框上
   await page.getByRole("button",{name:"写下一条",exact:true}).click();
@@ -158,16 +178,28 @@ try {
   await page.locator(".nav").getByRole("button",{name:"首页",exact:true}).click();
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
-  // 选题和文章现在在同一条列表里，所以按标题挑那一篇——顺便证明它真的在这条列表上
-  // ⚠️ 首页不再有全量列表（它在创作页）。这一篇从「接着写」那一行进去。
-  // ⚠️ 标签是「接着做」不是「接着写」：这一条挑的可能是待发布 / 待复盘 / 一个选题
-  await page.locator(".agenda-line").filter({hasText:"接着做"}).click();
+  // 选题和文章在同一张表里，行首那颗阶段 pill 就是它们的区别——挑**文章**那一行，
+  // 它该把人送回同一个选题的写作位置。顺便证明这一篇真的在这张表上。
+  // ⚠️ 首页那张表只放前 8 行；全量表在创作页（「看全部」那颗去那儿）
+  const articleRow=page.locator(".agenda-rows .row")
+    .filter({has:page.locator(".pill",{hasText:"写作中"})}).first();
+  check("文章和选题在同一张表里，靠阶段 pill 区分",await articleRow.count()===1);
+  await articleRow.locator(".agenda-row__open").click();
   await page.getByLabel("文章标题",{exact:true}).waitFor();
   check("首页文章回到同一选题的写作位置",page.url().includes(researchId));
   check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
   await page.goto(`${base}/#/library/wiki:${wikiId}`);
   await page.locator(".reader-document").waitFor();
   check("阅读标题只显示一次",await page.locator(".reader-document h1").count()===1);
+  // ⚠️ **阅读区仍然是白底**，首页才是浅灰。判据：改底色之前先确认这一页要不要卡片
+  // ——阅读区是一篇正文，正文不坐在灰底上，也不需要卡片。
+  check("阅读区是白底，不跟着首页翻灰",await page.evaluate(()=>{
+    // `--surface` 是个变量，量它的真实颜色要让浏览器自己解一次
+    const probe=document.createElement("div");
+    probe.style.background="var(--surface)";document.body.appendChild(probe);
+    const surface=getComputedStyle(probe).backgroundColor;probe.remove();
+    return getComputedStyle(document.querySelector(".main")).backgroundColor===surface;
+  }));
   check("阅读默认专注原文",!await page.locator(".reader-companion").count());
   await page.locator(".reader-document").evaluate(el=>{el.scrollTop=400;el.dispatchEvent(new Event("scroll"));});
   await until(()=>request("/api/workspace/activity"),r=>r.reading.some(x=>x.id===wikiId&&x.position.scrollTop>200),"阅读位置保存");
@@ -242,22 +274,47 @@ try {
   await page.getByRole("heading",{name:"选题空间",exact:true}).waitFor();
   check("保存后才离开首页",true);
 
-  // ── 首页：承诺 + 信号 + 结果 + 续上 ──
+  // ── 首页：一排数 + 一张图 + 承诺 + 明细表 ──
   //
   // ⚠️ 这一段钉的是「它到底算不算首页」：**不能整页都是「你拥有的对象」的投影**。
-  // 清单是你自己定的承诺（不是对象），产出是结果（不是对象）；这两种少一个，
-  // 剩下的无论怎么排序、怎么加状态，读起来都是库存管理。
+  // 清单是你自己定的承诺（不是对象），产出和知识库增长是结果（不是对象）；
+  // 这几种少一个，剩下的无论怎么排序、怎么加状态，读起来都是库存管理。
+  //
+  // ⚠️ 同时钉住底色那条连锁：首页的 `.main` 必须是 `--sunken`（浅灰）。
+  // 它曾经被单独改成白，于是白卡立不起来、于是按「不要框里画框」不画盒子、
+  // 于是整页没有层次。**改底色和要不要卡片是同一件事。**
   w.db.prepare("INSERT INTO action_candidates(id,action_type,target_id,payload_json,payload_sha256,status,proposed_by,proposed_at) VALUES(?,'wiki.lint.review',?,'{}',?,'proposed','ai',?)")
     .run(createUlid(),wikiId,"c".repeat(64),new Date().toISOString());
+  // ⚠️ 三类都要有东西，那条「三段必须是三种深浅」的闸才测得到第三段
+  w.domain.createMaterial({title:"一次真实的写作卡顿",type:"个人经历",
+    bodyMarkdown:"我曾在一篇写到一半时卡住，回头才发现是选题没定。",actor:"user"});
   await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
 
-  // 1. 承诺排最前，而且首页不再有全量列表
-  const order=await page.evaluate(()=>[...document.querySelectorAll(".overview-main > *")]
-    .map(n=>(n.className?.toString?.()||n.tagName).split(" ")[0]).filter(Boolean));
-  check("承诺排在最前：清单在三条提要和流水线之前",
-    order[0]==="day-plan"&&order.indexOf("day-plan")<order.indexOf("agenda-lines"),JSON.stringify(order));
-  check("首页不再有全量列表",await page.locator(".agenda-rows").count()===0);
+  for (let i=1;i<=9;i++) await request('/api/workspace/researches',{question:'首页密度验收选题 '+i});
+  await page.reload();
+  await page.locator('.agenda-rows .row').first().waitFor();
+
+  // 1. 层次：一排数在最前，然后是 [清单 | 图]，然后才是明细表
+  const shape=await page.evaluate(()=>({
+      // ⚠️ 不能取 className 的第一个词：这些块现在都以 `home-card` 开头
+      order:[...document.querySelectorAll(".overview-main > *")]
+        .map(n=>["stats","home-duo","agenda-hand","agenda-setup","agenda-reading"]
+          .find(k=>n.classList.contains(k))||n.tagName).filter(Boolean),
+      bg:getComputedStyle(document.querySelector(".main")).backgroundColor,
+      sunken:(()=>{const p=document.createElement('div');p.style.background='var(--sunken)';document.body.appendChild(p);const c=getComputedStyle(p).backgroundColor;p.remove();return c;})(),
+      surface:getComputedStyle(document.documentElement).getPropertyValue("--surface").trim(),
+      // 卡片是白的，正文区是灰的——这两件事一起才是层次
+      cards:[...document.querySelectorAll(".home-card")].map(c=>getComputedStyle(c).backgroundColor),
+      plans:document.querySelectorAll(".day-plan").length,
+  }));
+  check("一排数在最前，明细表在最后",
+    shape.order[0]==="stats"&&shape.order.indexOf("stats")<shape.order.indexOf("home-duo")
+      &&shape.order.indexOf("home-duo")<shape.order.indexOf("agenda-hand"),JSON.stringify(shape.order));
+  check("首页正文区是浅灰底，不是白",shape.bg===shape.sunken,JSON.stringify(shape));
+  check("每一块都是一张白卡",shape.cards.length>=3&&new Set(shape.cards).size===1,JSON.stringify(shape.cards));
+  // ⚠️ 曾经渲染过两遍：旧结构那个 `<DayPlan>` 留在上面，新的在卡里
+  check("「我的清单」只渲染一遍",shape.plans===1,String(shape.plans));
 
   // 2. 清单：加一条 → 勾上 → 计数跟着变 → 刷新还在（落工作区数据库，不落 localStorage）
   await page.locator(".plan-plus").click();
@@ -274,37 +331,127 @@ try {
   await page.getByText("把 harness 那篇的中间三段补完").waitFor();
   check("勾上的状态刷新后还在（清单落库）",(await ringText()).startsWith("1"),await ringText());
 
-  // 3. 三条提要：同一种形状，标签 + 一句话
-  const lines=await page.evaluate(()=>[...document.querySelectorAll(".agenda-line")].map(b=>({
-    key:b.querySelector(".agenda-line__key")?.textContent.trim(),
-    say:b.querySelector(".agenda-line__say")?.textContent.trim(),
-  })));
-  check("三条提要都有标签和一句话",lines.length>0&&lines.every(l=>l.key&&l.say),JSON.stringify(lines));
-  check("「今天新的」把 AI 提的候选抬上来了",lines.some(l=>l.key==="今天新的"&&l.say.includes("待审阅")),JSON.stringify(lines));
-
-  // 4. 产出：一篇都没发过时整块不给（0 不是一个值得报的数）
-  check("一篇都没发过时不画「本月产出」",!lines.some(l=>l.key==="本月产出"),JSON.stringify(lines));
-  check("agenda 在没有发布记录时把 output 给成 null",(await request("/api/workspace/agenda")).output===null);
-
-  // 5. 流水线：只有计数，点一档去对应那一页（选题不在创作页里）
+  // 3. 那排数：四张卡各管一段，而且都有真数据
   const agendaNow=await request("/api/workspace/agenda");
-  const flow=await page.evaluate(()=>[...document.querySelectorAll(".agenda-flow__bar button")]
-    .map(b=>({n:Number(b.querySelector("b").textContent),stage:b.querySelector("span").textContent.trim()})));
-  check("流水线的计数等于真实条数",
-    flow.length===agendaNow.stages.length&&flow.every((f,k)=>f.n===agendaNow.stages[k].count&&f.stage===agendaNow.stages[k].stage),
-    JSON.stringify({flow,stages:agendaNow.stages}));
-  await page.locator(".agenda-flow__bar button").filter({hasText:"选题"}).click();
-  await page.waitForFunction(()=>location.hash.includes("#/research"));
-  check("点「选题」那一档去的是选题空间，不是创作页",page.url().includes("#/research"),page.url());
+  const kpi=await page.evaluate(()=>[...document.querySelectorAll(".stat")].map(c=>({
+    label:c.querySelector(".stat__label")?.textContent.trim()||"",
+    value:c.querySelector(".stat__value")?.textContent.trim()||"",
+    delta:c.querySelector(".stat__delta")?.textContent.trim()||"",
+    note:c.querySelector(".stat__note")?.textContent.trim()||"",
+  })));
+  check("四张 KPI 卡都在，都有主数字和参照",
+    kpi.length===4&&kpi.every(c=>c.value&&c.note),JSON.stringify(kpi));
+  check("「在手上」那个数等于服务端给的条数",
+    kpi[0].label==="在手上"&&Number(kpi[0].value)===agendaNow.inHand.length,JSON.stringify(kpi[0]));
+  check("「等你决定」把 AI 提的候选算进去了",
+    kpi[3].label==="等你决定"&&Number(kpi[3].value)===agendaNow.waiting.reduce((n,e)=>n+e.count,0),
+    JSON.stringify({kpi:kpi[3],waiting:agendaNow.waiting}));
+  // ⚠️ **这一排是「0 不是一个值得报的数」的例外，而且例外只开给主数字。**
+  // 成排的四张卡是一个形状，缺一张会让下沿参差；而带参照的 0 说的是「这个月还没动」。
+  check("「本月产出」在没有发布记录时也画，并带上月作参照",
+    kpi[1].label==="本月产出"&&kpi[1].note.startsWith("上月"),JSON.stringify(kpi[1]));
+  check("agenda 的 output 总是给成对象，另给 any 判断要不要画整块",
+    agendaNow.output&&typeof agendaNow.output==="object"&&agendaNow.output.any===false,
+    JSON.stringify(agendaNow.output));
+  // ⚠️ 参照行里 0 的那一项**不占位**（例外只给主数字）：这个库有书没素材
+  check("参照行里不写「0 份素材」",!kpi[2].note.includes("0 份"),JSON.stringify(kpi[2]));
+
+  // 4. 那张图：知识库这 12 周。⚠️ **三段真的是三种深浅**——`seriesColor` 按
+  // `PLATFORM_ORDER.indexOf` 取色，而「Wiki / 书 / 素材」都不在平台表里，走那条路
+  // 三段会拿到同一个灰、堆叠柱塌成一根实心柱，而且不报错。这是那条路的回归闸。
+  const chart=await page.evaluate(()=>({
+    cols:document.querySelectorAll(".home-chart .bars__col").length,
+    shades:[...new Set([...document.querySelectorAll(".home-chart .bars__seg")]
+      .map(n=>getComputedStyle(n).backgroundColor))].length,
+    zeros:[...document.querySelectorAll(".home-chart .bars__value[data-zero]")]
+      .every(n=>getComputedStyle(n).visibility==="hidden"),
+    legend:[...document.querySelectorAll(".home-chart .legend-item")].map(n=>n.textContent.trim()),
+  }));
+  check("图是 12 周，只有一周有数也能画",chart.cols===12,JSON.stringify(chart));
+  check("三段是三种深浅（mono 取色按位置的回归闸）",chart.shades===3,JSON.stringify(chart));
+  check("空的那几周不标 0",chart.zeros,JSON.stringify(chart));
+  check("图例就是 Wiki / 书 / 素材",chart.legend.join("/")==="Wiki/书/素材",JSON.stringify(chart.legend));
+  const kb=agendaNow.kb;
+  check("每周的合计等于三段之和",
+    kb.weeks.length===12&&kb.weeks.every(w=>w.total===kb.series.reduce((n,k)=>n+(w.byPlatform[k]||0),0)),
+    JSON.stringify(kb.weeks));
+
+  // 5. 明细表：只放前 8 行，芯片按阶段筛，「看全部」去创作页
+  const table=await page.evaluate(()=>({
+    rows:document.querySelectorAll(".agenda-rows .row").length,
+    chips:[...document.querySelectorAll(".agenda-hand .chip")].map(c=>c.textContent.trim()),
+  }));
+  check("超过八条时明细表只显示 8 行",agendaNow.inHand.length>8&&table.rows===8,JSON.stringify(table));
+  check("表头芯片的计数等于真实条数",
+    table.chips[0]===`全部 ${agendaNow.inHand.length}`
+      &&table.chips.slice(1).join("|")===agendaNow.stages.map(e=>`${e.stage} ${e.count}`).join("|"),
+    JSON.stringify({chips:table.chips,stages:agendaNow.stages}));
+  await page.locator(".agenda-hand .chip").filter({hasText:"选题"}).click();
+  await page.waitForFunction(()=>[...document.querySelectorAll(".agenda-rows .pill")]
+    .every(p=>p.textContent.trim()==="选题"));
+  check("点一档只剩那一档",true);
+  await page.locator(".agenda-hand .chip").filter({hasText:"全部"}).click();
+  await page.locator(".home-all").click();
+  await page.waitForFunction(()=>location.hash.includes("#/content"));
+  check("「看全部」去的是创作页",page.url().includes("#/content"),page.url());
   await page.goto(`${base}/#/today`);
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
+
+  // 置顶、收起、撤销和失败回执，均使用隔离工作区。
+  const lastRow=page.locator('.agenda-rows .row').last();
+  const pinTitle=(await lastRow.locator('.agenda-row__open').innerText()).trim();
+  await lastRow.hover();
+  await lastRow.getByRole('button',{name:'置顶「'+pinTitle+'」',exact:true}).focus();
+  await page.keyboard.press('Enter');
+  await until(()=>page.locator('.agenda-row__open').first().innerText(),t=>t.trim()===pinTitle,'置顶排在最前');
+  const firstRow=page.locator('.agenda-rows .row').first();
+  await firstRow.hover();
+  await firstRow.getByRole('button',{name:'把「'+pinTitle+'」从首页收起',exact:true}).click();
+  await page.getByText('「'+pinTitle+'」不在首页出现了',{exact:true}).waitFor();
+  check('收起后列表不再显示该项',!(await page.locator('.agenda-row__open').allInnerTexts()).some(t=>t.trim()===pinTitle));
+  await page.getByRole('button',{name:'撤销',exact:true}).click();
+  await until(()=>page.locator('.agenda-row__open').first().innerText(),t=>t.trim()===pinTitle,'撤销恢复置顶条目');
+  await page.route('**/api/workspace/work-state/**',route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({ok:false,error:'收起失败测试'})}));
+  await firstRow.hover();
+  await firstRow.getByRole('button',{name:'把「'+pinTitle+'」从首页收起',exact:true}).click();
+  await page.getByText(/收起失败测试/).first().waitFor();
+  check('失败不显示成功回执',await page.getByText('「'+pinTitle+'」不在首页出现了',{exact:true}).count()===0);
+  await page.unroute('**/api/workspace/work-state/**');
+  await page.reload();
+  await page.locator('.agenda-rows .row').first().waitFor();
+
+  await page.getByRole('button',{name:'看数字',exact:true}).click();
+  check('周增长可以切换到完整数字表',await page.locator('.home-chart tbody tr').count()===12);
+  await page.getByRole('button',{name:'看图',exact:true}).click();
+  for (const width of [1920,1440]) {
+    await page.setViewportSize({width,height:1000});
+    check('首页 '+width+' 无横向溢出',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    check('有数据的柱子有实际高度',await page.locator('.home-chart .bars__seg').evaluateAll(ns=>ns.length>0&&ns.every(n=>n.getBoundingClientRect().height>0)));
+    await page.screenshot({path:path.join(shotDir,'home-dashboard-'+width+'.png'),fullPage:true});
+  }
 
   // 6. 「记一个想法」和清单的「＋加一条」是两个不同的入口
   check("记灵感和加任务是两个入口",
     await page.getByLabel("记下灵感",{exact:true}).count()===1&&await page.locator(".plan-plus").count()===1);
 
   check("首页手机无横向溢出",await page.setViewportSize({width:390,height:844}).then(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)));
+  // ⚠️ 390 上四张卡排**两列**：`.stats` 默认的 `minmax(214px,1fr)` 只排得下一列，
+  // 四张 135px 高的卡摞起来，人要滑过整屏数字才看得到第一条内容。
+  const narrow=await page.evaluate(()=>{
+    const tops=[...document.querySelectorAll(".stat")].map(c=>Math.round(c.getBoundingClientRect().top));
+    return {rows:new Set(tops).size,duo:getComputedStyle(document.querySelector(".home-duo")).gridTemplateColumns.split(" ").length};
+  });
+  check("390 上四张卡排两列（两行）",narrow.rows===2,JSON.stringify(narrow));
+  check("390 上清单和图各占整幅",narrow.duo===1,JSON.stringify(narrow));
+  check("手机周日期互不重叠",await page.locator(".home-chart .bars__label").evaluateAll(ns=>{
+    const rects=ns.filter(n=>getComputedStyle(n).visibility!=="hidden").map(n=>n.getBoundingClientRect());
+    return rects.length===4&&rects.every((r,i)=>!i||r.left>=rects[i-1].right);
+  }));
   await page.screenshot({path:path.join(shotDir,"interview-home-mobile.png"),fullPage:true});
+  await page.locator('.home-chart').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(shotDir,'home-mobile-chart.png'),fullPage:true});
+  await page.locator('.agenda-hand').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(shotDir,'home-mobile-table.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
 
   for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
