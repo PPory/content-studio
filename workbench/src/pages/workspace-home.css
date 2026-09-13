@@ -1,5 +1,16 @@
 /* Shared editorial surfaces for home, library and reading. */
-.main:has(.workspace-overview),.main:has(.workspace-library) { background:var(--surface); }
+/**
+ * ⚠️ **首页不再把自己改成白底。**
+ *
+ * `.main` 默认是 `--sunken`（浅灰），而首页曾经和阅读区一起被改成白——
+ * 那一行造成了一整串连锁：白底上白卡立不起来 → 于是按「不要框里画框」不画盒子
+ * → 于是整页没有层次，看起来像一份还没填完的文档。而全应用其余页面本来就是
+ * **浅灰底 + 白卡**（`.stat` 那段注释原话：「首屏那一排数字卡。卡片白、正文区浅灰」）。
+ *
+ * ⚠️ **判据：改底色之前先确认这一页要不要卡片。这两件事是一件事。**
+ * 阅读区仍然留白底——那一页是一篇正文，正文不该坐在灰底上。
+ */
+.main:has(.workspace-library) { background:var(--surface); }
 .workspace-overview,.workspace-library { max-width:1260px; margin:0 auto; padding:28px 36px 48px; color:var(--text-1); }
 .overview-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:24px; }
 .overview-heading h1 { font-size:25px; font-weight:600; line-height:1.5; margin:0 0 5px; }
@@ -8,10 +19,6 @@
 /* ───────────────────────── 首页 ─────────────────────────
    ⚠️ 这个文件是首页、阅读区和 Wiki 浏览共用的。下面只改首页自己的 `.overview-*`；
    `.overview-heading`（`Library.jsx` 还在用）和 `.library-* / .reader-*` 的数值不动。 */
-
-.overview-panel { min-width:0; padding:0; background:transparent; }
-.overview-panel>header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:10px; border-bottom:1px solid var(--border); }
-.overview-panel h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
 
 /* ── 一行记录 ──
    ⚠️ **上一版不是「一个输入框」，是一整块容器**：白底 + 一圈边框 + 8px 圆角，
@@ -23,8 +30,6 @@
    默认一行高，打字之后才长成多行并露出提交那一条。 */
 .overview-capture {
   display:flex; align-items:flex-start; gap:9px;
-  /* 和下面那一列同一个测宽，否则输入框比它底下所有东西都宽一截 */
-  max-width:760px;
   margin:0 0 16px; padding:0 12px;
   border:1px solid var(--border-strong); border-radius:var(--r-ctl);
   background:var(--canvas); cursor:text;
@@ -58,33 +63,57 @@
 .overview-saved>span[role="status"] { color:var(--text-3); font-size:var(--fs-xs); }
 .overview-saved>.btn { margin-left:auto; }
 
-/* ── 一栏 ──
-   ⚠️ **`minmax(0, 1fr)` 不能写成默认的 `auto`。** grid 的 `auto` track 撑不下
-   min-content 时**会溢出容器**（而不是压缩内容）：`.agenda-hand` 里那个 `.row-head`
-   量出来 min-content 是 735px（`.row-meta` 是 `flex:none`，长 meta 撑不动），
-   而上一版右边还有个窄栏、主列 track 只有 670px——于是那些行直接**压到窄栏上面**。
-   1440 上 meta 短（「450 字」）所以看不出来，1920 上一眼就是重叠。 */
-/* ⚠️ **这一页要有正文测宽。** 量过：不加的话容器是 1216px，而「发了 1 篇」这种一句话
-   加一个右端箭头，中间会空 **906px**——屏幕上最明显的「没做完」的信号。
-   760px 是扫读一列摘要的常见测宽（Linear 的内容列、Notion 的正文都在这一档）。
-   ⚠️ 是**测宽**不是居中：`margin` 不给 auto，这一页左对齐，和其余各页的内容起点对齐。 */
-.overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:26px; max-width:760px; }
+/* ── 一栏，铺满容器 ──
+   ⚠️ 760px 那个测宽是上一版为「一列一行式提要」定的；现在是 KPI 排 + 两栏 + 明细表，
+   多列网格自己就把行长管住了，再套一个窄测宽只会让四张卡挤成两张的宽度。
+   ⚠️ `minmax(0,1fr)` 仍然要留：grid 的 `auto` track 撑不下 min-content 时会**溢出容器**
+   而不是压缩内容（量到过 1920 上的重叠）。 */
+.overview-main { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
+
+/* 卡片：白底 + 一道边、圆角、内边距。翻过底色之后它们本来就浮着，
+   所以边框用 `--border` 不用 `--border-strong`（同 `.stat` 那条注释）。 */
+.home-card {
+  padding:16px 18px 15px;
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  background:var(--surface);
+}
+.home-card > header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.home-card > header h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
+.home-card > header span { color:var(--text-3); font-size:var(--fs-xs); }
+
+/* 清单 | 图 两栏。⚠️ 图那一栏要**更宽**：柱图的信息量在横轴上 */
+.home-duo { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:16px; align-items:stretch; }
+/* 图还画不出来（一条都没存过）的时候，清单占满这一行，不留一半空栅格 */
+.home-duo:not(:has(.home-chart)) { grid-template-columns:minmax(0,1fr); }
+.home-card--plan .day-plan { margin-bottom:0; }
+/* 图那一栏跟着卡片拉满高度，柱子按百分比吃掉剩余空间（`WeeklyBars` 的注释写了理由） */
+.home-chart { display:flex; flex-direction:column; }
+.home-chart .bars { flex:1; min-height:172px; display:flex; flex-direction:column; }
+/* ⚠️ **空的那几周不标 0。** 柱子没了就已经是 0，那个数字只是噪声
+   （判据：0 不是一个值得报的数）。用 `visibility` 不用 `display`：
+   这一格还要占住高度，不然有数的那几根柱子会比空的那几根矮一截。
+   组件里那条淡灰的 `[data-zero]` 不动——这是**这一页**的取舍。 */
+.home-chart .bars__value[data-zero] { visibility:hidden; }
+
+/* ⚠️ **清单那张卡撑满这一行的高度**：两张卡等高才是一排，一张矮一截读起来是没做完。
+   `.day-plan` 自己变成纵向弹性盒，多出来的高度进清单那一列（它本来就是会长的）。 */
+.home-card--plan { display:flex; flex-direction:column; }
+.home-card--plan .day-plan { flex:1; display:flex; flex-direction:column; }
+.home-card--plan .plan-body { flex:1; }
+
+/* 「看全部 N 件」挂在表头最右 */
+.home-all { display:inline-flex; align-items:center; gap:4px; flex:none; }
 
 /* ── 第一层（首启）：先把工作台跑起来 ──
    和「接着写」那张卡共用底色和内边距：它们占的是同一个位置、二选一出现，
    长得不一样反而会让人以为是两种东西。 */
-/* ⚠️ **不再给底色。** 有底色时它是整页唯一的实心块，于是比上面那份清单还重
-   ——而它只是个提醒。改成一道上边框分隔，重量回到提醒该有的那一档。 */
-.agenda-setup {
-  padding:14px 0 0;
-  border-top:1px solid var(--border);
-}
-.agenda-setup > header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+/* ⚠️ **不给自己第二层底色。** 它现在和别的块一样是一张白卡（`.home-card`）；
+   曾经给过它一块实心底色，结果它比上面那份清单还重——而它只是个提醒。 */
 .agenda-setup h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
 /* 「0 / 3」用等宽：它是个计数，而且会一位一位地变 */
 .agenda-setup__count { flex:none; color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-xs); }
 
-.agenda-setup ol { display:grid; gap:2px; margin:12px 0 0; padding:0; list-style:none; }
+.agenda-setup ol { display:grid; gap:2px; margin:2px 0 0; padding:0; list-style:none; }
 .agenda-setup li {
   display:flex; align-items:flex-start; gap:10px;
   padding:8px 0;
@@ -111,7 +140,13 @@
 /* 块头和「在手上」「接着读」同一档：不要圆框图标，标题不要 --fs-xl */
 .workspace-overview .day-plan .section-head__icon { display: none; }
 .workspace-overview .day-plan .section-head h2 { margin: 0; font-size: var(--fs-base); font-weight: 600; letter-spacing: 0; }
-.workspace-overview .day-plan .section-head { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+/* ⚠️ `.section-head` 默认 `margin:40px 0 16px`，而 `.overview-block:first-of-type > .section-head`
+   又把上边距改回 24px——那是给「一页里的第 N 段」留的，在卡片里它就是标题上方一片死白。
+   ⚠️ **选择器必须带上 `.overview-block` 才盖得住**：和那条同为 (0,3,0)，
+   而这个文件在 `styles.css` **之前**加载，同等特异度下后者赢。 */
+.workspace-overview .day-plan.overview-block > .section-head {
+  margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
 
 /* 今天 / 明天走这一页的芯片语汇（描边 + 浅底），不要实心黑——
    实心黑在这个设计里是留给「一屏唯一的主操作」的 */
@@ -136,55 +171,63 @@
 /* 加一条：一句短任务不需要 650px 的输入框 */
 .workspace-overview .plan-add { max-width: 440px; }
 
-/* ── 三条登记行：信号 / 结果 / 续上 ──
-   ⚠️ **同一种形状。** 它们性质不同（有什么新的 / 做出去的怎么样 / 现在动哪个），
-   但都是「一句提要 + 一个去处」，画成同一种行读起来才是「三条提要」而不是三个小功能。
-   「接着写」从一张卡降到这里：承诺块在上面之后，两个大块会打架。 */
-.agenda-lines { display:grid; gap:1px; }
-.agenda-line {
-  display:flex; align-items:baseline; gap:14px; width:100%;
-  padding:11px 10px 11px 2px;
-  border:0; border-radius:var(--r-sm); background:none; color:inherit;
-  font:inherit; text-align:left; cursor:pointer;
+/* ── 在手上：明细表 ──
+   ⚠️ 表头一行里三样东西：标题、阶段芯片、「看全部」。芯片**不是**一段独立内容，
+   所以它的下外边距归零、跟标题同一行；「看全部」推到最右。 */
+.agenda-hand > header {
+  display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-start; gap:14px;
+  margin-bottom:0; padding-bottom:9px; border-bottom:1px solid var(--border);
 }
-.agenda-line:hover { background:var(--surface-2); }
-/* 左边那一列定宽：三行的说明因此落在同一条竖线上，一眼看出是三条并列的提要 */
-.agenda-line__key { flex:none; width:64px; color:var(--text-3); font-size:var(--fs-xs); }
-/* ⚠️ **`flex:0 1 auto` 不是 `1 1 auto`。** 让它长满的话，短句子后面那段空白会把箭头
-   顶到行尾去；一句「发了 1 篇」和它的箭头中间隔着几百像素，两者就不像同一行的东西了。
-   现在箭头紧跟在话后面，而整行仍然是可点区域（hover 底色照样铺满）。 */
-.agenda-line__say { flex:0 1 auto; min-width:0; font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.agenda-line__say b { font-weight:600; }
-/* 次要那半句压淡：一行里「是什么」在前、「什么状态」在后，颜色替代括号 */
-.agenda-line__say em { color:var(--text-3); font-style:normal; }
-.agenda-line > svg { flex:none; color:var(--text-3); }
+.agenda-hand h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
+.agenda-hand .chips { margin:0; }
+.agenda-hand .home-all { margin-left:auto; }
 
-/* ── 在手上：一条流水线 ──
-   ⚠️ **只有计数，没有列表。** 全量表在创作页已经有了，首页放第二份就是同一件事两遍
-   ——而它正是「首页看着像列表页」的那一大块。这一条要回答的是**堵在哪一档**。 */
-.agenda-flow h2 { margin:0 0 10px; font-size:var(--fs-base); font-weight:600; }
-.agenda-flow__bar { display:flex; align-items:stretch; flex-wrap:wrap; gap:2px; }
-.agenda-flow__bar button {
-  display:flex; align-items:baseline; gap:7px;
-  padding:8px 12px 8px 10px;
-  border:0; border-radius:var(--r-sm); background:none; color:inherit;
-  font:inherit; cursor:pointer;
+/* ── 行 ──
+   ⚠️ 走 `styles.css` 共用的 `.rows / .row / .row-head`，但把那份的**外壳**撤掉：
+   这一块本身已经是一张白卡（`.home-card`），`.rows` 那份的 1px 边框 + 14px 圆角 + 白底
+   套进来就是框里画框。要写 `.rows.agenda-rows` 两个类才盖得住——这个文件在
+   `styles.css` 之前加载，同等特异度下后者会赢。
+   ⚠️ **行以阶段 pill 开头，不以时间结尾。** 这是上一版「看着像流水」的直接解药：
+   一列 pill 竖着排下来，哪一档堆了多少一眼就看出来（和创作页那张表同一条判据）。 */
+.rows.agenda-rows { border:0; border-radius:0; background:transparent; overflow:visible; }
+.agenda-rows .row-head { align-items:center; gap:12px; padding:11px 0; }
+.agenda-rows .row:hover .row-head,
+.agenda-rows .row:focus-within .row-head { background:transparent; }
+.agenda-rows .pill { flex:none; }
+
+.agenda-row__open {
+  display:flex; align-items:center; gap:6px;
+  flex:1 1 auto; min-width:0; overflow:hidden;
+  padding:0; border:0; background:none; color:inherit;
+  font:inherit; font-size:var(--fs-sm); font-weight:500;
+  text-align:left; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;
 }
-.agenda-flow__bar button:hover { background:var(--surface-2); }
-/* 数字用等宽、比标签重：这一条是拿来比大小的 */
-.agenda-flow__bar b { font-family:var(--font-mono); font-size:var(--fs-md); font-weight:650; }
-.agenda-flow__bar span { color:var(--text-2); font-size:var(--fs-sm); }
-/* 档与档之间那个 ›：它才是「这是一条流水线」而不是「四个并列的数」的唯一记号 */
-.agenda-flow__bar i { margin-left:7px; color:var(--border-strong); font-style:normal; }
+.agenda-row__open svg { flex:none; color:var(--text-3); }
+.agenda-row__open:hover { text-decoration:underline; text-underline-offset:3px; }
+
+/* ⚠️ **`flex:none` 换成「可以缩」。** 这一格原来撑得住 200 多像素不让位，
+   于是整行的 min-content 到了 735px。窄的时候进展那句该省略号，而不是把行撑爆。
+   时间（`放了 N 天`）不许缩：那是这一格里最短也最该看见的东西。 */
+.agenda-rows .row-meta { flex:0 1 auto; min-width:0; gap:12px; }
+.agenda-row__progress { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-2); }
+.agenda-row__stale { flex:none; color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-2xs); }
+
+/* 行尾两颗：平时收起来。一列图标竖排下来会比它旁边的标题更抢眼 */
+.agenda-row__acts { flex:none; display:flex; gap:2px; opacity:0; transition:opacity .14s var(--ease); }
+.agenda-rows .row:hover .agenda-row__acts,
+.agenda-rows .row:focus-within .agenda-row__acts { opacity:1; }
+.agenda-row__acts .icon-btn { width:26px; height:26px; border-color:transparent; background:none; color:var(--text-3); }
+.agenda-row__acts .icon-btn:hover { border-color:var(--border-strong); color:var(--text-1); }
+.agenda-row__acts .icon-btn[aria-pressed="true"] { color:var(--text-1); }
+@media (hover:none) { .agenda-row__acts { opacity:1; } }
 
 /* ── 接着读 ──
    整幅宽度的一排封面。⚠️ `auto-fill` 不是 `auto-fit`：书少的时候就少几张、
    右边空着是对的，不要把三本书拉成一排巨幅封面（判据同「卡片就该是卡片的尺寸」）。 */
-.agenda-reading > header { padding-bottom:8px; border-bottom:1px solid var(--border); }
 .agenda-reading h2 { margin:0; font-size:var(--fs-base); font-weight:600; }
 .agenda-reading ul {
   display:grid; grid-template-columns:repeat(auto-fill, minmax(108px, 132px));
-  gap:18px 16px; margin:16px 0 0; padding:0; list-style:none;
+  gap:18px 16px; margin:2px 0 0; padding:0; list-style:none;
 }
 .agenda-reading li > button {
   display:grid; gap:7px; width:100%; padding:0;
@@ -202,10 +245,7 @@
 /* 空着的时候不摆一排灰格子，就一句话加一个去处 */
 .agenda-reading--empty .empty { padding:24px 0; }
 
-
-
 .overview-empty { margin:14px 0; color:var(--text-3); font-size:var(--fs-sm); line-height:1.8; }
-.overview-panel .empty { padding:30px 0; border:0; }
 
 .overview-connections { margin:0 0 18px; padding-bottom:12px; border-bottom:1px solid var(--border); }
 .overview-connections>p { color:var(--text-3); font-size:var(--fs-xs); }
@@ -278,22 +318,46 @@
   .overview-heading h1 { font-size:21px; }
   .overview-heading p { line-height:1.8; }
   .overview-heading>.btn,.overview-heading>.row-actions { font-size:12px; }
-  .overview-main { gap:22px; }
+  .overview-main { gap:14px; }
+  /* ⚠️ **四张卡在窄屏上排两列，不是一列。** `.stats` 的 `minmax(214px,1fr)` 在 390 上
+     只排得下一列 —— 四张 135px 高的卡摞起来，人要滑过整屏数字才看得到第一条内容。
+     两列之后它们仍然是「一排数」（判据：成排的 KPI 是一个形状），只是折了一行。
+     `.stats` 是全应用共用的，所以这条只改首页。 */
+  .workspace-overview .stats { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  /* 清单和图在窄屏上各占整幅：190px 宽的柱图读不出任何东西 */
+  .home-duo { grid-template-columns:minmax(0,1fr); }
+  /* 窄屏保留全部柱子，只显示四个日期刻度；完整日期可在数字表核对。 */
+  .home-chart .bars__label { visibility:hidden; }
+  .home-chart .bars__col:nth-child(3n) .bars__label { visibility:visible; }
+  /* ⚠️ **窄屏上撤掉那枚进度环。** 上面那条 `.workspace-overview .plan-body` 把它钉在
+     一条 72px 的右栏里，特异度盖过了 `styles.css` 在 860px 下的单栏规则——量到的结果是
+     一句任务被挤成三行。而环说的事（做了几条）每一行的钩子已经说了，
+     在这个宽度上它是**同一个事实第二遍**，先让路的就是它。 */
+  .workspace-overview .plan-body { grid-template-columns:minmax(0,1fr); gap:0; }
+  .workspace-overview .plan-side { display:none; }
+  .home-card { padding:14px 15px 13px; }
   .overview-capture__foot { align-items:flex-start; }
   .overview-saved>span:first-child { flex:1 1 100%; }
   .overview-saved>.btn { margin-left:0; }
-  .agenda-setup { padding:12px 0 0; }
-  /* 窄屏上按钮换到第二行，别把「为什么」挤成一列窄字 */
-  .agenda-setup li { flex-wrap:wrap; }
-  .agenda-setup li > .btn { margin-left:27px; }
+  /* ⚠️ **窄屏上改成两列网格，不靠 flex 换行。** `flex-wrap` 下每一项的基准宽度是
+     max-content，装不下时是**换行**而不是压缩——量到的结果是那颗圆圈图标被单独甩到
+     第一行，标题掉到第二行，一条步骤读起来散成四截。
+     网格把图标钉在第一列，标题、原因和按钮都在第二列，左缘对齐。 */
+  .agenda-setup li {
+    display:grid; grid-template-columns:17px minmax(0,1fr);
+    column-gap:10px; row-gap:8px; align-items:start;
+  }
+  .agenda-setup li > svg { grid-column:1; }
+  .agenda-setup li > div { grid-column:2; }
+  .agenda-setup li > .btn { grid-column:2; justify-self:start; margin-top:0; }
   /* ⚠️ 窄屏上一行装不下「pill + 标题 + 进展 + 两颗动作」：进展换到第二行，
      和标题左缘对齐。阶段 pill 留在第一行——它是这一行的主语。 */
-  /* 窄屏上那一句提要换行，不挤在 64px 的标签右边 */
-  .agenda-line { align-items:flex-start; flex-wrap:wrap; gap:4px 10px; }
-  .agenda-line__say { flex:1 1 100%; white-space:normal; }
-  .agenda-flow__bar i { display:none; }
+  .agenda-rows .row-head { flex-wrap:wrap; gap:8px 10px; }
+  .agenda-rows .row-meta { flex:1 1 60%; padding-left:2px; }
+  .agenda-row__acts { opacity:1; }
   .agenda-reading ul { grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:14px 12px; }
   .agenda-hand > header { align-items:flex-start; flex-direction:column; gap:8px; }
+  .agenda-hand .home-all { margin-left:0; }
   .library-browse-links { gap:2px; margin-bottom:18px; }
   .library-search select { max-width:120px; }
   .library-card-grid article>button:first-child { grid-template-columns:45px minmax(0,1fr); column-gap:8px; }
