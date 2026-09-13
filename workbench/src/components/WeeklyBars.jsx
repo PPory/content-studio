@@ -17,8 +17,18 @@ import { IconTable } from "./icons.jsx";
  */
 const CHROME = 46;
 
-export function WeeklyBars({ weeks, platforms, dark }) {
+/**
+ * ⚠️ **`mono` 下取色按 `platforms` 数组里的位置，不能走 `seriesColor`。**
+ * 那个函数是按 `PLATFORM_ORDER.indexOf(name)` 取色的——首页这张图的三段是
+ *「Wiki / 书 / 素材」，都不在平台表里，`indexOf` 全返回 -1，于是**三段拿到同一个灰**：
+ * 堆叠柱看起来就是一根实心柱，分段全部消失，而且不报错。
+ *
+ * `unit` 是因为 title 原来硬写着「N 篇」——这张图数的是条目，不是文章。
+ */
+export function WeeklyBars({ weeks, platforms, dark, mono = false, unit = "篇" }) {
   const [table, setTable] = useState(false);
+  const MONO = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+  const color = (p) => (mono ? MONO[platforms.indexOf(p) % MONO.length] : platformColor(p, dark));
   const max = Math.max(1, ...weeks.map((w) => w.total));
 
   return (
@@ -57,7 +67,7 @@ export function WeeklyBars({ weeks, platforms, dark }) {
           */
         <div className="bars__plot">
           {weeks.map((w) => (
-            <div key={w.key} className="bars__col" title={`${w.label}：${w.total} 篇`}>
+            <div key={w.key} className="bars__col" title={`${w.label}：${w.total} ${unit}`}>
               <span className="bars__value" data-zero={w.total === 0 ? "" : undefined}>{w.total}</span>
               <div className="bars__stack" style={{ height: `calc((100% - ${CHROME}px) * ${w.total / max})` }}>
                 {platforms.map((p) =>
@@ -65,8 +75,8 @@ export function WeeklyBars({ weeks, platforms, dark }) {
                     <span
                       key={p}
                       className="bars__seg"
-                      style={{ flex: w.byPlatform[p], background: platformColor(p, dark) }}
-                      title={`${p} ${w.byPlatform[p]} 篇`}
+                      style={{ flex: w.byPlatform[p], background: color(p) }}
+                      title={`${p} ${w.byPlatform[p]} ${unit}`}
                     />
                   ) : null
                 )}
@@ -81,7 +91,7 @@ export function WeeklyBars({ weeks, platforms, dark }) {
         <div className="legend">
           {platforms.map((p) => (
             <span key={p} className="legend-item">
-              <span className="dot" style={{ background: platformColor(p, dark) }} />
+              <span className="dot" style={{ background: color(p) }} />
               {p}
             </span>
           ))}
