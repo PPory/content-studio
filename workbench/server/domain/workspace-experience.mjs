@@ -308,7 +308,7 @@ export function workspaceAgenda(w) {
    * 读过才出现，没读过就让这一块空着并说清原因。
    */
   const reading = workspaceActivity(w).reading.filter((item) => item.kind === "book");
-  return { resume, waiting, stages, inHand, reading, setup: workspaceSetup(w), output: publishedOutput(w, stageCount("待复盘")) };
+  return { resume, waiting, stages, inHand, reading, setup: workspaceSetup(w), output: publishedOutput(w, stageCount("待复盘")), kb: knowledgeBase(w) };
 }
 
 /**
@@ -387,6 +387,71 @@ function publishedOutput(w, pendingReview) {
     WHERE substr(p.published_at, 1, 7) = ?`).get(prefix).n;
   const total = w.db.prepare(`SELECT COUNT(*) n FROM publication_records p
     JOIN entities e ON e.id = p.id AND e.deleted_at IS NULL`).get().n;
-  if (!total) return null;
-  return { thisMonth: count(month(0)), lastMonth: count(month(-1)), pendingReview, total };
+  /**
+   * ⚠️ **总是返回对象，`any` 才说「有没有发过」。**
+   * 以前一篇没发过就返回 `null`，那是为了「一行提要没内容就不画」。
+   * 但 KPI 那一排是**一个形状**：四张卡缺一张会让下沿参差，而
+   *「本月 0 篇 · 上月 0 篇」是带参照的 0——它说的是「这个月还没动」，
+   * 不是「这里没有数据」。要不要画独立那一块的调用方自己看 `any`。
+   */
+  return { thisMonth: count(month(0)), lastMonth: count(month(-1)), pendingReview, total, any: total > 0 };
+}
+
+/** 一周的起点（周一），按**服务端本机日期**算——和 `DayPlan` 那条「日期串由服务端给」同一条理由。 */
+function weekStart(at) {
+  const d = new Date(at);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+/**
+ * 知识库：现在有多少、这一周新增多少，以及近 12 周每周新增几条。
+ *
+ * ⚠️ **为什么画知识库的增长，而不是发布趋势。** 发布记录只有 1 条（实测），
+ * 画 12 个月发布量就是一根孤柱加 11 个空格——首屏最大的那块图形大半在展示「还没有」。
+ * 而 Wiki / 书 / 素材是这个库真正在长的东西（100 / 35 / 31），
+ * 它现在就有内容，而且往后只会越来越有。
+ *
+ * ⚠️ 三类实体都挂在 `entities` 上，所以时间取 `entities.created_at`、
+ * 软删也在同一处滤掉（`deleted_at IS NULL`），不用各表各写一遍。
+ */
+export const KB_SERIES = Object.freeze(["Wiki", "书", "素材"]);
+const KB_TABLE = { Wiki: "wiki_pages", 书: "books", 素材: "materials" };
+
+export function knowledgeBase(w, now = Date.now()) {
+  const countAll = (table) => w.db.prepare(`SELECT COUNT(*) n FROM ${table} t
+    JOIN entities e ON e.id = t.id AND e.deleted_at IS NULL`).get().n;
+  const addedSince = (table, from) => w.db.prepare(`SELECT COUNT(*) n FROM ${table} t
+    JOIN entities e ON e.id = t.id AND e.deleted_at IS NULL
+    WHERE e.created_at >= ?`).get(from).n;
+
+  const thisWeek = weekStart(now);
+  const weeks = [];
+  for (let back = 11; back >= 0; back -= 1) {
+    const from = new Date(thisWeek);
+    from.setDate(from.getDate() - back * 7);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 7);
+    const byPlatform = {};
+    let total = 0;
+    for (const name of KB_SERIES) {
+      const n = w.db.prepare(`SELECT COUNT(*) n FROM ${KB_TABLE[name]} t
+        JOIN entities e ON e.id = t.id AND e.deleted_at IS NULL
+        WHERE e.created_at >= ? AND e.created_at < ?`).get(from.toISOString(), to.toISOString()).n;
+      byPlatform[name] = n;
+      total += n;
+    }
+    const label = `${from.getMonth() + 1}/${from.getDate()}`;
+    weeks.push({ key: from.toISOString().slice(0, 10), label, total, byPlatform });
+  }
+
+  return {
+    wiki: countAll("wiki_pages"),
+    books: countAll("books"),
+    materials: countAll("materials"),
+    weekAdded: KB_SERIES.reduce((sum, name) => sum + addedSince(KB_TABLE[name], thisWeek.toISOString()), 0),
+    series: KB_SERIES,
+    weeks,
+  };
 }

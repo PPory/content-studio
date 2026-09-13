@@ -7,7 +7,7 @@ import {createBookRecord} from "../server/routes/books-local.mjs";
 import {createUlid} from "../server/storage/ids.mjs";
 import {createResearch,quickNote,getResearch,trashResearch,restoreResearch} from "../server/domain/research.mjs";
 import {feedPreferences,saveFeedPreferences} from "../server/domain/intelligence-feed.mjs";
-import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda,workspaceSetup,HOME_STAGE_ORDER,TOPIC_STAGE} from "../server/domain/workspace-experience.mjs";
+import {recordActivity,workspaceActivity,wikiConnections,researchSummary,refreshResearchSummary,workspaceAgenda,workspaceSetup,knowledgeBase,KB_SERIES,HOME_STAGE_ORDER,TOPIC_STAGE} from "../server/domain/workspace-experience.mjs";
 const root=await fs.mkdtemp(path.join(os.tmpdir(),"xenho-experience-"));let w;
 try {
  w=await openWorkspace({xenhoHome:path.join(root,"Xenho")});
@@ -176,7 +176,14 @@ try {
 
  // ── 「本月产出」：真实发布记录，没有就整块不画 ──
  {
-  assert.equal(workspaceAgenda(w).output,null,"一篇都没发过时整块不画（0 不是一个值得报的数）");
+  // ⚠️ 判据改了：`output` 总是给对象，**`any` 才说「有没有发过」**。
+  // 因为 KPI 那一排是一个形状，四张卡缺一张会让下沿参差；而「本月 0 · 上月 0」
+  // 是带参照的 0。要不要画**独立那一块**的调用方看 `any`。
+  {
+   const before=workspaceAgenda(w).output;
+   assert.equal(before.any,false,"一篇都没发过时 any 为 false");
+   assert.deepEqual([before.thisMonth,before.lastMonth,before.total],[0,0,0],"而三个数照样给出来");
+  }
 
   // 发布记录的外键要一份真实的稿 + 修订版本（`publication_records` 两条 FK 都是 RESTRICT）
   const pubProject=w.domain.createProject({title:"发过的那一篇",audience:"读者",viewpoint:"观点",confirmed:true,actor:"user",now:new Date()});
@@ -204,12 +211,51 @@ try {
   assert.equal(output.thisMonth,2,`本月应该是 2，实际 ${output?.thisMonth}`);
   assert.equal(output.lastMonth,1,`上月应该是 1（那条只有日期没有时间，正是不能用 strftime 的原因）`);
   assert.equal(output.total,3);
+  assert.equal(output.any,true,"发过之后 any 为 true");
   assert.equal(output.pendingReview,workspaceAgenda(w).stages.find(s=>s.stage==="待复盘")?.count||0,"待复盘不另算一遍，用阶段计数");
 
   // 软删一条就不该再数
   w.db.prepare("UPDATE entities SET deleted_at=? WHERE entity_type='publication' AND id=(SELECT id FROM publication_records WHERE substr(published_at,1,7)=? LIMIT 1)")
    .run(new Date().toISOString(),iso(thisM).slice(0,7));
   assert.equal(workspaceAgenda(w).output.thisMonth,1,"回收掉的发布记录不再计入");
+ }
+
+ // ── 知识库那张卡 + 那张周柱图 ──
+ //
+ // ⚠️ 画的是知识库增长而不是发布趋势：实测这个库只有 1 条发布记录，
+ // 12 个月的发布柱图就是一根孤柱加 11 个空格。
+ {
+  const kb=knowledgeBase(w);
+  const real=(t)=>w.db.prepare(`SELECT COUNT(*) n FROM ${t} x JOIN entities e ON e.id=x.id AND e.deleted_at IS NULL`).get().n;
+  assert.equal(kb.wiki,real("wiki_pages"));
+  assert.equal(kb.books,real("books"));
+  assert.equal(kb.materials,real("materials"));
+  assert.deepEqual(kb.series,[...KB_SERIES],"三段的名字由后端定，前端不自己写一份");
+
+  // 12 周、按周、末项是本周
+  assert.equal(kb.weeks.length,12);
+  const monday=new Date();monday.setHours(0,0,0,0);monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
+  assert.equal(kb.weeks.at(-1).key,monday.toISOString().slice(0,10),"末项是本周的周一");
+  for(const wk of kb.weeks){
+   assert.deepEqual(Object.keys(wk.byPlatform),[...KB_SERIES],"每一周都给齐三段（缺键会让某一段静默消失）");
+   assert.equal(wk.total,KB_SERIES.reduce((n,k)=>n+wk.byPlatform[k],0),"总数等于三段之和");
+  }
+
+  // 本周新增 / 周边界：自己造一条，别去动夹具里那些日期不确定的行
+  const base=knowledgeBase(w).weekAdded;
+  const fresh=await createBookRecord(w,{title:"这周刚导入的一本",kind:"资料",sourceKind:"文章",
+   chapters:[{title:"章",text:"# 章\n\n这周刚导入的正文。"}]});
+  assert.equal(knowledgeBase(w).weekAdded,base+1,"这周新导入一本，本周新增 +1");
+  const lastWeekBars=knowledgeBase(w).weeks.at(-2).total;
+  const lastWeekBooks=knowledgeBase(w).weeks.at(-2).byPlatform["书"];
+  const moved=new Date(monday);moved.setDate(moved.getDate()-3);
+  w.db.prepare("UPDATE entities SET created_at=? WHERE id=?").run(moved.toISOString(),fresh.id);
+  const after=knowledgeBase(w);
+  assert.equal(after.weekAdded,base,"挪到上周之后，本周新增回到原值");
+  assert.equal(after.weeks.at(-2).total,lastWeekBars+1,"而上一周那根柱子多了一条");
+  assert.equal(after.weeks.at(-2).byPlatform["书"],lastWeekBooks+1,"它落在「书」那一段");
+
+  assert.ok(workspaceAgenda(w).kb,"首页那一个请求里带着它");
  }
 
  console.log("workspace experience: true activity, validated positions, real wiki matching, persisted AI summary, quote provenance, stale guard and cache passed");
