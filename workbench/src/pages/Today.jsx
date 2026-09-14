@@ -193,9 +193,8 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
       /* ⚠️ **首启不报「0 件在手」。** 新用户看到的第一个数字不该是 0——
          那一格是给「你手上有多少」用的，手上还什么都没有的时候它只是在宣布这件事。 */
       count={inHand.length ? `${inHand.length} 件在手` : null}
-      /* ⚠️ `className="btn"` 把它降一档：这一页唯一的实心主按钮是那张卡上的
-         「继续写」——它是**带着具体对象的**动作，比「随便新开一篇」强得多。 */
-      aside={<NewContentButton label="直接写文章" className="btn" onGo={onGo} onChanged={onChanged} />}
+      /* 页头的新建文章是首页的主操作，使用随主题调整的实心按钮。 */
+      aside={<NewContentButton label="直接写文章" className="btn btn-primary" onGo={onGo} onChanged={onChanged} />}
     />
 
     {/* 一行记录。⚠️ 没有 label、没有说明句：一个输入框外面三行说明就是说明书。 */}
@@ -296,7 +295,7 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
               ⚠️ **它的「＋加一条」和页顶那个「记一个想法」不是一回事**：这里加的是
               **今天的任务**，上面记的是**灵感**（进 captures，存完还会去找 Wiki 关联）。 */}
           <section className="home-card home-card--plan">
-            <DayPlan plan={plan} />
+            <DayPlan plan={plan} compact />
           </section>
           {kb && kb.weeks.some((w) => w.total) ? (
             <section className="home-card home-chart">
@@ -353,8 +352,11 @@ export function Today({ onGo, onChanged, onForceGo = onGo, registerNavigationGua
                     {/* 中间那一列放能做决定的东西：进展。**不是摘要**——摘要在这个
                         工作台里是正文第一行的截断，句子从中间断掉。 */}
                     <span className="row-meta">
-                      <span className="agenda-row__progress">{item.progress}</span>
-                      {item.staleDays ? <span className="agenda-row__stale">放了 {item.staleDays} 天</span> : null}
+                      <span className="agenda-row__progress" title={[item.progress, item.staleDays ? '放了 '+item.staleDays+' 天' : ''].filter(Boolean).join(' · ')}>
+                        <span>{item.metric?.label}</span>
+                        <b>{item.metric?.value.toLocaleString("zh-CN") ?? "—"}</b>
+                        <span>{item.metric?.unit}</span>
+                      </span>
                     </span>
                     {acts(item)}
                   </div>

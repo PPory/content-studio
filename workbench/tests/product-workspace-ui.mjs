@@ -321,15 +321,42 @@ try {
   await page.locator(".day-plan form input").first().fill("把 harness 那篇的中间三段补完");
   await page.keyboard.press("Enter");
   await page.getByText("把 harness 那篇的中间三段补完").waitFor();
-  const ringText=()=>page.locator(".plan-ring__label").innerText().then(t=>t.replace(/\s+/g,""));
+  const ringText=()=>page.locator(".plan-progress").innerText().then(t=>t.replace(/\s+/g,""));
   check("加完之后计数从 0 起",(await ringText()).startsWith("0"),await ringText());
   // ⚠️ 那一行不是 <input>：整行是一颗 `aria-pressed` 的 button（12px 的小方框
   // 在一个每天点好几次的控件上太苛刻了，理由写在 `DayPlan.jsx`）
   await page.locator(".plan-task__main").first().click();
-  await page.waitForFunction(()=>document.querySelector(".plan-ring__label")?.innerText.replace(/\s+/g,"").startsWith("1"));
+  await page.waitForFunction(()=>document.querySelector(".plan-progress")?.innerText.replace(/\s+/g,"").startsWith("1"));
   await page.reload();
   await page.getByText("把 harness 那篇的中间三段补完").waitFor();
   check("勾上的状态刷新后还在（清单落库）",(await ringText()).startsWith("1"),await ringText());
+
+  check('清单用轻量完成数替代圆环',await page.locator('.day-plan .plan-ring').count()===0);
+  await page.locator('.plan-plus').click();
+  await page.locator('.plan-add input').fill('失败也要保留的任务');
+  await page.route('**/api/plan',route=>route.request().method()==='POST'
+    ? route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({ok:false,error:'任务保存失败测试'})}) : route.continue());
+  await page.locator('.plan-add input').press('Enter');
+  await page.getByText(/任务保存失败测试/).first().waitFor();
+  check('保存任务失败保留输入',await page.locator('.plan-add input').inputValue()==='失败也要保留的任务');
+  await page.unroute('**/api/plan');
+  await page.locator('.plan-add button').click();
+  await page.getByText('失败也要保留的任务',{exact:true}).waitFor();
+  await page.locator('.plan-task').filter({hasText:'失败也要保留的任务'}).hover();
+  await page.getByRole('button',{name:'从清单里删掉「失败也要保留的任务」',exact:true}).click();
+  await until(()=>page.getByText('失败也要保留的任务',{exact:true}).count(),n=>n===0,'删除测试任务');
+  if (await page.locator('.plan-plus').getAttribute('aria-expanded')==='true') await page.locator('.plan-plus').click();
+  await page.locator('.plan-day').filter({hasText:'明天'}).click();
+  await page.getByRole('button',{name:'添加明天的任务',exact:true}).waitFor();
+  await page.getByRole('button',{name:'添加明天的任务',exact:true}).click();
+  await page.getByRole('textbox',{name:'加一条任务到明天的清单'}).fill('明天整理两条资料');
+  await page.keyboard.press('Enter');
+  await page.getByText('明天整理两条资料',{exact:true}).waitFor();
+  await page.locator('.plan-day').filter({hasText:'今天'}).click();
+  await page.getByText('把 harness 那篇的中间三段补完').waitFor();
+  check('切换日期不混入另一日任务',await page.getByText('明天整理两条资料',{exact:true}).count()===0);
+  await page.reload();
+  await page.getByText('把 harness 那篇的中间三段补完').waitFor();
 
   // 3. 那排数：四张卡各管一段，而且都有真数据
   const agendaNow=await request("/api/workspace/agenda");
@@ -376,6 +403,8 @@ try {
     kb.weeks.length===12&&kb.weeks.every(w=>w.total===kb.series.reduce((n,k)=>n+(w.byPlatform[k]||0),0)),
     JSON.stringify(kb.weeks));
 
+  check('右侧统一为单项量化进度',await page.locator('.agenda-row__progress').evaluateAll(ns=>ns.every(n=>n.querySelector('b')&&/^(资料|正文)/.test(n.textContent.trim()))));
+  check('写文章使用主按钮',await page.getByRole('button',{name:'直接写文章',exact:true}).evaluate(n=>n.classList.contains('btn-primary')));
   // 5. 明细表：只放前 8 行，芯片按阶段筛，「看全部」去创作页
   const table=await page.evaluate(()=>({
     rows:document.querySelectorAll(".agenda-rows .row").length,
@@ -429,6 +458,17 @@ try {
     check('有数据的柱子有实际高度',await page.locator('.home-chart .bars__seg').evaluateAll(ns=>ns.length>0&&ns.every(n=>n.getBoundingClientRect().height>0)));
     await page.screenshot({path:path.join(shotDir,'home-dashboard-'+width+'.png'),fullPage:true});
   }
+
+  await page.setViewportSize({width:1186,height:698});
+  await page.emulateMedia({colorScheme:'dark',reducedMotion:'reduce'});
+  await page.locator('.home-card--plan').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(shotDir,'home-refined-dark.png'),fullPage:true});
+  await page.locator('.plan-plus').click();
+  await page.locator('.plan-add input').fill('整理今天的阅读笔记');
+  await page.emulateMedia({colorScheme:'light'});
+  await page.screenshot({path:path.join(shotDir,'home-refined-light.png'),fullPage:true});
+  await page.locator('.plan-add input').press('Escape');
+  check('Esc 收起输入并返回新增按钮',await page.locator('.plan-plus').evaluate(n=>n===document.activeElement));
 
   // 6. 「记一个想法」和清单的「＋加一条」是两个不同的入口
   check("记灵感和加任务是两个入口",

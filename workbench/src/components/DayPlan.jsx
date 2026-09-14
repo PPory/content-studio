@@ -81,8 +81,10 @@ export function usePlan(enabled) {
       setBusy(true);
       try {
         apply(await call(now));
+        return true;
       } catch (e) {
         setError(e);
+        return false;
       } finally {
         setBusy(false);
       }
@@ -157,11 +159,13 @@ function ProgressRing({ done, total }) {
  * **vault 没配时整块不画**（不是画一个报错的空壳）：底下的系统行已经在说这件事，
  * 而且那儿的引导是能点的。同一个问题在一屏上说两遍，第二遍就是噪音。
  */
-export function DayPlan({ plan }) {
+export function DayPlan({ plan, compact = false }) {
   const [text, setText] = useState("");
   // 输入框**默认不在**，点「+」才展开。常驻的话，空清单那一屏就是「一句说明 + 一个空
   // 输入框 + 一行路径」三样东西在说同一件事，而它们加起来比清单本身还高。
   const [adding, setAdding] = useState(false);
+  const addInput = useRef(null);
+  const addButton = useRef(null);
   const data = plan.data;
   const tasks = data?.tasks || [];
   const done = tasks.filter((t) => t.done).length;
@@ -171,16 +175,18 @@ export function DayPlan({ plan }) {
 
   if (!plan.enabled) return null;
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     if (!text.trim() || plan.busy) return;
-    plan.add(text);
-    setText("");
+    if (await plan.add(text)) {
+      setText("");
+      addInput.current?.focus();
+    }
   }
 
   return (
-    <section className="day-plan overview-block">
-      <SectionHead icon={IconClipboardList} title="我的清单" />
+    <section className={`day-plan overview-block${compact ? " day-plan--compact" : ""}`}>
+      <SectionHead icon={IconClipboardList} title="我的清单" aside={compact && tasks.length ? <span className="plan-progress" role="status" aria-label={`${tasks.length} 条任务里完成了 ${done} 条`}>{done}<span> / {tasks.length}</span></span> : null} />
 
       {/* 左边清单、右边大环。**环不放页头的 aside 里**：那儿只有一行的高度，塞进去就只能是
           一枚小徽章，而这一块要一眼看出「今天走到哪了」——那正是大环存在的理由。
@@ -192,14 +198,15 @@ export function DayPlan({ plan }) {
           <div className="plan-days">
             {data ? (
               <>
-                <button className="plan-day" data-on={!isTomorrow} onClick={() => plan.setDate(data.today)}>
+                <button className="plan-day" disabled={plan.busy || plan.loading} aria-pressed={!isTomorrow} data-on={!isTomorrow} onClick={() => plan.setDate(data.today)}>
                   今天
                 </button>
-                <button className="plan-day" data-on={isTomorrow} onClick={() => plan.setDate(data.tomorrow)}>
+                <button className="plan-day" disabled={plan.busy || plan.loading} aria-pressed={isTomorrow} data-on={isTomorrow} onClick={() => plan.setDate(data.tomorrow)}>
                   明天
                 </button>
                 <button
                   className="plan-plus"
+                  ref={addButton} disabled={plan.busy || plan.loading}
                   title={`加一条到${dayLabel}的清单`}
                   aria-label={`加一条到${dayLabel}的清单`}
                   aria-expanded={adding}
@@ -272,8 +279,8 @@ export function DayPlan({ plan }) {
               <button className="plan-empty" onClick={() => setAdding(true)}>
                 <IconPlus size={15} stroke={1.9} aria-hidden="true" />
                 <span>
-                  <b>{dayLabel}还没列清单</b>
-                  <em>点这儿加一条。清单会保存在当前本地工作区。</em>
+                  <b>{compact ? `添加${dayLabel}的任务` : `${dayLabel}还没列清单`}</b>
+                  {!compact ? <em>点这儿加一条。清单会保存在当前本地工作区。</em> : null}
                 </span>
               </button>
             ) : null
@@ -285,6 +292,7 @@ export function DayPlan({ plan }) {
           {adding ? (
             <form className="plan-add" onSubmit={submit}>
               <input
+                ref={addInput} disabled={plan.busy}
                 value={text}
                 autoFocus
                 onChange={(e) => setText(e.target.value)}
@@ -294,6 +302,7 @@ export function DayPlan({ plan }) {
                   e.stopPropagation();
                   setText("");
                   setAdding(false);
+                  addButton.current?.focus();
                 }}
                 onBlur={() => !text.trim() && setAdding(false)}
                 placeholder={`加一条到${dayLabel}…`}
@@ -318,7 +327,7 @@ export function DayPlan({ plan }) {
         {/* **一条任务都没有时不画环。** 这和「空清单时也要画」正好相反，是看过实物之后改的：
             画出来的是一个满圈的灰环加 `0/0`，它既不报告进度、也不指引下一步，只是把
             「你还没开始」这件事放大成这一屏最大的图形。环有值可报时才出现。 */}
-        {tasks.length ? (
+        {!compact && tasks.length ? (
           <div className="plan-side">
             <ProgressRing done={done} total={tasks.length} />
           </div>

@@ -148,28 +148,34 @@
   margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
 }
 
-/* 今天 / 明天走这一页的芯片语汇（描边 + 浅底），不要实心黑——
-   实心黑在这个设计里是留给「一屏唯一的主操作」的 */
-.workspace-overview .plan-day[data-on="true"] {
-  background: var(--surface); border-color: var(--border-strong); color: var(--text-1); font-weight: 600;
-}
-
-/* 环收成一个进度记号：量到过「一条任务、一枚比任务本身还大的环」。
-   ⚠️ 同时撤掉它下面那句「还剩 N 条」——环上已经写着 `0/1`，那是同一个事实两遍。 */
-.workspace-overview .plan-body { grid-template-columns: minmax(0, 1fr) 72px; gap: 18px; }
-.workspace-overview .plan-ring__dial { width: 56px; height: 56px; }
-.workspace-overview .plan-ring__label { font-size: var(--fs-sm); }
-.workspace-overview .plan-ring__note { display: none; }
-.workspace-overview .plan-side { align-items: flex-start; padding-top: 2px; }
-
-/* ⚠️ 展开态那颗 `+` 也不许是实心黑：这一页的实心黑只有页头那一颗
-   （判据：一屏只保留一个最强主操作）。展开与否用描边加深表示就够了。 */
-.workspace-overview .plan-plus[aria-expanded="true"] {
-  background: var(--surface); border-color: var(--text-1); color: var(--text-1);
-}
-
-/* 加一条：一句短任务不需要 650px 的输入框 */
-.workspace-overview .plan-add { max-width: 440px; }
+/* 首页清单：文字层级和行内控件，完成数放在标题右侧。 */
+.workspace-overview .day-plan--compact.overview-block > .section-head { border-bottom:0; margin-bottom:12px; padding-bottom:0; }
+.workspace-overview .day-plan--compact .plan-body { grid-template-columns:minmax(0,1fr); gap:0; }
+.workspace-overview .plan-progress { color:var(--text-2); font:var(--fs-xs)/1.5 var(--font-mono); }
+.workspace-overview .plan-progress > span { color:var(--text-3); }
+.workspace-overview .plan-days { gap:18px; margin-bottom:12px; border-bottom:1px solid var(--border); }
+.workspace-overview .plan-day { border:0; border-bottom:2px solid transparent; border-radius:0; padding:6px 0 9px; background:none; color:var(--text-3); font-size:var(--fs-sm); }
+.workspace-overview .plan-day[data-on="true"] { border-bottom-color:var(--text-1); background:none; color:var(--text-1); font-weight:600; }
+.workspace-overview .plan-day:hover { color:var(--text-1); }
+.workspace-overview .plan-plus { margin-left:auto; margin-bottom:4px; border:0; border-radius:var(--r-sm); color:var(--text-3); width:28px; height:28px; }
+.workspace-overview .plan-plus:hover,
+.workspace-overview .plan-plus[aria-expanded="true"] { background:var(--surface-2); color:var(--text-1); border:0; }
+.workspace-overview .plan-empty { width:auto; padding:9px 0; border:0; border-radius:var(--r-sm); background:none; color:var(--text-3); align-items:center; gap:8px; }
+.workspace-overview .plan-empty:hover { background:none; color:var(--text-1); }
+.workspace-overview .plan-empty svg { margin:0; }
+.workspace-overview .plan-empty b { font-size:var(--fs-sm); font-weight:400; }
+.workspace-overview .plan-task__main { padding:9px 2px; gap:10px; }
+.workspace-overview .plan-task__text { font-size:var(--fs-sm); overflow-wrap:anywhere; }
+.workspace-overview .plan-task__box { width:16px; height:16px; border-width:1px; border-radius:4px; }
+.workspace-overview .plan-add { align-items:center; gap:8px; max-width:none; margin-top:8px; border-bottom:1px solid var(--border); }
+.workspace-overview .plan-add:focus-within { border-bottom-color:var(--text-3); }
+.workspace-overview .plan-add input { padding:9px 2px; border:0; border-radius:0; background:none; font-size:var(--fs-sm); }
+.workspace-overview .plan-add button { height:28px; padding:0 9px; border:0; background:var(--surface-2); color:var(--text-1); font-size:var(--fs-xs); border-radius:var(--r-sm); }
+.workspace-overview .plan-add button:disabled { background:none; color:var(--text-3); }
+.workspace-overview .plan-day:focus-visible,
+.workspace-overview .plan-plus:focus-visible,
+.workspace-overview .plan-empty:focus-visible { outline:2px solid var(--text-3); outline-offset:3px; }
+@media (hover:none) { .workspace-overview .plan-task__del { opacity:1; } }
 
 /* ── 在手上：明细表 ──
    ⚠️ 表头一行里三样东西：标题、阶段芯片、「看全部」。芯片**不是**一段独立内容，
@@ -209,7 +215,8 @@
    于是整行的 min-content 到了 735px。窄的时候进展那句该省略号，而不是把行撑爆。
    时间（`放了 N 天`）不许缩：那是这一格里最短也最该看见的东西。 */
 .agenda-rows .row-meta { flex:0 1 auto; min-width:0; gap:12px; }
-.agenda-row__progress { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-2); }
+.agenda-row__progress { display:flex; align-items:baseline; justify-content:flex-end; gap:5px; width:112px; flex:none; white-space:nowrap; color:var(--text-3); font-size:var(--fs-xs); }
+.agenda-row__progress b { color:var(--text-2); font-family:var(--font-mono); font-weight:400; }
 .agenda-row__stale { flex:none; color:var(--text-3); font-family:var(--font-mono); font-size:var(--fs-2xs); }
 
 /* 行尾两颗：平时收起来。一列图标竖排下来会比它旁边的标题更抢眼 */

@@ -75,12 +75,14 @@ try {
   const draftRow=agenda.inHand.find(row=>row.id===draft);
   // 17 = `#写到一半的那一篇这里有一些正文。`（`countWords` 去空白后数字符，
   // 和合集目录、编辑器用的是同一个口径——这里不另数一遍）
+  assert.deepEqual(draftRow.metric,{label:"正文",value:17,unit:"字"});
   assert.equal(draftRow.progress,"17 字",`字数要数好，实际 ${draftRow?.progress}`);
 
   // 选题是流水线第一档，行里是它真实的计数，不是硬凑的 stage
   const topicRow=agenda.inHand.find(row=>row.kind==="research");
   assert.equal(topicRow.stage,TOPIC_STAGE);
   assert.match(topicRow.progress,/还没写成文章/);
+  assert.deepEqual(topicRow.metric,{label:"资料",value:getResearch(w,topicRow.id).references.length,unit:"份"});
 
   // 阶段轴：流水线顺序、只含有东西的那几档、计数等于真实条数
   assert.deepEqual(agenda.stages.map(s=>s.stage),HOME_STAGE_ORDER.filter(stage=>agenda.inHand.some(r=>r.stage===stage)),"阶段轴按流水线顺序，且只列非空的");

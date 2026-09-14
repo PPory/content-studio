@@ -201,6 +201,7 @@ function agendaRow(w, item, now) {
     if (r.conversations.length) parts.push(`${r.conversations.length} 段讨论`);
     parts.push(r.projects.length ? `已带出 ${r.projects.length} 篇` : "还没写成文章");
     return { kind: "research", id: item.id, title: item.title, stage: TOPIC_STAGE,
+      metric: { label: "资料", value: r.references.length, unit: "份" },
       progress: parts.join(" · "), staleDays: stale, pinned: item.pinned,
       openedAt: r.createdAt, hasTitle: named(r.question) };
   }
@@ -217,6 +218,7 @@ function agendaRow(w, item, now) {
   return { kind: "project", id: item.id, title: item.title, stage: stage.stage,
     // ⚠️ 0 字要说「还是空的」，不说「0 字」：一个是「还没开始」，一个看着像个数字
     progress: words ? `${words.toLocaleString("zh-CN")} 字` : "还是空的",
+    metric: { label: "正文", value: words, unit: "字" },
     staleDays: stale, pinned: item.pinned, openedAt: row?.createdAt || null,
     hasTitle: named(item.title) };
 }
