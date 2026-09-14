@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
 import { NewContentButton } from "../components/NewContentButton.jsx";
-import { Empty, ErrorNote, Loading, PageHeader, Toast } from "../components/ui.jsx";
+import { Empty, ErrorNote, LayoutToggle, Loading, PageHeader, Toast } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import { IconFileText, IconRefresh } from "../components/icons.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import "./series.css";
+import { useLayoutMode } from "../lib/use-layout-mode.js";
+import { ProjectCards } from "./content/ProjectCards.jsx";
+import "./content/content-views.css";
 
 export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [result, setResult] = useState(null);
@@ -15,6 +18,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useUndoToast();
   const [stage, setStage] = useState("进行中");
+  const [layout, setLayout] = useLayoutMode("content", "list");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
   const [filing, setFiling] = useState(null);
 
@@ -111,10 +115,11 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
           {/* ⚠️ 「更多」那个折叠撤了：里面三条（合集 / 找灵感 / 查看发布数据）
               都是**会换整页的去处**，而三个去处都在侧栏里。导航不待在正文的折叠里
               （判据同 `Series.jsx` 撤掉的那颗「全部文章 / 合集」）。 */}
-          <div className="list-bar">
+          <div className="list-bar content-view-toolbar">
             <div className="chips chips-sm" aria-label="内容状态">
               {["进行中", "已发布", "归档"].map((key) => <button key={key} className="chip" aria-pressed={stage === key} onClick={() => setStage(key)}>{key}{grouped[key].length ? ` ${grouped[key].length}` : ""}</button>)}
             </div>
+            <LayoutToggle value={layout} onChange={setLayout} />
           </div>
           {!projects.length ? (
             /* ⚠️ **首启空态要带一颗能点的**：只有一句灰字的话「下一步点哪儿」
@@ -126,7 +131,9 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               写下第一句话就可以开始，不必先定选题或填写计划。
             </Empty>
           ) : shown.length ? (
-            <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
+            layout === "card"
+              ? <ProjectCards projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
+              : <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
           ) : (
             <Empty icon={IconFileText}>{stage === "进行中" ? "没有正在写的内容，可以开始新的一篇。" : stage === "已发布" ? "发布后的作品会留在这里。" : "暂时搁置的内容会留在这里，随时可以继续。"}</Empty>
           )}

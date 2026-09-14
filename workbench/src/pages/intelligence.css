@@ -145,3 +145,7 @@
   .intel-card dl { grid-template-columns: 66px minmax(0, 1fr); }
   .intel-active > div { align-items: flex-start; }
 }
+.intel-source-actions { margin-top:12px; }
+.intel-result-toolbar > .intel-hint { flex:1; margin:0; }
+.intel-result-toolbar > .search-box { flex-shrink:0; }
+@media(max-width:640px) { .intel-result-toolbar > .intel-hint {flex-basis:100%;} .intel-result-toolbar > .search-box {width:100%;} }

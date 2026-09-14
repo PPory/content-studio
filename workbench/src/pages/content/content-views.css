@@ -1,0 +1,18 @@
+.content-view-toolbar { justify-content: space-between; gap: 16px; }
+.content-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.content-card { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.content-card:hover { border-color: var(--border-strong); }
+.content-card__open { display: flex; flex-direction: column; gap: 14px; flex: 1; width: 100%; min-width: 0; padding: 18px; color: inherit; font: inherit; text-align: left; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
+.content-card__open:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.content-card__meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.content-card__meta time, .content-card__details { color: var(--text-3); font-size: var(--fs-2xs); }
+.content-card h2 { margin: 0; font-size: var(--fs-base); font-weight: 600; line-height: 1.6; min-height: 3.2em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.content-card__details { display: flex; flex-wrap: wrap; gap: 6px 12px; min-height: 18px; margin-top: auto; }
+.content-card__collections { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.content-card__collections svg { flex: none; }
+.content-card__blocker { display: flex; gap: 6px; font-size: var(--fs-2xs); color: var(--text-2); }
+.content-card__blocker svg { flex: none; margin-top: 3px; }
+.content-card__actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.content-card__actions > .content-card__file { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); }
+.content-card__remove { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+@media (max-width: 600px) { .content-view-toolbar { flex-wrap: wrap; } .content-card__open { padding: 16px; } }

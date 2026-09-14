@@ -309,8 +309,8 @@ export function Sources({ onOpen, onReview, onPages }) {
             <div className="src-row src-row--head" role="row">
               {selecting ? <span role="columnheader"><GroupSelectAll kind={group.kind} items={group.items} selected={selected} onToggle={toggleGroup} /></span> : null}
               <span role="columnheader">名称</span>
-              <span role="columnheader">节数</span>
-              <span role="columnheader">字数</span>
+              <span className="src-col-sections" role="columnheader">节数</span>
+              <span className="src-col-chars" role="columnheader">字数</span>
               <span role="columnheader">Wiki 编译</span>
               <span role="columnheader">影响页面</span>
             </div>
@@ -342,8 +342,8 @@ export function Sources({ onOpen, onReview, onPages }) {
                       <button type="button" className="src-delete" aria-label={`删除来源 ${source.title}`} title="移入回收站"
                         onClick={() => setDeleteSource(source)}><IconTrash aria-hidden="true" stroke={1.8} /></button>
                     </span>
-                    <span className="src-num" role="cell">{number(source.documents)}</span>
-                    <span className="src-num" role="cell">{number(source.chars)}</span>
+                    <span className="src-num src-col-sections" role="cell">{number(source.documents)}</span>
+                    <span className="src-num src-col-chars" role="cell">{number(source.chars)}</span>
                     <span className="src-cell-state" role="cell">
                       {source.proposed ? (
                         <button type="button" className="src-review-link" onClick={() => onReview?.(source.id)} aria-label={`审阅 ${source.title} 的 Wiki 编译候选`}>
@@ -368,14 +368,14 @@ export function Sources({ onOpen, onReview, onPages }) {
                     <div className="src-children" role="rowgroup">
                       {!loaded || loaded.items === null ? <Loading rows={2} /> : loaded.error ? <ErrorNote error={loaded.error} what="章节" /> : loaded.items.length ? loaded.items.map((doc) => (
                         <div key={doc.id} className="src-row src-row--child" role="row">
-                          <span role="cell" />
+                          {selecting ? <span role="cell" /> : null}
                           <span className="src-name-cell" role="cell">
                             <button type="button" className="src-name src-name--child" onClick={() => onOpen?.(source, doc)}>
                               <span className="clamp">{doc.title}</span>
                             </button>
                           </span>
-                          <span className="src-num" role="cell" />
-                          <span className="src-num" role="cell">{number(doc.chars)}</span>
+                          <span className="src-num src-col-sections" role="cell" />
+                          <span className="src-num src-col-chars" role="cell">{number(doc.chars)}</span>
                           <span className="src-doc-action" role="cell">
                             <span className={`src-state src-state--${doc.ingestStatus === "failed" ? "warn" : ["queued", "proposed"].includes(doc.ingestStatus) ? "busy" : doc.ingestStatus === "applied" ? "done" : "idle"}`} title={doc.ingestError || undefined}>
                               {doc.ingestStatus === "applied" ? "已编译"
@@ -389,7 +389,7 @@ export function Sources({ onOpen, onReview, onPages }) {
                             {["", "failed", "rejected"].includes(doc.ingestStatus) ? <button type="button" className="link-btn" disabled={!!busy} onClick={() => queue({ documentIds: [doc.id], retry: doc.ingestStatus !== "", key: doc.id })}>{busy === doc.id ? "排队…" : doc.ingestStatus ? "重试" : "编译"}</button> : null}
                             {doc.ingestStatus === "proposed" ? <button type="button" className="link-btn" onClick={() => onReview?.(doc.id)}>去审阅</button> : null}
                           </span>
-                          <span className="src-num src-num--strong">{doc.citedPages ? number(doc.citedPages) : "—"}</span>
+                          <span className="src-num src-num--strong" role="cell">{doc.citedPages ? number(doc.citedPages) : "—"}</span>
                         </div>
                       )) : <p className="src-empty">这份资料没有章节。</p>}
                     </div>

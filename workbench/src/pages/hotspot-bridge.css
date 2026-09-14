@@ -45,3 +45,9 @@
 }
 
 .ai-hot-search {width:min(280px,100%);padding:9px 12px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--text-1);font:inherit;font-size:13px;}
+.hot-collected {display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;font-size:var(--fs-xs);color:var(--text-3);}
+
+@media (max-width: 640px) {
+  .ai-hot-panel .panel-head--slim .panel-head__aside { flex-wrap: wrap; width: 100%; }
+  .ai-hot-panel .panel-head__aside > .search-box { width: 100%; max-width: none; }
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { SourceResearchPicker } from "../components/SourceResearchPicker.jsx";
 import { api } from "../lib/api.js";
 import { ErrorNote, Empty, Loading, Note, FilterHeader, SearchBox, ViewTabs, Toast, relTime } from "../components/ui.jsx";
 import "./hotspot-bridge.css";
@@ -59,6 +60,9 @@ export function Hotspots({ onIntake, onGo }) {
   const seeded = seedInfo.seeded;
   // 收录状态提到这里：切 tab 不该把「已收录」的勾丢掉
   const [stored, setStored] = useState({});
+  const [collected,setCollected]=useState({});
+  const [linking,setLinking]=useState(null);
+  useEffect(()=>{api.intelligence().then(r=>setCollected(Object.fromEntries((r.sources||[]).filter(s=>s.provider==="manual"&&s.contentKind==="hot-summary").map(s=>[s.url,s])))).catch(()=>{});},[]);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -83,20 +87,15 @@ export function Hotspots({ onIntake, onGo }) {
     api.traceHot(list).then(setTrace).catch(() => {});
   }, []);
 
-  // `link` 只给本地用（存完重算这一条的转化链），**不进入库请求体**——
-  // 往服务端塞一个它不认识的字段，是那种今天没事、以后加校验时才炸的写法
-  const collect = useCallback(async (key, { link, ...payload }) => {
-    setStored((s) => ({ ...s, [key]: "sending" }));
+  const collect = useCallback(async (key, item) => {
+    setStored(s=>({...s,[key]:"sending"}));
     try {
-      await api.intake(payload);
-      setStored((s) => ({ ...s, [key]: "done" }));
-      // 刚收进去的那条现在是「已收藏」了。**重算而不是本地改一个字段**——
-      // 算出来的状态才不会和真相分家，这一条整个设计就建立在这上面
-      if (link) askTrace([link]);
-    } catch (e) {
-      setStored((s) => ({ ...s, [key]: e.message }));
-    }
-  }, [askTrace]);
+      const result=await api.collectHotSource({title:item.title,url:item.link,summary:item.summary||""});
+      setCollected(s=>({...s,[item.link]:result.source}));
+      setStored(s=>({...s,[key]:"done"}));
+      setToast("已保存到我的灵感，可继续带入选题");
+    } catch(e){setStored(s=>({...s,[key]:e.message||"收藏失败，请重试"}));}
+  }, []);
 
   return (
     <>
@@ -108,7 +107,7 @@ export function Hotspots({ onIntake, onGo }) {
         }
       />
 
-      {tab === "models" ? <ModelsPanel /> : <AiPanel stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} seeds={seeded} onSeed={setSeeding} />}
+      {tab === "models" ? <ModelsPanel /> : <AiPanel collected={collected} onLink={setLinking} onGo={onGo} stored={stored} onCollect={collect} onIntake={onIntake} onToast={setToast} trace={trace} onTrace={askTrace} seeds={seeded} onSeed={setSeeding} />}
 
       <ReactionPicker
         open={!!seeding}
@@ -140,6 +139,7 @@ export function Hotspots({ onIntake, onGo }) {
         }}
       />
 
+      {linking && <SourceResearchPicker source={linking} onClose={()=>setLinking(null)} onGo={onGo}/> }
       <Toast text={toast} onClose={() => setToast(null)} />
     </>
   );
@@ -263,7 +263,7 @@ function CollectButton({ state, onClick, label = "收进灵感库" }) {
 
 // ---- AI 情报 ---------------------------------------------------------------
 
-function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, onSeed }) {
+function AiPanel({ collected, onLink, onGo, stored, onCollect, onIntake, onToast, trace, onTrace, seeds, onSeed }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -290,7 +290,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
   const groups=(data?.groups || []).map(group=>({...group,items:group.items.filter(item=>`${item.title} ${item.summary || ""}`.toLowerCase().includes(search.trim().toLowerCase()))})).filter(group=>group.items.length);
 
   return (
-    <section className="panel-block">
+    <section className="panel-block ai-hot-panel">
       <PanelHead
         count={data ? groups.reduce((sum,group)=>sum+group.items.length,0) : undefined}
         fetchedAt={data?.fetchedAt}
@@ -323,7 +323,8 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
               </em>
             </div>
             {g.items.map((it) => {
-              const key = `a:${it.title}`;
+              const key = `a:${it.link || it.title}`;
+              const saved=collected[it.link];
               return (
                 <article className="ai-item" key={it.title}>
                   <time className="ai-item__time" title="AI Hot 收录时间，不代表原文发布时间">{formatTime(it.at)}</time>
@@ -343,6 +344,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                       </p>
                     ) : null}
                     <div className="ai-item__acts">
+                      {saved && <span className="hot-collected"><span>已收藏</span><button className="btn btn-sm" onClick={()=>onGo("intel-inbox")}>查看灵感</button><button className="btn btn-sm" onClick={()=>onLink(saved)}>带入选题</button></span>}
                       {/* **在这儿读完，不用跳出去。** 这一页的动线是「扫一眼 → 觉得有用 → 入库」，
                           中间那步跳去浏览器新标签，回来时滚到哪儿全丢了。
                           抓不到的站点会明确报错并把原网页的入口给回来，所以外链一直留着。 */}
@@ -401,16 +403,7 @@ function AiPanel({ stored, onCollect, onIntake, onToast, trace, onTrace, seeds, 
                       ) : null}
                     </div>
                   </div>
-                  <CollectButton
-                    state={stored[key]}
-                    onClick={() =>
-                      onCollect(key, {
-                        target: "inbox",
-                        content: [it.title, it.link, it.summary].filter(Boolean).join("\n"),
-                        source: `工作台·AI HOT·${it.sources.join("/")}`,
-                      })
-                    }
-                  />
+                  <CollectButton state={saved ? "done" : stored[key]} onClick={()=>onCollect(key,it)} />
                 </article>
               );
             })}

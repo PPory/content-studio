@@ -271,7 +271,8 @@ try {
   check("取消离开保留想法",await page.getByLabel("记下灵感",{exact:true}).inputValue()==="切换页面之前，也要留下这个想法");
   await page.locator(".nav").getByRole("button",{name:"选题",exact:true}).click();
   await page.getByRole("button",{name:"保存并离开",exact:true}).click();
-  await page.getByRole("heading",{name:"选题",exact:true}).waitFor();
+  await page.locator(".research-overview").waitFor();
+  check("选题正文不重复页头标题", await page.locator(".research-overview h1").count() === 0);
   check("保存后才离开首页",true);
 
   // ── 首页：一排数 + 一张图 + 承诺 + 明细表 ──

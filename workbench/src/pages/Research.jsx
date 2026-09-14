@@ -5,7 +5,7 @@ import "./research-list.css";
 import { renderMarkdown } from "../lib/markdown.js";
 import { IconChevronLeft, IconFileText, IconLink, IconSearch } from "../components/icons.jsx";
 import { api } from "../lib/api.js";
-import { ErrorNote, LayoutToggle, Loading, RowDelete, SearchBox, Toast, ViewTabs } from "../components/ui.jsx";
+import { ErrorNote, LayoutToggle, Loading, PageHeader, RowDelete, SearchBox, Toast, ViewTabs } from "../components/ui.jsx";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { LibraryBrowser } from "../components/LibraryBrowser.jsx";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
@@ -69,7 +69,7 @@ function ResearchList({ onGo }) {
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages - 1);
   return <section className="task-page research-overview">
-    <header className="task-page-head"><div><h1>选题</h1><p>围绕一个问题，读资料、记想法、讨论和写作。</p></div><div className="research-overview-actions"><button className="btn btn-primary btn-sm" aria-expanded={creating || items?.length === 0} onClick={() => creating ? setCreating(false) : openCreate()}>{creating ? "收起新建" : "＋ 新建选题"}</button></div></header>
+    <PageHeader title="选题" aside={<button className="btn btn-primary btn-sm" aria-expanded={creating || items?.length === 0} onClick={() => creating ? setCreating(false) : openCreate()}>{creating ? "收起新建" : "＋ 新建选题"}</button>} />
     <form className="research-create" hidden={!creating && items?.length !== 0} onSubmit={create}><label>你想弄明白什么？<input ref={input} aria-label="你想弄明白什么" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="从一个真实的疑问开始" /></label><button className="btn btn-primary" disabled={busy || !question.trim()}>{busy ? "正在创建…" : "开始展开"}</button></form>
     <ErrorNote error={createError} what="创建选题" />
     <div className="research-overview-toolbar"><h2>我的选题 <span>{items?.length ?? "—"}</span></h2><div className="research-overview-tools"><SearchBox value={query} onChange={value => { setQuery(value); setPage(0); }} placeholder="搜索选题或笔记…" ariaLabel="搜索选题" /><LayoutToggle value={layout} onChange={setLayout} /></div></div>

@@ -48,6 +48,8 @@ export const api = {
   intelligenceAdopt: (id) => postJson(`/api/workspace/intelligence/cards/${encodeURIComponent(id)}/adopt`, {}),
   intelligenceCard: (id, body) => req(`/api/workspace/intelligence/cards/${encodeURIComponent(id)}`, {method: "PUT", headers: {"content-type": "application/json"}, body: JSON.stringify(body)}),
   intelligenceSourceDetail: (id) => req(`/api/workspace/intelligence/sources/${encodeURIComponent(id)}`),
+  collectHotSource: (body) => postJson("/api/workspace/intelligence/hot-collection", body),
+  intelligenceSourceResearch: (id, body) => postJson(`/api/workspace/intelligence/sources/${encodeURIComponent(id)}/research`, body),
   intelligenceSource: (body) => postJson("/api/workspace/intelligence/sources", body),
   workspaceActivity: () => req("/api/workspace/activity"),
   // 首页那一屏：接着写的那一条、在等你决定的几队、阶段轴、在手上的列表、最近阅读。

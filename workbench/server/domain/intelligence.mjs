@@ -167,3 +167,32 @@ export function intelligenceOverview(w,env={}) {
  sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=parse(r.data_json);return {id:r.id,...d,...approved.get(r.id),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
  capabilities:{local:true,aihot:true,web:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),x:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),reddit:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),xiaohongshu:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),douyin:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY)}};
 }
+
+// Explicit user confirmation links a collected source as evidence, never as article text.
+export function linkIntelligenceSource(w,id,input={}) {
+  if(input.confirmed!==true)throw bad("请确认将这条资料带入选题");
+  const question=str(input.question||"",1000),target=str(input.researchId||"",100);
+  if(!target&&!question)throw bad("请选择选题或填写一个问题");
+  return w.repository.transaction(()=>{
+    const source=intelligenceSource(w,id);
+    const row=w.db.prepare("SELECT capture_id FROM intel_sources WHERE id=?").get(id);
+    let captureId=row.capture_id;
+    if(captureId && w.repository.getEntity(captureId)?.type!=="capture")throw bad("来源资料已移除，请先恢复资料",404);
+    let research=target?getResearch(w,target):null;
+    if(!research&&captureId){const previous=w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL JOIN research_references f ON f.research_id=r.id WHERE r.question=? AND f.kind='capture' AND f.entity_id=?").get(question,captureId);if(previous)research=getResearch(w,previous.id);}
+    if(!research)research=createResearch(w,{question});
+    if(!captureId){captureId=w.domain.createCapture({kind:source.url?"web":"excerpt",title:source.title,bodyMarkdown:source.body,sourceUrl:source.url,actor:"user",confirmed:true});w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(captureId,id);}
+    researchReference(w,research.id,{kind:"capture",id:captureId});
+    return getResearch(w,research.id);
+  });
+}
+
+export function collectHotIntelligenceSource(w,input={}) {
+ const title=str(input.title||"",500,true),url=str(input.url||"",2000,true),summary=str(input.summary||"",90000);
+ if(!/^https?:\/\//i.test(url))throw bad("只支持公开网页链接");
+ return w.repository.transaction(()=>{
+  const old=w.db.prepare("SELECT id FROM intel_sources WHERE json_extract(data_json,'$.provider')='manual' AND json_extract(data_json,'$.contentKind')='hot-summary' AND json_extract(data_json,'$.url')=?").get(url);
+  if(old)return intelligenceSource(w,old.id);
+  return addIntelligenceSource(w,{title,url,body:["AI 热点摘要（可能由 AI 生成，尚未核对原文）",summary||title].join("\n\n"),provider:"manual",readLevel:"summary",contentKind:"hot-summary"});
+ });
+}
