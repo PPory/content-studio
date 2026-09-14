@@ -105,7 +105,7 @@ const NAV = [
     { to: "sources", label: "来源" },
   ] },
   { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v), children: [
-    { to: "research", label: "选题空间" },
+    { to: "research", label: "选题" },
     { to: "content", label: "创作" },
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },

@@ -117,21 +117,9 @@ try {
     await page.locator(`.sidebar .nav-item[data-current="true"]`).filter({ hasText: selected }).waitFor();
     check(`旧深链 ${route} 保持可达与高亮`, true);
   }
-  await page.route("**/api/assistant/conversation?**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, conversation: { id: "research-test", title: "持续研究", messages: [{ id: "u1", role: "user", content: "我的真实疑问：为什么难以开始？" }, { id: "a1", role: "assistant", content: "AI 未核实的推测不作为事实。" }], actions: [], attachments: [] } }) }));
-  await page.goto(`${base}/#/assistant/research-test`);
-  await page.getByRole("button", { name: "从这次研究发展成一篇" }).click();
-  const transfer = page.getByLabel("带入创作的想法", { exact: true });
-  await transfer.waitFor();
-  check("研究转创作只预填用户原话", (await transfer.inputValue()).includes("我的真实疑问") && !(await transfer.inputValue()).includes("AI 未核实"));
-  await page.getByRole("button", { name: "保存并进入创作" }).click();
-  await page.waitForURL(/#\/project\//);
-  const researchProject = page.url().split("#/project/")[1];
-  const researchNotes = (await request(`/api/workspace/projects/${researchProject}/notebook`)).notebook;
-  check("研究转创作保留原会话引用", researchNotes.discovery.research.conversationId === "research-test");
-  check("研究内容不自动写入正文", (await request(`/api/workspace/projects/${researchProject}`)).project.masterDraft.body === "");
-  await page.getByRole("button", { name: "构思", exact: true }).click();
-  await page.getByRole("button", { name: "回到原研究对话" }).click();
-  await page.waitForURL(/#\/assistant\/research-test$/);
+  await page.goto(base + '/#/assistant');
+  await page.locator('.assistant-page .assistant-composer textarea').waitFor();
+  check('助手不再显示额外转创作入口',await page.getByRole('button',{name:'从这次研究发展成一篇'}).count()===0);
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
   if (!(await thought.isVisible())) await page.getByRole("button", { name: "构思", exact: true }).click();

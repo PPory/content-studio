@@ -39,6 +39,10 @@ try{
  // 卡片 / 列表双视图，选择记在 localStorage（每页一份）。
  await page.getByRole('button',{name:'列表视图',exact:true}).click();
  assert.equal(await page.locator('.direction-rows .row').count(),3,'切成列表之后条目一条不少');
+ assert(await page.locator('.direction-rows .row-meta').evaluateAll(ns=>{
+   const rects=ns.map(n=>n.getBoundingClientRect());
+   return rects.every(r=>Math.abs(r.left-rects[0].left)<2&&Math.abs(r.right-rects[0].right)<2);
+ }),'方向列表右侧各列对齐');
  assert.equal(await page.locator('.direction-overview-card').count(),0);
  await page.reload();await page.locator('.direction-rows .row').first().waitFor();
  assert.equal(await page.locator('.direction-overview-card').count(),0,'刷新之后还是列表');

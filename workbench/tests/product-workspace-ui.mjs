@@ -265,13 +265,13 @@ try {
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(`${base}/#/today`);
   await page.getByLabel("记下灵感",{exact:true}).fill("切换页面之前，也要留下这个想法");
-  await page.locator(".nav").getByRole("button",{name:"选题空间",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"选题",exact:true}).click();
   await page.getByRole("heading",{name:"这条想法还没有保存"}).waitFor();
   await page.getByRole("button",{name:"继续记录",exact:true}).click();
   check("取消离开保留想法",await page.getByLabel("记下灵感",{exact:true}).inputValue()==="切换页面之前，也要留下这个想法");
-  await page.locator(".nav").getByRole("button",{name:"选题空间",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"选题",exact:true}).click();
   await page.getByRole("button",{name:"保存并离开",exact:true}).click();
-  await page.getByRole("heading",{name:"选题空间",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"选题",exact:true}).waitFor();
   check("保存后才离开首页",true);
 
   // ── 首页：一排数 + 一张图 + 承诺 + 明细表 ──

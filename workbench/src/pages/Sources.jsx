@@ -81,6 +81,7 @@ export function Sources({ onOpen, onReview, onPages }) {
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(() => new Set());
   const [docs, setDocs] = useState(() => ({}));
+  const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -282,8 +283,9 @@ export function Sources({ onOpen, onReview, onPages }) {
       <div className="src-controls">
         <div className="segmented" aria-label="筛选编译状态">{FILTERS.map(([value, label]) => <button key={value} type="button" className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}</div>
         <div className="row-actions">
+          <button type="button" className="btn btn-sm" aria-pressed={selecting} disabled={!!busy} onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? "取消选择" : "批量选择"}</button>
           {selected.size ? <span className="field-hint">已选 {selected.size} 份 · 约 {number(selectedChars)} 字</span> : null}
-          <button type="button" className="btn btn-primary btn-sm" disabled={!selected.size || !!busy} onClick={() => queue({ bookIds: [...selected] })}>{busy === "batch" ? "排队中…" : "编译所选"}</button>
+          {selecting ? <button type="button" className="btn btn-primary btn-sm" disabled={!selected.size || !!busy} onClick={() => queue({ bookIds: [...selected] })}>{busy === "batch" ? "排队中…" : "编译所选"}</button> : null}
         </div>
       </div>
       {notice ? <p className="src-notice" role="status">{notice}</p> : null}
@@ -301,11 +303,11 @@ export function Sources({ onOpen, onReview, onPages }) {
             <em>{KIND_HINT[group.kind]}</em>
           </h3>
 
-          <div className="src-table src-table--select" role="table">
+          <div className={`src-table${selecting ? " src-table--select" : ""}`} role="table">
             {/* ⚠️ 表头不画底色也不加边框。设计系统那条「不要框里画框」——
                 外壳已经是白框，这里再套一层盒子，屏幕上最响的就成了那圈线。 */}
             <div className="src-row src-row--head" role="row">
-              <span role="columnheader"><GroupSelectAll kind={group.kind} items={group.items} selected={selected} onToggle={toggleGroup} /></span>
+              {selecting ? <span role="columnheader"><GroupSelectAll kind={group.kind} items={group.items} selected={selected} onToggle={toggleGroup} /></span> : null}
               <span role="columnheader">名称</span>
               <span role="columnheader">节数</span>
               <span role="columnheader">字数</span>
@@ -321,7 +323,7 @@ export function Sources({ onOpen, onReview, onPages }) {
               return (
                 <div key={source.id} className="src-item" role="rowgroup">
                   <div className="src-row" role="row">
-                    <span role="cell"><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span>
+                    {selecting ? <span role="cell"><input type="checkbox" aria-label={`选择 ${source.title}`} checked={selected.has(source.id)} onChange={() => toggleSelected(source.id)} /></span> : null}
                     <span className="src-name-cell" role="cell">
                       <button
                         type="button"

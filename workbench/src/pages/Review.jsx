@@ -1,37 +1,29 @@
-// 收成：发出去之后，一篇一篇留下判断。
-//
-// ⚠️ **这一页原来永远是 0，而那不是 bug，是它只认了一半的东西。**
-// 它只列走过流水线的项目（`stage === 待复盘`），可你真正发出去的内容是从平台后台
-// 导进来的——那些内容在 `posts.csv` 里，工作台压根不知道是谁写的（`doc` 列空着）。
-// 于是「已发布 3 篇」和「0 篇等待复盘」同时挂在屏幕上，而没有任何地方解释这件事。
-// 现在两边都列：项目那一档照旧，另加一档**「发出去了，但工作台里没有对应的稿子」**。
-//
-// ⚠️ **页头用 `FilterHeader` 不用 `PageHeader`。** 这一页打开时你要先选看哪一档
-// （待复盘 / 已完成 / 没对上的），**那排芯片才是第一件事**，说明是它的注脚；
-// 而 `PageHeader` 是「左边一句说明、右边一颗按钮」，中间空一大片——
-// 那是给内容已经在那儿的页面用的。
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { ErrorNote, Loading, FilterHeader, ViewTabs, Empty } from "../components/ui.jsx";
+import { ErrorNote, Loading, ViewTabs, Empty } from "../components/ui.jsx";
 import { PositioningNote } from "../components/PositioningNote.jsx";
 import { platformColor } from "../components/TrendChart.jsx";
 import { fmtNum, metricLabel, METRIC_KEYS } from "../lib/posts.js";
 import { IconArrowRight, IconCheck, IconChartBar, IconLink } from "../components/icons.jsx";
+import "./review.css";
 
-/** 三档的真源。⚠️ `key` 决定选中哪一档，顺序就是屏幕上的顺序。 */
 const LANES = [
   { key: "待复盘", label: "待复盘" },
-  { key: "没对上", label: "没对上稿子" },
+  { key: "没对上", label: "待关联稿件" },
   { key: "已完成", label: "已完成" },
 ];
+const LANE_NOTES = {
+  待复盘: "回到已发布的文章，记录反馈、判断和下一次尝试。",
+  没对上: "这些发布记录尚未关联工作台稿件。打开对应文章，在发布记录中手动关联后再复盘。",
+  已完成: "回看已经留下的结论，继续验证下一次尝试。",
+};
 
 function useDark() {
   const [dark, setDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
   useEffect(() => {
     const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
     if (!mq) return undefined;
-    const on = (e) => setDark(e.matches);
+    const on = (event) => setDark(event.matches);
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
@@ -42,162 +34,80 @@ export function Review({ onGo }) {
   const [result, setResult] = useState(null);
   const [posts, setPosts] = useState(null);
   const [error, setError] = useState(null);
+  const [postsError, setPostsError] = useState(null);
   const [lane, setLane] = useState("待复盘");
+  const [observationsOpen, setObservationsOpen] = useState(false);
   const dark = useDark();
-
   const load = useCallback(() => {
     setError(null);
+    setPostsError(null);
     api.projects().then(setResult).catch(setError);
-    // ⚠️ 读不到 posts 不能让整页失败：项目那两档和它无关，
-    // 而「平台数据还没导」本来就是常态。
-    api.posts().then(setPosts).catch(() => setPosts({ rows: [] }));
+    // 两类来源独立读取：平台数据失败不能阻断已发布文章的复盘。
+    api.posts().then(setPosts).catch(setPostsError);
   }, []);
   useEffect(load, [load]);
 
-  const projects = result?.projects || [];
-  const pending = useMemo(() => projects.filter((p) => p.stage === "待复盘"), [projects]);
-  const completed = useMemo(() => projects.filter((p) => p.stage === "已完成"), [projects]);
-
-  /**
-   * 发出去了、但工作台里没有对应稿子的那些。
-   *
-   * ⚠️ **判据是 `doc` 列空着，不是「标题匹配不上」。** `doc` 是**人手动指认过**
-   * 「这条对应哪篇稿子」的结果，平台导出文件里根本没有这个信息。
-   * 靠标题去猜的话，同一篇内容在两个平台标题常常不一样（实测「推荐一个公众号排版
-   * 工具」和「推荐一个自己做的公众号排版工具」），猜错了还会**安静地**把两篇并成一篇。
-   */
-  const loose = useMemo(
-    () => (posts?.rows || []).filter((r) => !String(r.doc || "").trim()).sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [posts]
-  );
-
-  const counts = { 待复盘: pending.length, 没对上: loose.length, 已完成: completed.length };
-  const shown = lane === "待复盘" ? pending : lane === "已完成" ? completed : loose;
+  const pending = useMemo(() => (result?.projects || []).filter((p) => p.stage === "待复盘"), [result]);
+  const completed = useMemo(() => (result?.projects || []).filter((p) => p.stage === "已完成"), [result]);
+  // doc 是用户明确关联的稿件标识，不使用标题猜测关系。
+  const loose = useMemo(() => (posts?.rows || []).filter((r) => !String(r.doc || "").trim()).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))), [posts]);
+  const counts = { 待复盘: result ? pending.length : "—", 没对上: posts ? loose.length : "—", 已完成: result ? completed.length : "—" };
+  const shown = lane === "待复盘" ? pending : completed;
+  const activeError = lane === "没对上" ? postsError : error;
+  const loaded = lane === "没对上" ? posts : result;
 
   return (
-    <>
-      <FilterHeader
-        title="复盘"
-        desc="一篇一篇地留下判断和下一步，数字只是依据，不是结论。"
-        chips={
-          <ViewTabs
-            items={LANES.map((l) => ({ key: l.key, label: l.label, count: counts[l.key] ?? 0 }))}
-            value={lane}
-            onChange={setLane}
-            label="按状态筛选"
-          />
-        }
-      />
-
-      {/*
-        涌现定位长在复盘页：复盘回答的就是「发出去之后我学到了什么」，
-        而定位正是这些学到的东西攒够之后才看得出来的形状。
-        它不新开页面，也不要求填任何字段。
-      */}
-      <PositioningNote />
-
-      <ErrorNote error={error} what="读取复盘任务" />
-      {!result && !posts && !error ? <Loading rows={4} /> : null}
-
-      {/* ⚠️ **每一档各自失败，不能一起垮。** 「没对上稿子」读的是本地的 posts.csv，
-          跟 Worker 一点关系都没有——整块挂在 `result` 上的话，流水线连不上时
-          这一档也跟着消失，而它恰恰是此刻唯一还有内容的那一档。 */}
-      {result || posts ? (
-        <div className="review-home">
-          {lane === "没对上" ? (
-            loose.length ? (
-              <>
-                {/* ⚠️ 照实说清这一档是什么，否则它看着像「复盘漏了几篇」。
-                    它们不是漏了，是工作台从来不知道它们和哪篇稿子是同一件事。 */}
-                <p className="review-note">
-                  这几篇是从平台后台导进来的，工作台里没有对应的稿子——所以复盘时只有数字，
-                  没有「当初想说什么」。在项目页把稿子和它对上之后，两边就能放在一起看了。
-                </p>
-                <div className="loose-list">
-                  {loose.map((r, i) => (
-                    <article key={`${r.platform}-${r.date}-${i}`} className="loose">
-                      <div className="loose__head">
-                        <span className="tag tag--state">
-                          <span className="dot" style={{ background: platformColor(r.platform, dark) }} />
-                          {r.platform}
-                        </span>
-                        <span className="loose__date">{r.date}</span>
-                      </div>
-                      <h3>{r.title || "（无标题）"}</h3>
-                      <div className="loose__metrics">
-                        {METRIC_KEYS.filter((k) => r[k] != null).map((k) => (
-                          <span key={k}>
-                            {metricLabel(r.platform, k)} <strong>{fmtNum(r[k])}</strong>
-                          </span>
-                        ))}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <Empty icon={IconLink}>每一篇发出去的内容都对上稿子了。</Empty>
-            )
-          ) : shown.length ? (
-            <div className="review-list">
-              {shown.map((project, i) => (
-                <ReviewCard
-                  key={project.id}
-                  project={project}
-                  index={i}
-                  compact={lane === "已完成"}
-                  onOpen={() => onGo("project", project.id)}
-                />
-              ))}
-            </div>
-          ) : !result ? (
-            <Loading rows={3} />
-          ) : lane === "待复盘" ? (
-            <div className="review-empty">
-              <IconCheck aria-hidden="true" />
-              <h3>没有积压的复盘</h3>
-              {/* ⚠️ **空态要说清「为什么是空的」。** 上一版写「新内容记录发布后会自动出现」，
-                  而屏幕上同时有 3 篇已发布的内容——那句话当场就是假的。 */}
-              <p>
-                走过工作台的稿子记录发布后会出现在这里。
-                {loose.length ? `另有 ${loose.length} 篇是从平台导进来的，在「没对上稿子」那一档。` : ""}
-              </p>
-              {loose.length ? (
-                <button type="button" className="btn btn-sm" onClick={() => setLane("没对上")}>
-                  去看那 {loose.length} 篇
-                  <IconArrowRight aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <Empty icon={IconChartBar}>还没有留下过复盘判断。</Empty>
-          )}
+    <section className="review-page" aria-labelledby="review-page-title">
+      <header className="review-page__head">
+        <div><h1 id="review-page-title">复盘</h1><p>从发布后的反馈中，找到下一篇可以改进的事。</p></div>
+        <button type="button" className="btn btn-sm" onClick={() => onGo("review-performance")}><IconChartBar aria-hidden="true" />查看发布数据</button>
+      </header>
+      <section className="review-page__queue" aria-label="文章复盘">
+        <div className="review-page__tabs">
+          <ViewTabs items={LANES.map((item) => ({ ...item, count: counts[item.key] }))} value={lane} onChange={setLane} label="按状态筛选" />
         </div>
-      ) : null}
-    </>
+        <div className="review-page__intro">
+          <p>{LANE_NOTES[lane]}</p>
+          {lane === "没对上" && loose.length ? <button type="button" className="btn btn-sm" onClick={() => onGo("content")}>打开创作<IconArrowRight aria-hidden="true" /></button> : null}
+        </div>
+        <ErrorNote error={activeError} what={lane === "没对上" ? "读取发布记录" : "读取复盘任务"} />
+        {activeError ? <button type="button" className="btn btn-sm review-page__retry" onClick={load}>重新加载</button> : null}
+        {!loaded && !activeError ? <Loading rows={3} /> : loaded ? (
+          <div className="review-home">
+            {lane === "没对上" ? (
+              loose.length ? <div className="loose-list">
+                {loose.map((row, index) => <article key={`${row.platform}-${row.date}-${index}`} className="loose">
+                  <div className="loose__head"><span className="tag tag--state"><span className="dot" style={{ background: platformColor(row.platform, dark) }} />{row.platform || "未知平台"}</span><span className="loose__date">{row.date || "日期未记录"}</span></div>
+                  <h3>{row.title || "（无标题）"}</h3>
+                  <div className="loose__metrics">{METRIC_KEYS.filter((key) => row[key] != null).map((key) => <span key={key}>{metricLabel(row.platform, key)} <strong>{fmtNum(row[key])}</strong></span>)}</div>
+                </article>)}
+              </div> : <Empty icon={IconLink}>没有待关联的发布记录。</Empty>
+            ) : shown.length ? <div className="review-list">
+              {shown.map((project, index) => <ReviewCard key={project.id} project={project} index={index} compact={lane === "已完成"} onOpen={() => onGo("project", project.id)} />)}
+            </div> : lane === "待复盘" ? <div className="review-empty">
+              <IconCheck aria-hidden="true" /><h3>暂无待复盘文章</h3><p>在工作台记录文章发布后，就可以在这里复盘。</p>
+              {loose.length ? <button type="button" className="btn btn-sm" onClick={() => setLane("没对上")}>查看 {loose.length} 条待关联记录<IconArrowRight aria-hidden="true" /></button> : null}
+            </div> : <Empty icon={IconChartBar}>完成第一篇复盘后，结论和下一步会留在这里。</Empty>}
+          </div>
+        ) : null}
+      </section>
+      <details className="review-page__observations" onToggle={(event) => setObservationsOpen(event.currentTarget.open)}>
+        <summary><span>长期观察<small>从已发布内容与实验中回看创作方向</small></span></summary>
+        {observationsOpen ? <PositioningNote /> : null}
+      </details>
+    </section>
   );
 }
 
 function ReviewCard({ project, index, onOpen, compact = false }) {
   const record = project.publication?.latest;
-  return (
-    <article className="review-card" data-compact={compact || undefined}>
-      <span className="review-card__index">{String(index + 1).padStart(2, "0")}</span>
-      <div className="review-card__main">
-        <div>
-          <span>{record?.platform || project.brief?.platform || "未知平台"}</span>
-          <small>{record?.publishedAt ? new Date(record.publishedAt).toLocaleDateString("zh-CN") : "已发布"}</small>
-        </div>
-        <h3>{project.title}</h3>
-        <p>{compact ? project.review?.nextExperiment : project.stageReason}</p>
-      </div>
-      <div className="review-card__action">
-        <span>{compact ? "下一步已留存" : project.nextAction}</span>
-        <button className="btn btn-primary btn-sm" onClick={onOpen}>
-          {compact ? "查看" : "开始复盘"}
-          <IconArrowRight aria-hidden="true" />
-        </button>
-      </div>
-    </article>
-  );
+  return <article className="review-card" data-compact={compact || undefined}>
+    <span className="review-card__index">{String(index + 1).padStart(2, "0")}</span>
+    <div className="review-card__main">
+      <div><span>{record?.platform || project.brief?.platform || "未知平台"}</span><small>{record?.publishedAt ? new Date(record.publishedAt).toLocaleDateString("zh-CN") : "发布时间未记录"}</small></div>
+      <h3>{project.title}</h3>
+      {compact ? <dl className="review-card__learning"><div><dt>结论</dt><dd>{project.review?.conclusion || "尚未记录结论"}</dd></div><div><dt>下一步</dt><dd>{project.review?.nextExperiment || "尚未记录下一步"}</dd></div></dl> : <p>{project.stageReason || "已发布，等待记录反馈与判断"}</p>}
+    </div>
+    <div className="review-card__action"><button type="button" className={`btn btn-sm${!compact && index === 0 ? " btn-primary" : ""}`} onClick={onOpen}>{compact ? "查看复盘" : "开始复盘"}<IconArrowRight aria-hidden="true" /></button></div>
+  </article>;
 }

@@ -181,7 +181,9 @@
 .direction-rows{margin:4px 0 32px}
 .direction-rows .row-head{gap:16px}
 .direction-row__open{flex:1 1 auto;min-width:0;padding:0;border:0;background:none;font:inherit;font-weight:500;color:inherit;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.direction-rows .row-meta{display:flex;gap:16px;flex:none;max-width:52%;min-width:0}
+.direction-rows .row-meta{display:grid;grid-template-columns:minmax(0,1fr) 76px;gap:16px;flex:0 0 240px;max-width:40%;min-width:0}
+.direction-row__status{text-align:right;white-space:nowrap}
+.direction-row__problem{text-align:right}
 .direction-row__problem{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .direction-row__acts{flex:none;display:flex;opacity:0;transition:opacity .14s var(--ease)}
 .direction-rows .row:hover .direction-row__acts,

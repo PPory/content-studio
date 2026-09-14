@@ -215,7 +215,19 @@ try {
   await seriesTitle.waitFor();
   check("新建合集后进入合集目录页", await seriesTitle.inputValue() === "本地内容工作台");
   check("目录页不再有「保存合集」按钮", await page.getByRole("button", { name: "保存合集" }).count() === 0);
-  await page.getByText("这个合集还是空的。把已有文章放进来，或者直接在这里开始写第一篇。").waitFor();
+  await page.getByText('还没有文章',{exact:true}).waitFor();
+  await fs.mkdir(path.join(ROOT,'output','playwright'),{recursive:true});
+  await page.screenshot({path:path.join(ROOT,'output','playwright','series-empty-desktop.png'),fullPage:true});
+  await page.getByRole('button',{name:'添加说明',exact:true}).click();
+  await page.getByLabel('合集说明',{exact:true}).fill('把本地创作的实践整理成可连续阅读的文章。');
+  await page.getByLabel('合集说明',{exact:true}).blur();
+  await page.getByRole('button',{name:'编辑合集说明',exact:true}).waitFor();
+  await page.reload();await seriesTitle.waitFor();
+  check('合集说明保存后以文字呈现',await page.getByRole('button',{name:'编辑合集说明',exact:true}).innerText()==='把本地创作的实践整理成可连续阅读的文章。');
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:path.join(ROOT,'output','playwright','series-empty-mobile.png'),fullPage:true});
+  check('合集空态手机无横向溢出',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:1440,height:900});
 
   await page.goto(`http://127.0.0.1:${PORT}/#/content`);
   await page.getByRole("button", { name: "把「阶段六隔离稿」放进合集" }).click();
@@ -279,6 +291,15 @@ try {
     && outlineTitles[1] === "阶段六隔离稿"
     && await page.locator(".series-row__section").innerText() === "入门");
 
+  await page.screenshot({path:path.join(ROOT,'output','playwright','series-outline-desktop.png'),fullPage:true});
+  if (process.argv.includes('--shots')) {
+    await page.screenshot({path:seriesShotFile,fullPage:true});
+    await page.locator('.series-outline').screenshot({path:seriesOutlineShotFile});
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:path.join(ROOT,'output','playwright','series-outline-mobile.png'),fullPage:true});
+  check('合集目录手机无横向溢出',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:1440,height:900});
   // 通读：把整个合集拼成一条连续正文，空正文的那一篇要留下痕迹
   await page.getByRole("button", { name: "通读" }).click();
   const reader = page.getByRole("dialog", { name: /通读/ });
@@ -336,8 +357,6 @@ try {
   await page.locator(".series-card").first().waitFor();
 
   if (process.argv.includes("--shots")) {
-    await page.screenshot({ path: seriesShotFile, fullPage: true });
-    await page.locator(".series-outline").screenshot({ path: seriesOutlineShotFile });
     // 合集列表页以前没有截图目标，而它正是这次改动最大的一块
     await page.goto(`http://127.0.0.1:${PORT}/#/series`);
     await page.locator(".series-card").first().waitFor();
@@ -559,11 +578,14 @@ try {
   check("来源列表滚动后提供悬浮返回顶部按钮", await sourceToTop.count() === 0);
   await page.getByRole("button", { name: "添加来源", exact: true }).click();
 
+  check('来源默认隐藏勾选列',await page.locator('.src-table input[type="checkbox"]').count()===0);
+  await page.getByRole('button',{name:'批量选择',exact:true}).click();
   const selectAllArticles = page.getByRole("checkbox", { name: "全选文章" });
   await selectAllArticles.click();
   check("来源表头可全选当前分组", await selectAllArticles.isChecked()
     && (await page.getByText(/已选 1 份/).count()) === 1);
-  await selectAllArticles.click();
+  await page.getByRole('button',{name:'取消选择',exact:true}).click();
+  check('取消选择清空并隐藏勾选列',await page.locator('.src-table input[type="checkbox"]').count()===0&&await page.getByText(/已选 1 份/).count()===0);
 
   await page.getByRole("button", { name: "审阅 UI 证据来源 的 Wiki 编译候选" }).click();
   await page.waitForURL((url) => decodeURIComponent(url.hash) === `#/entries/review:${evidenceBook.id}`);

@@ -3,7 +3,7 @@
  *
  * ⚠️ **不要框里画框**（`docs/design-system.md`）。上一版的列表是「灰底上一张白卡、
  * 白卡里两条稀薄的行」——外壳已经给过一层框了，里面那圈边框成了屏幕上唯一在说话的
- * 东西。现在列表是卡片网格（每张卡承载一个明确对象、卡上带内容预览），目录页整页是白的，
+ * 东西。现在列表是卡片网格（每张卡承载一个明确对象、卡上带内容预览），目录页使用浅灰底上的目录卡，
  * 分区只靠留白和一道 1px 线。
  */
 
@@ -185,7 +185,7 @@
 /* ───────────────────────── 合集目录页 ───────────────────────── */
 
 .series-page,
-.series-load { min-height: 100%; background: var(--surface); }
+.series-load { min-height: 100%; background: var(--sunken); }
 .series-load { display: grid; gap: 16px; padding: 24px; justify-items: start; }
 
 /* 和项目页那条一样吸顶：目录长了之后「通读 / 导出 / 返回」不该滚出屏幕 */
@@ -204,9 +204,9 @@
 
 .series-topbar__end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-.series-body { width: min(880px, calc(100% - 48px)); margin: 0 auto; padding: 38px 0 80px; }
+.series-body { width: min(1120px, calc(100% - 64px)); margin: 0 auto; padding: 30px 0 64px; }
 
-.series-brief { padding-bottom: 22px; }
+.series-brief { padding: 0 0 24px; }
 
 /* 标题就地改：一个 34px 的输入框不需要 label 和眉标来解释它是标题 */
 .series-brief__title {
@@ -215,11 +215,11 @@
   border: 0;
   background: transparent;
   color: var(--text-1);
-  font: 650 clamp(26px, 3.4vw, 34px)/1.25 var(--font-display);
+  font: 650 clamp(24px, 2.4vw, 30px)/1.3 var(--font-display);
   letter-spacing: -0.03em;
 }
 
-.series-brief__title:focus { outline: 0; }
+.series-brief__title:focus-visible { outline: 2px solid var(--border-strong); outline-offset: 5px; border-radius: 2px; }
 .series-brief__title:hover { color: var(--text-1); }
 
 .series-brief__stat { margin-top: 8px; color: var(--text-3); font-size: var(--fs-sm); }
@@ -260,7 +260,12 @@
 
 /* ── 目录 ── */
 
-.series-outline { margin-top: 12px; border-top: 1px solid var(--border); }
+.series-outline { padding: 0 20px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.series-outline__head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.series-outline__head h2 { margin: 0; font-size: var(--fs-base); font-weight: 650; }
+.series-outline__head .series-add { margin-left: auto; padding: 0; }
+.series-brief__description { display: block; max-width: 720px; margin-top: 12px; padding: 0; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-sm); line-height: 1.7; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.series-brief__description:hover { color: var(--text-1); }
 
 .series-row {
   display: grid;
@@ -276,7 +281,9 @@
 
 /* 抓手平时是淡的：一行里最不该抢注意力的就是它 */
 .series-row__grip { display: grid; place-items: center; color: var(--text-3); cursor: grab; opacity: 0; }
-.series-row:hover .series-row__grip { opacity: 1; }
+.series-row:hover .series-row__grip,
+.series-row:focus-within .series-row__grip { opacity: 1; }
+.series-row:last-child { border-bottom: 0; }
 .series-row:active .series-row__grip { cursor: grabbing; }
 
 .series-row__no { color: var(--text-3); font: 600 var(--fs-2xs)/1.5 var(--font-mono); }
@@ -321,7 +328,7 @@
 }
 
 .series-row__edit:focus { border-color: var(--border-strong); outline: 0; }
-.series-row__edit.is-heading { grid-column: 3 / -2; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; }
+.series-row__edit.is-heading { grid-column: 2 / -2; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; }
 
 /* 分节行：一道横线加一个词，读起来是「这里换一部分了」 */
 .series-row.is-section { grid-template-columns: 18px minmax(0, 1fr) 30px; padding: 22px 0 10px; border-bottom: 0; }
@@ -345,10 +352,14 @@
   content: "";
 }
 
-.series-outline__empty { padding: 40px 0; color: var(--text-2); text-align: center; }
+.series-outline__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 46px 16px 50px; color: var(--text-3); text-align: center; }
+.series-outline__empty > svg { margin-bottom: 4px; }
+.series-outline__empty strong { color: var(--text-2); font-size: var(--fs-base); font-weight: 500; }
+.series-outline__empty p { margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
 
 .series-add { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 18px; }
 .series-add__field { max-width: 340px; }
+.series-add .btn-quiet:hover { border-color: var(--border-strong); color: var(--text-1); }
 
 /* ───────────────────────── 归类选择器 ───────────────────────── */
 
@@ -527,7 +538,7 @@
   .series-row { grid-template-columns: 18px 26px minmax(0, 1fr) auto 30px; }
   .series-row__words,
   .series-row__time { display: none; }
-  .series-row__edit.is-heading { grid-column: 3 / -2; }
+  .series-row__edit.is-heading { grid-column: 2 / -2; }
   .series-read__sheet { width: 100%; }
 }
 
@@ -539,6 +550,13 @@
   .series-row.is-section { grid-template-columns: minmax(0, 1fr) 30px; }
   .series-row__edit.is-heading { grid-column: 1 / -2; }
   .series-topbar__end .btn span { display: none; }
+  .series-body { width: calc(100% - 28px); padding-top: 22px; }
+  .series-outline { padding: 0 14px; }
+  .series-outline__head { align-items: flex-start; }
+  .series-outline__head .series-add { width: 100%; margin-left: 0; gap: 6px; }
+  .series-outline__head .series-add .btn { padding-inline: 8px; }
+  .series-outline__empty { padding: 34px 0 38px; }
+  .series-row:not(.is-section) > .menu-btn { grid-column: 3; grid-row: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

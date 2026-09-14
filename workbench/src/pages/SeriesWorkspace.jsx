@@ -1,13 +1,3 @@
-// 合集详情 = **目录页**，不是表单页。
-//
-// 上一版进来先占掉一整屏：`COLLECTION` 眉标 + 「合集名称」label + 42px 标题输入框 +
-// 一个 150px 高的空 textarea，右上角一颗灰掉的「保存合集」。你要看的「里面有哪几篇」
-// 被推到第二屏，而**文件夹不该有保存按钮**。
-//
-// 现在：标题就地改、失焦即存（和文章工作区一套）；说明没写就是一行「＋ 添加说明」；
-// 剩下整页都是目录。目录行给真信息（阶段 / 字数 / 多久没动），能拖着排序，
-// 能插分节标题（教程要分「入门 / 进阶 / 参考」），顶上能通读和导出成一份 Markdown。
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadSeriesMarkdown } from "../lib/api.js";
 import { ErrorNote, Loading, MenuButton, StatePill, Toast, relTime } from "../components/ui.jsx";
@@ -211,8 +201,7 @@ export function SeriesWorkspace({ seriesId, onGo, onChanged }) {
 
       <div className="series-body">
         <section className="series-brief">
-          {/* 标题就地改、失焦即存。眉标和「合集名称」label 都删掉了——
-              一个 40px 的标题输入框不需要另外两行字来解释它是标题 */}
+          {/* 标题就地修改，失焦保存。 */}
           <input
             className="series-brief__title"
             value={title}
@@ -228,8 +217,8 @@ export function SeriesWorkspace({ seriesId, onGo, onChanged }) {
             {series.progress.recycled ? ` · ${series.progress.recycled} 篇在回收站` : ""}
           </p>
 
-          {/* 说明折叠成一行。没写过的合集不该先看到半屏空 textarea */}
-          {writingDescription || description ? (
+          {/* 说明以正文呈现，点击后编辑。 */}
+          {writingDescription ? (
             <textarea
               ref={descriptionRef}
               className="series-brief__desc"
@@ -241,13 +230,46 @@ export function SeriesWorkspace({ seriesId, onGo, onChanged }) {
               aria-label="合集说明"
             />
           ) : (
-            <button type="button" className="series-brief__add" onClick={() => setWritingDescription(true)}>
-              <IconPlus aria-hidden="true" stroke={1.9} />添加说明
+            <button
+              type="button"
+              className={description ? "series-brief__description" : "series-brief__add"}
+              onClick={() => setWritingDescription(true)}
+              aria-label={description ? "编辑合集说明" : "添加说明"}
+              title={description ? "点击编辑说明" : undefined}
+            >
+              {description || <><IconPlus aria-hidden="true" stroke={1.9} />添加说明</>}
             </button>
           )}
         </section>
 
         <section className="series-outline" aria-label="合集目录">
+          <header className="series-outline__head">
+            <h2>文章目录</h2>
+            <div className="series-add">
+              {editing?.id === "new-section" ? (
+                <input
+                  ref={editRef}
+                  className="series-row__edit is-heading series-add__field"
+                  value={editing.value}
+                  onChange={(event) => setEditing((current) => ({ ...current, value: event.target.value }))}
+                  onBlur={commitEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") { event.stopPropagation(); setEditing(null); }
+                  }}
+                  maxLength="120"
+                  placeholder="分节标题，比如「入门」「进阶」「参考」"
+                  aria-label="新分节标题"
+                />
+              ) : (
+                <>
+                  <button className="btn btn-sm btn-primary" onClick={() => setPicking(true)} disabled={busy}><IconLink aria-hidden="true" />加入已有文章</button>
+                  <button className="btn btn-sm" onClick={createArticle} disabled={busy}><IconPlus aria-hidden="true" />在合集中新建</button>
+                  <button className="btn btn-sm btn-quiet" onClick={() => setEditing({ id: "new-section", field: "heading", value: "" })} disabled={busy}><IconSeparator aria-hidden="true" />插入分节</button>
+                </>
+              )}
+            </div>
+          </header>
           {entries.map((entry, index) => {
             const isSection = entry.kind === "section";
             const editingThis = editing?.id === entry.id;
@@ -349,34 +371,15 @@ export function SeriesWorkspace({ seriesId, onGo, onChanged }) {
           })}
 
           {!entries.length ? (
-            <p className="series-outline__empty">这个合集还是空的。把已有文章放进来，或者直接在这里开始写第一篇。</p>
+            <div className="series-outline__empty">
+              <IconFileText size={24} stroke={1.4} aria-hidden="true" />
+              <strong>还没有文章</strong>
+              <p>加入已有文章，或在合集中开始写第一篇。</p>
+            </div>
           ) : null}
         </section>
 
-        <div className="series-add">
-          {editing?.id === "new-section" ? (
-            <input
-              ref={editRef}
-              className="series-row__edit is-heading series-add__field"
-              value={editing.value}
-              onChange={(event) => setEditing((current) => ({ ...current, value: event.target.value }))}
-              onBlur={commitEdit}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-                if (event.key === "Escape") { event.stopPropagation(); setEditing(null); }
-              }}
-              maxLength="120"
-              placeholder="分节标题，比如「入门」「进阶」「参考」"
-              aria-label="新分节标题"
-            />
-          ) : (
-            <>
-              <button className="btn" onClick={() => setPicking(true)} disabled={busy}><IconLink aria-hidden="true" />加入已有文章</button>
-              <button className="btn" onClick={createArticle} disabled={busy}><IconPlus aria-hidden="true" />在合集中新建</button>
-              <button className="btn btn-quiet" onClick={() => setEditing({ id: "new-section", field: "heading", value: "" })} disabled={busy}><IconSeparator aria-hidden="true" />插入分节</button>
-            </>
-          )}
-        </div>
+
 
         <ErrorNote error={error} what="更新合集" />
       </div>

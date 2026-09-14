@@ -27,7 +27,7 @@ export function DirectionBrowser({items,renderDetail,initialKey='',onReadingChan
   {!selected&&layout==='list'&&<div className="rows direction-rows">{items.map(item=><div className="row" key={item.key} data-confirm={confirmKey===item.key?'':undefined}>
    <div className="row-head">
     <button className="row-title direction-row__open" aria-label={item.title} data-direction-key={item.key} onClick={()=>open(item)}>{item.title}</button>
-    <span className="row-meta"><span className="direction-row__problem">{item.summary}</span><span>{item.status}</span></span>
+    <span className="row-meta"><span className="direction-row__problem">{item.summary}</span><span className="direction-row__status">{item.status}</span></span>
     {onRemove&&item.saved?<span className="direction-row__acts"><RowDelete onDelete={()=>onRemove(item)} label="移除方向" title={`移除方向：${item.title}`} onOpenChange={open=>setConfirmKey(open?item.key:'')}/></span>:null}
    </div>
   </div>)}</div>}
