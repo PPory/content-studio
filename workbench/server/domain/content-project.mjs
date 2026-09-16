@@ -1,3 +1,4 @@
+import { authorizedPersonalAssets, personalAssetEvidence } from "./personal-assets.mjs";
 import { projectResearches } from "./research.mjs";
 import { getProjectNotebook } from "./project-notebook.mjs";
 /**
@@ -109,6 +110,9 @@ export function projectCreativeContext(workspace, projectId) {
   for (const row of materialRows) {
     if (!elements.some((item) => item.sourceId === row.id)) elements.push(resolveElement(db, { id: row.id, label: row.title, type: row.material_type === "个人经历" ? "experience" : "evidence", source_kind: "material", source_id: row.id }));
   }
+  for (const asset of authorizedPersonalAssets(db, projectId)) {
+    elements.push({id:asset.id,type:asset.kind==='experience'?'experience':'evidence',typeLabel:'个人资产',label:asset.title,sourceKind:'personal_asset',sourceId:asset.id,origin:`个人资产 · ${asset.title}`,body:clean(asset.body,ELEMENT_BODY_LIMIT),available:true});
+  }
   for (const anchor of (Array.isArray(notebook.discovery?.connection?.knowledgeAnchors) ? notebook.discovery.connection.knowledgeAnchors : []).slice(0, 20)) {
     if (typeof anchor?.wikiPageId !== "string" || elements.some((item) => item.sourceId === anchor.wikiPageId)) continue;
     elements.push(resolveElement(db, { id: anchor.wikiPageId, label: "待核对知识来源", type: "concept", source_kind: "wiki_page", source_id: anchor.wikiPageId }));
@@ -145,7 +149,7 @@ export function projectCreativeContext(workspace, projectId) {
     entryOptions: Array.isArray(construction.entry_options) ? construction.entry_options.filter((item) => item && typeof item === "object") : [],
     evidenceGaps: Array.isArray(construction.evidence_gaps) ? construction.evidence_gaps.filter((item) => item && typeof item === "object") : [],
     counterarguments: Array.isArray(construction.counterarguments) ? construction.counterarguments.filter((item) => item && typeof item === "object") : [],
-    experiences: personalExperienceMaterials(db),
+    experiences: [...personalExperienceMaterials(db), ...personalAssetEvidence(db, projectId)],
     draft,
     /** 正文还空着——「搭个结构」只在这种时候才是主动作。 */
     empty: !clean(draft?.body, 200_000),

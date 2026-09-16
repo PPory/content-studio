@@ -17,6 +17,7 @@ import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
 import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
+import { ProjectPersonalAssets } from "../components/ProjectPersonalAssets.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
 import { ProjectSeed } from "./project/ProjectSeed.jsx";
 import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.js";
@@ -1011,6 +1012,7 @@ ${(form.body || "").slice(0, 3000)}`);
               failedWhy={srcFetch.state === "failed" ? srcFetch.why : ""}
               onRetry={() => fetchSource(project.seed, { force: true })}
             />
+            <ProjectPersonalAssets projectId={projectId} query={projectMaterialQuery(project, form)} onGo={onGo} onChanged={() => { promoteTemporaryProject(); setNotebookVersion(v => v + 1); }} />
             <ProjectRefs
               materials={project.materials || []}
               canInsert={draftEditable}

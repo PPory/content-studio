@@ -1,3 +1,4 @@
+import { personalAssetEvidence } from "./personal-assets.mjs";
 import crypto from "node:crypto";
 import { createUlid } from "../storage/ids.mjs";
 import { ActionPolicy } from "./action-policy.mjs";
@@ -838,12 +839,13 @@ export class WorkspaceDomain {
   }
 
   groundingMaterials(projectId) {
-    return this.db.prepare(`
+    const materials = this.db.prepare(`
       SELECT DISTINCT m.* FROM materials m
       JOIN entities e ON e.id = m.id
       LEFT JOIN project_materials pm ON pm.material_id = m.id AND pm.project_id = ?
       WHERE e.deleted_at IS NULL AND (m.material_type = '个人经历' OR pm.project_id IS NOT NULL)
     `).all(projectId);
+    return [...materials, ...personalAssetEvidence(this.db, projectId)];
   }
 
   linkMaterial(projectId, materialId, { relationKind = "reference", now, ...auth } = {}) {

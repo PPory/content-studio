@@ -1,3 +1,4 @@
+import { initializeNote } from "./personal-assets.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { createProjectExploration } from "./project-notebook.mjs";
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -127,7 +128,7 @@ export function projectResearches(w,id) {
   return w.db.prepare("SELECT r.id FROM researches r JOIN research_projects l ON l.research_id=r.id JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE l.project_id=? ORDER BY l.created_at").all(id).map(({id})=>getResearch(w,id));
 }
 export function quickNote(w,input) {
-  inputObject(input,["text","sourceUrl"]);const body=text(input.text);
+  inputObject(input,["text","sourceUrl","tags"]);const body=text(input.text);
   if(!body.trim()) throw error("请先写一点内容");
   const sourceUrl=text(input.sourceUrl??"",2000);
   if(sourceUrl && !/^https?:\/\//i.test(sourceUrl)) throw error("出处应为 http 或 https 链接");
@@ -135,7 +136,7 @@ export function quickNote(w,input) {
   const id=w.domain.createCapture({kind:"thought",title:body.trim().split("\n")[0].slice(0,80),bodyMarkdown:body,sourceUrl,actor:"user",confirmed:true});
   // A quick note is already saved; it is not an AI processing obligation.
   w.db.prepare("UPDATE captures SET status='accepted' WHERE id=?").run(id);
-  const {body:original,...item}=libraryItem(w,"capture",id);return item;
+  return {...initializeNote(w,id,input),kind:"capture",nature:"随手记"};
   });
 }
 export function workState(w,kind,id,input) {

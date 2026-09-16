@@ -1,3 +1,4 @@
+import { getNote,listNotes,saveNote,trashNote,noteInsight,getPersonalAsset,listPersonalAssets,personalAssetVersions,savePersonalAsset,trashPersonalAsset,projectPersonalAssets,referencePersonalAsset } from "../domain/personal-assets.mjs";
 import { fail,json,readJsonBody } from "../lib/http.mjs";
 import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
 function route(method,path,action) {
@@ -11,6 +12,19 @@ function route(method,path,action) {
   }};
 }
 export const researchRoutes=[
+ route("GET","/api/workspace/quick-notes",({workspace,url})=>listNotes(workspace,{q:url.searchParams.get("q")||"",tag:url.searchParams.get("tag")||""})),
+ route("GET","/api/workspace/quick-notes/:id",({workspace,params})=>({item:getNote(workspace,params.id)})),
+ route("PUT","/api/workspace/quick-notes/:id",({workspace,params,body})=>({item:saveNote(workspace,params.id,body)})),
+ route("POST","/api/workspace/quick-notes/:id/trash",({workspace,params})=>({item:trashNote(workspace,params.id)})),
+ route("POST","/api/workspace/quick-notes/:id/insights",async({workspace,params,env})=>({insight:await noteInsight(env,workspace,params.id)})),
+ route("GET","/api/workspace/personal-assets",({workspace,url})=>({items:listPersonalAssets(workspace,{q:url.searchParams.get("q")||"",kind:url.searchParams.get("kind")||""})})),
+ route("POST","/api/workspace/personal-assets",({workspace,body})=>({item:savePersonalAsset(workspace,null,body)})),
+ route("GET","/api/workspace/personal-assets/:id",({workspace,params})=>({item:getPersonalAsset(workspace,params.id),versions:personalAssetVersions(workspace,params.id)})),
+ route("PUT","/api/workspace/personal-assets/:id",({workspace,params,body})=>({item:savePersonalAsset(workspace,params.id,body)})),
+ route("POST","/api/workspace/personal-assets/:id/trash",({workspace,params,body})=>({item:trashPersonalAsset(workspace,params.id,body)})),
+ route("GET","/api/workspace/projects/:id/personal-assets",({workspace,params,url})=>projectPersonalAssets(workspace,params.id,{q:url.searchParams.get("q")||""})),
+ route("POST","/api/workspace/projects/:id/personal-assets",({workspace,params,body})=>referencePersonalAsset(workspace,params.id,body)),
+ route("DELETE","/api/workspace/projects/:id/personal-assets",({workspace,params,body})=>referencePersonalAsset(workspace,params.id,body,true)),
  route("GET","/api/workspace/researches",({workspace})=>({researches:listResearches(workspace)})),
  route("POST","/api/workspace/researches",({workspace,body})=>({research:createResearch(workspace,body)})),
  route("GET","/api/workspace/researches/:id",({workspace,params})=>({research:getResearch(workspace,params.id)})),

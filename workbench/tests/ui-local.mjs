@@ -193,8 +193,8 @@ try {
 
   await page.locator(".nav").getByRole("button", { name: "知识", exact: true }).click();
   const knowledgeMenu = page.locator('[aria-label="知识下的页面"]');
-  check("知识恢复原来的三个子目录", JSON.stringify(await knowledgeMenu.getByRole("button").allTextContents()) === JSON.stringify(["Wiki", "书架", "来源"]));
-  for (const [name, view] of [["书架", "shelf"], ["来源", "sources"], ["Wiki", "entries"]]) {
+  check("知识目录包含记录、个人资产与原有知识页面", JSON.stringify(await knowledgeMenu.getByRole("button").allTextContents()) === JSON.stringify(["记一下", "个人资产", "Wiki", "书架", "来源"]));
+  for (const [name, view] of [["记一下", "notes"], ["个人资产", "personal-assets"], ["书架", "shelf"], ["来源", "sources"], ["Wiki", "entries"]]) {
     await knowledgeMenu.getByRole("button", { name, exact: true }).click();
     await page.waitForURL(new RegExp(`#/${view}`));
     await knowledgeMenu.getByRole("button", { name, exact: true }).and(page.locator('[aria-current="page"]')).waitFor();

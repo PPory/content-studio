@@ -33,6 +33,8 @@ const intelligenceDirectionsSql = fs.readFileSync(new URL("./migrations/0023-int
 
 const intelDirectionDismissedSql = fs.readFileSync(new URL("./migrations/0024-intel-direction-dismissed.sql", import.meta.url), "utf8");
 
+const personalAssetsSql = fs.readFileSync(new URL("./migrations/0025-personal-assets.sql", import.meta.url), "utf8");
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -148,6 +150,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 22, name: "intelligence-feed", sql: intelligenceFeedSql, checksum: crypto.createHash("sha256").update(intelligenceFeedSql).digest("hex") }),
   Object.freeze({ version: 23, name: "intelligence-directions", sql: intelligenceDirectionsSql, checksum: crypto.createHash("sha256").update(intelligenceDirectionsSql).digest("hex") }),
   Object.freeze({ version: 24, name: "intel-direction-dismissed", sql: intelDirectionDismissedSql, checksum: crypto.createHash("sha256").update(intelDirectionDismissedSql).digest("hex") }),
+  Object.freeze({ version: 25, name: "personal-assets", sql: personalAssetsSql, checksum: crypto.createHash("sha256").update(personalAssetsSql).digest("hex") }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

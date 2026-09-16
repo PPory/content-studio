@@ -72,6 +72,18 @@ export const api = {
   projectResearches: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/researches`),
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
   library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
+  quickNotes: (q = "", tag = "") => req(`/api/workspace/quick-notes?${new URLSearchParams({ q, tag })}`),
+  saveQuickNote: (id, body) => req(`/api/workspace/quick-notes/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  trashQuickNote: (id) => postJson(`/api/workspace/quick-notes/${encodeURIComponent(id)}/trash`, {}),
+  noteInsights: (id) => postJson(`/api/workspace/quick-notes/${encodeURIComponent(id)}/insights`, {}),
+  personalAssets: (q = "", kind = "") => req(`/api/workspace/personal-assets?${new URLSearchParams({ q, kind })}`),
+  personalAsset: (id) => req(`/api/workspace/personal-assets/${encodeURIComponent(id)}`),
+  createPersonalAsset: (body) => postJson("/api/workspace/personal-assets", body),
+  savePersonalAsset: (id, body) => req(`/api/workspace/personal-assets/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+  trashPersonalAsset: (id) => postJson(`/api/workspace/personal-assets/${encodeURIComponent(id)}/trash`, { confirmed: true }),
+  projectPersonalAssets: (id, q = "") => req(`/api/workspace/projects/${encodeURIComponent(id)}/personal-assets?${new URLSearchParams({ q })}`),
+  attachPersonalAsset: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/personal-assets`, body),
+  detachPersonalAsset: (id, assetId) => req(`/api/workspace/projects/${encodeURIComponent(id)}/personal-assets`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ assetId, confirmed: true }) }),
   quickNote: (body) => postJson("/api/workspace/quick-notes", body),
   // ⚠️ 不传 includeHidden：「从首页收起」要真的收起，由服务端决定发哪些，
   // 前端不再拿到全部再滤一遍。反悔的路是回执上那颗「撤销」。

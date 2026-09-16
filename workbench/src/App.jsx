@@ -3,6 +3,8 @@ import "./task-workspace.css";
 import { Research } from "./pages/Research.jsx";
 import { Library } from "./pages/Library.jsx";
 import { QuickNote } from "./components/QuickNote.jsx";
+import { Notes } from "./pages/Notes.jsx";
+import { PersonalAssets } from "./pages/PersonalAssets.jsx";
 // 首页与 AI 助手独立，知识、内容、情报、运营各自保留目录。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +52,7 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 const CONTENT_VIEWS = new Set(["research", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
-const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources"]);
+const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources", "notes", "personal-assets"]);
 const DISCOVER_VIEWS = new Set(["bridge", "intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
@@ -100,6 +102,8 @@ const NAV = [
   { key: "today", to: "today", match: (v) => v === "today" || v === "overview" },
   { key: "assistant", to: "assistant", match: (v) => v === "assistant" },
   { key: "knowledge", to: "entries", match: (v) => KNOWLEDGE_VIEWS.has(v), children: [
+    { to: "notes", label: "记一下" },
+    { to: "personal-assets", label: "个人资产" },
     { to: "entries", label: "Wiki" },
     { to: "shelf", label: "书架" },
     { to: "sources", label: "来源" },
@@ -151,7 +155,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["intel-detail", "intel-reports", "intel-legacy", "intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["notes", "personal-assets", "intel-detail", "intel-reports", "intel-legacy", "intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -739,6 +743,10 @@ export function App() {
                   onChanged={refreshStatus}
                   onSettings={() => setSettings(true)}
                 />
+              ) : route.view === "notes" ? (
+                <Notes onGo={go} refreshKey={intakeVersion} registerNavigationGuard={registerNavigationGuard} />
+              ) : route.view === "personal-assets" ? (
+                <PersonalAssets initialId={route.state} onGo={go} registerNavigationGuard={registerNavigationGuard} />
               ) : route.view === "research" ? (
                 <Research researchId={route.state} onGo={go} onForceGo={forceGo} registerNavigationGuard={registerNavigationGuard} />
               ) : route.view === "library" ? (
@@ -920,7 +928,7 @@ export function App() {
 
       <SettingsOverlay open={settings} onClose={() => setSettings(false)} onSaved={refreshStatus} />
 
-      <QuickNote open={quickNote} onClose={() => setQuickNote(false)} onSaved={() => { refreshStatus(); setIntakeVersion((v) => v + 1); }} />
+      <QuickNote onBrowse={() => { setQuickNote(false); go("notes"); }} open={quickNote} onClose={() => setQuickNote(false)} onSaved={() => { refreshStatus(); setIntakeVersion((v) => v + 1); }} />
       <IntakeDrawer
         open={!!intake}
         preset={intake}
