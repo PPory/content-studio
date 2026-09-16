@@ -85,7 +85,7 @@ export function outlineToMarkdown(outline) {
 }
 
 export async function proposeProjectOutline(env, workspace, { projectId, instruction = "" } = {}) {
-  const context = projectCreativeContext(workspace, projectId);
+  const context = projectCreativeContext(workspace, projectId, { destination: env.AGENT_INGEST_BASE_URL || env.AGENT_LLM_BASE_URL || "" });
   const ask = clean(instruction, 1_000);
   const completion = await completionFor(env)(env, {
     system: [
@@ -139,7 +139,7 @@ function summarize(context) {
  * 那正是这一步要避免的事。
  */
 export async function proposeProjectDraft(env, workspace, { projectId, outline, instruction = "" } = {}) {
-  const context = projectCreativeContext(workspace, projectId);
+  const context = projectCreativeContext(workspace, projectId, { destination: env.AGENT_INGEST_BASE_URL || env.AGENT_LLM_BASE_URL || "" });
   /**
    * ⚠️ **起稿不能只有一次机会。**
    * 「不满意只能重来一遍」意味着用户唯一能表达不满的方式是再抽一次——

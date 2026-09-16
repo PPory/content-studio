@@ -224,7 +224,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     allowed("project_read");
     const project = context.project;
     if (project?.id && context.workspace?.db?.open && context.workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(project.id)) {
-      return text({ ...project, notebook: getProjectNotebook(context.workspace, project.id), notebookStatus: "探索记录与候选，不是已核实事实或正式正文" });
+      return text({ ...project, personalAssets: context.readPersonalAssets?.() || [], notebook: getProjectNotebook(context.workspace, project.id), notebookStatus: "探索记录与候选，不是已核实事实或正式正文" });
     }
     return text(project || context.document || {});
   }));
@@ -244,7 +244,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     const materials = (live?.materials || context.projectMaterials || []).slice(0, 40).map((item) => ({
       id: clean(item.id, 160), title: clean(item.title || "未命名素材", 300), content: clean(item.content || item.note || item.summary, 2_000), source: clean(item.source || item.sourceUrl || item.url, 2_000), verification: clean(item.verification || item.verificationStatus, 100),
     }));
-    return text({ source:"SQLite workspace",total:materials.length,materials });
+    return text({ source:"SQLite workspace",total:materials.length,materials,personalAssets:context.readPersonalAssets?.() || [] });
   }));
   tools.push(tool("publication_metrics", "读取发布数据", "读取当前 SQLite 项目记录的发布和复盘数据。只读，不推测缺失值。", Type.Object({}), async () => {
     allowed("publication_metrics");

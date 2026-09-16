@@ -1,3 +1,4 @@
+import { aiPersonalAssets, assistantPersonalAssetProject, personalAssetPrompt, personalAssetDestination } from "../domain/personal-assets.mjs";
 import { intelligenceBrief } from "../domain/intelligence-feed.mjs";
 import { getResearch, projectResearches } from "../domain/research.mjs";
 import { getProjectNotebook } from "../domain/project-notebook.mjs";
@@ -675,7 +676,9 @@ async function localContext(env, input, record) {
     if (seen.has(id)) continue;
     sources.unshift({ id, typeLabel: "项目素材", title: clean(item.title || "未命名素材", 200), snippet: clean(item.content || item.note || item.summary, 1_000), url: clean(item.sourceUrl || item.url, 1_000), source: "当前内容项目" });
   }
+  const assetProjectId = assistantPersonalAssetProject(workspace, input);
   const result = {
+    personalAssets: aiPersonalAssets(workspace, assetProjectId, env.AGENT_LLM_BASE_URL),
     linkedResearches: input.scopeId?.startsWith("project:") && input.document?.id && workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(input.document.id) ? projectResearches(workspace, input.document.id) : [],
     intelligence: input.scopeId?.startsWith("intelligence:") ? (()=>{const b=intelligenceBrief(workspace,input.scopeId.slice(13));const external=new Map((b.sources||[]).filter(s=>!["local","manual"].includes(s.provider)&&/^https?:/.test(s.url||"")).map(s=>[s.id,s]));return {title:b.title,summary:b.summary,body:b.body,confidence:b.confidence,evidence:(b.evidence||[]).filter(e=>external.has(e.sourceId)).map(e=>({quote:e.quote.slice(0,600),title:external.get(e.sourceId).title,url:external.get(e.sourceId).url}))};})() : null,
     research: input.scopeId?.startsWith("research:") ? getResearch(workspace, input.scopeId.slice(9)) : null,
@@ -700,6 +703,7 @@ async function localContext(env, input, record) {
     projectMaterials: (input.materials || []).slice(0, 40),
   };
   Object.defineProperty(result, 'workspace', { value: workspace, enumerable: false });
+  Object.defineProperty(result, 'readPersonalAssets', { value: () => aiPersonalAssets(workspace, assetProjectId, env.AGENT_LLM_BASE_URL), enumerable: false });
   return result;
 }
 
@@ -754,6 +758,7 @@ function contentPrompt(input, context, model) {
     assistantReferencePrompt(context),
     expertDelegationPrompt(context),
     `【当前内容】\n标题：${clean(document.title || "未命名", 300)}\n平台：${clean(document.platform, 50) || "未设置"}\n目标读者：${clean(document.audience, 200) || "沿用长期设置"}`,
+    personalAssetPrompt(context.personalAssets),
     context.project?.notebook ? `【当前构思与候选，优先于旧简报；不是已核实事实，不自动采用】\n${JSON.stringify(context.project.notebook)}` : "",
     selection,
     body ? `【全文】\n${body}` : "【全文】尚未开始写。",
@@ -1077,6 +1082,16 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     await writeConversationRecord(scopeId, record);
     emit({ type: "status", stage: "正在读取上下文" });
     context = await localContext(runtimeEnv, input, record);
+    // Reset model history when consent changes; locally displayed messages remain intact.
+    const personalStamp = crypto.createHash("sha256").update(JSON.stringify({ destination: personalAssetDestination(runtimeEnv.AGENT_LLM_BASE_URL), assets: context.personalAssets.map(a => [a.id, a.version]) })).digest("hex");
+    if ((record.personalAssetStamp && record.personalAssetStamp !== personalStamp) || (!record.personalAssetStamp && context.personalAssets.length)) {
+      record.piSessionId = ""; record.piSessionFile = ""; record.replayHistory = false;
+    }
+    record.personalAssetStamp = personalStamp;
+    if (context.personalAssets.length) record.personalAssetHistory = true;
+    if (record.personalAssetHistory) record.replayHistory = false;
+    await stageWrite;
+    await writeConversationRecord(scopeId, record);
     const selectedExpertKinds = requestedExpertKinds(message, context.references);
     const expertDocument = expertTargetDocument(context, { required: selectedExpertKinds.length > 0 });
     if (expertDocument) {
@@ -1195,6 +1210,8 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     latest.messages = [...latest.messages, assistantMessage];
     latest.actions = [...(latest.actions || []), ...proposed];
     latest.attachments = (latest.attachments || []).map((item) => pendingAttachments.some((attachment) => attachment.id === item.id) ? { ...item, usedAt: now() } : item);
+    latest.personalAssetStamp = record.personalAssetStamp;
+    latest.personalAssetHistory = record.personalAssetHistory;
     latest.model = record.model;
     latest.piSessionId = result.piSessionId;
     latest.piSessionFile = result.piSessionFile;

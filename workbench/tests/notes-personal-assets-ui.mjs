@@ -25,7 +25,7 @@ try {
  await server.listen(); base = `http://127.0.0.1:${server.httpServer.address().port}`;
  await request("/api/workspace/status");
  browser = await chromium.launch(); page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
- const errors = []; page.on("pageerror", e => errors.push(e.message));
+ const errors = []; page.on("pageerror", e => { errors.push(e.message); console.error("PAGE_ERROR", e.message); });
  await page.goto(base + "/#/notes"); await page.getByText("把第一个念头留在这里").waitFor();
  await screenshot("notes-empty");
  const composer = page.locator(".notes-stream > .note-composer");
@@ -98,6 +98,15 @@ try {
  await refs.locator("summary").click(); await refs.getByLabel("查找个人参考").fill("工作台");
  await refs.getByRole("button", { name: "查找", exact: true }).click();
  await refs.getByRole("button", { name: "选择这条" }).click();
+ await refs.getByText("http://127.0.0.1:9/v1", { exact: true }).waitFor();
+ check("引用确认展示实际 AI 服务地址");
+ await refs.getByRole("group", { name: "确认引用个人资产" }).scrollIntoViewIfNeeded();
+ await screenshot("personal-reference-consent-desktop");
+ await page.setViewportSize({ width: 390, height: 844 });
+ await refs.getByRole("group", { name: "确认引用个人资产" }).scrollIntoViewIfNeeded();
+ await screenshot("personal-reference-consent-mobile");
+ check("小屏服务地址确认无横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+ await page.setViewportSize({ width: 1440, height: 1050 });
  await refs.getByRole("button", { name: "确认用于本篇" }).click();
  await refs.getByRole("button", { name: "取消引用", exact: true }).waitFor();
  check("文章选择引用保存在服务端", (await request(`/api/workspace/projects/${project.id}/personal-assets`)).references.length === 1);

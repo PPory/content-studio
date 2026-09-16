@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { openWorkspace } from '../server/storage/workspace.mjs';
+import { savePersonalAsset, referencePersonalAsset, confirmPersonalAssetReference, personalAssetDestinations, aiPersonalAssets, personalAssetDestination } from '../server/domain/personal-assets.mjs';
+import { configureAssistantWorkspace, runAssistantTurn } from '../server/agent-runtime/assistant-runner.mjs';
+import { createPiTools } from '../server/agent-runtime/pi-tools.mjs';
+import { projectCreativeContext } from '../server/domain/content-project.mjs';
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xenho-personal-assistant-'));
+const workspace = await openWorkspace({ xenhoHome: root });
+const env = { AGENT_LLM_BASE_URL: 'https://assistant.example.test/v1', AGENT_INGEST_BASE_URL: 'https://writing.example.test/v1', AGENT_LLM_MODEL: 'test-model' };
+const secret = 'ISOLATED_PERSONAL_EXPERIENCE_731';
+try {
+ configureAssistantWorkspace(workspace);
+ const projectId = workspace.domain.createProject({title:'隔离测试文章',actor:'user',confirmed:true});
+ const draftId = workspace.domain.createDraft({projectId,title:'测试',bodyMarkdown:'',platform:'公众号',actor:'user'});
+ const other = workspace.domain.createProject({title:'另一篇',actor:'user',confirmed:true});
+ let asset = savePersonalAsset(workspace,null,{kind:'experience',title:'测试经历',body:secret,usage:'ask',confirmed:true});
+ const destinations = personalAssetDestinations(env);
+ assert.equal(personalAssetDestination('https://user:password@example.test/v1?key=secret'), '');
+ assert.deepEqual(personalAssetDestinations({}), []);
+ assert.throws(()=>confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true,destinations:[]},{}), /未配置/);
+ assert.throws(()=>confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true},env), /服务地址/);
+ assert.throws(()=>confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true,destinations:['https://wrong.test']},env), /服务地址/);
+ referencePersonalAsset(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true});
+ assert.equal(aiPersonalAssets(workspace,projectId,env.AGENT_LLM_BASE_URL).length,0,'旧引用缺少目的地授权不得外发');
+ confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true,destinations},env);
+ assert.equal(aiPersonalAssets(workspace,projectId,env.AGENT_LLM_BASE_URL).length,1);
+ assert.equal(aiPersonalAssets(workspace,projectId,'https://changed.example.test/v1').length,0);
+ assert.equal(projectCreativeContext(workspace,projectId,{destination:env.AGENT_INGEST_BASE_URL}).experiences.length,1);
+ assert.equal(projectCreativeContext(workspace,projectId,{destination:'https://changed.example.test/v1'}).experiences.length,0);
+ let conversationId, lastRun, count=0;
+ async function turn(overrides={},runtimeEnv=env) {
+  const result=await runAssistantTurn(runtimeEnv,{scopeId:draftId,conversationId,message:'请结合这篇的背景给建议',mode:'content',document:{id:projectId,title:'测试',body:''},...overrides},{createRun:async input=>{
+   lastRun=input; const sessionId='mock-session-'+(++count);
+   input.onSession?.({abort:async()=>{},dispose(){}},{sessionId,sessionFile:''});
+   return {result:{finalResponse:'已给出候选建议。'},piSessionId:sessionId,piSessionFile:'',permissionMode:'daily'};
+  }});
+  if(!overrides.scopeId)conversationId=result.conversation.id;
+  return result;
+ }
+ await turn(); assert(lastRun.prompt.includes(secret)); assert(!lastRun.prompt.includes('sourceSnapshot'));
+ const tools=createPiTools({env,mode:'daily',context:lastRun.context,actionsFile:''});
+ const read=async name=>JSON.parse((await tools.find(t=>t.name===name).execute('test',{})).content[0].text);
+ assert.equal((await read('project_read')).personalAssets.length,1);
+ assert.equal((await read('material_evidence')).personalAssets.length,1);
+ await turn(); assert(lastRun.sessionId,'授权未变化可继续同一会话');
+ referencePersonalAsset(workspace,projectId,{assetId:asset.id,confirmed:true},true);
+ assert.equal((await read('project_read')).personalAssets.length,0,'同轮工具再次读取也应撤销');
+ await turn(); assert(!lastRun.prompt.includes(secret)); assert.equal(lastRun.sessionId,'','撤销授权后不得重用含个人信息的会话');
+ confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true,destinations},env);
+ await turn(); assert(lastRun.prompt.includes(secret));
+ await turn({}, {...env,AGENT_LLM_BASE_URL:'https://changed.example.test/v1'}); assert(!lastRun.prompt.includes(secret)); assert.equal(lastRun.sessionId,'');
+ await turn({scopeId:'global:test',conversationId:'',mode:'general'}); assert(!lastRun.prompt.includes(secret),'全局助手不得隐式读取个人资产');
+ await turn({scopeId:other,conversationId:'',document:{id:projectId}}); assert(!lastRun.prompt.includes(secret),'其他文章范围不得读取');
+ asset=savePersonalAsset(workspace,asset.id,{expectedVersion:asset.version,body:secret+'updated',confirmed:true});
+ assert.equal(aiPersonalAssets(workspace,projectId,env.AGENT_LLM_BASE_URL).length,0);
+ confirmPersonalAssetReference(workspace,projectId,{assetId:asset.id,expectedVersion:asset.version,confirmed:true,destinations},env);
+ savePersonalAsset(workspace,asset.id,{expectedVersion:asset.version,usage:'private',confirmed:true});
+ assert.equal(aiPersonalAssets(workspace,projectId,env.AGENT_LLM_BASE_URL).length,0);
+ console.log('PASS destination-bound consent, scoped assistant prompts, live tools, revocation/session reset, changed service, version and privacy');
+} finally { workspace.close(); const relative=path.relative(os.tmpdir(),root); assert(relative&&!relative.startsWith('..')&&!path.isAbsolute(relative)); await fs.rm(root,{recursive:true,force:true}); }

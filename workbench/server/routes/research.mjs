@@ -1,3 +1,4 @@
+import { confirmPersonalAssetReference, projectPersonalAssetsForService } from "../domain/personal-assets.mjs";
 import { getNote,listNotes,saveNote,trashNote,noteInsight,getPersonalAsset,listPersonalAssets,personalAssetVersions,savePersonalAsset,trashPersonalAsset,projectPersonalAssets,referencePersonalAsset } from "../domain/personal-assets.mjs";
 import { fail,json,readJsonBody } from "../lib/http.mjs";
 import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
@@ -22,8 +23,8 @@ export const researchRoutes=[
  route("GET","/api/workspace/personal-assets/:id",({workspace,params})=>({item:getPersonalAsset(workspace,params.id),versions:personalAssetVersions(workspace,params.id)})),
  route("PUT","/api/workspace/personal-assets/:id",({workspace,params,body})=>({item:savePersonalAsset(workspace,params.id,body)})),
  route("POST","/api/workspace/personal-assets/:id/trash",({workspace,params,body})=>({item:trashPersonalAsset(workspace,params.id,body)})),
- route("GET","/api/workspace/projects/:id/personal-assets",({workspace,params,url})=>projectPersonalAssets(workspace,params.id,{q:url.searchParams.get("q")||""})),
- route("POST","/api/workspace/projects/:id/personal-assets",({workspace,params,body})=>referencePersonalAsset(workspace,params.id,body)),
+ route("GET","/api/workspace/projects/:id/personal-assets",({workspace,params,url,env})=>projectPersonalAssetsForService(workspace,params.id,{q:url.searchParams.get("q")||""},env)),
+ route("POST","/api/workspace/projects/:id/personal-assets",({workspace,params,body,env})=>confirmPersonalAssetReference(workspace,params.id,body,env)),
  route("DELETE","/api/workspace/projects/:id/personal-assets",({workspace,params,body})=>referencePersonalAsset(workspace,params.id,body,true)),
  route("GET","/api/workspace/researches",({workspace})=>({researches:listResearches(workspace)})),
  route("POST","/api/workspace/researches",({workspace,body})=>({research:createResearch(workspace,body)})),

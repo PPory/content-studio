@@ -11,10 +11,10 @@ const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-personal-assets-'));
 let w,server;let request=null;let modelResult;const narrative='我去年开始创业，花了三个月开发写作工作台。';
 try{
  w=await openWorkspace({xenhoHome:root});
- const api=createApi({NOTE_COMPLETE_JSON:async(_env,input)=>{request=input;if(modelResult instanceof Error)throw modelResult;return modelResult;}},{workspace:Promise.resolve(w)});
+ const api=createApi({AGENT_LLM_BASE_URL:'https://ai.example.test/v1',NOTE_COMPLETE_JSON:async(_env,input)=>{request=input;if(modelResult instanceof Error)throw modelResult;return modelResult;}},{workspace:Promise.resolve(w)});
  server=http.createServer((req,res)=>api(req,res,()=>{res.writeHead(404);res.end();}));await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const base=`http://127.0.0.1:${server.address().port}/api/workspace`;
- const call=async(url,body,method=body?'POST':'GET')=>{const res=await fetch(base+url,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:res.status,...await res.json()};};
+ const call=async(url,body,method=body?'POST':'GET')=>{if(method==='POST'&&/\/projects\/.*\/personal-assets$/.test(url)&&body?.confirmed)body={...body,destinations:['https://ai.example.test/v1']};const res=await fetch(base+url,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:res.status,...await res.json()};};
  let note=(await call('/quick-notes',{text:narrative+' #经历',tags:['创业']})).item;
  assert(note.id);assert.equal(note.version,1);assert.deepEqual(note.tags,['创业','经历']);
  assert.equal((await call('/quick-notes?tag=创业')).items.length,1);

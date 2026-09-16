@@ -1,4 +1,4 @@
-import { authorizedPersonalAssets, personalAssetEvidence } from "./personal-assets.mjs";
+import { authorizedPersonalAssets, aiPersonalAssets } from "./personal-assets.mjs";
 import { projectResearches } from "./research.mjs";
 import { getProjectNotebook } from "./project-notebook.mjs";
 /**
@@ -89,8 +89,9 @@ export function personalExperienceMaterials(db) {
     ORDER BY e.updated_at DESC LIMIT 20`).all();
 }
 
-export function projectCreativeContext(workspace, projectId) {
+export function projectCreativeContext(workspace, projectId, { destination } = {}) {
   const db = workspace.db;
+  const personal = destination === undefined ? authorizedPersonalAssets(db, projectId) : aiPersonalAssets(workspace, projectId, destination);
   workspace.domain.entity(projectId, "project");
   const notebook = getProjectNotebook(workspace, projectId);
   const inherited = workspace.contentBridge.projectOpportunity(projectId);
@@ -110,7 +111,7 @@ export function projectCreativeContext(workspace, projectId) {
   for (const row of materialRows) {
     if (!elements.some((item) => item.sourceId === row.id)) elements.push(resolveElement(db, { id: row.id, label: row.title, type: row.material_type === "个人经历" ? "experience" : "evidence", source_kind: "material", source_id: row.id }));
   }
-  for (const asset of authorizedPersonalAssets(db, projectId)) {
+  for (const asset of personal) {
     elements.push({id:asset.id,type:asset.kind==='experience'?'experience':'evidence',typeLabel:'个人资产',label:asset.title,sourceKind:'personal_asset',sourceId:asset.id,origin:`个人资产 · ${asset.title}`,body:clean(asset.body,ELEMENT_BODY_LIMIT),available:true});
   }
   for (const anchor of (Array.isArray(notebook.discovery?.connection?.knowledgeAnchors) ? notebook.discovery.connection.knowledgeAnchors : []).slice(0, 20)) {
@@ -149,7 +150,7 @@ export function projectCreativeContext(workspace, projectId) {
     entryOptions: Array.isArray(construction.entry_options) ? construction.entry_options.filter((item) => item && typeof item === "object") : [],
     evidenceGaps: Array.isArray(construction.evidence_gaps) ? construction.evidence_gaps.filter((item) => item && typeof item === "object") : [],
     counterarguments: Array.isArray(construction.counterarguments) ? construction.counterarguments.filter((item) => item && typeof item === "object") : [],
-    experiences: [...personalExperienceMaterials(db), ...personalAssetEvidence(db, projectId)],
+    experiences: [...personalExperienceMaterials(db), ...personal.filter(a => a.kind === "experience").map(a => ({ ...a, material_type: "个人经历", body_markdown: a.body, source_kind: "personal_asset" }))],
     draft,
     /** 正文还空着——「搭个结构」只在这种时候才是主动作。 */
     empty: !clean(draft?.body, 200_000),
