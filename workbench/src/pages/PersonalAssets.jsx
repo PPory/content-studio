@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ASSET_KINDS, ASSET_USAGE, assetDate } from "../lib/personal-assets.js";
-import { ErrorNote } from "../components/ui.jsx";
+import { ErrorNote, SearchBox } from "../components/ui.jsx";
 import { useDialog } from "../lib/use-dialog.js";
-import { IconPlus, IconSearch, IconX, IconArrowUpRight } from "../components/icons.jsx";
+import { IconPlus, IconSparkles, IconX, IconArrowUpRight } from "../components/icons.jsx";
+import { PersonalAssetIntake } from "../components/PersonalAssetIntake.jsx";
 import "./personal-assets.css";
 
 const blank = () => ({ kind: "identity", title: "", body: "", eventDate: "", usage: "ask" });
@@ -73,8 +74,9 @@ function AssetDetail({ id, onClose, onEdit, onRemoved, onGo }) {
     <ErrorNote error={error} what="读取个人资产" />
     {!data && !error ? <p role="status">正在读取…</p> : null}
     {item ? <><p className="asset-meta">{ASSET_KINDS[item.kind]} · {ASSET_USAGE[item.usage]} · 第 {item.version} 版</p><p className="asset-detail__body">{item.body}</p><p className="asset-meta">{item.eventDate ? `发生或生效于 ${item.eventDate} · ` : ""}更新于 {assetDate(item.updatedAt)}</p>
-      {item.sourceNoteId ? <button className="btn btn-sm" onClick={() => { onClose(); onGo("notes"); }}>来源：随手记录 · 第 {item.sourceVersion} 版 <IconArrowUpRight size={14} /></button> : null}
+      {item.sourceNoteId ? <button className="btn btn-sm" onClick={() => { onClose(); onGo("notes", item.sourceNoteId); }}>来源：随手记录 · 第 {item.sourceVersion} 版 <IconArrowUpRight size={14} /></button> : null}
       {item.sourceSnapshot ? <details className="asset-history"><summary>查看来源原文 · 第 {item.sourceVersion} 版</summary><p className="asset-detail__body">{item.sourceSnapshot}</p></details> : null}
+      {item.intakeSource ? <details className="asset-history"><summary>查看自述来源原文</summary><p className="asset-detail__body">{item.intakeSource.sourceText}</p>{item.intakeSource.evidenceQuote ? <><h3>本条依据</h3><p className="asset-detail__body">{item.intakeSource.evidenceQuote}</p></> : null}</details> : null}
       <details className="asset-history"><summary>修改历史</summary>{(data.versions || []).map(version => <article key={version.version}><h3>第 {version.version} 版 · {assetDate(version.createdAt || version.updatedAt)}</h3><strong>{version.title}</strong><p>{version.body}</p></article>)}{!data.versions?.length ? <p>还没有历史修改。</p> : null}</details>
       <footer><button className="btn" onClick={() => setDeleting(true)} disabled={busy}>删除</button><button className="btn btn-primary" onClick={() => onEdit(item)}>编辑信息</button></footer>
       {deleting ? <div className="asset-delete" role="alert"><p>删除后将不再用于后续写作参考。已写入文章的文字不会自动删除。</p><button className="btn" onClick={() => setDeleting(false)} disabled={busy}>取消</button><button className="btn" disabled={busy} onClick={remove}>{busy ? "正在删除…" : "确认删除"}</button></div> : null}
@@ -85,6 +87,7 @@ function AssetDetail({ id, onClose, onEdit, onRemoved, onGo }) {
 export function PersonalAssets({ initialId = "", onGo, registerNavigationGuard }) {
   const [items, setItems] = useState(null);
   const [query, setQuery] = useState("");
+  const [intake, setIntake] = useState(false);
   const [kind, setKind] = useState("");
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -100,17 +103,21 @@ export function PersonalAssets({ initialId = "", onGo, registerNavigationGuard }
   useEffect(() => setDetail(initialId), [initialId]);
   useEffect(() => {
     const token = ++request.current; setError(null);
-    const timer = setTimeout(() => api.personalAssets(query, kind).then(r => { if (request.current === token) setItems(r.items); }).catch(e => { if (request.current === token) setError(e); }), 150);
+    const timer = setTimeout(() => api.personalAssets().then(r => { if (request.current === token) setItems(r.items); }).catch(e => { if (request.current === token) setError(e); }), 150);
     return () => { clearTimeout(timer); request.current++; };
-  }, [query, kind, revision]);
+  }, [revision]);
+  const visibleItems = items?.filter(item => (!kind || item.kind === kind) && (!query.trim() || `${item.title} ${item.body}`.toLowerCase().includes(query.trim().toLowerCase())));
+  const latest = items?.length ? items.reduce((date, item) => item.updatedAt > date ? item.updatedAt : date, "") : "";
   return <div className="personal-assets">
-    <header className="asset-page-head"><div><h1>个人资产</h1><p>关于你是谁、正在做什么，以及亲自走过的路。</p></div><button className="btn btn-primary" onClick={() => { setNotice(""); setEditing(blank()); }}><IconPlus size={16} />添加信息</button></header>
-    <div className="asset-tools"><div className="asset-tabs" aria-label="个人资产类型"><button aria-pressed={!kind} onClick={() => setKind("")}>全部</button>{Object.entries(ASSET_KINDS).map(([key, label]) => <button key={key} aria-pressed={kind === key} onClick={() => setKind(key)}>{label}</button>)}</div><label className="asset-search"><IconSearch size={16} /><input aria-label="搜索个人资产" placeholder="搜索个人资产" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
+    <header className="asset-page-head"><div><h1>个人资产</h1><p>关于你是谁、正在做什么，以及亲自走过的路。</p></div><div className="asset-page-actions"><button className="btn" onClick={() => { setNotice(""); setEditing(blank()); }}><IconPlus size={16} />手动添加</button><button className="btn btn-primary" onClick={() => setIntake(true)}><IconSparkles size={16} />整理一段自述</button></div></header>
+    <section className="asset-overview" aria-label="已确认个人资产概览"><div className="asset-overview__summary"><strong>{items?.length ?? "—"}</strong><span>条已确认信息</span><small>{latest ? `最近更新 ${assetDate(latest)}` : "从真实的自我介绍开始积累"}</small></div><div className="asset-overview__kinds">{Object.entries(ASSET_KINDS).map(([key, label]) => <button key={key} aria-pressed={kind === key} onClick={() => setKind(kind === key ? "" : key)}><span>{label}</span><strong>{items ? items.filter(item => item.kind === key).length : "—"}</strong></button>)}</div></section>
+    <div className="asset-tools"><div className="asset-tabs" aria-label="个人资产类型"><button aria-pressed={!kind} onClick={() => setKind("")}>全部</button>{Object.entries(ASSET_KINDS).map(([key, label]) => <button key={key} aria-pressed={kind === key} onClick={() => setKind(key)}>{label}</button>)}</div><SearchBox value={query} onChange={setQuery} placeholder="搜索个人资产" /></div>
     <ErrorNote error={error} what="读取个人资产" onRetry={() => setRevision(v => v + 1)} />
     {notice ? <p className="asset-notice" role="status">{notice}</p> : null}
     {!items && !error ? <p role="status">正在读取…</p> : null}
-    {items?.length === 0 ? <div className="asset-empty"><h2>{query || kind ? "没有找到相关信息" : "从一段真实的自我介绍开始"}</h2><p>{query || kind ? "试试其他关键词，或查看全部类型。" : "身份、近况、经历与表达偏好，可以分条保存，慢慢补充。写作时再选择需要的内容。"}</p>{!query && !kind ? <button className="btn" onClick={() => setEditing(blank())}>写下第一条</button> : null}</div> : null}
-    <div className="asset-list">{items?.map(item => <button key={item.id} className="asset-row" onClick={() => setDetail(item.id)}><span className="asset-row__kind">{ASSET_KINDS[item.kind]}</span><span className="asset-row__content"><strong>{item.title}</strong><span>{item.body}</span></span><span className="asset-row__meta"><span>{ASSET_USAGE[item.usage]}</span><time>{assetDate(item.updatedAt)}</time></span><IconArrowUpRight size={16} /></button>)}</div>
+    {visibleItems?.length === 0 ? <div className="asset-empty"><h2>{query || kind ? "没有找到相关信息" : "从一段真实的自我介绍开始"}</h2><p>{query || kind ? "试试其他关键词，或查看全部类型。" : "身份、近况、经历与表达偏好，可以分条保存，慢慢补充。写作时再选择需要的内容。"}</p>{!query && !kind ? <button className="btn" onClick={() => setEditing(blank())}>写下第一条</button> : null}</div> : null}
+    <div className="asset-list">{visibleItems?.map(item => <button key={item.id} className="asset-row" onClick={() => setDetail(item.id)}><span className="asset-row__kind">{ASSET_KINDS[item.kind]}</span><span className="asset-row__content"><strong>{item.title}</strong><span>{item.body}</span></span><span className="asset-row__meta"><span>{ASSET_USAGE[item.usage]}</span><time>{assetDate(item.updatedAt)}</time></span><IconArrowUpRight size={16} /></button>)}</div>
+    {intake ? <PersonalAssetIntake onDirty={onDirty} onClose={() => setIntake(false)} onSaved={saved => { setIntake(false); setRevision(v => v + 1); setNotice(`已确认保存 ${saved.length} 条个人资产。`); }} /> : null}
     {editing ? <AssetEditor key={editing.id || "new"} asset={editing} onDirty={onDirty} onClose={closeEditor} onSaved={() => { setEditing(null); setRevision(v => v + 1); setNotice("个人资产已保存。"); }} /> : null}
     {detail && !editing ? <AssetDetail key={detail} id={detail} onClose={closeDetail} onGo={onGo} onEdit={item => { setDetail(""); setEditing(item); }} onRemoved={() => { setDetail(""); setRevision(v => v + 1); setNotice("已删除，后续写作不再引用。"); }} /> : null}
   </div>;

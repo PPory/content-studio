@@ -24,9 +24,9 @@ try{
  assert.equal((await call(`/quick-notes/${note.id}`,{sourceUrl:'javascript:alert(1)',expectedVersion:note.version},'PUT')).status,400);
  const before=w.db.prepare('SELECT count(*) n FROM personal_assets').get().n;
  modelResult={summary:'记录了一次创业经历',questions:['你最想保留什么？'],assetCandidate:{kind:'experience',title:'我的创业经历',body:narrative}};
- const insight=await call(`/quick-notes/${note.id}/insights`,{});assert.equal(insight.status,200);assert(request.user.includes(narrative));assert.equal(w.db.prepare('SELECT count(*) n FROM personal_assets').get().n,before);
+ const insight=await call(`/quick-notes/${note.id}/insights`,{refresh:true});assert.equal(insight.status,200);assert(request.user.includes(narrative));assert.equal(w.db.prepare('SELECT count(*) n FROM personal_assets').get().n,before);
  modelResult={model:'mock-model',data:{summary:'包装返回也能读取',questions:['接下来准备怎么做？'],assetCandidate:null},usage:null};
- const wrappedInsight=await call(`/quick-notes/${note.id}/insights`,{});assert.equal(wrappedInsight.status,200);assert.equal(wrappedInsight.insight.summary,'包装返回也能读取');
+ const wrappedInsight=await call(`/quick-notes/${note.id}/insights`,{refresh:true});assert.equal(wrappedInsight.status,200);assert.equal(wrappedInsight.insight.summary,'包装返回也能读取');
  assert.equal((await call('/personal-assets',insight.insight.assetCandidate)).status,400);
  assert.equal((await call('/personal-assets',{...insight.insight.assetCandidate,body:'我去年拿到一百万',confirmed:true})).status,400);
  let asset=(await call('/personal-assets',{...insight.insight.assetCandidate,confirmed:true})).item;assert(asset.id);assert.equal(asset.usage,'ask');
@@ -50,8 +50,8 @@ try{
  assert.equal((await call(url,{assetId:asset.id},'DELETE')).status,400);
  assert.equal((await call(url,{assetId:asset.id,confirmed:true},'DELETE')).status,200);
  modelResult={summary:'伪造候选',questions:[],assetCandidate:{kind:'experience',title:'假的',body:'从来没有说过的事'}};
- assert.equal((await call(`/quick-notes/${note.id}/insights`,{})).status,502);
- modelResult=new Error('模拟模型不可用');assert.equal((await call(`/quick-notes/${note.id}/insights`,{})).ok,false);
+ assert.equal((await call(`/quick-notes/${note.id}/insights`,{refresh:true})).status,502);
+ modelResult=new Error('模拟模型不可用');assert.equal((await call(`/quick-notes/${note.id}/insights`,{refresh:true})).ok,false);
  await call(`/quick-notes/${note.id}/trash`,{});assert.equal((await call('/quick-notes')).items.length,0);assert.equal((await call(`/personal-assets/${asset.id}`)).item.sourceSnapshot,note.text);
  assert.equal((await call('/personal-assets',{...insight.insight.assetCandidate,confirmed:true})).status,404);
  assert.equal((await call(`/personal-assets/${asset.id}/trash`,{confirmed:true})).status,200);assert.equal((await call(`/personal-assets/${asset.id}`)).status,404);

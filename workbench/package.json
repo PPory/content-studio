@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:notes": "node tests/note-insights-intake.mjs && node tests/note-discussion.mjs && node tests/personal-assets.mjs && node tests/personal-assets-assistant.mjs && node tests/note-connections-ui.mjs && node tests/personal-intake-ui.mjs && node tests/notes-personal-assets-ui.mjs",
     "dev": "vite",
     "build": "vite build",
     "check": "node scripts/check.mjs",

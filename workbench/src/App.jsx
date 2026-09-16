@@ -744,7 +744,7 @@ export function App() {
                   onSettings={() => setSettings(true)}
                 />
               ) : route.view === "notes" ? (
-                <Notes onGo={go} refreshKey={intakeVersion} registerNavigationGuard={registerNavigationGuard} />
+                <Notes initialId={route.state} onGo={go} refreshKey={intakeVersion} registerNavigationGuard={registerNavigationGuard} />
               ) : route.view === "personal-assets" ? (
                 <PersonalAssets initialId={route.state} onGo={go} registerNavigationGuard={registerNavigationGuard} />
               ) : route.view === "research" ? (

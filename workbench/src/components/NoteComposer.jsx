@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
+import { IconPhoto, IconLink } from "./icons.jsx";
 import "../pages/notes.css";
 
 export function NoteComposer({ initial = {}, onSave, onCancel, autoFocus = false, compact = false, onDirty }) {
@@ -46,7 +47,7 @@ export function NoteComposer({ initial = {}, onSave, onCancel, autoFocus = false
     <textarea data-autofocus ref={editor} autoFocus={autoFocus} aria-label="想留下什么" placeholder="现在的想法是……" rows={compact ? 6 : 3} value={text} disabled={busy} onChange={event => setText(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") save(event); }} />
     <div className="note-composer__tags"><span aria-hidden="true">#</span><input aria-label="记录标签" placeholder="添加标签，以空格分隔" value={tags} disabled={busy} onChange={event => setTags(event.target.value)} /></div>
     {details && <label className="note-composer__source">来源链接（可选）<input type="url" value={sourceUrl} disabled={busy} onChange={event => setSourceUrl(event.target.value)} /></label>}
-    <div className="note-composer__footer"><div className="note-composer__tools"><button type="button" className="btn btn-sm" disabled={busy} onClick={() => fileInput.current?.click()}>添加图片</button><button type="button" className="btn btn-sm" aria-expanded={details} onClick={() => setDetails(value => !value)}>来源链接</button><input ref={fileInput} type="file" accept="image/*" hidden onChange={upload} /></div><div className="note-composer__tools">{onCancel && <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { if (!dirty || window.confirm("放弃尚未保存的修改？")) onCancel(); }}>取消</button>}<button className="btn btn-primary btn-sm" disabled={busy || !text.trim()}>{busy ? "正在保存…" : initial.id ? "保存修改" : "保存记录"}</button></div></div>
+    <div className="note-composer__footer"><div className="note-composer__tools"><button type="button" className="note-composer__tool" disabled={busy} onClick={() => fileInput.current?.click()}><IconPhoto size={16} aria-hidden="true" />图片</button><button type="button" className="note-composer__tool" aria-expanded={details} onClick={() => setDetails(value => !value)}><IconLink size={16} aria-hidden="true" />来源</button><input ref={fileInput} type="file" accept="image/*" hidden onChange={upload} /></div><div className="note-composer__tools">{onCancel && <button type="button" className="btn btn-sm" disabled={busy} onClick={() => { if (!dirty || window.confirm("放弃尚未保存的修改？")) onCancel(); }}>取消</button>}<button className="btn btn-primary btn-sm" disabled={busy || !text.trim()}>{busy ? "正在保存…" : initial.id ? "保存修改" : "保存记录"}</button></div></div>
     <ErrorNote error={error} what="保存记录" />
   </form>;
 }

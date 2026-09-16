@@ -1,0 +1,4 @@
+CREATE TABLE note_insights (note_id TEXT PRIMARY KEY REFERENCES captures(id),id TEXT NOT NULL UNIQUE,source_version INTEGER NOT NULL,result_json TEXT NOT NULL,generated_at TEXT NOT NULL);
+CREATE TABLE note_thought_sources (note_id TEXT PRIMARY KEY REFERENCES captures(id),parent_note_id TEXT NOT NULL REFERENCES captures(id),parent_version INTEGER NOT NULL,insight_id TEXT,conversation_id TEXT,source_json TEXT NOT NULL);
+CREATE TABLE personal_intake_previews (id TEXT PRIMARY KEY,source_text TEXT NOT NULL,candidates_json TEXT NOT NULL,destination TEXT NOT NULL,created_at TEXT NOT NULL,applied_json TEXT);
+CREATE TABLE personal_asset_intake_sources (asset_id TEXT NOT NULL REFERENCES personal_assets(id),version INTEGER NOT NULL,preview_id TEXT NOT NULL REFERENCES personal_intake_previews(id),evidence_quote TEXT NOT NULL,PRIMARY KEY(asset_id,version));

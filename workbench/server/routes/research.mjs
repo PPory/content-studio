@@ -1,5 +1,6 @@
+import { cachedNoteInsight,generateNoteInsight,saveNoteThought,personalIntakeDestination,previewPersonalIntake,confirmPersonalIntake } from "../domain/note-insights.mjs";
 import { confirmPersonalAssetReference, projectPersonalAssetsForService } from "../domain/personal-assets.mjs";
-import { getNote,listNotes,saveNote,trashNote,noteInsight,getPersonalAsset,listPersonalAssets,personalAssetVersions,savePersonalAsset,trashPersonalAsset,projectPersonalAssets,referencePersonalAsset } from "../domain/personal-assets.mjs";
+import { getNote,listNotes,saveNote,trashNote,getPersonalAsset,listPersonalAssets,personalAssetVersions,savePersonalAsset,trashPersonalAsset,referencePersonalAsset } from "../domain/personal-assets.mjs";
 import { fail,json,readJsonBody } from "../lib/http.mjs";
 import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
 function route(method,path,action) {
@@ -17,7 +18,12 @@ export const researchRoutes=[
  route("GET","/api/workspace/quick-notes/:id",({workspace,params})=>({item:getNote(workspace,params.id)})),
  route("PUT","/api/workspace/quick-notes/:id",({workspace,params,body})=>({item:saveNote(workspace,params.id,body)})),
  route("POST","/api/workspace/quick-notes/:id/trash",({workspace,params})=>({item:trashNote(workspace,params.id)})),
- route("POST","/api/workspace/quick-notes/:id/insights",async({workspace,params,env})=>({insight:await noteInsight(env,workspace,params.id)})),
+ route("GET","/api/workspace/quick-notes/:id/insights",({workspace,params})=>cachedNoteInsight(workspace,params.id)),
+ route("POST","/api/workspace/quick-notes/:id/insights",({workspace,params,env,body})=>generateNoteInsight(env,workspace,params.id,body)),
+ route("POST","/api/workspace/quick-notes/:id/thoughts",({workspace,params,body})=>({item:saveNoteThought(workspace,params.id,body)})),
+ route("GET","/api/workspace/personal-assets/intake",({env})=>personalIntakeDestination(env)),
+ route("POST","/api/workspace/personal-assets/intake/preview",({workspace,env,body})=>previewPersonalIntake(env,workspace,body)),
+ route("POST","/api/workspace/personal-assets/intake/confirm",({workspace,body})=>confirmPersonalIntake(workspace,body)),
  route("GET","/api/workspace/personal-assets",({workspace,url})=>({items:listPersonalAssets(workspace,{q:url.searchParams.get("q")||"",kind:url.searchParams.get("kind")||""})})),
  route("POST","/api/workspace/personal-assets",({workspace,body})=>({item:savePersonalAsset(workspace,null,body)})),
  route("GET","/api/workspace/personal-assets/:id",({workspace,params})=>({item:getPersonalAsset(workspace,params.id),versions:personalAssetVersions(workspace,params.id)})),
