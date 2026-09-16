@@ -135,6 +135,22 @@ try {
     } finally { legacyDb.close(); }
   }
 
+  const personalAssetsHistoryDb = new Database(path.join(root, "personal-assets-history.sqlite"));
+  try {
+    configureWorkspaceDatabase(personalAssetsHistoryDb);
+    migrateWorkspaceDatabase(personalAssetsHistoryDb);
+    personalAssetsHistoryDb.exec("CREATE TABLE preserved_personal_assets_data(body TEXT); INSERT INTO preserved_personal_assets_data VALUES('keep me');");
+    personalAssetsHistoryDb.prepare("UPDATE schema_migrations SET checksum=? WHERE version=25")
+      .run("8679ad6efa30a5d130ada4ef6d314e265e80ff6b3fac12d6dbc0ce5ab84ea6d1");
+    migrateWorkspaceDatabase(personalAssetsHistoryDb);
+    assert.equal(personalAssetsHistoryDb.prepare("SELECT checksum FROM schema_migrations WHERE version=25").get().checksum,
+      "8679ad6efa30a5d130ada4ef6d314e265e80ff6b3fac12d6dbc0ce5ab84ea6d1");
+    assert.equal(personalAssetsHistoryDb.prepare("SELECT body FROM preserved_personal_assets_data").get().body, "keep me");
+    personalAssetsHistoryDb.prepare("UPDATE schema_migrations SET checksum=? WHERE version=25").run("0".repeat(64));
+    assert.throws(() => migrateWorkspaceDatabase(personalAssetsHistoryDb), /校验和/);
+    check("个人资产 migration 的已核实历史格式可继续启动，未知漂移仍拒绝", true);
+  } finally { personalAssetsHistoryDb.close(); }
+
   const checksumDb = new Database(path.join(root, "checksum.sqlite"));
   configureWorkspaceDatabase(checksumDb);
   migrateWorkspaceDatabase(checksumDb);
