@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "mcp:refresh": "node scripts/readonly-mcp.mjs refresh",
+    "mcp:serve": "node scripts/readonly-mcp.mjs serve",
+    "test:mcp": "node tests/readonly-mcp.mjs",
     "test:notes": "node tests/note-insights-intake.mjs && node tests/note-discussion.mjs && node tests/personal-assets.mjs && node tests/personal-assets-assistant.mjs && node tests/note-connections-ui.mjs && node tests/personal-intake-ui.mjs && node tests/notes-personal-assets-ui.mjs",
     "dev": "vite",
     "build": "vite build",
@@ -40,6 +43,7 @@
     "@fontsource/source-sans-3": "^5.3.0",
     "@fontsource/space-grotesk": "^5.3.0",
     "@lezer/highlight": "^1.2.3",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@mozilla/readability": "^0.6.0",
     "@tabler/icons-react": "^3.34.1",
     "better-sqlite3": "13.0.3",
@@ -51,7 +55,8 @@
     "react-dom": "^19.2.8",
     "thinking-orbs": "^0.3.1",
     "undici": "^8.10.0",
-    "unpdf": "^1.8.0"
+    "unpdf": "^1.8.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.5",
