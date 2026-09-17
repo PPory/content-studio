@@ -4,11 +4,12 @@ import { DATASETS, LIMITS, POLICY_VERSION, redact } from './policy.mjs';
 import { rootPath, confined, readBounded } from './files.mjs';
 
 export class ReadonlyService {
-  constructor(dataRoot) {
+  constructor(dataRoot, auditRoot = dataRoot) {
     this.root = rootPath(dataRoot);
+    this.auditRoot = rootPath(auditRoot);
     this.window = Date.now(); this.calls = 0;
     this.session = randomUUID(); this.sequence = 0;
-    this.lockPath = confined(this.root, 'server.lock', { optional: true });
+    this.lockPath = confined(this.auditRoot, 'server.lock', { optional: true });
     this.lock = fs.openSync(this.lockPath, 'wx', 0o600);
     try { this.audit({ event: 'start' }); } catch (error) { this.close(); throw error; }
   }
@@ -16,7 +17,7 @@ export class ReadonlyService {
     if (this.lock !== undefined) { fs.closeSync(this.lock); this.lock = undefined; fs.unlinkSync(this.lockPath); }
   }
   audit(event) {
-    const file = confined(this.root, 'audit.jsonl', { optional: true });
+    const file = confined(this.auditRoot, 'audit.jsonl', { optional: true });
     const line = JSON.stringify({ at: new Date().toISOString(), session: this.session, sequence: ++this.sequence, ...event }) + '\n';
     const fd = fs.openSync(file, 'a', 0o600);
     try {

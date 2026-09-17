@@ -5,14 +5,14 @@ for (const key of Object.keys(process.env)) {
   if (!['SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'].includes(key.toUpperCase())) delete process.env[key];
 }
 try {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { home: { type: 'string' }, 'data-root': { type: 'string' } } });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { home: { type: 'string' }, 'data-root': { type: 'string' }, 'audit-root': { type: 'string' } } });
   if (positionals.length !== 1 || !values['data-root']) throw new Error('USAGE');
-  if (positionals[0] === 'refresh' && values.home) {
+  if (positionals[0] === 'refresh' && values.home && !values['audit-root']) {
     const { refreshSnapshot } = await import('../server/readonly-mcp/refresh.mjs');
     console.log(JSON.stringify(await refreshSnapshot({ home: values.home, dataRoot: values['data-root'] })));
   } else if (positionals[0] === 'serve' && !values.home) {
     const { serve } = await import('../server/readonly-mcp/server.mjs');
-    await serve(values['data-root']);
+    await serve(values['data-root'], values['audit-root']);
   } else throw new Error('USAGE');
 } catch (error) {
   const safe = ['USAGE', 'INVALID_ROOT', 'UNSAFE_PATH', 'SEPARATE_DATA_ROOT_REQUIRED', 'REFRESH_COOLDOWN', 'COLLECTION_TIMEOUT', 'COLLECTION_FAILED', 'SNAPSHOT_CAPACITY'];

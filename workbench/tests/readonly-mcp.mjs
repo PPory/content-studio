@@ -75,6 +75,23 @@ try {
   const catalog = result(await client.callTool({ name: 'workbench_catalog', arguments: {} }));
   assert.equal(catalog.live, false);
   assert.equal(catalog.datasets.find(d => d.name === 'captures').snapshotRows, 1);
+  const codexAudit = path.join(root, 'codex-audit');
+  fs.mkdirSync(codexAudit);
+  const second = new Client({ name: 'codex-concurrent', version: '1.0' });
+  const secondTransport = new StdioClientTransport({ command: process.execPath, args: [path.resolve('scripts/readonly-mcp.mjs'), 'serve', '--data-root', dataRoot, '--audit-root', codexAudit], stderr: 'pipe' });
+  try {
+    await second.connect(secondTransport);
+    const parallelCatalog = result(await second.callTool({ name: 'workbench_catalog', arguments: {} }));
+    assert.equal(parallelCatalog.snapshotId, catalog.snapshotId);
+    assert.equal((await second.listTools()).tools.length, 3);
+    assert(fs.readFileSync(path.join(codexAudit, 'audit.jsonl'), 'utf8').includes('workbench_catalog'));
+    assert(!fs.existsSync(path.join(codexAudit, 'snapshot.json')));
+    assert.throws(() => new ReadonlyService(dataRoot, codexAudit), /EEXIST/);
+    fs.truncateSync(path.join(codexAudit, 'audit.jsonl'), LIMITS.auditBytes);
+    await assert.rejects(second.callTool({ name: 'workbench_catalog', arguments: {} }));
+    assert.equal(result(await client.callTool({ name: 'workbench_catalog', arguments: {} })).snapshotId, catalog.snapshotId);
+  } finally { await second.close(); }
+
   const found = result(await client.callTool({ name: 'workbench_search', arguments: { query: '苹果', dataset: 'captures' } }));
   assert.equal(found.items[0].id, 'capture-1');
   const fetched = result(await client.callTool({ name: 'workbench_fetch', arguments: { dataset: 'captures', id: 'capture-1' } }));

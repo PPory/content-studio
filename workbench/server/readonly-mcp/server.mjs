@@ -24,8 +24,8 @@ export function createMcpServer(service) {
   return server;
 }
 
-export async function serve(dataRoot) {
-  const service = new ReadonlyService(dataRoot);
+export async function serve(dataRoot, auditRoot = dataRoot) {
+  const service = new ReadonlyService(dataRoot, auditRoot);
   const server = createMcpServer(service);
   let lineBytes = 0, protocolCalls = 0, windowStart = Date.now();
   const bounded = new Transform({ transform(chunk, encoding, callback) {

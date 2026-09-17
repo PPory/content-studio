@@ -100,3 +100,9 @@ tunnel-client run --profile xenho-readonly
 ## 验证
 
 `npm run test:mcp` 在系统临时目录创建独立 XENHO_HOME，用官方 SDK 客户端启动真实 stdio 服务，验证正常查询、非法参数、不可用写工具、常见密钥过滤、私密/删除过滤、越界、审计失败关闭、限频、快照过期和 SQLite 文件未变。不会读取生产内容。
+
+## Codex 本机连接
+
+Codex 可以直接用 stdio 连接，无需隧道密钥；在设置的 MCP 分页查看 content-studio。注册命令为 codex mcp add content-studio -- node <脚本绝对路径> serve --data-root <快照目录> --audit-root <Codex独立审计目录>。
+
+可选 --audit-root 必须是已存在、经过路径校验的私有目录。仅 serve 接受它。它保存 audit.jsonl 与 server.lock；读取仍使用原 data-root 的同一快照，刷新无需复制。ChatGPT 与 Codex 分开审计、锁和限频，各自每分钟最多 60 次工具调用；单个审计目录仍只允许一个服务进程。一个连接的日志写满不影响另一个连接，两个目录均需由本机用户管理。默认不传参数时行为不变。
