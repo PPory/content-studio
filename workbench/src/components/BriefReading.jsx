@@ -32,6 +32,8 @@ export const sourceDate = (value) =>
 export const platformName = (key) =>
   ({ x: "X", reddit: "Reddit", xiaohongshu: "小红书", douyin: "抖音", aihot: "AI Hot", web: "公开网页", local: "已有资料", manual: "我的灵感" }[key] || key);
 
+export const editorialLabel = value => ({ready:"已通过精选校验",needs_review:"待复核",withheld:"暂不推荐"}[value] || "待复核");
+export const freshnessLabel = value => ({recent_event:"近期事件",recent_update:"近期更新",newly_discovered:"新近发现的资料",evergreen:"长期参考",unknown:"时效待核对"}[value] || "时效待核对");
 export const confidenceLabel = (value) => (value === "reliable" ? "可靠信息" : "值得观察");
 
 export const markdown = (body) => (
@@ -78,11 +80,15 @@ export function briefCardMeta(item) {
 export function BriefReading({ brief, onGo, onBlock, dense = false }) {
   return (
     <>
-      <div className="brief-meta">{confidenceLabel(brief.confidence)}</div>
+      <div className="brief-v2-labels"><span>{editorialLabel(brief.editorialState)}</span><span>{freshnessLabel(brief.freshnessKind)}</span></div>
       {dense ? <h2 className="brief-reading-title">{brief.title}</h2> : <h1>{brief.title}</h1>}
       <p className="brief-lead">{brief.summary}</p>
       <BriefProvenance item={brief} />
-      {brief.reason ? <p className="brief-reading-reason">{brief.reason}</p> : null}
+      {brief.editorialState !== "ready" && brief.quality?.reasons?.length > 0 && <section className="brief-v2-section"><h2>待复核原因</h2><ul>{brief.quality.reasons.map((reason,index)=><li key={index}>{reason}</li>)}</ul></section>}
+      {(brief.whyItMatters || brief.why_it_matters) && <section className="brief-v2-section"><h2>为什么值得关注</h2><p>{brief.whyItMatters || brief.why_it_matters}</p></section>}
+      {(brief.audienceTakeaway || brief.audience_takeaway) && <section className="brief-v2-section"><h2>读者能带走什么</h2><p>{brief.audienceTakeaway || brief.audience_takeaway}</p></section>}
+      {[["还不确定的部分",brief.uncertainties],["可以如何使用",brief.suggestedUses || brief.suggested_uses]].filter(([,items])=>items?.length).map(([title,items])=><section className="brief-v2-section" key={title}><h2>{title}</h2><ul>{(Array.isArray(items) ? items : [items]).map((item,index)=><li key={index}>{typeof item === "string" ? item : item.description || item.title || JSON.stringify(item)}</li>)}</ul></section>)}
+      {!brief.whyItMatters && !brief.why_it_matters && brief.reason ? <p className="brief-reading-reason">{brief.reason}</p> : null}
       {brief.changeNote ? <p className="brief-change">本次更新：{brief.changeNote}</p> : null}
 
       <section className="brief-interpretation">

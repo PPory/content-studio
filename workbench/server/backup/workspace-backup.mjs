@@ -5,6 +5,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { atomicWrite } from "../lib/safe-write.mjs";
+import { INTELLIGENCE_CHANNEL_CATALOG } from "../domain/intelligence-channels.mjs";
 import { openWorkspace } from "../storage/workspace.mjs";
 import { resolveWorkspacePaths } from "../storage/workspace-paths.mjs";
 
@@ -77,7 +78,7 @@ function summarizeDatabaseFile(file) {
   }
 }
 
-function workspaceHasUserData(summary) {
+function workspaceHasUserData(summary, db) {
   const ignored = new Set([
     "schema_migrations",
     "workspace_metadata",
@@ -90,6 +91,21 @@ function workspaceHasUserData(summary) {
     "entity_fts_docsize",
     "entity_fts_idx",
   ]);
+  // Only the exact, untouched built-in catalog is an empty-workspace baseline.
+  // Custom channels, edits and acquisition history must remain protected from replacement.
+  if (summary.tables.intel_channels?.count) {
+    const rows = db.prepare("SELECT * FROM intel_channels").all();
+    const baseline = rows.length === INTELLIGENCE_CHANNEL_CATALOG.length && rows.every(row => {
+      const item = INTELLIGENCE_CHANNEL_CATALOG.find(value => value.id === row.id);
+      return item && row.builtin === 1 && row.name === item.name && row.url === item.url
+        && row.site_url === item.siteUrl && row.publisher_key === item.publisherKey
+        && row.category === item.category && row.format === item.format && Boolean(row.enabled) === item.enabled
+        && row.health === (item.format === "manual" ? "manual" : "never")
+        && !row.last_attempt_at && !row.last_success_at && !row.last_error && !row.consecutive_failures
+        && !row.last_item_count && !row.etag && !row.last_modified && row.updated_at === row.created_at;
+    });
+    if (baseline) ignored.add("intel_channels");
+  }
   return Object.entries(summary.tables).some(([name, table]) => !ignored.has(name) && table.count > 0);
 }
 
@@ -436,8 +452,8 @@ export async function previewWorkspaceBundle(workspace, bytes) {
     workspaceId: parsed.manifest.workspaceId,
     currentWorkspaceId: workspace.manifest.workspaceId,
     confirmationSha256: parsed.archiveSha256,
-    currentHasUserData: workspaceHasUserData(current),
-    portableConflict: parsed.manifest.kind === "portable" && workspaceHasUserData(current),
+    currentHasUserData: workspaceHasUserData(current, workspace.db),
+    portableConflict: parsed.manifest.kind === "portable" && workspaceHasUserData(current, workspace.db),
     tables: Object.entries(parsed.manifest.database.tables).map(([name, incoming]) => ({
       name,
       current: current.tables[name]?.count || 0,

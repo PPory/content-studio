@@ -30,6 +30,12 @@ const extOf = (name) => (String(name).match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toL
 
 export const api = {
   intelligenceFeed: () => req("/api/workspace/intelligence/feed"),
+  intelligenceTopics: () => req("/api/workspace/intelligence/topics"),
+  intelligenceTopicPreview: body => postJson("/api/workspace/intelligence/topics/preview", body),
+  intelligenceTopicSave: candidate => postJson("/api/workspace/intelligence/topics", {candidate, confirmed:true}),
+  intelligenceTopicStart: id => postJson(`/api/workspace/intelligence/topics/${encodeURIComponent(id)}/start`, {confirmed:true}),
+  intelligenceChannels: () => req("/api/workspace/intelligence/channels"),
+  intelligenceChannelSave: (body, id) => id ? req(`/api/workspace/intelligence/channels/${encodeURIComponent(id)}`, {method:"PATCH", headers:{"content-type":"application/json"}, body:JSON.stringify(body)}) : postJson("/api/workspace/intelligence/channels", body),
   // 首页那一行的三个数。别在首页调 intelligenceFeed——那会为了一行字搬 300 条简报正文
   intelligenceFeedSummary: () => req("/api/workspace/intelligence/feed/summary"),
   intelligenceAngles: id => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/angles`, {}),

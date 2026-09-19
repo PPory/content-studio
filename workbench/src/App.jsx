@@ -34,6 +34,9 @@ import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { IntelligenceFeed } from "./pages/IntelligenceFeed.jsx";
+import { IntelligenceTopics } from "./pages/IntelligenceTopics.jsx";
+import { IntelligenceResources } from "./pages/IntelligenceResources.jsx";
+import { IntelligenceChannels } from "./pages/IntelligenceChannels.jsx";
 import { Intelligence } from "./pages/Intelligence.jsx";
 import { Typeset } from "./pages/Typeset.jsx";
 import { Metrics, DATA_TABS } from "./pages/Metrics.jsx";
@@ -53,7 +56,7 @@ const STATUS_RETRY_MS = [3000, 8000, 20000];
 
 const CONTENT_VIEWS = new Set(["research", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
 const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources", "notes", "personal-assets"]);
-const DISCOVER_VIEWS = new Set(["bridge", "intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["intel-topics", "intel-resources", "intel-channels", "intel-runs", "bridge", "intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -82,6 +85,12 @@ const REVIEW_VIEWS = new Set(["review", "review-performance", "review-sources", 
 const SUBNAV_HOME = {
   // 关注方向现在是今日精选上的一层设置，不是一个去处——所以它高亮「今日精选」。
   "intel-settings": "intel",
+  "intel-channels": "intel",
+  "intel-runs": "intel",
+  "intel-inbox": "intel-resources",
+  bridge: "intel-topics",
+  hot: "intel-resources",
+  "intel-reports": "intel",
   project: "content",
   "series-detail": "series",
   topics: "content",
@@ -93,7 +102,7 @@ const SUBNAV_HOME = {
   discover: "intel",
   "intel-detail": "intel",
   "intel-legacy": "intel",
-  hot: "hot",
+
   insights: "intel",
 };
 
@@ -114,19 +123,11 @@ const NAV = [
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },
   ] },
-  /**
-   * ⚠️ **「关注方向」不在这儿了，「发现方向」进来了。** 上一版正好反着：
-   * `#/intel-settings` 一整页只放一个 textarea 和一句「持续采集：关闭」——那是配置，
-   * 不是一个去处，现在它是今日精选页头右端那颗按钮打开的一层；
-   * 而真正一整页的「发现方向」当时只能从今日精选正文里一行文字链接进去。
-   * 判据是「这一项是不是一个你会想去的地方」，不是「它有没有自己的路由」。
-   */
+  // 情报围绕阅读精选、形成选题和保留资料组织。
   { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
-    { to: "intel", label: "今日精选" },
-    { to: "bridge", label: "发现方向" },
-    { to: "hot", label: "AI热点" },
-    { to: "intel-reports", label: "周报" },
-    { to: "intel-inbox", label: "我的灵感" },
+    { to: "intel", label: "精选" },
+    { to: "intel-topics", label: "选题" },
+    { to: "intel-resources", label: "资料" },
   ] },
   { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
     { to: "review", label: "复盘" },
@@ -155,7 +156,7 @@ function assistantPageContext(route) {
 
 // ⚠️ **加一页要同时加进这份白名单**，不然 `parseHash` 认不出它、静默退回「今日」——
 // 而那看着像「点了没反应」，不像路由漏了一项（种子页栽过一次，冒烟测试才抓到）。
-const VIEWS = ["notes", "personal-assets", "intel-detail", "intel-reports", "intel-legacy", "intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
+const VIEWS = ["intel-topics", "intel-resources", "intel-channels", "intel-runs", "notes", "personal-assets", "intel-detail", "intel-reports", "intel-legacy", "intel", "intel-inbox", "intel-settings", "research", "library", "today", "assistant", "bridge", "ideas", "seeds", "content", "project", "series", "series-detail", "review", "review-performance", "review-sources", "overview", "hot", "insights", "shelf", "sources", "entries", "typeset", "metrics", ...PIPELINE];
 
 /**
  * 侧栏收起状态。**存 localStorage**：这是「这台机器上这个人怎么用」的偏好，
@@ -671,16 +672,8 @@ export function App() {
               const Icon = item ? NAV_ICONS[item.key] : null;
               // ⚠️ 归属判据只写在 `SUBNAV_HOME` 那一张表里，别在这儿再列一遍 view 名
               const child = item?.children?.find((c) => c.to === (SUBNAV_HOME[route.view] || route.view));
-              /**
-               * 第三段：**只给没有自己那一项的下一层用。**
-               * 审阅是 Wiki 底下的一层，所以是第三段而不是另起一栏。
-               *
-               * ⚠️ **`bridge` 曾经在这儿。** 那时它没有侧栏项，第二段取的是
-               * 「今日精选」，第三段才写「发现方向」。它升成侧栏一项之后
-               * 第二段已经是「发现方向」了——两段一起画就成了
-               * 「情报 / 发现方向 / 发现方向」。加二级项时要顺手看这一行。
-               */
-              const leaf = route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "";
+              // 辅助页面在所属主入口之后补充当前页名。
+              const leaf = ({"intel-channels":"信源管理","intel-runs":"处理记录","intel-settings":"关注设置","intel-reports":"每周回顾",hot:"AI 热点",bridge:"知识选题"})[route.view] || (route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "");
               return (
                 <>
                   {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
@@ -815,6 +808,14 @@ export function App() {
                 />
               ) : route.view === "hot" ? (
                 <Hotspots onIntake={setIntake} onGo={go} />
+              ) : route.view === "intel-topics" ? (
+                <IntelligenceTopics state={route.state} onGo={go} />
+              ) : ["intel-resources", "intel-inbox"].includes(route.view) ? (
+                <IntelligenceResources onGo={go} />
+              ) : route.view === "intel-channels" ? (
+                <IntelligenceChannels onGo={go} />
+              ) : route.view === "intel-runs" ? (
+                <Intelligence view="intel-runs" onGo={go} />
               ) : ["intel", "intel-detail", "intel-reports", "intel-settings", "insights"].includes(route.view) ? (
                 <IntelligenceFeed view={route.view} state={route.state} onGo={go} />
               ) : ["intel-inbox", "intel-legacy"].includes(route.view) ? (

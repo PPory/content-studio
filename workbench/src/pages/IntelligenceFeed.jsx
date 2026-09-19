@@ -16,12 +16,13 @@ import { api } from "../lib/api.js";
 import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { IntelligenceAngles } from "../components/IntelligenceAngles.jsx";
 import { BriefPeek } from "../components/BriefPeek.jsx";
-import { BriefReading, briefCardMeta, briefDate, confidenceLabel, markdown, platformName, safeUrl, sourceDate } from "../components/BriefReading.jsx";
+import { BriefReading, briefCardMeta, briefDate, confidenceLabel, editorialLabel, freshnessLabel, markdown, platformName, safeUrl, sourceDate } from "../components/BriefReading.jsx";
 import { Empty, ErrorNote, FilterHeader, LayoutToggle, Loading, Note, PageHeader, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import { useLayoutMode } from "../lib/use-layout-mode.js";
 import { IconRadar2, IconSettings } from "../components/icons.jsx";
 import "./intelligence-feed.css";
+import "./intelligence-v2.css";
 
 const empty = { briefs: [], reports: [], blockedSources: [], preferences: { directions: [] }, activeRuns: [] };
 /**
@@ -34,6 +35,7 @@ const TABS = [
   { key: "unread", label: "未读补看" },
   { key: "saved", label: "我的收藏" },
   { key: "dismissed", label: "已忽略" },
+  { key: "history", label: "历史与待复核" },
 ];
 const acquisitionName = (key) =>
   ({ brightdata: "原生采集", aihot: "AI Hot 信息流", "industry-feed": "AI Hot 信息流", "public-search": "公开搜索", local: "本地检索" }[key] || key);
@@ -73,13 +75,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
   const [peekNonce, setPeekNonce] = useState(0);
 
   const [selected, setSelected] = useState([]);
-  const [merge, setMerge] = useState(false);
-  const [researches, setResearches] = useState([]);
-  const [researchId, setResearchId] = useState("");
-  const [question, setQuestion] = useState("");
-  const [selectedAngle, setSelectedAngle] = useState(null);
-  const mergeRef = useRef(null);
-
+  const [dismissing, setDismissing] = useState(null);
+  const dismissRef = useRef(null);
+  useEffect(() => { if(dismissing) dismissRef.current?.showModal(); }, [dismissing]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef(null);
   const [directions, setDirections] = useState("");
@@ -112,7 +110,6 @@ export function IntelligenceFeed({ view, state, onGo }) {
   // 但它现在打开的是今日精选 + 这一层设置，而不是一整页只放一个 textarea。
   useEffect(() => { if (view === "intel-settings") setSettingsOpen(true); }, [view]);
   useEffect(() => { if (settingsOpen) settingsRef.current?.showModal(); else settingsRef.current?.close(); }, [settingsOpen]);
-  useEffect(() => { if (merge) mergeRef.current?.showModal(); }, [merge]);
 
   const action = async (key, fn, message = "") => {
     setBusy(key);
@@ -143,10 +140,12 @@ export function IntelligenceFeed({ view, state, onGo }) {
    * 忽略 / 恢复。**一定带撤销**：这是一次点击就让它从列表上消失的动作，
    * 而「已忽略」那一档虽然找得回来，代价是先想起它在哪儿。
    */
-  const dismiss = async (item, dismissed) => {
-    const result = await action(item.id, () => api.intelligenceFeedback(item.id, { dismissed }));
+  const dismiss = async (item, dismissed, reason) => {
+    if(dismissed && !reason){setDismissing(item);return;}
+    const result = await action(item.id, () => api.intelligenceFeedback(item.id, { dismissed, ...(reason ? {reason} : {}) }));
     if (!result?.brief) return;
     applyBrief(result.brief);
+    setDismissing(null);
     setNotice(dismissed
       ? { text: "已移到「已忽略」", detail: "这一档随时能翻回来。", undo: async () => { setNotice(null); await dismiss(item, false); } }
       : { text: "已恢复推荐" });
@@ -192,15 +191,14 @@ export function IntelligenceFeed({ view, state, onGo }) {
   };
 
   // ---- 列表与 peek --------------------------------------------------------
-  const items = useMemo(
-    () => (tab === "dismissed"
-      ? data.briefs.filter((b) => b.dismissed)
-      : data.briefs
-        .filter((b) => !b.dismissed)
-        .filter((b) => (tab === "saved" ? b.saved : tab === "unread" ? !b.read && b.editionDate !== data.latestEditionDate : b.editionDate === data.latestEditionDate))),
-    [data.briefs, data.latestEditionDate, tab],
-  );
-  const dismissedCount = useMemo(() => data.briefs.filter((b) => b.dismissed).length, [data.briefs]);
+  const items = useMemo(() => {
+    const filtered = data.briefs.filter(b => tab === "dismissed" ? b.dismissed : !b.dismissed)
+      .filter(b => tab === "history" ? true : tab === "saved" ? b.saved : tab === "dismissed" ? true : b.editorialState === "ready")
+      .filter(b => ["history","saved","dismissed"].includes(tab) ? true : tab === "unread" ? !b.read && b.editionDate !== data.latestEditionDate : b.editionDate === data.latestEditionDate);
+    if(tab !== "today")return filtered;
+    if(Array.isArray(data.featuredIds))return data.featuredIds.map(id=>filtered.find(item=>item.id===id)).filter(Boolean).slice(0,8);
+    return filtered.slice(0,8);
+  }, [data.briefs, data.latestEditionDate, data.featuredIds, tab]);
   const peekIndex = items.findIndex((b) => b.id === peekId);
 
   useEffect(() => {
@@ -239,7 +237,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
     if (!listMode) return undefined;
     const onKey = (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey || typingIn(event.target)) return;
-      if (merge || settingsOpen) return;
+      if (settingsOpen || dismissing) return;
       const active = peekIndex >= 0 ? items[peekIndex] : null;
       const keys = {
         ArrowDown: () => step(1), j: () => step(1),
@@ -247,8 +245,8 @@ export function IntelligenceFeed({ view, state, onGo }) {
         Escape: () => setPeekId(""),
         Enter: () => { if (peekId) onGo("intel-detail", peekId); },
         s: () => { if (active) void feedback(active, { saved: !active.saved }); },
-        e: () => { if (active) void feedback(active, { dismissed: true }); },
-        x: () => { if (active) setSelected((ids) => (ids.includes(active.id) ? ids.filter((id) => id !== active.id) : [...ids, active.id])); },
+        e: () => { if (active) void dismiss(active, true); },
+        x: () => { if (active) setSelected((ids) => (ids.includes(active.id) ? ids.filter((id) => id !== active.id) : ids.length < 8 ? [...ids, active.id] : ids)); },
       };
       const run = keys[event.key];
       if (!run) return;
@@ -257,34 +255,12 @@ export function IntelligenceFeed({ view, state, onGo }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [listMode, merge, settingsOpen, items, peekIndex, peekId, step, onGo]);
+  }, [listMode, settingsOpen, dismissing, items, peekIndex, peekId, step, onGo]);
 
   // ---- 汇入选题 -----------------------------------------------------------
-  const startMerge = async (ids, angle = null) => {
-    setSelectedAngle(angle);
-    setQuestion(angle?.question || "");
-    setResearchId("");
-    setSelected(ids);
-    setMerge(true);
-    const result = await action("researches", () => api.researches());
-    if (result) setResearches(result.researches || []);
+  const startMerge = async (ids) => {
+    onGo("intel-topics", JSON.stringify({briefIds:ids}));
   };
-  const submitMerge = async (event) => {
-    event.preventDefault();
-    const result = await action("merge", () => api.intelligenceMerge({
-      briefIds: selected,
-      ...(selectedAngle ? { angle: selectedAngle } : {}),
-      ...(researchId ? { researchId } : { question: question.trim() }),
-    }));
-    if (!result?.research?.id) return;
-    // 先关掉弹层再跳。留着它的话，回到情报时那一层还盖在页面上——
-    // 而它问的问题已经答完了。
-    setMerge(false);
-    setSelectedAngle(null);
-    setSelected([]);
-    onGo("research", result.research.id);
-  };
-
   const report = data.reports.find((r) => r.id === state);
   const latestRun = data.latestRun;
   const errorNote = error ? <ErrorNote error={{ message: error }} what="读取情报" onRetry={() => load()} /> : null;
@@ -344,7 +320,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
                   >
                     {brief.helpful ? "已记为有启发" : "有启发"}
                   </button>
-                  <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => feedback(brief, { dismissed: !brief.dismissed })}>
+                  <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(brief, !brief.dismissed)}>
                     {brief.dismissed ? "恢复推荐" : "不感兴趣"}
                   </button>
                 </footer>
@@ -371,7 +347,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
             </div>
           </>
         )}
-        {mergeDialog()}
+      {dismissDialog()}
         <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
       </div>
     );
@@ -442,7 +418,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
             ))}
           </div>
         )}
-        {mergeDialog()}
+      {dismissDialog()}
         <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
       </div>
     );
@@ -454,7 +430,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
       {/* 胶囊、动作和计数走和 找题 / 选题 / 复盘 / 数据 / 热点 同一份页头。
           说明句不传：它是给第一次来的人的，不该每天占着第一屏最上面一行（空态里有）。 */}
       <FilterHeader
-        title="今日精选"
+        title="精选"
         chips={
           <ViewTabs
             items={TABS.map((item) => ({
@@ -475,7 +451,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
                 所以可访问名不会跟着屏幕宽度变。 */}
             <button type="button" className="btn brief-head-settings" aria-label="关注方向设置" onClick={() => setSettingsOpen(true)}>
               <IconSettings aria-hidden="true" stroke={1.7} />
-              <span>关注方向</span>
+              <span>关注设置</span>
             </button>
             <button
               type="button"
@@ -493,6 +469,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
         }
       />
 
+      <nav className="brief-management" aria-label="情报管理"><button className="text-action" onClick={()=>onGo("intel-channels")}>信源管理</button><button className="text-action" onClick={()=>onGo("intel-runs")}>处理记录</button><button className="text-action" onClick={()=>onGo("intel-reports")}>每周回顾</button><button className="text-action" onClick={()=>onGo("hot")}>AI 热点</button></nav>
       {errorNote}
 
       {loading ? <Loading rows={5} /> : (
@@ -501,7 +478,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
               这四件事原来是四条独立的灰字，把第一条情报推到了首屏 536px 处。 */}
           <div className="brief-status">
             <LayoutToggle value={layout} onChange={setLayout} />
-            <span>{data.preferences.nativeSocialEnabled ? "手动采集 · X / Reddit 原生" : "手动整理 · 公开搜索与 AI Hot"}</span>
+            <span>按关注方向整理 · 每期最多展示 8 条</span>
+            {(data.lastSuccessfulUpdate || data.latestSuccessfulRun) && <span>最近成功：{sourceDate(data.lastSuccessfulUpdate || data.latestSuccessfulRun?.updatedAt || data.latestSuccessfulRun?.createdAt)}</span>}
+            {(data.latestFailedRun || (latestRun?.status === "failed" && latestRun)) && <span>最近失败：{sourceDate((data.latestFailedRun || latestRun).updatedAt || (data.latestFailedRun || latestRun).createdAt)} · {(data.latestFailedRun || latestRun).error || "查看处理记录"}</span>}
             {latestRun?.window ? (
               <span>本次查找：{sourceDate(latestRun.window.start)} — {sourceDate(latestRun.window.end)}（北京时间）</span>
             ) : null}
@@ -591,12 +570,12 @@ export function IntelligenceFeed({ view, state, onGo }) {
                           return result;
                         }, "已开始整理这一批精选")}
                       >
-                        {busy === "refresh" ? "正在整理…" : "获取第一批精选"}
+                        {busy === "refresh" ? "正在整理…" : data.briefs.length ? "重新整理精选" : "获取第一批精选"}
                       </button>
                     </>
                   ) : null}
                 >
-                  <h2>{tab === "saved" ? "还没有收藏" : tab === "dismissed" ? "还没有忽略过任何一条" : tab === "unread" ? "未读已经看完了" : data.activeRuns.length ? "这一批正在整理" : "从第一批精选开始"}</h2>
+                  <h2>{tab === "saved" ? "还没有收藏" : tab === "dismissed" ? "还没有忽略过任何一条" : tab === "unread" ? "未读已经看完了" : data.activeRuns.length ? "这一批正在整理" : tab === "history" ? "没有历史或待复核内容" : data.briefs.length ? "本期还没有通过校验的精选" : "从第一批精选开始"}</h2>
                   <p>
                     {tab === "today"
                       ? data.preferences.customized
@@ -608,14 +587,15 @@ export function IntelligenceFeed({ view, state, onGo }) {
                 </Empty>
               ) : null}
 
-              {["reliable", "watch"].map((confidence) => {
-                const group = items.filter((b) => (b.confidence || "watch") === confidence);
+              {(["history","saved","dismissed"].includes(tab) ? ["ready","needs_review","withheld"] : tab === "today" && Array.isArray(data.featuredIds) ? ["featured"] : ["reliable", "watch"]).map((confidence) => {
+                const editorial = ["history","saved","dismissed"].includes(tab);
+                const group = confidence === "featured" ? items : items.filter((b) => editorial ? (b.editorialState || "needs_review") === confidence : (b.confidence || "watch") === confidence);
                 if (!group.length) return null;
                 return (
                   <section className="brief-group" key={confidence}>
                     <SectionHead
-                      title={confidenceLabel(confidence)}
-                      aside={<span className="brief-group__hint">{confidence === "reliable" ? "有依据，可以进一步了解" : "保留线索，结论仍需验证"}</span>}
+                      title={confidence === "featured" ? "本期值得阅读" : editorial ? editorialLabel(confidence) : confidenceLabel(confidence)}
+                      aside={<span className="brief-group__hint">{confidence === "featured" ? "按与你的关联与证据质量排序" : editorial ? "保留原始记录与来源，不自动视为合格精选" : confidence === "reliable" ? "有依据，可以进一步了解" : "保留线索，结论仍需验证"}</span>}
                     />
                     <div className={layout === "list" ? "rows brief-rows" : "brief-grid"}>{group.map(layout === "list" ? row : card)}</div>
                   </section>
@@ -643,7 +623,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
             ) : null}
           </div>
 
-          {selected.length > 0 && !merge ? (
+          {selected.length > 0 ? (
             <div className="brief-selection-bar">
               <span>已选 {selected.length} 条</span>
               <button type="button" className="btn btn-primary btn-sm" onClick={() => startMerge(selected)}>一起展开成选题</button>
@@ -654,7 +634,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
       )}
 
       {settingsDialog()}
-      {mergeDialog()}
+      {dismissDialog()}
       <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
     </div>
   );
@@ -690,6 +670,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
               type="checkbox"
               aria-label={`选择：${item.title}`}
               checked={picked}
+              disabled={!picked && selected.length >= 8}
               onChange={(e) => setSelected((ids) => (e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id)))}
             />
           </label>
@@ -700,7 +681,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           </button>
           <span className="brief-row__summary">{item.summary}</span>
           <span className="row-meta">
-            <span className="brief-card__meta">{briefCardMeta(item)}</span>
+            <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {freshnessLabel(item.freshnessKind)} · {briefCardMeta(item)}</span>
             <span className="brief-card__acts">
               {item.dismissed ? (
                 <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, false)}>恢复推荐</button>
@@ -742,6 +723,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
               type="checkbox"
               aria-label={`选择：${item.title}`}
               checked={picked}
+              disabled={!picked && selected.length >= 8}
               onChange={(e) => setSelected((ids) => (e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id)))}
             />
           </label>
@@ -760,7 +742,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
         </button>
         <p className="brief-card__summary">{item.summary}</p>
         <footer>
-          <span className="brief-card__meta">{briefCardMeta(item)}</span>
+          <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {freshnessLabel(item.freshnessKind)} · {briefCardMeta(item)}</span>
           {/* 「已忽略」那一档里，这一行唯一要回答的问题是「要不要拿回来」 */}
           <span className="brief-card__acts">
             {item.dismissed ? (
@@ -818,9 +800,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           </label>
           <p className="brief-settings__hint">
             每行一个方向，按你的实际兴趣写即可。
-            {data.preferences.nativeSocialEnabled
-              ? "当前每次采集最多 6 个 X 账号、4 个 Reddit 社区，各 3 篇。"
-              : "当前用公开搜索与 AI Hot 取材。"}
+            可以在信源管理中调整一手发布、实践、问题与深度分析的覆盖。
             持续采集保持关闭，先按次试用。
           </p>
 
@@ -859,40 +839,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
     );
   }
 
-  function mergeDialog() {
-    if (!merge) return null;
-    return (
-      <dialog ref={mergeRef} className="brief-merge" aria-label="汇入选题" onCancel={() => setMerge(false)}>
-        <form onSubmit={submitMerge}>
-          <h2>把 {selected.length} 条信息汇入选题</h2>
-          <p>资料与解读会一起带过去，继续讨论和写作。</p>
-          {selectedAngle ? (
-            <section className="brief-angle-preview">
-              <strong>表达角度：{selectedAngle.question}</strong>
-              <p>{selectedAngle.audience}</p>
-              <p>还需要验证：{selectedAngle.gap}</p>
-              <small>确认后，这个角度与依据会作为待验证笔记带入，已有笔记会保留。</small>
-            </section>
-          ) : null}
-          <label>
-            放到哪里？
-            <select aria-label="目标选题" value={researchId} onChange={(e) => setResearchId(e.target.value)}>
-              <option value="">新建一个选题</option>
-              {researches.map((r) => <option key={r.id} value={r.id}>{r.question || r.title}</option>)}
-            </select>
-          </label>
-          {!researchId ? (
-            <label>
-              想研究的问题
-              <input aria-label="想研究的问题" required value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="这些信息让你想进一步了解什么？" />
-            </label>
-          ) : null}
-          <footer>
-            <button type="submit" className="btn btn-primary" disabled={Boolean(busy) || (!researchId && !question.trim())}>汇入并继续</button>
-            <button type="button" className="btn" onClick={() => setMerge(false)}>取消</button>
-          </footer>
-        </form>
-      </dialog>
-    );
+  function dismissDialog() {
+    if(!dismissing)return null;
+    return <dialog ref={dismissRef} className="brief-settings" aria-label="选择不感兴趣的原因" onCancel={()=>setDismissing(null)}><h2>这条内容哪里不合适？</h2><p>{dismissing.title}</p><div className="brief-dismiss-reasons">{[["irrelevant","与我无关"],["too_generic","太泛了"],["weak_evidence","依据不足"],["seen","已经看过"],["not_now","暂时不需要"]].map(([reason,label])=><button key={reason} className="btn" disabled={Boolean(busy)} onClick={()=>dismiss(dismissing,true,reason)}>{label}</button>)}</div><button className="text-action" onClick={()=>setDismissing(null)}>取消</button></dialog>;
   }
+
 }

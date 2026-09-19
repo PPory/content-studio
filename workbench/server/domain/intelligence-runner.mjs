@@ -6,6 +6,7 @@ import { intelligenceFocus, intelligenceRun, updateRun, stepState, saveStep, run
 import { searchWeb } from "../lib/web-search.mjs";
 import { readArticle } from "../lib/article.mjs";
 import { fetchAiHot } from "../lib/aihot.mjs";
+import { collectIntelligenceChannels } from "./intelligence-channels.mjs";
 import { completeJson } from "../lib/model-json.mjs";
 import { proxyFetch } from "../lib/fetch.mjs";
 import { trigger, download } from "../../skills/personal-intelligence-radar/lib/brightdata.mjs";
@@ -130,6 +131,11 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
       let rows=[],failures=[];
       if(deps.collect){rows=await deps.collect(provider,p,window);}
       else if(provider==="local")rows=localIntelligenceSources(w,collection.query,p.limit);
+      else if(provider==="channels"){
+       const result=await collectIntelligenceChannels(w,env,{runId,channelIds:p.channelIds,limit:Math.min(p.limit,2),window},{...deps,assertCurrent:()=>current(w,runId,deps)});
+       rows=result.output;failures=result.failures;
+       saveStep(w,runId,provider,"running",{...stepState(w,runId,provider),channels:result.channels,acquisitionMethod:"registered-channels"});
+      }
       else if(["x","reddit"].includes(provider)&&p.autoSocial){
        const native={...p,limit:3,accounts:(plan.accounts||[]).filter(a=>typeof a==='string'&&/^[A-Za-z0-9_]{1,15}$/.test(a)).slice(0,6),subreddits:(plan.subreddits||[]).filter(a=>typeof a==='string'&&/^[A-Za-z0-9_]{2,30}$/.test(a)).slice(0,4)};
        if(!(provider==="x"?native.accounts:native.subreddits).length)throw new Error("本次方向未选出合适的账号或社区，未触发原生采集");
@@ -152,10 +158,12 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
     updateRun(w,runId,"running","筛选信息，整理详细解读");
     const result=await generateDailyBriefs(w,env,intelligenceRun(w,runId),sources,wiki,{...deps,assertCurrent:()=>current(w,runId,deps)});
     current(w,runId,deps);
-    const accepted=[...new Set((result.saved||[]).flatMap(b=>(b.evidence||[]).map(e=>e.sourceId)))].map(sourceId=>({sourceId,reason:"支撑本次精选"}));
+    const accepted=[...new Set((result.saved||[]).flatMap(b=>(b.evidence||[]).map(e=>e.sourceId)))].map(sourceId=>({sourceId,reason:"支撑本次解读"}));
     saveStep(w,runId,"screen","done",{accepted,count:accepted.length,rejectionReasons:result.rejectionReasons||[]});
+    const ready=(result.saved||[]).filter(b=>b.editorialState==='ready').length,needsReview=(result.saved||[]).length-ready;
+    saveStep(w,runId,'quality','done',{ready,needsReview,rejected:result.rejected||0,rejectionReasons:result.rejectionReasons||[],ruleVersion:'intel-v2.1'});
     const partial=coverage.some(s=>["failed","partial"].includes(s.status))||result.rejected>0;
-    updateRun(w,runId,partial?"partial":"done",`精选已整理：${result.saved?.length||0} 条${result.unchanged?`，${result.unchanged} 条无新进展`:""}`,result.rejected?`${result.rejected} 条未通过依据校验`:"");
+    updateRun(w,runId,partial?"partial":"done",`精选已整理：${ready} 条${needsReview?`，${needsReview} 条待复核`:""}${result.unchanged?`，${result.unchanged} 条无新进展`:""}`,result.rejected?`${result.rejected} 条未通过依据校验`:"");
     return intelligenceRun(w,runId);
   }
   const previous=w.db.prepare("SELECT id,data_json,status FROM intel_cards WHERE profile_id=? ORDER BY updated_at DESC LIMIT 30").all(initial.profileId).map(r=>({id:r.id,question:JSON.parse(r.data_json).question,status:r.status}));

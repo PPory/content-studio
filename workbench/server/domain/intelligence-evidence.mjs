@@ -1,9 +1,10 @@
+import { independentEvidenceCount } from './intelligence-quality.mjs';
 // Source identity is independent of collection provider; comments with different text remain distinct.
 export function intelligenceDocumentKey(source){
  try{const u=new URL(source.url);u.hash='';u.hostname=u.hostname.replace(/^www\./,'').replace(/^twitter\.com$/,'x.com');for(const k of [...u.searchParams.keys()])if(/^utm_|^(fbclid|gclid)$/i.test(k))u.searchParams.delete(k);u.searchParams.sort();return u.toString();}catch{return source.id;}
 }
 export function uniqueIntelligenceSources(sources){const seen=new Set();return sources.filter(s=>{const key=intelligenceDocumentKey(s)+'\n'+String(s.body||'').replace(/\s+/g,' ').trim();if(seen.has(key))return false;seen.add(key);return true;});}
-export function intelligenceDocumentCount(sources){return new Set(sources.filter(s=>!['local','manual'].includes(s.provider)&&/^https?:/.test(s.url||'')).map(intelligenceDocumentKey)).size;}
+export function intelligenceDocumentCount(sources){return independentEvidenceCount(sources);}
 export function intelligenceReadingSources(evidence,sources){const byId=new Map(sources.map(s=>[s.id,s])),groups=new Map();for(const [i,e]of evidence.entries()){const s=byId.get(e.sourceId);if(!s)continue;if(!groups.has(s.id))groups.set(s.id,{...s,quote:e.quote,quotes:[]});groups.get(s.id).quotes.push({number:i+1,quote:e.quote});}return [...groups.values()];}
 export const intelligenceCitationText=body=>String(body||'').replace(/\[([^\]\n]+)\]/g,(all,inner)=>inner.match(/来源\s*\d/)?'['+inner.replace(/来源\s*(\d+)/g,'引文$1')+']':all);
 

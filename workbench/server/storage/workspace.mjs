@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { ensureIntelligenceChannels } from '../domain/intelligence-channels.mjs';
+import { backfillIntelligenceIdentity } from '../domain/intelligence-quality.mjs';
 import { atomicWrite } from "../lib/safe-write.mjs";
 import { AssetStore } from "./asset-store.mjs";
 import { createUlid, isUlid } from "./ids.mjs";
@@ -81,6 +83,8 @@ export async function openWorkspace(options = {}) {
     const experiments = new ContentExperimentDomain({ db, repository, workspaceDomain: domain });
     const audienceRaw = new AudienceRawDomain({ db, repository, workspaceDomain: domain });
     const jobs = new JobStore(db);
+    if (!options.readonly && db.pragma('user_version', {simple:true}) >= 27) backfillIntelligenceIdentity({db, repository});
+    if (!options.readonly && db.pragma('user_version', {simple:true}) >= 28) ensureIntelligenceChannels({db});
     return {
       paths,
       manifest,

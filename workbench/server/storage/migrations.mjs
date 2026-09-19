@@ -37,6 +37,10 @@ const personalAssetsSql = fs.readFileSync(new URL("./migrations/0025-personal-as
 
 const noteInsightsSql = fs.readFileSync(new URL("./migrations/0026-note-insights-intake.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
+const intelligenceV2Sql = fs.readFileSync(new URL('./migrations/0027-intelligence-v2.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
+const intelligenceChannelsSql = fs.readFileSync(new URL('./migrations/0028-intelligence-channels.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -154,6 +158,8 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 24, name: "intel-direction-dismissed", sql: intelDirectionDismissedSql, checksum: crypto.createHash("sha256").update(intelDirectionDismissedSql).digest("hex") }),
   Object.freeze({ version: 25, name: "personal-assets", sql: personalAssetsSql, checksum: crypto.createHash("sha256").update(personalAssetsSql).digest("hex") }),
   Object.freeze({ version: 26, name: "note-insights-intake", sql: noteInsightsSql, checksum: crypto.createHash("sha256").update(noteInsightsSql).digest("hex") }),
+  Object.freeze({ version: 27, name: 'intelligence-v2', sql: intelligenceV2Sql, checksum: crypto.createHash('sha256').update(intelligenceV2Sql).digest('hex') }),
+  Object.freeze({ version: 28, name: 'intelligence-channels', sql: intelligenceChannelsSql, checksum: crypto.createHash('sha256').update(intelligenceChannelsSql).digest('hex') }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

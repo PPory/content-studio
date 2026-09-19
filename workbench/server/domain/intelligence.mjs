@@ -1,3 +1,4 @@
+import { persistSourceIdentity, sourceFromRow } from './intelligence-quality.mjs';
 import { intelligenceSourceMeta } from "./intelligence-source-meta.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { sha256Json, sourceContainsVerbatim } from "./integrity.mjs";
@@ -6,7 +7,7 @@ const now = () => new Date().toISOString();
 const json = JSON.stringify;
 const parse = JSON.parse;
 const bad = (message, status = 400) => Object.assign(new Error(message), { status });
-const providers = ["local", "web", "aihot", "x", "reddit", "xiaohongshu", "douyin"];
+const providers = ["local", "web", "aihot", "x", "reddit", "xiaohongshu", "douyin", "channels"];
 function str(v, max, required = false) {
   if (typeof v !== "string" || v.length > max || (required && !v.trim())) throw bad(`文字不能为空且不能超过 ${max} 字符`);
   return v.trim();
@@ -36,6 +37,7 @@ export function saveIntelligenceProfile(w, input) {
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw bad("启用状态无效");
   const config = { name:str(input.name,120,true), query:str(input.query,500,true), frequency, providers:[...new Set(input.providers)],
     accounts:[...new Set(list(input.accounts||[],5,/^@?[A-Za-z0-9_]{1,15}$/).map(x=>x.replace(/^@/,"").toLowerCase()))], subreddits:[...new Set(list(input.subreddits||[],5,/^(?:r\/)?[A-Za-z0-9_]{2,30}$/).map(x=>x.replace(/^r\//,"").toLowerCase()))],
+    channelIds:Array.isArray(input.channelIds)?input.channelIds.filter(id=>typeof id==='string'&&id.length<100).slice(0,30):[],
     limit, output:input.output === "briefs" ? "briefs" : "topics", enabled:input.enabled !== false, paidApproved:input.paidApproved === true, autoSocial:input.autoSocial === true };
   if(config.autoSocial && (!config.paidApproved || frequency!=="manual" || config.output!=="briefs"))throw bad("自动选择社媒来源仅用于已确认的单次精选采集");
 
@@ -107,12 +109,13 @@ export function addIntelligenceSource(w,input,runId=null) {
   if(url && !/^https?:\/\//i.test(url))throw bad("只支持公开网页链接");
   const provider=input.provider||"manual";
   const fingerprint=sha256Json([provider,input.localId||url,body]);
-  let row=w.db.prepare("SELECT id,data_json,created_at FROM intel_sources WHERE fingerprint=?").get(fingerprint);
+  let row=w.db.prepare("SELECT * FROM intel_sources WHERE fingerprint=?").get(fingerprint);
   if(!row){const id=createUlid(),createdAt=now();const data={title,body,url,provider,publishedAt:input.publishedAt||null,readLevel:input.readLevel||"original",background:Boolean(input.background),localId:input.localId||null,localKind:input.localKind||null,dateBasis:input.dateBasis||null,discoveredAt:input.discoveredAt||null,contentKind:input.contentKind||null,author:String(input.author||"").slice(0,200),community:String(input.community||"").slice(0,200),discoveredFrom:String(input.discoveredFrom||"").slice(0,2000),quotedBody:String(input.quotedBody||"").slice(0,12000),quotedAuthor:String(input.quotedAuthor||"").slice(0,200)};w.db.prepare("INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)").run(id,fingerprint,json(data),createdAt);row={id,data_json:json(data),created_at:createdAt};}
   if(runId)w.db.prepare("INSERT OR IGNORE INTO intel_run_sources(run_id,source_id) VALUES(?,?)").run(runId,row.id);
-  return {id:row.id,...parse(row.data_json),createdAt:row.created_at};
+  if(!row.content_hash)persistSourceIdentity(w,row.id,{...parse(row.data_json),...input,body});
+  return sourceFromRow(w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(row.id));
 }
-export function runSources(w,id){return w.db.prepare("SELECT s.* FROM intel_sources s JOIN intel_run_sources l ON l.source_id=s.id WHERE l.run_id=?").all(id).map(r=>{const source={id:r.id,...parse(r.data_json),createdAt:r.created_at};return {...source,...intelligenceSourceMeta(source)};});}
+export function runSources(w,id){return w.db.prepare("SELECT s.* FROM intel_sources s JOIN intel_run_sources l ON l.source_id=s.id WHERE l.run_id=?").all(id).map(r=>{const source=sourceFromRow(r);return {...source,...intelligenceSourceMeta(source)};});}
 export function localIntelligenceSources(w,query,limit) {
   const terms=query.split(/[\s，,、；;]+/).filter(Boolean).slice(0,5);
   const found=new Map();for(const term of terms)for(const i of libraryItems(w,{q:term,limit})) {if(i.kind!=="wiki")found.set(i.id,i);}
@@ -140,8 +143,8 @@ export function setIntelligenceCard(w,id,status){if(!["new","watch","dismissed"]
 export function adoptIntelligenceCard(w,id) {
  return w.repository.transaction(()=>{
   const row=w.db.prepare("SELECT * FROM intel_cards WHERE id=?").get(id);if(!row)throw bad("选题不存在",404);if(row.research_id)return getResearch(w,row.research_id);
-  const c=parse(row.data_json);const notes=["待讨论的选题候选（尚未核实为个人判断）",c.why,`目标读者：${c.audience}`,`可能角度：${c.angle}`,"依据：",...c.evidence.map(e=>`> ${e.quote}`)].join("\n\n");
-  const r=createResearch(w,{question:c.question,notes,openQuestions:c.gaps});
+  const c=parse(row.data_json);const notes=["待讨论的选题候选（尚未核实为个人判断）",c.why,`目标读者：${c.audience}`,`可能角度：${c.angle}`,"交付物：",c.deliverable||"待确定","研究待办：",...(c.researchTasks||[]),"证据边界：",...(c.nonClaims||[]),"依据：",...c.evidence.map(e=>`> ${e.quote}`)].join("\n\n");
+  const r=createResearch(w,{question:c.question,notes,openQuestions:[c.gaps,...(c.researchTasks||[])].filter(Boolean).join("\n")});
   for(const ref of c.evidence){const s=w.db.prepare("SELECT * FROM intel_sources WHERE id=?").get(ref.sourceId);const d=parse(s.data_json);let cid=s.capture_id;
     if(!cid){cid=w.domain.createCapture({kind:d.url?"web":"excerpt",title:d.title,bodyMarkdown:d.body,sourceUrl:d.url,actor:"user",confirmed:true});w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(cid,s.id);}
     researchReference(w,r.id,{kind:"capture",id:cid});
@@ -153,7 +156,7 @@ export function adoptIntelligenceCard(w,id) {
 export function intelligenceSource(w,id) {
  const row=w.db.prepare("SELECT * FROM intel_sources WHERE id=?").get(id);
  if(!row)throw bad("来源不存在",404);
- return {id:row.id,...parse(row.data_json),createdAt:row.created_at};
+ return sourceFromRow(row);
 }
 export function intelligenceOverview(w,env={}) {
  const profiles=w.db.prepare("SELECT id FROM intel_profiles ORDER BY updated_at DESC").all().map(r=>profile(w,r.id));
@@ -164,7 +167,8 @@ export function intelligenceOverview(w,env={}) {
  }
  return {profiles,runs:w.db.prepare("SELECT id FROM intel_runs ORDER BY created_at DESC LIMIT 50").all().map(r=>intelligenceRun(w,r.id)),
  cards:w.db.prepare("SELECT * FROM intel_cards ORDER BY updated_at DESC LIMIT 200").all().map(r=>({id:r.id,profileId:r.profile_id,runId:r.run_id,...parse(r.data_json),status:r.status,researchId:r.research_id,updatedAt:r.updated_at})).filter(c=>c.researchId||screenedRuns.has(c.runId)),
- sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=parse(r.data_json);return {id:r.id,...d,...approved.get(r.id),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
+ sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {id:r.id,...d,...approved.get(r.id),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
+ collectedSources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {...d,body:d.body?.slice(0,600)||'',bodyTruncated:(d.body?.length||0)>600,selected:approved.has(r.id)};}),
  capabilities:{local:true,aihot:true,web:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),x:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),reddit:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),xiaohongshu:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),douyin:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY)}};
 }
 

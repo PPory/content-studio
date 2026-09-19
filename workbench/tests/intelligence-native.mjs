@@ -9,6 +9,8 @@ import {saveFeedPreferences,refreshIntelligenceFeed,feedPreferences} from '../se
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-native-budget-'));let w;
 try {
  w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});
+ // This test exercises social adapters; channel transport is covered separately.
+ w.db.prepare('UPDATE intel_channels SET enabled=0').run();
  const directions=['模型原理与使用','个人创造与学习'];
  assert.equal(feedPreferences(w).nativeSocialEnabled,false);
  assert.throws(()=>saveFeedPreferences(w,{directions,nativeSocialEnabled:'true'}));

@@ -1,3 +1,5 @@
+import { intelligenceTopicRoutes } from './routes/intelligence-topics.mjs';
+import { intelligenceChannelRoutes } from './routes/intelligence-channels.mjs';
 import { intelligenceFeedRoutes } from "./routes/intelligence-feed.mjs";
 import { intelligenceRoutes } from "./routes/intelligence.mjs";
 import { workspaceExperienceRoutes } from "./routes/workspace-experience.mjs";
@@ -83,6 +85,8 @@ const ROUTES = [
   ...contentProjectRoutes,
   ...researchRoutes,
   ...intelligenceFeedRoutes,
+  ...intelligenceTopicRoutes,
+  ...intelligenceChannelRoutes,
   ...intelligenceRoutes,
   ...workspaceExperienceRoutes,
   ...contentExperimentRoutes,

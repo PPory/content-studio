@@ -1,0 +1,29 @@
+.intelligence-v2 { min-width:0; }
+.intel-v2-hint { color:var(--text-3); font-size:13px; line-height:1.7; }
+.intel-v2-toolbar,.intel-v2-actions,.intel-v2-list article>header { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.intel-v2-toolbar { justify-content:space-between; }
+.intel-v2-actions { margin:14px 0; }
+.intel-v2-list { margin-top:20px; }
+.intel-v2-list article,.intel-v2-resource { padding:22px 0; border-bottom:1px solid var(--border); }
+.intel-v2-list h2 { font-size:17px; margin:0; overflow-wrap:anywhere; }
+.intel-v2-state { color:var(--text-3); font-size:12px; white-space:nowrap; }
+.intel-topic-content { max-width:850px; font-size:14px; line-height:1.8; }
+.intel-topic-content dl>div { display:grid; grid-template-columns:140px 1fr; margin:8px 0; }
+.intel-topic-content dt { color:var(--text-3); }
+.intel-topic-content dd { margin:0; }
+.intel-topic-content h3 { font-size:14px; margin:18px 0 4px; }
+.intel-topic-content small { display:block; color:var(--text-3); }
+.intel-topic-preview { margin:22px 0; padding:22px; border:1px solid var(--border); border-radius:var(--radius,12px); background:var(--surface); }
+.intel-v2-form { margin:20px 0; max-width:650px; display:grid; gap:14px; }
+.intel-v2-form label { display:grid; gap:7px; font-size:14px; }
+.intel-v2-form input,.intel-v2-form textarea,.intel-v2-form select { width:100%; min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; }
+.intel-v2-resource summary { cursor:pointer; line-height:1.8; }
+.intel-v2-resource summary span { display:block; color:var(--text-3); font-size:12px; }
+.intel-resource-body { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.85; max-width:900px; }
+.intel-channel-error { color:var(--danger,#a33); font-size:13px; overflow-wrap:anywhere; }
+.brief-v2-labels { display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--text-3); }
+.brief-v2-section { margin:22px 0; line-height:1.85; }
+.brief-v2-section h2 { font-size:14px; color:var(--text-2); }
+.brief-management { display:flex; flex-wrap:wrap; gap:16px; margin:12px 0 18px; font-size:13px; }
+.brief-dismiss-reasons { padding:10px 0; display:flex; flex-wrap:wrap; gap:8px; }
+@media(max-width:600px) { .intel-topic-content dl>div { grid-template-columns:1fr; gap:4px; } .intel-topic-preview { padding:14px; } .intel-v2-toolbar { align-items:stretch; } .intel-v2-toolbar>* { max-width:100%; } }

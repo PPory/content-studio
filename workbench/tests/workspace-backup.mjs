@@ -194,6 +194,17 @@ try {
   const conflictHome = path.join(root, "portable-conflict-Xenho");
   const conflict = await openWorkspace({ xenhoHome: conflictHome });
   try {
+    assert.equal((await previewWorkspaceBundle(conflict, portable.bytes)).portableConflict, false, "未修改的内置信源不算用户数据");
+    conflict.db.prepare("UPDATE intel_channels SET name='我的信源名称' WHERE id='channel-openai'").run();
+    assert.equal((await previewWorkspaceBundle(conflict, portable.bytes)).portableConflict, true, "编辑过的内置信源不能被便携导入覆盖");
+    await assert.rejects(stageWorkspaceRestore(conflict, portable.bytes, {confirmedSha256:portable.archiveSha256}), /新的空工作区/);
+    conflict.db.prepare("UPDATE intel_channels SET name='OpenAI 官方动态' WHERE id='channel-openai'").run();
+    conflict.db.prepare("UPDATE intel_channels SET builtin=0 WHERE id='channel-openai'").run();
+    assert.equal((await previewWorkspaceBundle(conflict, portable.bytes)).portableConflict, true, "自定义信源算用户数据");
+    conflict.db.prepare("UPDATE intel_channels SET builtin=1,last_attempt_at='2026-09-19T00:00:00Z' WHERE id='channel-openai'").run();
+    assert.equal((await previewWorkspaceBundle(conflict, portable.bytes)).portableConflict, true, "采集历史算用户数据");
+    conflict.db.prepare("UPDATE intel_channels SET last_attempt_at=NULL WHERE id='channel-openai'").run();
+    check("内置信源基线可导入，但用户修改和采集历史受到覆盖保护", true);
     conflict.repository.createEntity({ id: "existing-data", type: "capture" });
     const conflictPreview = await previewWorkspaceBundle(conflict, portable.bytes);
     assert.equal(conflictPreview.portableConflict, true);
