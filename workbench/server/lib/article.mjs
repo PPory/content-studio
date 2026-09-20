@@ -33,12 +33,12 @@ function privateAddress(address) {
   const mapped = value.startsWith("::ffff:") ? value.slice(7) : "";
   const ipv4 = mapped || (isIP(value) === 4 ? value : "");
   if (!ipv4) return false;
-  const [a, b] = ipv4.split(".").map(Number);
+  const [a, b, c] = ipv4.split(".").map(Number);
   return a === 0 || a === 10 || a === 127 || a >= 224
     || (a === 100 && b >= 64 && b <= 127)
     || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31)
-    || (a === 192 && (b === 0 || b === 168))
+    || (a === 192 && ((b === 0 && c === 0) || b === 168))
     || (a === 198 && (b === 18 || b === 19));
 }
 
@@ -250,7 +250,7 @@ function trimToTitle(markdown, title) {
   return at <= 0 ? markdown : lines.slice(at).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function junkReason(markdown) {
+export function junkReason(markdown) {
   if (looksBlocked(markdown)) return "抓回来的是验证页，不是正文";
   // ⚠️ 按**正文字数**判断，不是按字符数：图片地址和 base64 都不是正文。
   if (proseLength(markdown) < TOO_SHORT) return "抓回来的正文太短，多半没抓对";

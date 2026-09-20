@@ -1,0 +1,1239 @@
+{
+  "manifestVersion": "1.0",
+  "documentDate": "2026-09-20",
+  "purpose": "planning_input_for_codex_not_existing_application_config",
+  "runtimeApplied": false,
+  "validation": {
+    "endpointProbesRun": false,
+    "credentialsVerified": false,
+    "localRepositoryAudited": false,
+    "workbenchSnapshotStatus": "SNAPSHOT_EXPIRED",
+    "capturedAt": null
+  },
+  "activationPolicy": {
+    "requireEndpointValidation": true,
+    "requireAuthorizedAccess": true,
+    "preserveExistingUserDisabledState": true,
+    "rejectUnresolvedPlaceholders": true
+  },
+  "constraints": {
+    "paidServicesAllowedByDefault": false,
+    "forkFollowBuilders": false,
+    "runFollowBuildersGenerator": false,
+    "requireXApiKey": false,
+    "requireTranscriptionApiKey": false,
+    "automaticallyInstallSkills": false,
+    "enableLlmOnEveryFetch": false,
+    "autoPushGit": false
+  },
+  "runtime": {
+    "workerIndependentOfWebUi": true,
+    "persistentQueue": "reuse_existing_job_store",
+    "delivery": "at_least_once_with_idempotent_writes",
+    "globalConcurrency": 4,
+    "perHostConcurrency": 1,
+    "requestTimeoutMs": 30000,
+    "maxAttemptsPerRun": 3,
+    "retryAfterAware": true,
+    "checkpointAfterTransactionCommit": true,
+    "coalesceMissedScheduleSlots": true,
+    "timestampsStoredIn": "UTC"
+  },
+  "groups": [
+    {
+      "key": "aihot",
+      "name": "AIHOT",
+      "adapter": "aihot_v1",
+      "desiredEnabled": true,
+      "enabled": false,
+      "validationStatus": "documentation_reviewed_contract_test_pending",
+      "baseUrl": "https://aihot.news",
+      "docs": [
+        "https://aihot.news/agent",
+        "https://aihot.news/openapi-v1.json"
+      ],
+      "streams": [
+        {
+          "key": "selected",
+          "snapshotPath": "/api/v1/selected/snapshot",
+          "changesPath": "/api/v1/selected/changes",
+          "pollIntervalSeconds": 1800,
+          "bootstrap": "paged_snapshot_then_changes",
+          "deSelectionPolicy": "remove_selected_membership_not_local_document"
+        },
+        {
+          "key": "hot_topics",
+          "path": "/api/v1/hot-topics",
+          "storyPathTemplate": "/api/v1/stories/{publicId}",
+          "storyIdPolicy": "only_from_returned_publicId",
+          "pollIntervalSeconds": 1800,
+          "recordKind": "event_observation"
+        },
+        {
+          "key": "dailies",
+          "indexPath": "/api/v1/dailies",
+          "latestPath": "/api/v1/dailies/latest",
+          "datePathTemplate": "/api/v1/dailies/{date}",
+          "reportField": "report",
+          "timezone": "Asia/Shanghai",
+          "mainCheckTime": "08:10",
+          "followupIntervalSeconds": 3600,
+          "maxFollowupChecks": 4,
+          "initialBackfillDays": 7,
+          "recordKind": "external_digest"
+        }
+      ]
+    },
+    {
+      "key": "t2_media",
+      "name": "T2 Media",
+      "sources": [
+        {
+          "stableKey": "t2.techcrunch_ai",
+          "name": "TechCrunch AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://techcrunch.com/category/artificial-intelligence/feed/",
+          "originalEndpointCell": "https://techcrunch.com/category/artificial-intelligence/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 2
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.the_verge_ai",
+          "name": "The Verge AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+          "originalEndpointCell": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 3
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.the_decoder",
+          "name": "The Decoder",
+          "adapter": "rss",
+          "candidateEndpoint": "https://the-decoder.com/feed/",
+          "originalEndpointCell": "https://the-decoder.com/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 4
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.ars_technica",
+          "name": "Ars Technica",
+          "adapter": "rss",
+          "candidateEndpoint": "https://feeds.arstechnica.com/arstechnica/index",
+          "originalEndpointCell": "https://feeds.arstechnica.com/arstechnica/index",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 5
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.marktechpost",
+          "name": "MarkTechPost",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.marktechpost.com/feed/",
+          "originalEndpointCell": "https://www.marktechpost.com/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 6
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.mit_technology_review_ai",
+          "name": "MIT Tech Review AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+          "originalEndpointCell": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 7
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.venturebeat_ai",
+          "name": "VentureBeat AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://venturebeat.com/category/ai/feed/",
+          "originalEndpointCell": "https://venturebeat.com/category/ai/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 8
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.wired_ai",
+          "name": "Wired AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.wired.com/feed/tag/ai/latest/rss",
+          "originalEndpointCell": "https://www.wired.com/feed/tag/ai/latest/rss",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 9
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.last_week_in_ai",
+          "name": "Last Week in AI",
+          "adapter": "rss",
+          "candidateEndpoint": "https://lastweekin.ai/feed/",
+          "originalEndpointCell": "https://lastweekin.ai/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 21600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 10
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.ithome",
+          "name": "IT之家",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.ithome.com/rss/",
+          "originalEndpointCell": "https://www.ithome.com/rss/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 11
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.jiqizhixin",
+          "name": "机器之心",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.jiqizhixin.com/rss",
+          "originalEndpointCell": "https://www.jiqizhixin.com/rss（若失效改 wechat2rss）",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 12
+          },
+          "fallbackCandidates": [],
+          "needsSpecialValidation": [
+            "verify_current_feed",
+            "no_automatic_wechat_service_purchase"
+          ]
+        },
+        {
+          "stableKey": "t2.qbitai",
+          "name": "量子位",
+          "adapter": "rss",
+          "candidateEndpoint": "https://www.qbitai.com/feed",
+          "originalEndpointCell": "https://www.qbitai.com/feed",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 13
+          },
+          "fallbackCandidates": []
+        },
+        {
+          "stableKey": "t2.36kr",
+          "name": "36氪",
+          "adapter": "rss",
+          "candidateEndpoint": "https://36kr.com/feed",
+          "originalEndpointCell": "https://36kr.com/feed 或 {RSSHUB}/36kr/newsflashes",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 3600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 14
+          },
+          "fallbackCandidates": [
+            {
+              "endpoint": "https://36kr.com/feed-article",
+              "status": "unverified_candidate"
+            },
+            {
+              "endpoint": "https://36kr.com/feed-newsflash",
+              "status": "unverified_candidate"
+            }
+          ],
+          "needsSpecialValidation": [
+            "verify_official_rss_center",
+            "do_not_use_unresolved_RSSHUB_placeholder"
+          ]
+        },
+        {
+          "stableKey": "t2.import_ai",
+          "name": "Import AI（Jack Clark）",
+          "adapter": "rss",
+          "candidateEndpoint": "https://jack-clark.net/feed/",
+          "originalEndpointCell": "https://jack-clark.net/feed/",
+          "desiredEnabled": true,
+          "enabled": false,
+          "validationStatus": "not_run",
+          "accessStatus": "needs_review",
+          "pollIntervalSeconds": 21600,
+          "contentPolicy": "metadata_then_authorized_fulltext",
+          "inputRef": {
+            "file": "T2媒体.xlsx",
+            "sheet": "table",
+            "row": 15
+          },
+          "fallbackCandidates": [],
+          "needsSpecialValidation": [
+            "verify_publisher_identity_and_current_feed_location"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "community",
+      "name": "Community",
+      "platforms": [
+        {
+          "key": "hacker_news",
+          "adapter": "hn_rss_with_optional_verified_hn_api",
+          "validationStatus": "not_run",
+          "pollIntervalSeconds": 3600,
+          "feeds": [
+            {
+              "key": "frontpage",
+              "candidateEndpoint": "https://hnrss.org/frontpage",
+              "transportProvider": "hnrss_third_party"
+            },
+            {
+              "key": "best",
+              "candidateEndpoint": "https://hnrss.org/best",
+              "transportProvider": "hnrss_third_party"
+            },
+            {
+              "key": "newest_ai",
+              "candidateEndpoint": "https://hnrss.org/newest?q=AI",
+              "transportProvider": "hnrss_third_party"
+            },
+            {
+              "key": "newest_llm",
+              "candidateEndpoint": "https://hnrss.org/newest?q=LLM",
+              "transportProvider": "hnrss_third_party"
+            },
+            {
+              "key": "newest_gpt",
+              "candidateEndpoint": "https://hnrss.org/newest?q=GPT",
+              "transportProvider": "hnrss_third_party"
+            },
+            {
+              "key": "newest_claude",
+              "candidateEndpoint": "https://hnrss.org/newest?q=Claude",
+              "transportProvider": "hnrss_third_party"
+            }
+          ],
+          "comments": {
+            "scope": "optional_bounded_sampling_after_endpoint_validation",
+            "preserveTree": true
+          },
+          "disabledCandidates": [
+            {
+              "key": "hn_chinese",
+              "name": "buzzing.cc",
+              "candidateEndpoint": null,
+              "reason": "not_specified_and_overlap_with_aihot"
+            }
+          ],
+          "desiredEnabled": true,
+          "enabled": false
+        },
+        {
+          "key": "reddit",
+          "adapter": "reddit_oauth",
+          "sources": [
+            {
+              "stableKey": "community.reddit.localllama",
+              "name": "LocalLLaMA",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  6,
+                  10
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.machinelearning",
+              "name": "MachineLearning",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  7,
+                  11
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.artificial",
+              "name": "artificial",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  8,
+                  15
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.claudeai",
+              "name": "ClaudeAI",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  9,
+                  12
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.openai",
+              "name": "OpenAI",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  9
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.localllm",
+              "name": "LocalLLM",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  9
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.chatgptcoding",
+              "name": "ChatGPTCoding",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  13
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.ai_agents",
+              "name": "AI_Agents",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  14
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.artificialinteligence",
+              "name": "ArtificialInteligence",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  16
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.mcp",
+              "name": "mcp",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  17
+                ]
+              }
+            },
+            {
+              "stableKey": "community.reddit.learnmachinelearning",
+              "name": "learnmachinelearning",
+              "platform": "reddit",
+              "adapter": "reddit_oauth",
+              "desiredEnabled": true,
+              "enabled": false,
+              "validationStatus": "not_run",
+              "accessStatus": "needs_approval_and_credentials",
+              "sorts": [
+                "new",
+                "hot"
+              ],
+              "pollIntervalSeconds": 3600,
+              "commentsEnabledAfterAuthorization": true,
+              "inputRef": {
+                "file": "社区.xlsx",
+                "sheet": "table (1)",
+                "rows": [
+                  18
+                ]
+              }
+            }
+          ],
+          "credentialRef": null,
+          "accessStatus": "needs_approval_and_credentials",
+          "unauthenticatedJsonFallback": false,
+          "rssFallbackRequiresExplicitPermissionAndValidation": true,
+          "externalAiProcessing": "disabled_until_permitted",
+          "posts": {
+            "lookbackHours": 48,
+            "pollIntervalSeconds": 3600,
+            "maxNewThreadsPerHour": 20
+          },
+          "comments": {
+            "sorts": [
+              {
+                "name": "top",
+                "targetCount": 20
+              },
+              {
+                "name": "controversial",
+                "targetCount": 10
+              },
+              {
+                "name": "new",
+                "targetCount": 10
+              }
+            ],
+            "alternativeToTop": "confidence",
+            "normalUniqueCommentsCap": 40,
+            "normalAncestorContextExtraCap": 20,
+            "normalDepthTarget": 3,
+            "highPriorityTotalCapIncludingAncestors": 100,
+            "highPriorityDepthTarget": 5,
+            "sortTreeRequestsPerRunCap": 3,
+            "normalMorechildrenRequestsCap": 2,
+            "highPriorityMorechildrenRequestsCap": 5,
+            "morechildrenConcurrency": 1,
+            "followupHoursAfterInitial": [
+              6,
+              24,
+              48
+            ],
+            "coverageMustBeReported": true
+          },
+          "rateBudget": {
+            "requestsPerMinute": 20,
+            "observeServerRateLimitHeaders": true,
+            "isGrantedQuotaClaim": false
+          },
+          "retention": {
+            "rawPayloadMaxAgeHours": 48,
+            "bodyMaxAgeHours": 48,
+            "revalidateBeforeContinuedUse": true,
+            "purgeDeletedContentAndIdentifyingInfo": true,
+            "excludeRestrictedBodyFromLongTermBackups": true,
+            "independentCleanupWorker": true
+          },
+          "desiredEnabled": true,
+          "enabled": false
+        },
+        {
+          "key": "github",
+          "adapter": "github_search_api",
+          "validationStatus": "not_run",
+          "pollIntervalSeconds": 21600,
+          "topics": [
+            "llm",
+            "ai-agent",
+            "mcp",
+            "rag",
+            "generative-ai"
+          ],
+          "initialLookbackDays": 7,
+          "splitSearchWindowsOnTruncation": true,
+          "growthRequiresMultipleObservationTimes": true,
+          "desiredEnabled": true,
+          "enabled": false
+        },
+        {
+          "key": "arxiv",
+          "adapter": "rss",
+          "validationStatus": "not_run",
+          "pollIntervalSeconds": 21600,
+          "categories": [
+            {
+              "key": "cs.AI",
+              "candidateEndpoint": "https://rss.arxiv.org/rss/cs.AI"
+            },
+            {
+              "key": "cs.CL",
+              "candidateEndpoint": "https://rss.arxiv.org/rss/cs.CL"
+            },
+            {
+              "key": "cs.LG",
+              "candidateEndpoint": "https://rss.arxiv.org/rss/cs.LG"
+            }
+          ],
+          "metadataFirst": true,
+          "automaticBulkPdfDownload": false,
+          "identity": "arxiv_id_and_version",
+          "desiredEnabled": true,
+          "enabled": false
+        },
+        {
+          "key": "stackoverflow",
+          "adapter": "rss",
+          "validationStatus": "not_run",
+          "pollIntervalSeconds": 7200,
+          "tags": [
+            "openai",
+            "langchain",
+            "ollama",
+            "llm",
+            "chatgpt"
+          ],
+          "sorts": [
+            "newest",
+            "votes"
+          ],
+          "candidateEndpointTemplate": "https://stackoverflow.com/feeds/tag?tagnames={tag}&sort={sort}",
+          "identity": "question_id",
+          "desiredEnabled": true,
+          "enabled": false
+        },
+        {
+          "key": "devto",
+          "adapter": "rss",
+          "validationStatus": "not_run",
+          "pollIntervalSeconds": 7200,
+          "tags": [
+            "ai",
+            "chatgpt",
+            "llm"
+          ],
+          "candidateEndpointTemplate": "https://dev.to/feed/tag/{tag}",
+          "optionalTagsRequiringVerification": [
+            "agents"
+          ],
+          "fullSiteFeed": {
+            "candidateEndpoint": "https://dev.to/feed",
+            "enabled": false
+          },
+          "desiredEnabled": true,
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "key": "follow_builders",
+      "name": "Follow Builders",
+      "adapter": "github_pinned_feed_bundle",
+      "repository": "zarazhangrui/follow-builders",
+      "trackingRef": "main",
+      "resolveCommitBeforeFetch": true,
+      "desiredEnabled": true,
+      "enabled": false,
+      "validationStatus": "generator_and_workflow_reviewed_live_ingestion_pending",
+      "schedule": {
+        "timezone": "Asia/Shanghai",
+        "mainCheckTime": "15:00",
+        "followupIntervalSeconds": 3600,
+        "maxFollowupChecks": 6,
+        "checkMissingVersionsOnWorkerStartup": true
+      },
+      "upstreamScheduleObserved": {
+        "cron": "17 6 * * *",
+        "timezone": "UTC",
+        "observationDate": "2026-09-20",
+        "isPublishTimeGuarantee": false
+      },
+      "bundlePolicy": {
+        "allFourArtifactsRequired": true,
+        "sameCommitForAllArtifacts": true,
+        "equalGeneratedAtNotRequired": true,
+        "reuseValidatedUnchangedBlob": true,
+        "checkpointOnlyAfterLocalCommit": true,
+        "streamErrorsPreserved": true,
+        "emptyArrayWithErrorsIsNotNoNew": true
+      },
+      "artifacts": [
+        {
+          "path": "feed-x.json",
+          "role": "content",
+          "arrayField": "x",
+          "nestedArrayField": "tweets",
+          "identity": "tweet_id",
+          "recordKind": "post"
+        },
+        {
+          "path": "feed-blogs.json",
+          "role": "content",
+          "arrayField": "blogs",
+          "identity": "canonical_original_url",
+          "recordKind": "article"
+        },
+        {
+          "path": "feed-podcasts.json",
+          "role": "content",
+          "arrayField": "podcasts",
+          "identity": "publisher_key_and_guid",
+          "recordKind": "podcast_transcript",
+          "storeEntireProvidedTranscript": true,
+          "channelUrlIsNotEpisodeIdentity": true
+        },
+        {
+          "path": "state-feed.json",
+          "role": "upstream_state",
+          "stateFields": [
+            "seenTweets",
+            "seenVideos",
+            "seenArticles"
+          ],
+          "createContentCards": false,
+          "useAsLocalImportedSet": false,
+          "hasGuaranteedGeneratedAt": false
+        }
+      ],
+      "referenceCatalogPath": "config/default-sources.json",
+      "catalogPolicy": "reference_only_no_new_direct_paid_connectors",
+      "historicalReplay": {
+        "enabled": true,
+        "initialBackfillDays": 7,
+        "maxDaysPerJob": 30,
+        "scope": "union_of_commits_changing_the_four_paths",
+        "persistContinuation": true,
+        "recordMissingHistoryAsGap": true,
+        "noCompletenessClaimBeyondUpstreamPublishedData": true
+      }
+    }
+  ],
+  "legacyPolicy": {
+    "preserveExistingSourceIds": true,
+    "preserveUserDisabledSources": true,
+    "retainExistingT1SourcesWithoutAutoEnabling": true,
+    "mapDuplicatesToSharedAcquisition": true,
+    "auditInsightSkillBeforeChanging": true
+  },
+  "inputFiles": [
+    {
+      "file": "T2媒体.xlsx",
+      "sha256": "470bdf62390e2c16f612af8d7e32eecc01edc7bb6936526cb820ce2467eca59e",
+      "rowsExcludingHeader": 14
+    },
+    {
+      "file": "社区.xlsx",
+      "sha256": "97069c6ca262e3f6480a8336452221db8e055e75f60c7a0d66fde049e27f2095",
+      "rowsExcludingHeader": 26
+    }
+  ],
+  "communityInputRowMap": [
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 2
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.hacker_news.frontpage"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 3
+      },
+      "disposition": "query_expansion",
+      "logicalTargets": [
+        "community.hacker_news.newest_ai",
+        "community.hacker_news.newest_llm",
+        "community.hacker_news.newest_gpt",
+        "community.hacker_news.newest_claude"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 4
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.hacker_news.best"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 5
+      },
+      "disposition": "disabled_candidate",
+      "logicalTargets": [
+        "community.hacker_news.hn_chinese"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 6
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.localllama"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 7
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.machinelearning"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 8
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.artificial"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 9
+      },
+      "disposition": "split_combined_row",
+      "logicalTargets": [
+        "community.reddit.claudeai",
+        "community.reddit.openai",
+        "community.reddit.localllm"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 10
+      },
+      "disposition": "duplicate",
+      "logicalTargets": [
+        "community.reddit.localllama"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 11
+      },
+      "disposition": "duplicate",
+      "logicalTargets": [
+        "community.reddit.machinelearning"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 12
+      },
+      "disposition": "duplicate",
+      "logicalTargets": [
+        "community.reddit.claudeai"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 13
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.chatgptcoding"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 14
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.ai_agents"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 15
+      },
+      "disposition": "duplicate",
+      "logicalTargets": [
+        "community.reddit.artificial"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 16
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.artificialinteligence"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 17
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.mcp"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 18
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.reddit.learnmachinelearning"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 19
+      },
+      "disposition": "acquisition_method_not_extra_source",
+      "logicalTargets": [
+        "community.reddit"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 20
+      },
+      "disposition": "query_family",
+      "logicalTargets": [
+        "community.github"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 21
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.arxiv.cs.AI"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 22
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.arxiv.cs.CL"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 23
+      },
+      "disposition": "source",
+      "logicalTargets": [
+        "community.arxiv.cs.LG"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 24
+      },
+      "disposition": "tag_query_family",
+      "logicalTargets": [
+        "community.stackoverflow.newest"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 25
+      },
+      "disposition": "sort_variant",
+      "logicalTargets": [
+        "community.stackoverflow.votes"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 26
+      },
+      "disposition": "disabled_candidate",
+      "logicalTargets": [
+        "community.devto.full_site"
+      ]
+    },
+    {
+      "inputRef": {
+        "file": "社区.xlsx",
+        "sheet": "table (1)",
+        "row": 27
+      },
+      "disposition": "split_tag_queries",
+      "logicalTargets": [
+        "community.devto.ai",
+        "community.devto.chatgpt",
+        "community.devto.llm"
+      ]
+    }
+  ]
+}

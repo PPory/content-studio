@@ -1,3 +1,4 @@
+import { localAiHot } from '../acquisition/compatibility.mjs';
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { fetchAiHot, fetchModels } from "../lib/aihot.mjs";
 import { fetchBoards, sixtyConfigured } from "../lib/sixty.mjs";
@@ -39,8 +40,8 @@ async function buildBoards(env) {
   };
 }
 
-async function buildAi() {
-  const response = await fetchAiHot();
+async function buildAi(workspace) {
+  const response = localAiHot(workspace);
   return {
     date: today(),
     fetchedAt: new Date().toISOString(),
@@ -194,7 +195,7 @@ export const hotRoutes = [
         await serve(res, {
           key: "ai",
           workspace,
-          build: buildAi,
+          build: () => buildAi(workspace),
           fallbackMsg: (payload) => `AI HOT 这次没抓到${payload.error ? `（${payload.error}）` : ""}，过一会儿可再刷新。`,
           decorate: (payload) => {
             const matched = applyAttention(payload.items, attention);

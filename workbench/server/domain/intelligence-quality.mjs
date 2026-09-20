@@ -20,7 +20,11 @@ export function sourceIdentity(source) {
 }
 export function sourceFromRow(row) {
  const data = JSON.parse(row.data_json);
+ const expired = row.deleted_at || (row.expires_at && Date.parse(row.expires_at) <= Date.now());
+ if(expired){data.body="";data.author="";data.url="";data.title="内容已移除";data.metadata={};}
+ if(row.acquisition_identity){data.acquisition=true;data.contentStatus=expired?"unavailable":row.content_status;data.rights=expired?{}:JSON.parse(row.rights_json||"{}");data.expiresAt=row.expires_at;data.deletedAt=row.deleted_at;data.versionId=row.current_version_id;}
  const fields = {originKind:row.origin_kind,originRef:row.origin_ref,channelId:row.channel_id,sourceKind:row.source_kind,canonicalUrl:row.canonical_url,publisherKey:row.publisher_key,contentHash:row.content_hash,revisionOfId:row.revision_of_id,parentItemId:row.parent_item_id,rootItemId:row.root_item_id,provenanceGroupKey:row.provenance_group_key};
+ if(expired){fields.canonicalUrl='';fields.publisherKey='';}
  for (const k of Object.keys(fields)) if (!fields[k] || fields[k] === 'unknown') delete fields[k];
  return {id:row.id,...data,...sourceIdentity({...data,...fields,id:row.id}),createdAt:row.created_at};
 }
@@ -37,7 +41,7 @@ export function persistSourceIdentity(w,id,source) {
 export function backfillIntelligenceIdentity(w) {
  w.repository.transaction(()=>{for(const row of w.db.prepare('SELECT * FROM intel_sources WHERE content_hash IS NULL ORDER BY created_at').all())persistSourceIdentity(w,row.id,{...JSON.parse(row.data_json),id:row.id});w.db.exec("UPDATE intel_sources SET parent_item_id=(SELECT p.id FROM intel_sources p WHERE p.canonical_url=intel_sources.canonical_url AND p.source_kind IN ('post','article') ORDER BY p.created_at LIMIT 1),root_item_id=(SELECT p.id FROM intel_sources p WHERE p.canonical_url=intel_sources.canonical_url AND p.source_kind IN ('post','article') ORDER BY p.created_at LIMIT 1) WHERE source_kind='comment' AND parent_item_id IS NULL");});
 }
-export function externalEvidence(source) { const m=sourceIdentity(source); return m.originKind==='external' && m.sourceKind!=='comment' && Boolean(m.canonicalUrl) && source.readLevel==='original'; }
+export function externalEvidence(source) { const m=sourceIdentity(source); return m.originKind==='external' && !['comment','external_digest'].includes(m.sourceKind) && !source.deletedAt && (!source.expiresAt || Date.parse(source.expiresAt)>Date.now()) && Boolean(m.canonicalUrl) && source.readLevel==='original'; }
 export function independentEvidenceCount(sources) {const groups=new Set(),hashes=new Set();let count=0;for(const s of sources.filter(externalEvidence)){const m=sourceIdentity(s);if(!groups.has(m.provenanceGroupKey)&&!hashes.has(m.contentHash))count++;groups.add(m.provenanceGroupKey);hashes.add(m.contentHash);}return count;}
 export function persistIntelligenceCluster(w,group,sources) {
  const key=contentHash(group.key.toLowerCase().replace(/[\s\p{P}]/gu,''));

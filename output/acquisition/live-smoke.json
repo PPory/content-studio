@@ -1,0 +1,764 @@
+{
+  "checkedAt": "2026-09-20T04:30:16.686Z",
+  "type": "live_public_http_and_isolated_sqlite",
+  "productionDatabaseModified": false,
+  "rows": [
+    {
+      "key": "aihot.selected",
+      "checkedAt": "2026-09-20T04:27:30.727Z",
+      "pages": 1,
+      "items": 500,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "hasMore": true,
+        "phase": "snapshot",
+        "recovery": null
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "aihot.hot_topics",
+      "checkedAt": "2026-09-20T04:27:31.673Z",
+      "pages": 1,
+      "items": 0,
+      "requests": 2,
+      "outcome": "success",
+      "coverage": {
+        "events": 10,
+        "stories": 1
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "aihot.dailies",
+      "checkedAt": "2026-09-20T04:27:32.367Z",
+      "pages": 1,
+      "items": 1,
+      "requests": 2,
+      "outcome": "success",
+      "coverage": {
+        "date": "2026-09-13",
+        "hasMore": true,
+        "calendarTimezone": "Asia/Shanghai"
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "follow_builders.bundle",
+      "checkedAt": "2026-09-20T04:27:33.144Z",
+      "pages": 1,
+      "items": 29,
+      "requests": 5,
+      "outcome": "success",
+      "coverage": {
+        "commitSha": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+        "hasMore": false,
+        "streams": {
+          "feed-x.json": {
+            "generatedAt": "2026-09-19T06:37:30.918Z",
+            "count": 28,
+            "errors": [],
+            "status": "success"
+          },
+          "feed-blogs.json": {
+            "generatedAt": "2026-09-19T06:38:06.005Z",
+            "count": 0,
+            "errors": [],
+            "status": "no_new"
+          },
+          "feed-podcasts.json": {
+            "generatedAt": "2026-09-19T06:38:05.641Z",
+            "count": 1,
+            "errors": [],
+            "status": "success"
+          },
+          "state-feed.json": {
+            "status": "success",
+            "seenTweets": 187,
+            "seenVideos": 6,
+            "seenArticles": 8
+          }
+        },
+        "boundary": "Only upstream published and retrievable file versions; upstream omissions cannot be recovered."
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.techcrunch_ai",
+      "checkedAt": "2026-09-20T04:27:40.320Z",
+      "pages": 1,
+      "items": 20,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 20,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.the_verge_ai",
+      "checkedAt": "2026-09-20T04:27:42.224Z",
+      "pages": 0,
+      "items": 0,
+      "requests": 1,
+      "status": "failed",
+      "error": "来源返回 HTTP 404",
+      "httpStatus": 404
+    },
+    {
+      "key": "t2.ars_technica",
+      "checkedAt": "2026-09-20T04:27:48.041Z",
+      "pages": 1,
+      "items": 20,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 20,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.marktechpost",
+      "checkedAt": "2026-09-20T04:27:52.096Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.mit_technology_review_ai",
+      "checkedAt": "2026-09-20T04:28:02.223Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.venturebeat_ai",
+      "checkedAt": "2026-09-20T04:28:04.583Z",
+      "pages": 0,
+      "items": 0,
+      "requests": 1,
+      "status": "failed",
+      "error": "来源返回 HTTP 429",
+      "httpStatus": 429
+    },
+    {
+      "key": "t2.wired_ai",
+      "checkedAt": "2026-09-20T04:28:05.650Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.last_week_in_ai",
+      "checkedAt": "2026-09-20T04:28:06.350Z",
+      "pages": 1,
+      "items": 20,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 20,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.jiqizhixin",
+      "checkedAt": "2026-09-20T04:28:14.461Z",
+      "pages": 0,
+      "items": 0,
+      "requests": 1,
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "httpStatus": 400
+    },
+    {
+      "key": "t2.qbitai",
+      "checkedAt": "2026-09-20T04:28:14.803Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.36kr",
+      "checkedAt": "2026-09-20T04:28:14.927Z",
+      "pages": 0,
+      "items": 0,
+      "requests": 1,
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "httpStatus": 400
+    },
+    {
+      "key": "community.github.llm",
+      "checkedAt": "2026-09-20T04:28:18.155Z",
+      "pages": 1,
+      "items": 0,
+      "requests": 1,
+      "outcome": "partial",
+      "coverage": {
+        "requests": 1,
+        "splitWindow": true,
+        "hasMore": true,
+        "reportedTotal": 2809
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "community.arxiv.cs.AI",
+      "checkedAt": "2026-09-20T04:28:26.534Z",
+      "pages": 1,
+      "items": 0,
+      "requests": 1,
+      "outcome": "no_new",
+      "coverage": {
+        "requests": 1,
+        "discovered": 0,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "community.reddit.localllama",
+      "checkedAt": "2026-09-20T04:28:36.672Z",
+      "pages": 0,
+      "items": 0,
+      "requests": 0,
+      "status": "blocked",
+      "error": "Reddit requires an approved application and explicit access approval",
+      "httpStatus": 403
+    },
+    {
+      "key": "t2.import_ai",
+      "checkedAt": "2026-09-20T04:30:16.918Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.the_decoder",
+      "checkedAt": "2026-09-20T04:30:28.214Z",
+      "pages": 1,
+      "items": 10,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "t2.ithome",
+      "checkedAt": "2026-09-20T04:30:30.782Z",
+      "pages": 1,
+      "items": 60,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 60,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "community.hacker_news.frontpage",
+      "checkedAt": "2026-09-20T04:30:31.195Z",
+      "pages": 1,
+      "items": 40,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 40,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "community.stackoverflow.langchain.newest",
+      "checkedAt": "2026-09-20T04:30:33.698Z",
+      "pages": 1,
+      "items": 30,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 30,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    },
+    {
+      "key": "community.devto.ai",
+      "checkedAt": "2026-09-20T04:30:40.391Z",
+      "pages": 1,
+      "items": 12,
+      "requests": 1,
+      "outcome": "success",
+      "coverage": {
+        "requests": 1,
+        "discovered": 12,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      },
+      "checkpointSaved": true,
+      "status": "parsed_and_committed"
+    }
+  ],
+  "sourceCount": 162,
+  "integrity": {
+    "ok": true,
+    "integrity": [
+      "ok"
+    ],
+    "foreignKeys": []
+  },
+  "limitations": [
+    "Public endpoint smoke only; rights and external-AI permission are not inferred",
+    "No live Reddit request; approval and credentials are absent",
+    "Historical Git replay and seven-day operation require separate acceptance",
+    "No production migration or activation"
+  ],
+  "previousRuns": [
+    {
+      "checkedAt": "2026-09-20T04:27:30.504Z",
+      "rows": [
+        {
+          "key": "aihot.selected",
+          "checkedAt": "2026-09-20T04:27:30.727Z",
+          "pages": 1,
+          "items": 500,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "hasMore": true,
+            "phase": "snapshot",
+            "recovery": null
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "aihot.hot_topics",
+          "checkedAt": "2026-09-20T04:27:31.673Z",
+          "pages": 1,
+          "items": 0,
+          "requests": 2,
+          "outcome": "success",
+          "coverage": {
+            "events": 10,
+            "stories": 1
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "aihot.dailies",
+          "checkedAt": "2026-09-20T04:27:32.367Z",
+          "pages": 1,
+          "items": 1,
+          "requests": 2,
+          "outcome": "success",
+          "coverage": {
+            "date": "2026-09-13",
+            "hasMore": true,
+            "calendarTimezone": "Asia/Shanghai"
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "follow_builders.bundle",
+          "checkedAt": "2026-09-20T04:27:33.144Z",
+          "pages": 1,
+          "items": 29,
+          "requests": 5,
+          "outcome": "success",
+          "coverage": {
+            "commitSha": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+            "hasMore": false,
+            "streams": {
+              "feed-x.json": {
+                "generatedAt": "2026-09-19T06:37:30.918Z",
+                "count": 28,
+                "errors": [],
+                "status": "success"
+              },
+              "feed-blogs.json": {
+                "generatedAt": "2026-09-19T06:38:06.005Z",
+                "count": 0,
+                "errors": [],
+                "status": "no_new"
+              },
+              "feed-podcasts.json": {
+                "generatedAt": "2026-09-19T06:38:05.641Z",
+                "count": 1,
+                "errors": [],
+                "status": "success"
+              },
+              "state-feed.json": {
+                "status": "success",
+                "seenTweets": 187,
+                "seenVideos": 6,
+                "seenArticles": 8
+              }
+            },
+            "boundary": "Only upstream published and retrievable file versions; upstream omissions cannot be recovered."
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.import_ai",
+          "checkedAt": "2026-09-20T04:27:37.244Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "来源网络请求失败",
+          "httpStatus": null
+        },
+        {
+          "key": "t2.techcrunch_ai",
+          "checkedAt": "2026-09-20T04:27:40.320Z",
+          "pages": 1,
+          "items": 20,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 20,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.the_verge_ai",
+          "checkedAt": "2026-09-20T04:27:42.224Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "来源返回 HTTP 404",
+          "httpStatus": 404
+        },
+        {
+          "key": "t2.the_decoder",
+          "checkedAt": "2026-09-20T04:27:45.982Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "resolveImage is not a function",
+          "httpStatus": null
+        },
+        {
+          "key": "t2.ars_technica",
+          "checkedAt": "2026-09-20T04:27:48.041Z",
+          "pages": 1,
+          "items": 20,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 20,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.marktechpost",
+          "checkedAt": "2026-09-20T04:27:52.096Z",
+          "pages": 1,
+          "items": 10,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 10,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.mit_technology_review_ai",
+          "checkedAt": "2026-09-20T04:28:02.223Z",
+          "pages": 1,
+          "items": 10,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 10,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.venturebeat_ai",
+          "checkedAt": "2026-09-20T04:28:04.583Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "来源返回 HTTP 429",
+          "httpStatus": 429
+        },
+        {
+          "key": "t2.wired_ai",
+          "checkedAt": "2026-09-20T04:28:05.650Z",
+          "pages": 1,
+          "items": 10,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 10,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.last_week_in_ai",
+          "checkedAt": "2026-09-20T04:28:06.350Z",
+          "pages": 1,
+          "items": 20,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 20,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.ithome",
+          "checkedAt": "2026-09-20T04:28:14.163Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "resolveImage is not a function",
+          "httpStatus": null
+        },
+        {
+          "key": "t2.jiqizhixin",
+          "checkedAt": "2026-09-20T04:28:14.461Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "订阅含不支持的 XML 实体声明",
+          "httpStatus": 400
+        },
+        {
+          "key": "t2.qbitai",
+          "checkedAt": "2026-09-20T04:28:14.803Z",
+          "pages": 1,
+          "items": 10,
+          "requests": 1,
+          "outcome": "success",
+          "coverage": {
+            "requests": 1,
+            "discovered": 10,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "t2.36kr",
+          "checkedAt": "2026-09-20T04:28:14.927Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "订阅含不支持的 XML 实体声明",
+          "httpStatus": 400
+        },
+        {
+          "key": "community.hacker_news.frontpage",
+          "checkedAt": "2026-09-20T04:28:15.139Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "来源网络请求失败",
+          "httpStatus": null
+        },
+        {
+          "key": "community.github.llm",
+          "checkedAt": "2026-09-20T04:28:18.155Z",
+          "pages": 1,
+          "items": 0,
+          "requests": 1,
+          "outcome": "partial",
+          "coverage": {
+            "requests": 1,
+            "splitWindow": true,
+            "hasMore": true,
+            "reportedTotal": 2809
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "community.arxiv.cs.AI",
+          "checkedAt": "2026-09-20T04:28:26.534Z",
+          "pages": 1,
+          "items": 0,
+          "requests": 1,
+          "outcome": "no_new",
+          "coverage": {
+            "requests": 1,
+            "discovered": 0,
+            "fulltext": 0,
+            "completeness": "current_feed_only",
+            "historicalReplaySupported": false
+          },
+          "checkpointSaved": true,
+          "status": "parsed_and_committed"
+        },
+        {
+          "key": "community.stackoverflow.langchain.newest",
+          "checkedAt": "2026-09-20T04:28:27.918Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "resolveImage is not a function",
+          "httpStatus": null
+        },
+        {
+          "key": "community.devto.ai",
+          "checkedAt": "2026-09-20T04:28:31.615Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 1,
+          "status": "failed",
+          "error": "resolveImage is not a function",
+          "httpStatus": null
+        },
+        {
+          "key": "community.reddit.localllama",
+          "checkedAt": "2026-09-20T04:28:36.672Z",
+          "pages": 0,
+          "items": 0,
+          "requests": 0,
+          "status": "blocked",
+          "error": "Reddit requires an approved application and explicit access approval",
+          "httpStatus": 403
+        }
+      ]
+    }
+  ]
+}

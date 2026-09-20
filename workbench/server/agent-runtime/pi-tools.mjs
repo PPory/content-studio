@@ -1,3 +1,4 @@
+import { localAiHot } from '../acquisition/compatibility.mjs';
 import { getProjectNotebook } from "../domain/project-notebook.mjs";
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
@@ -311,8 +312,7 @@ export function createPiTools({ env, mode, context, actionsFile = "", reportFile
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
   }), async ({ query = "", limit = 15 }) => {
     allowed("hotspot_search");
-    const ai = await (dependencies.fetchAiHot || fetchAiHot)({ limit: Math.max(limit, 20) })
-      .catch((error) => ({ ok: false, error: error.message, items: [] }));
+    const ai = dependencies.fetchAiHot ? await dependencies.fetchAiHot({limit:Math.max(limit,20)}) : localAiHot(context.workspace,{forAi:true});
     const needle = clean(query, 200).toLowerCase();
     const items = (ai.items || []).map((item) => ({ source: "AI 情报", title: item.title, summary: item.summary, url: item.link, at: item.at }))
       .filter((item) => !needle || JSON.stringify(item).toLowerCase().includes(needle)).slice(0, limit);

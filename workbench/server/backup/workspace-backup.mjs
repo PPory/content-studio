@@ -1,3 +1,5 @@
+import { cleanupAcquisition } from '../acquisition/store.mjs';
+import { baseline as acquisitionBaseline, acquisitionCatalog } from '../acquisition/catalog.mjs';
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -95,7 +97,9 @@ function workspaceHasUserData(summary, db) {
   // Custom channels, edits and acquisition history must remain protected from replacement.
   if (summary.tables.intel_channels?.count) {
     const rows = db.prepare("SELECT * FROM intel_channels").all();
-    const baseline = rows.length === INTELLIGENCE_CHANNEL_CATALOG.length && rows.every(row => {
+    const v3 = db.pragma("user_version", {simple:true}) >= 29;
+    const baselineV3 = v3 && rows.length >= acquisitionCatalog().length && rows.every(row => row.builtin === 1 && row.updated_at === row.created_at && row.baseline_json === JSON.stringify(acquisitionBaseline(row)) && !row.last_attempt_at && !row.last_error && !row.last_ingest_at);
+    const baseline = baselineV3 || (rows.length === INTELLIGENCE_CHANNEL_CATALOG.length && rows.every(row => {
       const item = INTELLIGENCE_CHANNEL_CATALOG.find(value => value.id === row.id);
       return item && row.builtin === 1 && row.name === item.name && row.url === item.url
         && row.site_url === item.siteUrl && row.publisher_key === item.publisherKey
@@ -103,7 +107,7 @@ function workspaceHasUserData(summary, db) {
         && row.health === (item.format === "manual" ? "manual" : "never")
         && !row.last_attempt_at && !row.last_success_at && !row.last_error && !row.consecutive_failures
         && !row.last_item_count && !row.etag && !row.last_modified && row.updated_at === row.created_at;
-    });
+    }));
     if (baseline) ignored.add("intel_channels");
   }
   return Object.entries(summary.tables).some(([name, table]) => !ignored.has(name) && table.count > 0);
@@ -380,6 +384,8 @@ export async function createWorkspaceBundle(workspace, {
   try {
     const databaseFile = path.join(temp, "workspace.sqlite");
     await workspace.db.backup(databaseFile);
+    const sanitized = new Database(databaseFile);
+    try { sanitized.pragma('secure_delete = ON'); cleanupAcquisition({db:sanitized}, {backup:true}); sanitized.exec('VACUUM'); } finally { sanitized.close(); }
     const databaseBytes = await fs.readFile(databaseFile);
     const snapshotDb = new Database(databaseFile, { readonly: true, fileMustExist: true });
     const createdAt = iso(now);

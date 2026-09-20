@@ -221,6 +221,13 @@ export const SETTINGS = [
     label: "Brave Search 密钥",
     secret: true,
   },
+  {key:'ACQUISITION_AUTOSTART',group:'optional',label:'随工作台运行采集（true/false）',hint:'独立 worker 不依赖这个开关'},
+  {key:'GITHUB_TOKEN',group:'optional',label:'GitHub 只读令牌',secret:true},
+  {key:'REDDIT_ACCESS_TOKEN',group:'optional',label:'Reddit OAuth 访问令牌',secret:true},
+  {key:'REDDIT_USER_AGENT',group:'optional',label:'Reddit 获准应用 User-Agent'},
+  {key:'REDDIT_ACCESS_APPROVED',group:'optional',label:'Reddit 数据访问已获准（true/false）'},
+  {key:'REDDIT_AI_APPROVED',group:'optional',label:'Reddit 外部模型处理已获准（true/false）'},
+
 ];
 
 export const FIELDS = Object.fromEntries(SETTINGS.map((field) => [field.key, field]));

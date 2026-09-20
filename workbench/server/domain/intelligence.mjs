@@ -1,3 +1,4 @@
+import { assertSourcePermission, sourcePermission, visibleDerived } from '../acquisition/compatibility.mjs';
 import { persistSourceIdentity, sourceFromRow } from './intelligence-quality.mjs';
 import { intelligenceSourceMeta } from "./intelligence-source-meta.mjs";
 import { createUlid } from "../storage/ids.mjs";
@@ -7,7 +8,7 @@ const now = () => new Date().toISOString();
 const json = JSON.stringify;
 const parse = JSON.parse;
 const bad = (message, status = 400) => Object.assign(new Error(message), { status });
-const providers = ["local", "web", "aihot", "x", "reddit", "xiaohongshu", "douyin", "channels"];
+const providers = ["local", "web", "aihot", "x", "reddit", "xiaohongshu", "douyin", "channels", "collected"];
 function str(v, max, required = false) {
   if (typeof v !== "string" || v.length > max || (required && !v.trim())) throw bad(`文字不能为空且不能超过 ${max} 字符`);
   return v.trim();
@@ -145,7 +146,7 @@ export function adoptIntelligenceCard(w,id) {
   const row=w.db.prepare("SELECT * FROM intel_cards WHERE id=?").get(id);if(!row)throw bad("选题不存在",404);if(row.research_id)return getResearch(w,row.research_id);
   const c=parse(row.data_json);const notes=["待讨论的选题候选（尚未核实为个人判断）",c.why,`目标读者：${c.audience}`,`可能角度：${c.angle}`,"交付物：",c.deliverable||"待确定","研究待办：",...(c.researchTasks||[]),"证据边界：",...(c.nonClaims||[]),"依据：",...c.evidence.map(e=>`> ${e.quote}`)].join("\n\n");
   const r=createResearch(w,{question:c.question,notes,openQuestions:[c.gaps,...(c.researchTasks||[])].filter(Boolean).join("\n")});
-  for(const ref of c.evidence){const s=w.db.prepare("SELECT * FROM intel_sources WHERE id=?").get(ref.sourceId);const d=parse(s.data_json);let cid=s.capture_id;
+  for(const ref of c.evidence){const s=w.db.prepare("SELECT * FROM intel_sources WHERE id=?").get(ref.sourceId);assertSourcePermission(sourceFromRow(s));const d=parse(s.data_json);let cid=s.capture_id;
     if(!cid){cid=w.domain.createCapture({kind:d.url?"web":"excerpt",title:d.title,bodyMarkdown:d.body,sourceUrl:d.url,actor:"user",confirmed:true});w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(cid,s.id);}
     researchReference(w,r.id,{kind:"capture",id:cid});
   }
@@ -166,9 +167,9 @@ export function intelligenceOverview(w,env={}) {
   for(const item of parse(row.state_json).accepted||[])if(!approved.has(item.sourceId))approved.set(item.sourceId,{runId:row.id,profileId:row.profile_id,profileName:profiles.find(p=>p.id===row.profile_id)?.name||"调研",reason:item.reason,runCreatedAt:row.created_at});
  }
  return {profiles,runs:w.db.prepare("SELECT id FROM intel_runs ORDER BY created_at DESC LIMIT 50").all().map(r=>intelligenceRun(w,r.id)),
- cards:w.db.prepare("SELECT * FROM intel_cards ORDER BY updated_at DESC LIMIT 200").all().map(r=>({id:r.id,profileId:r.profile_id,runId:r.run_id,...parse(r.data_json),status:r.status,researchId:r.research_id,updatedAt:r.updated_at})).filter(c=>c.researchId||screenedRuns.has(c.runId)),
- sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {id:r.id,...d,...approved.get(r.id),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
- collectedSources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {...d,body:d.body?.slice(0,600)||'',bodyTruncated:(d.body?.length||0)>600,selected:approved.has(r.id)};}),
+ cards:w.db.prepare("SELECT * FROM intel_cards ORDER BY updated_at DESC LIMIT 200").all().map(r=>({id:r.id,profileId:r.profile_id,runId:r.run_id,...visibleDerived(w,parse(r.data_json)),status:r.status,researchId:r.research_id,updatedAt:r.updated_at})).filter(c=>c.researchId||screenedRuns.has(c.runId)),
+ sources:w.db.prepare("SELECT * FROM intel_sources ORDER BY created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {id:r.id,...d,...approved.get(r.id),...(d.deletedAt||d.expiresAt&&Date.parse(d.expiresAt)<=Date.now()?{reason:''}:{}),body:d.body?.slice(0,600)||"",bodyTruncated:(d.body?.length||0)>600,createdAt:r.created_at};}).filter(s=>s.provider==="manual"||approved.has(s.id)),
+ collectedSources:w.db.prepare("SELECT s.*,c.source_group FROM intel_sources s LEFT JOIN intel_channels c ON c.id=s.channel_id ORDER BY s.created_at DESC LIMIT 500").all().map(r=>{const d=sourceFromRow(r);return {...d,sourceGroup:r.source_group||"legacy",body:d.body?.slice(0,600)||'',bodyTruncated:(d.body?.length||0)>600,selected:approved.has(r.id)};}),
  capabilities:{local:true,aihot:true,web:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),x:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),reddit:Boolean(env.BRIGHTDATA_API_KEY||env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),xiaohongshu:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY),douyin:Boolean(env.TAVILY_API_KEY||env.BRAVE_SEARCH_API_KEY)}};
 }
 
@@ -179,6 +180,7 @@ export function linkIntelligenceSource(w,id,input={}) {
   if(!target&&!question)throw bad("请选择选题或填写一个问题");
   return w.repository.transaction(()=>{
     const source=intelligenceSource(w,id);
+    assertSourcePermission(source);
     const row=w.db.prepare("SELECT capture_id FROM intel_sources WHERE id=?").get(id);
     let captureId=row.capture_id;
     if(captureId && w.repository.getEntity(captureId)?.type!=="capture")throw bad("来源资料已移除，请先恢复资料",404);

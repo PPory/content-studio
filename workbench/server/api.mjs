@@ -1,3 +1,4 @@
+import { acquisitionRoutes } from './routes/acquisition.mjs';
 import { intelligenceTopicRoutes } from './routes/intelligence-topics.mjs';
 import { intelligenceChannelRoutes } from './routes/intelligence-channels.mjs';
 import { intelligenceFeedRoutes } from "./routes/intelligence-feed.mjs";
@@ -75,6 +76,7 @@ export function requestAllowed(req) {
 }
 
 const ROUTES = [
+  ...acquisitionRoutes,
   ...settingsRoutes,
   ...promptsRoutes,
   ...workspaceRoutes,

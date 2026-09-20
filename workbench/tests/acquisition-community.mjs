@@ -1,0 +1,71 @@
+// Mocked protocol and normalization tests. These do not prove live Reddit access.
+import assert from 'node:assert/strict';
+import { collectCommunity, normalizeCommunityFeed } from '../server/acquisition/connectors/community.mjs';
+import { collectReddit } from '../server/acquisition/connectors/reddit.mjs';
+const all = async iterable => { const results = []; for await (const result of iterable) results.push(result); return results; };
+const now = new Date('2026-09-20T00:00:00Z');
+const rss = '<rss><channel><item><title>AI report</title><link>https://example.com/a?utm_source=rss</link><guid>https://news.ycombinator.com/item?id=123</guid><comments>https://news.ycombinator.com/item?id=123</comments><description><![CDATA[<p>Summary only</p>]]></description></item></channel></rss>';
+const normalized = normalizeCommunityFeed(rss, { platform: 'hacker_news', endpoint: 'https://hnrss.org/frontpage' });
+assert.equal(normalized[0].identity, 'hn:123'); assert.equal(normalized[0].summary, 'Summary only'); assert.equal(normalized[0].body, ''); assert.equal(normalized[0].readLevel, 'summary'); assert.equal(normalized[0].url, 'https://news.ycombinator.com/item?id=123'); assert.equal(normalized[1].url, 'https://example.com/a'); assert.equal(normalized[1].sourceKind,'article'); assert.equal(normalized[1].summary,'');
+assert.throws(() => normalizeCommunityFeed('<html>not RSS</html>', { endpoint: 'https://example.com' }));
+const arxiv = normalizeCommunityFeed('<rss><channel><item><title>Paper</title><link>https://arxiv.org/abs/2609.12345v2</link><description>Abstract</description></item></channel></rss>', { platform: 'arxiv', endpoint: 'https://rss.arxiv.org/rss/cs.AI' });
+assert.equal(arxiv[0].identity, 'arxiv:2609.12345'); assert.equal(arxiv[0].metadata.arxivVersion, '2');
+const unchanged = await all(collectCommunity({ channel: { endpoint: 'https://example.com' }, checkpoint: { etag: 'v1' }, now, request: async (_, opts) => { assert.equal(opts.headers['if-none-match'], 'v1'); return { status: 304 }; } }));
+assert.equal(unchanged[0].outcome, 'no_new');
+const backlog = await all(collectCommunity({ channel: { endpoint: 'https://example.com' }, mode: 'backfill', now, request: async () => ({ status: 200, text: rss, headers: {} }) }));
+assert.equal(backlog[0].coverage.gap, 'rss_has_no_historical_archive_contract');
+let calls = 0;
+const git = await all(collectCommunity({ channel: { platform: 'github', options: { topic: 'mcp' } }, now, budget: 2, request: async url => { calls++; assert.match(url, /topic%3Amcp/); return { json: calls === 1 ? { items: [], total_count: 1001 } : { items: [{ id: 1, full_name: 'test/repo', html_url: 'https://github.com/test/repo', stargazers_count: 7 }], total_count: 1, incomplete_results: false } }; } }));
+assert.equal(git[0].coverage.splitWindow, true); assert.equal(git[1].items[0].identity, 'github:1'); assert.equal(git[1].items[0].metadata.growth, null); assert.ok(git[1].checkpoint.windows.length);
+await assert.rejects(() => all(collectCommunity({ channel: { platform: 'github' }, request: async () => { throw Object.assign(new Error('rate limit'), { status: 429, retryAfterSeconds: 30 }); } })), e => e.status === 429 && e.retryAfterSeconds === 30);
+
+const channel = { name: 'LocalLLaMA', access_status: 'approved', options: { sorts: ['new'] } };
+const env = { REDDIT_ACCESS_APPROVED: 'true', REDDIT_ACCESS_TOKEN: 'test-token-not-real', REDDIT_USER_AGENT: 'mock-test', REDDIT_AI_APPROVED: 'false' };
+let blockedCalls = 0;
+await assert.rejects(() => all(collectReddit({ channel, env: {}, request: async () => { blockedCalls++; } })), /approval/);
+assert.equal(blockedCalls, 0);
+await assert.rejects(() => all(collectReddit({channel,env:{},request:async()=>{}})), e => e.blocked === true && e.retry === false);
+await assert.rejects(() => all(collectReddit({ channel: { ...channel, access_status: 'pending' }, env, request: async () => { blockedCalls++; } })), /approval/);
+const post = { kind: 't3', data: { id: 'abc', name: 't3_abc', title: 'Builder experience', selftext: 'Post text', permalink: '/r/LocalLLaMA/comments/abc/test/', score: 100, num_comments: 20, created_utc: now.getTime() / 1000 - 60 } };
+const comment = (id, parent = 't3_abc', body = 'Community observation') => ({ kind: 't1', data: { id, name: 't1_' + id, parent_id: parent, body, permalink: '/r/LocalLLaMA/comments/abc/comment/' + id + '/', created_utc: 2, edited: 3 } });
+const requested = [];
+const request = async (url, opts) => {
+ requested.push(url); assert.equal(new URL(url).hostname, 'oauth.reddit.com'); assert.equal(opts.headers.authorization, 'Bearer test-token-not-real');
+ if (url.includes('/r/')) return { json: { data: { children: [post], after: null } } };
+ if (url.includes('/api/info')) return { json: { data: { children: [comment('parent')] } } };
+ if (url.includes('morechildren')) return { json: { json: { data: { things: [comment('expanded')] } } } };
+ return { json: [{ data: { children: [post] } }, { data: { children: [comment('one'), comment('reply', 't1_parent'), comment('gone', 't3_abc', '[deleted]'), { kind: 'more', data: { children: ['expanded'] } }] } }] };
+};
+const first = await all(collectReddit({ channel, env, request, now, budget: 2 }));
+assert.equal(first[1].coverage.hasMore, true); assert.equal(first[1].items.find(i=>i.platformId==='t1_one').readLevel, 'original');
+assert.equal(first.length, 2); assert.equal(first[1].coverage.sort, 'top'); assert.equal(first[1].items.find(i => i.platformId === 't1_one').rights.aiAllowed, false);
+assert.equal(first[1].items.find(i => i.platformId === 't1_one').metadata.independentEvidence, false);
+assert.equal(first[1].removals[0].identity, 'reddit:t1_gone');
+assert.ok(first[1].items.some(i => i.contentStatus === 'context_missing'));
+assert.ok(!JSON.stringify(first[1].checkpoint).includes('test-token')); assert.ok(!JSON.stringify(first[1].checkpoint).includes('Community observation'));
+const resumed = await all(collectReddit({ channel, env, request, now, checkpoint: first[1].checkpoint, budget: 10 }));
+assert.equal(resumed[0].coverage.sort, 'controversial'); assert.ok(resumed.some(p => p.coverage.sort === 'new')); assert.ok(resumed.some(p => p.coverage.sort === 'ancestor_context')); assert.ok(resumed.some(p => p.coverage.sort === 'morechildren')); assert.equal(resumed.at(-1).outcome, 'success');
+assert.equal(requested.filter(u => u.includes('morechildren')).length, 1);
+assert.ok(resumed.flatMap(p => p.items).every(i => i.rights.exportAllowed === false));
+const empty = await all(collectReddit({ channel, env, now, request: async () => ({ json: { data: { children: [], after: null } } }) }));
+assert.deepEqual(empty[0].checkpoint, { completedAt: now.toISOString() });
+assert.equal(empty[0].outcome, 'no_new');
+const explorationPosts = Array.from({length:10},(_,i)=>({kind:'t3',data:{...post.data,id:String(i),name:'t3_'+i,score:i===9?0:1000-i,created_utc:now.getTime()/1000-100+i}}));
+const explorationRun=await all(collectReddit({channel:{...channel,options:{sorts:['new'],threadBudget:5}},env,now,budget:1,request:async()=>({json:{data:{children:explorationPosts,after:null}}})}));
+assert.equal(explorationRun[0].coverage.threadBudgetUsed,5);
+assert.equal(explorationRun[0].coverage.threadBudgetRemaining,0);
+assert.ok(explorationRun[0].checkpoint.pendingThreads.some(t=>t.id==='9'));
+assert.equal(explorationRun[0].coverage.hasMore,true);
+for(const high of [false,true]) {
+ const densePost={kind:'t3',data:{...post.data,score:high?2000:20,num_comments:high?300:50}};
+ const dense=await all(collectReddit({channel,env,now,budget:10,request:async url=>{
+  if(url.includes('/r/'))return {json:{data:{children:[densePost],after:null}}};
+  const sort=new URL(url).searchParams.get('sort');
+  return {json:[{data:{children:[densePost]}},{data:{children:[...Array.from({length:120},(_,i)=>comment(sort+i)),{...comment('too_deep'),data:{...comment('too_deep').data,depth:8}}]}}]};
+ }}));
+ const unique=new Set(dense.flatMap(p=>p.items).filter(i=>i.sourceKind==='comment').map(i=>i.identity));
+ assert.equal(unique.size,high?100:40);
+ assert.ok(!unique.has('reddit:t1_too_deep'));
+ for(const sort of ['top','controversial','new'])assert.ok([...unique].some(id=>id.includes(sort)));
+}
+console.log('acquisition community mock contracts passed: RSS identity/summary, GitHub windows, Reddit approval/checkpoint/context/removal/budgets');

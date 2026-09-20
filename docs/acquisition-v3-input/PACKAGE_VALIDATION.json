@@ -1,0 +1,22 @@
+{
+  "checkedAtDate": "2026-09-20",
+  "checks": {
+    "mediaSourceCount": 14,
+    "normalizedSubredditCount": 11,
+    "followBuildersArtifactCount": 4,
+    "jsonFilesParse": true,
+    "markdownFencesBalanced": true,
+    "inputFilesUnmodified": true,
+    "mediaSourceRowsMapped": 14,
+    "communityInputRowsAccountedFor": 26,
+    "acceptanceCaseCount": 45,
+    "acceptanceCaseIdsUnique": true
+  },
+  "notPerformed": [
+    "local_repository_code_audit",
+    "endpoint_health_probes",
+    "live_source_ingestion",
+    "deployment",
+    "long_running_reliability_test"
+  ]
+}

@@ -1,3 +1,5 @@
+import { backupBeforeAcquisitionMigration } from '../acquisition/migration-backup.mjs';
+import { ensureAcquisitionCatalog } from '../acquisition/catalog.mjs';
 import fs from "node:fs/promises";
 import { ensureIntelligenceChannels } from '../domain/intelligence-channels.mjs';
 import { backfillIntelligenceIdentity } from '../domain/intelligence-quality.mjs';
@@ -65,6 +67,7 @@ export async function ensureWorkspaceLayout(paths, { now } = {}) {
 export async function openWorkspace(options = {}) {
   const paths = resolveWorkspacePaths(options);
   const manifest = await ensureWorkspaceLayout(paths, options);
+  if (!options.readonly && !options.migrations) await backupBeforeAcquisitionMigration(paths);
   const db = openWorkspaceDatabase(paths.databaseFile, options);
   try {
     const repository = new WorkspaceRepository(db);
@@ -85,6 +88,7 @@ export async function openWorkspace(options = {}) {
     const jobs = new JobStore(db);
     if (!options.readonly && db.pragma('user_version', {simple:true}) >= 27) backfillIntelligenceIdentity({db, repository});
     if (!options.readonly && db.pragma('user_version', {simple:true}) >= 28) ensureIntelligenceChannels({db});
+    if (!options.readonly && db.pragma('user_version', {simple:true}) >= 29) ensureAcquisitionCatalog({db});
     return {
       paths,
       manifest,

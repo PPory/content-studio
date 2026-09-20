@@ -1,3 +1,4 @@
+import { collectedForAnalysis, sourcePermission } from '../acquisition/compatibility.mjs';
 import fs from "node:fs";
 import { normalizeSocialRows, isSocialPost } from "./intelligence-social.mjs";
 import { blockedIntelligenceSources } from "./intelligence-feed.mjs";
@@ -122,7 +123,7 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
  updateRun(w,runId,"running","正在调研");
  try{
   let plan=stepState(w,runId,"plan");
-  if(plan.status!=="done") {updateRun(w,runId,"running","理解主题，准备搜索");plan=await researchPlan(env,p,deps);current(w,runId,deps);saveStep(w,runId,"plan","done",plan);}
+  if(plan.status!=="done") {updateRun(w,runId,"running","理解主题，准备搜索");plan=p.providers.every(x=>['collected','channels','local','aihot'].includes(x))?{query:p.query}:await researchPlan(env,p,deps);current(w,runId,deps);saveStep(w,runId,"plan","done",plan);}
   const collection={...p,focus:p.query,query:plan.query||p.query};
   for(const provider of p.providers){
     current(w,runId,deps);const previous=stepState(w,runId,provider);if(previous.status==="done")continue;
@@ -130,6 +131,12 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
     try{
       let rows=[],failures=[];
       if(deps.collect){rows=await deps.collect(provider,p,window);}
+      else if(['collected','channels','aihot'].includes(provider)) {
+       const sources=collectedForAnalysis(w,{provider,limit:p.limit*5});
+       for(const source of sources)w.db.prepare('INSERT OR IGNORE INTO intel_run_sources(run_id,source_id) VALUES(?,?)').run(runId,source.id);
+       rows=[];
+       saveStep(w,runId,provider,'running',{acquisitionMethod:'local-acquisition',count:sources.length});
+      }
       else if(provider==="local")rows=localIntelligenceSources(w,collection.query,p.limit);
       else if(provider==="channels"){
        const result=await collectIntelligenceChannels(w,env,{runId,channelIds:p.channelIds,limit:Math.min(p.limit,2),window},{...deps,assertCurrent:()=>current(w,runId,deps)});
@@ -150,7 +157,7 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
     }catch(e){if(e.cancelled||e.leaseLost)throw e;current(w,runId,deps);saveStep(w,runId,provider,"failed",{...stepState(w,runId,provider),window},safeError(e,env));}
   }
   current(w,runId,deps);
-  const sources=runSources(w,runId),coverage=intelligenceRun(w,runId).coverage;
+  const sources=runSources(w,runId).filter(s=>sourcePermission(s,'ai')),coverage=intelligenceRun(w,runId).coverage;
   if(!sources.length){const failed=coverage.some(c=>["partial","failed"].includes(c.status));updateRun(w,runId,failed?"failed":"done",failed?"未取得可用原文":"调研完成，没有匹配资料",failed?"来源读取失败，可查看覆盖详情后重试":"");return intelligenceRun(w,runId);}
   updateRun(w,runId,"running",p.output==="briefs"?"连接已有知识":"连接知识，整理选题");
   const wiki=w.db.prepare("SELECT p.id,p.title,substr(p.body_markdown,1,1200) body FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL ORDER BY e.updated_at DESC LIMIT 50").all();

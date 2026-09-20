@@ -1,0 +1,13 @@
+请在当前 Content Studio 本地仓库实施附件 IMPLEMENTATION_PLAN.md 中的情报采集 V3 方案，source-manifest.json 是拟实施配置输入，source-inventory.original.json 是用户附件的逐行原始清单。
+
+先读 AGENTS.md、workbench/CLAUDE.md、当前分支和数据库迁移，完成 P0 的真实代码盘点，核查旧 acquisition、runner、social adapter、AIHOT、Web、Channels 与“洞察 Skill”。历史提交 b6f597b 仅供定位，不得回退或覆盖后续改动。
+
+按 P0 至 P6 顺序推进，能复用的模块优先复用。范围固定为 AIHOT 精选/热点/日报，T2 全部 14 家媒体，社区六个平台，以及 Follow Builders 的 feed-x.json、feed-blogs.json、feed-podcasts.json、state-feed.json 四个文件。Follow Builders 不 fork、不调用付费 X 或转录 API、不运行上游生成器；四文件按同一个 commit 同步，并实现历史版本补采。
+
+Reddit 同时包括帖子与评论树，支持三排序采样、morechildren、上下文、去重和删除同步。真实接入以获准访问和凭据为前提，未批准时明确标记 blocked，不走匿名接口绕行。不要把 mock 测试当作真实接入成功。
+
+重点验收持久化调度、事务后提交检查点、进程重启续采、同文多渠道发现关系、正文与摘要区别、播客全文分段、上游状态与本地导入状态分离、来源健康和旧精选/收藏/研究兼容。所有来源逐项出具状态，不能删掉失败来源来凑成功率。
+
+请直接完成允许范围内的实现和隔离测试，不停留在建议。缺少密钥、审批或运行环境只阻塞相关来源，继续推进其他工作。付费服务、权限提升、生产部署和破坏性操作需另行取得授权。不要自动 push。
+
+最终按方案列出修改文件、迁移、真实烟测与模拟测试分别的结果、启动方式、未完成事项和需要用户提供的凭据/批准。长期运行验证未实际完成时明确标为待验收。

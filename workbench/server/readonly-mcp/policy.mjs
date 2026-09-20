@@ -1,5 +1,5 @@
 // This is an explicit data contract, not a SQL or filesystem interface.
-export const POLICY_VERSION = 1;
+export const POLICY_VERSION = 2;
 export const LIMITS = Object.freeze({ rows: 20000, perDataset: 3000, text: 100000, bytes: 32 * 1024 * 1024, refreshMs: 5000, cooldownMs: 300000, maxAgeMs: 86400000, callsPerMinute: 60, auditBytes: 10 * 1024 * 1024 });
 const entity = (columns, extra = '') => ({ columns: columns.split(' '), entity: true, extra });
 export const DATASETS = Object.freeze({

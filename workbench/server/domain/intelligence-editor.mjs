@@ -1,3 +1,4 @@
+import { sourcePermission } from '../acquisition/compatibility.mjs';
 import { uniqueIntelligenceSources } from './intelligence-evidence.mjs';
 import { organizeIntelligenceSources } from './intelligence-synthesis.mjs';
 import { saveStep } from './intelligence.mjs';
@@ -8,7 +9,7 @@ import { intelligenceFeed, feedPreferences, saveIntelligenceBriefs } from "./int
 export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
  const preferences=feedPreferences(w),feed=intelligenceFeed(w);
  const blocked=new Set((feed.blockedSources||[]).map(s=>typeof s==="string"?s:s.host));
- const allowed=uniqueIntelligenceSources(sources).filter(s=>s.originKind!=='internal').filter(s=>{try{const host=new URL(s.url).hostname;return ![...blocked].some(b=>host===b||host.endsWith(`.${b}`));}catch{return true;}});
+ const allowed=uniqueIntelligenceSources(sources.filter(s=>sourcePermission(s,'ai'))).filter(s=>s.originKind!=='internal').filter(s=>{try{const host=new URL(s.url).hostname;return ![...blocked].some(b=>host===b||host.endsWith(`.${b}`));}catch{return true;}});
  const recent=(feed.briefs||[]).slice(0,40).map(b=>({id:b.id,storyKey:b.storyKey,title:b.title,summary:b.summary,read:b.read,saved:b.saved,helpful:b.helpful,dismissed:b.dismissed,version:b.version}));
  const discussions=w.db.prepare("SELECT c.record_json FROM ai_conversations c JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.scope_id LIKE 'intelligence:%' ORDER BY e.updated_at DESC LIMIT 10").all().flatMap(r=>{try{return (JSON.parse(r.record_json).messages||[]).filter(m=>m.role==='user').slice(-3).map(m=>String(m.text||'').slice(0,400));}catch{return [];}});
  let remaining=75000;

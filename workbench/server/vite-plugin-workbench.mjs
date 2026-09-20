@@ -1,3 +1,4 @@
+import { scheduleAcquisition } from './acquisition/runner.mjs';
 import { scheduleIntelligence } from "./domain/intelligence.mjs";
 // 把本地 API 挂进 Vite dev server 的中间件链，而不是另起一个进程 + 配代理。
 // 一个进程、一条 npm run dev、没有端口对不上的问题，也不需要 concurrently 这类依赖。
@@ -25,9 +26,11 @@ export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {})
   try {
     const recoveredWikiJobs = recoverQueuedWikiIngests(workspace);
     const reconciledWikiCandidates = reconcileWikiIngestCandidates(workspace);
+    let acquisitionStartup = true;
     const runtime = startWorkspaceRuntime(workspace, {
       handlers: createDefaultJobHandlers(workspace, env, jobDependencies),
       maintenance: (now) => ({
+        acquisition: env.ACQUISITION_AUTOSTART === "true" ? scheduleAcquisition(workspace, { now, env, startup: acquisitionStartup && !(acquisitionStartup=false) }) : [],
         intelligence: scheduleIntelligence(workspace, { now }),
         recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
         reconciledWikiCandidates: reconcileWikiIngestCandidates(workspace, { now }),

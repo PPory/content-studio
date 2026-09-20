@@ -1,0 +1,4797 @@
+{
+  "checkedAt": "2026-09-20T03:59:54.040Z",
+  "purpose": "read_only_live_probe_not_deployment",
+  "results": [
+    {
+      "key": "t2.techcrunch_ai",
+      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "checkedAt": "2026-09-20T03:51:10.431Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 2
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null,
+      "dnsObservation": {
+        "addresses": [
+          "192.0.66.220"
+        ],
+        "interpretation": "existing SSRF helper rejected public-looking 192.0.66/78 addresses; implementation review required; not bypassed"
+      }
+    },
+    {
+      "key": "t2.techcrunch_ai.homepage",
+      "url": "https://techcrunch.com",
+      "checkedAt": "2026-09-20T03:51:10.467Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 2
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null
+    },
+    {
+      "key": "t2.the_verge_ai",
+      "url": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+      "checkedAt": "2026-09-20T03:51:10.482Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 404,
+      "finalUrl": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 99214,
+      "sha256": "c8a3b5e53d43b3d14e27f6c50aace4fd449e9b444f458d3f25bee419c43a983a",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "t2.the_verge_ai.homepage",
+      "url": "https://www.theverge.com",
+      "checkedAt": "2026-09-20T03:51:11.625Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://www.theverge.com",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 961856,
+      "sha256": "6346129d887f8aed76b91cbbb872f7dbc9a07f61d926bce396e7598050e11089",
+      "schema": {
+        "alternateLinks": [
+          "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"The Verge\" href=\"/rss/index.xml\" data-next-head=\"\"/>"
+        ]
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "t2.the_decoder",
+      "url": "https://the-decoder.com/feed/",
+      "checkedAt": "2026-09-20T03:51:11.882Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 4
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://the-decoder.com/feed/",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 21237,
+      "sha256": "10d572c5ae49e6655aae813cf6a151e3222e4dfa470fdfdb2391cc48eb771fdf",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://the-decoder.com/qwen3-8-omni-flash-undercuts-gemini-flash-pricing-while-matching-its-multimodal-benchmarks/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.ars_technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/index",
+      "checkedAt": "2026-09-20T03:51:14.002Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 5
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://feeds.arstechnica.com/arstechnica/index",
+      "contentType": "text/xml; charset=utf-8",
+      "bytes": 76478,
+      "sha256": "b767ed52424b406305e33a4f815c8a136182d086fcf7a41475b52d8156a79b14",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://arstechnica.com/science/2026/09/learning-another-language-may-be-one-of-the-best-ways-to-keep-your-brain-healthy/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.marktechpost",
+      "url": "https://www.marktechpost.com/feed/",
+      "checkedAt": "2026-09-20T03:51:14.738Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 6
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://www.marktechpost.com/feed/",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 418864,
+      "sha256": "381012095d114b64a92dd3fae3e4c7cb2896765d788c8bf519514e36af804f75",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.marktechpost.com/2026/09/19/openclaw-releases-2026-9-5/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.mit_technology_review_ai",
+      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+      "checkedAt": "2026-09-20T03:51:16.606Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 7
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null,
+      "dnsObservation": {
+        "addresses": [
+          "192.0.66.184"
+        ],
+        "interpretation": "existing SSRF helper rejected public-looking 192.0.66/78 addresses; implementation review required; not bypassed"
+      }
+    },
+    {
+      "key": "t2.mit_technology_review_ai.homepage",
+      "url": "https://www.technologyreview.com",
+      "checkedAt": "2026-09-20T03:51:16.705Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 7
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null
+    },
+    {
+      "key": "t2.venturebeat_ai",
+      "url": "https://venturebeat.com/category/ai/feed/",
+      "checkedAt": "2026-09-20T03:51:16.719Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 8
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 429,
+      "finalUrl": "https://venturebeat.com/category/ai/feed/",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 33948,
+      "sha256": "f0a9876ebc0358f938b5d051140600b14b40600887d701dfa31f89621e1ef048",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "t2.venturebeat_ai.homepage",
+      "url": "https://venturebeat.com",
+      "checkedAt": "2026-09-20T03:51:17.482Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 8
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 429,
+      "finalUrl": "https://venturebeat.com",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 33948,
+      "sha256": "9446898225a99b7427377f2940d5c129ce3095a107474dbf6846865b767ed214",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "t2.wired_ai",
+      "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+      "checkedAt": "2026-09-20T03:51:17.736Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 9
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://www.wired.com/feed/tag/ai/latest/rss",
+      "contentType": "application/xml",
+      "bytes": 9670,
+      "sha256": "73630700f197325140a284fd3046e78c421ddccaff0ca05e0e922594eabb34d0",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.wired.com/story/kernel-panic-ai-vulnerability-explosion/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.last_week_in_ai",
+      "url": "https://lastweekin.ai/feed/",
+      "checkedAt": "2026-09-20T03:51:18.297Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 10
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://lastweekin.ai/feed",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 377233,
+      "sha256": "1d73114d0d3f2035c75d05e4fe52cc15c6143f2f23899218ccd1f7bcc3d41f01",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://lastweekin.ai/p/last-week-in-ai-344-navierstokes"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.ithome",
+      "url": "https://www.ithome.com/rss/",
+      "checkedAt": "2026-09-20T03:51:19.802Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 11
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://www.ithome.com/rss/",
+      "contentType": "text/xml; charset=utf-8",
+      "bytes": 213198,
+      "sha256": "2b14e60f5e6932fb77129475675f74d1ab6d0757e0930e3655d635ac31921b8c",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 60,
+        "sampleUrl": "https://www.ithome.com/1/004/716.htm"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.jiqizhixin",
+      "url": "https://www.jiqizhixin.com/rss",
+      "checkedAt": "2026-09-20T03:51:19.991Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 12
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://www.jiqizhixin.com/data-service",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 3375,
+      "sha256": "70a8f55fa0897041c83cd2b89ee1f39aac36251afe90c0a40cf56c36eb1b5508",
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "schema": null
+    },
+    {
+      "key": "t2.jiqizhixin.homepage",
+      "url": "https://www.jiqizhixin.com",
+      "checkedAt": "2026-09-20T03:51:20.277Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 12
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://www.jiqizhixin.com",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 3375,
+      "sha256": "0cc374ba24e8722a062c59e2261aabb525eb9c8cc3caa8a785aa0226e472a821",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "t2.qbitai",
+      "url": "https://www.qbitai.com/feed",
+      "checkedAt": "2026-09-20T03:51:20.331Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 13
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://www.qbitai.com/feed",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 6412,
+      "sha256": "6ca56353332d86995666a567116b01994241057129236cf21b5a3dae73b1247b",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.qbitai.com/2026/09/492755.html"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.36kr",
+      "url": "https://36kr.com/feed",
+      "checkedAt": "2026-09-20T03:51:20.624Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 14
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "ffc37a08405323cb3af87082a462430d2c042ad2fcc299d6f08c6fcf96a7d3ef",
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "schema": null
+    },
+    {
+      "key": "t2.36kr.homepage",
+      "url": "https://36kr.com",
+      "checkedAt": "2026-09-20T03:51:20.816Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 14
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "b55b091cc7c57380c0724fb282d281eabbd716629bbf451a5dd7f362801b94f2",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "t2.36kr.candidate",
+      "url": "https://36kr.com/feed-article",
+      "checkedAt": "2026-09-20T03:51:20.998Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 14
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-article",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "c9a28f4d31bad1e373cb8d6b79775be0a0d663517dc90a483f08ea9c3c3daa98",
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "schema": null
+    },
+    {
+      "key": "t2.36kr.candidate",
+      "url": "https://36kr.com/feed-newsflash",
+      "checkedAt": "2026-09-20T03:51:21.190Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 14
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-newsflash",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "a6b0ecb3f104bf0a6c70e33da00306c087c5c9174f343f8c7dee42d9bef0ff27",
+      "status": "failed",
+      "error": "订阅含不支持的 XML 实体声明",
+      "schema": null
+    },
+    {
+      "key": "t2.import_ai",
+      "url": "https://jack-clark.net/feed/",
+      "checkedAt": "2026-09-20T03:51:21.462Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 15
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null,
+      "dnsObservation": {
+        "addresses": [
+          "192.0.78.232",
+          "192.0.78.128"
+        ],
+        "interpretation": "existing SSRF helper rejected public-looking 192.0.66/78 addresses; implementation review required; not bypassed"
+      }
+    },
+    {
+      "key": "t2.import_ai.homepage",
+      "url": "https://jack-clark.net",
+      "checkedAt": "2026-09-20T03:51:21.644Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 15
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "status": "failed",
+      "error": "不能读取本机、内网或云元数据地址",
+      "http": null,
+      "schema": null
+    },
+    {
+      "key": "community.hacker_news.frontpage",
+      "url": "https://hnrss.org/frontpage",
+      "checkedAt": "2026-09-20T03:51:21.656Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 2
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://hnrss.org/frontpage",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 18032,
+      "sha256": "6de035dd9b878a0eca6dadde0e0250f22e5afb3478ba4befaeaf6aa5e44d4511",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://saweis.net/posts/rsa-896.html"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.hacker_news.best",
+      "url": "https://hnrss.org/best",
+      "checkedAt": "2026-09-20T03:51:22.889Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 4
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://hnrss.org/best",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 23492,
+      "sha256": "a70b36cd465a2953f7e04e611bfff4f9058be79ecec72e6b3d779542d7f0faa0",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 30,
+        "sampleUrl": "https://erichgrunewald.substack.com/p/why-you-should-almost-never-use-ai"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.hacker_news.newest_ai",
+      "url": "https://hnrss.org/newest?q=AI",
+      "checkedAt": "2026-09-20T03:51:23.272Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://hnrss.org/newest?q=AI",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 22192,
+      "sha256": "9aec5df25b3de42e903e6f67fd38817ff1821320b3bf3a6cc9985bf337e836eb",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://www.youtube.com/watch?v=sXA77wLF678"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.hacker_news.newest_llm",
+      "url": "https://hnrss.org/newest?q=LLM",
+      "checkedAt": "2026-09-20T03:51:23.652Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://hnrss.org/newest?q=LLM",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 15018,
+      "sha256": "2f3d800f36c6604d84ca60d6c1b40c5ff0934d4370d0c6fae093b5e9ab7b7246",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://github.com/xanpavle/rocmfix"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.hacker_news.newest_gpt",
+      "url": "https://hnrss.org/newest?q=GPT",
+      "checkedAt": "2026-09-20T03:51:23.963Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 502,
+      "finalUrl": "https://hnrss.org/newest?q=GPT",
+      "contentType": "text/html",
+      "bytes": 150,
+      "sha256": "61b30d408583991fd69f3dec694e154cb652471e663328ad9c8482c9021ab5db",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.hacker_news.newest_claude",
+      "url": "https://hnrss.org/newest?q=Claude",
+      "checkedAt": "2026-09-20T03:51:24.254Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 3
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://hnrss.org/newest?q=Claude",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 17063,
+      "sha256": "458ad50b5e82e1310d41be5e0a9e981dae565896628820123580686d9eef4082",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://github.com/calebbarzee/claude-profiles"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.hacker_news.hn_chinese",
+      "status": "disabled_candidate",
+      "url": null,
+      "missing": [
+        "not_specified_and_overlap_with_aihot"
+      ],
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "not_activated",
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 5
+        }
+      ]
+    },
+    {
+      "key": "community.reddit.localllama",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            6,
+            10
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.machinelearning",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            7,
+            11
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.artificial",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            8,
+            15
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.claudeai",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            9,
+            12
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.openai",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            9
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.localllm",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            9
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.chatgptcoding",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            13
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.ai_agents",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            14
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.artificialinteligence",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            16
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.mcp",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            17
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.reddit.learnmachinelearning",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "blocked",
+      "status": "blocked",
+      "missing": [
+        "approved_reddit_application",
+        "oauth_credentials",
+        "permitted_retention_and_external_ai_processing"
+      ],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "rows": [
+            18
+          ]
+        }
+      ],
+      "anonymousProbeAttempted": false
+    },
+    {
+      "key": "community.github.llm",
+      "url": "https://api.github.com/search/repositories?q=topic%3Allm&sort=updated&per_page=1",
+      "checkedAt": "2026-09-20T03:51:24.639Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 20
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "authenticated_quota_optional",
+        "search_window_completeness_not_tested"
+      ],
+      "http": 200,
+      "finalUrl": "https://api.github.com/search/repositories?q=topic%3Allm&sort=updated&per_page=1",
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 6001,
+      "sha256": "2ef8b5a6ff558d897d3e089bca9e3a84ac7252184059c99f440b32a6990e093f",
+      "schema": {
+        "total_count": {
+          "type": "number"
+        },
+        "incomplete_results": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "number",
+            "node_id": "string",
+            "name": "string",
+            "full_name": "string",
+            "private": "boolean",
+            "owner": "object",
+            "html_url": "string",
+            "description": "string",
+            "fork": "boolean",
+            "url": "string",
+            "forks_url": "string",
+            "keys_url": "string",
+            "collaborators_url": "string",
+            "teams_url": "string",
+            "hooks_url": "string",
+            "issue_events_url": "string",
+            "events_url": "string",
+            "assignees_url": "string",
+            "branches_url": "string",
+            "tags_url": "string",
+            "blobs_url": "string",
+            "git_tags_url": "string",
+            "git_refs_url": "string",
+            "trees_url": "string",
+            "statuses_url": "string",
+            "languages_url": "string",
+            "stargazers_url": "string",
+            "contributors_url": "string",
+            "subscribers_url": "string",
+            "subscription_url": "string",
+            "commits_url": "string",
+            "git_commits_url": "string",
+            "comments_url": "string",
+            "issue_comment_url": "string",
+            "contents_url": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.github.ai-agent",
+      "url": "https://api.github.com/search/repositories?q=topic%3Aai-agent&sort=updated&per_page=1",
+      "checkedAt": "2026-09-20T03:51:25.272Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 20
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "authenticated_quota_optional",
+        "search_window_completeness_not_tested"
+      ],
+      "http": 200,
+      "finalUrl": "https://api.github.com/search/repositories?q=topic%3Aai-agent&sort=updated&per_page=1",
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 5272,
+      "sha256": "acd27c60500e9423e32427735502c3dd099fedf14f8b042bcecce56537189d55",
+      "schema": {
+        "total_count": {
+          "type": "number"
+        },
+        "incomplete_results": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "number",
+            "node_id": "string",
+            "name": "string",
+            "full_name": "string",
+            "private": "boolean",
+            "owner": "object",
+            "html_url": "string",
+            "description": "string",
+            "fork": "boolean",
+            "url": "string",
+            "forks_url": "string",
+            "keys_url": "string",
+            "collaborators_url": "string",
+            "teams_url": "string",
+            "hooks_url": "string",
+            "issue_events_url": "string",
+            "events_url": "string",
+            "assignees_url": "string",
+            "branches_url": "string",
+            "tags_url": "string",
+            "blobs_url": "string",
+            "git_tags_url": "string",
+            "git_refs_url": "string",
+            "trees_url": "string",
+            "statuses_url": "string",
+            "languages_url": "string",
+            "stargazers_url": "string",
+            "contributors_url": "string",
+            "subscribers_url": "string",
+            "subscription_url": "string",
+            "commits_url": "string",
+            "git_commits_url": "string",
+            "comments_url": "string",
+            "issue_comment_url": "string",
+            "contents_url": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.github.mcp",
+      "url": "https://api.github.com/search/repositories?q=topic%3Amcp&sort=updated&per_page=1",
+      "checkedAt": "2026-09-20T03:51:25.683Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 20
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "authenticated_quota_optional",
+        "search_window_completeness_not_tested"
+      ],
+      "http": 200,
+      "finalUrl": "https://api.github.com/search/repositories?q=topic%3Amcp&sort=updated&per_page=1",
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 5926,
+      "sha256": "b7af0bd65b2c609e02532b3f4908e8b56585801be3efd490860fb539a9187a46",
+      "schema": {
+        "total_count": {
+          "type": "number"
+        },
+        "incomplete_results": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "number",
+            "node_id": "string",
+            "name": "string",
+            "full_name": "string",
+            "private": "boolean",
+            "owner": "object",
+            "html_url": "string",
+            "description": "string",
+            "fork": "boolean",
+            "url": "string",
+            "forks_url": "string",
+            "keys_url": "string",
+            "collaborators_url": "string",
+            "teams_url": "string",
+            "hooks_url": "string",
+            "issue_events_url": "string",
+            "events_url": "string",
+            "assignees_url": "string",
+            "branches_url": "string",
+            "tags_url": "string",
+            "blobs_url": "string",
+            "git_tags_url": "string",
+            "git_refs_url": "string",
+            "trees_url": "string",
+            "statuses_url": "string",
+            "languages_url": "string",
+            "stargazers_url": "string",
+            "contributors_url": "string",
+            "subscribers_url": "string",
+            "subscription_url": "string",
+            "commits_url": "string",
+            "git_commits_url": "string",
+            "comments_url": "string",
+            "issue_comment_url": "string",
+            "contents_url": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.github.rag",
+      "url": "https://api.github.com/search/repositories?q=topic%3Arag&sort=updated&per_page=1",
+      "checkedAt": "2026-09-20T03:51:26.103Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 20
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "authenticated_quota_optional",
+        "search_window_completeness_not_tested"
+      ],
+      "http": 200,
+      "finalUrl": "https://api.github.com/search/repositories?q=topic%3Arag&sort=updated&per_page=1",
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 5926,
+      "sha256": "e1ab548146075a50e2d4bbf52ba1b1d6049f6beb106164635269fd24b8099d2b",
+      "schema": {
+        "total_count": {
+          "type": "number"
+        },
+        "incomplete_results": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "number",
+            "node_id": "string",
+            "name": "string",
+            "full_name": "string",
+            "private": "boolean",
+            "owner": "object",
+            "html_url": "string",
+            "description": "string",
+            "fork": "boolean",
+            "url": "string",
+            "forks_url": "string",
+            "keys_url": "string",
+            "collaborators_url": "string",
+            "teams_url": "string",
+            "hooks_url": "string",
+            "issue_events_url": "string",
+            "events_url": "string",
+            "assignees_url": "string",
+            "branches_url": "string",
+            "tags_url": "string",
+            "blobs_url": "string",
+            "git_tags_url": "string",
+            "git_refs_url": "string",
+            "trees_url": "string",
+            "statuses_url": "string",
+            "languages_url": "string",
+            "stargazers_url": "string",
+            "contributors_url": "string",
+            "subscribers_url": "string",
+            "subscription_url": "string",
+            "commits_url": "string",
+            "git_commits_url": "string",
+            "comments_url": "string",
+            "issue_comment_url": "string",
+            "contents_url": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.github.generative-ai",
+      "url": "https://api.github.com/search/repositories?q=topic%3Agenerative-ai&sort=updated&per_page=1",
+      "checkedAt": "2026-09-20T03:51:26.530Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 20
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "authenticated_quota_optional",
+        "search_window_completeness_not_tested"
+      ],
+      "http": 200,
+      "finalUrl": "https://api.github.com/search/repositories?q=topic%3Agenerative-ai&sort=updated&per_page=1",
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 5626,
+      "sha256": "cf266c04a46937464a7574b9f26189d0d74ed19a4b8fab29d0f5815d73848e6c",
+      "schema": {
+        "total_count": {
+          "type": "number"
+        },
+        "incomplete_results": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "number",
+            "node_id": "string",
+            "name": "string",
+            "full_name": "string",
+            "private": "boolean",
+            "owner": "object",
+            "html_url": "string",
+            "description": "string",
+            "fork": "boolean",
+            "url": "string",
+            "forks_url": "string",
+            "keys_url": "string",
+            "collaborators_url": "string",
+            "teams_url": "string",
+            "hooks_url": "string",
+            "issue_events_url": "string",
+            "events_url": "string",
+            "assignees_url": "string",
+            "branches_url": "string",
+            "tags_url": "string",
+            "blobs_url": "string",
+            "git_tags_url": "string",
+            "git_refs_url": "string",
+            "trees_url": "string",
+            "statuses_url": "string",
+            "languages_url": "string",
+            "stargazers_url": "string",
+            "contributors_url": "string",
+            "subscribers_url": "string",
+            "subscription_url": "string",
+            "commits_url": "string",
+            "git_commits_url": "string",
+            "comments_url": "string",
+            "issue_comment_url": "string",
+            "contents_url": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.arxiv.cs.AI",
+      "url": "https://rss.arxiv.org/rss/cs.AI",
+      "checkedAt": "2026-09-20T03:51:26.911Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 21
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://rss.arxiv.org/rss/cs.AI",
+      "contentType": "application/rss+xml",
+      "bytes": 892,
+      "sha256": "13e4c007108a0576dbbda8726bf88b1019c4418c06e75029633c8c00d37a893f",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 0
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.arxiv.cs.CL",
+      "url": "https://rss.arxiv.org/rss/cs.CL",
+      "checkedAt": "2026-09-20T03:51:27.697Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 22
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://rss.arxiv.org/rss/cs.CL",
+      "contentType": "application/rss+xml",
+      "bytes": 892,
+      "sha256": "9d5b440e08f36bd988f79e8bddb1e44f88d06b05a2cc5e5ecfbd27be4186fa19",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 0
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.arxiv.cs.LG",
+      "url": "https://rss.arxiv.org/rss/cs.LG",
+      "checkedAt": "2026-09-20T03:51:27.916Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 23
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://rss.arxiv.org/rss/cs.LG",
+      "contentType": "application/rss+xml",
+      "bytes": 892,
+      "sha256": "85832123b1841cfa521b14e223735e92118217b1acb780abea6886a1513c66e1",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 0
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.stackoverflow.openai.newest",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+      "checkedAt": "2026-09-20T03:51:28.123Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 24
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 404,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 81215,
+      "sha256": "44cbf07bab819f141b53705fa9e2cb5f63f0e296b2096f2399da4727aacc5686",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.stackoverflow.openai.votes",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=votes",
+      "checkedAt": "2026-09-20T03:51:28.882Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 25
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 404,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=votes",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 81207,
+      "sha256": "a8e8f3d87b58861b5cde81219d3129664b4bd4552069c92a4a765ff02c19ee47",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.stackoverflow.langchain.newest",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=langchain&sort=newest",
+      "checkedAt": "2026-09-20T03:51:29.178Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 24
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=langchain&sort=newest",
+      "contentType": "application/atom+xml",
+      "bytes": 123485,
+      "sha256": "1ae57a5a42d4c1c5d4a512af74f9988c7c5d39305352fc5768158e0f04a80859",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 30,
+        "sampleUrl": "https://stackoverflow.com/questions/79996703/how-to-resolve-the-validation-error-which-has-come-while-running-the-code-involv"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.stackoverflow.langchain.votes",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=langchain&sort=votes",
+      "checkedAt": "2026-09-20T03:51:29.718Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 25
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=langchain&sort=votes",
+      "contentType": "application/atom+xml",
+      "bytes": 88818,
+      "sha256": "cd27b8736c894e0123e2545bd187e4e5686640ea64f772a3a9d9238ffdbedace",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 30,
+        "sampleUrl": "https://stackoverflow.com/questions/76990736/differences-between-langchain-llamaindex"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.stackoverflow.ollama.newest",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=ollama&sort=newest",
+      "checkedAt": "2026-09-20T03:51:30.060Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 24
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=ollama&sort=newest",
+      "contentType": "application/atom+xml",
+      "bytes": 193636,
+      "sha256": "a4fdc72c568e43a4925e1a383aae6f301eaecf65ea82570998adf4765db8aa85",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 30,
+        "sampleUrl": "https://stackoverflow.com/questions/79951761/copilot-doesnt-execute-actions-in-agentic-mode-with-local-llm"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.stackoverflow.ollama.votes",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=ollama&sort=votes",
+      "checkedAt": "2026-09-20T03:51:30.565Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 25
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=ollama&sort=votes",
+      "contentType": "application/atom+xml",
+      "bytes": 113897,
+      "sha256": "4cf171221fb4b9c8625902f0f02a791bd3a9efe76c3f55706eb5140c8914be19",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 30,
+        "sampleUrl": "https://stackoverflow.com/questions/77697302/how-can-i-run-ollama-in-google-colaboratory"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.stackoverflow.llm.newest",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=llm&sort=newest",
+      "checkedAt": "2026-09-20T03:51:31.040Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 24
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 404,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=llm&sort=newest",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 81191,
+      "sha256": "fc2ccde079e8f744cfd93d1a04d71bd96bb97e2f902ff6c749a1d37df351cecc",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.stackoverflow.llm.votes",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=llm&sort=votes",
+      "checkedAt": "2026-09-20T03:51:31.342Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 25
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 429,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=llm&sort=votes",
+      "contentType": "text/html; charset=UTF-8",
+      "bytes": 5664,
+      "sha256": "a17e9f02480005d55d3826049bac5b566957f9109143c37f20c305ad76dc2adb",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.stackoverflow.chatgpt.newest",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=chatgpt&sort=newest",
+      "checkedAt": "2026-09-20T03:51:31.556Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 24
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 429,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=chatgpt&sort=newest",
+      "contentType": "text/html; charset=UTF-8",
+      "bytes": 5679,
+      "sha256": "4ed3073bd12d6d3cf15826ee228ae45ad6f0787ac872f0d7a7e1c10e187e0161",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.stackoverflow.chatgpt.votes",
+      "url": "https://stackoverflow.com/feeds/tag?tagnames=chatgpt&sort=votes",
+      "checkedAt": "2026-09-20T03:51:31.771Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 25
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 429,
+      "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=chatgpt&sort=votes",
+      "contentType": "text/html; charset=UTF-8",
+      "bytes": 5676,
+      "sha256": "47755b93a032c54f20b91a76857a3b8ce7acd52f6e6cf42c76bcc627f304d12e",
+      "status": "http_error",
+      "schema": null
+    },
+    {
+      "key": "community.devto.ai",
+      "url": "https://dev.to/feed/tag/ai",
+      "checkedAt": "2026-09-20T03:51:31.986Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 27
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://dev.to/feed/tag/ai",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 183313,
+      "sha256": "e18978a315125ae261c65f113894b71c25cb6fbec968025879422feed33e4bc2",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 12,
+        "sampleUrl": "https://dev.to/vladimir_lialine_b2e67374/fintech-innovation-2026-essential-portfolio-access-1cp2"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.devto.chatgpt",
+      "url": "https://dev.to/feed/tag/chatgpt",
+      "checkedAt": "2026-09-20T03:51:33.100Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 27
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://dev.to/feed/tag/chatgpt",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 258434,
+      "sha256": "7470b37cbe44d1eb61dfce87933fec33065ec4a754397e136cceff3b80134296",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 12,
+        "sampleUrl": "https://dev.to/parcryptoparcrypto/how-to-automate-chatgpt-account-rentals-on-funpay-and-playerok-49pn"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.devto.llm",
+      "url": "https://dev.to/feed/tag/llm",
+      "checkedAt": "2026-09-20T03:51:33.387Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 27
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://dev.to/feed/tag/llm",
+      "contentType": "application/xml; charset=utf-8",
+      "bytes": 100184,
+      "sha256": "65dc23c618d20746d8ad2c542021732b399ab2b718e9c2a05d6d50fa2afedb94",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 12,
+        "sampleUrl": "https://dev.to/alirezaai/reverse-medicine-what-if-ai-learned-from-people-who-defy-their-risk-scores-4k58"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "community.devto.full_site",
+      "status": "disabled_candidate",
+      "url": "https://dev.to/feed",
+      "checkedAt": "2026-09-20T03:51:33.644Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "http": null,
+      "schema": null,
+      "access": "not_activated",
+      "missing": [],
+      "inputRefs": [
+        {
+          "file": "社区.xlsx",
+          "sheet": "table (1)",
+          "row": 26
+        }
+      ]
+    },
+    {
+      "key": "aihot.selected",
+      "url": "https://aihot.news/api/v1/selected/snapshot?limit=1",
+      "checkedAt": "2026-09-20T03:51:33.644Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/selected/snapshot?limit=1",
+      "contentType": "application/json",
+      "bytes": 1361,
+      "sha256": "c17143ca574dd0c5a9c459472ca7822106da6a0dc51ccf0893161611dc86a667",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "asOf": {
+          "type": "string",
+          "length": 24
+        },
+        "fields": {
+          "type": "string",
+          "length": 7
+        },
+        "cursor": {
+          "type": "string",
+          "length": 75
+        },
+        "count": {
+          "type": "number"
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "nextPage": {
+          "type": "string",
+          "length": 159
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "id": "string",
+            "title": "string",
+            "source": "object",
+            "publishedAt": "string",
+            "discoveredAt": "string",
+            "category": "object",
+            "score": "object",
+            "selected": "boolean",
+            "originalTitle": "object",
+            "summary": "string",
+            "links": "object",
+            "attribution": "object"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "aihot.selected.changes",
+      "url": "https://aihot.news/api/v1/selected/changes?cursor=v1s.eyJrIjoic2VsZWN0ZWQtc3luYyIsInYiOjEsInciOiI2MDcyOCIsImYiOiJkZWZhdWx0In0&limit=1",
+      "checkedAt": "2026-09-20T03:51:35.035Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/selected/changes?cursor=v1s.eyJrIjoic2VsZWN0ZWQtc3luYyIsInYiOjEsInciOiI2MDcyOCIsImYiOiJkZWZhdWx0In0&limit=1",
+      "contentType": "application/json",
+      "bytes": 164,
+      "sha256": "581ace4233dafaeebf4d4617942ffba2dfecadbd42e4ddca20ea891d495c1a66",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "fields": {
+          "type": "string",
+          "length": 7
+        },
+        "cursor": {
+          "type": "string",
+          "length": 75
+        },
+        "count": {
+          "type": "number"
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "changes": {
+          "type": "array",
+          "count": 0
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "aihot.hot_topics",
+      "url": "https://aihot.news/api/v1/hot-topics",
+      "checkedAt": "2026-09-20T03:51:36.085Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/hot-topics",
+      "contentType": "application/json",
+      "bytes": 7122,
+      "sha256": "4e125362f00d115bf576d17da5132ecb800736d516c8404ce714628d650ad819",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array",
+          "count": 10,
+          "sample": {
+            "rank": "number",
+            "id": "string",
+            "title": "string",
+            "source": "object",
+            "links": "object",
+            "sourceCount": "number",
+            "signalCount": "number",
+            "participantCount": "number",
+            "sourceNames": "object",
+            "latestAt": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "aihot.dailies.index",
+      "url": "https://aihot.news/api/v1/dailies?limit=1",
+      "checkedAt": "2026-09-20T03:51:37.080Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/dailies?limit=1",
+      "contentType": "application/json",
+      "bytes": 336,
+      "sha256": "941e8b5cc793ba766f0151dd38867e0cd7e8060326226fd5f952433a9aabcd6e",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "date": "string",
+            "generatedAt": "string",
+            "leadTitle": "string",
+            "leadParagraph": "object",
+            "links": "object",
+            "attribution": "object"
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "aihot.dailies.latest",
+      "url": "https://aihot.news/api/v1/dailies/latest",
+      "checkedAt": "2026-09-20T03:51:38.062Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/dailies/latest",
+      "contentType": "application/json",
+      "bytes": 1854,
+      "sha256": "eca74fb616b53f9a3e4d619c4d4d125e9bee126a5650cf9407b08a5fe32a1a91",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "report": {
+          "date": {
+            "type": "string",
+            "length": 10
+          },
+          "generatedAt": {
+            "type": "string",
+            "length": 24
+          },
+          "windowStart": {
+            "type": "string",
+            "length": 24
+          },
+          "windowEnd": {
+            "type": "string",
+            "length": 24
+          },
+          "links": {
+            "aihot": "string"
+          },
+          "attribution": {
+            "name": "string",
+            "url": "string"
+          },
+          "lead": {
+            "type": "object"
+          },
+          "sections": {
+            "type": "array",
+            "count": 2
+          },
+          "flashes": {
+            "type": "array",
+            "count": 0
+          }
+        }
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "follow_builders.feed-x.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "checkedAt": "2026-09-20T03:51:39.035Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "upstream_content_reuse_rights_review",
+        "history_replay_not_tested"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 17841,
+      "sha256": "41d366e97b009052b406fe878a4d7548f4c44b23036a9240bc1bf51a610981a3",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "x": {
+          "type": "array",
+          "count": 13,
+          "sample": {
+            "source": "string",
+            "name": "string",
+            "handle": "string",
+            "bio": "string",
+            "tweets": "object"
+          }
+        },
+        "stats": {
+          "xBuilders": {
+            "type": "number"
+          },
+          "totalTweets": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "generatedAt": "2026-09-19T06:37:30.918Z",
+      "upstreamErrors": null,
+      "fieldLengths": [
+        {
+          "path": ".x[6].tweets[0].text",
+          "length": 674
+        }
+      ]
+    },
+    {
+      "key": "follow_builders.feed-blogs.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-blogs.json",
+      "checkedAt": "2026-09-20T03:51:39.614Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "upstream_content_reuse_rights_review",
+        "history_replay_not_tested"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-blogs.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 122,
+      "sha256": "f4db2afa36be28a33520d2d79b734a6d6f7dffdbf8dec54590d4c3cc776acd7d",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "blogs": {
+          "type": "array",
+          "count": 0
+        },
+        "stats": {
+          "blogPosts": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "generatedAt": "2026-09-19T06:38:06.005Z",
+      "upstreamErrors": null,
+      "fieldLengths": []
+    },
+    {
+      "key": "follow_builders.feed-podcasts.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-podcasts.json",
+      "checkedAt": "2026-09-20T03:51:39.953Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "upstream_content_reuse_rights_review",
+        "history_replay_not_tested"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-podcasts.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 40580,
+      "sha256": "df01ccb3f04a006b5cc80d4d40524f7f8818947a005bb21fbc00abcbb988d079",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "podcasts": {
+          "type": "array",
+          "count": 1,
+          "sample": {
+            "source": "string",
+            "name": "string",
+            "title": "string",
+            "guid": "string",
+            "url": "string",
+            "publishedAt": "string",
+            "transcript": "string"
+          }
+        },
+        "stats": {
+          "podcastEpisodes": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "generatedAt": "2026-09-19T06:38:05.641Z",
+      "upstreamErrors": null,
+      "fieldLengths": [
+        {
+          "path": ".podcasts[0].transcript",
+          "length": 39751
+        }
+      ]
+    },
+    {
+      "key": "follow_builders.state-feed.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "checkedAt": "2026-09-20T03:51:40.304Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "upstream_content_reuse_rights_review",
+        "history_replay_not_tested"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 8923,
+      "sha256": "b97cd1e2a661de078a45e45b5815ce2e56a44f8561060f4573b4f820e1a85b61",
+      "schema": {
+        "seenTweets": {
+          "2098811935114551617": {
+            "type": "number"
+          },
+          "2098685367058612394": {
+            "type": "number"
+          },
+          "2098945475038912741": {
+            "type": "number"
+          },
+          "2098846399949627553": {
+            "type": "number"
+          },
+          "2098843136328171540": {
+            "type": "number"
+          },
+          "2098829351781593191": {
+            "type": "number"
+          },
+          "2098859477219037691": {
+            "type": "number"
+          },
+          "2098803717432860987": {
+            "type": "number"
+          },
+          "2098860941391872132": {
+            "type": "number"
+          },
+          "2098828265800835310": {
+            "type": "number"
+          },
+          "2098833404707922239": {
+            "type": "number"
+          },
+          "2098803573861621778": {
+            "type": "number"
+          },
+          "2098787667030712757": {
+            "type": "number"
+          },
+          "2098814342443761909": {
+            "type": "number"
+          },
+          "2098785357307539882": {
+            "type": "number"
+          },
+          "2098863831732863310": {
+            "type": "number"
+          },
+          "2098666551629267324": {
+            "type": "number"
+          },
+          "2098869942988718426": {
+            "type": "number"
+          },
+          "2098847298335687132": {
+            "type": "number"
+          },
+          "2098961771289870463": {
+            "type": "number"
+          },
+          "2098995230314037516": {
+            "type": "number"
+          },
+          "2098931686042210381": {
+            "type": "number"
+          },
+          "2098784877495939145": {
+            "type": "number"
+          },
+          "2098905091776373125": {
+            "type": "number"
+          },
+          "2098898413366435903": {
+            "type": "number"
+          },
+          "2098860370639130859": {
+            "type": "number"
+          },
+          "2098811563415150910": {
+            "type": "number"
+          },
+          "2099322487603634395": {
+            "type": "number"
+          },
+          "2099345068893298816": {
+            "type": "number"
+          },
+          "2099200231820963891": {
+            "type": "number"
+          },
+          "2099175305818890472": {
+            "type": "number"
+          },
+          "2099216347138011190": {
+            "type": "number"
+          },
+          "2099224198732517750": {
+            "type": "number"
+          },
+          "2099343474734911917": {
+            "type": "number"
+          },
+          "2099197117013340450": {
+            "type": "number"
+          }
+        },
+        "seenVideos": {
+          "1d32d6b0-5dc8-454d-ae10-d56ee76393db": {
+            "type": "number"
+          },
+          "8476d0dc-a726-11f1-86e6-bbc25e1787ef": {
+            "type": "number"
+          },
+          "substack:post:215289811": {
+            "type": "number"
+          },
+          "fbf77f76-0a17-4230-80fb-fd56e514eb13": {
+            "type": "number"
+          },
+          "d2e9aa74-b080-11f1-8007-f31e2b6b4e53": {
+            "type": "number"
+          },
+          "51c4092c-b309-11f1-8603-fb8d30e1277f": {
+            "type": "number"
+          }
+        },
+        "seenArticles": {
+          "https://claude.com/blog/claude-in-chrome-generally-available": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-built-in-browser": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/how-we-contain-claude": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/april-23-postmortem": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/managed-agents": {
+            "type": "number"
+          },
+          "https://claude.com/blog/artifacts-in-claude-code": {
+            "type": "number"
+          },
+          "https://claude.com/blog/claude-for-small-business-launches-new-workflows-integrations-and-training-programs": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-is-now-claude": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "generatedAt": null,
+      "upstreamErrors": null,
+      "fieldLengths": []
+    },
+    {
+      "key": "follow_builders.config/default-sources.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/config/default-sources.json",
+      "checkedAt": "2026-09-20T03:51:40.660Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "upstream_content_reuse_rights_review",
+        "history_replay_not_tested"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/config/default-sources.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 2944,
+      "sha256": "a46400000a70721499e7d36f8ce97bea8f87416e912c14226b78a38999ff4c49",
+      "schema": {
+        "podcasts": {
+          "type": "array",
+          "count": 6,
+          "sample": {
+            "name": "string",
+            "rssUrl": "string",
+            "url": "string"
+          }
+        },
+        "blogs": {
+          "type": "array",
+          "count": 2,
+          "sample": {
+            "name": "string",
+            "type": "string",
+            "indexUrl": "string",
+            "articleBaseUrl": "string",
+            "fetchMethod": "string"
+          }
+        },
+        "x_accounts": {
+          "type": "array",
+          "count": 26,
+          "sample": {
+            "name": "string",
+            "handle": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "generatedAt": null,
+      "upstreamErrors": null,
+      "fieldLengths": []
+    },
+    {
+      "key": "t2.the_verge_ai.official_alternate",
+      "url": "https://www.theverge.com/rss/index.xml",
+      "checkedAt": "2026-09-20T03:52:40.645Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "evidence": "homepage rel=alternate",
+      "scopeDifference": "entire publication, not AI-only",
+      "http": 200,
+      "finalUrl": "https://www.theverge.com/rss/index.xml",
+      "contentType": "application/xml; charset=UTF-8",
+      "bytes": 77746,
+      "sha256": "fec653cad39a6791f884e8e122cb253d880d4917cb049911c233081239342b92",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.theverge.com/ai-artificial-intelligence/997833/meta-muse-creepy"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://www.jiqizhixin.com/rss",
+      "checkedAt": "2026-09-20T03:52:41.821Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://www.jiqizhixin.com/data-service",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 3375,
+      "sha256": "f44f274b9c4810e5ecd34c8b3963b1d0ab8e5547f1870704256581b1cab3a4d2",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed",
+      "checkedAt": "2026-09-20T03:52:42.109Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "2e671ccfa3680805e5c4f6b4d5e63cec01e06e48ae21ce933b336b6133509c27",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed-article",
+      "checkedAt": "2026-09-20T03:52:42.292Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-article",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "facdd900f64cb4421af1f114dfc8886b1c595fb16534f23c4c800af771f659e8",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed-newsflash",
+      "checkedAt": "2026-09-20T03:52:42.457Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-newsflash",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "0a3892304c292b2f90fe86e8b1f0e5a180d251fe1a5641f5296ac4882a8028d9",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "aihot.hot_topics.contract_detail",
+      "url": "https://aihot.news/api/v1/hot-topics",
+      "checkedAt": "2026-09-20T03:52:42.637Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/hot-topics",
+      "contentType": "application/json",
+      "bytes": 7122,
+      "sha256": "4e125362f00d115bf576d17da5132ecb800736d516c8404ce714628d650ad819",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array",
+          "count": 10,
+          "sample": {
+            "rank": "number",
+            "id": "string",
+            "title": "string",
+            "source": "object",
+            "links": "object",
+            "sourceCount": "number",
+            "signalCount": "number",
+            "participantCount": "number",
+            "sourceNames": "object",
+            "latestAt": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "itemShape": {
+          "rank": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string",
+            "length": 25
+          },
+          "title": {
+            "type": "string",
+            "length": 63
+          },
+          "source": {
+            "name": {
+              "type": "string",
+              "length": 26
+            }
+          },
+          "links": {
+            "aihot": {
+              "type": "string",
+              "length": 50
+            },
+            "original": {
+              "type": "string",
+              "length": 51
+            },
+            "story": {
+              "type": "string",
+              "length": 68
+            }
+          },
+          "sourceCount": {
+            "type": "number"
+          },
+          "signalCount": {
+            "type": "number"
+          },
+          "participantCount": {
+            "type": "number"
+          },
+          "sourceNames": {
+            "type": "array",
+            "count": 8,
+            "sample": {
+              "type": "string",
+              "length": 28
+            }
+          },
+          "latestAt": {
+            "type": "string",
+            "length": 24
+          }
+        },
+        "publicReference": {
+          "id": "cmu7hc2e80aavrogr7vbwhcjm",
+          "links": {
+            "aihot": "https://aihot.news/items/cmu7hc2e80aavrogr7vbwhcjm",
+            "original": "https://x.com/OpenRouter/status/2101061688338575739",
+            "story": "https://aihot.virxact.com/story/379c3594-c5bf-4cc3-8675-9b1aae61a411"
+          },
+          "source": {
+            "name": "X：OpenRouter (@OpenRouter)"
+          }
+        }
+      }
+    },
+    {
+      "key": "follow_builders.contract_detail.feed-x.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "checkedAt": "2026-09-20T03:52:43.559Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 17841,
+      "sha256": "41d366e97b009052b406fe878a4d7548f4c44b23036a9240bc1bf51a610981a3",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "x": {
+          "type": "array",
+          "count": 13,
+          "sample": {
+            "source": "string",
+            "name": "string",
+            "handle": "string",
+            "bio": "string",
+            "tweets": "object"
+          }
+        },
+        "stats": {
+          "xBuilders": {
+            "type": "number"
+          },
+          "totalTweets": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "tweetShape": {
+          "id": {
+            "type": "string",
+            "length": 19
+          },
+          "text": {
+            "type": "string",
+            "length": 432
+          },
+          "createdAt": {
+            "type": "string",
+            "length": 24
+          },
+          "url": {
+            "type": "string",
+            "length": 51
+          },
+          "likes": {
+            "type": "number"
+          },
+          "retweets": {
+            "type": "number"
+          },
+          "replies": {
+            "type": "number"
+          },
+          "isQuote": {
+            "type": "boolean"
+          },
+          "quotedTweetId": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "key": "follow_builders.contract_detail.state-feed.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "checkedAt": "2026-09-20T03:52:45.127Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 8923,
+      "sha256": "b97cd1e2a661de078a45e45b5815ce2e56a44f8561060f4573b4f820e1a85b61",
+      "schema": {
+        "seenTweets": {
+          "2098811935114551617": {
+            "type": "number"
+          },
+          "2098685367058612394": {
+            "type": "number"
+          },
+          "2098945475038912741": {
+            "type": "number"
+          },
+          "2098846399949627553": {
+            "type": "number"
+          },
+          "2098843136328171540": {
+            "type": "number"
+          },
+          "2098829351781593191": {
+            "type": "number"
+          },
+          "2098859477219037691": {
+            "type": "number"
+          },
+          "2098803717432860987": {
+            "type": "number"
+          },
+          "2098860941391872132": {
+            "type": "number"
+          },
+          "2098828265800835310": {
+            "type": "number"
+          },
+          "2098833404707922239": {
+            "type": "number"
+          },
+          "2098803573861621778": {
+            "type": "number"
+          },
+          "2098787667030712757": {
+            "type": "number"
+          },
+          "2098814342443761909": {
+            "type": "number"
+          },
+          "2098785357307539882": {
+            "type": "number"
+          },
+          "2098863831732863310": {
+            "type": "number"
+          },
+          "2098666551629267324": {
+            "type": "number"
+          },
+          "2098869942988718426": {
+            "type": "number"
+          },
+          "2098847298335687132": {
+            "type": "number"
+          },
+          "2098961771289870463": {
+            "type": "number"
+          },
+          "2098995230314037516": {
+            "type": "number"
+          },
+          "2098931686042210381": {
+            "type": "number"
+          },
+          "2098784877495939145": {
+            "type": "number"
+          },
+          "2098905091776373125": {
+            "type": "number"
+          },
+          "2098898413366435903": {
+            "type": "number"
+          },
+          "2098860370639130859": {
+            "type": "number"
+          },
+          "2098811563415150910": {
+            "type": "number"
+          },
+          "2099322487603634395": {
+            "type": "number"
+          },
+          "2099345068893298816": {
+            "type": "number"
+          },
+          "2099200231820963891": {
+            "type": "number"
+          },
+          "2099175305818890472": {
+            "type": "number"
+          },
+          "2099216347138011190": {
+            "type": "number"
+          },
+          "2099224198732517750": {
+            "type": "number"
+          },
+          "2099343474734911917": {
+            "type": "number"
+          },
+          "2099197117013340450": {
+            "type": "number"
+          }
+        },
+        "seenVideos": {
+          "1d32d6b0-5dc8-454d-ae10-d56ee76393db": {
+            "type": "number"
+          },
+          "8476d0dc-a726-11f1-86e6-bbc25e1787ef": {
+            "type": "number"
+          },
+          "substack:post:215289811": {
+            "type": "number"
+          },
+          "fbf77f76-0a17-4230-80fb-fd56e514eb13": {
+            "type": "number"
+          },
+          "d2e9aa74-b080-11f1-8007-f31e2b6b4e53": {
+            "type": "number"
+          },
+          "51c4092c-b309-11f1-8603-fb8d30e1277f": {
+            "type": "number"
+          }
+        },
+        "seenArticles": {
+          "https://claude.com/blog/claude-in-chrome-generally-available": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-built-in-browser": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/how-we-contain-claude": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/april-23-postmortem": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/managed-agents": {
+            "type": "number"
+          },
+          "https://claude.com/blog/artifacts-in-claude-code": {
+            "type": "number"
+          },
+          "https://claude.com/blog/claude-for-small-business-launches-new-workflows-integrations-and-training-programs": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-is-now-claude": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "stateCounts": {
+          "seenTweets": 187,
+          "seenVideos": 6,
+          "seenArticles": 8
+        }
+      }
+    },
+    {
+      "key": "t2.techcrunch_ai.after_dns_fix",
+      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "checkedAt": "2026-09-20T03:59:46.986Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 2
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "retestOf": "t2.techcrunch_ai",
+      "http": 200,
+      "finalUrl": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 17575,
+      "sha256": "c9755b0cc3edaee2c32c18cc42e9345520d17bc2de5d8d23d5c265dcf9b11ee9",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 20,
+        "sampleUrl": "https://techcrunch.com/2026/09/19/flock-reportedly-tries-to-shrink-workforce-with-employee-buyouts/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.mit_technology_review_ai.after_dns_fix",
+      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+      "checkedAt": "2026-09-20T03:59:47.831Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 7
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "retestOf": "t2.mit_technology_review_ai",
+      "http": 200,
+      "finalUrl": "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 132028,
+      "sha256": "d273ab1ee34ca691b5a5a4ded74be2d6c1eba888f76a59235b6c2e02ddaf046f",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.technologyreview.com/2026/09/18/1144435/could-ai-really-kill-us-all-your-questions-answered/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "t2.import_ai.after_dns_fix",
+      "url": "https://jack-clark.net/feed/",
+      "checkedAt": "2026-09-20T03:59:48.757Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [
+        {
+          "file": "T2媒体.xlsx",
+          "sheet": "table",
+          "row": 15
+        }
+      ],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "retestOf": "t2.import_ai",
+      "http": 200,
+      "finalUrl": "https://jack-clark.net/feed/",
+      "contentType": "application/rss+xml; charset=UTF-8",
+      "bytes": 269635,
+      "sha256": "5311d6379bf21d4948c47ecb55c2a3a852a82ce015e5630c77ebd9e5fbdfb4c3",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://jack-clark.net/2026/09/07/import-ai-472-deepminds-cheating-math-agents-populist-ai-policies-and-forethought-theorizes-a-nightwatchman/"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "follow_builders.blogs.parent_contract",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/0dbf5a4feafbd386cc239960d673e3195909d7b0/feed-blogs.json",
+      "checkedAt": "2026-09-20T03:59:49.608Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "commit": "0dbf5a4feafbd386cc239960d673e3195909d7b0",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/0dbf5a4feafbd386cc239960d673e3195909d7b0/feed-blogs.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 122,
+      "sha256": "ac18aac83d005ca33a46793c17eb57d35e7034936eb03a3723b57e29cffdc926",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "blogs": {
+          "type": "array",
+          "count": 0
+        },
+        "stats": {
+          "blogPosts": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {}
+    },
+    {
+      "key": "t2.the_verge_ai.official_alternate",
+      "url": "https://www.theverge.com/rss/index.xml",
+      "checkedAt": "2026-09-20T03:59:50.215Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "evidence": "homepage rel=alternate",
+      "scopeDifference": "entire publication, not AI-only",
+      "http": 200,
+      "finalUrl": "https://www.theverge.com/rss/index.xml",
+      "contentType": "application/xml; charset=UTF-8",
+      "bytes": 77746,
+      "sha256": "fec653cad39a6791f884e8e122cb253d880d4917cb049911c233081239342b92",
+      "schema": {
+        "kind": "rss_or_atom",
+        "itemCount": 10,
+        "sampleUrl": "https://www.theverge.com/ai-artificial-intelligence/997833/meta-muse-creepy"
+      },
+      "status": "endpoint_parsed"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://www.jiqizhixin.com/rss",
+      "checkedAt": "2026-09-20T03:59:50.893Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://www.jiqizhixin.com/data-service",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 3375,
+      "sha256": "d736fbe81135e6b587d9ff35f57dca54aa372fd25997dd40722ed33d667dfec3",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed",
+      "checkedAt": "2026-09-20T03:59:51.274Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "07ab1ff2b915a97df3fdbd4a1798d0977ce23fec85e4a7261576e166c31957c5",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed-article",
+      "checkedAt": "2026-09-20T03:59:51.501Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-article",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "2c1d1f8db4a641db624b3f82ec034a09dfcedbde7a928f6227df2d135d772683",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "media.non_feed_diagnosis",
+      "url": "https://36kr.com/feed-newsflash",
+      "checkedAt": "2026-09-20T03:59:51.679Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "candidateOnly": true,
+      "http": 200,
+      "finalUrl": "https://36kr.com/feed-newsflash",
+      "contentType": "text/html",
+      "bytes": 17603,
+      "sha256": "464d417725eaece53fc8e5644800450abcd08522b8cf8f6a9d5f8bd23cfc0e9b",
+      "schema": {
+        "alternateLinks": []
+      },
+      "status": "homepage_read"
+    },
+    {
+      "key": "aihot.hot_topics.contract_detail",
+      "url": "https://aihot.news/api/v1/hot-topics",
+      "checkedAt": "2026-09-20T03:59:51.854Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "http": 200,
+      "finalUrl": "https://aihot.news/api/v1/hot-topics",
+      "contentType": "application/json",
+      "bytes": 7122,
+      "sha256": "8786f0a37a0670d8e59bc804926e63fd6252a0e85a39a585196a9bb48a9818f7",
+      "schema": {
+        "schemaVersion": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array",
+          "count": 10,
+          "sample": {
+            "rank": "number",
+            "id": "string",
+            "title": "string",
+            "source": "object",
+            "links": "object",
+            "sourceCount": "number",
+            "signalCount": "number",
+            "participantCount": "number",
+            "sourceNames": "object",
+            "latestAt": "string"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "itemShape": {
+          "rank": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string",
+            "length": 25
+          },
+          "title": {
+            "type": "string",
+            "length": 63
+          },
+          "source": {
+            "name": {
+              "type": "string",
+              "length": 26
+            }
+          },
+          "links": {
+            "aihot": {
+              "type": "string",
+              "length": 50
+            },
+            "original": {
+              "type": "string",
+              "length": 51
+            },
+            "story": {
+              "type": "string",
+              "length": 68
+            }
+          },
+          "sourceCount": {
+            "type": "number"
+          },
+          "signalCount": {
+            "type": "number"
+          },
+          "participantCount": {
+            "type": "number"
+          },
+          "sourceNames": {
+            "type": "array",
+            "count": 8,
+            "sample": {
+              "type": "string",
+              "length": 28
+            }
+          },
+          "latestAt": {
+            "type": "string",
+            "length": 24
+          }
+        },
+        "publicReference": {
+          "id": "cmu7hc2e80aavrogr7vbwhcjm",
+          "links": {
+            "aihot": "https://aihot.news/items/cmu7hc2e80aavrogr7vbwhcjm",
+            "original": "https://x.com/OpenRouter/status/2101061688338575739",
+            "story": "https://aihot.virxact.com/story/379c3594-c5bf-4cc3-8675-9b1aae61a411"
+          },
+          "source": {
+            "name": "X：OpenRouter (@OpenRouter)"
+          }
+        }
+      }
+    },
+    {
+      "key": "follow_builders.contract_detail.feed-x.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "checkedAt": "2026-09-20T03:59:53.380Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/feed-x.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 17841,
+      "sha256": "41d366e97b009052b406fe878a4d7548f4c44b23036a9240bc1bf51a610981a3",
+      "schema": {
+        "generatedAt": {
+          "type": "string",
+          "length": 24
+        },
+        "lookbackHours": {
+          "type": "number"
+        },
+        "x": {
+          "type": "array",
+          "count": 13,
+          "sample": {
+            "source": "string",
+            "name": "string",
+            "handle": "string",
+            "bio": "string",
+            "tweets": "object"
+          }
+        },
+        "stats": {
+          "xBuilders": {
+            "type": "number"
+          },
+          "totalTweets": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "tweetShape": {
+          "id": {
+            "type": "string",
+            "length": 19
+          },
+          "text": {
+            "type": "string",
+            "length": 432
+          },
+          "createdAt": {
+            "type": "string",
+            "length": 24
+          },
+          "url": {
+            "type": "string",
+            "length": 51
+          },
+          "likes": {
+            "type": "number"
+          },
+          "retweets": {
+            "type": "number"
+          },
+          "replies": {
+            "type": "number"
+          },
+          "isQuote": {
+            "type": "boolean"
+          },
+          "quotedTweetId": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "key": "follow_builders.contract_detail.state-feed.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "checkedAt": "2026-09-20T03:59:53.717Z",
+      "env": {
+        "node": "v22.21.0",
+        "platform": "win32",
+        "proxyConfigured": true,
+        "credentialsUsed": false
+      },
+      "inputRefs": [],
+      "access": "public_endpoint_only_rights_not_granted",
+      "missing": [
+        "fulltext_reuse_rights_review"
+      ],
+      "commit": "e062f01a3dd8a32505169a5b9765707f5895a6e1",
+      "http": 200,
+      "finalUrl": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/state-feed.json",
+      "contentType": "text/plain; charset=utf-8",
+      "bytes": 8923,
+      "sha256": "b97cd1e2a661de078a45e45b5815ce2e56a44f8561060f4573b4f820e1a85b61",
+      "schema": {
+        "seenTweets": {
+          "2098811935114551617": {
+            "type": "number"
+          },
+          "2098685367058612394": {
+            "type": "number"
+          },
+          "2098945475038912741": {
+            "type": "number"
+          },
+          "2098846399949627553": {
+            "type": "number"
+          },
+          "2098843136328171540": {
+            "type": "number"
+          },
+          "2098829351781593191": {
+            "type": "number"
+          },
+          "2098859477219037691": {
+            "type": "number"
+          },
+          "2098803717432860987": {
+            "type": "number"
+          },
+          "2098860941391872132": {
+            "type": "number"
+          },
+          "2098828265800835310": {
+            "type": "number"
+          },
+          "2098833404707922239": {
+            "type": "number"
+          },
+          "2098803573861621778": {
+            "type": "number"
+          },
+          "2098787667030712757": {
+            "type": "number"
+          },
+          "2098814342443761909": {
+            "type": "number"
+          },
+          "2098785357307539882": {
+            "type": "number"
+          },
+          "2098863831732863310": {
+            "type": "number"
+          },
+          "2098666551629267324": {
+            "type": "number"
+          },
+          "2098869942988718426": {
+            "type": "number"
+          },
+          "2098847298335687132": {
+            "type": "number"
+          },
+          "2098961771289870463": {
+            "type": "number"
+          },
+          "2098995230314037516": {
+            "type": "number"
+          },
+          "2098931686042210381": {
+            "type": "number"
+          },
+          "2098784877495939145": {
+            "type": "number"
+          },
+          "2098905091776373125": {
+            "type": "number"
+          },
+          "2098898413366435903": {
+            "type": "number"
+          },
+          "2098860370639130859": {
+            "type": "number"
+          },
+          "2098811563415150910": {
+            "type": "number"
+          },
+          "2099322487603634395": {
+            "type": "number"
+          },
+          "2099345068893298816": {
+            "type": "number"
+          },
+          "2099200231820963891": {
+            "type": "number"
+          },
+          "2099175305818890472": {
+            "type": "number"
+          },
+          "2099216347138011190": {
+            "type": "number"
+          },
+          "2099224198732517750": {
+            "type": "number"
+          },
+          "2099343474734911917": {
+            "type": "number"
+          },
+          "2099197117013340450": {
+            "type": "number"
+          }
+        },
+        "seenVideos": {
+          "1d32d6b0-5dc8-454d-ae10-d56ee76393db": {
+            "type": "number"
+          },
+          "8476d0dc-a726-11f1-86e6-bbc25e1787ef": {
+            "type": "number"
+          },
+          "substack:post:215289811": {
+            "type": "number"
+          },
+          "fbf77f76-0a17-4230-80fb-fd56e514eb13": {
+            "type": "number"
+          },
+          "d2e9aa74-b080-11f1-8007-f31e2b6b4e53": {
+            "type": "number"
+          },
+          "51c4092c-b309-11f1-8603-fb8d30e1277f": {
+            "type": "number"
+          }
+        },
+        "seenArticles": {
+          "https://claude.com/blog/claude-in-chrome-generally-available": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-built-in-browser": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/how-we-contain-claude": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/april-23-postmortem": {
+            "type": "number"
+          },
+          "https://www.anthropic.com/engineering/managed-agents": {
+            "type": "number"
+          },
+          "https://claude.com/blog/artifacts-in-claude-code": {
+            "type": "number"
+          },
+          "https://claude.com/blog/claude-for-small-business-launches-new-workflows-integrations-and-training-programs": {
+            "type": "number"
+          },
+          "https://claude.com/blog/cowork-is-now-claude": {
+            "type": "number"
+          }
+        }
+      },
+      "status": "endpoint_parsed",
+      "contractSummary": {
+        "stateCounts": {
+          "seenTweets": 187,
+          "seenVideos": 6,
+          "seenArticles": 8
+        }
+      }
+    }
+  ],
+  "originalCoverage": [
+    {
+      "file": "T2媒体.xlsx",
+      "sheets": [
+        {
+          "sheet": "table",
+          "rows": [
+            {
+              "row": 2,
+              "values": [
+                1,
+                "TechCrunch AI",
+                "官方 RSS",
+                "https://techcrunch.com/category/artificial-intelligence/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.techcrunch_ai"
+              ]
+            },
+            {
+              "row": 3,
+              "values": [
+                2,
+                "The Verge AI",
+                "官方 RSS",
+                "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+                "低"
+              ],
+              "mapping": [
+                "t2.the_verge_ai"
+              ]
+            },
+            {
+              "row": 4,
+              "values": [
+                3,
+                "The Decoder",
+                "官方 RSS",
+                "https://the-decoder.com/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.the_decoder"
+              ]
+            },
+            {
+              "row": 5,
+              "values": [
+                4,
+                "Ars Technica",
+                "官方 RSS",
+                "https://feeds.arstechnica.com/arstechnica/index",
+                "低"
+              ],
+              "mapping": [
+                "t2.ars_technica"
+              ]
+            },
+            {
+              "row": 6,
+              "values": [
+                5,
+                "MarkTechPost",
+                "官方 RSS",
+                "https://www.marktechpost.com/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.marktechpost"
+              ]
+            },
+            {
+              "row": 7,
+              "values": [
+                6,
+                "MIT Tech Review AI",
+                "官方 RSS",
+                "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.mit_technology_review_ai"
+              ]
+            },
+            {
+              "row": 8,
+              "values": [
+                7,
+                "VentureBeat AI",
+                "官方 RSS",
+                "https://venturebeat.com/category/ai/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.venturebeat_ai"
+              ]
+            },
+            {
+              "row": 9,
+              "values": [
+                8,
+                "Wired AI",
+                "官方 RSS",
+                "https://www.wired.com/feed/tag/ai/latest/rss",
+                "低"
+              ],
+              "mapping": [
+                "t2.wired_ai"
+              ]
+            },
+            {
+              "row": 10,
+              "values": [
+                9,
+                "Last Week in AI",
+                "官方 RSS",
+                "https://lastweekin.ai/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.last_week_in_ai"
+              ]
+            },
+            {
+              "row": 11,
+              "values": [
+                10,
+                "IT之家",
+                "官方 RSS",
+                "https://www.ithome.com/rss/",
+                "低"
+              ],
+              "mapping": [
+                "t2.ithome"
+              ]
+            },
+            {
+              "row": 12,
+              "values": [
+                11,
+                "机器之心",
+                "官网 RSS / 公众号",
+                "https://www.jiqizhixin.com/rss（若失效改 wechat2rss）",
+                "低–中"
+              ],
+              "mapping": [
+                "t2.jiqizhixin"
+              ]
+            },
+            {
+              "row": 13,
+              "values": [
+                12,
+                "量子位",
+                "官方 RSS",
+                "https://www.qbitai.com/feed",
+                "低"
+              ],
+              "mapping": [
+                "t2.qbitai"
+              ]
+            },
+            {
+              "row": 14,
+              "values": [
+                13,
+                "36氪",
+                "官方 RSS / RSSHub",
+                "https://36kr.com/feed 或 {RSSHUB}/36kr/newsflashes",
+                "中"
+              ],
+              "mapping": [
+                "t2.36kr"
+              ]
+            },
+            {
+              "row": 15,
+              "values": [
+                14,
+                "Import AI（Jack Clark）",
+                "官方 RSS",
+                "https://jack-clark.net/feed/",
+                "低"
+              ],
+              "mapping": [
+                "t2.import_ai"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "社区.xlsx",
+      "sheets": [
+        {
+          "sheet": "table (1)",
+          "rows": [
+            {
+              "row": 2,
+              "values": [
+                "Hacker News 首页",
+                "官方 RSS",
+                "https://hnrss.org/frontpage",
+                "低",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 2
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.hacker_news.frontpage"
+                ]
+              }
+            },
+            {
+              "row": 3,
+              "values": [
+                "HN 新帖含 AI",
+                "官方 RSS",
+                "https://hnrss.org/newest?q=AI　再加 LLM GPT Claude",
+                "低",
+                "建议关键词拆成 3–4 条 feed"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 3
+                },
+                "disposition": "query_expansion",
+                "logicalTargets": [
+                  "community.hacker_news.newest_ai",
+                  "community.hacker_news.newest_llm",
+                  "community.hacker_news.newest_gpt",
+                  "community.hacker_news.newest_claude"
+                ]
+              }
+            },
+            {
+              "row": 4,
+              "values": [
+                "HN 热议",
+                "官方 RSS",
+                "https://hnrss.org/best",
+                "低",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 4
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.hacker_news.best"
+                ]
+              }
+            },
+            {
+              "row": 5,
+              "values": [
+                "HN 中文",
+                "buzzing.cc",
+                "AIHOT 已接；也可单独订 buzzing",
+                "低",
+                "中文选题好用"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 5
+                },
+                "disposition": "disabled_candidate",
+                "logicalTargets": [
+                  "community.hacker_news.hn_chinese"
+                ]
+              }
+            },
+            {
+              "row": 6,
+              "values": [
+                "Reddit r/LocalLLaMA",
+                "官方 RSS",
+                "https://www.reddit.com/r/LocalLLaMA/.rss",
+                "低–中",
+                "不登录也能订，公共 IP 会限流"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 6
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.localllama"
+                ]
+              }
+            },
+            {
+              "row": 7,
+              "values": [
+                "r/MachineLearning",
+                "官方 RSS",
+                "https://www.reddit.com/r/MachineLearning/.rss",
+                "低–中",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 7
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.machinelearning"
+                ]
+              }
+            },
+            {
+              "row": 8,
+              "values": [
+                "r/artificial",
+                "官方 RSS",
+                "https://www.reddit.com/r/artificial/.rss",
+                "低–中",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 8
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.artificial"
+                ]
+              }
+            },
+            {
+              "row": 9,
+              "values": [
+                "r/ClaudeAI · r/OpenAI · r/LocalLLM",
+                "同上 .rss",
+                "按需",
+                "低–中",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 9
+                },
+                "disposition": "split_combined_row",
+                "logicalTargets": [
+                  "community.reddit.claudeai",
+                  "community.reddit.openai",
+                  "community.reddit.localllm"
+                ]
+              }
+            },
+            {
+              "row": 10,
+              "values": [
+                "r/LocalLLaMA",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 10
+                },
+                "disposition": "duplicate",
+                "logicalTargets": [
+                  "community.reddit.localllama"
+                ]
+              }
+            },
+            {
+              "row": 11,
+              "values": [
+                "r/MachineLearning",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 11
+                },
+                "disposition": "duplicate",
+                "logicalTargets": [
+                  "community.reddit.machinelearning"
+                ]
+              }
+            },
+            {
+              "row": 12,
+              "values": [
+                "r/ClaudeAI",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 12
+                },
+                "disposition": "duplicate",
+                "logicalTargets": [
+                  "community.reddit.claudeai"
+                ]
+              }
+            },
+            {
+              "row": 13,
+              "values": [
+                "r/ChatGPTCoding",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 13
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.chatgptcoding"
+                ]
+              }
+            },
+            {
+              "row": 14,
+              "values": [
+                "r/AI_Agents",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 14
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.ai_agents"
+                ]
+              }
+            },
+            {
+              "row": 15,
+              "values": [
+                "r/artificial",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 15
+                },
+                "disposition": "duplicate",
+                "logicalTargets": [
+                  "community.reddit.artificial"
+                ]
+              }
+            },
+            {
+              "row": 16,
+              "values": [
+                "r/ArtificialInteligence",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 16
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.artificialinteligence"
+                ]
+              }
+            },
+            {
+              "row": 17,
+              "values": [
+                "r/mcp（MCP 生态）",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 17
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.mcp"
+                ]
+              }
+            },
+            {
+              "row": 18,
+              "values": [
+                "r/learnmachinelearning",
+                null,
+                null,
+                null,
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 18
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.reddit.learnmachinelearning"
+                ]
+              }
+            },
+            {
+              "row": 19,
+              "values": [
+                "Reddit JSON",
+                "官方 API",
+                "https://www.reddit.com/r/LocalLLaMA/hot.json",
+                "中",
+                "脚本拉分数、评论数更方便；加 User-Agent"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 19
+                },
+                "disposition": "acquisition_method_not_extra_source",
+                "logicalTargets": [
+                  "community.reddit"
+                ]
+              }
+            },
+            {
+              "row": 20,
+              "values": [
+                "GitHub 搜索新仓",
+                "GitHub API",
+                "search/repositories?q=topic:llm+created:>日期",
+                "中",
+                "要 token，免费额度够"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 20
+                },
+                "disposition": "query_family",
+                "logicalTargets": [
+                  "community.github"
+                ]
+              }
+            },
+            {
+              "row": 21,
+              "values": [
+                "arXiv cs.AI",
+                "官方 RSS",
+                "https://rss.arxiv.org/rss/cs.AI",
+                "低",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 21
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.arxiv.cs.AI"
+                ]
+              }
+            },
+            {
+              "row": 22,
+              "values": [
+                "arXiv cs.CL",
+                "官方 RSS",
+                "https://rss.arxiv.org/rss/cs.CL",
+                "低",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 22
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.arxiv.cs.CL"
+                ]
+              }
+            },
+            {
+              "row": 23,
+              "values": [
+                "arXiv cs.LG",
+                "官方 RSS",
+                "https://rss.arxiv.org/rss/cs.LG",
+                "低",
+                "量大，必须关键词/分类再滤"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 23
+                },
+                "disposition": "source",
+                "logicalTargets": [
+                  "community.arxiv.cs.LG"
+                ]
+              }
+            },
+            {
+              "row": 24,
+              "values": [
+                "Stack Overflow 标签",
+                "官方 RSS",
+                "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+                "低",
+                "再订 langchain ollama llm chatgpt"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 24
+                },
+                "disposition": "tag_query_family",
+                "logicalTargets": [
+                  "community.stackoverflow.newest"
+                ]
+              }
+            },
+            {
+              "row": 25,
+              "values": [
+                "SO 热门",
+                "官方 RSS",
+                "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=votes",
+                "低",
+                "教程选题"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 25
+                },
+                "disposition": "sort_variant",
+                "logicalTargets": [
+                  "community.stackoverflow.votes"
+                ]
+              }
+            },
+            {
+              "row": 26,
+              "values": [
+                "Dev.to",
+                "官方 RSS",
+                "https://dev.to/feed",
+                "低",
+                "全站噪，建议"
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 26
+                },
+                "disposition": "disabled_candidate",
+                "logicalTargets": [
+                  "community.devto.full_site"
+                ]
+              }
+            },
+            {
+              "row": 27,
+              "values": [
+                "Dev.to 标签",
+                "官方 RSS",
+                "https://dev.to/feed/tag/ai　/feed/tag/chatgpt　/feed/tag/llm",
+                "低",
+                null
+              ],
+              "mapping": {
+                "inputRef": {
+                  "file": "社区.xlsx",
+                  "sheet": "table (1)",
+                  "row": 27
+                },
+                "disposition": "split_tag_queries",
+                "logicalTargets": [
+                  "community.devto.ai",
+                  "community.devto.chatgpt",
+                  "community.devto.llm"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "upstreamSourceInspection": {
+    "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/e062f01a3dd8a32505169a5b9765707f5895a6e1/scripts/generate-feed.js",
+    "method": "read_only_not_executed",
+    "blogFields": [
+      "source",
+      "name",
+      "title",
+      "url",
+      "publishedAt",
+      "author",
+      "description",
+      "content"
+    ],
+    "liveNonemptyBlogVerified": false
+  }
+}

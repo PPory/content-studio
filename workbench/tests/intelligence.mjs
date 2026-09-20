@@ -57,8 +57,10 @@ try{
  await execute(w,{}, {runId:wr.id},webDeps);assert.equal(run(w,wr.id).status,'partial');assert.equal(runSources(w,wr.id).length,1);
  retry(w,wr.id);await execute(w,{}, {runId:wr.id},{...webDeps,readArticle:async(url)=>{reads.push(url);return {title:'Retry',url,markdown:original};}});
  assert.equal(run(w,wr.id).status,'done');assert.equal(searches,1,'retry reuses persisted search result');assert.equal(reads.filter(u=>u.endsWith('/good')).length,1,'completed pages are not fetched twice');assert.equal(runSources(w,wr.id).length,2);
- const ap=profile(w,{...base,providers:['aihot']}),ar=enqueue(w,ap.id);let aiReads=[];
- await execute(w,{}, {runId:ar.id},{fetchAiHot:async()=>({ok:true,items:[{title:'AI 上下文',summary:'AI',link:'https://example.com/industry'},{title:'无关娱乐新闻',summary:'娱乐',link:'https://example.com/unrelated'}]}),readArticle:async(url)=>{aiReads.push(url);return {title:'AI',url,markdown:original};},completeJson:emptyModel});assert.deepEqual(aiReads,['https://example.com/industry']);assert.equal(run(w,ar.id).status,'done');
+ const localAi=source(w,{title:'AI 上下文',url:'https://example.com/industry',body:original,provider:'aihot',readLevel:'original'});
+ const ap=profile(w,{...base,providers:['aihot']}),ar=enqueue(w,ap.id);
+ await execute(w,{}, {runId:ar.id},{fetchAiHot:async()=>assert.fail('AIHOT analysis must not refetch upstream'),readArticle:async()=>assert.fail('AIHOT analysis must use persisted originals'),completeJson:emptyModel});
+ assert.ok(runSources(w,ar.id).some(s=>s.id===localAi.id));assert.equal(run(w,ar.id).status,'done');
  const xp=profile(w,{...base,providers:['x'],accounts:['OpenAI'],paidApproved:true}),xr=enqueue(w,xp.id);let triggers=0;
  const brightDeps={trigger:async()=>{triggers++;return 's_resume';},progress:async()=>{throw new Error('temporary progress failure fake-test-key');},download:async()=>[{url:'https://x.com/OpenAI/status/1',description:original,date_posted:new Date().toISOString()}],completeJson:emptyModel};
  await execute(w,{BRIGHTDATA_API_KEY:'fake-test-key'},{runId:xr.id},brightDeps);assert.equal(run(w,xr.id).status,'failed');assert.equal(stepState(w,xr.id,'x').snapshotId,'s_resume');assert.ok(!JSON.stringify(run(w,xr.id)).includes('fake-test-key'),'provider errors cannot expose configured keys');assert.throws(()=>retry(w,xr.id,{snapshotIds:{x:'s_replace'}}),e=>e.status===400||e.status===409,'known snapshots cannot be silently replaced');

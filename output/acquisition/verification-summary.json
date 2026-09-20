@@ -1,0 +1,123 @@
+{
+  "checkedAt": "2026-09-20T06:25:19.714Z",
+  "commands": [
+    {
+      "command": "node tests/acquisition-migration.mjs",
+      "exitCode": 0,
+      "log": "final-node-tests-acquisition-migration-mjs.log"
+    },
+    {
+      "command": "npm run test:acquisition",
+      "exitCode": 0,
+      "log": "recheck-npm-run-test-acquisition.log"
+    },
+    {
+      "command": "npm run test:unit",
+      "exitCode": 0,
+      "log": "verified-npm-run-test-unit.log"
+    },
+    {
+      "command": "npm run test:pi",
+      "exitCode": 0,
+      "log": "final-npm-run-test-pi.log"
+    },
+    {
+      "command": "npm run test:extension",
+      "exitCode": 0,
+      "log": "final-npm-run-test-extension.log"
+    },
+    {
+      "command": "npm run test:app-exit",
+      "exitCode": 0,
+      "log": "final-npm-run-test-app-exit.log"
+    },
+    {
+      "command": "npm run test:mcp",
+      "exitCode": 0,
+      "log": "final-npm-run-test-mcp.log"
+    },
+    {
+      "command": "npm run test:intelligence:v2",
+      "exitCode": 0,
+      "log": "recheck-npm-run-test-intelligence-v2.log"
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "final-npm-test.log"
+    },
+    {
+      "command": "npm run check",
+      "exitCode": 0,
+      "log": "verified-npm-run-check.log"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "verified-npm-run-build.log"
+    },
+    {
+      "command": "node tests/intelligence.mjs",
+      "exitCode": 0,
+      "log": "recheck-node-tests-intelligence-mjs.log"
+    },
+    {
+      "command": "node tests/intelligence-feed.mjs",
+      "exitCode": 0,
+      "log": "recheck-node-tests-intelligence-feed-mjs.log"
+    },
+    {
+      "command": "node tests/intelligence-editor.mjs",
+      "exitCode": 0,
+      "log": "recheck-node-tests-intelligence-editor-mjs.log"
+    },
+    {
+      "command": "node tests/acquisition-storage.mjs",
+      "exitCode": 0,
+      "log": "verified-node-tests-acquisition-storage-mjs.log"
+    },
+    {
+      "command": "node tests/acquisition-regressions.mjs",
+      "exitCode": 0,
+      "log": "verified-node-tests-acquisition-regressions-mjs.log"
+    }
+  ],
+  "acquisition": {
+    "storageCases": 19,
+    "regressionCases": 9,
+    "migration": "passed: isolated v28 to v29, recovery-point hash/integrity/all tables/disabled choice, production file fingerprints unchanged",
+    "protocolTests": "mocked upstream, not real Reddit or history acceptance",
+    "ui": "real isolated SQLite/API/browser; external button responses mocked; desktop/mobile screenshots inspected",
+    "liveReports": [
+      "live-smoke.json",
+      "headless-smoke.json",
+      "source-validation.json"
+    ],
+    "headless": "passed"
+  },
+  "production": {
+    "database": "D:/文档/Xenho/Workspace/workspace.sqlite",
+    "userVersion": 28,
+    "sources": 190,
+    "channels": 28,
+    "developmentMigrationApplied": false
+  },
+  "gitDiffCheck": {
+    "implementation": "passed",
+    "originalInputException": "Original IMPLEMENTATION_PLAN.md lines 3-5 contain intentional Markdown hard-break spaces; retained unchanged."
+  },
+  "notCompleted": [
+    "Reddit approved OAuth live posts/comments/deletion/renewal",
+    "Four failing media and remaining query reliability",
+    "Complete AIHOT pagination/incremental catch-up and daily gaps",
+    "Multi-day Follow history, real nonempty blog batch",
+    "Per-source fulltext quality and authorized downstream purposes",
+    "Seven-day observation, real sleep/wake/offline recovery"
+  ],
+  "notPerformed": [
+    "production deployment",
+    "paid X/transcription APIs",
+    "Follow generator execution or fork",
+    "git push"
+  ]
+}

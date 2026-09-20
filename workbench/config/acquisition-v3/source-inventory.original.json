@@ -1,0 +1,444 @@
+[
+  {
+    "file": "T2媒体.xlsx",
+    "sha256": "470bdf62390e2c16f612af8d7e32eecc01edc7bb6936526cb820ce2467eca59e",
+    "sheets": [
+      {
+        "name": "table",
+        "rows": [
+          {
+            "row": 1,
+            "values": [
+              "#",
+              "源",
+              "获取方式",
+              "地址",
+              "难度"
+            ]
+          },
+          {
+            "row": 2,
+            "values": [
+              1,
+              "TechCrunch AI",
+              "官方 RSS",
+              "https://techcrunch.com/category/artificial-intelligence/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 3,
+            "values": [
+              2,
+              "The Verge AI",
+              "官方 RSS",
+              "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+              "低"
+            ]
+          },
+          {
+            "row": 4,
+            "values": [
+              3,
+              "The Decoder",
+              "官方 RSS",
+              "https://the-decoder.com/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 5,
+            "values": [
+              4,
+              "Ars Technica",
+              "官方 RSS",
+              "https://feeds.arstechnica.com/arstechnica/index",
+              "低"
+            ]
+          },
+          {
+            "row": 6,
+            "values": [
+              5,
+              "MarkTechPost",
+              "官方 RSS",
+              "https://www.marktechpost.com/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 7,
+            "values": [
+              6,
+              "MIT Tech Review AI",
+              "官方 RSS",
+              "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 8,
+            "values": [
+              7,
+              "VentureBeat AI",
+              "官方 RSS",
+              "https://venturebeat.com/category/ai/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 9,
+            "values": [
+              8,
+              "Wired AI",
+              "官方 RSS",
+              "https://www.wired.com/feed/tag/ai/latest/rss",
+              "低"
+            ]
+          },
+          {
+            "row": 10,
+            "values": [
+              9,
+              "Last Week in AI",
+              "官方 RSS",
+              "https://lastweekin.ai/feed/",
+              "低"
+            ]
+          },
+          {
+            "row": 11,
+            "values": [
+              10,
+              "IT之家",
+              "官方 RSS",
+              "https://www.ithome.com/rss/",
+              "低"
+            ]
+          },
+          {
+            "row": 12,
+            "values": [
+              11,
+              "机器之心",
+              "官网 RSS / 公众号",
+              "https://www.jiqizhixin.com/rss（若失效改 wechat2rss）",
+              "低–中"
+            ]
+          },
+          {
+            "row": 13,
+            "values": [
+              12,
+              "量子位",
+              "官方 RSS",
+              "https://www.qbitai.com/feed",
+              "低"
+            ]
+          },
+          {
+            "row": 14,
+            "values": [
+              13,
+              "36氪",
+              "官方 RSS / RSSHub",
+              "https://36kr.com/feed 或 {RSSHUB}/36kr/newsflashes",
+              "中"
+            ]
+          },
+          {
+            "row": 15,
+            "values": [
+              14,
+              "Import AI（Jack Clark）",
+              "官方 RSS",
+              "https://jack-clark.net/feed/",
+              "低"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "社区.xlsx",
+    "sha256": "97069c6ca262e3f6480a8336452221db8e055e75f60c7a0d66fde049e27f2095",
+    "sheets": [
+      {
+        "name": "table (1)",
+        "rows": [
+          {
+            "row": 1,
+            "values": [
+              "源",
+              "获取方式",
+              "地址",
+              "难度",
+              "备注"
+            ]
+          },
+          {
+            "row": 2,
+            "values": [
+              "Hacker News 首页",
+              "官方 RSS",
+              "https://hnrss.org/frontpage",
+              "低",
+              null
+            ]
+          },
+          {
+            "row": 3,
+            "values": [
+              "HN 新帖含 AI",
+              "官方 RSS",
+              "https://hnrss.org/newest?q=AI　再加 LLM GPT Claude",
+              "低",
+              "建议关键词拆成 3–4 条 feed"
+            ]
+          },
+          {
+            "row": 4,
+            "values": [
+              "HN 热议",
+              "官方 RSS",
+              "https://hnrss.org/best",
+              "低",
+              null
+            ]
+          },
+          {
+            "row": 5,
+            "values": [
+              "HN 中文",
+              "buzzing.cc",
+              "AIHOT 已接；也可单独订 buzzing",
+              "低",
+              "中文选题好用"
+            ]
+          },
+          {
+            "row": 6,
+            "values": [
+              "Reddit r/LocalLLaMA",
+              "官方 RSS",
+              "https://www.reddit.com/r/LocalLLaMA/.rss",
+              "低–中",
+              "不登录也能订，公共 IP 会限流"
+            ]
+          },
+          {
+            "row": 7,
+            "values": [
+              "r/MachineLearning",
+              "官方 RSS",
+              "https://www.reddit.com/r/MachineLearning/.rss",
+              "低–中",
+              null
+            ]
+          },
+          {
+            "row": 8,
+            "values": [
+              "r/artificial",
+              "官方 RSS",
+              "https://www.reddit.com/r/artificial/.rss",
+              "低–中",
+              null
+            ]
+          },
+          {
+            "row": 9,
+            "values": [
+              "r/ClaudeAI · r/OpenAI · r/LocalLLM",
+              "同上 .rss",
+              "按需",
+              "低–中",
+              null
+            ]
+          },
+          {
+            "row": 10,
+            "values": [
+              "r/LocalLLaMA",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 11,
+            "values": [
+              "r/MachineLearning",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 12,
+            "values": [
+              "r/ClaudeAI",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 13,
+            "values": [
+              "r/ChatGPTCoding",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 14,
+            "values": [
+              "r/AI_Agents",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 15,
+            "values": [
+              "r/artificial",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 16,
+            "values": [
+              "r/ArtificialInteligence",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 17,
+            "values": [
+              "r/mcp（MCP 生态）",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 18,
+            "values": [
+              "r/learnmachinelearning",
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          {
+            "row": 19,
+            "values": [
+              "Reddit JSON",
+              "官方 API",
+              "https://www.reddit.com/r/LocalLLaMA/hot.json",
+              "中",
+              "脚本拉分数、评论数更方便；加 User-Agent"
+            ]
+          },
+          {
+            "row": 20,
+            "values": [
+              "GitHub 搜索新仓",
+              "GitHub API",
+              "search/repositories?q=topic:llm+created:>日期",
+              "中",
+              "要 token，免费额度够"
+            ]
+          },
+          {
+            "row": 21,
+            "values": [
+              "arXiv cs.AI",
+              "官方 RSS",
+              "https://rss.arxiv.org/rss/cs.AI",
+              "低",
+              null
+            ]
+          },
+          {
+            "row": 22,
+            "values": [
+              "arXiv cs.CL",
+              "官方 RSS",
+              "https://rss.arxiv.org/rss/cs.CL",
+              "低",
+              null
+            ]
+          },
+          {
+            "row": 23,
+            "values": [
+              "arXiv cs.LG",
+              "官方 RSS",
+              "https://rss.arxiv.org/rss/cs.LG",
+              "低",
+              "量大，必须关键词/分类再滤"
+            ]
+          },
+          {
+            "row": 24,
+            "values": [
+              "Stack Overflow 标签",
+              "官方 RSS",
+              "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+              "低",
+              "再订 langchain ollama llm chatgpt"
+            ]
+          },
+          {
+            "row": 25,
+            "values": [
+              "SO 热门",
+              "官方 RSS",
+              "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=votes",
+              "低",
+              "教程选题"
+            ]
+          },
+          {
+            "row": 26,
+            "values": [
+              "Dev.to",
+              "官方 RSS",
+              "https://dev.to/feed",
+              "低",
+              "全站噪，建议"
+            ]
+          },
+          {
+            "row": 27,
+            "values": [
+              "Dev.to 标签",
+              "官方 RSS",
+              "https://dev.to/feed/tag/ai　/feed/tag/chatgpt　/feed/tag/llm",
+              "低",
+              null
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

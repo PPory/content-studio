@@ -34,7 +34,8 @@ try {
       const rows = [];
       let limited = false;
       const join = policy.entity ? ' JOIN entities e ON e.id=t."' + key + '"' : '';
-      const where = [policy.entity ? 'e.deleted_at IS NULL' : '1=1', policy.extra ? '(' + policy.extra + ')' : '1=1'].join(' AND ');
+      const acquisitionPolicy = db.pragma('user_version', {simple:true}) >= 29 && ['intel_sources','intel_briefs','intel_cards','intel_reports'].includes(name) ? (name === 'intel_sources' ? "(t.acquisition_identity IS NULL OR (json_extract(t.rights_json,'$.exportAllowed')=1 AND json_extract(t.rights_json,'$.aiAllowed')=1 AND t.deleted_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))))" : "NOT EXISTS (SELECT 1 FROM json_tree(t.data_json) j JOIN intel_sources s ON s.id=j.value WHERE s.acquisition_identity IS NOT NULL AND (json_extract(s.rights_json,'$.exportAllowed') IS NOT 1 OR json_extract(s.rights_json,'$.aiAllowed') IS NOT 1 OR s.deleted_at IS NOT NULL OR s.expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')))") : '1=1';
+      const where = [acquisitionPolicy, policy.entity ? 'e.deleted_at IS NULL' : '1=1', policy.extra ? '(' + policy.extra + ')' : '1=1'].join(' AND ');
       const sql = 'SELECT ' + select.join(',') + ' FROM "' + name + '" t' + join + ' WHERE ' + where + ' ORDER BY t."' + key + '" LIMIT ?';
       for (const row of db.prepare(sql).iterate(LIMITS.perDataset + 1)) {
         if (rows.length === LIMITS.perDataset) { limited = true; break; }

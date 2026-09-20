@@ -1,3 +1,4 @@
+import { assertXmlStructure } from '../acquisition/parsing.mjs';
 import { DOMParser, parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { assertPublicArticleUrl } from '../lib/article.mjs';
@@ -53,7 +54,7 @@ export function ensureIntelligenceChannels(w) {
   w.db.transaction(() => {const at=now();for(const c of INTELLIGENCE_CHANNEL_CATALOG)insert.run(c.id,c.name,c.url,c.siteUrl,c.format,c.category,c.publisherKey,Number(c.enabled),c.format==='manual'?'manual':'never',at,at);})();
 }
 export function intelligenceChannels(w) {
-  const channels=w.db.prepare('SELECT * FROM intel_channels ORDER BY enabled DESC,category,name').all().map(view);
+  const channels=w.db.prepare("SELECT * FROM intel_channels WHERE id LIKE 'channel-%' OR builtin=0 ORDER BY enabled DESC,category,name").all().map(view);
   return {channels,summary:{total:channels.length,enabled:channels.filter(c=>c.enabled&&c.format!=='manual').length,healthy:channels.filter(c=>['ok','empty','not_modified'].includes(c.health)).length,failed:channels.filter(c=>['partial','failed'].includes(c.health)).length,manual:channels.filter(c=>c.format==='manual').length}};
 }
 // URL validation is repeated for every redirect and item; catalog entries get no exemption.
@@ -83,6 +84,10 @@ export async function saveIntelligenceChannel(w,input,deps={}) {
   w.db.prepare(`INSERT INTO intel_channels(id,name,url,site_url,format,category,publisher_key,enabled,builtin,health,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,?,?,?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url,site_url=excluded.site_url,format=excluded.format,category=excluded.category,publisher_key=excluded.publisher_key,enabled=excluded.enabled,updated_at=excluded.updated_at`).run(id,c.name.trim(),target.href,target.origin,c.format||'rss',c.category||'practice',(c.format==='github'?target.pathname.split('/').slice(1,4).join('/'):(old?.publisher_key&&target.href===old.url?old.publisher_key:target.hostname.replace(/^www\./,''))),Number(c.enabled??false),(c.format==='manual'?'manual':'never'),old?.created_at||at,at);
   if(reset)w.db.prepare("UPDATE intel_channels SET etag='',last_modified='',health=?,last_attempt_at=NULL,last_success_at=NULL,last_error='',consecutive_failures=0,last_item_count=0 WHERE id=?").run(c.format==='manual'?'manual':'never',id);
+  if(w.db.pragma('user_version',{simple:true})>=29 && old?.stable_key) {
+    if(input.enabled!==undefined)w.db.prepare('UPDATE intel_channels SET desired_enabled=?,user_disabled=?,next_due_at=NULL WHERE id=?').run(Number(input.enabled),Number(!input.enabled),id);
+    if(reset)w.db.prepare("UPDATE intel_channels SET validation_status='pending',next_due_at=NULL WHERE id=?").run(id);
+  }
   return view(w.db.prepare('SELECT * FROM intel_channels WHERE id=?').get(id));
 }
 
@@ -96,11 +101,12 @@ export function parseChannelFeed(raw, channel) {
     return rows.filter(r=>!r.draft&&!r.prerelease).map(r=>({title:r.name||r.tag_name,url:r.html_url,body:String(r.body||''),publishedAt:date(r.published_at),author:r.author?.login||'',original:true}));
   }
   if(/<!DOCTYPE|<!ENTITY/i.test(raw.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "")))throw bad('订阅含不支持的 XML 实体声明');
+  assertXmlStructure(raw);
   const doc=new DOMParser().parseFromString(raw,'text/xml');
   const root=doc.documentElement?.localName?.toLowerCase();
   if(!['rss','feed','rdf','rdf:rdf'].includes(root))throw bad('地址未返回有效 RSS 或 Atom 订阅');
   const nodes=[...doc.getElementsByTagName('item'),...doc.getElementsByTagName('entry')];
-  return nodes.slice(0,100).map(node=>{
+  return nodes.slice(0,Math.max(1,Math.min(1000,channel.limit||100))).map(node=>{
     const links=[...node.children].filter(n=>n.localName==='link'),link=links.find(n=>!n.getAttribute('rel')||n.getAttribute('rel')==='alternate');
     const rawUrl=link?.getAttribute('href')||text(link)||text(child(node,'guid'));
     let url;try{url=new URL(rawUrl,channel.url).href;}catch{return null;}

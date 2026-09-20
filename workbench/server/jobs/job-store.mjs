@@ -60,14 +60,18 @@ export class JobStore {
     return { created: true, job: this.get(id) };
   }
 
-  claim({ leaseOwner, leaseSeconds = 90, now } = {}) {
+  claim({ leaseOwner, leaseSeconds = 90, now, allowedKinds } = {}) {
+    if (allowedKinds && !allowedKinds.length) return null;
+    const kindFilter = allowedKinds ? ` AND kind IN (${allowedKinds.map(() => "?").join(",")})` : "";
+    const kindArgs = allowedKinds || [];
+    const acquisitionFilter = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='acquisition_locks'").get() ? "AND (kind NOT LIKE 'acquisition.%' OR NOT EXISTS(SELECT 1 FROM acquisition_locks l WHERE l.lock_key='channel:'||json_extract(local_jobs.payload_json,'$.channelId') AND l.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')))" : "";
     const owner = String(leaseOwner || "").trim();
     if (!owner) throw new TypeError("领取任务必须提供 leaseOwner");
     const current = new Date(now || Date.now());
     const stamp = current.toISOString();
     const expiresAt = new Date(current.getTime() + Math.max(30, Math.min(300, Number(leaseSeconds) || 90)) * 1000).toISOString();
     return this.db.transaction(() => {
-      const exhausted = this.db.prepare("SELECT id, attempt, lease_token FROM local_jobs WHERE status = 'running' AND lease_expires_at < ? AND attempt >= max_attempts").all(stamp);
+      const exhausted = this.db.prepare("SELECT id, attempt, lease_token FROM local_jobs WHERE status = 'running' AND lease_expires_at < ? AND attempt >= max_attempts" + kindFilter).all(stamp, ...kindArgs);
       for (const job of exhausted) {
         this.db.prepare("UPDATE local_job_runs SET status = 'failed', finished_at = ?, error = 'lease expired after final attempt' WHERE job_id = ? AND attempt = ? AND lease_token = ? AND status = 'running'")
           .run(stamp, job.id, job.attempt, job.lease_token);
@@ -78,8 +82,10 @@ export class JobStore {
         SELECT * FROM local_jobs
         WHERE deleted_at IS NULL AND attempt < max_attempts AND due_at <= ?
           AND (status IN ('queued', 'retry') OR (status = 'running' AND lease_expires_at < ?))
+        ${kindFilter}
+        ${acquisitionFilter}
         ORDER BY due_at, created_at, id LIMIT 1
-      `).get(stamp, stamp);
+      `).get(stamp, stamp, ...kindArgs);
       if (!row) return null;
       if (row.status === "running") {
         this.db.prepare("UPDATE local_job_runs SET status = 'failed', finished_at = ?, error = 'lease expired' WHERE job_id = ? AND attempt = ? AND lease_token = ? AND status = 'running'")

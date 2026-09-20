@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-09-20T04:47:30.672Z",
+  "type": "live_single_public_feed_headless_worker",
+  "channel": "t2.the_decoder",
+  "productionDatabaseModified": false,
+  "uiStarted": false,
+  "modelConfigured": false,
+  "scope": "One current public RSS feed; not full-catalog or historical completeness acceptance.",
+  "status": "passed",
+  "endpoint": "https://the-decoder.com/feed/",
+  "process": {
+    "code": 0,
+    "signal": null
+  },
+  "runs": [
+    {
+      "channelId": "acq-dbeb324e73d53d6ba59c",
+      "status": "completed",
+      "jobStatus": "done",
+      "outcome": "success",
+      "error": "",
+      "stats": {
+        "found": 10,
+        "parsed": 10,
+        "new": 10,
+        "updated": 0,
+        "duplicates": 0,
+        "summary": 10,
+        "skipped": 0,
+        "pages": 1
+      },
+      "coverage": {
+        "requests": 1,
+        "discovered": 10,
+        "fulltext": 0,
+        "completeness": "current_feed_only",
+        "historicalReplaySupported": false
+      }
+    }
+  ],
+  "discoveries": 10,
+  "workerLog": [
+    "{\"job\":\"01M2YJ8497F9YZ1P9HCBTVVHJ1\",\"status\":\"done\"}"
+  ]
+}
