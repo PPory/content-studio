@@ -13,11 +13,11 @@ export function acquisitionCatalog(manifest = acquisitionManifest) {
   });
   for (const group of manifest.groups) {
     if (group.key === 'aihot') for (const s of group.streams) add(`aihot.${s.key}`, `AIHOT · ${{selected:'精选',hot_topics:'热点',dailies:'日报'}[s.key]}`, group.key, 'aihot', ({hot_topics:'hot',dailies:'daily'})[s.key] || s.key, group.baseUrl + (s.snapshotPath || s.path || s.indexPath), {...s,baseUrl:group.baseUrl}, s.pollIntervalSeconds || 3600);
-    if (group.key === 't2_media') for (const s of group.sources) add(s.stableKey, s.name, group.key, 'web', 'feed', s.candidateEndpoint, s, s.pollIntervalSeconds);
+    if (group.key === 't2_media') for (const s of group.sources) add(s.stableKey, s.name, group.key, 'web', 'feed', s.candidateEndpoint, s, s.pollIntervalSeconds, s.desiredEnabled !== false);
     if (group.key === 'follow_builders') add('follow_builders.bundle', group.name, group.key, 'follow_builders', 'bundle', `https://api.github.com/repos/${group.repository}/commits/${group.trackingRef}`, {...group,repo:group.repository,ref:group.trackingRef}, 3600);
     if (group.key !== 'community') continue;
     for (const p of group.platforms) {
-      const base = (key, name, endpoint, extra = {}, desired = true) => add(`community.${p.key}.${key}`, name, group.key, p.key, key, endpoint, {...p,...extra}, p.pollIntervalSeconds, desired);
+      const base = (key, name, endpoint, extra = {}, desired = true) => add(`community.${p.key}.${key}`, name, group.key, p.key, key, endpoint, {...p,...extra}, p.pollIntervalSeconds, desired && p.desiredEnabled !== false);
       if (p.key === 'hacker_news') {
         for (const f of p.feeds) base(f.key, `Hacker News · ${f.key}`, f.candidateEndpoint, {...f,maxPerChannel:60,maxPerBatch:60});
         for (const f of p.disabledCandidates) base(f.key, f.name, f.candidateEndpoint, {...f,maxPerChannel:60,maxPerBatch:60}, false);

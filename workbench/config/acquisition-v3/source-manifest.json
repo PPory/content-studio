@@ -208,7 +208,7 @@
           "adapter": "rss",
           "candidateEndpoint": "https://venturebeat.com/category/ai/feed/",
           "originalEndpointCell": "https://venturebeat.com/category/ai/feed/",
-          "desiredEnabled": true,
+          "desiredEnabled": false,
           "enabled": false,
           "validationStatus": "not_run",
           "accessStatus": "needs_review",
@@ -219,7 +219,8 @@
             "sheet": "table",
             "row": 8
           },
-          "fallbackCandidates": []
+          "fallbackCandidates": [],
+          "retirementReason": "用户决定退出日常采集：优先稳定、可读、保质的信息供给（2026-09-21）。"
         },
         {
           "stableKey": "t2.wired_ai",
@@ -284,7 +285,7 @@
           "adapter": "rss",
           "candidateEndpoint": "https://www.jiqizhixin.com/rss",
           "originalEndpointCell": "https://www.jiqizhixin.com/rss（若失效改 wechat2rss）",
-          "desiredEnabled": true,
+          "desiredEnabled": false,
           "enabled": false,
           "validationStatus": "not_run",
           "accessStatus": "needs_review",
@@ -299,7 +300,8 @@
           "needsSpecialValidation": [
             "verify_current_feed",
             "no_automatic_wechat_service_purchase"
-          ]
+          ],
+          "retirementReason": "用户决定退出日常采集：优先稳定、可读、保质的信息供给（2026-09-21）。"
         },
         {
           "stableKey": "t2.qbitai",
@@ -326,7 +328,7 @@
           "adapter": "rss",
           "candidateEndpoint": "https://36kr.com/feed",
           "originalEndpointCell": "https://36kr.com/feed 或 {RSSHUB}/36kr/newsflashes",
-          "desiredEnabled": true,
+          "desiredEnabled": false,
           "enabled": false,
           "validationStatus": "not_run",
           "accessStatus": "needs_review",
@@ -350,7 +352,8 @@
           "needsSpecialValidation": [
             "verify_official_rss_center",
             "do_not_use_unresolved_RSSHUB_placeholder"
-          ]
+          ],
+          "retirementReason": "用户决定退出日常采集：优先稳定、可读、保质的信息供给（2026-09-21）。"
         },
         {
           "stableKey": "t2.import_ai",
@@ -813,8 +816,9 @@
           ],
           "candidateEndpointTemplate": "https://stackoverflow.com/feeds/tag?tagnames={tag}&sort={sort}",
           "identity": "question_id",
-          "desiredEnabled": true,
-          "enabled": false
+          "desiredEnabled": false,
+          "enabled": false,
+          "retirementReason": "用户决定退出日常采集：优先稳定、可读、保质的信息供给（2026-09-21）。"
         },
         {
           "key": "devto",
