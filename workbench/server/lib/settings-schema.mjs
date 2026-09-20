@@ -223,10 +223,13 @@ export const SETTINGS = [
   },
   {key:'ACQUISITION_AUTOSTART',group:'optional',label:'随工作台运行采集（true/false）',hint:'独立 worker 不依赖这个开关'},
   {key:'GITHUB_TOKEN',group:'optional',label:'GitHub 只读令牌',secret:true},
-  {key:'REDDIT_ACCESS_TOKEN',group:'optional',label:'Reddit OAuth 访问令牌',secret:true},
-  {key:'REDDIT_USER_AGENT',group:'optional',label:'Reddit 获准应用 User-Agent'},
-  {key:'REDDIT_ACCESS_APPROVED',group:'optional',label:'Reddit 数据访问已获准（true/false）'},
-  {key:'REDDIT_AI_APPROVED',group:'optional',label:'Reddit 外部模型处理已获准（true/false）'},
+  {key:'BRIGHTDATA_API_KEY',group:'optional',label:'Bright Data API Key',secret:true},
+  {key:'REDDIT_ACQUISITION_PROVIDER',group:'optional',label:'Reddit 采集 Provider',hint:'当前填写 brightdata'},
+  {key:'REDDIT_PAID_ACQUISITION_APPROVED',group:'optional',label:'已批准付费 Reddit 采集（true/false）',hint:'默认 false，工作台启动不会产生费用'},
+  {key:'REDDIT_ACCESS_TOKEN',group:'optional',label:'旧版 Reddit OAuth 访问令牌（Acquisition 已停用）',secret:true},
+  {key:'REDDIT_USER_AGENT',group:'optional',label:'旧版 Reddit User-Agent（Acquisition 已停用）'},
+  {key:'REDDIT_ACCESS_APPROVED',group:'optional',label:'旧版 Reddit 访问批准（Acquisition 已停用）'},
+  {key:'REDDIT_AI_APPROVED',group:'optional',label:'旧版 Reddit AI 批准（Acquisition 已停用）'},
 
 ];
 

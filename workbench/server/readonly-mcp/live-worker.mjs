@@ -21,7 +21,7 @@ try {
     }
     if (tool === 'workbench_fetch') {
       const q = datasetQuery(db, args.dataset);
-      const row = q && db.prepare('SELECT ' + q.select + ' FROM ' + q.from + ' WHERE (' + q.where + ') AND t."' + q.key + '"=?').get(args.id);
+      const row = q && db.prepare('SELECT ' + q.select + ' FROM ' + q.from + ' WHERE (' + q.where + ') AND (' + q.keyPredicate + ')=?').get(args.id);
       if (!row) throw new Error('NOT_FOUND');
       const projected = projectRow(row), text = JSON.stringify(projected);
       return { ...meta, dataset: args.dataset, id: projected.id, format: 'json-text-chunk', offset: args.offset, text: text.slice(args.offset, args.offset + 8000), nextOffset: args.offset + 8000 < text.length ? args.offset + 8000 : null, truncatedAtRead: projected.truncated };
@@ -33,7 +33,7 @@ try {
     outer: for (const name of names) {
       const q = datasetQuery(db, name);
       if (!q) continue;
-      for (const row of db.prepare('SELECT ' + q.select + ' FROM ' + q.from + ' WHERE ' + q.where + ' ORDER BY t."' + q.key + '"').iterate()) {
+      for (const row of db.prepare('SELECT ' + q.select + ' FROM ' + q.from + ' WHERE ' + q.where + ' ORDER BY ' + q.order).iterate()) {
         if (skipped < args.offset) { skipped++; continue; }
         if (items.length >= args.limit || scanned >= LIMITS.rows || bytes >= LIMITS.bytes) { hasMore = true; break outer; }
         const projected = projectRow(row), text = JSON.stringify(projected);

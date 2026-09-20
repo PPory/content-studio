@@ -19,17 +19,17 @@ export function acquisitionCatalog(manifest = acquisitionManifest) {
     for (const p of group.platforms) {
       const base = (key, name, endpoint, extra = {}, desired = true) => add(`community.${p.key}.${key}`, name, group.key, p.key, key, endpoint, {...p,...extra}, p.pollIntervalSeconds, desired);
       if (p.key === 'hacker_news') {
-        for (const f of p.feeds) base(f.key, `Hacker News · ${f.key}`, f.candidateEndpoint, f);
-        for (const f of p.disabledCandidates) base(f.key, f.name, f.candidateEndpoint, f, false);
+        for (const f of p.feeds) base(f.key, `Hacker News · ${f.key}`, f.candidateEndpoint, {...f,maxPerChannel:60,maxPerBatch:60});
+        for (const f of p.disabledCandidates) base(f.key, f.name, f.candidateEndpoint, {...f,maxPerChannel:60,maxPerBatch:60}, false);
       }
-      if (p.key === 'reddit') for (const s of p.sources) base(s.name.toLowerCase(), `Reddit · r/${s.name}`, `https://oauth.reddit.com/r/${s.name}/new`, {...s,subreddit:s.name});
-      if (p.key === 'github') for (const topic of p.topics) base(topic, `GitHub · ${topic}`, `https://api.github.com/search/repositories?q=topic:${topic}&sort=updated`, {topic});
+      if (p.key === 'reddit') for (const s of p.sources) base(s.name.toLowerCase(), `Reddit · r/${s.name}`, `https://www.reddit.com/r/${s.name}/`, {...s,subreddit:s.name,provider:'brightdata',postsPerSubreddit:15,maxPostsPerBatch:80,deepThreadsPerRun:8,commentsPerThread:40});
+      if (p.key === 'github') for (const topic of p.topics) base(topic, `GitHub · ${topic}`, `https://api.github.com/search/repositories?q=topic:${topic}&sort=stars`, {topic,maxPerTopic:15,maxPerBatch:60});
       if (p.key === 'arxiv') for (const c of p.categories) base(c.key, `arXiv · ${c.key}`, c.candidateEndpoint, {category:c.key});
-      if (p.key === 'stackoverflow') for (const tag of p.tags) for (const sort of p.sorts) base(`${tag}.${sort}`, `Stack Overflow · ${tag} / ${sort}`, p.candidateEndpointTemplate.replace('{tag}',tag).replace('{sort}',sort), {tag,sort});
+      if (p.key === 'stackoverflow') for (const tag of p.tags) for (const sort of p.sorts) base(`${tag}.${sort}`, `Stack Overflow · ${tag} / ${sort}`, p.candidateEndpointTemplate.replace('{tag}',tag).replace('{sort}',sort), {tag,sort,maxPerChannel:30,maxPerBatch:30});
       if (p.key === 'devto') {
-        for (const tag of p.tags) base(tag, `Dev.to · ${tag}`, p.candidateEndpointTemplate.replace('{tag}',tag), {tag});
-        for (const tag of p.optionalTagsRequiringVerification) base(tag, `Dev.to · ${tag}（候选）`, p.candidateEndpointTemplate.replace('{tag}',tag), {tag}, false);
-        base('all', 'Dev.to · 全站（候选）', p.fullSiteFeed.candidateEndpoint, {}, false);
+        for (const tag of p.tags) base(tag, `Dev.to · ${tag}`, p.candidateEndpointTemplate.replace('{tag}',tag), {tag,maxPerChannel:30,maxPerBatch:30});
+        for (const tag of p.optionalTagsRequiringVerification) base(tag, `Dev.to · ${tag}（候选）`, p.candidateEndpointTemplate.replace('{tag}',tag), {tag,maxPerChannel:30,maxPerBatch:30}, false);
+        base('all', 'Dev.to · 全站（候选）', p.fullSiteFeed.candidateEndpoint, {maxPerChannel:30,maxPerBatch:30}, false);
       }
     }
   }

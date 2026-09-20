@@ -14,7 +14,7 @@ try {
       if (!query) { datasets[name] = { rows: [], available: false, limited: false }; continue; }
       const rows = [];
       let limited = false;
-      const sql = 'SELECT ' + query.select + ' FROM ' + query.from + ' WHERE ' + query.where + ' ORDER BY t."' + query.key + '" LIMIT ?';
+      const sql = 'SELECT ' + query.select + ' FROM ' + query.from + ' WHERE ' + query.where + ' ORDER BY ' + query.order + ' LIMIT ?';
       for (const row of db.prepare(sql).iterate(LIMITS.perDataset + 1)) {
         if (rows.length === LIMITS.perDataset) { limited = true; break; }
         if (++total > LIMITS.rows) throw new Error('SNAPSHOT_CAPACITY');

@@ -65,7 +65,7 @@ try {
   // Other upstream action dispatch is mocked so this test never starts external collection.
   const dispatched=[];
   await page.route('**/api/workspace/acquisition/channels/*/action',async route=>{const body=route.request().postDataJSON();assert.equal(body.confirmed,true);dispatched.push(body.action);await route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,run:{id:'mock-action'}})});});
-  await mediaRow.getByRole('button',{name:'同步一次',exact:true}).click();await page.getByText('已安排任务，完成情况见采集记录。',{exact:true}).waitFor();await mediaRow.getByRole('button',{name:'补采历史',exact:true}).click();await page.waitForFunction(id=>!document.querySelector(`[data-channel-id="${id}"] button`).disabled,media.id);
+  await mediaRow.getByRole('button',{name:'同步最近 24 小时',exact:true}).click();await page.getByText('已安排任务，完成情况见采集记录。',{exact:true}).waitFor();await mediaRow.getByRole('button',{name:'历史补采',exact:true}).click();await page.waitForFunction(id=>!document.querySelector(`[data-channel-id="${id}"] button`).disabled,media.id);
   assert.deepEqual(dispatched,['sync','backfill']);await page.unroute('**/api/workspace/acquisition/channels/*/action');
   await page.getByLabel('查找来源',{exact:true}).fill('Follow');await page.evaluate(()=>document.querySelector('.main')?.scrollTo(0,0));await fs.mkdir(shots,{recursive:true});await page.screenshot({path:path.join(shots,'acquisition-channels-desktop.png'),fullPage:false});
   await page.goto(base+'/#/intel-resources');await page.locator('summary').getByText('验收：完整播客逐字稿',{exact:true}).click();

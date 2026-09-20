@@ -34,6 +34,7 @@ try {
   entity('conversation-1', 'conversation');
   db.prepare('INSERT INTO ai_conversations(id,title,record_json) VALUES(?,?,?)').run('conversation-1', '讨论', JSON.stringify({ messages: [{ role: 'user', text: '我们讨论苹果' }, { role: 'assistant', text: '正文回答' }, { role: 'tool', text: 'TOOL_SECRET' }, { role: 'system', text: 'SYSTEM_SECRET' }], apiKey: 'JSON_SECRET', tools: ['TOOL_PAYLOAD'] }));
   db.prepare('INSERT INTO workspace_settings(key,value_json,updated_at) VALUES(?,?,?)').run('private', '{"apiKey":"SETTINGS_SECRET"}', now);
+  db.prepare('INSERT INTO acquisition_batches(id,trigger_kind,started_at,finished_at,status,channel_count,window_start_at,window_end_at) VALUES(?,?,?,?,?,?,?,?)').run('batch-safe','manual',now,now,'completed',1,new Date(Date.parse(now)-86400000).toISOString(),now);
   db.transaction(() => {
     const insert = db.prepare('INSERT INTO books(id,title) VALUES(?,?)');
     for (let i = 0; i < 3001; i++) {
@@ -75,6 +76,11 @@ try {
   const catalog = result(await client.callTool({ name: 'workbench_catalog', arguments: {} }));
   assert.equal(catalog.live, false);
   assert.equal(catalog.datasets.find(d => d.name === 'captures').snapshotRows, 1);
+  for (const name of ['acquisition_batches','acquisition_runs','acquisition_run_items','intel_channels']) assert(catalog.datasets.some(dataset => dataset.name === name), name);
+  assert.equal(catalog.datasets.find(d => d.name === 'acquisition_batches').snapshotRows, 1);
+  const batchMetadata = result(await client.callTool({ name: 'workbench_fetch', arguments: { dataset: 'acquisition_batches', id: 'batch-safe' } }));
+  assert(batchMetadata.text.includes('window_start_at'));
+  assert(!batchMetadata.text.includes('SECRET'));
   const codexAudit = path.join(root, 'codex-audit');
   fs.mkdirSync(codexAudit);
   const second = new Client({ name: 'codex-concurrent', version: '1.0' });

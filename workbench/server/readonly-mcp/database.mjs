@@ -27,13 +27,14 @@ export function datasetQuery(db, name) {
   if (!table || /^CREATE VIRTUAL/i.test(table.sql)) return null;
   const actual = new Set(db.pragma('table_info("' + name + '")').map(c => c.name));
   const fields = policy.columns.filter(c => actual.has(c));
-  const key = policy.key || 'id';
-  if (!fields.includes(key)) throw new Error('SCHEMA_MISMATCH');
+  const key = policy.key || 'id',keyExpression=policy.keyExpression||'';
+  if (!keyExpression&&!fields.includes(key)) throw new Error('SCHEMA_MISMATCH');
   const select = fields.map(c => 'CASE WHEN typeof(t."' + c + '")=\'text\' THEN substr(t."' + c + '",1,' + (LIMITS.text + 1) + ') ELSE t."' + c + '" END AS "' + c + '"');
-  if (key !== 'id') select.push('t."' + key + '" AS id');
+  if(keyExpression)select.push(keyExpression+' AS id');
+  else if (key !== 'id') select.push('t."' + key + '" AS id');
   if (policy.entity) select.push('e.created_at', 'e.updated_at');
   const join = policy.entity ? ' JOIN entities e ON e.id=t."' + key + '"' : '';
   const acquisitionPolicy = db.pragma('user_version', {simple:true}) >= 29 && ['intel_sources','intel_briefs','intel_cards','intel_reports'].includes(name) ? (name === 'intel_sources' ? "(t.acquisition_identity IS NULL OR (json_extract(t.rights_json,'$.exportAllowed')=1 AND json_extract(t.rights_json,'$.aiAllowed')=1 AND t.deleted_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))))" : "NOT EXISTS (SELECT 1 FROM json_tree(t.data_json) j JOIN intel_sources s ON s.id=j.value WHERE s.acquisition_identity IS NOT NULL AND (json_extract(s.rights_json,'$.exportAllowed') IS NOT 1 OR json_extract(s.rights_json,'$.aiAllowed') IS NOT 1 OR s.deleted_at IS NOT NULL OR s.expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')))") : '1=1';
   const where = [acquisitionPolicy, policy.entity ? 'e.deleted_at IS NULL' : '1=1', policy.extra ? '(' + policy.extra + ')' : '1=1'].join(' AND ');
-  return { select: select.join(','), from: '"' + name + '" t' + join, where, key, omittedFields: policy.columns.filter(c => !actual.has(c)) };
+  return { select: select.join(','), from: '"' + name + '" t' + join, where, key, keyPredicate:keyExpression||`t."${key}"`, order:keyExpression||`t."${key}"`, omittedFields: policy.columns.filter(c => !actual.has(c)) };
 }

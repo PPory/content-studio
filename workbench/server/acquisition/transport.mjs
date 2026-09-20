@@ -82,7 +82,7 @@ export function acquisitionTransport(w,channel,{signal,fetchImpl=pinnedFetch,res
         try {
           const responseHeaders=Object.fromEntries(response.headers.entries());
           const status=response.status;
-          const wait=retryAfter(responseHeaders)|| (target.url.hostname==='oauth.reddit.com'?3:undefined);
+          const wait=retryAfter(responseHeaders);
           if(wait)w.db.prepare('INSERT INTO acquisition_network_budget(host,not_before) VALUES(?,?) ON CONFLICT(host) DO UPDATE SET not_before=excluded.not_before').run(target.url.hostname,new Date(Date.now()+wait*1000).toISOString());
           if([301,302,303,307,308].includes(status)) {
             if(options.redirect==='error')throw acquisitionError('此授权请求不允许重定向',{blocked:true,retry:false});

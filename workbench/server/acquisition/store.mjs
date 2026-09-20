@@ -107,7 +107,8 @@ export function commitPage(w,channel,page,{job,runId,failBeforeCheckpoint}={}) {
     }
     for(const observation of page.observations||[])w.db.prepare('INSERT OR IGNORE INTO acquisition_observations(id,channel_id,observation_key,data_json,observed_at) VALUES(?,?,?,?,?)').run(createUlid(),channel.id,String(observation.identity||observation.id||contentHash(encode(observation))),encode(observation),at);
     failBeforeCheckpoint?.();
-    const state={...(page.checkpoint||{}),...(page.state?{upstream:page.state}:{})};
+    const previous=checkpointFor(w,channel.id,page.partition||'default');
+    const state={...previous,...(page.checkpoint||{}),...(page.state?{upstream:page.state}:{})};
     w.db.prepare('INSERT INTO acquisition_checkpoints(channel_id,partition_key,state_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(channel_id,partition_key) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at').run(channel.id,page.partition||'default',encode(state),at);
     for(const snapshot of page.snapshots||[])w.db.prepare('UPDATE acquisition_snapshots SET applied_at=? WHERE id=?').run(at,typeof snapshot==='string'?snapshot:snapshot.id);
     w.db.prepare('UPDATE intel_channels SET last_ingest_at=?,last_changed_at=CASE WHEN ?>0 THEN ? ELSE last_changed_at END,last_stats_json=? WHERE id=?').run(at,stats.new+stats.updated,at,encode(stats),channel.id);

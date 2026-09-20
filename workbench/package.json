@@ -28,7 +28,8 @@
     "test:intelligence:v2": "node tests/intelligence-v2.mjs && node tests/intelligence-channels.mjs && node tests/intelligence-v2-ui.mjs && node tests/intelligence-v2-e2e.mjs",
     "test:intelligence": "node tests/intelligence-v2.mjs && node tests/intelligence-channels.mjs && node tests/intelligence-v2-ui.mjs && node tests/intelligence-v2-e2e.mjs && node tests/intelligence-synthesis.mjs && node tests/intelligence-source-meta.mjs && node tests/intelligence-social.mjs && node tests/intelligence-native.mjs && node tests/intelligence.mjs && node tests/intelligence-feed.mjs && node tests/intelligence-editor.mjs && node tests/aihot-ui.mjs && node tests/intelligence-feed-ui.mjs && node tests/intelligence-directions-ui.mjs && node tests/intelligence-ui.mjs && node tests/intelligence-e2e.mjs",
     "acquisition": "node scripts/acquisition-worker.mjs",
-    "test:acquisition": "node tests/acquisition-migration.mjs && node tests/acquisition-providers.mjs && node tests/acquisition-community.mjs && node tests/acquisition-storage.mjs && node tests/acquisition-regressions.mjs && node tests/acquisition-batches.mjs && node tests/acquisition-ui.mjs && node tests/acquisition-batch-ui.mjs"
+    "acquisition:reset": "node scripts/reset-acquisition-baseline.mjs",
+    "test:acquisition": "node tests/acquisition-migration.mjs && node tests/acquisition-providers.mjs && node tests/acquisition-window.mjs && node tests/acquisition-brightdata.mjs && node tests/acquisition-community.mjs && node tests/acquisition-storage.mjs && node tests/acquisition-regressions.mjs && node tests/acquisition-batches.mjs && node tests/acquisition-reset.mjs && node tests/acquisition-ui.mjs && node tests/acquisition-batch-ui.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

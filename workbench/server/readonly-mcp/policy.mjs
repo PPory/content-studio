@@ -1,5 +1,5 @@
 // This is an explicit data contract, not a SQL or filesystem interface.
-export const POLICY_VERSION = 2;
+export const POLICY_VERSION = 3;
 export const LIMITS = Object.freeze({ rows: 20000, perDataset: 3000, text: 100000, bytes: 32 * 1024 * 1024, refreshMs: 5000, cooldownMs: 300000, maxAgeMs: 86400000, callsPerMinute: 60, auditBytes: 10 * 1024 * 1024 });
 const entity = (columns, extra = '') => ({ columns: columns.split(' '), entity: true, extra });
 export const DATASETS = Object.freeze({
@@ -9,6 +9,10 @@ export const DATASETS = Object.freeze({
   intel_cards: { columns: ['id', 'data_json', 'status', 'research_id', 'created_at', 'updated_at'] },
   intel_reports: { columns: ['id', 'data_json', 'created_at'] },
   intel_sources: { columns: ['id', 'data_json', 'created_at'], extra: "t.capture_id IS NULL OR EXISTS (SELECT 1 FROM entities p WHERE p.id=t.capture_id AND p.deleted_at IS NULL)" },
+  acquisition_batches: { columns: ['id','trigger_kind','started_at','finished_at','status','channel_count','window_start_at','window_end_at'] },
+  acquisition_runs: { columns: ['id','channel_id','batch_id','kind','trigger_kind','status','outcome','stats_json','health_status','started_at','finished_at','window_start_at','window_end_at'] },
+  acquisition_run_items: { columns: ['run_id','source_id','stream','outcome','observed_at'], keyExpression: "t.run_id || ':' || t.source_id || ':' || t.stream" },
+  intel_channels: { columns: ['id','stable_key','name','source_group','platform','stream','desired_enabled','user_disabled','validation_status','access_status','health','last_attempt_at','last_success_at','last_ingest_at','last_changed_at','last_stats_json'] },
   captures: entity('id title body_markdown capture_kind capture_bucket status reaction'),
   seeds: entity('id title reaction status source_entity_id'),
   materials: entity('id title body_markdown material_type verification_status verification_note source_entity_id'),
@@ -53,7 +57,10 @@ export function projectRow(row) {
   const result = {};
   let truncated = false;
   for (const [key, value] of Object.entries(row)) {
-    if (key === 'data_json' || key === 'notes_json') {
+    if (key === 'stats_json' || key === 'last_stats_json') {
+      const stats={};try{const data=JSON.parse(value||'{}');for(const field of ['fetched','inWindow','outsideWindow','unknownTimestamp','limited','inserted','updated','duplicate','failed'])if(Number.isFinite(Number(data[field])))stats[field]=Number(data[field]);}catch{truncated=true;}
+      result.stats=stats;
+    } else if (key === 'data_json' || key === 'notes_json') {
       const content = {};
       if (typeof value === 'string' && value.length <= LIMITS.text) {
         try {

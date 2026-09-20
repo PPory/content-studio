@@ -11,18 +11,19 @@ import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { xhtmlToMd } from '../lib/books.mjs';
 import { junkReason } from '../lib/article.mjs';
+import { acquisitionWindow, batchPlatformLimit, channelItemLimit, gateAcquisitionItems, mergeAcquisitionStats } from './window.mjs';
 
 export const ACQUISITION_KINDS=['acquisition.sync','acquisition.validate','acquisition.backfill','acquisition.fulltext','acquisition.revalidate'];
 const connectors={aihot:collectAiHot,follow_builders:collectFollowBuilders,community:collectCommunity,reddit:collectReddit};
-export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false}={}) {
+export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false,windowStartAt=null,windowEndAt=null}={}) {
   const channel=getChannel(w,id),kind=`acquisition.${mode}`;
   if(!ACQUISITION_KINDS.includes(kind))throw acquisitionError('不支持的采集任务',{status:400});
   return w.db.transaction(()=>{
-    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation,batchId,explicit};
+    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation,batchId,explicit,windowStartAt,windowEndAt};
     const key=`${kind}:${channel.id}:${slot}`;
     const {job}=w.jobs.enqueue({kind,idempotencyKey:key,payload,dueAt,maxAttempts:3});
     const id=createUlid();
-    w.db.prepare('INSERT OR IGNORE INTO acquisition_runs(id,job_id,channel_id,kind,trigger_kind,scheduled_slot,created_at) VALUES(?,?,?,?,?,?,?)').run(id,job.id,channel.id,mode,trigger,slot,stamp());
+    w.db.prepare('INSERT OR IGNORE INTO acquisition_runs(id,job_id,channel_id,kind,trigger_kind,scheduled_slot,created_at,window_start_at,window_end_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,job.id,channel.id,mode,trigger,slot,stamp(),windowStartAt,windowEndAt);
     if(batchId){w.db.prepare('UPDATE acquisition_runs SET batch_id=? WHERE job_id=?').run(batchId,job.id);w.db.prepare("UPDATE acquisition_batches SET finished_at=NULL,status='running' WHERE id=?").run(batchId);}
     return w.db.prepare('SELECT * FROM acquisition_runs WHERE job_id=?').get(job.id);
   })();
@@ -35,8 +36,9 @@ export function scheduleAcquisition(w,{now=new Date(),env={},startup=false}={}) 
     w.db.exec("UPDATE acquisition_runs SET status='failed',error='任务租约到期或重试耗尽' WHERE status IN ('queued','running') AND job_id IN (SELECT id FROM local_jobs WHERE status='failed')");
     for(const row of w.db.prepare("SELECT * FROM intel_channels WHERE desired_enabled=1 AND user_disabled=0 AND adapter NOT IN ('','manual') AND (next_due_at IS NULL OR next_due_at<=?)").all(at)) {
       const channel=getChannel(w,row.id);
-      if(channel.platform==='reddit'&& !(env.REDDIT_ACCESS_APPROVED==='true'&&env.REDDIT_ACCESS_TOKEN&&env.REDDIT_USER_AGENT)) {
-        w.db.prepare("UPDATE intel_channels SET enabled=0,access_status='needs_approval_and_credentials',last_error='需要 Reddit 获准的 OAuth 访问和应用 User-Agent',next_due_at=? WHERE id=?").run(new Date(now.getTime()+3600000).toISOString(),channel.id);continue;
+      if(channel.platform==='reddit'&& !(['true','1'].includes(String(env.REDDIT_PAID_ACQUISITION_APPROVED))&&env.BRIGHTDATA_API_KEY&&(env.REDDIT_ACQUISITION_PROVIDER||'brightdata')==='brightdata')) {
+        const message=!['true','1'].includes(String(env.REDDIT_PAID_ACQUISITION_APPROVED))?'PAID_ACCESS_BLOCKED：付费 Reddit 采集未明确批准':'AUTH_BLOCKED：缺少 Bright Data API Key 或 provider 配置无效';
+        w.db.prepare("UPDATE intel_channels SET enabled=0,access_status='needs_approval_and_credentials',last_error=?,next_due_at=? WHERE id=?").run(message,new Date(now.getTime()+3600000).toISOString(),channel.id);continue;
       }
       if(channel.platform==='reddit')w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);
       if(channel.access_status==='blocked')continue;
@@ -74,6 +76,7 @@ async function* fulltext({w,payload,channel,request}) {
 export async function executeAcquisition(w,env,payload,job,execution={},dependencies={}) {
   const channel=getChannel(w,payload.channelId),run=w.db.prepare('SELECT * FROM acquisition_runs WHERE job_id=?').get(job.id);
   const lockKey=`channel:${channel.id}`,at=stamp();
+  const window=acquisitionWindow({mode:payload.mode,now:new Date(at),windowStart:payload.windowStartAt||run.window_start_at,windowEnd:payload.windowEndAt||run.window_end_at});
   const got=w.db.prepare(`INSERT INTO acquisition_locks(lock_key,owner,expires_at) VALUES(?,?,?) ON CONFLICT(lock_key) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE acquisition_locks.expires_at<?`).run(lockKey,job.leaseToken,new Date(Date.now()+90000).toISOString(),at).changes;
   if(!got)throw acquisitionError('同一信源任务尚未完成',{retryAfterSeconds:30});
   const controller=new AbortController();
@@ -84,36 +87,62 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
   const request=async(url,options={})=>{
     const target=new URL(url),host=target.hostname;
     if(host==='api.github.com'&&env.GITHUB_TOKEN)options={...options,headers:{...options.headers,authorization:`Bearer ${env.GITHUB_TOKEN}`}};
-    const thread=target.pathname.match(/^\/comments\/([A-Za-z0-9_]+)/)?.[1];
-    if(host==='oauth.reddit.com'&&thread&&payload.mode!=='revalidate')w.db.transaction(()=>{
-      const since=new Date(Date.now()-3600000).toISOString(),key=`reddit-reserve:${thread}`;
-      if(w.db.prepare('SELECT id FROM acquisition_observations WHERE observation_key=? AND observed_at>?').get(key,since))return;
-      const used=w.db.prepare("SELECT count(*) n FROM acquisition_observations WHERE observation_key LIKE 'reddit-reserve:%' AND observed_at>?").get(since).n;
-      if(used>=20)throw acquisitionError('Reddit 每小时新线程预算已用完，断点稍后继续',{retryAfterSeconds:3600});
-      w.db.prepare('INSERT INTO acquisition_observations(id,channel_id,observation_key,data_json,observed_at) VALUES(?,?,?,?,?)').run(createUlid(),channel.id,key,encode({kind:'reddit_thread_reservation',threadId:thread}),stamp());
-    })();
     return transport(url,options);
   };
   const partition=payload.partition||'default',initial=checkpointFor(w,channel.id,partition);
-  w.db.prepare("UPDATE acquisition_runs SET status='running',started_at=?,checkpoint_before_json=?,error='' WHERE id=?").run(at,encode(initial),run.id);
+  const providerState={
+    load:()=>checkpointFor(w,channel.id,partition).providerJobs||{},
+    save:(key,value)=>w.db.transaction(()=>{
+      assertLease(w,job);
+      const current=checkpointFor(w,channel.id,partition),state={...current,providerJobs:{...(current.providerJobs||{}),[key]:value}};
+      w.db.prepare('INSERT INTO acquisition_checkpoints(channel_id,partition_key,state_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(channel_id,partition_key) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at').run(channel.id,partition,encode(state),stamp());
+      return state.providerJobs;
+    })(),
+    reserveThreads:(threads,max=8)=>w.db.transaction(()=>{
+      assertLease(w,job);
+      const scope=payload.batchId||run.id,prefix=`reddit-deep:${scope}:`;
+      const existing=new Set(w.db.prepare("SELECT observation_key FROM acquisition_observations WHERE observation_key LIKE ?").all(`${prefix}%`).map(row=>row.observation_key.slice(prefix.length)));
+      const selected=[];let used=existing.size;
+      for(const thread of threads){const id=String(thread.id);if(existing.has(id)){selected.push(thread);continue;}if(used>=max)continue;w.db.prepare('INSERT INTO acquisition_observations(id,channel_id,observation_key,data_json,observed_at) VALUES(?,?,?,?,?)').run(createUlid(),channel.id,prefix+id,encode({kind:'reddit_deep_reservation',scope,threadId:id}),stamp());existing.add(id);selected.push(thread);used++;}
+      return selected;
+    })(),
+  };
+  w.db.prepare("UPDATE acquisition_runs SET status='running',started_at=?,window_start_at=?,window_end_at=?,checkpoint_before_json=?,error='' WHERE id=?").run(at,window.windowStart,window.windowEnd,encode(initial),run.id);
   w.db.prepare('UPDATE intel_channels SET last_attempt_at=? WHERE id=?').run(at,channel.id);
-  const stats={found:0,parsed:0,new:0,updated:0,duplicates:0,summary:0,skipped:0,pages:0};let last;
+  const stats={fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0,found:0,parsed:0,new:0,duplicates:0,summary:0,skipped:0,pages:0};
+  const streamStats={};let last;
   try {
     check();
     if(channel.user_disabled && !payload.explicit && !['validate'].includes(payload.mode))throw acquisitionError('信源已暂停',{retry:false});
     if(channel.platform==='reddit') {
-      if(env.REDDIT_ACCESS_APPROVED==='true'&&env.REDDIT_ACCESS_TOKEN&&env.REDDIT_USER_AGENT){channel.access_status='approved';w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
-      channel.options.aiAllowed=env.REDDIT_AI_APPROVED==='true';
-      channel.options.threadBudget=20;channel.options.threadId=payload.threadId;
+      const paid=['true','1'].includes(String(env.REDDIT_PAID_ACQUISITION_APPROVED));
+      if(paid&&env.BRIGHTDATA_API_KEY){channel.access_status='approved';w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
+      channel.options.aiAllowed=false;
+      channel.options.threadId=payload.threadId;
     }
     const collect=dependencies.collect||connectors[channel.adapter];
     if(!collect)throw acquisitionError('信源需要手动阅读或适配器未配置',{blocked:true});
-    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,signal,env,mode:payload.batchId&&channel.platform==='follow_builders'?'validate':payload.batchId&&channel.platform==='aihot'&&payload.continuation===0?'acceptance':payload.mode,budget:payload.mode==='validate'?6:20,now:new Date()});
+    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData});
+    let acceptedByChannel=0;
     for await(const page of iterable) {
       check();last=page;
-      if(payload.mode==='validate') {stats.found=page.items?.length||0;stats.pages++;break;}
+      const localLimit=channelItemLimit(channel),localRemaining=Number.isFinite(localLimit)?Math.max(0,localLimit-acceptedByChannel):Infinity;
+      const gated=gateAcquisitionItems(page.items||[],window,{limit:localRemaining});
+      mergeAcquisitionStats(stats,gated.stats);stats.found=stats.fetched;stats.parsed=stats.inWindow;stats.skipped=stats.outsideWindow+stats.unknownTimestamp+stats.limited;
+      for(const [key,value] of Object.entries(gated.byStream)){streamStats[key]||={};mergeAcquisitionStats(streamStats[key],value);}
+      page.items=gated.items;acceptedByChannel+=page.items.length;
+      const globalLimit=batchPlatformLimit(channel);
+      if(payload.batchId&&Number.isFinite(globalLimit)){
+        const kindClause=channel.platform==='reddit'?" AND s.source_kind<>'comment'":'';
+        const used=w.db.prepare(`SELECT count(DISTINCT i.source_id) n FROM acquisition_run_items i JOIN acquisition_runs r ON r.id=i.run_id JOIN intel_channels c ON c.id=r.channel_id JOIN intel_sources s ON s.id=i.source_id WHERE r.batch_id=? AND c.platform=?${kindClause}`).get(payload.batchId,channel.platform).n;
+        let remaining=Math.max(0,globalLimit-used),limited=0;
+        page.items=page.items.filter(item=>{if(channel.platform==='reddit'&&item.sourceKind==='comment')return true;if(remaining>0){remaining--;return true;}limited++;return false;});
+        if(limited){stats.limited+=limited;stats.skipped+=limited;const key=channel.stream||'default';streamStats[key]||={};streamStats[key].limited=Number(streamStats[key].limited||0)+limited;}
+      }
+      if(payload.mode==='validate') {stats.pages++;break;}
       page.partition=partition==='default'?page.partition:partition;page.snapshots=[...(page.snapshots||[]),...ids.splice(0)];
-      const saved=commitPage(w,channel,page,{job,runId:run.id});stats.pages++;for(const key of Object.keys(stats))if(key!=='pages')stats[key]+=saved[key]||0;
+      const saved=commitPage(w,channel,page,{job,runId:run.id});stats.pages++;stats.inserted+=saved.new||0;stats.updated+=saved.updated||0;stats.duplicate+=saved.duplicates||0;stats.new=stats.inserted;stats.duplicates=stats.duplicate;stats.summary+=saved.summary||0;
+      w.db.prepare('UPDATE acquisition_runs SET stats_json=? WHERE id=?').run(encode(stats),run.id);
       for(const id of saved.ids) {
         const source=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
         if(source.content_status==='summary_only'&&channel.options.fulltextAllowed===true&&!['reddit','arxiv'].includes(channel.platform))enqueueAcquisition(w,channel.id,{mode:'fulltext',trigger:'enrichment',sourceId:id,slot:`body:${id}:${source.content_hash}`});
@@ -123,16 +152,18 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
     if(!last)throw acquisitionError('适配器没有返回可核验结果',{retry:false});
     check();
     const more=Boolean(last.coverage?.hasMore),partial=last.outcome==='partial'||Boolean(last.coverage?.gap);
+    const coverage={...(last.coverage||{}),window:{start:window.windowStart,end:window.windowEnd,providerStart:window.providerWindowStart},streamStats};
     w.db.transaction(()=>{
       assertLease(w,job);
-      w.db.prepare("UPDATE acquisition_runs SET status='completed',outcome=?,stats_json=?,coverage_json=?,finished_at=? WHERE id=?").run(partial?'partial':stats.new||stats.updated?'success':last.outcome||'no_new',encode(stats),encode(last.coverage||{}),stamp(),run.id);
-      w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(successStatus(stats,last.coverage),run.id);
+      w.db.prepare("UPDATE acquisition_runs SET status='completed',outcome=?,stats_json=?,coverage_json=?,finished_at=? WHERE id=?").run(partial?'partial':stats.inserted||stats.updated?'success':last.outcome||'no_new',encode(stats),encode(coverage),stamp(),run.id);
+      w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(successStatus(stats,coverage),run.id);
       if(!['fulltext','revalidate'].includes(payload.mode))w.db.prepare("UPDATE intel_channels SET validation_status='verified',enabled=CASE WHEN desired_enabled=1 AND user_disabled=0 THEN 1 ELSE 0 END,health=?,last_success_at=?,last_item_count=?,last_error='',consecutive_failures=0,last_stats_json=? WHERE id=?").run(partial?'partial':stats.found?'ok':'empty',stamp(),stats.found,encode(stats),channel.id);
       if(payload.mode==='validate'&&channel.desired_enabled&&!channel.user_disabled)enqueueAcquisition(w,channel.id,{trigger:'validated',slot:`validated:${run.id}`});
-      if(more && payload.mode!=='validate' && payload.continuation<100)enqueueAcquisition(w,channel.id,{mode:payload.mode,trigger:'continuation',slot:`continue:${run.id}`,partition,threadId:payload.threadId,continuation:payload.continuation+1,batchId:payload.batchId,explicit:payload.explicit,dueAt:new Date(Date.now()+1000).toISOString()});
+      if(more && payload.mode!=='validate' && payload.continuation<100)enqueueAcquisition(w,channel.id,{mode:payload.mode,trigger:'continuation',slot:`continue:${run.id}`,partition,threadId:payload.threadId,continuation:payload.continuation+1,batchId:payload.batchId,explicit:payload.explicit,windowStartAt:window.windowStart,windowEndAt:window.windowEnd,dueAt:new Date(Date.now()+1000).toISOString()});
     })();
-    return {runId:run.id,stats,outcome:last.outcome,coverage:last.coverage};
+    return {runId:run.id,stats,outcome:last.outcome,coverage};
   } catch(error) {
+    stats.failed++;
     w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(errorStatus(error),run.id);
     const blocked=error.blocked||error.code==='blocked'||[401,403].includes(error.status);
     if(blocked){error.blocked=true;error.retry=false;}

@@ -56,7 +56,7 @@ export function normalizeFollowBundle(files, channel, commitSha) {
   return { items, streams, upstreamState: upstream };
 }
 
-export async function* collectFollowBuilders({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20 }) {
+export async function* collectFollowBuilders({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20, window }) {
   const repo = channel.options?.repo || 'zarazhangrui/follow-builders', ref = channel.options?.ref || 'main';
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) fail('Invalid Follow Builders repository');
   const api = `https://api.github.com/repos/${repo}`;
@@ -75,8 +75,9 @@ export async function* collectFollowBuilders({ channel, checkpoint = {}, request
       const comparison = await get(`${api}/compare/${state.lastCompleteSha}...${head.json.sha}`);
       if (!['ahead','identical'].includes(comparison.json?.status)) throw Object.assign(new Error('Follow Builders history rewritten: previous completion is not an ancestor'), { code: 'history_gap' });
     }
-    const days = Math.min(30, Math.max(1, Number(channel.options?.backfillDays || (mode === 'backfill' ? 30 : 7))));
-    const since = (mode!=='backfill'&&state.lastCompleteAt) || new Date(new Date(now).getTime() - days * 86400000).toISOString();
+    const days = Math.min(30, Math.max(1, Number(channel.options?.backfillDays || 30)));
+    const safetyStart = window?.providerWindowStart || new Date(new Date(now).getTime() - 30 * 3600000).toISOString();
+    const since = mode==='backfill' ? new Date(new Date(now).getTime() - days * 86400000).toISOString() : [state.lastCompleteAt,safetyStart].filter(Boolean).sort().at(-1);
     state.scan = { head: head.json.sha, headAt: head.json.commit?.committer?.date || new Date(now).toISOString(), since, pathIndex: 0, page: 1, commits: [] };
     }
   }

@@ -26,7 +26,7 @@ function activeChannel(w, key = 'community.reddit.localllama') {
 const item = overrides => ({ identity: 'reddit:t1_parent', title: 'Original comment', url: 'https://www.reddit.com/comments/root/comment/parent/', body: 'Original verified text. '.repeat(1000), author: 'original-author', sourceKind: 'comment', platform: 'reddit', readLevel: 'original', contentStatus: 'full_text', rights: { aiAllowed: true, exportAllowed: false }, metadata: { score: 10 }, ...overrides });
 const page = items => ({ items, checkpoint: { completedAt: new Date().toISOString() }, outcome: 'success', coverage: { hasMore: false } });
 const source = (w, id) => w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
-const redditEnv = { REDDIT_ACCESS_APPROVED: 'true', REDDIT_ACCESS_TOKEN: 'mock-token', REDDIT_USER_AGENT: 'regression-test' };
+const redditEnv = { REDDIT_ACQUISITION_PROVIDER: 'brightdata', REDDIT_PAID_ACQUISITION_APPROVED: 'true', BRIGHTDATA_API_KEY: 'mock-key-not-real' };
 
 try {
  await test('context placeholder cannot refresh or overwrite an existing verified comment', w => {
@@ -59,31 +59,24 @@ try {
   assert.ok(scheduled.some(r => r.channel_id === c.id && r.kind === 'sync'));
   assert.equal(w.jobs.get(review.job_id).status, 'queued');
  });
- await test('Reddit first-thread reservations are global, atomic, idempotent and exempt revalidation', async w => {
-  const a = activeChannel(w), b = activeChannel(w, 'community.reddit.machinelearning');
-  const runA = enqueueAcquisition(w, a.id, { slot: 'reserve-a' }), runB = enqueueAcquisition(w, b.id, { slot: 'reserve-b' });
+ await test('Bright Data Reddit deep-thread reservations are batch-global, atomic and idempotent', async w => {
+  const a = activeChannel(w), b = activeChannel(w, 'community.reddit.machinelearning'), batchId='reddit-deep-budget';
+  w.db.prepare('INSERT INTO acquisition_batches(id,trigger_kind,started_at,channel_count) VALUES(?,?,?,?)').run(batchId,'test',new Date().toISOString(),2);
+  const runA = enqueueAcquisition(w, a.id, { slot: 'reserve-a', batchId }), runB = enqueueAcquisition(w, b.id, { slot: 'reserve-b', batchId });
   const first = w.jobs.claim({ leaseOwner: 'worker-a', allowedKinds: ACQUISITION_KINDS });
   const second = w.jobs.claim({ leaseOwner: 'worker-b', allowedKinds: ACQUISITION_KINDS });
   assert.deepEqual(new Set([first.id, second.id]), new Set([runA.job_id, runB.job_id]));
-  let fetched = 0;
-  const deps = { request: async () => { fetched++; return { status: 200, json: {} }; }, async *collect({ channel, request }) {
-   const prefix = channel.id === a.id ? 'A' : 'B', total = channel.id === a.id ? 10 : 11;
-   for (let i = 0; i < total; i++) await request(`https://oauth.reddit.com/comments/${prefix}${i}?sort=top`);
-   // Another sort for an already reserved thread must not consume another slot.
-   await request(`https://oauth.reddit.com/comments/${prefix}0?sort=new`);
+  const reserved=[];
+  const deps = { async *collect({ channel, providerState }) {
+   const prefix = channel.id === a.id ? 'A' : 'B', candidates=Array.from({length:10},(_,i)=>({id:prefix+i}));
+   const selected=providerState.reserveThreads(candidates,8);reserved.push({prefix,ids:selected.map(item=>item.id)});
+   if(prefix==='A')assert.deepEqual(providerState.reserveThreads(candidates,8).map(item=>item.id),selected.map(item=>item.id));
    yield page([]);
   } };
-  const settled = await Promise.allSettled([first, second].map(job => executeAcquisition(w, redditEnv, job.payload, job, {}, deps)));
-  assert.equal(settled.filter(r => r.status === 'rejected').length, 1);
-  const blocked = settled.find(r => r.status === 'rejected').reason; assert.equal(blocked.retryAfterSeconds, 3600);
-  assert.equal(w.db.prepare("SELECT count(*) n FROM acquisition_observations WHERE observation_key LIKE 'reddit-reserve:%'").get().n, 20);
-  // Twenty distinct threads reached HTTP; the successful channel also refreshed one sort.
-  assert.equal(fetched, 21);
-  const c = activeChannel(w, 'community.reddit.artificial');
-  const review = enqueueAcquisition(w, c.id, { mode: 'revalidate', slot: 'review-exempt', threadId: 'reviewed' });
-  const reviewJob = w.jobs.claim({ leaseOwner: 'review-worker', allowedKinds: ['acquisition.revalidate'] }); assert.equal(reviewJob.id, review.job_id);
-  await executeAcquisition(w, redditEnv, reviewJob.payload, reviewJob, {}, { request: async () => ({ status: 200, json: {} }), async *collect({ request }) { await request('https://oauth.reddit.com/comments/reviewed?sort=top'); yield page([]); } });
-  assert.equal(w.db.prepare("SELECT count(*) n FROM acquisition_observations WHERE observation_key LIKE 'reddit-reserve:%'").get().n, 20);
+  for(const job of [first,second])await executeAcquisition(w,redditEnv,job.payload,job,{},deps);
+  assert.equal(reserved.find(entry=>entry.prefix==='A').ids.length,8);
+  assert.equal(reserved.find(entry=>entry.prefix==='B').ids.length,0);
+  assert.equal(w.db.prepare("SELECT count(*) n FROM acquisition_observations WHERE observation_key LIKE 'reddit-deep:reddit-deep-budget:%'").get().n,8);
  });
  await test('worker startup permits Follow catch-up outside daily publication window', w => {
   w.db.exec('UPDATE intel_channels SET desired_enabled=0'); const c = activeChannel(w, 'follow_builders.bundle');

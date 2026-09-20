@@ -16,7 +16,7 @@ function cache(response) {
 function page(items, checkpoint, response, extra = {}) {
   return { items, checkpoint, partition: 'default', outcome: items.length ? 'success' : 'no_new', coverage: {}, snapshots: snapshots(response), ...extra };
 }
-export async function* collectAiHot({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20 }) {
+export async function* collectAiHot({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20, window }) {
   const get = (path, headers = {}) => request(`${ORIGIN}${path}`, { headers: { accept: 'application/json', ...headers }, cache:mode==='acceptance'?'reload':undefined, signal });
   let state = mode==='acceptance'?{}:{ ...checkpoint }, remaining = Math.max(1, Math.floor(budget));
   if (channel.stream === 'selected') {
@@ -81,12 +81,15 @@ export async function* collectAiHot({ channel, checkpoint = {}, request, signal,
   const index = await get('/api/v1/dailies?limit=180');
   const entries = list(index.json?.items, 'daily index');
   if (entries.some(e => !/^\d{4}-\d{2}-\d{2}$/.test(e.date))) fail('AIHOT invalid daily date');
-  const days = Math.min(180, Math.max(1, Number(channel.options?.backfillDays || (mode === 'backfill' ? 30 : 7))));
+  const days = Math.min(180, Math.max(1, Number(channel.options?.backfillDays || (mode === 'backfill' ? 30 : 1))));
   const cutoff = new Date(new Date(now).getTime() - days * 86400000).toISOString().slice(0, 10);
   const complete = new Set(state.completedDates || []);
   const versions = { ...(state.completedVersions || {}) };
-  const coverageStart = mode === 'backfill' ? [state.coverageStart || cutoff, cutoff].sort()[0] : state.coverageStart || cutoff;
-  const candidates = entries.filter(e => e.date >= coverageStart && (!complete.has(e.date) || (e.generatedAt && versions[e.date] !== e.generatedAt))).sort((a, b) => a.date.localeCompare(b.date));
+  const shanghaiDate = value => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(value));
+  const providerStartDate=shanghaiDate(window?.providerWindowStart || new Date(new Date(now).getTime()-30*3600000)),providerEndDate=shanghaiDate(window?.windowEnd || now),normalDates=new Set();
+  for(let date=new Date(`${providerStartDate}T00:00:00.000Z`),endDate=new Date(`${providerEndDate}T00:00:00.000Z`);date<=endDate;date=new Date(date.getTime()+86400000))normalDates.add(date.toISOString().slice(0,10));
+  const coverageStart = mode === 'backfill' ? [state.coverageStart || cutoff, cutoff].sort()[0] : [...normalDates].sort()[0];
+  const candidates = entries.filter(e => (mode === 'backfill' ? e.date >= coverageStart : normalDates.has(e.date)) && (!complete.has(e.date) || (e.generatedAt && versions[e.date] !== e.generatedAt))).sort((a, b) => a.date.localeCompare(b.date));
   state = { ...state, coverageStart };
   let emitted = false;
   for (const entry of candidates) {

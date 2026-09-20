@@ -36,7 +36,7 @@ export class ReadonlyService {
     for (const [name, dataset] of Object.entries(snapshot.datasets)) {
       if (!Array.isArray(dataset.rows) || dataset.rows.length > LIMITS.perDataset) throw new Error('INVALID_SNAPSHOT');
       total += dataset.rows.length;
-      const allowed = new Set([...DATASETS[name].columns.filter(c => !['record_json', 'data_json', 'notes_json'].includes(c)), 'id', 'data', 'notebook', 'messages', 'created_at', 'updated_at', 'truncated']);
+      const allowed = new Set([...DATASETS[name].columns.filter(c => !['record_json', 'data_json', 'notes_json', 'stats_json', 'last_stats_json'].includes(c)), 'id', 'data', 'notebook', 'messages', 'stats', 'created_at', 'updated_at', 'truncated']);
       for (const row of dataset.rows) {
         if (!row || typeof row.id !== 'string' || Object.keys(row).some(k => !allowed.has(k))) throw new Error('INVALID_SNAPSHOT');
       }
