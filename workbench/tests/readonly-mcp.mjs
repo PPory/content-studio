@@ -139,6 +139,37 @@ try {
   assert.throws(() => service.call('workbench_fetch', { dataset: 'captures', id: 'capture-1', offset: 0 }), /AUDIT_UNAVAILABLE/);
   assert.equal(digest(workspace.paths.databaseFile), before);
   assert(!redact('password: qwerty\nBearer abcdefghi\nsk-abcdefghijklmnopqrstuv').includes('qwerty'));
+  // Live reads observe committed edits without rebuilding the (now stale) snapshot.
+  const liveAudit = path.join(root, 'live-audit'); fs.mkdirSync(liveAudit);
+  client = new Client({name:'live-acceptance',version:'1.0'});
+  await client.connect(new StdioClientTransport({command:process.execPath,args:[path.resolve('scripts/readonly-mcp.mjs'),'serve-live','--home',home,'--data-root',dataRoot,'--audit-root',liveAudit],stderr:'pipe'}));
+  const liveCall = async (name,args={}) => {
+    const response = await client.callTool({name,arguments:args});
+    assert(!response.isError, JSON.stringify(response)); return result(response);
+  };
+  const liveCatalog = await liveCall('workbench_catalog');
+  assert.equal(liveCatalog.live,true);
+  assert.equal(liveCatalog.datasets.find(d=>d.name==='books').rows,3001);
+  assert((await liveCall('workbench_fetch',{dataset:'books',id:'book-03000'})).text.includes('限额测试'));
+  const liveBefore=digest(workspace.paths.databaseFile);
+  assert(!(await liveCall('workbench_fetch',{dataset:'captures',id:'capture-1'})).text.includes('TEST_SECRET'));
+  assert.equal(digest(workspace.paths.databaseFile),liveBefore);
+  db.prepare('UPDATE captures SET body_markdown=? WHERE id=?').run('最新状态 REALTIME_CHANGE','capture-1');
+  assert((await liveCall('workbench_fetch',{dataset:'captures',id:'capture-1'})).text.includes('REALTIME_CHANGE'));
+  assert.equal((await liveCall('workbench_search',{dataset:'captures',query:'REALTIME_CHANGE'})).items[0].id,'capture-1');
+  const page1=await liveCall('workbench_search',{dataset:'books',limit:1});
+  const page2=await liveCall('workbench_search',{dataset:'books',limit:1,offset:page1.nextOffset});
+  assert.notEqual(page1.items[0].id,page2.items[0].id);
+  for (const args of [{dataset:'workspace_settings'},{dataset:'captures',sql:'DELETE'},{limit:21}]) assert((await client.callTool({name:'workbench_search',arguments:args})).isError);
+  for (const args of [{dataset:'personal_assets',id:'personal-private'},{dataset:'captures',id:'capture-deleted'}]) assert((await client.callTool({name:'workbench_fetch',arguments:args})).isError);
+  db.prepare('UPDATE entities SET deleted_at=? WHERE id=?').run(now,'capture-1');
+  assert((await client.callTool({name:'workbench_fetch',arguments:{dataset:'captures',id:'capture-1'}})).isError);
+  const liveAuditText=fs.readFileSync(path.join(liveAudit,'audit.jsonl'),'utf8');
+  assert(!liveAuditText.includes('REALTIME_CHANGE') && !liveAuditText.includes('TEST_SECRET'));
+  fs.truncateSync(path.join(liveAudit,'audit.jsonl'),LIMITS.auditBytes);
+  await assert.rejects(client.callTool({name:'workbench_catalog',arguments:{}}));
+  await client.close(); client=null;
+  console.log('PASS: live stdio reads observe edits/deletes, cover rows outside old snapshot cap, paginate, redact, reject SQL/private data and fail closed on audit errors.');
   console.log('PASS: real stdio MCP, schema rejection, redaction, private/deleted exclusion, audit fail-closed, rate/staleness limits, path escape and unchanged SQLite.');
 } finally {
   if (client) await client.close();

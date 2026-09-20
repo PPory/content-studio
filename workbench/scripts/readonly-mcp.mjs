@@ -10,9 +10,9 @@ try {
   if (positionals[0] === 'refresh' && values.home && !values['audit-root']) {
     const { refreshSnapshot } = await import('../server/readonly-mcp/refresh.mjs');
     console.log(JSON.stringify(await refreshSnapshot({ home: values.home, dataRoot: values['data-root'] })));
-  } else if (positionals[0] === 'serve' && !values.home) {
+  } else if ((positionals[0] === 'serve' && !values.home) || (positionals[0] === 'serve-live' && values.home && values['audit-root'])) {
     const { serve } = await import('../server/readonly-mcp/server.mjs');
-    await serve(values['data-root'], values['audit-root']);
+    await serve(values['data-root'], values['audit-root'], values.home);
   } else throw new Error('USAGE');
 } catch (error) {
   const safe = ['USAGE', 'INVALID_ROOT', 'UNSAFE_PATH', 'SEPARATE_DATA_ROOT_REQUIRED', 'REFRESH_COOLDOWN', 'COLLECTION_TIMEOUT', 'COLLECTION_FAILED', 'SNAPSHOT_CAPACITY'];
