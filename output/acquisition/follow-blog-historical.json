@@ -1,0 +1,48 @@
+{
+  "kind": "real_historical_snapshot_not_current_acquisition",
+  "checkedAt": "2026-09-20T12:44:32.734Z",
+  "commit": "47cebd39a77d48b5274a428bd637e20c43cc10ee",
+  "checks": [
+    {
+      "file": "feed-x.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/47cebd39a77d48b5274a428bd637e20c43cc10ee/feed-x.json",
+      "status": 200,
+      "sha256": "0cac401a0627524ac4fd840ef6c0f0dcdacbf28ab4bc63ce6defe64da75a6b20",
+      "bytes": 23571
+    },
+    {
+      "file": "feed-blogs.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/47cebd39a77d48b5274a428bd637e20c43cc10ee/feed-blogs.json",
+      "status": 200,
+      "sha256": "d6838cd7fd81ccadd0771408831dd7b7ccb88f4fc5553397cb49a334a426314a",
+      "bytes": 3920
+    },
+    {
+      "file": "feed-podcasts.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/47cebd39a77d48b5274a428bd637e20c43cc10ee/feed-podcasts.json",
+      "status": 200,
+      "sha256": "a1ee93dc0429f8ff1167a6659f2c2058466bbc72e949516af9e3141c60abc421",
+      "bytes": 132
+    },
+    {
+      "file": "state-feed.json",
+      "url": "https://raw.githubusercontent.com/zarazhangrui/follow-builders/47cebd39a77d48b5274a428bd637e20c43cc10ee/state-feed.json",
+      "status": 200,
+      "sha256": "8f6f74398d5a3b487cb7c187744f3acb2f2dd1270fb7f3aa78c8e47a13ae29f9",
+      "bytes": 9486
+    }
+  ],
+  "blogs": [
+    {
+      "title": "Claude Cowork and chat are now one Claude",
+      "url": "https://claude.com/blog/cowork-is-now-claude",
+      "author": "Claude Blog",
+      "publishedAt": "Sep 16, 2026",
+      "upstreamFirstSeenAt": "2026-09-17T06:42:44.458Z",
+      "bodyCharacters": 3471,
+      "bodyHash": "96c6a240853886f9bd85d6112e4ffb8d3a83e20a1013c460b8f37992cdcbf73e",
+      "readability": "full_text",
+      "readingCharacters": 3471
+    }
+  ]
+}

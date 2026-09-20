@@ -92,7 +92,7 @@ export function acquisitionTransport(w,channel,{signal,fetchImpl=pinnedFetch,res
             await response.body?.cancel();
           } else {
             if(status===304&&!cached)throw acquisitionError('304 缺少有效缓存，无法确认消费成功');
-            if(status!==304 && (status<200||status>=300)) {await response.body?.cancel();throw acquisitionError(`来源返回 HTTP ${status}`,{status,blocked:status===401||status===403,retry:status===429||status>=500,retryAfterSeconds:wait});}
+            if(status!==304 && (status<200||status>=300)) {await response.body?.cancel();throw acquisitionError(`来源返回 HTTP ${status}`,{status,blocked:status===401||status===403,retry:status===429||status>=500,retryAfterSeconds:wait,responseInfo:{httpStatus:status,finalUrl:target.url.origin+target.url.pathname,contentType:responseHeaders['content-type']||''}});}
             let text=cached?.payload_text||'';
             if(status!==304) {
               const chunks=[];let bytes=0;const max=channel.platform==='follow_builders'?40*1024*1024:12*1024*1024;
@@ -108,7 +108,7 @@ export function acquisitionTransport(w,channel,{signal,fetchImpl=pinnedFetch,res
             w.db.prepare('INSERT INTO acquisition_snapshots(id,channel_id,request_key,url,payload_hash,payload_text,headers_json,observed_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(channel_id,request_key,payload_hash) DO UPDATE SET observed_at=excluded.observed_at,expires_at=excluded.expires_at,headers_json=excluded.headers_json').run(id,channel.id,requestKey,url,hash(text),text,JSON.stringify(savedHeaders),at,expires);
             const row=w.db.prepare('SELECT id FROM acquisition_snapshots WHERE channel_id=? AND request_key=? AND payload_hash=?').get(channel.id,requestKey,hash(text));
             snapshotIds.push(row.id);
-            return {status:status===304&&!cached?.applied_at?200:status,originalStatus:status,headers:responseHeaders,text,json:parsed,snapshotId:row.id};
+            return {status:status===304&&!cached?.applied_at?200:status,originalStatus:status,finalUrl:target.url.origin+target.url.pathname,headers:responseHeaders,text,json:parsed,snapshotId:row.id};
           }
         } finally {await close();w.db.prepare('DELETE FROM acquisition_locks WHERE lock_key=? AND owner=?').run(hostKey,owner);hostKey=null;}
         target=next;

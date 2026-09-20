@@ -1,0 +1,55 @@
+[
+  {
+    "name": "The Verge AI",
+    "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "checkedAt": "2026-09-20T16:36:51.935Z",
+    "status": 200,
+    "finalUrl": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "contentType": "application/xml; charset=UTF-8",
+    "sha256": "a1aa33f172822a440575353e016de87d8fc299d25eb0ae553ef08be414a188df",
+    "bodyPrefix": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><feed\n\txmlns=\"http://www.w3.org/2005/Atom\"\n\txmlns:thr=\"http://purl.org/syndication",
+    "items": 10
+  },
+  {
+    "name": "机器之心",
+    "url": "https://www.jiqizhixin.com/rss",
+    "checkedAt": "2026-09-20T16:36:53.796Z",
+    "status": 200,
+    "finalUrl": "https://www.jiqizhixin.com/data-service",
+    "contentType": "text/html; charset=utf-8",
+    "sha256": "86c51b5a564a3cad1de3ef0905aabde3538ef2ecc3bf77e1eadcf177164e984b",
+    "bodyPrefix": "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\"/>\n<meta name=\"viewport\" content=\"width=device-width,ini",
+    "parseError": "订阅地址返回了 HTML 页面，未取得 RSS 或 Atom；请检查入口或访问限制"
+  },
+  {
+    "name": "36kr",
+    "url": "https://36kr.com/feed",
+    "checkedAt": "2026-09-20T16:36:54.058Z",
+    "status": 200,
+    "finalUrl": "https://36kr.com/feed",
+    "contentType": "text/html",
+    "sha256": "3d109fd66f005dacfa57521786ab0c48db3d1f6247bdcd2a99a57c957ea02665",
+    "bodyPrefix": "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF-8\" />\n\t<meta name=\"viewport\" content=\"width=device-width, i",
+    "parseError": "订阅地址返回了 HTML 页面，未取得 RSS 或 Atom；请检查入口或访问限制"
+  },
+  {
+    "name": "VentureBeat",
+    "url": "https://venturebeat.com/category/ai/feed/",
+    "checkedAt": "2026-09-20T16:36:54.258Z",
+    "status": 429,
+    "finalUrl": "https://venturebeat.com/category/ai/feed/",
+    "contentType": "text/html; charset=utf-8",
+    "sha256": "243ceeb44c7f13aff1278aa2426e53f1677577a429a521b02c98490c6d2cc18f",
+    "bodyPrefix": "<!DOCTYPE html><html lang=\"en\" data-astro-cid-4wdtffzm><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width="
+  },
+  {
+    "name": "Stack Overflow",
+    "url": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+    "checkedAt": "2026-09-20T16:36:55.444Z",
+    "status": 404,
+    "finalUrl": "https://stackoverflow.com/feeds/tag?tagnames=openai&sort=newest",
+    "contentType": "text/html; charset=utf-8",
+    "sha256": "b4641dc9f44269b93aaf5b1d6d262c6c744d1f78e6995cdfdfc205e494c52c26",
+    "bodyPrefix": "\n<!DOCTYPE html>\n\n\n    <html  class=\"html__responsive html__unpinned-leftnav\" lang=\"en\">\n\n        <head>\n            \n  "
+  }
+]

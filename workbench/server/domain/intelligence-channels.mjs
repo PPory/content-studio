@@ -94,12 +94,18 @@ export async function saveIntelligenceChannel(w,input,deps={}) {
 const text = node => node?.textContent?.trim()||'';
 function child(node,name){return [...node.children].find(n=>n.localName?.split(':').at(-1)===name||n.nodeName===name);}
 function date(value){const n=Date.parse(value);return Number.isFinite(n)?new Date(n).toISOString():null;}
+function feedContent(node){
+  const content=child(node,'encoded')||child(node,'content');
+  if(!content||content.getAttribute('src'))return '';
+  return content.getAttribute('type')==='xhtml'?content.innerHTML:text(content);
+}
 export function parseChannelFeed(raw, channel) {
   if(channel.format==='github'){
     let rows;try{rows=JSON.parse(raw);}catch{throw bad('GitHub 返回了无效 JSON');}
     if(!Array.isArray(rows))throw bad('GitHub 返回内容不是版本列表');
     return rows.filter(r=>!r.draft&&!r.prerelease).map(r=>({title:r.name||r.tag_name,url:r.html_url,body:String(r.body||''),publishedAt:date(r.published_at),author:r.author?.login||'',original:true}));
   }
+  if(/^\s*(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i.test(String(raw).replace(/^\uFEFF/,'')))throw Object.assign(bad('订阅地址返回了 HTML 页面，未取得 RSS 或 Atom；请检查入口或访问限制'),{code:'FEED_HTML_RESPONSE'});
   if(/<!DOCTYPE|<!ENTITY/i.test(raw.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "")))throw bad('订阅含不支持的 XML 实体声明');
   assertXmlStructure(raw);
   const doc=new DOMParser().parseFromString(raw,'text/xml');
@@ -110,7 +116,7 @@ export function parseChannelFeed(raw, channel) {
     const links=[...node.children].filter(n=>n.localName==='link'),link=links.find(n=>!n.getAttribute('rel')||n.getAttribute('rel')==='alternate');
     const rawUrl=link?.getAttribute('href')||text(link)||text(child(node,'guid'));
     let url;try{url=new URL(rawUrl,channel.url).href;}catch{return null;}
-    return {title:text(child(node,'title')),url,publishedAt:date(text(child(node,'published'))||text(child(node,'pubDate'))||text(child(node,'date'))),author:text(child(node,'creator'))||text(child(node,'author')),original:false};
+    return {title:text(child(node,'title')),url,publishedAt:date(text(child(node,'published'))||text(child(node,'pubDate'))||text(child(node,'date'))),author:text(child(node,'creator'))||text(child(node,'author')),original:false,feedSummary:text(child(node,'description'))||text(child(node,'summary')),feedContent:feedContent(node),feedGuid:text(child(node,'guid'))||text(child(node,'id')),discussionUrl:text(child(node,'comments'))};
   }).filter(i=>i?.url&&i.title);
 }
 

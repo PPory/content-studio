@@ -15,8 +15,10 @@ const json = async response => { const text=await response.text(); try{return {t
 export async function trigger(key, datasetId, rows, { discoverBy, limitPerInput, signal, fetchImpl = proxyFetch } = {}) {
   const query=new URLSearchParams({dataset_id:datasetId,format:'json',include_errors:'true'});
   if(discoverBy){query.set('type','discover_new');query.set('discover_by',discoverBy);}
-  if(limitPerInput)query.set('limit_per_input',String(limitPerInput));
-  const response=await fetchImpl(`${API}/trigger?${query}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(rows),signal:timeoutSignal(signal,30000)});
+  if(limitPerInput!==undefined && (!Number.isInteger(limitPerInput)||limitPerInput<1))throw new TypeError('limitPerInput must be a positive integer');
+  // Bright Data documents the same object envelope for /scrape and /trigger.
+  const payload=limitPerInput?{input:rows,limit_per_input:limitPerInput}:rows;
+  const response=await fetchImpl(`${API}/trigger?${query}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(payload),signal:timeoutSignal(signal,30000)});
   const result=await json(response);
   if(!response.ok)throw new BrightDataError(`Bright Data 触发失败（HTTP ${response.status}）：${result.text.slice(0,300)}`,'检查 dataset 权限与输入 schema',{status:response.status,blocked:[401,403].includes(response.status)});
   if(!result.data?.snapshot_id)throw new BrightDataError(`Bright Data 触发未返回 snapshot_id：${result.text.slice(0,300)}`,'停止重试，先核对 dataset 与输入 schema',{code:'invalid_schema',retry:false});

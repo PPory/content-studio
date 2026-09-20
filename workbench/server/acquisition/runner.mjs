@@ -18,11 +18,11 @@ import { sourceFromRow } from '../domain/intelligence-quality.mjs';
 
 export const ACQUISITION_KINDS=['acquisition.sync','acquisition.validate','acquisition.backfill','acquisition.fulltext','acquisition.revalidate'];
 const connectors={aihot:collectAiHot,follow_builders:collectFollowBuilders,community:collectCommunity,reddit:collectReddit};
-export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false,windowStartAt=null,windowEndAt=null}={}) {
+export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false,windowStartAt=null,windowEndAt=null,fulltextUrl=null}={}) {
   const channel=getChannel(w,id),kind=`acquisition.${mode}`;
   if(!ACQUISITION_KINDS.includes(kind))throw acquisitionError('不支持的采集任务',{status:400});
   return w.db.transaction(()=>{
-    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation,batchId,explicit,windowStartAt,windowEndAt};
+    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation,batchId,explicit,windowStartAt,windowEndAt,fulltextUrl};
     const key=`${kind}:${channel.id}:${slot}`;
     const {job}=w.jobs.enqueue({kind,idempotencyKey:key,payload,dueAt,maxAttempts:3});
     const id=createUlid();
@@ -62,15 +62,26 @@ export function scheduleAcquisition(w,{now=new Date(),env={},startup=false}={}) 
   })();
   return out;
 }
-async function* fulltext({w,payload,channel,request}) {
+async function* fulltext({w,payload,channel,request,authorizedSources}) {
   const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=? AND deleted_at IS NULL').get(payload.sourceId);
   if(!row)throw acquisitionError('原始资料不存在',{retry:false});
-  if(channel.options.fulltextAllowed!==true)throw acquisitionError('尚未允许补全正文',{retry:false});
+  if(channel.options.fulltextAllowed!==true && !(typeof payload.fulltextUrl==='string' && payload.fulltextUrl && payload.fulltextUrl===JSON.parse(row.data_json).url) && authorizedSources?.get(row.id)!==JSON.parse(row.data_json).url)throw acquisitionError('尚未允许补全正文',{retry:false});
   const source=JSON.parse(row.data_json);
   if(channel.platform==='reddit'||source.platform==='reddit')throw acquisitionError('Reddit 不允许通用网页正文回退',{blocked:true});
+  if(source.platform==='github') {
+    const match=new URL(source.url).pathname.match(/^\/([^/]+)\/([^/]+)\/?$/);
+    if(!match)throw acquisitionError('仅支持已有仓库的 README 正文补全',{retry:false});
+    const response=await request('https://api.github.com/repos/'+match[1]+'/'+match[2]+'/readme',{headers:{accept:'application/vnd.github.raw+json'}});
+    const body=response.json?.encoding==='base64'?Buffer.from(response.json.content,'base64').toString('utf8'):response.text;
+    if(!body.trim()||response.json?.message)throw acquisitionError('仓库没有可读取的 README',{retry:false});
+    yield {items:[{...source,identity:row.acquisition_identity,sourceKind:row.source_kind,body,readLevel:'original',contentStatus:'full_text',metadata:{...source.metadata,bodyOrigin:'github_readme'}}],partition:'body:'+row.id,checkpoint:{completedAt:stamp()},outcome:'success',coverage:{fulltext:1,bodyOrigin:'github_readme'},snapshots:[response.snapshotId]};return;
+  }
+  if(source.platform==='hacker_news' && row.source_kind==='post')throw acquisitionError('HN 讨论与外链原文分别保存，请补全外链原文；讨论页不冒充全文',{retry:false});
   const response=await request(source.url,{headers:{accept:'text/html'}});
-  const {document}=parseHTML(response.text);document.querySelectorAll('script,style,iframe,object,embed').forEach(n=>n.remove());
-  const article=new Readability(document).parse();
+  const {document}=parseHTML(response.text);document.querySelectorAll('script,style,iframe,object,embed,nav,header,footer,aside,form,[role="navigation"],.cookie-banner,.advertisement').forEach(n=>n.remove());
+  const host=new URL(source.url).hostname;
+  const supplied=host==='arstechnica.com'?[...document.querySelectorAll('article .post-content')].map(n=>n.innerHTML).join('\n'):'';
+  const article=supplied?{content:supplied}:new Readability(document).parse();
   const body=article?xhtmlToMd(article.content,src=>{try{const u=new URL(src,source.url);return /^https?:$/.test(u.protocol)?u.href:'';}catch{return '';}}):'';
   const problem=junkReason(body);
   if(problem)throw acquisitionError(`正文未取得：${problem}`,{retry:false});
@@ -112,26 +123,27 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
   };
   w.db.prepare("UPDATE acquisition_runs SET status='running',started_at=?,window_start_at=?,window_end_at=?,checkpoint_before_json=?,error='' WHERE id=?").run(at,window.windowStart,window.windowEnd,encode(initial),run.id);
   w.db.prepare('UPDATE intel_channels SET last_attempt_at=? WHERE id=?').run(at,channel.id);
-  const stats={fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0,found:0,parsed:0,new:0,duplicates:0,summary:0,skipped:0,pages:0};
+  const stats={fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0,enriched:0,found:0,parsed:0,new:0,duplicates:0,summary:0,skipped:0,pages:0};
   const streamStats={};let last;
   try {
     check();
     if(channel.user_disabled && !payload.explicit && !['validate'].includes(payload.mode))throw acquisitionError('信源已暂停',{retry:false});
     if(channel.platform==='reddit') {
       const paid=['true','1'].includes(String(env.REDDIT_PAID_ACQUISITION_APPROVED));
-      if(paid&&env.BRIGHTDATA_API_KEY){channel.access_status='approved';w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
+      if(paid&&env.BRIGHTDATA_API_KEY){channel.access_status='approved';if(!dependencies.oneRunPaidApproval)w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
       channel.options.aiAllowed=false;
       channel.options.threadId=payload.threadId;
     }
     const collect=dependencies.collect||connectors[channel.adapter];
     if(!collect)throw acquisitionError('信源需要手动阅读或适配器未配置',{blocked:true});
     const readSnapshot=id=>w.db.prepare('SELECT payload_text AS text,id AS snapshotId,observed_at AS observedAt FROM acquisition_snapshots WHERE id=? AND channel_id=?').get(id,channel.id)||null;
-    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,readSnapshot,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData});
+    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request,authorizedSources:dependencies.authorizedFulltextSources}):collect({channel,checkpoint:initial,request,readSnapshot,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData,runLimits:dependencies.runLimits});
     let acceptedByChannel=0;
     for await(const page of iterable) {
       check();last=page;
       const localLimit=channelItemLimit(channel),localRemaining=Number.isFinite(localLimit)?Math.max(0,localLimit-acceptedByChannel):Infinity;
       const gated=gateAcquisitionItems(page.items||[],window,{limit:localRemaining});
+      if(payload.mode==='fulltext'){stats.enriched+=gated.items.length;gated.stats.inWindow=0;for(const value of Object.values(gated.byStream))value.inWindow=0;}
       mergeAcquisitionStats(stats,gated.stats);stats.found=stats.fetched;stats.parsed=stats.inWindow;stats.skipped=stats.outsideWindow+stats.unknownTimestamp+stats.limited;
       for(const [key,value] of Object.entries(gated.byStream)){streamStats[key]||={};mergeAcquisitionStats(streamStats[key],value);}
       page.items=gated.items;acceptedByChannel+=page.items.length;
@@ -150,7 +162,7 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
       for(const id of saved.ids) {
         const source=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
         if(w.db.pragma('user_version',{simple:true})>=32){const record=sourceFromRow(source);record.processing=processLocalSource(w,record);ensureReviewClusters(w,[record]);}
-        if(source.content_status==='summary_only'&&channel.options.fulltextAllowed===true&&!['reddit','arxiv'].includes(channel.platform))enqueueAcquisition(w,channel.id,{mode:'fulltext',trigger:'enrichment',sourceId:id,slot:`body:${id}:${source.content_hash}`});
+        if(['summary_only','metadata'].includes(source.content_status)&&channel.options.fulltextAllowed===true&&!['reddit','arxiv'].includes(channel.platform))enqueueAcquisition(w,channel.id,{mode:'fulltext',trigger:'enrichment',sourceId:id,slot:`body:${id}:${source.content_hash}`});
       }
       if(payload.mode!=='revalidate')for(const o of page.observations||[])if(o.kind==='reddit_thread_review')for(const hours of o.followupHours||[])enqueueAcquisition(w,channel.id,{mode:'revalidate',trigger:'comment_review',threadId:o.identity.replace(/^reddit:t3_/,''),partition:`review:${o.identity}:${hours}`,slot:`review:${o.identity}:${hours}`,dueAt:new Date(Date.now()+hours*3600000).toISOString()});
     }
@@ -169,6 +181,7 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
     return {runId:run.id,stats,outcome:last.outcome,coverage};
   } catch(error) {
     stats.failed++;
+    if(error.responseInfo)w.db.prepare('UPDATE acquisition_runs SET coverage_json=? WHERE id=?').run(encode({responseInfo:error.responseInfo}),run.id);
     w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(errorStatus(error),run.id);
     const blocked=error.blocked||error.code==='blocked'||[401,403].includes(error.status);
     if(blocked){error.blocked=true;error.retry=false;}
@@ -216,4 +229,15 @@ export async function acquisitionAction(w,id,input) {
     return {channel:getChannel(w,id)};
   }
   throw acquisitionError('未知信源操作',{status:400});
+}
+
+export async function requestSourceFulltext(w,id,input={}) {
+ if(input.confirmed!==true)throw acquisitionError('请确认访问并保存这篇公开原文；不发送给模型',{status:400});
+ const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=? AND deleted_at IS NULL').get(id);
+ if(!row || row.origin_kind!=='external' || !row.channel_id)throw acquisitionError('资料不支持正文补全',{status:400});
+ const source=sourceFromRow(row);
+ if(source.platform==='reddit')throw acquisitionError('Reddit 必须使用单独批准的采集范围',{status:403});
+ await validateTarget(source.url);
+ const prior=w.db.prepare("SELECT r.* FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.kind='fulltext' AND json_extract(j.payload_json,'$.sourceId')=? AND j.status IN ('queued','retry','running')").get(id);
+ return {run:prior||enqueueAcquisition(w,row.channel_id,{mode:'fulltext',trigger:'reader_confirmed',sourceId:id,fulltextUrl:source.url})};
 }

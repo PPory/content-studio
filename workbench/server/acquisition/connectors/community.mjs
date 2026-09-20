@@ -1,28 +1,26 @@
-import { DOMParser } from 'linkedom';
 import { parseChannelFeed } from '../../domain/intelligence-channels.mjs';
 import { xhtmlToMd } from '../../lib/books.mjs';
 
 function config(channel) { try { return { ...channel, ...(typeof channel.config_json === 'string' ? JSON.parse(channel.config_json) : {}), ...channel.config, ...channel.options }; } catch { throw new Error('Invalid acquisition channel configuration'); } }
-const value = (node, ...names) => { for (const name of names) { const n = [...(node?.children || [])].find(c => c.localName === name || c.tagName === name); if (n?.textContent) return n.textContent.trim(); } return ''; };
 const text = html => xhtmlToMd(String(html || ''),()=> '').trim();
 const canonical = input => { const u = new URL(input); u.hash = ''; for (const key of [...u.searchParams.keys()]) if (/^utm_|^(fbclid|gclid)$/i.test(key)) u.searchParams.delete(key); return u.href; };
 
-/** Discovery payloads deliberately remain summaries/metadata until a separate fulltext fetch succeeds. */
+/** Explicit feed content is preserved; excerpts and link metadata are never promoted to full text. */
 export function normalizeCommunityFeed(raw, channel) {
  const c = config(channel), endpoint = c.endpoint || c.url || c.candidateEndpoint;
  const parsed = parseChannelFeed(raw, { url: endpoint, format: c.format === 'github' ? 'github' : 'rss', limit:1000 });
  if (c.format === 'github') return parsed.map(entry => ({ identity: `github:release:${canonical(entry.url)}`, title: entry.title, url: canonical(entry.url), body: entry.body, summary: '', publishedAt: entry.publishedAt, author: entry.author, sourceKind: 'post', platform: 'github', readLevel: 'original', contentStatus: 'full_text', rights: { aiAllowed: c.aiAllowed !== false, exportAllowed: c.exportAllowed !== false }, metadata: { releaseNotes: true, fulltextPending: false } }));
- const doc = new DOMParser().parseFromString(raw, 'text/xml');
- const nodes = [...doc.getElementsByTagName('item'), ...doc.getElementsByTagName('entry')];
  return parsed.flatMap(entry => {
-  const node = nodes.find(n => value(n, 'title') === entry.title);
-  const summary = text(value(node, 'description', 'summary', 'content', 'encoded', 'content:encoded'));
-  const guid = value(node, 'guid', 'id');
-  const discussion = value(node, 'comments');
+  const suppliedContent=text(entry.feedContent);
+  const excerpt=/(?:read (?:the )?(?:full|rest|entire) (?:story|article|post)|continue reading|阅读全文|阅读原文|查看全文|\[\s*…\s*\]|\[\s*\.\.\.\s*\])/i.test(suppliedContent);
+  const body=suppliedContent.length>=250&&!excerpt?suppliedContent:'';
+  const summary=text(entry.feedSummary)||(!body?suppliedContent:'');
+  const guid=entry.feedGuid;
+  const discussion=entry.discussionUrl;
   const platform = c.platform || (c.key || c.stableKey || '').split('.')[1] || 'web';
   let platformId, identity, url = canonical(entry.url), sourceKind = 'article';
   if (platform === 'hacker_news' || platform === 'hn') {
-   platformId = [discussion, guid, entry.url, value(node, 'description')].map(s => String(s).match(/(?:news\.ycombinator\.com\/item\?id=|hnrss\.org\/item\?id=)(\d+)/)?.[1]).find(Boolean);
+   platformId = [discussion, guid, entry.url, entry.feedSummary].map(s => String(s).match(/(?:news\.ycombinator\.com\/item\?id=|hnrss\.org\/item\?id=)(\d+)/)?.[1]).find(Boolean);
    identity = platformId ? `hn:${platformId}` : `url:${url}`; sourceKind = 'post';
   } else if (platform === 'arxiv') {
    platformId = [guid, entry.url].map(s => String(s).match(/(?:abs|arxiv\.org\/a)\/(\d{4}\.\d+(?:v\d+)?|[a-z-]+\/\d+(?:v\d+)?)/i)?.[1]).find(Boolean);
@@ -30,16 +28,16 @@ export function normalizeCommunityFeed(raw, channel) {
   } else if (platform === 'stackoverflow') {
    platformId = entry.url.match(/\/questions\/(\d+)/)?.[1]; identity = platformId ? `stackoverflow:${platformId}` : `url:${url}`; sourceKind = 'post';
   } else { identity = `url:${url}`; platformId = guid || null; }
-  const result = { identity, title: entry.title, url, body: '', summary, publishedAt: entry.publishedAt, author: entry.author,
-   sourceKind, platform, platformId, readLevel: summary ? 'summary' : 'metadata', contentStatus: 'discovered',
+  const result = { identity, title: entry.title, url, body, summary, publishedAt: entry.publishedAt, author: entry.author,
+   sourceKind, platform, platformId, readLevel: body ? 'original' : summary ? 'summary' : 'metadata', contentStatus: body ? 'full_text' : 'discovered',
    rights: { aiAllowed: c.aiAllowed !== false, exportAllowed: c.exportAllowed !== false },
-   metadata: { feedGuid: guid || null, discussionUrl: discussion || null, transportProvider: c.transportProvider || null, arxivVersion: platform === 'arxiv' ? platformId?.match(/v(\d+)$/)?.[1] || null : null, fulltextPending: true } };
+   metadata: { feedGuid: guid || null, discussionUrl: discussion || null, transportProvider: c.transportProvider || null, arxivVersion: platform === 'arxiv' ? platformId?.match(/v(\d+)$/)?.[1] || null : null, fulltextPending: !body, feedBodyProvided: Boolean(entry.feedContent), feedBodyExcerpt: excerpt, bodyOrigin: body ? 'feed_content' : null } };
   if (platform === 'hacker_news' || platform === 'hn') {
    if (!platformId) return { ...result, sourceKind: 'article', identity: `url:${url}` };
    const discussionUrl = `https://news.ycombinator.com/item?id=${platformId}`;
    const post = { ...result, url: discussionUrl, metadata: { ...result.metadata, discussionUrl, externalOriginalUrl: url, fulltextPending: false } };
    if (new URL(url).hostname === 'news.ycombinator.com') return post;
-   return [post, { ...result, identity: `url:${url}`, sourceKind: 'article', platform: 'web', platformId: null, summary: '', readLevel: 'metadata', metadata: { ...result.metadata, discussionUrl, discoveredViaDiscussion: identity, fulltextPending: true } }];
+   return [post, { ...result, identity: `url:${url}`, sourceKind: 'article', platform: 'web', platformId: null, body: '', summary: '', contentStatus: 'discovered', readLevel: 'metadata', metadata: { ...result.metadata, discussionUrl, discoveredViaDiscussion: identity, fulltextPending: true } }];
   }
   return result;
  });
@@ -53,9 +51,9 @@ export async function* collectCommunity({ channel, checkpoint = {}, request, sig
  if (budget < 1) { yield { items: [], checkpoint, outcome: 'partial', partition: 'default', coverage: { requests: 0, reason: 'request_budget_exhausted' } }; return; }
  const headers = { ...(checkpoint.etag ? { 'if-none-match': checkpoint.etag } : {}), ...(checkpoint.lastModified ? { 'if-modified-since': checkpoint.lastModified } : {}) };
  const response = await request(endpoint, { headers, signal });
- if (response.status === 304) { yield { items: [], checkpoint: { ...checkpoint, checkedAt: now.toISOString() }, partition: 'default', outcome: 'no_new', coverage: { requests: 1, status: 304, completeness: 'current_feed_only' } }; return; }
- const items = normalizeCommunityFeed(response.text, c);
- yield { items, checkpoint: { etag: response.headers?.etag || null, lastModified: response.headers?.['last-modified'] || null, checkedAt: now.toISOString() }, partition: 'default', outcome: items.length ? 'success' : 'no_new', coverage: { requests: 1, discovered: items.length, fulltext: 0, completeness: 'current_feed_only', historicalReplaySupported: false, ...(mode === 'backfill' ? { gap: 'rss_has_no_historical_archive_contract' } : {}) } };
+ if(typeof response.text!=='string')throw Object.assign(new Error('订阅响应缺少可重放的正文快照'),{code:'invalid_schema',retry:false});
+ let items;try{items=normalizeCommunityFeed(response.text,c);}catch(error){error.responseInfo={httpStatus:response.originalStatus||response.status,finalUrl:response.finalUrl||endpoint,contentType:response.headers?.['content-type']||'',bodyKind:/^\s*(?:<!doctype html|<html)/i.test(response.text)?'html':'unrecognized_feed'};throw error;}
+ yield { items, checkpoint: { etag: response.headers?.etag || null, lastModified: response.headers?.['last-modified'] || null, checkedAt: now.toISOString() }, partition: 'default', outcome: items.length ? 'success' : 'no_new', coverage: { requests: 1, responseInfo:{httpStatus:response.originalStatus||response.status,finalUrl:response.finalUrl||endpoint,contentType:response.headers?.['content-type']||''},upstreamUnchanged:response.status===304, replayedSnapshot:response.status===304, discovered: items.length, fulltext: items.filter(i=>i.contentStatus==='full_text').length, completeness: 'current_feed_only', historicalReplaySupported: false, ...(mode === 'backfill' ? { gap: 'rss_has_no_historical_archive_contract' } : {}) } };
 }
 
 async function* collectGitHub({ c, checkpoint, request, signal, now, budget, mode, window: acquisition }) {

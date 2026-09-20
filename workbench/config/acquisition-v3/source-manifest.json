@@ -111,7 +111,7 @@
           "stableKey": "t2.the_verge_ai",
           "name": "The Verge AI",
           "adapter": "rss",
-          "candidateEndpoint": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
+          "candidateEndpoint": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
           "originalEndpointCell": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml",
           "desiredEnabled": true,
           "enabled": false,

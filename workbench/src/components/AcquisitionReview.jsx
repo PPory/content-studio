@@ -3,8 +3,8 @@ import { AcquisitionResource } from './AcquisitionResource.jsx';
 import { markdown } from './BriefReading.jsx';
 import { Empty, ErrorNote, Loading, ViewTabs } from './ui.jsx';
 
-const primaryScopes=[{key:'unreviewed',label:'全部待审阅'},{key:'deep',label:'本期 AI 深读'},{key:'recent',label:'过去 24 小时新资讯'}];
-const secondaryScopes=[{key:'needs_context',label:'主题待复核'},{key:'unreadable',label:'待补正文'},{key:'not_ai',label:'已过滤'},{key:'reviewed',label:'已审阅 / 已忽略'}];
+const primaryScopes=[{key:'recent',label:'过去 24 小时新资讯'},{key:'deep',label:'本期 AI 深读'}];
+const secondaryScopes=[{key:'events',label:'已归并事件（含历史）'},{key:'unreviewed',label:'全部历史待审阅'},{key:'needs_context',label:'主题待复核'},{key:'unreadable',label:'待补正文'},{key:'not_ai',label:'已过滤'},{key:'reviewed',label:'已审阅 / 已忽略'}];
 async function request(path,body) {
   const response=await fetch(`/api/workspace/acquisition/review${path}`,body ? {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)} : {});
   const value=await response.json();
@@ -17,8 +17,9 @@ function Cluster({cluster,clusters,busy,onAction,onGo,onLink}) {
   return <article className="acquisition-review-cluster" aria-label={cluster.title}>
     <header><div className="brief-v2-labels"><span>{cluster.manual ? '人工修正已保留' : '自动聚簇候选'}</span><span>{items.length} 份原始材料</span><span>{({kept:'已保留',keep:'已保留',ignored:'已忽略',ignore:'已忽略',unreviewed:'待审阅'}[cluster.status] || cluster.status)}</span></div><h2>{cluster.title || '标题待核对'}</h2></header>
     {cluster.guide && <div className="acquisition-cluster-guide"><p className="intel-v2-hint">{['none','extractive','deterministic','local'].includes(cluster.guideKind) ? '本地阅读提示' : '机器导读候选 · 依据见各篇原文'}</p>{markdown(cluster.guide)}</div>}
-    <p className="intel-v2-hint">材料组成：{items.map(item=>item.author || item.publisher || item.channelName || item.platform || '发布者未提供').join(' · ')}</p>
+    <p className="intel-v2-hint">材料组成：{items.map(item=>item.publisher || '发布者未提供').join(' · ')}</p>
     {(cluster.relationship || cluster.connection) && <p className="intel-v2-hint">聚簇依据：{cluster.connection || cluster.relationship}</p>}
+    {!!cluster.eventEvidence?.length && <details><summary>核对同事件依据</summary>{cluster.eventEvidence.map((e,i)=><div key={i}><p>{items.find(s=>s.id===e.sourceId)?.title || e.sourceId}</p><blockquote>{e.quote}</blockquote></div>)}</details>}
     <details className="acquisition-cluster-unknown"><summary>分歧与未知</summary>{cluster.uncertainties?.length ? <ul>{cluster.uncertainties.map((item,index)=><li key={index}>{typeof item==='string' ? item : item.description || item.text}</li>)}</ul> : <p>尚未提炼材料间分歧；未记录不表示没有分歧。</p>}</details>
     <div className="acquisition-cluster-materials">{items.map(item=><AcquisitionResource key={item.id} item={{...item,type:'source',acquisitionBatch:true}} onGo={onGo} onLink={onLink}/>)}</div>
     <p className="intel-v2-hint">保留或忽略会更新本簇审阅状态，不删除原文；可在已审阅范围恢复。已过滤材料恢复至待复核，不直接进入主阅读列表。拆分与合并会固定人工分组。</p>
@@ -28,7 +29,7 @@ function Cluster({cluster,clusters,busy,onAction,onGo,onLink}) {
   </article>;
 }
 export function AcquisitionReview({onGo,onLink}) {
-  const [scope,setScope]=useState('unreviewed'),[offset,setOffset]=useState(0),[data,setData]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+  const [scope,setScope]=useState('recent'),[offset,setOffset]=useState(0),[data,setData]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
   const sequence=useRef(0);
   const load=useCallback(async()=>{const ticket=++sequence.current;try{const value=await request(`?${new URLSearchParams({scope,offset:String(offset),limit:'20'})}`);if(ticket===sequence.current){setData(value);setError(null);}}catch(e){if(ticket===sequence.current)setError(e);}},[scope,offset]);
   useEffect(()=>{setData(null);void load();return ()=>{sequence.current++;};},[load]);

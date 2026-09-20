@@ -10,8 +10,9 @@ assert.equal(normalized[0].identity, 'hn:123'); assert.equal(normalized[0].summa
 assert.throws(() => normalizeCommunityFeed('<html>not RSS</html>', { endpoint: 'https://example.com' }));
 const arxiv = normalizeCommunityFeed('<rss><channel><item><title>Paper</title><link>https://arxiv.org/abs/2609.12345v2</link><description>Abstract</description></item></channel></rss>', { platform: 'arxiv', endpoint: 'https://rss.arxiv.org/rss/cs.AI' });
 assert.equal(arxiv[0].identity, 'arxiv:2609.12345'); assert.equal(arxiv[0].metadata.arxivVersion, '2');
-const unchanged = await all(collectCommunity({ channel: { endpoint: 'https://example.com' }, checkpoint: { etag: 'v1' }, now, request: async (_, opts) => { assert.equal(opts.headers['if-none-match'], 'v1'); return { status: 304 }; } }));
-assert.equal(unchanged[0].outcome, 'no_new');
+const unchanged = await all(collectCommunity({ channel: { endpoint: 'https://example.com' }, checkpoint: { etag: 'v1' }, now, request: async (_, opts) => { assert.equal(opts.headers['if-none-match'], 'v1'); return { status: 304, text:rss }; } }));
+assert.equal(unchanged[0].coverage.replayedSnapshot,true);assert.equal(unchanged[0].items.length,1);
+await assert.rejects(()=>all(collectCommunity({channel:{endpoint:'https://example.com'},request:async()=>({status:304})})),/正文快照/);
 const backlog = await all(collectCommunity({ channel: { endpoint: 'https://example.com' }, mode: 'backfill', now, request: async () => ({ status: 200, text: rss, headers: {} }) }));
 assert.equal(backlog[0].coverage.gap, 'rss_has_no_historical_archive_contract');
 let calls = 0;
@@ -39,7 +40,7 @@ const brightData = {
         post_id: 'abc',
         url: 'https://www.reddit.com/r/LocalLLaMA/comments/abc/builder_experience/',
         title: 'Builder experience',
-        description: 'A detailed agent building report',
+        description: 'A detailed agent building report using MCP tools and inference',
         user_posted: 'builder',
         community_name: 'LocalLLaMA',
         num_upvotes: 100,
@@ -68,7 +69,7 @@ assert.equal(first[0].coverage.posts, 1);
 assert.equal(first[0].coverage.comments, 2);
 assert.equal(first[0].coverage.deepThreads, 1);
 assert.equal(first[0].items.find(item => item.platformId === 't1_embedded').metadata.structureComplete, false);
-assert.equal(first[0].items.find(item => item.platformId === 't1_deep').parentIdentity, 'reddit:t3_abc');
+assert.equal(first[0].items.find(item => item.platformId === 't1_deep').parentIdentity, null);
 assert.ok(first[0].items.filter(item => item.sourceKind === 'comment').every(item => item.metadata.independentEvidence === false));
 assert.ok(first[0].items.every(item => item.rights.aiAllowed === false && item.rights.exportAllowed === false));
 assert.equal(triggered[0].rows[0].sort_by, 'New');
