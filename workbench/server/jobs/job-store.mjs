@@ -60,10 +60,11 @@ export class JobStore {
     return { created: true, job: this.get(id) };
   }
 
-  claim({ leaseOwner, leaseSeconds = 90, now, allowedKinds } = {}) {
-    if (allowedKinds && !allowedKinds.length) return null;
-    const kindFilter = allowedKinds ? ` AND kind IN (${allowedKinds.map(() => "?").join(",")})` : "";
-    const kindArgs = allowedKinds || [];
+  claim({ leaseOwner, leaseSeconds = 90, now, allowedKinds, allowedJobIds } = {}) {
+    if ((allowedKinds && !allowedKinds.length)||(allowedJobIds&&!allowedJobIds.length)) return null;
+    let kindFilter = allowedKinds ? ` AND kind IN (${allowedKinds.map(() => "?").join(",")})` : "";
+    const kindArgs = [...(allowedKinds || [])];
+    if(allowedJobIds){kindFilter+=` AND id IN (${allowedJobIds.map(()=>'?').join(',')})`;kindArgs.push(...allowedJobIds);}
     const acquisitionFilter = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='acquisition_locks'").get() ? "AND (kind NOT LIKE 'acquisition.%' OR NOT EXISTS(SELECT 1 FROM acquisition_locks l WHERE l.lock_key='channel:'||json_extract(local_jobs.payload_json,'$.channelId') AND l.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')))" : "";
     const owner = String(leaseOwner || "").trim();
     if (!owner) throw new TypeError("领取任务必须提供 leaseOwner");

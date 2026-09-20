@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { openWorkspace } from '../server/storage/workspace.mjs';
 import { resolveWorkspacePaths } from '../server/storage/workspace-paths.mjs';
-import { WORKSPACE_MIGRATIONS } from '../server/storage/migrations.mjs';
+import { WORKSPACE_MIGRATIONS, WORKSPACE_SCHEMA_VERSION } from '../server/storage/migrations.mjs';
 import { getChannel } from '../server/acquisition/store.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -34,7 +34,7 @@ try {
  assert.equal((await fs.readdir(backupsDir).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))).length, 0);
  const databaseFile = w.paths.databaseFile; assert.ok(path.relative(root, databaseFile).startsWith('Workspace'));
  w.close(); w = await openWorkspace({ xenhoHome: root });
- assert.equal(w.db.pragma('user_version', { simple: true }), 29);
+ assert.equal(w.db.pragma('user_version', { simple: true }), WORKSPACE_SCHEMA_VERSION);
  const files = await fs.readdir(backupsDir), snapshots = files.filter(f => f.endsWith('.sqlite')); assert.equal(snapshots.length, 1);
  const recoveryFile = path.join(backupsDir, snapshots[0]), manifest = JSON.parse(await fs.readFile(recoveryFile + '.json', 'utf8'));
  assert.equal(manifest.fromVersion, 28); assert.equal(manifest.toVersion, 29); assert.equal(manifest.integrity, 'ok');

@@ -4,9 +4,9 @@ export class LocalJobRunner {
     this.handlers = new Map(Object.entries(handlers));
   }
 
-  async runNext({ leaseOwner, handlers = null, leaseSeconds = 90, now, allowedKinds } = {}) {
+  async runNext({ leaseOwner, handlers = null, leaseSeconds = 90, now, allowedKinds, allowedJobIds } = {}) {
     const currentNow = () => typeof now === "function" ? now() : now;
-    const job = this.jobStore.claim({ leaseOwner, leaseSeconds, allowedKinds, now: currentNow() });
+    const job = this.jobStore.claim({ leaseOwner, leaseSeconds, allowedKinds, allowedJobIds, now: currentNow() });
     if (!job) return null;
     const available = handlers ? new Map(Object.entries(handlers)) : this.handlers;
     const handler = available.get(job.kind);

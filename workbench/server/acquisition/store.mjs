@@ -95,7 +95,9 @@ export function commitPage(w,channel,page,{job,runId,failBeforeCheckpoint}={}) {
     const ids=[];
     for(const item of page.items||[]){
       if(item.deleted===true||item.metadata?.deleted===true){const row=w.db.prepare('SELECT source_id FROM acquisition_aliases WHERE identity=?').get(item.identity);if(row)redactSource(w,row.source_id,'upstream_deleted');continue;}
-      const result=upsertItem(w,channel,item,at);for(const key of Object.keys(stats))stats[key]+=Number(result[key]||0);stats.parsed++;if(result.id)ids.push(result.id);
+      const result=upsertItem(w,channel,item,at);for(const key of Object.keys(stats))stats[key]+=Number(result[key]||0);stats.parsed++;if(result.id){ids.push(result.id);
+        if(runId&&w.db.pragma('user_version',{simple:true})>=30)w.db.prepare(`INSERT INTO acquisition_run_items(run_id,source_id,stream,outcome,observed_at) VALUES(?,?,?,?,?) ON CONFLICT(run_id,source_id,stream) DO UPDATE SET outcome=CASE WHEN acquisition_run_items.outcome='inserted' THEN 'inserted' WHEN excluded.outcome='updated' THEN 'updated' ELSE acquisition_run_items.outcome END,observed_at=excluded.observed_at`).run(runId,result.id,item.metadata?.stream||channel.stream,result.new?'inserted':result.updated?'updated':'duplicate',at);
+        }
     }
     for(const identity of page.removals||[]){
       const key=typeof identity==='string'?identity:identity.identity;
@@ -146,10 +148,10 @@ export function cleanupAcquisition(w,{now=new Date(),backup=false}={}) {
   })();
 }
 export function acquisitionOverview(w) {
-  return {channels:w.db.prepare('SELECT * FROM intel_channels ORDER BY source_group,name').all().map(channelView),runs:w.db.prepare('SELECT r.*,j.status AS job_status,j.attempt,j.due_at FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id ORDER BY r.created_at DESC LIMIT 100').all().map(r=>({...r,stats:JSON.parse(r.stats_json),coverage:JSON.parse(r.coverage_json)}))};
+  return {channels:w.db.prepare('SELECT * FROM intel_channels ORDER BY source_group,name').all().map(r=>({...channelView(r),lastSuccessAt:r.last_success_at,latencyMs:w.db.pragma('user_version',{simple:true})>=30?(()=>{const x=w.db.prepare('SELECT started_at,finished_at FROM acquisition_runs WHERE channel_id=? AND finished_at IS NOT NULL ORDER BY created_at DESC LIMIT 1').get(r.id);return x?Date.parse(x.finished_at)-Date.parse(x.started_at):null;})():null,healthStatus:w.db.pragma('user_version',{simple:true})>=30?w.db.prepare('SELECT health_status FROM acquisition_runs WHERE channel_id=? ORDER BY created_at DESC LIMIT 1').get(r.id)?.health_status:null})),runs:w.db.prepare('SELECT r.*,j.status AS job_status,j.attempt,j.due_at FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id ORDER BY r.created_at DESC LIMIT 100').all().map(r=>({...r,stats:JSON.parse(r.stats_json),coverage:JSON.parse(r.coverage_json)}))};
 }
 export function acquisitionSourceDetails(w,id) {
   const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);if(!row)throw acquisitionError('资料不存在',{status:404});
   const unavailable=row.deleted_at||(row.expires_at&&Date.parse(row.expires_at)<=Date.now());
-  return {source:sourceFromRow(row),discoveries:unavailable?[]:w.db.prepare('SELECT d.*,c.name FROM source_discoveries d JOIN intel_channels c ON c.id=d.channel_id WHERE source_id=?').all(id),segments:unavailable?[]:w.db.prepare('SELECT * FROM acquisition_segments WHERE version_id=? ORDER BY ordinal').all(row.current_version_id),comments:w.db.prepare("SELECT * FROM intel_sources WHERE root_item_id=? OR parent_item_id=? ORDER BY created_at LIMIT 150").all(row.root_item_id||id,id).map(sourceFromRow)};
+  return {source:{...sourceFromRow(row),firstSeenAt:row.created_at,lastSeenAt:row.updated_at},discoveries:unavailable?[]:w.db.prepare('SELECT d.*,c.name,c.source_group AS sourceGroup,c.stream,c.platform FROM source_discoveries d JOIN intel_channels c ON c.id=d.channel_id WHERE source_id=?').all(id),runs:w.db.pragma('user_version',{simple:true})>=30?w.db.prepare('SELECT i.run_id AS runId,r.batch_id AS batchId,i.outcome AS dedupResult,i.stream,i.observed_at AS collectedAt FROM acquisition_run_items i JOIN acquisition_runs r ON r.id=i.run_id WHERE i.source_id=? ORDER BY i.observed_at DESC LIMIT 30').all(id):[],segments:unavailable?[]:w.db.prepare('SELECT * FROM acquisition_segments WHERE version_id=? ORDER BY ordinal').all(row.current_version_id),comments:w.db.prepare("SELECT * FROM intel_sources WHERE root_item_id=? OR parent_item_id=? ORDER BY created_at LIMIT 150").all(row.root_item_id||id,id).map(sourceFromRow)};
 }

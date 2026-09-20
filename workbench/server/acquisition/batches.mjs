@@ -1,0 +1,42 @@
+import { createUlid } from '../storage/ids.mjs';
+import { sourceFromRow } from '../domain/intelligence-quality.mjs';
+import { enqueueAcquisition } from './runner.mjs';
+const empty=()=>({fetched:0,inserted:0,updated:0,duplicate:0,failed:0});
+const names={'aihot:selected':'AIHOT Selected','aihot:hot':'AIHOT Hot','aihot:daily':'AIHOT Daily','follow_builders:feed-x.json':'Follow Builders X','follow_builders:feed-podcasts.json':'Follow Builders Podcast','follow_builders:feed-blogs.json':'Follow Builders Blog','follow_builders:state-feed.json':'Follow Builders State','t2_media:feed':'T2 Media','community:hacker_news':'Hacker News','community:reddit_posts':'Reddit Posts','community:reddit_comments':'Reddit Comments','community:github':'GitHub','community:arxiv':'arXiv','community:stackoverflow':'Stack Overflow','community:devto':'Dev.to'};
+function streamKey(group,platform,stream,kind){return `${group}:${group==='community'?platform==='reddit'?kind==='comment'?'reddit_comments':'reddit_posts':platform:stream}`;}
+export function startAcquisitionBatch(w,{confirmed,trigger='manual'}={}) {
+ if(confirmed!==true)throw Object.assign(new Error('请确认同步现有来源并保存真实资料'),{status:400});
+ return w.db.transaction(()=>{
+ const active=w.db.prepare("SELECT b.id FROM acquisition_batches b JOIN acquisition_runs r ON r.batch_id=b.id JOIN local_jobs j ON j.id=r.job_id WHERE j.status IN ('queued','retry','running') ORDER BY b.started_at DESC LIMIT 1").get();
+ if(active)return batchOverview(w,active.id).batch;
+ const channels=w.db.prepare("SELECT * FROM intel_channels WHERE source_group IN ('aihot','follow_builders','t2_media','community') AND (desired_enabled=1 AND user_disabled=0 OR source_group='t2_media') ORDER BY source_group,name").all();
+ const id=createUlid(),at=new Date().toISOString();w.db.prepare('INSERT INTO acquisition_batches(id,trigger_kind,started_at,channel_count) VALUES(?,?,?,?)').run(id,trigger,at,channels.length);
+ for(const c of channels)enqueueAcquisition(w,c.id,{trigger,slot:`batch:${id}`,batchId:id,explicit:true});
+ return batchOverview(w,id).batch;
+ })();
+}
+export function batchOverview(w,id='latest',{offset=0,limit=60,group='',stream='',changesOnly='true'}={}) {
+ const b=id==='latest'?w.db.prepare('SELECT * FROM acquisition_batches ORDER BY started_at DESC LIMIT 1').get():w.db.prepare('SELECT * FROM acquisition_batches WHERE id=?').get(id);
+ if(!b)return {batch:null,items:[],total:0,nextOffset:null};
+ const runs=w.db.prepare('SELECT r.*,j.status job_status,j.last_error job_error,j.due_at,c.name,c.source_group,c.platform,c.stream,c.stable_key FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? ORDER BY r.created_at').all(b.id);
+ const rows=w.db.prepare('SELECT i.*,r.channel_id,r.started_at,r.finished_at,c.name,c.source_group,c.platform,c.stream channel_stream FROM acquisition_run_items i JOIN acquisition_runs r ON r.id=i.run_id JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? ORDER BY i.observed_at DESC').all(b.id);
+ const channels=new Map(),streams=new Map(Object.entries(names).map(([key,label])=>[key,{key,label,sourceGroup:key.split(':')[0],status:'NO_NEW_ITEMS',stats:empty()}]));
+ for(const r of runs){let c=channels.get(r.channel_id);if(!c){c={id:r.channel_id,name:r.name,key:r.stable_key,sourceGroup:r.source_group,platform:r.platform,stream:r.stream,startedAt:r.started_at,finishedAt:r.finished_at,status:r.health_status||(r.job_status==='failed'?'SOURCE_UNAVAILABLE':'RUNNING'),error:r.error||r.job_error||'',stats:empty(),runs:[]};channels.set(c.id,c);}c.runs.push({id:r.id,status:r.job_status,healthStatus:r.health_status,error:r.error||r.job_error||'',dueAt:r.due_at,coverage:JSON.parse(r.coverage_json)});c.status=r.health_status||(r.job_status==='failed'?'SOURCE_UNAVAILABLE':'RUNNING');c.error=r.error||r.job_error||'';c.finishedAt=r.finished_at;if(['failed','blocked'].includes(r.status)&&!['queued','retry','running'].includes(r.job_status))c.stats.failed++;}
+ for(const row of rows){const s=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(row.source_id);const key=streamKey(row.source_group,row.platform,row.stream,s.source_kind);const target=streams.get(key);for(const t of [channels.get(row.channel_id),target].filter(Boolean)){t.stats.fetched++;t.stats[row.outcome]++;}}
+ for(const c of channels.values()){
+  c.stats.failed=['OK','NO_NEW_ITEMS','RUNNING'].includes(c.status)?0:1;
+  if(['OK','NO_NEW_ITEMS'].includes(c.status))c.status=c.stats.inserted||c.stats.updated?'OK':'NO_NEW_ITEMS';
+  const keys=c.sourceGroup==='follow_builders'?Object.keys(names).filter(k=>k.startsWith('follow_builders:')):c.platform==='reddit'?['community:reddit_posts','community:reddit_comments']:[streamKey(c.sourceGroup,c.platform,c.stream)];
+  for(const key of keys){const t=streams.get(key);if(!t)continue;if(c.stats.failed){t.stats.failed+=c.stats.failed;t.status=c.status;}else if(['RUNNING','RATE_LIMITED','TIMEOUT','PARSE_FAILED','SOURCE_UNAVAILABLE','AUTH_BLOCKED','STALE_UPSTREAM'].includes(c.status))t.status=c.status;else if(t.stats.inserted||t.stats.updated)t.status='OK';}
+  if(c.sourceGroup==='follow_builders')for(const run of c.runs){for(const [file,state] of Object.entries(run.coverage.streams||{})){const t=streams.get(`follow_builders:${file}`);if(t){t.upstreamUpdatedAt=state.generatedAt;t.upstreamCount=state.count??null;if(state.errors?.length){t.status='STALE_UPSTREAM';t.error=state.errors.join('; ');}else if(file==='state-feed.json')t.status='OK';}}}
+ }
+ for(const t of streams.values())if(t.stats.failed&&['OK','NO_NEW_ITEMS'].includes(t.status))t.status='SOURCE_UNAVAILABLE';
+ const stats=empty();for(const c of channels.values())for(const key of Object.keys(stats))stats[key]+=c.stats[key];
+ const pending=runs.some(r=>['queued','retry','running'].includes(r.job_status)),finishedAt=pending?null:runs.map(r=>r.finished_at).filter(Boolean).sort().at(-1)||b.started_at;
+ const status=pending?'running':stats.failed?'partial':'completed';
+ const seen=new Set(),items=[];
+ for(const row of rows){if(changesOnly!=='false'&&row.outcome==='duplicate')continue;if(group&&row.source_group!==group||stream&&stream!==streamKey(row.source_group,row.platform,row.stream,w.db.prepare('SELECT source_kind FROM intel_sources WHERE id=?').get(row.source_id).source_kind))continue;if(seen.has(row.source_id))continue;seen.add(row.source_id);const raw=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(row.source_id),source=sourceFromRow(raw);items.push({...source,body:source.body?.slice(0,500)||'',bodyLength:source.body?.length||0,sourceGroup:row.source_group,channelName:row.name,stream:row.stream,firstSeenAt:raw.created_at,lastSeenAt:row.observed_at,runId:row.run_id,dedupResult:row.outcome});}
+ offset=Math.max(0,Number(offset)||0);limit=Math.min(200,Math.max(1,Number(limit)||60));
+ return {batch:{id:b.id,trigger:b.trigger_kind,startedAt:b.started_at,finishedAt,durationMs:(finishedAt?Date.parse(finishedAt):Date.now())-Date.parse(b.started_at),status,channelCount:channels.size,stats,channels:[...channels.values()],streams:[...streams.values()]},items:items.slice(offset,offset+limit),total:items.length,nextOffset:offset+limit<items.length?offset+limit:null};
+}
+export function finishAcquisitionBatches(w){for(const b of w.db.prepare("SELECT id FROM acquisition_batches WHERE finished_at IS NULL").all()){const {batch}=batchOverview(w,b.id);if(batch.finishedAt)w.db.prepare('UPDATE acquisition_batches SET finished_at=?,status=? WHERE id=?').run(batch.finishedAt,batch.status,b.id);}}

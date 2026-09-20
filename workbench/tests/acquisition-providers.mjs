@@ -22,7 +22,7 @@ await assert.rejects(() => drain(collectAiHot({ channel: { stream: 'selected' },
 await assert.rejects(() => drain(collectAiHot({ channel: { stream: 'selected' }, request: async () => { throw Object.assign(new Error('rate limited'), { status:429, retryAfterSeconds:99 }); } })), e => e.status === 429 && e.retryAfterSeconds === 99);
 calls=[];
 const hot = await drain(collectAiHot({ channel:{stream:'hot'}, request:async url => { calls.push(url); return response(url.includes('hot-topics') ? {items:[{...row('event'),links:{story:'https://aihot.news/story/public-id'}}]} : {story:{digest:'secondary'}}); } }));
-assert.equal(hot[0].items.length,0); assert.equal(hot[0].observations.length,1); assert.ok(calls[1].endsWith('/api/v1/stories/public-id'));
+assert.equal(hot[0].items.length,1);assert.equal(hot[0].items[0].sourceKind,'external_digest');assert.equal(hot[0].items[0].metadata.stream,'hot'); assert.equal(hot[0].observations.length,1); assert.ok(calls[1].endsWith('/api/v1/stories/public-id'));
 const daily = await drain(collectAiHot({channel:{stream:'daily'},now:new Date('2026-09-20T01:00:00Z'),request:async url => response(url.includes('?') ? {items:[{date:'2026-09-19'}]} : {report:{date:'2026-09-19',generatedAt:'2026-09-19T00:00:00Z',lead:{title:'Digest',leadParagraph:'Lead'},sections:[{label:'AI',items:[{title:'Article',summary:'Text',links:{original:'https://example.org/a'}}]}],flashes:[],links:{aihot:'https://aihot.news/daily/2026-09-19'}}})}));
 assert.equal(daily[0].items.length,1);assert.equal(daily[0].items[0].sourceKind,'external_digest');assert.equal(daily[0].items[0].metadata.references.length,1);
 const extended = await drain(collectAiHot({channel:{stream:'daily'},mode:'backfill',checkpoint:{coverageStart:'2026-09-13'},now:new Date('2026-09-20'),request:async url=>response(url.includes('?')?{items:[{date:'2026-09-01'}]}:{report:{date:'2026-09-01',sections:[],flashes:[],lead:{title:'Older report'}}})}));
@@ -39,6 +39,8 @@ const bundle={
  'feed-podcasts.json':{generatedAt:'2026-09-19',podcasts:[{name:'Show',guid:'one',title:'Episode 1',url:'https://youtube.com/@show',transcript:'Speaker 1 | 00:00\n'+'full transcript '.repeat(10000)},{name:'Show',guid:'two',title:'Episode 2',url:'https://youtube.com/@show',transcript:'Second transcript'}]},
  'state-feed.json':{seenTweets:{'123':1},seenVideos:{one:1,two:1,failed:1},seenArticles:{},extension:'preserved'},
 };
+const blogFixture=structuredClone(bundle);blogFixture['feed-blogs.json'].blogs=[{name:'Fixture publisher',articles:[{url:'https://example.org/blog',title:'Blog parser fixture',content:'Complete fixture body',publishedAt:'2026-09-19'}]}];
+const parsedBlog=normalizeFollowBundle(blogFixture,{},a).items.find(item=>item.metadata.stream==='feed-blogs.json');assert.equal(parsedBlog.body,'Complete fixture body');assert.equal(parsedBlog.contentStatus,'full_text');assert.equal(parsedBlog.author,'Fixture publisher');
 const normalized=normalizeFollowBundle(bundle,{},a);
 assert.equal(normalized.items.length,3);assert.notEqual(normalized.items[1].identity,normalized.items[2].identity);assert.ok(normalized.items[1].body.length>70000);assert.equal(normalized.streams['feed-blogs.json'].status,'no_new');assert.equal(normalized.upstreamState.extension,'preserved');assert.ok(normalized.items[0].metadata.quoteContextMissing);
 const request=async url=>{

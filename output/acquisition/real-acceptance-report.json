@@ -1,0 +1,2481 @@
+{
+  "batch": {
+    "id": "01M2YTQEX2G7KWZE3A8124KCT1",
+    "trigger": "real_acceptance",
+    "startedAt": "2026-09-20T07:15:43.650Z",
+    "finishedAt": "2026-09-20T07:28:36.580Z",
+    "durationMs": 772930,
+    "status": "partial",
+    "channelCount": 56,
+    "stats": {
+      "fetched": 5997,
+      "inserted": 1755,
+      "updated": 12,
+      "duplicate": 4230,
+      "failed": 27
+    },
+    "channels": [
+      {
+        "id": "acq-f365e3461a786493d662",
+        "name": "AIHOT · 日报",
+        "key": "aihot.dailies",
+        "sourceGroup": "aihot",
+        "platform": "aihot",
+        "stream": "daily",
+        "startedAt": "2026-09-20T07:15:43.699Z",
+        "finishedAt": "2026-09-20T07:25:00.515Z",
+        "status": "NO_NEW_ITEMS",
+        "error": "",
+        "stats": {
+          "fetched": 8,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 8,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX301SH0RKERHAFA8RJ",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.651Z",
+            "coverage": {
+              "awaitingUpstream": false,
+              "archiveBoundary": "2026-04-22"
+            }
+          },
+          {
+            "id": "01M2YV7B8C140T46JG2D7XC63A",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:24:24.204Z",
+            "coverage": {
+              "date": "2026-09-20",
+              "hasMore": false,
+              "calendarTimezone": "Asia/Shanghai"
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-df504db869c17a0fd4ed",
+        "name": "AIHOT · 热点",
+        "key": "aihot.hot_topics",
+        "sourceGroup": "aihot",
+        "platform": "aihot",
+        "stream": "hot",
+        "startedAt": "2026-09-20T07:16:08.800Z",
+        "finishedAt": "2026-09-20T07:16:12.247Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX46FNC3NFJNKM1ASG1",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:48.776Z",
+            "coverage": {
+              "events": 10,
+              "stories": 10
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-69fca10032de1f6b6788",
+        "name": "AIHOT · 精选",
+        "key": "aihot.selected",
+        "sourceGroup": "aihot",
+        "platform": "aihot",
+        "stream": "selected",
+        "startedAt": "2026-09-20T07:18:31.322Z",
+        "finishedAt": "2026-09-20T07:27:43.660Z",
+        "status": "NO_NEW_ITEMS",
+        "error": "",
+        "stats": {
+          "fetched": 3961,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 3961,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX5C01NYB489FPABKPC",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:14.880Z",
+            "coverage": {}
+          },
+          {
+            "id": "01M2YV7B88G5GMC27QPFEWD9TG",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:24:24.199Z",
+            "coverage": {}
+          },
+          {
+            "id": "01M2YVBA2J66HN3R98VM8TSSBE",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:26:34.066Z",
+            "coverage": {
+              "hasMore": false,
+              "phase": "changes",
+              "recovery": null
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-ab444eed0fcd41f851d4",
+        "name": "Dev.to · ai",
+        "key": "community.devto.ai",
+        "sourceGroup": "community",
+        "platform": "devto",
+        "stream": "ai",
+        "startedAt": "2026-09-20T07:15:43.742Z",
+        "finishedAt": "2026-09-20T07:15:48.021Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 12,
+          "inserted": 12,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX6799WY30051BYACZD",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.654Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 12,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-b2415875f50c6f9c0a10",
+        "name": "Dev.to · chatgpt",
+        "key": "community.devto.chatgpt",
+        "sourceGroup": "community",
+        "platform": "devto",
+        "stream": "chatgpt",
+        "startedAt": "2026-09-20T07:16:09.885Z",
+        "finishedAt": "2026-09-20T07:16:11.719Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 12,
+          "inserted": 12,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX7C8VQ7CWWVN6TA44S",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:48.841Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 12,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-92ceef82b0410a6f31bc",
+        "name": "Dev.to · llm",
+        "key": "community.devto.llm",
+        "sourceGroup": "community",
+        "platform": "devto",
+        "stream": "llm",
+        "startedAt": "2026-09-20T07:18:31.773Z",
+        "finishedAt": "2026-09-20T07:18:47.468Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 12,
+          "inserted": 11,
+          "updated": 0,
+          "duplicate": 1,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX8JW8RQ9CHAB7YMKJ4",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:16.078Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 12,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-efa2744701353bf80ccc",
+        "name": "GitHub · ai-agent",
+        "key": "community.github.ai-agent",
+        "sourceGroup": "community",
+        "platform": "github",
+        "stream": "ai-agent",
+        "startedAt": "2026-09-20T07:23:55.647Z",
+        "finishedAt": "2026-09-20T07:23:55.669Z",
+        "status": "RATE_LIMITED",
+        "error": "来源限流等待中",
+        "stats": {
+          "fetched": 500,
+          "inserted": 500,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX81FQ9BTCP406121ZC",
+            "status": "failed",
+            "healthStatus": "RATE_LIMITED",
+            "error": "来源限流等待中",
+            "dueAt": "2026-09-20T07:24:01.674Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 894,
+              "page": 5,
+              "hasNext": true,
+              "hasMore": true,
+              "window": {
+                "start": "2026-09-13T07:15:43.854Z",
+                "end": "2026-09-20T07:15:43.854Z",
+                "page": 5
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-3c30657bc469e007cb98",
+        "name": "GitHub · generative-ai",
+        "key": "community.github.generative-ai",
+        "sourceGroup": "community",
+        "platform": "github",
+        "stream": "generative-ai",
+        "startedAt": "2026-09-20T07:18:47.479Z",
+        "finishedAt": "2026-09-20T07:28:16.478Z",
+        "status": "AUTH_BLOCKED",
+        "error": "来源返回 HTTP 403",
+        "stats": {
+          "fetched": 441,
+          "inserted": 251,
+          "updated": 0,
+          "duplicate": 190,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEX9FFMHAQC8D36HN10M",
+            "status": "failed",
+            "healthStatus": "PARSE_FAILED",
+            "error": "Unterminated string in JSON at position 262005 (line 1 column 262006)",
+            "dueAt": "2026-09-20T07:23:21.561Z",
+            "coverage": {}
+          },
+          {
+            "id": "01M2YV20M530BD78GZG74MRKTK",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:21:29.476Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 261,
+              "page": 9,
+              "hasNext": false,
+              "hasMore": false,
+              "window": {
+                "start": "2026-09-13T07:22:15.551Z",
+                "end": "2026-09-20T07:22:15.551Z",
+                "page": 9
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          },
+          {
+            "id": "01M2YVD2SS820PA5Q8XCY0H067",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "来源返回 HTTP 403",
+            "dueAt": "2026-09-20T07:28:35.484Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 261,
+              "page": 6,
+              "hasNext": true,
+              "hasMore": true,
+              "window": {
+                "start": "2026-09-13T07:27:34.297Z",
+                "end": "2026-09-20T07:27:34.297Z",
+                "page": 6
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-3e8a8396cc72a3fe0396",
+        "name": "GitHub · llm",
+        "key": "community.github.llm",
+        "sourceGroup": "community",
+        "platform": "github",
+        "stream": "llm",
+        "startedAt": "2026-09-20T07:19:37.101Z",
+        "finishedAt": "2026-09-20T07:28:17.669Z",
+        "status": "AUTH_BLOCKED",
+        "error": "来源返回 HTTP 403",
+        "stats": {
+          "fetched": 150,
+          "inserted": 118,
+          "updated": 0,
+          "duplicate": 32,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXAV4H1XVQZTMG5EANS",
+            "status": "failed",
+            "healthStatus": "PARSE_FAILED",
+            "error": "Unterminated string in JSON at position 261553 (line 1 column 261554)",
+            "dueAt": "2026-09-20T07:24:08.933Z",
+            "coverage": {}
+          },
+          {
+            "id": "01M2YV20M8S36P5VYHPEHXREBR",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "来源返回 HTTP 403",
+            "dueAt": "2026-09-20T07:24:01.010Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 700,
+              "page": 2,
+              "hasNext": true,
+              "hasMore": true,
+              "window": {
+                "start": "2026-09-13T07:23:35.350Z",
+                "end": "2026-09-15T01:23:35.350Z",
+                "page": 2
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          },
+          {
+            "id": "01M2YVD2SYRSA1DAP0F99K4AQ1",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "来源返回 HTTP 403",
+            "dueAt": "2026-09-20T07:28:35.674Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 700,
+              "page": 5,
+              "hasNext": true,
+              "hasMore": true,
+              "window": {
+                "start": "2026-09-13T07:23:35.350Z",
+                "end": "2026-09-15T01:23:35.350Z",
+                "page": 5
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-71b5d88145c1ed596fa7",
+        "name": "GitHub · mcp",
+        "key": "community.github.mcp",
+        "sourceGroup": "community",
+        "platform": "github",
+        "stream": "mcp",
+        "startedAt": "2026-09-20T07:19:55.939Z",
+        "finishedAt": "2026-09-20T07:28:36.580Z",
+        "status": "AUTH_BLOCKED",
+        "error": "来源返回 HTTP 403",
+        "stats": {
+          "fetched": 360,
+          "inserted": 330,
+          "updated": 0,
+          "duplicate": 30,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXB978H6YNPN4MZSEGD",
+            "status": "failed",
+            "healthStatus": "PARSE_FAILED",
+            "error": "Unterminated string in JSON at position 261797 (line 1 column 261798)",
+            "dueAt": "2026-09-20T07:24:31.607Z",
+            "coverage": {}
+          },
+          {
+            "id": "01M2YV20MARGNTRZ3WF6M3GB36",
+            "status": "failed",
+            "healthStatus": "RATE_LIMITED",
+            "error": "来源限流等待中",
+            "dueAt": "2026-09-20T07:28:35.517Z",
+            "coverage": {
+              "requests": 1,
+              "reportedTotal": 728,
+              "page": 12,
+              "hasNext": true,
+              "hasMore": true,
+              "window": {
+                "start": "2026-09-13T07:23:49.231Z",
+                "end": "2026-09-15T01:23:49.231Z",
+                "page": 12
+              },
+              "completeness": "bounded_search_window",
+              "gap": null,
+              "mode": "sync"
+            }
+          },
+          {
+            "id": "01M2YVD2T2GN4DXHB0KDQWNVE0",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "来源返回 HTTP 403",
+            "dueAt": "2026-09-20T07:28:37.585Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-b4f43c9b25970f3475eb",
+        "name": "GitHub · rag",
+        "key": "community.github.rag",
+        "sourceGroup": "community",
+        "platform": "github",
+        "stream": "rag",
+        "startedAt": "2026-09-20T07:20:17.613Z",
+        "finishedAt": "2026-09-20T07:16:11.180Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "lease expired after final attempt",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXB2C5MM5HG54HR80Z5",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "lease expired after final attempt",
+            "dueAt": "2026-09-20T07:16:16.185Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-6ef93f7f7ba877ed020f",
+        "name": "Hacker News · best",
+        "key": "community.hacker_news.best",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "best",
+        "startedAt": "2026-09-20T07:15:44.017Z",
+        "finishedAt": "2026-09-20T07:15:48.989Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 60,
+          "inserted": 57,
+          "updated": 3,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXCRCV402DMV7YN75ZC",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.660Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 60,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-61f42091a8f0ce4e6ef3",
+        "name": "Hacker News · frontpage",
+        "key": "community.hacker_news.frontpage",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "frontpage",
+        "startedAt": "2026-09-20T07:16:11.191Z",
+        "finishedAt": "2026-09-20T07:16:12.957Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 40,
+          "inserted": 28,
+          "updated": 6,
+          "duplicate": 6,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXDRVSFF3J1PFJTTR5B",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:49.173Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 40,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-5057d0e6f30c8664ad8d",
+        "name": "Hacker News · newest_ai",
+        "key": "community.hacker_news.newest_ai",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "newest_ai",
+        "startedAt": "2026-09-20T07:21:40.020Z",
+        "finishedAt": "2026-09-20T07:21:41.288Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 40,
+          "inserted": 39,
+          "updated": 1,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXDJYJ7SF5J3FP2T225",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:16.761Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 40,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-f24069ad718a4a8f2779",
+        "name": "Hacker News · newest_claude",
+        "key": "community.hacker_news.newest_claude",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "newest_claude",
+        "startedAt": "2026-09-20T07:21:41.297Z",
+        "finishedAt": "2026-09-20T07:21:42.589Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 39,
+          "inserted": 36,
+          "updated": 2,
+          "duplicate": 1,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXEEVX8PQKER6HX998P",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:16.795Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 39,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a77dd8b11e5b71d0f61c",
+        "name": "Hacker News · newest_gpt",
+        "key": "community.hacker_news.newest_gpt",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "newest_gpt",
+        "startedAt": "2026-09-20T07:21:42.598Z",
+        "finishedAt": "2026-09-20T07:21:44.624Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 502",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXF1C6D56SHNGR4KXM7",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 502",
+            "dueAt": "2026-09-20T07:25:51.630Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-02b862d860beceb26703",
+        "name": "Hacker News · newest_llm",
+        "key": "community.hacker_news.newest_llm",
+        "sourceGroup": "community",
+        "platform": "hacker_news",
+        "stream": "newest_llm",
+        "startedAt": "2026-09-20T07:21:44.635Z",
+        "finishedAt": "2026-09-20T07:21:46.343Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 40,
+          "inserted": 40,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXGZKN68D07FGQDK4YP",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:16.856Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 40,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-d6b290ed49eef81e6bab",
+        "name": "Reddit · r/AI_Agents",
+        "key": "community.reddit.ai_agents",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "ai_agents",
+        "startedAt": "2026-09-20T07:15:44.291Z",
+        "finishedAt": "2026-09-20T07:15:44.302Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXGSEBM2459FCNZJC10",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:17:00.307Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-04e5832be8801dbe8085",
+        "name": "Reddit · r/ArtificialInteligence",
+        "key": "community.reddit.artificialinteligence",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "artificialinteligence",
+        "startedAt": "2026-09-20T07:15:44.313Z",
+        "finishedAt": "2026-09-20T07:15:44.323Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXH13KKFE38NQPC055V",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:46.328Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-cc855f48396d0b449868",
+        "name": "Reddit · r/ChatGPTCoding",
+        "key": "community.reddit.chatgptcoding",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "chatgptcoding",
+        "startedAt": "2026-09-20T07:15:44.335Z",
+        "finishedAt": "2026-09-20T07:15:44.345Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXJ4EM2QHBQJN8AVZ6K",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:48.351Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-b9f2201e03d88b57ae1a",
+        "name": "Reddit · r/ClaudeAI",
+        "key": "community.reddit.claudeai",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "claudeai",
+        "startedAt": "2026-09-20T07:15:44.356Z",
+        "finishedAt": "2026-09-20T07:15:44.366Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXJWZ1RRXSNY1EBNCXF",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:56.371Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-41557f48f700ade21320",
+        "name": "Reddit · r/LocalLLM",
+        "key": "community.reddit.localllm",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "localllm",
+        "startedAt": "2026-09-20T07:15:44.377Z",
+        "finishedAt": "2026-09-20T07:15:44.388Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXKG3GHC7HJ8BAD8C0Y",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:59.393Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-bcc3314e2ec3170c61c2",
+        "name": "Reddit · r/LocalLLaMA",
+        "key": "community.reddit.localllama",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "localllama",
+        "startedAt": "2026-09-20T07:15:44.398Z",
+        "finishedAt": "2026-09-20T07:15:44.408Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXM5EWNY8RHERA3595A",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:58.413Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-e02858aabad3a119a6d9",
+        "name": "Reddit · r/MachineLearning",
+        "key": "community.reddit.machinelearning",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "machinelearning",
+        "startedAt": "2026-09-20T07:15:44.419Z",
+        "finishedAt": "2026-09-20T07:15:44.429Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXMMVCNSSVF4GY7EXY9",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:52.435Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-b3fb56b19ad0ad1580f5",
+        "name": "Reddit · r/OpenAI",
+        "key": "community.reddit.openai",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "openai",
+        "startedAt": "2026-09-20T07:15:44.440Z",
+        "finishedAt": "2026-09-20T07:15:44.449Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXNCMHY8DMZ9RTNA1FS",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:54.453Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-f2582c822824eb89b5f2",
+        "name": "Reddit · r/artificial",
+        "key": "community.reddit.artificial",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "artificial",
+        "startedAt": "2026-09-20T07:15:44.459Z",
+        "finishedAt": "2026-09-20T07:15:44.469Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXPN6GW8A2SP3S390RC",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:57.474Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-de2f69e152b91acd0e4b",
+        "name": "Reddit · r/learnmachinelearning",
+        "key": "community.reddit.learnmachinelearning",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "learnmachinelearning",
+        "startedAt": "2026-09-20T07:15:44.479Z",
+        "finishedAt": "2026-09-20T07:15:44.488Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXPZ556BBYVDN10G4N5",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:59.493Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-763d907817d87ff97eb0",
+        "name": "Reddit · r/mcp",
+        "key": "community.reddit.mcp",
+        "sourceGroup": "community",
+        "platform": "reddit",
+        "stream": "mcp",
+        "startedAt": "2026-09-20T07:15:44.499Z",
+        "finishedAt": "2026-09-20T07:15:44.507Z",
+        "status": "AUTH_BLOCKED",
+        "error": "Reddit requires an approved application and explicit access approval",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXQ10E8EJXKF6ZTZFB7",
+            "status": "failed",
+            "healthStatus": "AUTH_BLOCKED",
+            "error": "Reddit requires an approved application and explicit access approval",
+            "dueAt": "2026-09-20T07:16:50.512Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-5bb2ac1e3ac08fe4b9ed",
+        "name": "Stack Overflow · chatgpt / newest",
+        "key": "community.stackoverflow.chatgpt.newest",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "chatgpt.newest",
+        "startedAt": "2026-09-20T07:15:44.517Z",
+        "finishedAt": "2026-09-20T07:15:47.806Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXR7YX4TC4GSVBEN5AT",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:16:56.811Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-e3b3ac4eb01db9b46b61",
+        "name": "Stack Overflow · chatgpt / votes",
+        "key": "community.stackoverflow.chatgpt.votes",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "chatgpt.votes",
+        "startedAt": "2026-09-20T07:15:47.816Z",
+        "finishedAt": "2026-09-20T07:15:52.609Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXRE4KAXSC41SKWCHNZ",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:16:55.614Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-6e06a7868c367922a66e",
+        "name": "Stack Overflow · langchain / newest",
+        "key": "community.stackoverflow.langchain.newest",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "langchain.newest",
+        "startedAt": "2026-09-20T07:16:11.862Z",
+        "finishedAt": "2026-09-20T07:16:14.801Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 30,
+          "inserted": 30,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXSA3K63T5490F1FTBD",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:53.060Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 30,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-bfa8a148f02938218867",
+        "name": "Stack Overflow · langchain / votes",
+        "key": "community.stackoverflow.langchain.votes",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "langchain.votes",
+        "startedAt": "2026-09-20T07:21:46.353Z",
+        "finishedAt": "2026-09-20T07:21:50.089Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 30,
+          "inserted": 30,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXS278ZG56Y1PDNBYSY",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:17.280Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 30,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-807994ee7580824724fd",
+        "name": "Stack Overflow · llm / newest",
+        "key": "community.stackoverflow.llm.newest",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "llm.newest",
+        "startedAt": "2026-09-20T07:21:53.643Z",
+        "finishedAt": "2026-09-20T07:21:56.646Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXTWABHEYA09646WY7G",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:26:13.650Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-e28845ac763484ba8411",
+        "name": "Stack Overflow · llm / votes",
+        "key": "community.stackoverflow.llm.votes",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "llm.votes",
+        "startedAt": "2026-09-20T07:21:50.099Z",
+        "finishedAt": "2026-09-20T07:21:53.633Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXTNJG9S8DR0J6AHDR9",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:26:00.638Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-a18d3f3ea315feaec341",
+        "name": "Stack Overflow · ollama / newest",
+        "key": "community.stackoverflow.ollama.newest",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "ollama.newest",
+        "startedAt": "2026-09-20T07:22:01.085Z",
+        "finishedAt": "2026-09-20T07:22:08.576Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 30,
+          "inserted": 29,
+          "updated": 0,
+          "duplicate": 1,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXV548GTAWT5AA4G8CR",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:17.386Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 30,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-425efbb69e9344c1855f",
+        "name": "Stack Overflow · ollama / votes",
+        "key": "community.stackoverflow.ollama.votes",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "ollama.votes",
+        "startedAt": "2026-09-20T07:21:56.655Z",
+        "finishedAt": "2026-09-20T07:22:01.078Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 30,
+          "inserted": 30,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXVHS9S32X8QM6M7SST",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:17.359Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 30,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-ca2cc86d9f52f4d00abe",
+        "name": "Stack Overflow · openai / newest",
+        "key": "community.stackoverflow.openai.newest",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "openai.newest",
+        "startedAt": "2026-09-20T07:22:08.584Z",
+        "finishedAt": "2026-09-20T07:22:12.897Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXW44QY42AF6E9ASJMX",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:26:22.902Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-4bb2335b532bec94946a",
+        "name": "Stack Overflow · openai / votes",
+        "key": "community.stackoverflow.openai.votes",
+        "sourceGroup": "community",
+        "platform": "stackoverflow",
+        "stream": "openai.votes",
+        "startedAt": "2026-09-20T07:22:12.908Z",
+        "finishedAt": "2026-09-20T07:22:13.790Z",
+        "status": "RATE_LIMITED",
+        "error": "来源返回 HTTP 429",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXWFVVE30D8N6C0CEVS",
+            "status": "failed",
+            "healthStatus": "RATE_LIMITED",
+            "error": "来源返回 HTTP 429",
+            "dueAt": "2026-09-20T07:26:23.794Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-7041b7ed3333ffa932f7",
+        "name": "arXiv · cs.AI",
+        "key": "community.arxiv.cs.AI",
+        "sourceGroup": "community",
+        "platform": "arxiv",
+        "stream": "cs.AI",
+        "startedAt": "2026-09-20T07:15:48.268Z",
+        "finishedAt": "2026-09-20T07:15:50.179Z",
+        "status": "NO_NEW_ITEMS",
+        "error": "",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXXKYG82PMW849ZMCND",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.677Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 0,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-3c7ab2593fde467a1c6d",
+        "name": "arXiv · cs.CL",
+        "key": "community.arxiv.cs.CL",
+        "sourceGroup": "community",
+        "platform": "arxiv",
+        "stream": "cs.CL",
+        "startedAt": "2026-09-20T07:16:12.447Z",
+        "finishedAt": "2026-09-20T07:16:14.136Z",
+        "status": "NO_NEW_ITEMS",
+        "error": "",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXYENHF40WGXVAMF8VX",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:54.250Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 0,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a5acd95c3718dfc93df3",
+        "name": "arXiv · cs.LG",
+        "key": "community.arxiv.cs.LG",
+        "sourceGroup": "community",
+        "platform": "arxiv",
+        "stream": "cs.LG",
+        "startedAt": "2026-09-20T07:22:13.799Z",
+        "finishedAt": "2026-09-20T07:22:14.575Z",
+        "status": "NO_NEW_ITEMS",
+        "error": "",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXYCMTW1PZ8MVZCF3CN",
+            "status": "done",
+            "healthStatus": "NO_NEW_ITEMS",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:17.997Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 0,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-67c6e1a3dffb2f8acfa0",
+        "name": "Follow Builders",
+        "key": "follow_builders.bundle",
+        "sourceGroup": "follow_builders",
+        "platform": "follow_builders",
+        "stream": "bundle",
+        "startedAt": "2026-09-20T07:21:29.630Z",
+        "finishedAt": "2026-09-20T07:21:38.080Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 12,
+          "inserted": 12,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEXZ79HM7ANERKGDXJ1E",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:16:18.024Z",
+            "coverage": {
+              "commitSha": "34ee70a6c21919a8fd0157e685f1930500d23d2c",
+              "hasMore": false,
+              "streams": {
+                "feed-x.json": {
+                  "generatedAt": "2026-09-20T06:37:53.420Z",
+                  "count": 11,
+                  "errors": [],
+                  "status": "success"
+                },
+                "feed-blogs.json": {
+                  "generatedAt": "2026-09-20T06:37:56.694Z",
+                  "count": 0,
+                  "errors": [],
+                  "status": "no_new"
+                },
+                "feed-podcasts.json": {
+                  "generatedAt": "2026-09-20T06:37:56.467Z",
+                  "count": 1,
+                  "errors": [],
+                  "status": "success"
+                },
+                "state-feed.json": {
+                  "status": "success",
+                  "seenTweets": 198,
+                  "seenVideos": 7,
+                  "seenArticles": 8
+                }
+              },
+              "currentBundleOnly": true,
+              "boundary": "Only upstream published and retrievable file versions; upstream omissions cannot be recovered."
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a73b12917ec976240b73",
+        "name": "36氪",
+        "key": "t2.36kr",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:23:55.018Z",
+        "finishedAt": "2026-09-20T07:23:55.254Z",
+        "status": "PARSE_FAILED",
+        "error": "订阅含不支持的 XML 实体声明",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY0MA47Z3ES5HBV2WMM",
+            "status": "failed",
+            "healthStatus": "PARSE_FAILED",
+            "error": "订阅含不支持的 XML 实体声明",
+            "dueAt": "2026-09-20T07:27:56.259Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-352e3d328ab0fea0ec6e",
+        "name": "Ars Technica",
+        "key": "t2.ars_technica",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:49.591Z",
+        "finishedAt": "2026-09-20T07:15:52.273Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 20,
+          "inserted": 20,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY04YKKS2GCNBES8YZG",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.680Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 20,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a20cf09a15712fb1ec41",
+        "name": "IT之家",
+        "key": "t2.ithome",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:50.188Z",
+        "finishedAt": "2026-09-20T07:15:50.530Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 60,
+          "inserted": 60,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY1P0Q90NJ3A00Q92A7",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.681Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 60,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "channel-importai",
+        "name": "Jack Clark · Import AI",
+        "key": "t2.import_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:50.539Z",
+        "finishedAt": "2026-09-20T07:16:03.662Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY21EQ3KMR9JD97QKHQ",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.681Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-1bc5ccb9ac7264aeff3d",
+        "name": "Last Week in AI",
+        "key": "t2.last_week_in_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:52.620Z",
+        "finishedAt": "2026-09-20T07:16:05.933Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 20,
+          "inserted": 20,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY2WB86DX6NFBQ8GDRZ",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.682Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 20,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-629b3c45f6bc38adb242",
+        "name": "MIT Tech Review AI",
+        "key": "t2.mit_technology_review_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:52.282Z",
+        "finishedAt": "2026-09-20T07:15:58.111Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY3725XCSE17RC3224X",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.682Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a4b0f0d336b6b27699d2",
+        "name": "MarkTechPost",
+        "key": "t2.marktechpost",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:15:58.120Z",
+        "finishedAt": "2026-09-20T07:16:08.061Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY39EBHRF5ZTQ31P03Z",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.683Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-d473a9582f8afd54aabb",
+        "name": "TechCrunch AI",
+        "key": "t2.techcrunch_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:16:03.671Z",
+        "finishedAt": "2026-09-20T07:16:04.933Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 20,
+          "inserted": 20,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY4QCN5FA1MJWENMWJV",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.684Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 20,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-dbeb324e73d53d6ba59c",
+        "name": "The Decoder",
+        "key": "t2.the_decoder",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:16:04.941Z",
+        "finishedAt": "2026-09-20T07:16:06.941Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY4FZZPJEG7M8N6PNAW",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.684Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-a29323e10bac9e59cb87",
+        "name": "The Verge AI",
+        "key": "t2.the_verge_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:16:05.943Z",
+        "finishedAt": "2026-09-20T07:16:11.043Z",
+        "status": "SOURCE_UNAVAILABLE",
+        "error": "来源返回 HTTP 404",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY5ZK6147Z8C130ANR5",
+            "status": "failed",
+            "healthStatus": "SOURCE_UNAVAILABLE",
+            "error": "来源返回 HTTP 404",
+            "dueAt": "2026-09-20T07:17:15.048Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-432211dc3bdccdeccf32",
+        "name": "VentureBeat AI",
+        "key": "t2.venturebeat_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:23:57.444Z",
+        "finishedAt": "2026-09-20T07:23:58.165Z",
+        "status": "RATE_LIMITED",
+        "error": "来源返回 HTTP 429",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY5VZ0TGSB9C5ABE7ZC",
+            "status": "failed",
+            "healthStatus": "RATE_LIMITED",
+            "error": "来源返回 HTTP 429",
+            "dueAt": "2026-09-20T07:28:10.171Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-366aac81c1318fdafc3d",
+        "name": "Wired AI",
+        "key": "t2.wired_ai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:16:08.070Z",
+        "finishedAt": "2026-09-20T07:16:08.602Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY6BNJAA2N79BB8V5DF",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.686Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      },
+      {
+        "id": "acq-72e5d1345df773f4344f",
+        "name": "机器之心",
+        "key": "t2.jiqizhixin",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:23:55.264Z",
+        "finishedAt": "2026-09-20T07:23:55.636Z",
+        "status": "PARSE_FAILED",
+        "error": "订阅含不支持的 XML 实体声明",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 1
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY69M5QQHZ79VYN0R5C",
+            "status": "failed",
+            "healthStatus": "PARSE_FAILED",
+            "error": "订阅含不支持的 XML 实体声明",
+            "dueAt": "2026-09-20T07:28:09.641Z",
+            "coverage": {}
+          }
+        ]
+      },
+      {
+        "id": "acq-3ffdc5b0e67fee61bd76",
+        "name": "量子位",
+        "key": "t2.qbitai",
+        "sourceGroup": "t2_media",
+        "platform": "web",
+        "stream": "feed",
+        "startedAt": "2026-09-20T07:16:08.639Z",
+        "finishedAt": "2026-09-20T07:16:08.792Z",
+        "status": "OK",
+        "error": "",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "runs": [
+          {
+            "id": "01M2YTQEY7RV0QNRZV54GY4MMB",
+            "status": "done",
+            "healthStatus": "OK",
+            "error": "",
+            "dueAt": "2026-09-20T07:15:43.687Z",
+            "coverage": {
+              "requests": 1,
+              "discovered": 10,
+              "fulltext": 0,
+              "completeness": "current_feed_only",
+              "historicalReplaySupported": false
+            }
+          }
+        ]
+      }
+    ],
+    "streams": [
+      {
+        "key": "aihot:selected",
+        "label": "AIHOT Selected",
+        "sourceGroup": "aihot",
+        "status": "NO_NEW_ITEMS",
+        "stats": {
+          "fetched": 3961,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 3961,
+          "failed": 0
+        }
+      },
+      {
+        "key": "aihot:hot",
+        "label": "AIHOT Hot",
+        "sourceGroup": "aihot",
+        "status": "OK",
+        "stats": {
+          "fetched": 10,
+          "inserted": 10,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        }
+      },
+      {
+        "key": "aihot:daily",
+        "label": "AIHOT Daily",
+        "sourceGroup": "aihot",
+        "status": "NO_NEW_ITEMS",
+        "stats": {
+          "fetched": 8,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 8,
+          "failed": 0
+        }
+      },
+      {
+        "key": "follow_builders:feed-x.json",
+        "label": "Follow Builders X",
+        "sourceGroup": "follow_builders",
+        "status": "OK",
+        "stats": {
+          "fetched": 11,
+          "inserted": 11,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "upstreamUpdatedAt": "2026-09-20T06:37:53.420Z",
+        "upstreamCount": 11
+      },
+      {
+        "key": "follow_builders:feed-podcasts.json",
+        "label": "Follow Builders Podcast",
+        "sourceGroup": "follow_builders",
+        "status": "OK",
+        "stats": {
+          "fetched": 1,
+          "inserted": 1,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "upstreamUpdatedAt": "2026-09-20T06:37:56.467Z",
+        "upstreamCount": 1
+      },
+      {
+        "key": "follow_builders:feed-blogs.json",
+        "label": "Follow Builders Blog",
+        "sourceGroup": "follow_builders",
+        "status": "NO_NEW_ITEMS",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "upstreamUpdatedAt": "2026-09-20T06:37:56.694Z",
+        "upstreamCount": 0
+      },
+      {
+        "key": "follow_builders:state-feed.json",
+        "label": "Follow Builders State",
+        "sourceGroup": "follow_builders",
+        "status": "OK",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        },
+        "upstreamCount": null
+      },
+      {
+        "key": "t2_media:feed",
+        "label": "T2 Media",
+        "sourceGroup": "t2_media",
+        "status": "SOURCE_UNAVAILABLE",
+        "stats": {
+          "fetched": 180,
+          "inserted": 180,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 4
+        }
+      },
+      {
+        "key": "community:hacker_news",
+        "label": "Hacker News",
+        "sourceGroup": "community",
+        "status": "SOURCE_UNAVAILABLE",
+        "stats": {
+          "fetched": 219,
+          "inserted": 200,
+          "updated": 12,
+          "duplicate": 7,
+          "failed": 1
+        }
+      },
+      {
+        "key": "community:reddit_posts",
+        "label": "Reddit Posts",
+        "sourceGroup": "community",
+        "status": "AUTH_BLOCKED",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 11
+        }
+      },
+      {
+        "key": "community:reddit_comments",
+        "label": "Reddit Comments",
+        "sourceGroup": "community",
+        "status": "AUTH_BLOCKED",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 11
+        }
+      },
+      {
+        "key": "community:github",
+        "label": "GitHub",
+        "sourceGroup": "community",
+        "status": "SOURCE_UNAVAILABLE",
+        "stats": {
+          "fetched": 1451,
+          "inserted": 1199,
+          "updated": 0,
+          "duplicate": 252,
+          "failed": 5
+        }
+      },
+      {
+        "key": "community:arxiv",
+        "label": "arXiv",
+        "sourceGroup": "community",
+        "status": "NO_NEW_ITEMS",
+        "stats": {
+          "fetched": 0,
+          "inserted": 0,
+          "updated": 0,
+          "duplicate": 0,
+          "failed": 0
+        }
+      },
+      {
+        "key": "community:stackoverflow",
+        "label": "Stack Overflow",
+        "sourceGroup": "community",
+        "status": "RATE_LIMITED",
+        "stats": {
+          "fetched": 120,
+          "inserted": 119,
+          "updated": 0,
+          "duplicate": 1,
+          "failed": 6
+        }
+      },
+      {
+        "key": "community:devto",
+        "label": "Dev.to",
+        "sourceGroup": "community",
+        "status": "OK",
+        "stats": {
+          "fetched": 36,
+          "inserted": 35,
+          "updated": 0,
+          "duplicate": 1,
+          "failed": 0
+        }
+      }
+    ]
+  },
+  "samples": {
+    "aihot:selected": [
+      {
+        "id": "01M2X6PTDCP4G8M1HJE6VD4A65",
+        "title": "Alexandr Wang 转发一份让 AI 智能体保护日历通勤时间的 Muse 提示词",
+        "url": "https://x.com/alexandr_wang/status/2101141362607632873",
+        "author": "X：Alexandr Wang（Scale AI 创始人/Meta 首席 AI 官） (@alexandr_wang)",
+        "bodyLength": 113,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "AIHOT · 精选",
+        "runId": "01M2YVBA2J66HN3R98VM8TSSBE",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2X6PTRE6TGFF5JK9RSS1VT5",
+        "title": "纽约时报版权诉讼披露：微软高管内部称训练 AI 是人类历史上最大规模劳动窃取",
+        "url": "https://www.ithome.com/1/004/356.htm",
+        "author": "IT之家（RSS）",
+        "bodyLength": 147,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "AIHOT · 精选",
+        "runId": "01M2YVBA2J66HN3R98VM8TSSBE",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2YT3CTZAK6ZRR8BDPC1M0ES",
+        "title": "Anthropic 与 Accenture 合作开展嵌入式独立评估",
+        "url": "https://www.anthropic.com/news/accenture-embedded-evaluation",
+        "author": "Anthropic：Newsroom（网页）",
+        "bodyLength": 101,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "AIHOT · 精选",
+        "runId": "01M2YVBA2J66HN3R98VM8TSSBE",
+        "dedupResult": "duplicate"
+      }
+    ],
+    "aihot:hot": [
+      {
+        "id": "01M2YTRAT4J2BN17MF2H9PES8T",
+        "title": "TypeSafe AI 发布 System One 模型 Jev：返回带概率的类型化决策而非文本，以托管 API 早期访问开放",
+        "url": "https://aihot.virxact.com/story/379c3594-c5bf-4cc3-8675-9b1aae61a411",
+        "author": "",
+        "bodyLength": 6151,
+        "contentStatus": "summary_only",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 热点",
+        "runId": "01M2YTQEX46FNC3NFJNKM1ASG1",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YTRAT5DJJ2EXZ5QSKW28G5",
+        "title": "谷歌Gemini被曝在安全测试中自主入侵三家公司系统",
+        "url": "https://aihot.virxact.com/story/3349e012-fd78-44db-a833-cae46d175505",
+        "author": "",
+        "bodyLength": 5376,
+        "contentStatus": "summary_only",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 热点",
+        "runId": "01M2YTQEX46FNC3NFJNKM1ASG1",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YTRAT6M7GHNG59K0DWSG3P",
+        "title": "美国法院受理针对 Anthropic、OpenAI、SpaceXAI、谷歌指控其协调放缓 AI 研发的反垄断集体诉讼",
+        "url": "https://aihot.virxact.com/story/a6148dd8-72fa-4d6f-b8da-1b2850432024",
+        "author": "",
+        "bodyLength": 2418,
+        "contentStatus": "summary_only",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 热点",
+        "runId": "01M2YTQEX46FNC3NFJNKM1ASG1",
+        "dedupResult": "inserted"
+      }
+    ],
+    "aihot:daily": [
+      {
+        "id": "01M2YT2KMRB85GHHPXSG8XCN6C",
+        "title": "AIHOT 日报 2026-09-20",
+        "url": "https://aihot.news/daily/2026-09-20",
+        "author": "AIHOT",
+        "bodyLength": 410,
+        "contentStatus": "full_text",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 日报",
+        "runId": "01M2YV7B8C140T46JG2D7XC63A",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2YT2KGGECCZ3AV2FV6GHWMC",
+        "title": "AIHOT 日报 2026-09-19",
+        "url": "https://aihot.news/daily/2026-09-19",
+        "author": "AIHOT",
+        "bodyLength": 2231,
+        "contentStatus": "full_text",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 日报",
+        "runId": "01M2YV7B8C140T46JG2D7XC63A",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2YT2K98A7HR5YSYDBKFGGYA",
+        "title": "AIHOT 日报 2026-09-18",
+        "url": "https://aihot.news/daily/2026-09-18",
+        "author": "AIHOT",
+        "bodyLength": 2653,
+        "contentStatus": "full_text",
+        "sourceKind": "external_digest",
+        "channelName": "AIHOT · 日报",
+        "runId": "01M2YV7B8C140T46JG2D7XC63A",
+        "dedupResult": "duplicate"
+      }
+    ],
+    "follow_builders:feed-x.json": [
+      {
+        "id": "01M2YV2909Y67AJ1WF0MFQ07VK",
+        "title": "2026 is the year of linux desktop",
+        "url": "https://x.com/thsottiaux/status/2101431497437950458",
+        "author": "thsottiaux",
+        "bodyLength": 33,
+        "contentStatus": "full_text",
+        "sourceKind": "post",
+        "channelName": "Follow Builders",
+        "runId": "01M2YTQEXZ79HM7ANERKGDXJ1E",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YV290BJM5E8CMNET1G4X3H",
+        "title": "I have a simple markdown file and a /tastemaker skill that I use to add ratings for movies, TV shows, and books I've see",
+        "url": "https://x.com/petergyang/status/2101503916743749878",
+        "author": "petergyang",
+        "bodyLength": 285,
+        "contentStatus": "full_text",
+        "sourceKind": "post",
+        "channelName": "Follow Builders",
+        "runId": "01M2YTQEXZ79HM7ANERKGDXJ1E",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YV290C8KYD8SWK7C5P8EM9",
+        "title": "My next podcast episode is almost guaranteed to save you some money.\n\nIt's with my friend @ebloch, product lead for Chat",
+        "url": "https://x.com/petergyang/status/2101342055352201519",
+        "author": "petergyang",
+        "bodyLength": 451,
+        "contentStatus": "full_text",
+        "sourceKind": "post",
+        "channelName": "Follow Builders",
+        "runId": "01M2YTQEXZ79HM7ANERKGDXJ1E",
+        "dedupResult": "inserted"
+      }
+    ],
+    "follow_builders:feed-podcasts.json": [
+      {
+        "id": "01M2YV290KM8M0EGJ49VNZXZ5D",
+        "title": "When AI Improves Itself | Richard Socher (Recursive)",
+        "url": "https://www.youtube.com/@DataDrivenNYC/videos",
+        "author": "The MAD Podcast with Matt Turck",
+        "bodyLength": 76077,
+        "contentStatus": "full_text",
+        "sourceKind": "podcast_transcript",
+        "channelName": "Follow Builders",
+        "runId": "01M2YTQEXZ79HM7ANERKGDXJ1E",
+        "dedupResult": "inserted"
+      }
+    ],
+    "t2_media:feed": [
+      {
+        "id": "01M2YTR7E82AXB5GJ1EBQR7QK7",
+        "title": "《网络安全人才实战能力报告-AI赋能篇》正式发布，当AI进入业务深水区安全如何跟上",
+        "url": "https://www.qbitai.com/2026/09/492849.html",
+        "author": "量子位的朋友们",
+        "bodyLength": 46,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "量子位",
+        "runId": "01M2YTQEY7RV0QNRZV54GY4MMB",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YTR7E9RSMNVZC31QCESCF0",
+        "title": "“留给人类阻止AI的时间不多了”",
+        "url": "https://www.qbitai.com/2026/09/492755.html",
+        "author": "henry",
+        "bodyLength": 12,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "量子位",
+        "runId": "01M2YTQEY7RV0QNRZV54GY4MMB",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YTR7EAFF77C0N49AKAVR1X",
+        "title": "马斯克批量收购破产公司ing…世界首富脑子是不一样",
+        "url": "https://www.qbitai.com/2026/09/492661.html",
+        "author": "henry",
+        "bodyLength": 13,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "量子位",
+        "runId": "01M2YTQEY7RV0QNRZV54GY4MMB",
+        "dedupResult": "inserted"
+      }
+    ],
+    "community:hacker_news": [
+      {
+        "id": "01M2YV2H1XKMKCFX5W42TQHQ2F",
+        "title": "Show HN: The Smallest LLM",
+        "url": "https://news.ycombinator.com/item?id=49772424",
+        "author": "modinfo",
+        "bodyLength": 170,
+        "contentStatus": "summary_only",
+        "sourceKind": "post",
+        "channelName": "Hacker News · newest_llm",
+        "runId": "01M2YTQEXGZKN68D07FGQDK4YP",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YV2H1YYGSXE3GR1BY0C26V",
+        "title": "Show HN: The Smallest LLM",
+        "url": "https://gist.github.com/skorotkiewicz/dedc3b5a857be7d0f2b378334721713c",
+        "author": "modinfo",
+        "bodyLength": 0,
+        "contentStatus": "summary_only",
+        "sourceKind": "article",
+        "channelName": "Hacker News · newest_llm",
+        "runId": "01M2YTQEXGZKN68D07FGQDK4YP",
+        "dedupResult": "inserted"
+      },
+      {
+        "id": "01M2YV2H1ZJW1M80ZW318Q9A53",
+        "title": "ROCmFix and InferBench – AMD Local-LLM Setup and Vulkan vs. Hip Benchmarking",
+        "url": "https://news.ycombinator.com/item?id=49770070",
+        "author": "Xanpavle",
+        "bodyLength": 135,
+        "contentStatus": "summary_only",
+        "sourceKind": "post",
+        "channelName": "Hacker News · newest_llm",
+        "runId": "01M2YTQEXGZKN68D07FGQDK4YP",
+        "dedupResult": "inserted"
+      }
+    ],
+    "community:github": [
+      {
+        "id": "01M2YV552RZ0PHF5Z7MDRY84D6",
+        "title": "napapijri5248/CineSage",
+        "url": "https://github.com/napapijri5248/CineSage",
+        "author": "napapijri5248",
+        "bodyLength": 107,
+        "contentStatus": "summary_only",
+        "sourceKind": "post",
+        "channelName": "GitHub · generative-ai",
+        "runId": "01M2YVD2SS820PA5Q8XCY0H067",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2YV552T2D4Y79A8G9KZBVYW",
+        "title": "wangsalin/ai-acting-system",
+        "url": "https://github.com/wangsalin/ai-acting-system",
+        "author": "wangsalin",
+        "bodyLength": 194,
+        "contentStatus": "summary_only",
+        "sourceKind": "post",
+        "channelName": "GitHub · generative-ai",
+        "runId": "01M2YVD2SS820PA5Q8XCY0H067",
+        "dedupResult": "duplicate"
+      },
+      {
+        "id": "01M2YV552VT3E4QVSZ8ZP3VZWZ",
+        "title": "nicoleiszsy/seedance-2-5-free-tier-data",
+        "url": "https://github.com/nicoleiszsy/seedance-2-5-free-tier-data",
+        "author": "nicoleiszsy",
+        "bodyLength": 150,
+        "contentStatus": "summary_only",
+        "sourceKind": "post",
+        "channelName": "GitHub · generative-ai",
+        "runId": "01M2YVD2SS820PA5Q8XCY0H067",
+        "dedupResult": "duplicate"
+      }
+    ]
+  }
+}

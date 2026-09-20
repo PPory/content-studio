@@ -59,8 +59,8 @@ export function acquisitionTransport(w,channel,{signal,fetchImpl=pinnedFetch,res
     const requestKey=hash(JSON.stringify([url,hash(String(options.headers?.Authorization||options.headers?.authorization||'')),options.headers?.Accept||options.headers?.accept||'default',options.method||'GET',options.body||'']));
     const cached=w.db.prepare('SELECT * FROM acquisition_snapshots WHERE channel_id=? AND request_key=? AND expires_at>? ORDER BY observed_at DESC LIMIT 1').get(channel.id,requestKey,new Date().toISOString());
     const headers={'user-agent':'Xenho-Content-Studio/3.0 (local acquisition)',accept:'application/json, application/rss+xml, application/atom+xml, text/html;q=0.8',...options.headers};
-    if(!cached) {delete headers['if-none-match'];delete headers['if-modified-since'];delete headers['If-None-Match'];delete headers['If-Modified-Since'];}
-    const cacheHeaders=cached?JSON.parse(cached.headers_json):{};
+    if(!cached||options.cache==='reload') {delete headers['if-none-match'];delete headers['if-modified-since'];delete headers['If-None-Match'];delete headers['If-Modified-Since'];}
+    const cacheHeaders=cached&&options.cache!=='reload'?JSON.parse(cached.headers_json):{};
     if (cacheHeaders.etag) headers['if-none-match']=cacheHeaders.etag;
     if (cacheHeaders['last-modified']) headers['if-modified-since']=cacheHeaders['last-modified'];
     let target=await validateTarget(url,resolve);
@@ -76,7 +76,7 @@ export function acquisitionTransport(w,channel,{signal,fetchImpl=pinnedFetch,res
           if(remaining>5000)throw acquisitionError('来源限流等待中',{retryAfterSeconds:Math.ceil(remaining/1000)});
           await wait(remaining,undefined,{signal:combined});
         }
-        if(!lock(w,hostKey,owner))throw acquisitionError('同一来源正在请求，稍后续采',{retryAfterSeconds:5});
+        while(!lock(w,hostKey,owner)){heartbeat();await wait(150,undefined,{signal:combined});}
         const {response,close}=await fetchImpl(target,{...options,headers,signal:combined});
         let next;
         try {

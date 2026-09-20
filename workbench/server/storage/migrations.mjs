@@ -43,6 +43,8 @@ const intelligenceChannelsSql = fs.readFileSync(new URL('./migrations/0028-intel
 
 const acquisitionV3Sql = fs.readFileSync(new URL('./migrations/0029-acquisition-v3.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
+const acquisitionAcceptanceSql = fs.readFileSync(new URL('./migrations/0030-acquisition-acceptance.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -163,6 +165,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 27, name: 'intelligence-v2', sql: intelligenceV2Sql, checksum: crypto.createHash('sha256').update(intelligenceV2Sql).digest('hex') }),
   Object.freeze({ version: 28, name: 'intelligence-channels', sql: intelligenceChannelsSql, checksum: crypto.createHash('sha256').update(intelligenceChannelsSql).digest('hex') }),
   Object.freeze({ version: 29, name: 'acquisition-v3', sql: acquisitionV3Sql, checksum: crypto.createHash('sha256').update(acquisitionV3Sql).digest('hex') }),
+  Object.freeze({ version: 30, name: 'acquisition-acceptance', sql: acquisitionAcceptanceSql, checksum: crypto.createHash('sha256').update(acquisitionAcceptanceSql).digest('hex') }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

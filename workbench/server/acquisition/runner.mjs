@@ -1,3 +1,4 @@
+import { errorStatus, successStatus } from './health.mjs';
 import { collectAiHot } from './connectors/aihot.mjs';
 import { collectFollowBuilders } from './connectors/follow-builders.mjs';
 import { collectCommunity } from './connectors/community.mjs';
@@ -13,15 +14,16 @@ import { junkReason } from '../lib/article.mjs';
 
 export const ACQUISITION_KINDS=['acquisition.sync','acquisition.validate','acquisition.backfill','acquisition.fulltext','acquisition.revalidate'];
 const connectors={aihot:collectAiHot,follow_builders:collectFollowBuilders,community:collectCommunity,reddit:collectReddit};
-export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0}={}) {
+export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false}={}) {
   const channel=getChannel(w,id),kind=`acquisition.${mode}`;
   if(!ACQUISITION_KINDS.includes(kind))throw acquisitionError('不支持的采集任务',{status:400});
   return w.db.transaction(()=>{
-    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation};
+    const payload={channelId:channel.id,mode,sourceId:sourceId||null,threadId:threadId||null,partition:partition||'default',continuation,batchId,explicit};
     const key=`${kind}:${channel.id}:${slot}`;
     const {job}=w.jobs.enqueue({kind,idempotencyKey:key,payload,dueAt,maxAttempts:3});
     const id=createUlid();
     w.db.prepare('INSERT OR IGNORE INTO acquisition_runs(id,job_id,channel_id,kind,trigger_kind,scheduled_slot,created_at) VALUES(?,?,?,?,?,?,?)').run(id,job.id,channel.id,mode,trigger,slot,stamp());
+    if(batchId){w.db.prepare('UPDATE acquisition_runs SET batch_id=? WHERE job_id=?').run(batchId,job.id);w.db.prepare("UPDATE acquisition_batches SET finished_at=NULL,status='running' WHERE id=?").run(batchId);}
     return w.db.prepare('SELECT * FROM acquisition_runs WHERE job_id=?').get(job.id);
   })();
 }
@@ -98,14 +100,15 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
   const stats={found:0,parsed:0,new:0,updated:0,duplicates:0,summary:0,skipped:0,pages:0};let last;
   try {
     check();
-    if(channel.user_disabled && !['validate'].includes(payload.mode))throw acquisitionError('信源已暂停',{retry:false});
+    if(channel.user_disabled && !payload.explicit && !['validate'].includes(payload.mode))throw acquisitionError('信源已暂停',{retry:false});
     if(channel.platform==='reddit') {
+      if(env.REDDIT_ACCESS_APPROVED==='true'&&env.REDDIT_ACCESS_TOKEN&&env.REDDIT_USER_AGENT){channel.access_status='approved';w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
       channel.options.aiAllowed=env.REDDIT_AI_APPROVED==='true';
       channel.options.threadBudget=20;channel.options.threadId=payload.threadId;
     }
     const collect=dependencies.collect||connectors[channel.adapter];
     if(!collect)throw acquisitionError('信源需要手动阅读或适配器未配置',{blocked:true});
-    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date()});
+    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,signal,env,mode:payload.batchId&&channel.platform==='follow_builders'?'validate':payload.batchId&&channel.platform==='aihot'&&payload.continuation===0?'acceptance':payload.mode,budget:payload.mode==='validate'?6:20,now:new Date()});
     for await(const page of iterable) {
       check();last=page;
       if(payload.mode==='validate') {stats.found=page.items?.length||0;stats.pages++;break;}
@@ -123,12 +126,14 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
     w.db.transaction(()=>{
       assertLease(w,job);
       w.db.prepare("UPDATE acquisition_runs SET status='completed',outcome=?,stats_json=?,coverage_json=?,finished_at=? WHERE id=?").run(partial?'partial':stats.new||stats.updated?'success':last.outcome||'no_new',encode(stats),encode(last.coverage||{}),stamp(),run.id);
+      w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(successStatus(stats,last.coverage),run.id);
       if(!['fulltext','revalidate'].includes(payload.mode))w.db.prepare("UPDATE intel_channels SET validation_status='verified',enabled=CASE WHEN desired_enabled=1 AND user_disabled=0 THEN 1 ELSE 0 END,health=?,last_success_at=?,last_item_count=?,last_error='',consecutive_failures=0,last_stats_json=? WHERE id=?").run(partial?'partial':stats.found?'ok':'empty',stamp(),stats.found,encode(stats),channel.id);
       if(payload.mode==='validate'&&channel.desired_enabled&&!channel.user_disabled)enqueueAcquisition(w,channel.id,{trigger:'validated',slot:`validated:${run.id}`});
-      if(more && payload.mode!=='validate' && payload.continuation<100)enqueueAcquisition(w,channel.id,{mode:payload.mode,trigger:'continuation',slot:`continue:${run.id}`,partition,threadId:payload.threadId,continuation:payload.continuation+1,dueAt:new Date(Date.now()+1000).toISOString()});
+      if(more && payload.mode!=='validate' && payload.continuation<100)enqueueAcquisition(w,channel.id,{mode:payload.mode,trigger:'continuation',slot:`continue:${run.id}`,partition,threadId:payload.threadId,continuation:payload.continuation+1,batchId:payload.batchId,explicit:payload.explicit,dueAt:new Date(Date.now()+1000).toISOString()});
     })();
     return {runId:run.id,stats,outcome:last.outcome,coverage:last.coverage};
   } catch(error) {
+    w.db.prepare('UPDATE acquisition_runs SET health_status=? WHERE id=?').run(errorStatus(error),run.id);
     const blocked=error.blocked||error.code==='blocked'||[401,403].includes(error.status);
     if(blocked){error.blocked=true;error.retry=false;}
     // Never persist raw exception URLs or headers carrying credentials.

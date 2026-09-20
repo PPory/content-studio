@@ -1,3 +1,4 @@
+import { finishAcquisitionBatches } from '../server/acquisition/batches.mjs';
 import { loadEnv } from 'vite';
 import { openWorkspace } from '../server/storage/workspace.mjs';
 import { runtimeXenhoHome } from '../server/storage/workspace-paths.mjs';
@@ -28,6 +29,7 @@ try {
     const runner=new LocalJobRunner(w.jobs,{handlers});
     while(!stopping){const result=await runner.runNext({leaseOwner:`acquisition-${process.pid}-${i}`,allowedKinds:ACQUISITION_KINDS});if(!result)break;console.log(JSON.stringify({job:result.id,status:result.status}));}
    }));
+   finishAcquisitionBatches(w);
    if(action==='once')break;
    await pause(1000);
   }while(!stopping);

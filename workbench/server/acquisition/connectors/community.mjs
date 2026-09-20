@@ -65,7 +65,7 @@ async function* collectGitHub({ c, checkpoint, request, signal, now, budget, mod
  while (windows.length && requests < budget) {
   signal?.throwIfAborted(); const window = windows[0];
   const query = `${c.query || `topic:${c.topic || 'llm'}`} created:${window.start}..${window.end}`;
-  const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=100&page=${window.page || 1}`;
+  const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=30&page=${window.page || 1}`;
   const response = await request(url, { signal, headers: { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } }); requests++;
   const data = response.json ?? JSON.parse(response.text);
   if (!Array.isArray(data.items) || !Number.isFinite(data.total_count)) throw new Error('GitHub search response schema invalid');
@@ -76,7 +76,7 @@ async function* collectGitHub({ c, checkpoint, request, signal, now, budget, mod
   }
   const page = window.page || 1;
   const gap = data.incomplete_results || data.total_count > 1000;
-  const hasNext = data.items.length === 100 && page * 100 < Math.min(data.total_count, 1000);
+  const hasNext = data.items.length === 30 && page * 30 < Math.min(data.total_count, 1000);
   windows = hasNext ? [{ ...window, page: page + 1 }, ...windows.slice(1)] : windows.slice(1);
   const items = data.items.map(repo => ({ identity: `github:${repo.id}`, title: repo.full_name, url: repo.html_url, body: '', summary: repo.description || '', publishedAt: repo.created_at, author: repo.owner?.login || '', sourceKind: 'post', platform: 'github', platformId: String(repo.id), readLevel: 'metadata', contentStatus: 'discovered', rights: { aiAllowed: true, exportAllowed: true }, metadata: { stars: repo.stargazers_count, forks: repo.forks_count, updatedAt: repo.updated_at, observedAt: now.toISOString(), growth: null, growthRequiresPriorObservation: true, query } }));
   yield { items, observations: items.map(i => ({ identity: i.identity, kind: 'github_metrics', observedAt: now.toISOString(), stars: i.metadata.stars, forks: i.metadata.forks })), checkpoint: windows.length ? { windows, end } : { completedAt: now.toISOString() }, partition: 'default', outcome: gap || windows.length ? 'partial' : items.length ? 'success' : 'no_new', coverage: { requests: 1, reportedTotal: data.total_count, page, hasNext, hasMore: windows.length > 0, window, completeness: gap ? 'gap' : 'bounded_search_window', gap: gap ? 'github_search_truncated_or_incomplete' : null, mode } };

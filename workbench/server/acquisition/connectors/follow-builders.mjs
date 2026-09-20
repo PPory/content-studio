@@ -116,7 +116,7 @@ export async function* collectFollowBuilders({ channel, checkpoint = {}, request
     for(const item of result.items)item.metadata.upstreamCommitAt=commit.at;
     state = { ...state, pending: state.pending.slice(1), lastCompleteSha: commit.sha, lastCompleteAt: commit.at, files: versions };
     const upstreamErrors = Object.values(result.streams).some(s => s.errors?.length);
-    yield { items: result.items, checkpoint: structuredClone(state), partition: 'default', outcome: upstreamErrors ? 'partial' : result.items.length ? 'success' : 'no_new', snapshots: snapshots(responses), state: { upstreamState: result.upstreamState, streams: result.streams, files: versions }, coverage: { commitSha: commit.sha, coverageStart: state.coverageStart, hasMore: state.pending.length > 0, streams: result.streams, boundary: 'Only upstream published and retrievable file versions; upstream omissions cannot be recovered.' } };
+    yield { items: result.items, checkpoint: structuredClone(state), partition: 'default', outcome: upstreamErrors ? 'partial' : result.items.length ? 'success' : 'no_new', snapshots: snapshots(responses), state: { upstreamState: result.upstreamState, streams: result.streams, files: versions }, coverage: { commitSha: commit.sha, coverageStart: state.coverageStart, hasMore: state.pending.length > 0, streams: result.streams, currentBundleOnly: mode==='validate', boundary: 'Only upstream published and retrievable file versions; upstream omissions cannot be recovered.' } };
   }
   if(state.scan || state.pending?.length)yield {items:[],checkpoint:structuredClone(state),partition:'default',outcome:'partial',coverage:{hasMore:true,reason:'request_budget',remainingRequests:left}};
 }

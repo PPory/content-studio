@@ -7,7 +7,7 @@ const list = (value, label) => Array.isArray(value) ? value : fail(`AIHOT ${labe
 const metadata = row => ({ upstream: 'aihot', attribution: row.attribution || null, source: row.source || null, links: row.links || {}, discoveredAt: row.discoveredAt || null });
 function item(row, channel) {
   if (!row?.id || typeof row.title !== 'string') fail('AIHOT item missing stable id/title');
-  return { identity: `aihot:${row.id}`, platform: 'aihot', platformId: String(row.id), title: row.title, url: row.links?.original || row.links?.aihot || '', body: '', summary: row.summary || '', publishedAt: row.publishedAt || null, author: row.source?.name || '', sourceKind: 'article', readLevel: 'summary', contentStatus: 'summary_only', rights: rights(channel), metadata: metadata(row) };
+  return { identity: `aihot:${row.id}`, platform: 'aihot', platformId: String(row.id), title: row.title, url: row.links?.original || row.links?.aihot || '', body: '', summary: row.summary || '', publishedAt: row.publishedAt || null, author: row.source?.name || '', sourceKind: 'article', readLevel: 'summary', contentStatus: 'summary_only', rights: rights(channel), metadata: {...metadata(row),stream:'selected'} };
 }
 function cache(response) {
   const headers = response.headers || {};
@@ -17,8 +17,8 @@ function page(items, checkpoint, response, extra = {}) {
   return { items, checkpoint, partition: 'default', outcome: items.length ? 'success' : 'no_new', coverage: {}, snapshots: snapshots(response), ...extra };
 }
 export async function* collectAiHot({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20 }) {
-  const get = (path, headers = {}) => request(`${ORIGIN}${path}`, { headers: { accept: 'application/json', ...headers }, signal });
-  let state = { ...checkpoint }, remaining = Math.max(1, Math.floor(budget));
+  const get = (path, headers = {}) => request(`${ORIGIN}${path}`, { headers: { accept: 'application/json', ...headers }, cache:mode==='acceptance'?'reload':undefined, signal });
+  let state = mode==='acceptance'?{}:{ ...checkpoint }, remaining = Math.max(1, Math.floor(budget));
   if (channel.stream === 'selected') {
     let recovered = false;
     while (remaining-- > 0) {
@@ -73,7 +73,8 @@ export async function* collectAiHot({ channel, checkpoint = {}, request, signal,
       }
       observations.push({ identity: `aihot-hot:${row.id}`, platformId: String(row.id), observedAt: new Date(now).toISOString(), rank: row.rank, data: { ...row, story } });
     }
-    yield page([], { ...state, ...cache(response), observedAt: new Date(now).toISOString() }, response, { observations, snapshots: snapshots(...responses), outcome: rows.length ? 'success' : 'no_new', coverage: { events: rows.length, stories: responses.length - 1 } });
+    const hotItems=observations.map(o=>({identity:o.identity,platform:'aihot',platformId:o.platformId,title:o.data.title,url:o.data.links?.story||o.data.links?.aihot||`${ORIGIN}/story/${o.platformId}`,body:typeof o.data.story?.digest==='string'?o.data.story.digest:JSON.stringify(o.data.story?.digest||o.data.summary||o.data),publishedAt:o.data.latestAt||null,sourceKind:'external_digest',readLevel:'summary',contentStatus:'summary_only',metadata:{stream:'hot',secondarySource:true,observation:o.data}}));
+    yield page(hotItems, { ...state, ...cache(response), observedAt: new Date(now).toISOString() }, response, { observations, snapshots: snapshots(...responses), outcome: rows.length ? 'success' : 'no_new', coverage: { events: rows.length, stories: responses.length - 1 } });
     return;
   }
   if (channel.stream !== 'daily') fail('Unknown AIHOT stream');
@@ -102,7 +103,7 @@ export async function* collectAiHot({ channel, checkpoint = {}, request, signal,
     const references = [...report.sections.flatMap(s => list(s.items, 'daily section')), ...report.flashes].map(r => ({ title: r.title, url: r.links?.original, attribution: r.attribution || null })).filter(r => r.url);
     const body = [report.lead?.title, report.lead?.leadParagraph, ...report.sections.flatMap(s => [s.label, ...s.items.map(i => `${i.title}\n${i.summary || ''}`)]), ...report.flashes.map(i => i.title)].filter(Boolean).join('\n\n');
     complete.add(entry.date); versions[entry.date] = entry.generatedAt || report.generatedAt || ''; state = { ...state, completedDates: [...complete].sort(), completedVersions: { ...versions } };
-    const document = { identity: `aihot-daily:${entry.date}`, platform: 'aihot', platformId: entry.date, title: report.lead?.title || `AIHOT 日报 ${entry.date}`, url: report.links?.aihot || `${ORIGIN}/daily/${entry.date}`, body, summary: report.lead?.leadParagraph || '', publishedAt: report.generatedAt, author: 'AIHOT', sourceKind: 'external_digest', readLevel: 'original', contentStatus: 'full_text', rights: rights(channel), metadata: { report, references, attribution: report.attribution || null, secondarySource: true } };
+    const document = { identity: `aihot-daily:${entry.date}`, platform: 'aihot', platformId: entry.date, title: report.lead?.title || `AIHOT 日报 ${entry.date}`, url: report.links?.aihot || `${ORIGIN}/daily/${entry.date}`, body, summary: report.lead?.leadParagraph || '', publishedAt: report.generatedAt, author: 'AIHOT', sourceKind: 'external_digest', readLevel: 'original', contentStatus: 'full_text', rights: rights(channel), metadata: { stream:'daily', report, references, attribution: report.attribution || null, secondarySource: true } };
     yield page([document], state, response, { snapshots: snapshots(index, response), coverage: { date: entry.date, hasMore: candidates.some(e => !complete.has(e.date)), calendarTimezone: 'Asia/Shanghai' } }); emitted = true;
   }
   if (!emitted) yield page([], state, index, { coverage: { awaitingUpstream: !entries.some(e => e.date === new Date(new Date(now).getTime() + 8 * 3600000).toISOString().slice(0, 10)), archiveBoundary: entries.at(-1)?.date || null } });

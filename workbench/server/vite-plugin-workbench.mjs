@@ -1,3 +1,4 @@
+import { finishAcquisitionBatches } from './acquisition/batches.mjs';
 import { scheduleAcquisition } from './acquisition/runner.mjs';
 import { scheduleIntelligence } from "./domain/intelligence.mjs";
 // 把本地 API 挂进 Vite dev server 的中间件链，而不是另起一个进程 + 配代理。
@@ -30,6 +31,7 @@ export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {})
     const runtime = startWorkspaceRuntime(workspace, {
       handlers: createDefaultJobHandlers(workspace, env, jobDependencies),
       maintenance: (now) => ({
+        acquisitionBatches: workspace.db.pragma('user_version',{simple:true})>=30 ? finishAcquisitionBatches(workspace) : null,
         acquisition: env.ACQUISITION_AUTOSTART === "true" ? scheduleAcquisition(workspace, { now, env, startup: acquisitionStartup && !(acquisitionStartup=false) }) : [],
         intelligence: scheduleIntelligence(workspace, { now }),
         recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
