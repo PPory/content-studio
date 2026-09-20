@@ -151,6 +151,21 @@ try {
     check("个人资产 migration 的已核实历史格式可继续启动，未知漂移仍拒绝", true);
   } finally { personalAssetsHistoryDb.close(); }
 
+  const acquisition24hHistoryDb = new Database(path.join(root, "acquisition-24h-history.sqlite"));
+  try {
+    configureWorkspaceDatabase(acquisition24hHistoryDb);
+    migrateWorkspaceDatabase(acquisition24hHistoryDb);
+    const acquisition24h = WORKSPACE_MIGRATIONS.find(migration => migration.version === 31);
+    const historicalChecksum = crypto.createHash("sha256").update(`${acquisition24h.sql}\n`).digest("hex");
+    assert.equal(historicalChecksum, "5465eb0c4cfe0a2f703a42f8592be50a328a6f8a24559002e396b91756f157e1");
+    acquisition24hHistoryDb.prepare("UPDATE schema_migrations SET checksum=? WHERE version=31").run(historicalChecksum);
+    migrateWorkspaceDatabase(acquisition24hHistoryDb);
+    assert.equal(acquisition24hHistoryDb.prepare("SELECT checksum FROM schema_migrations WHERE version=31").get().checksum, historicalChecksum);
+    acquisition24hHistoryDb.prepare("UPDATE schema_migrations SET checksum=? WHERE version=31").run("0".repeat(64));
+    assert.throws(() => migrateWorkspaceDatabase(acquisition24hHistoryDb), /31.*不一致/);
+    check("24h migration 的已核实尾部空行版本可继续启动，未知漂移仍拒绝", true);
+  } finally { acquisition24hHistoryDb.close(); }
+
   const checksumDb = new Database(path.join(root, "checksum.sqlite"));
   configureWorkspaceDatabase(checksumDb);
   migrateWorkspaceDatabase(checksumDb);

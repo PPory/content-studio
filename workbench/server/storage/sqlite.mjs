@@ -4,6 +4,7 @@ import { WORKSPACE_MIGRATIONS } from "./migrations.mjs";
 // Exact historical formatting variants only. Do not normalize arbitrary SQL:
 // whitespace inside string literals may carry data. Never rewrite applied history.
 const VERIFIED_MIGRATION_HASHES = [
+  { version: 31, name: "acquisition-24h", hashes: ["334ffed731bdfccce303e39b935e348b9832d66f211960584777dcce6f13b5b3", "5465eb0c4cfe0a2f703a42f8592be50a328a6f8a24559002e396b91756f157e1"] },
   { version: 26, name: "note-insights-intake", hashes: ["dad1d39343b144910d18a3bf02214df2659132444a0116ce9fa4a694eddaddd9", "2ab8577a7138ef6908e52bc19449d18a24facb9ae9ab195e0cd29608ba52c638"] },
   { version: 19, name: "research", hashes: ["4c1d3692f2e3fe1ba18a35c765a93cfc37beee9253458e2b76141becaf527ef9", "26db26c3d3b73c12c46d23c8f5a26bfcf8112a5e44b86c044866da5458454c06"] },
   { version: 20, name: "workspace-experience", hashes: ["7064ab9525178e9fa0545ed6ad702e74b99524d8369ecb0fa3ae6e79a78418fb", "d5e4a3c9bf2cb2c16a0f44bd9b8af31c422e200bb5c3e5e90287c7f32ddae560"] },
