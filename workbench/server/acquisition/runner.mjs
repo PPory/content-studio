@@ -13,6 +13,9 @@ import { xhtmlToMd } from '../lib/books.mjs';
 import { junkReason } from '../lib/article.mjs';
 import { acquisitionWindow, batchPlatformLimit, channelItemLimit, gateAcquisitionItems, mergeAcquisitionStats } from './window.mjs';
 
+import { processLocalSource, ensureReviewClusters } from './review.mjs';
+import { sourceFromRow } from '../domain/intelligence-quality.mjs';
+
 export const ACQUISITION_KINDS=['acquisition.sync','acquisition.validate','acquisition.backfill','acquisition.fulltext','acquisition.revalidate'];
 const connectors={aihot:collectAiHot,follow_builders:collectFollowBuilders,community:collectCommunity,reddit:collectReddit};
 export function enqueueAcquisition(w,id,{mode='sync',trigger='manual',slot=stamp(),dueAt,sourceId,threadId,partition,continuation=0,batchId=null,explicit=false,windowStartAt=null,windowEndAt=null}={}) {
@@ -122,7 +125,8 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
     }
     const collect=dependencies.collect||connectors[channel.adapter];
     if(!collect)throw acquisitionError('信源需要手动阅读或适配器未配置',{blocked:true});
-    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData});
+    const readSnapshot=id=>w.db.prepare('SELECT payload_text AS text,id AS snapshotId,observed_at AS observedAt FROM acquisition_snapshots WHERE id=? AND channel_id=?').get(id,channel.id)||null;
+    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request}):collect({channel,checkpoint:initial,request,readSnapshot,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData});
     let acceptedByChannel=0;
     for await(const page of iterable) {
       check();last=page;
@@ -145,6 +149,7 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
       w.db.prepare('UPDATE acquisition_runs SET stats_json=? WHERE id=?').run(encode(stats),run.id);
       for(const id of saved.ids) {
         const source=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
+        if(w.db.pragma('user_version',{simple:true})>=32){const record=sourceFromRow(source);record.processing=processLocalSource(w,record);ensureReviewClusters(w,[record]);}
         if(source.content_status==='summary_only'&&channel.options.fulltextAllowed===true&&!['reddit','arxiv'].includes(channel.platform))enqueueAcquisition(w,channel.id,{mode:'fulltext',trigger:'enrichment',sourceId:id,slot:`body:${id}:${source.content_hash}`});
       }
       if(payload.mode!=='revalidate')for(const o of page.observations||[])if(o.kind==='reddit_thread_review')for(const hours of o.followupHours||[])enqueueAcquisition(w,channel.id,{mode:'revalidate',trigger:'comment_review',threadId:o.identity.replace(/^reddit:t3_/,''),partition:`review:${o.identity}:${hours}`,slot:`review:${o.identity}:${hours}`,dueAt:new Date(Date.now()+hours*3600000).toISOString()});

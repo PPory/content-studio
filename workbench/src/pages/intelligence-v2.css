@@ -95,3 +95,21 @@
 .acquisition-comment-relation{font-size:11px;overflow-wrap:anywhere;color:var(--muted);margin:8px 0}
 .acquisition-comment-relation summary{cursor:pointer}
 @media(max-width:600px){.acquisition-batch-groups,.acquisition-detail-fields dl{grid-template-columns:1fr}.acquisition-batch-totals{gap:8px}.acquisition-batch-totals dd{font-size:22px}.acquisition-batch .intel-v2-toolbar{align-items:flex-start}.acquisition-batch .intel-v2-actions{flex-wrap:wrap}.acquisition-item-facts{display:grid;gap:5px}.acquisition-status{margin-left:0}.acquisition-count-line{gap:8px}}
+/* Review uses the existing quiet reading surface; provenance stays with each original. */
+.acquisition-review { min-width:0; }
+.acquisition-review-cluster { padding:26px 0; border-bottom:1px solid var(--border); }
+.acquisition-review-cluster h2 { font-size:20px; line-height:1.6; margin:8px 0; overflow-wrap:anywhere; }
+.acquisition-review-cluster h3 { font-size:15px; margin:18px 0 8px; }
+.acquisition-cluster-guide,.acquisition-reading-body,.acquisition-reading-guide,.acquisition-raw-body { max-width:860px; overflow-wrap:anywhere; line-height:1.85; }
+.acquisition-cluster-guide .markdown-body,.acquisition-reading-body .markdown-body,.acquisition-raw-body .markdown-body { max-width:100%; }
+.acquisition-cluster-materials>.intel-v2-resource { padding:16px 0; border-bottom:1px solid var(--border); }
+.acquisition-cluster-unknown,.acquisition-review-secondary,.acquisition-review-processing { margin:16px 0; font-size:13px; line-height:1.8; }
+.acquisition-review summary { cursor:pointer; }
+.acquisition-review-secondary>div { margin-top:10px; }
+.acquisition-cluster-edit { margin:16px 0; padding:12px; border:1px solid var(--border); display:grid; gap:12px; min-width:0; }
+.acquisition-cluster-edit label { display:flex; align-items:center; gap:8px; font-size:13px; overflow-wrap:anywhere; }
+.acquisition-cluster-edit select { min-width:0; max-width:100%; padding:8px; background:var(--surface); color:var(--text); border:1px solid var(--border); }
+.acquisition-reading-guide blockquote,.acquisition-detail-fields blockquote { margin:10px 0; padding-left:14px; border-left:2px solid var(--border); }
+.acquisition-review .intel-v2-actions { flex-wrap:wrap; }
+.acquisition-review :focus-visible,.acquisition-reading-body :focus-visible { outline:2px solid var(--text-2); outline-offset:3px; }
+@media(max-width:600px) { .acquisition-review-cluster { padding:18px 0; } .acquisition-review-cluster h2 { font-size:18px; } .acquisition-cluster-edit label { flex-wrap:wrap; } .acquisition-review .markdown-body pre { max-width:100%; overflow:auto; } }

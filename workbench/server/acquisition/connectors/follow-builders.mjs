@@ -18,6 +18,14 @@ function errors(data) {
   if (data.errors === undefined || data.errors === null) return [];
   return Array.isArray(data.errors) ? data.errors : typeof data.errors === 'object' ? Object.values(data.errors) : [String(data.errors)];
 }
+function upstreamSeenAt(value) {
+  // state-feed stores observed timestamps in epoch milliseconds, never publication dates.
+  const candidate = typeof value === 'object' && value ? value.firstSeenAt || value.seenAt : value;
+  if (typeof candidate === 'number' && candidate < 946684800000) return null;
+  if (typeof candidate !== 'string' && typeof candidate !== 'number') return null;
+  const at = new Date(candidate);
+  return Number.isFinite(at.getTime()) ? at.toISOString() : null;
+}
 export function normalizeFollowBundle(files, channel, commitSha) {
   const x = files['feed-x.json'], blogs = files['feed-blogs.json'], podcasts = files['feed-podcasts.json'], upstream = files['state-feed.json'];
   const groups = array(x?.x, 'x'), blogRows = array(blogs?.blogs, 'blogs'), podcastRows = array(podcasts?.podcasts, 'podcasts');
@@ -46,6 +54,13 @@ export function normalizeFollowBundle(files, channel, commitSha) {
     const identity = `podcast:${encodeURIComponent(publisher)}:${encodeURIComponent(row.guid)}`;
     items.push({ ...base(row, 'feed-podcasts.json', row.transcript), identity, platform: 'podcast', platformId: `${publisher}:${row.guid}`, sourceKind: 'podcast_transcript', metadata: { ...base(row, 'feed-podcasts.json', row.transcript).metadata, publisherKey: publisher, guid: row.guid, speakerAttribution: 'upstream transcript', transcriptStructure: row.segments || null } });
   }
+  for (const item of items) {
+    const observed = item.platform === 'x' ? upstream.seenTweets[item.platformId]
+      : item.platform === 'podcast' ? upstream.seenVideos[item.metadata.guid]
+      : upstream.seenArticles[item.url];
+    item.metadata.upstreamFirstSeenAt = upstreamSeenAt(observed);
+    item.metadata.originalPublishedAt = item.publishedAt;
+  }
   const localTweets = new Set(items.filter(i => i.platform === 'x').map(i => i.platformId));
   for (const i of items) if (i.platform === 'x' && i.metadata.quotedTweetId) i.metadata.quoteContextMissing = !localTweets.has(String(i.metadata.quotedTweetId));
   for (const file of FOLLOW_FILES.slice(0,3)) {
@@ -56,7 +71,29 @@ export function normalizeFollowBundle(files, channel, commitSha) {
   return { items, streams, upstreamState: upstream };
 }
 
-export async function* collectFollowBuilders({ channel, checkpoint = {}, request, signal, now = new Date(), mode = 'sync', budget = 20, window }) {
+// A replay re-evaluates retained evidence; it never represents new upstream items.
+export async function replayFollowSnapshots({ channel, checkpoint = {}, readSnapshot, now = new Date() }) {
+  if (typeof readSnapshot !== 'function' || !sha(checkpoint.lastCompleteSha)) return null;
+  const files = {}, responses = [];
+  for (const file of FOLLOW_FILES) {
+    const version = checkpoint.files?.[file];
+    if (!version?.snapshotId || !version.contentHash) return null;
+    const saved = await readSnapshot(version.snapshotId);
+    if (!saved || typeof saved.text !== 'string' || hash(saved.text) !== version.contentHash) return null;
+    try { files[file] = JSON.parse(saved.text); } catch { return null; }
+    responses.push({ ...saved, snapshotId: version.snapshotId });
+  }
+  const result = normalizeFollowBundle(files, channel, checkpoint.lastCompleteSha);
+  for (const item of result.items) Object.assign(item.metadata, {
+    upstreamCommitAt: checkpoint.lastCompleteAt || null,
+    checkedAt: new Date(now).toISOString(), replayed: true,
+  });
+  return { items: result.items, checkpoint: structuredClone(checkpoint), partition: 'default', outcome: 'no_new', snapshots: snapshots(responses),
+    state: { upstreamState: result.upstreamState, streams: result.streams, files: checkpoint.files },
+    coverage: { commitSha: checkpoint.lastCompleteSha, unchanged: true, upstreamUnchanged: true, replayed: true, reason: 'upstream_unchanged', streams: result.streams } };
+}
+
+export async function* collectFollowBuilders({ channel, checkpoint = {}, request, readSnapshot, signal, now = new Date(), mode = 'sync', budget = 20, window }) {
   const repo = channel.options?.repo || 'zarazhangrui/follow-builders', ref = channel.options?.ref || 'main';
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) fail('Invalid Follow Builders repository');
   const api = `https://api.github.com/repos/${repo}`;
@@ -69,7 +106,10 @@ export async function* collectFollowBuilders({ channel, checkpoint = {}, request
       state.pending=[{sha:head.json.sha,at:head.json.commit?.committer?.date||new Date(now).toISOString()}];
     } else {
     if (state.lastCompleteSha === head.json.sha && mode !== 'backfill') {
-      yield { items: [], checkpoint: state, partition: 'default', outcome: 'no_new', snapshots: snapshots([head]), coverage: { commitSha: head.json.sha, unchanged: true } }; return;
+      const replay = await replayFollowSnapshots({ channel, checkpoint: state, readSnapshot, now });
+      if (replay) { replay.snapshots.push(...snapshots([head])); yield replay; }
+      else yield { items: [], checkpoint: state, partition: 'default', outcome: 'no_new', snapshots: snapshots([head]), coverage: { commitSha: head.json.sha, unchanged: true, upstreamUnchanged: true, replayed: false, reason: 'upstream_unchanged', localSnapshotUnavailable: true } };
+      return;
     }
     if (state.lastCompleteSha && state.lastCompleteSha !== head.json.sha) {
       const comparison = await get(`${api}/compare/${state.lastCompleteSha}...${head.json.sha}`);
@@ -114,7 +154,7 @@ export async function* collectFollowBuilders({ channel, checkpoint = {}, request
       versions[file] = { blobSha: blob(text), contentHash: hash(text), snapshotId: response.snapshotId || null };
     }
     const result = normalizeFollowBundle(files, channel, commit.sha);
-    for(const item of result.items)item.metadata.upstreamCommitAt=commit.at;
+    for(const item of result.items)Object.assign(item.metadata,{upstreamCommitAt:commit.at,checkedAt:new Date(now).toISOString()});
     state = { ...state, pending: state.pending.slice(1), lastCompleteSha: commit.sha, lastCompleteAt: commit.at, files: versions };
     const upstreamErrors = Object.values(result.streams).some(s => s.errors?.length);
     yield { items: result.items, checkpoint: structuredClone(state), partition: 'default', outcome: upstreamErrors ? 'partial' : result.items.length ? 'success' : 'no_new', snapshots: snapshots(responses), state: { upstreamState: result.upstreamState, streams: result.streams, files: versions }, coverage: { commitSha: commit.sha, coverageStart: state.coverageStart, hasMore: state.pending.length > 0, streams: result.streams, currentBundleOnly: mode==='validate', boundary: 'Only upstream published and retrievable file versions; upstream omissions cannot be recovered.' } };

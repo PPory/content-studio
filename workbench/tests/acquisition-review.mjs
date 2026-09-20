@@ -1,0 +1,86 @@
+// Explicit synthetic fixtures; no production storage or network calls.
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { openWorkspace } from '../server/storage/workspace.mjs';
+import { getChannel, commitPage, acquisitionSourceDetails } from '../server/acquisition/store.mjs';
+import { processReview, reviewOverview, reviewAction } from '../server/acquisition/review.mjs';
+import { classifyAiRelevance, readingVersion } from '../server/acquisition/relevance.mjs';
+import { acquisitionWindow, gateAcquisitionItems } from '../server/acquisition/window.mjs';
+
+assert.equal(classifyAiRelevance({title:'2026 is the year of linux desktop',body:'2026 is the year of linux desktop',readLevel:'original'}).relevance,'not_ai');
+assert.equal(classifyAiRelevance({body:'Apple TV is full of bangers, canceled my Netflix. Silo season 3 9/10.',readLevel:'original'}).relevance,'not_ai');
+assert.equal(classifyAiRelevance({body:'I use ChatGPT to create personal finance prompts and compare forecasts.'}).relevance,'ai_relevant');
+assert.equal(classifyAiRelevance({body:'Personal agents operate tools using MCP to complete tasks end to end.'}).relevance,'ai_relevant');
+assert.equal(classifyAiRelevance({body:'The model weights improve inference with reinforcement learning.'}).relevance,'ai_relevant');
+assert.equal(classifyAiRelevance({body:'I use a /tastemaker skill for movies and books.'}).relevance,'needs_context');
+assert.equal(readingVersion({body:'https://example.org/link'}).readable,false);
+assert.equal(readingVersion({body:'Access denied: please enable javascript to continue.'}).readable,false);
+assert.equal(readingVersion({body:'# Title\n\nUseful **Markdown** with enough content for reading.',readLevel:'original'}).readability,'full_text');
+const window=acquisitionWindow({now:new Date('2026-09-20T12:00:00Z')});
+const gated=gateAcquisitionItems([{publishedAt:'2026-09-10T11:30:00Z',metadata:{upstream:'follow_builders',stream:'feed-podcasts.json',upstreamFirstSeenAt:'2026-09-20T06:37:55Z',generatedAt:'2026-09-20T06:37:56Z'}},{publishedAt:null,metadata:{generatedAt:'2026-09-20T06:37:56Z',upstreamCommitAt:'2026-09-20T06:37:56Z'}}],window);
+assert.equal(gated.items.length,1);assert.equal(gated.stats.inWindow,0);assert.equal(gated.stats.deepRead,1);assert.equal(gated.stats.unknownTimestamp,1);assert.equal(gated.items[0].publishedAt,'2026-09-10T11:30:00Z');
+
+const root=await fs.mkdtemp(path.join(os.tmpdir(),'acquisition-review-fixture-'));let w;
+try{
+ w=await openWorkspace({xenhoHome:root});
+ const channel=getChannel(w,'t2.the_decoder');
+ const add=(identity,body,extra={})=>commitPage(w,channel,{items:[{identity,title:`TEST FIXTURE ${identity}`,body,url:`https://example.org/${identity}`,sourceKind:'article',readLevel:'original',publishedAt:new Date().toISOString(),...extra}]}).ids[0];
+ const a=add('one','ChatGPT released a model with a longer context window. This release is about text inference.');
+ const b=add('two','ChatGPT is involved in a copyright lawsuit. This legal case concerns training data rights.');
+ const c=add('movies','Apple TV is full of bangers, canceled my Netflix. Silo season 3 9/10.');
+ const d=add('agent','Personal agents operate tools using MCP to complete tasks end to end.');
+ const e=add('missing','https://example.org/link',{readLevel:'summary'});
+ const second={...channel,id:getChannel(w,'t2.techcrunch_ai').id};
+ const dup=commitPage(w,second,{items:[{identity:'different-channel',title:'TEST FIXTURE one',url:'https://example.org/one?utm_source=test',body:'ChatGPT released a model with a longer context window. This release is about text inference.',sourceKind:'article',readLevel:'original'}]});
+ assert.equal(dup.ids[0],a);
+ let calls=0;const model=async()=>{calls++;throw Error('Must never send unauthorized body');};
+ const original=w.db.prepare('SELECT data_json FROM intel_sources WHERE id=?').get(a).data_json;
+ const first=await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:model});assert.equal(calls,0);
+ assert.equal(first.stats.pending,3);assert.equal(first.stats.irrelevant,1);assert.equal(first.stats.unreadable,1);
+ const overview=reviewOverview(w);assert.equal(overview.clusters.length,3,'same model name is not an event');
+ assert.equal(overview.clusters.flatMap(c=>c.items).filter(s=>s.id===a).length,1);
+ assert.equal(overview.clusters.flatMap(c=>c.items).find(s=>s.id===a).discoveries.length,2);
+ const ca=overview.clusters.find(c=>c.items.some(s=>s.id===a)).id,cb=overview.clusters.find(c=>c.items.some(s=>s.id===b)).id;
+ assert.throws(()=>reviewAction(w,ca,{action:'ignore'}));
+ reviewAction(w,ca,{confirmed:true,action:'merge',targetId:cb});
+ assert.equal(reviewOverview(w).clusters.find(c=>c.id===cb).items.length,2);
+ await processReview(w,{}, {confirmed:true});assert.equal(reviewOverview(w).clusters.find(c=>c.id===cb).items.length,2,'manual merge preserved');
+ reviewAction(w,cb,{confirmed:true,action:'split',sourceIds:[a]});
+ assert.equal(reviewOverview(w).clusters.length,3);
+ const split=reviewOverview(w).clusters.find(c=>c.items.some(s=>s.id===a)).id;
+ reviewAction(w,split,{confirmed:true,action:'ignore'});await processReview(w,{}, {confirmed:true});
+ assert.equal(reviewOverview(w).clusters.length,2);assert.equal(reviewOverview(w,{scope:'reviewed'}).clusters.length,1);
+ reviewAction(w,split,{confirmed:true,action:'restore'});assert.equal(reviewOverview(w).clusters.length,3);
+ assert.equal(w.db.prepare('SELECT data_json FROM intel_sources WHERE id=?').get(a).data_json,original);
+ // Grant only one fixture. Valid grounded model output is cached by content/rule.
+ w.db.prepare("UPDATE intel_sources SET rights_json='{\"aiAllowed\":true}' WHERE id=?").run(d);
+ const quote='Personal agents operate tools using MCP to complete tasks end to end.';
+ const valid=async()=>{calls++;return {data:{relevance:'ai_relevant',reason:'智能体工具调用',evidence:[quote],title:'智能体通过工具完成任务',guideClaims:[{text:'作者讨论智能体调用工具完成任务。',quotes:[quote]}],uncertainties:['尚无效果评测']}};};
+ await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:valid});assert.equal(calls,1);
+ await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:valid});assert.equal(calls,1,'same text/rules uses cached result');
+ const detail=acquisitionSourceDetails(w,d);assert.equal(detail.source.processing.guideKind,'model');assert.equal(detail.source.body,quote);assert.ok(detail.source.processing.guideEvidence[0].quotes.includes(quote));
+ // Changed text invalidates cached classification; model failure does not let it through.
+ add('agent','Personal agents operate tools using MCP to complete tasks end to end. New evidence.');
+ w.db.prepare("UPDATE intel_sources SET rights_json='{\"aiAllowed\":true}' WHERE id=?").run(d);
+ await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:async()=>{throw Error('offline');}});
+ assert.equal(acquisitionSourceDetails(w,d).source.processing.relevance,'needs_context');
+ assert.equal(reviewOverview(w,{scope:'needs_context'}).clusters.flatMap(c=>c.items).some(s=>s.id===d),true);
+ assert.ok(w.db.prepare('SELECT id FROM intel_sources WHERE id=?').get(c));assert.ok(w.db.prepare('SELECT id FROM intel_sources WHERE id=?').get(e));
+ const punctuationA=add('a-b','ChatGPT model inference has an explicit evaluation procedure.');
+ const punctuationB=add('ab','ChatGPT model inference has a different evaluation procedure.');
+ await processReview(w,{}, {confirmed:true});
+ const clusterFor=id=>w.db.prepare('SELECT cluster_id FROM acquisition_review_members WHERE source_id=?').get(id).cluster_id;
+ assert.notEqual(clusterFor(punctuationA),clusterFor(punctuationB),'punctuation in original identity must not collide');
+ const eventA=add('event-original','ChatGPT launches the TEST Orion release on September 20 with a longer context window.');
+ const eventB=add('event-report','The TEST Orion release of ChatGPT launched on September 20, adding a longer context window.');
+ for(const id of [eventA,eventB])w.db.prepare('UPDATE intel_sources SET rights_json=? WHERE id=?').run(JSON.stringify({aiAllowed:true}),id);
+ const eventModel=async(_env,input)=>{const payload=JSON.parse(input.user);if(payload.step==='organize')return {data:{groups:[{key:'test-orion-launch',focus:'测试样本：同一次模型发布',connection:'两篇原文都明确讨论 TEST Orion 在9月20日发布及上下文更新',relationship:'same_event',sourceIds:[eventA,eventB],eventEvidence:[eventA,eventB].map(id=>({sourceId:id,quote:payload.sources.find(s=>s.id===id).body}))}]}};return {data:{relevance:'ai_relevant',reason:'模型实践',evidence:[payload.material],guideClaims:[{text:'测试模型实践导读',quotes:[payload.material]}],title:'测试模型实践'}};};
+ await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:eventModel});
+ assert.equal(clusterFor(eventA),clusterFor(eventB),'same-event evidence can form one cluster');
+ reviewAction(w,clusterFor(eventA),{confirmed:true,action:'split',sourceIds:[eventB]});
+ await processReview(w,{}, {confirmed:true,semantic:true},{completeJson:eventModel});
+ assert.notEqual(clusterFor(eventA),clusterFor(eventB),'manual event split cannot be overwritten');
+ console.log('PASS: synthetic relevance, readability, date scopes, identity/discoveries, persistent review, authorization, cache, grounding and failure tests');
+} finally {w?.close();await fs.rm(root,{recursive:true,force:true});}

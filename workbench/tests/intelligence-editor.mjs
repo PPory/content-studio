@@ -15,7 +15,7 @@ try {
  const p=saveIntelligenceProfile(w,{name:'个人精选',query:'AI与学习',providers:['web','x','reddit'],frequency:'manual',limit:2,output:'briefs'});
  assert.throws(()=>saveIntelligenceProfile(w,{...p,frequency:'daily'}));
  const r=enqueueIntelligence(w,p.id),reads=[];
- const quote='Use feedback loops to understand model limitations.';
+ const quote='Use feedback loops to understand language model limitations.';
  const done=await executeIntelligence(w,{}, {runId:r.id},{
   planResearch:async()=>({query:'AI learning',queries:{web:['model feedback','learning practice'],x:'agent practice',reddit:'local models'}}),
   searchWeb:async(_env,input)=>({sources:[{url:input.query.includes('site:x.com')?'https://x.com/writer/status/123':input.query.includes('site:reddit.com')?'https://reddit.com/r/LocalLLaMA/comments/test/post':'https://example.com/'+encodeURIComponent(input.query),title:'Model practice'}]}),

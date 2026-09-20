@@ -2,7 +2,7 @@ import { createUlid } from '../storage/ids.mjs';
 import { sourceFromRow } from '../domain/intelligence-quality.mjs';
 import { enqueueAcquisition } from './runner.mjs';
 import { acquisitionWindow, mergeAcquisitionStats } from './window.mjs';
-const empty=()=>({fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0});
+const empty=()=>({fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0,deepRead:0});
 const names={'aihot:selected':'AIHOT Selected','aihot:hot':'AIHOT Hot','aihot:daily':'AIHOT Daily','follow_builders:feed-x.json':'Follow Builders X','follow_builders:feed-podcasts.json':'Follow Builders Podcast','follow_builders:feed-blogs.json':'Follow Builders Blog','follow_builders:state-feed.json':'Follow Builders State','t2_media:feed':'T2 Media','community:hacker_news':'Hacker News','community:reddit_posts':'Reddit Posts','community:reddit_comments':'Reddit Comments','community:github':'GitHub','community:arxiv':'arXiv','community:stackoverflow':'Stack Overflow','community:devto':'Dev.to'};
 function streamKey(group,platform,stream,kind){return `${group}:${group==='community'?platform==='reddit'?kind==='comment'?'reddit_comments':'reddit_posts':platform:stream}`;}
 export function startAcquisitionBatch(w,{confirmed,trigger='manual'}={}) {
@@ -16,7 +16,7 @@ export function startAcquisitionBatch(w,{confirmed,trigger='manual'}={}) {
  return batchOverview(w,id).batch;
  })();
 }
-export function batchOverview(w,id='latest',{offset=0,limit=60,group='',stream='',changesOnly='true'}={}) {
+export function batchOverview(w,id='latest',{offset=0,limit=60,group='',stream='',changesOnly='false'}={}) {
  const b=id==='latest'?w.db.prepare('SELECT * FROM acquisition_batches ORDER BY started_at DESC LIMIT 1').get():w.db.prepare('SELECT * FROM acquisition_batches WHERE id=?').get(id);
  if(!b)return {batch:null,items:[],total:0,nextOffset:null};
  const runs=w.db.prepare('SELECT r.*,j.status job_status,j.last_error job_error,j.due_at,c.name,c.source_group,c.platform,c.stream,c.stable_key FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? ORDER BY r.created_at').all(b.id);
@@ -34,6 +34,7 @@ export function batchOverview(w,id='latest',{offset=0,limit=60,group='',stream='
   for(const key of keys){const t=streams.get(key);if(!t)continue;if(c.stats.failed){t.stats.failed+=c.stats.failed;t.status=c.status;}else if(['RUNNING','RATE_LIMITED','TIMEOUT','PARSE_FAILED','SOURCE_UNAVAILABLE','AUTH_BLOCKED','STALE_UPSTREAM'].includes(c.status))t.status=c.status;else if(t.stats.inserted||t.stats.updated)t.status='OK';}
   if(c.sourceGroup==='follow_builders')for(const run of c.runs){for(const [file,state] of Object.entries(run.coverage.streams||{})){const t=streams.get(`follow_builders:${file}`);if(t){t.upstreamUpdatedAt=state.generatedAt;t.upstreamCount=state.count??null;if(state.errors?.length){t.status='STALE_UPSTREAM';t.error=state.errors.join('; ');}else if(file==='state-feed.json')t.status='OK';}}}
  }
+ for(const c of channels.values()){const unchanged=c.runs.some(r=>r.coverage.unchanged||r.coverage.upstreamUnchanged);c.reason=c.stats.failed?(c.status==='AUTH_BLOCKED'?'权限受限':'请求失败'):unchanged?'上游未变，已有未审阅内容仍可阅读':c.stats.duplicate&&!c.stats.inserted&&!c.stats.updated?'取得内容全部重复':c.stats.outsideWindow&&!c.stats.inWindow?'超出24小时窗口，深读另列':'本次检查完成，无新增不等于来源没有内容';}
  for(const t of streams.values())if(t.stats.failed&&['OK','NO_NEW_ITEMS'].includes(t.status))t.status='SOURCE_UNAVAILABLE';
  const stats=empty();for(const c of channels.values())for(const key of Object.keys(stats))stats[key]+=c.stats[key];
  const pending=runs.some(r=>['queued','retry','running'].includes(r.job_status)),finishedAt=pending?null:runs.map(r=>r.finished_at).filter(Boolean).sort().at(-1)||b.started_at;

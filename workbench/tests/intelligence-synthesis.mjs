@@ -12,10 +12,10 @@ const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-synthesis-'));let w;
 try{
  w=await openWorkspace({xenhoHome:path.join(root,'Xenho')});const p=saveIntelligenceProfile(w,{name:'综合验证',query:'模型使用与学习',providers:['x','reddit','aihot'],frequency:'manual',output:'briefs'}),run=enqueueIntelligence(w,p.id);
  const add=(provider,url,body)=>addIntelligenceSource(w,{provider,url,title:provider+'原文',body,readLevel:'original'},run.id);
- const a=add('x','https://x.com/writer/status/123','外部反馈帮助识别模型错误。连续检查任务输出，能够改善工作过程。');
+ const a=add('x','https://x.com/writer/status/123','ChatGPT 使用记录：外部反馈帮助识别模型错误。连续检查任务输出，能够改善工作过程。');
  const duplicate=add('web','https://x.com/writer/status/123?utm_source=test',a.body);
- const b=add('reddit','https://reddit.com/r/AI/comments/abc/post','真实使用发现，缺少外部验证会让错误不断累积。');
- const c=add('aihot','https://example.com/new','一种新的模型压缩方法已经公开，适用边界仍待进一步验证。');
+ const b=add('reddit','https://reddit.com/r/AI/comments/abc/post','ChatGPT 真实使用发现，缺少外部验证会让错误不断累积。');
+ const c=add('aihot','https://example.com/new','大语言模型研究：一种新的模型压缩方法已经公开，适用边界仍待进一步验证。');
  const sources=runSources(w,run.id),calls=[];
  const groups=[{key:'feedback',focus:'怎样判断模型是否真的完成任务',connection:'机制解释与真实失败经验互补',relationship:'complementary',sourceIds:[a.id,b.id]},{key:'compression',focus:'压缩方法有哪些适用边界',connection:'独立的新方法值得单独解释',relationship:'standalone',sourceIds:[c.id]}];
  const brief=(groupKey,evidence)=>({groupKey,storyKey:groupKey,title:groupKey,summary:'综合机制与实践判断任务效果',reason:'帮助理解使用边界',body:'综合来看，需要独立校验。[来源1]另一份实践补充了失败情形。[来源2]',confidence:'reliable',kind:'practice',evidence,wiki:[]});

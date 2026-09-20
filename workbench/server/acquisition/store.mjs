@@ -1,3 +1,4 @@
+import { processingFor } from './review.mjs';
 import { createUlid } from '../storage/ids.mjs';
 import { canonicalSourceUrl, contentHash, sourceFromRow } from '../domain/intelligence-quality.mjs';
 import { channelView } from './catalog.mjs';
@@ -58,6 +59,9 @@ function upsertItem(w,channel,item,at) {
   const preserve=previous?.readLevel==='original'&&!full&&row.content_status==='full_text';
   if(preserve)body=previous.body;
   const data={...previous,title:String(item.title||previous?.title||'未命名资料').slice(0,500),body,url:item.url||previous?.url||'',provider:channel.platform||'acquisition',platform:item.platform||channel.platform,platformId:item.platformId||null,publishedAt:item.publishedAt||previous?.publishedAt||null,author:String(item.author||''),readLevel:preserve||full?'original':'summary',contentKind:item.sourceKind,metadata:item.metadata||{},acquisition:true};
+  if(item.metadata?.originalPublishedAt!==undefined)data.publishedAt=item.metadata.originalPublishedAt;
+  const firsts=[previous?.metadata?.upstreamFirstSeenAt,item.metadata?.upstreamFirstSeenAt].filter(t=>t&&Number.isFinite(Date.parse(t))).sort();
+  if(firsts.length)data.metadata.upstreamFirstSeenAt=firsts[0];
   const status=preserve?'full_text':item.contentStatus==='context_missing'?'context_missing':full?'full_text':'summary_only';
   const contentDigest=contentHash(encode({title:data.title,body:data.body,author:data.author,readLevel:data.readLevel}));
   const parent=placeholder(w,item.parentIdentity,channel),root=item.rootIdentity===identity?id:placeholder(w,item.rootIdentity,channel);
@@ -154,5 +158,5 @@ export function acquisitionOverview(w) {
 export function acquisitionSourceDetails(w,id) {
   const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);if(!row)throw acquisitionError('资料不存在',{status:404});
   const unavailable=row.deleted_at||(row.expires_at&&Date.parse(row.expires_at)<=Date.now());
-  return {source:{...sourceFromRow(row),firstSeenAt:row.created_at,lastSeenAt:row.updated_at},discoveries:unavailable?[]:w.db.prepare('SELECT d.*,c.name,c.source_group AS sourceGroup,c.stream,c.platform FROM source_discoveries d JOIN intel_channels c ON c.id=d.channel_id WHERE source_id=?').all(id),runs:w.db.pragma('user_version',{simple:true})>=30?w.db.prepare('SELECT i.run_id AS runId,r.batch_id AS batchId,i.outcome AS dedupResult,i.stream,i.observed_at AS collectedAt FROM acquisition_run_items i JOIN acquisition_runs r ON r.id=i.run_id WHERE i.source_id=? ORDER BY i.observed_at DESC LIMIT 30').all(id):[],segments:unavailable?[]:w.db.prepare('SELECT * FROM acquisition_segments WHERE version_id=? ORDER BY ordinal').all(row.current_version_id),comments:w.db.prepare("SELECT * FROM intel_sources WHERE root_item_id=? OR parent_item_id=? ORDER BY created_at LIMIT 150").all(row.root_item_id||id,id).map(sourceFromRow)};
+  return {source:{...sourceFromRow(row),firstSeenAt:row.created_at,lastSeenAt:row.updated_at,upstreamFirstSeenAt:JSON.parse(row.data_json).metadata?.upstreamFirstSeenAt||null,...(!unavailable && w.db.pragma('user_version',{simple:true})>=32?{processing:processingFor(w,sourceFromRow(row))}:{})},discoveries:unavailable?[]:w.db.prepare('SELECT d.*,c.name,c.source_group AS sourceGroup,c.stream,c.platform FROM source_discoveries d JOIN intel_channels c ON c.id=d.channel_id WHERE source_id=?').all(id),runs:w.db.pragma('user_version',{simple:true})>=30?w.db.prepare('SELECT i.run_id AS runId,r.batch_id AS batchId,i.outcome AS dedupResult,i.stream,i.observed_at AS collectedAt FROM acquisition_run_items i JOIN acquisition_runs r ON r.id=i.run_id WHERE i.source_id=? ORDER BY i.observed_at DESC LIMIT 30').all(id):[],segments:unavailable?[]:w.db.prepare('SELECT * FROM acquisition_segments WHERE version_id=? ORDER BY ordinal').all(row.current_version_id),comments:w.db.prepare("SELECT * FROM intel_sources WHERE root_item_id=? OR parent_item_id=? ORDER BY created_at LIMIT 150").all(row.root_item_id||id,id).map(sourceFromRow)};
 }

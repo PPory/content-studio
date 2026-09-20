@@ -21,14 +21,10 @@ export function acquisitionWindow({ mode = 'sync', now = new Date(), windowStart
 }
 
 export function acquisitionTimestamp(item = {}) {
-  const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
   const candidates = [
     ['publishedAt', item.publishedAt],
-    ['createdAt', item.createdAt],
     ['date_posted', item.date_posted],
     ['creation_date', item.creation_date],
-    ['generatedAt', metadata.generatedAt],
-    ['upstreamCommitAt', metadata.upstreamCommitAt],
   ];
   for (const [field, value] of candidates) {
     if (value === null || value === undefined || value === '') continue;
@@ -52,8 +48,13 @@ export function gateAcquisitionItems(items = [], window, { limit = Infinity } = 
     byStream[key] ||= { fetched: 0, inWindow: 0, outsideWindow: 0, unknownTimestamp: 0, limited: 0 };
     byStream[key].fetched++;
     const timestamp = acquisitionTimestamp(item);
-    if (!timestamp) { stats.unknownTimestamp++; byStream[key].unknownTimestamp++; continue; }
-    if (timestamp.time < start || timestamp.time > end) { stats.outsideWindow++; byStream[key].outsideWindow++; continue; }
+    const deepTime=Date.parse(item.metadata?.upstreamFirstSeenAt);
+    const deep=item.metadata?.upstream==='follow_builders' && /feed-(blogs|podcasts)\.json/.test(key) && deepTime<=end && deepTime>=end-30*86400000;
+    if (!timestamp || timestamp.time < start || timestamp.time > end) {
+      const counter=timestamp?'outsideWindow':'unknownTimestamp';stats[counter]++;byStream[key][counter]++;
+      if(deep && accepted.length<limit){accepted.push({...item,metadata:{...item.metadata,readingScope:'deep'}});stats.deepRead=(stats.deepRead||0)+1;byStream[key].deepRead=(byStream[key].deepRead||0)+1;}
+      continue;
+    }
     stats.inWindow++; byStream[key].inWindow++;
     if (accepted.length >= limit) { stats.limited++; byStream[key].limited++; continue; }
     accepted.push({ ...item, publishedAt: item.publishedAt || timestamp.value, metadata: { ...(item.metadata || {}), acquisitionTimeField: timestamp.field } });
@@ -72,7 +73,7 @@ function streamCounts(items, flags) {
 }
 
 export function mergeAcquisitionStats(target, values = {}) {
-  for (const key of ['fetched', 'inWindow', 'outsideWindow', 'unknownTimestamp', 'limited', 'inserted', 'updated', 'duplicate', 'failed']) {
+  for (const key of ['fetched', 'inWindow', 'outsideWindow', 'unknownTimestamp', 'limited', 'inserted', 'updated', 'duplicate', 'failed', 'deepRead']) {
     target[key] = Number(target[key] || 0) + Number(values[key] || 0);
   }
   return target;

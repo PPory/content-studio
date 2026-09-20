@@ -1,0 +1,1522 @@
+{
+  "at": "2026-09-20T11:51:00.710Z",
+  "database": "D:\\文档\\Xenho\\Workspace\\workspace.sqlite",
+  "recoveryPoint": "D:\\文档\\Xenho\\Backups\\Migration-Points\\before-ai-reading-1789905044963.sqlite",
+  "ruleVersion": "ai-reading-1.0",
+  "stats": {
+    "materials": 6007,
+    "readable": 4748,
+    "irrelevant": 31,
+    "needsContext": 2991,
+    "unreadable": 1259,
+    "pending": 2656,
+    "clusters": 2656
+  },
+  "replayed": 12,
+  "modelCalls": 0,
+  "permissionRequired": 5981,
+  "verified": {
+    "originalBodiesUnchanged": 6023,
+    "reprocessingDoesNotCreateVersions": true,
+    "pendingSurvivesUnchangedSha": true
+  },
+  "scopes": {
+    "unreviewed": {
+      "count": 2656,
+      "samples": [
+        {
+          "id": "01M2YV290C8KYD8SWK7C5P8EM9",
+          "title": "My next podcast episode is almost guaranteed to save you some money.\n\nIt's with my friend @ebloch, product lead for Chat",
+          "url": "https://x.com/petergyang/status/2101342055352201519",
+          "author": "petergyang",
+          "publishedAt": "2026-09-19T16:06:01.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:50.317Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "aranteed to save you some money.\n\nIt's with my friend @ebloch, product lead for ChatGPT Finances at @OpenAI.\n\nI asked him to share six practical personal finance prompts that anyone can try to:\n\n1. Find tax savings proactively\n2. Maximize credit card rewards\n3. Create interactive forecasts like your"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 450,
+          "clusterId": "01M2ZAF4N0GG9XK8XW531QYT8P"
+        },
+        {
+          "id": "01M2YV290FSY52C346XTCE4AGC",
+          "title": "Personal agents are the ultimate manifestation of “build something that agents want”.\n\nThe form factor of a product like",
+          "url": "https://x.com/levie/status/2101427997597446636",
+          "author": "levie",
+          "publishedAt": "2026-09-19T21:47:31.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:51.733Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "“build something that agents want”.\n\nThe form factor of a product like\nPersonal agents are the ultimate manifestation of “build something that agents want”.\n\nThe form factor of a product like Muse is you want to be able to hand off a task to the agent and ensure that it is fully completed end to end"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 849,
+          "clusterId": "01M2ZAF4N38WM2X73W9E9CBAPE"
+        },
+        {
+          "id": "01M2YV290JACVGJ1G10AKH08BY",
+          "title": "After seeing the rush of announcements by Gemini (Google), OpenAi and Anthropic about even more agent intrusions......I ",
+          "url": "https://x.com/adityaag/status/2101426570850451914",
+          "author": "adityaag",
+          "publishedAt": "2026-09-19T21:41:51.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:53.082Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "After seeing the rush of announcements by Gemini (Google), OpenAi and Anthropic about even more agent intrusions......I \nAfter seeing the rush of announcements by Gemini (Google), OpenAi and Anthropic about even more agent intrusions......I take it for 100% granted that a number of of major companie"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 249,
+          "clusterId": "01M2ZAF4N416YHQ6TYWSZR2TG3"
+        },
+        {
+          "id": "01M2YV290KM8M0EGJ49VNZXZ5D",
+          "title": "When AI Improves Itself | Richard Socher (Recursive)",
+          "url": "https://www.youtube.com/@DataDrivenNYC/videos",
+          "author": "The MAD Podcast with Matt Turck",
+          "publishedAt": "2026-09-10T11:30:00.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:55.989Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "rejected and that certainly happened to me a lot in the early days like 2010 of neural networks for natural language processing where the majority of my first couple papers got rejected from NLP conferences. When they got accepted in like some small sub niches and subgroups. I still remember the fir"
+          ],
+          "readability": "transcript",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 76077,
+          "clusterId": "01M2ZAF4N5YQ4TRT208VAEZ01Q"
+        },
+        {
+          "id": "01M2Z6BM9268Y6K3D3QC010CZF",
+          "title": "Simulated students that make realistic mistakes help AI tutors learn faster",
+          "url": "https://the-decoder.com/simulated-students-that-make-realistic-mistakes-help-ai-tutors-learn-faster/",
+          "author": "Jonathan Kemper",
+          "publishedAt": "2026-09-20T09:50:32.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:58.849Z",
+          "lastSeenAt": "2026-09-20T10:38:58.849Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            " In tests covering 60 students across chess, English, and math, it outperformed GPT-5.4. A chess tutor trained with StudentSim also earned the highest expert ratings among three versions tested.\n\nThe article Simulated students that make realistic mistakes help AI tutors learn faster appeared first o"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "The Decoder",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:58.849Z"
+            }
+          ],
+          "bodyCharacters": 466,
+          "clusterId": "01M2ZAF42FA28CZBGGDDAZ1VK4",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6B8XBJNFS0JFNF7XVKZ3G",
+          "title": "安全可靠等级 Ⅲ 级：龙芯 3A6000 (C)/3C3000、华为鲲鹏 950 通过中国信息安全测评中心认证",
+          "url": "https://www.ithome.com/1/004/932.htm",
+          "author": "",
+          "publishedAt": "2026-09-20T10:14:25.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:47.209Z",
+          "lastSeenAt": "2026-09-20T10:38:47.209Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            " 3C3000 和鲲鹏 950 中央处理器通过认证，**安全可靠等级达到 Ⅲ 级**。\n\n据介绍，安全可靠测评主要面向计算机终端和服务器搭载的中央处理器（包括含人工智能加速单元的中央处理器）、人工智能训练推理芯片、操作系统、数据库，以及激光或喷墨打印机搭载的主控芯片。通过对产品及其研发单位的核心技术、安全保障、持续发展等方面开展评估，评定产品的安全性和可持续性，实现对产品研发设计、生产制造、供应保障、售后维护等全生命周期安全可靠性的综合度量和客观评价。\n\nIT之家附完整列表如下：\n\n**中央处理器**（同一等级按产品名称首字笔画为序排列）\n\n序号\n\n产品名称\n\n送测单位\n\n安全可靠等级\n\n1\n"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "IT之家",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:47.209Z"
+            }
+          ],
+          "bodyCharacters": 1398,
+          "clusterId": "01M2ZAF42JQBC1H2NCSZW931VA",
+          "clusterTitle": "安全可靠等级 Ⅲ 级：龙芯 3A6000 (C)/3C3000、华为鲲鹏 950 通过中国信息安全测评中心认证"
+        },
+        {
+          "id": "01M2Z6B8XJD7HZ8DJZ6JXXZNT6",
+          "title": "A20 Pro 芯片端侧 AI 实测：苹果 iPhone 18 Pro 可本地跑 270 亿参数模型，速度较 iPhone 17 Pro 翻倍",
+          "url": "https://www.ithome.com/1/004/909.htm",
+          "author": "",
+          "publishedAt": "2026-09-20T09:55:00.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:47.209Z",
+          "lastSeenAt": "2026-09-20T10:38:47.209Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "Pro 可本地跑 270 亿参数模型，速度较 iPhone 17 Pro 翻倍\nIT之家 9 月 20 日消息，苹果最新的 A20 Pro 芯片搭载双 16 核神经网络引擎，这在苹果自研 Apple Silicon 发展史上尚属首次。该神经网络引擎专为处理人工智能运算负载打造，性能超越此前所有 SoC。最新演示显示，一台 iPhone 18 Pro 运行 270 亿参数模型时，运行速度可达 iPhone 17 Pro 的两倍。\n\niPhone 18 Pro 以及 iPhone 18 Pro Max 均配备 12GB、96 位位宽的 LPDDR5X 内存，内存速度相比 iPhone 17 Pro"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "IT之家",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:47.209Z"
+            }
+          ],
+          "bodyCharacters": 928,
+          "clusterId": "01M2ZAF42PCCEDN989M39TQM21",
+          "clusterTitle": "A20 Pro 芯片端侧 AI 实测：苹果 iPhone 18 Pro 可本地跑 270 亿参数模型，速度较 iPhone 17 Pro 翻倍"
+        },
+        {
+          "id": "01M2Z6B8XT3022NPPSF14QYFQR",
+          "title": "怕 AI“脱离管控”，Anthropic 和埃森哲豪掷 20 亿美元搞 AI 安全评估",
+          "url": "https://www.ithome.com/1/004/894.htm",
+          "author": "",
+          "publishedAt": "2026-09-20T09:20:41.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:47.209Z",
+          "lastSeenAt": "2026-09-20T10:38:47.209Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "怕 AI“脱离管控”，Anthropic 和埃森哲豪掷 20 亿美元搞 AI 安全评估\nIT之家 9 月 20 日消息，人工智能实验室 Anthropic 于当地时间周五宣布，将与埃森哲（Accenture）开展合作，针对自身前沿人工智能模型开展独立评估；两家企业承诺，未来五年各自至少投入 10 亿美元（IT之家注：现汇率约合 67.18 亿元人民币），搭建开展该项工作所需的配套能力。\n\n在这项合作落地之际，AI 研发企业正承受来自监管机构、其他企业以及研究人员越来越大的压力，各方都要求企业保证高级模型具备安全性与可靠性。\n\n近期已经发生数起相关事件，包括部分 AI 智能体突破隔离运行环境。这"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "IT之家",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:47.209Z"
+            }
+          ],
+          "bodyCharacters": 846,
+          "clusterId": "01M2ZAF42T3FQPYDPRWKWA1YKF",
+          "clusterTitle": "怕 AI“脱离管控”，Anthropic 和埃森哲豪掷 20 亿美元搞 AI 安全评估"
+        },
+        {
+          "id": "01M2Z6ABQAEXMCTMHTH531K497",
+          "title": "VikasRaika/llm-rag-eval",
+          "url": "https://github.com/VikasRaika/llm-rag-eval",
+          "author": "VikasRaika",
+          "publishedAt": "2026-09-20T09:33:34Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:17.319Z",
+          "lastSeenAt": "2026-09-20T10:38:17.319Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "VikasRaika/llm-rag-eval\nDependency-free toolkit to evaluate RAG/LLM systems: retrieval quality + answer faithfulness (EM, F1, groundedness). CLI, tests, CI."
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "GitHub · rag",
+              "sourceGroup": "community",
+              "stream": "rag",
+              "firstSeenAt": "2026-09-20T10:38:17.319Z"
+            }
+          ],
+          "bodyCharacters": 132,
+          "clusterId": "01M2ZAF43HX8N4Q8CD7SGNX156",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6ABQCVZ9VPX4V0Q4CHJQ4",
+          "title": "Avinashricky211/AviGPT",
+          "url": "https://github.com/Avinashricky211/AviGPT",
+          "author": "Avinashricky211",
+          "publishedAt": "2026-09-20T06:41:42Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:17.319Z",
+          "lastSeenAt": "2026-09-20T10:38:17.319Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "eural reasoning from parametric memory via a 1.18ms NVMe SSD hardware bus. 183M transformer core, 0.4GB RAM footprint, zero-shot disk writes, and deterministic calculation."
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "GitHub · rag",
+              "sourceGroup": "community",
+              "stream": "rag",
+              "firstSeenAt": "2026-09-20T10:38:17.319Z"
+            }
+          ],
+          "bodyCharacters": 184,
+          "clusterId": "01M2ZAF43HW3B3HS1M4KMFGERY",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6A6PYRATCNHC6X2TXY3WB",
+          "title": "reloadlife/agent-cleaner",
+          "url": "https://github.com/reloadlife/agent-cleaner",
+          "author": "reloadlife",
+          "publishedAt": "2026-09-19T18:17:36Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:12.181Z",
+          "lastSeenAt": "2026-09-20T10:38:12.181Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "nt-cleaner\nScan, install, and uninstall skills, hooks, MCPs, and plugins across Claude Code, Cursor, Codex, Grok, OpenCode, and Gemini CLI."
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "GitHub · mcp",
+              "sourceGroup": "community",
+              "stream": "mcp",
+              "firstSeenAt": "2026-09-20T10:38:12.181Z"
+            }
+          ],
+          "bodyCharacters": 128,
+          "clusterId": "01M2ZAF43NG7N5GK4722W87W2Y",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6A6PZY55EDXSAGHS1MQRS",
+          "title": "agenticlabs-si/coach-mcp",
+          "url": "https://github.com/agenticlabs-si/coach-mcp",
+          "author": "agenticlabs-si",
+          "publishedAt": "2026-09-19T17:02:22Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:12.181Z",
+          "lastSeenAt": "2026-09-20T10:38:12.181Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "er for Coach AI: your endurance training data, recovery metrics and plan inside Claude or ChatGPT. Hosted at https://mcp.iamcoach.ai"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "GitHub · mcp",
+              "sourceGroup": "community",
+              "stream": "mcp",
+              "firstSeenAt": "2026-09-20T10:38:12.181Z"
+            }
+          ],
+          "bodyCharacters": 149,
+          "clusterId": "01M2ZAF43NHABT8P9BTB75PCXW",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        }
+      ]
+    },
+    "deep": {
+      "count": 1,
+      "samples": [
+        {
+          "id": "01M2YV290KM8M0EGJ49VNZXZ5D",
+          "title": "When AI Improves Itself | Richard Socher (Recursive)",
+          "url": "https://www.youtube.com/@DataDrivenNYC/videos",
+          "author": "The MAD Podcast with Matt Turck",
+          "publishedAt": "2026-09-10T11:30:00.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:55.989Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "rejected and that certainly happened to me a lot in the early days like 2010 of neural networks for natural language processing where the majority of my first couple papers got rejected from NLP conferences. When they got accepted in like some small sub niches and subgroups. I still remember the fir"
+          ],
+          "readability": "transcript",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 76077,
+          "clusterId": "01M2ZAF4N5YQ4TRT208VAEZ01Q",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        }
+      ]
+    },
+    "not_ai": {
+      "count": 31,
+      "samples": [
+        {
+          "id": "01M2YV2909Y67AJ1WF0MFQ07VK",
+          "title": "2026 is the year of linux desktop",
+          "url": "https://x.com/thsottiaux/status/2101431497437950458",
+          "author": "thsottiaux",
+          "publishedAt": "2026-09-19T22:01:26.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:50.008Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "not_ai",
+          "reason": "现有正文是影视、生活或普通桌面话题，没有实质 AI 上下文。",
+          "evidence": [
+            "2026 is the year of linux desktop\n2026 is the year of linux desktop"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 33,
+          "clusterId": "01M2ZAF4MZD0V0ZC5487ETAAAF",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2YV290CS50FHS97FDPXHJG1",
+          "title": "Apple TV is full of bangers, canceled my Netflix.\n\nWidow's Peak, 9.5/10\nSilo season 3, 9/10\n\nWhat's next? Already seen:\n",
+          "url": "https://x.com/petergyang/status/2101497327861248090",
+          "author": "petergyang",
+          "publishedAt": "2026-09-20T02:23:01.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:50.317Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "not_ai",
+          "reason": "现有正文是影视、生活或普通桌面话题，没有实质 AI 上下文。",
+          "evidence": [
+            "Apple TV is full of bangers, canceled my Netflix.\n\nWidow's Peak, 9.5/10\nSilo season 3, 9/10\n\nWhat's next? Already seen:\n\nApple TV is full of bangers, canceled my Netflix.\n\nWidow's Peak, 9.5/10\nSilo season 3, 9/10\n\nWhat's next? Already seen:\n\nSeverance, 9.5/10\nSlow Horses, 8/10, gonna wait for more e"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 201,
+          "clusterId": "01M2ZAF4N09PJR70KBTCPZ9T9Q",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2YV290E50AN621RBJW72N1M",
+          "title": "“I've spoken of the shining city […] a tall, proud city built on rocks stronger than oceans, wind-swept, God-blessed, an",
+          "url": "https://x.com/rauchg/status/2101420720807100855",
+          "author": "rauchg",
+          "publishedAt": "2026-09-19T21:18:37.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:51.319Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "“I've spoken of the shining city […] a tall, proud city built on rocks stronger than oceans, wind-swept, God-blessed, an\n“I've spoken of the shining city […] a tall, proud city built on rocks stronger than oceans, wind-swept, God-blessed, and teeming with people of all kinds living in harmony and pe"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 456,
+          "clusterId": "01M2ZAF4N20XT71XAEYRV5E87N",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2YV290GMS1D9G1JB0PHY48H",
+          "title": "Stop racial discrimination in the University of California system https://t.co/og9xm3Almf",
+          "url": "https://x.com/garrytan/status/2101456284482441656",
+          "author": "garrytan",
+          "publishedAt": "2026-09-19T23:39:56.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:52.077Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "not_ai",
+          "reason": "现有正文是影视、生活或普通桌面话题，没有实质 AI 上下文。",
+          "evidence": [
+            "Stop racial discrimination in the University of California system https://t.co/og9xm3Almf\nStop racial discrimination in the University of California system https://t.co/og9xm3Almf"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 89,
+          "clusterId": "01M2ZAF4N3GJM1G689XT5C9VW3",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6HCJXRK4A1Z4WATGGCDET",
+          "title": "It’s hard not to create slop when most things you consume are slop\n\nTo fix output, first fix input",
+          "url": "https://x.com/zarazhangrui/status/2101123389528457596",
+          "author": "zarazhangrui",
+          "publishedAt": "2026-09-19T01:37:07.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:03:38.717Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "It’s hard not to create slop when most things you consume are slop\n\nTo fix output, first fix input\nIt’s hard not to create slop when most things you consume are slop\n\nTo fix output, first fix input"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 98,
+          "clusterId": "01M2ZAF6VJ6A7WTJ51339D7Y1H",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6HCJBY77RNZS860FNVAE1",
+          "title": "The team did an amazing job with this merge. The resulting UX feels so much better than chat or Cowo",
+          "url": "https://x.com/alexalbert__/status/2100295757953917120",
+          "author": "alexalbert__",
+          "publishedAt": "2026-09-16T18:48:24.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:03:38.699Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "The team did an amazing job with this merge. The resulting UX feels so much better than chat or Cowo\nThe team did an amazing job with this merge. The resulting UX feels so much better than chat or Cowork did on their own.\n\nAnd the new slides/docs/design integrations work very well."
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 181,
+          "clusterId": "01M2ZAF6VKXTDJJPY4MH9PHWES",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6HCJ6FNM453RYNC1AFSD3",
+          "title": "Roose on the loose. Very concerning",
+          "url": "https://x.com/danshipper/status/2100961925840404886",
+          "author": "danshipper",
+          "publishedAt": "2026-09-18T14:55:31.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:03:38.694Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "Roose on the loose. Very concerning\nRoose on the loose. Very concerning"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 35,
+          "clusterId": "01M2ZAF6VKRFT3SXT728DV26BV",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6HCHTRGC6E218B3ZSR8T4",
+          "title": "THIS CANNOT STAND",
+          "url": "https://x.com/danshipper/status/2101023880282251340",
+          "author": "danshipper",
+          "publishedAt": "2026-09-18T19:01:42.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:03:38.682Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "THIS CANNOT STAND\nTHIS CANNOT STAND"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 17,
+          "clusterId": "01M2ZAF6VMCAXZ08R1DXC9HEHC",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6HCHKWH8Z37JCKPVGP8F3",
+          "title": "Projects are how I write a lot of my code these days. Really excited for everyone to try the new exp",
+          "url": "https://x.com/bcherny/status/2100639991244427490",
+          "author": "bcherny",
+          "publishedAt": "2026-09-17T17:36:16.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:03:38.675Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "Projects are how I write a lot of my code these days. Really excited for everyone to try the new exp\nProjects are how I write a lot of my code these days. Really excited for everyone to try the new experience! Rolling out now"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 124,
+          "clusterId": "01M2ZAF6VN91JEPHTWMQY68C1W",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2X6EV4D1XZE7Z1A66QQNKX2",
+          "title": "本周看什么 | 最近值得一看的 9 部作品 - 少数派",
+          "url": "https://sspai.com/post/114716",
+          "author": "少数派编辑部",
+          "publishedAt": "2026-09-18T09:58:55.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-19T16:02:15.309Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "现有正文是影视、生活或普通桌面话题，没有实质 AI 上下文。",
+          "evidence": [
+            "本周看什么 | 最近值得一看的 9 部作品 - 少数派\n## 👀 N 部作品推荐\n\n**近期佳作推荐**：[英剧] 流人 第六季、[英剧] 翠鸟谋杀案、[美剧] 怪物：丽兹·波顿的故事、[澳大利亚] 最后目击、[德剧] 巴比伦柏林 第五季、[日剧] 幸福伽菜子的快乐杀手生活 第二季、[韩剧] 中头奖还是要上班、[纪录片] 命运与人、[纪录片] 美丽的执念\n\n**几则精彩预告**：《哆啦 A 梦 大雄的蒸汽时间车》首支特报、《荒野丛林》终极预告、《黄金时段》新预告、《如何干一票大的》新预告\n\n**几则影视资讯**：《生化危机：爆发夜》确认引进、《生日快乐》内地定档 10 月 23 日、《泥面人"
+          ],
+          "readability": "full_text",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 8931,
+          "clusterId": "01M2ZAF6W2RNNNDTQHX1F3255R",
+          "clusterTitle": "本周看什么 | 最近值得一看的 9 部作品 - 少数派"
+        },
+        {
+          "id": "01M2HEWW91MSQZ7YFG7G8SM6WM",
+          "title": "评论 · I fell down a Project Gutenberg rabbit hole and came out the other side with a working digital library",
+          "url": "https://www.reddit.com/r/ClaudeAI/comments/1wgnji6/i_fell_down_a_project_gutenberg_rabbit_hole_and/",
+          "author": "this_for_loona",
+          "publishedAt": null,
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-15T02:38:50.657Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "评论 · I fell down a Project Gutenberg rabbit hole and came out the other side with a working digital library\nCaveman is your friend"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 22,
+          "clusterId": "01M2ZAF6W9DJ3JDGN1DCTGYYZE",
+          "clusterTitle": "评论 · I fell down a Project Gutenberg rabbit hole and came out the other side with a working digital library"
+        },
+        {
+          "id": "01M2HEWW6W7WD3X1JKJM75CGYX",
+          "title": "评论 · Six unattended CAD runs: renders caught coarse blunders only, every print-ruining defect was caught by a measured number",
+          "url": "https://www.reddit.com/r/AI_Agents/comments/1wgna0y/six_unattended_cad_runs_renders_caught_coarse/",
+          "author": "donk8r",
+          "publishedAt": null,
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-15T02:38:50.588Z",
+          "lastSeenAt": null,
+          "relevance": "not_ai",
+          "reason": "已取得的材料未提供直接、实质的 AI 关系。",
+          "evidence": [
+            "评论 · Six unattended CAD runs: renders caught coarse blunders only, every print-ruining defect was caught by a measured number\nNo counterexample from me, but here is where I would expect one. A volume check is blind to defects that keep the volume. A slot cut in the wrong place removes the same mater"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "discoveries": [],
+          "bodyCharacters": 535,
+          "clusterId": "01M2ZAF6WK4QN8ENVN57ZGA8XN",
+          "clusterTitle": "评论 · Six unattended CAD runs: renders caught coarse blunders only, every print-ruining defect was caught by a measured number"
+        }
+      ]
+    },
+    "needs_context": {
+      "count": 2991,
+      "samples": [
+        {
+          "id": "01M2YV290BJM5E8CMNET1G4X3H",
+          "title": "I have a simple markdown file and a /tastemaker skill that I use to add ratings for movies, TV shows, and books I've see",
+          "url": "https://x.com/petergyang/status/2101503916743749878",
+          "author": "petergyang",
+          "publishedAt": "2026-09-20T02:49:12.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:50.317Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "I have a simple markdown file and a /tastemaker skill that I use to add ratings for movies, TV shows, and books I've see\nI have a simple markdown file and a /tastemaker skill that I use to add ratings for movies, TV shows, and books I've seen. \n\nThen every week it looks up new releases and stuff I h"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 285,
+          "clusterId": "01M2ZAF4MZP9V8WSSZTNSYAGZN"
+        },
+        {
+          "id": "01M2YV290D00ZRBN724HEEKER5",
+          "title": "I’m trying to place calls with both muse and instinct and they both claim to be unable to do so… is this still rolling o",
+          "url": "https://x.com/thenanyu/status/2101383106372805103",
+          "author": "thenanyu",
+          "publishedAt": "2026-09-19T18:49:09.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:50.595Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "I’m trying to place calls with both muse and instinct and they both claim to be unable to do so… is this still rolling o\nI’m trying to place calls with both muse and instinct and they both claim to be unable to do so… is this still rolling out?"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 123,
+          "clusterId": "01M2ZAF4N1W3GPZF8ADK8G3X6W"
+        },
+        {
+          "id": "01M2YV290EV6KVP6FWXQK49C44",
+          "title": "The coolest thing about the recent wave of AI is that everyone is excited about building.\n\nAll short-term drama aside, t",
+          "url": "https://x.com/rauchg/status/2101397206595231765",
+          "author": "rauchg",
+          "publishedAt": "2026-09-19T19:45:10.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:51.319Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "The coolest thing about the recent wave of AI is that everyone is excited about building.\n\nAll short-term drama aside, t\nThe coolest thing about the recent wave of AI is that everyone is excited about building.\n\nAll short-term drama aside, this is an immeasurably good development for the world. The "
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 228,
+          "clusterId": "01M2ZAF4N2NKQNMB4GJ2KK9A5G"
+        },
+        {
+          "id": "01M2YV290HHZ40KCS9RY0HYBFT",
+          "title": "I spend ~2 hours a day programming, building side projects, tinkering obsessively, trying new repos..\n\nI get basically a",
+          "url": "https://x.com/nikunj/status/2101340098356990058",
+          "author": "nikunj",
+          "publishedAt": "2026-09-19T15:58:15.000Z",
+          "upstreamFirstSeenAt": "2026-09-20T06:37:52.616Z",
+          "firstSeenAt": "2026-09-20T07:21:38.057Z",
+          "lastSeenAt": "2026-09-20T11:50:52.330Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "rn what’s coming next. \n\nFor me, it’s quite simple if you want to invest in the AI era:\n\n1) You have to understand the model capabilities to see where the next set of models will improve - still so much alpha in reading technical papers (model research)\n\n2) You need to see what tools do they need to"
+          ],
+          "readability": "short_content",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Follow Builders",
+              "sourceGroup": "follow_builders",
+              "stream": "bundle",
+              "firstSeenAt": "2026-09-20T07:21:38.057Z"
+            }
+          ],
+          "bodyCharacters": 1218,
+          "clusterId": "01M2ZAF4N4CYY6DQGYPTCHXY4Z"
+        },
+        {
+          "id": "01M2Z6BTDQVVF2G829V2CABT2X",
+          "title": "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！",
+          "url": "https://www.qbitai.com/2026/09/492912.html",
+          "author": "十三",
+          "publishedAt": "2026-09-20T08:01:13.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:05.141Z",
+          "lastSeenAt": "2026-09-20T10:39:05.141Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！\n亚马逊云科技给企业安全用Agent打了个样"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "量子位",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:05.141Z"
+            }
+          ],
+          "bodyCharacters": 21,
+          "clusterId": "01M2ZAF42B20MV0QB58ERXBGZ0",
+          "clusterTitle": "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！"
+        },
+        {
+          "id": "01M2Z6BTDSYXW9W6P63CA0C78J",
+          "title": "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店",
+          "url": "https://www.qbitai.com/2026/09/492873.html",
+          "author": "量子位的朋友们",
+          "publishedAt": "2026-09-20T07:51:09.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:05.141Z",
+          "lastSeenAt": "2026-09-20T10:39:05.141Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店\n腾势Z9S迎来成都车展首秀"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "量子位",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:05.141Z"
+            }
+          ],
+          "bodyCharacters": 13,
+          "clusterId": "01M2ZAF42CHG46CWMWEF7J5S4N",
+          "clusterTitle": "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店"
+        },
+        {
+          "id": "01M2Z6BSSF7TC24T5KZ7WV0KPF",
+          "title": "Meta's Muse Is Better at Surveilling Than Helping Me",
+          "url": "https://www.wired.com/story/metas-muse-is-better-at-surveilling-than-helping-me/",
+          "author": "Reece Rogers",
+          "publishedAt": "2026-09-20T10:30:00.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:04.495Z",
+          "lastSeenAt": "2026-09-20T10:39:04.495Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Meta's Muse Is Better at Surveilling Than Helping Me\nThe Muse app continues Meta’s trend of opting users into data collection for AI training. It also nudges you to share your bank account, email, and passport information."
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Wired AI",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:04.495Z"
+            }
+          ],
+          "bodyCharacters": 169,
+          "clusterId": "01M2ZAF42DHT9JXRAP0KSE1ERN",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6BSSGWEZ8Z9Z35YVDMDAC",
+          "title": "It’s Donald Trump Versus MAGA on Data Centers",
+          "url": "https://www.wired.com/story/donald-trump-versus-maga-on-data-centers/",
+          "author": "Molly Taft",
+          "publishedAt": "2026-09-20T10:30:00.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:04.495Z",
+          "lastSeenAt": "2026-09-20T10:39:04.495Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            " Versus MAGA on Data Centers\nThe president has doubled down on data centers and AI. His base is running in the opposite direction."
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Wired AI",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:04.495Z"
+            }
+          ],
+          "bodyCharacters": 101,
+          "clusterId": "01M2ZAF42DWRAJS94BFP5B4EH3",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6BM91AEK3F221TYVPKYGW",
+          "title": "Daily AI usage in the U.S. has more than doubled in just six months",
+          "url": "https://the-decoder.com/daily-ai-usage-in-the-u-s-has-more-than-doubled-in-just-six-months/",
+          "author": "Matthias Bastian",
+          "publishedAt": "2026-09-20T10:03:29.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:58.849Z",
+          "lastSeenAt": "2026-09-20T10:38:58.849Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Daily AI usage in the U.S. has more than doubled in just six months\nSurveys by Epoch AI and Ipsos suggest AI is becoming part of everyday life for more Americans. The share of US adults using AI almost daily more than doubled between March and August 2026, rising from 8 percent to 19 percent. Meanwh"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "The Decoder",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:58.849Z"
+            }
+          ],
+          "bodyCharacters": 420,
+          "clusterId": "01M2ZAF42E68E1BXKAEPNBGWDF",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6BM93EBEC37CCWW5DNP5C",
+          "title": "Trump announces \"AI Force\" and plans for an \"AI czar\" as he pushes unchecked AI growth",
+          "url": "https://the-decoder.com/trump-announces-ai-force-and-plans-for-an-ai-czar-as-he-pushes-unchecked-ai-growth/",
+          "author": "Matthias Bastian",
+          "publishedAt": "2026-09-20T08:52:06.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:58.849Z",
+          "lastSeenAt": "2026-09-20T10:38:58.849Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Trump announces \"AI Force\" and plans for an \"AI czar\" as he pushes unchecked AI growth\nTrump announces an \"AI Force\" modeled after the Space Force and plans to appoint an \"AI czar\" with a \"high IQ.\" He claims AI could reach 25 percent of US economic output, rejects new regulation, and frames critici"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "The Decoder",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:58.849Z"
+            }
+          ],
+          "bodyCharacters": 385,
+          "clusterId": "01M2ZAF42GTV7W80BTSC4NJM45",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6BM94HQCC2QEZ5CHAVX7M",
+          "title": "Following OpenAI, Anthropic is also reportedly postponing its IPO",
+          "url": "https://the-decoder.com/following-openai-anthropic-is-also-reportedly-postponing-its-ipo/",
+          "author": "Matthias Bastian",
+          "publishedAt": "2026-09-20T08:35:25.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:58.849Z",
+          "lastSeenAt": "2026-09-20T10:38:58.849Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Following OpenAI, Anthropic is also reportedly postponing its IPO\nAnthropic is reportedly delaying its IPO from October to November 2026 to present strong Q3 results. Investors expect a roughly $2 trillion valuation, but rising infrastructure costs, including $1.25 billion a month for its SpaceX dea"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "The Decoder",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:58.849Z"
+            }
+          ],
+          "bodyCharacters": 406,
+          "clusterId": "01M2ZAF42HEH72QCVEFE85KN1M",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6B8X9JTRHQ9G1861QTVKT",
+          "title": "雷军宣布明日直播：聊聊小米澎程发布这些天的进展和感受，打算自己搭一次帐篷",
+          "url": "https://www.ithome.com/1/004/942.htm",
+          "author": "",
+          "publishedAt": "2026-09-20T10:27:01.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:47.209Z",
+          "lastSeenAt": "2026-09-20T10:38:47.209Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "雷军宣布明日直播：聊聊小米澎程发布这些天的进展和感受，打算自己搭一次帐篷\nIT之家 9 月 20 日消息，小米创办人，董事长兼 CEO 雷军今日表示，小米澎程正式发布快两周，说实话，大家的热情，远超我们的想象。\n\n**雷军宣布明晚（9 月 21 日） 7 点，计划办一场直播**，跟大家一起聊聊这两周的进展和感受。直播地点，选在一个露营地，**打算自己搭一次帐篷**。\n\n据IT之家此前报道，小米澎程系列于 9 月 7 日发布，**售价 20.99 万元起**：\n\n小米澎程 N70 Pro：20.99 万元\n\n小米澎程 N70 Max：23.99 万元\n\n小米澎程 N90 Max：26.99 万元"
+          ],
+          "readability": "summary",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "IT之家",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:47.209Z"
+            }
+          ],
+          "bodyCharacters": 330,
+          "clusterId": "01M2ZAF42J46C9Z2YJG23E4A0G",
+          "clusterTitle": "雷军宣布明日直播：聊聊小米澎程发布这些天的进展和感受，打算自己搭一次帐篷"
+        }
+      ]
+    },
+    "unreadable": {
+      "count": 1259,
+      "samples": [
+        {
+          "id": "01M2Z6BTDPENRC35PBWK9E9P52",
+          "title": "APUS 开源国内首批Jev跨平台复现：国产模型实现秒级决策",
+          "url": "https://www.qbitai.com/2026/09/492939.html",
+          "author": "量子位的朋友们",
+          "publishedAt": "2026-09-20T08:30:32.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:05.141Z",
+          "lastSeenAt": "2026-09-20T10:39:05.141Z",
+          "relevance": "ai_relevant",
+          "reason": "原文直接讨论模型、智能体或 AI 的具体使用、能力或影响。",
+          "evidence": [
+            "APUS 开源国内首批Jev跨平台复现：国产模型实现秒级决策\n9月19日，中国人工智能企业APUS旗下 AI 实验室公布了全球最早一批针对Jev的独立开源复现成果"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "量子位",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:05.141Z"
+            }
+          ],
+          "bodyCharacters": 50,
+          "clusterId": "01M2ZAF429XQ2DDXBKPDR8JC8R",
+          "clusterTitle": "APUS 开源国内首批Jev跨平台复现：国产模型实现秒级决策"
+        },
+        {
+          "id": "01M2Z6BTDQVVF2G829V2CABT2X",
+          "title": "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！",
+          "url": "https://www.qbitai.com/2026/09/492912.html",
+          "author": "十三",
+          "publishedAt": "2026-09-20T08:01:13.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:05.141Z",
+          "lastSeenAt": "2026-09-20T10:39:05.141Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！\n亚马逊云科技给企业安全用Agent打了个样"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "量子位",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:05.141Z"
+            }
+          ],
+          "bodyCharacters": 21,
+          "clusterId": "01M2ZAF42B20MV0QB58ERXBGZ0",
+          "clusterTitle": "谷歌AI首次“越狱”：竟然自己破解密码入侵三家公司！"
+        },
+        {
+          "id": "01M2Z6BTDSYXW9W6P63CA0C78J",
+          "title": "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店",
+          "url": "https://www.qbitai.com/2026/09/492873.html",
+          "author": "量子位的朋友们",
+          "publishedAt": "2026-09-20T07:51:09.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:39:05.141Z",
+          "lastSeenAt": "2026-09-20T10:39:05.141Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店\n腾势Z9S迎来成都车展首秀"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "量子位",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:39:05.141Z"
+            }
+          ],
+          "bodyCharacters": 13,
+          "clusterId": "01M2ZAF42CHG46CWMWEF7J5S4N",
+          "clusterTitle": "预售价31.98万-38.98万元，腾势Z9S展车抵达全国166城334家门店"
+        },
+        {
+          "id": "01M2Z6B8MH94CH1KJW4DHRJ4YR",
+          "title": "T. rex teeth indicate it ran as warm as an elephant",
+          "url": "https://arstechnica.com/science/2026/09/t-rex-teeth-indicate-it-ran-as-warm-as-an-elephant/",
+          "author": "Jacek Krywko",
+          "publishedAt": "2026-09-20T09:00:11.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:46.929Z",
+          "lastSeenAt": "2026-09-20T10:38:46.929Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "T. rex teeth indicate it ran as warm as an elephant\nIsotope ratios provide a hint that the giants were actively managing temperatures."
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Ars Technica",
+              "sourceGroup": "t2_media",
+              "stream": "feed",
+              "firstSeenAt": "2026-09-20T10:38:46.929Z"
+            }
+          ],
+          "bodyCharacters": 82,
+          "clusterId": "01M2ZAF42Y1EQ37608VWWFY2WV",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQSEVJP1YMWJGVSHHKJ",
+          "title": "Automatic Against the People: Reading, Writing, and AI",
+          "url": "https://news.ycombinator.com/item?id=49774415",
+          "author": "waingake",
+          "publishedAt": "2026-09-20T10:27:20.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Automatic Against the People: Reading, Writing, and AI\nArticle URL: http://www.unemployednegativity.com/2024/09/automatic-against-people-reading.html\n\nComments URL: https://news.ycombinator.com/item?id=49774415\n\nPoints: 1\n\n# Comments: 0"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 181,
+          "clusterId": "01M2ZAF42YE4JB1SQ782K1WDQF",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQTJAZEKB08TKAVNEM4",
+          "title": "Automatic Against the People: Reading, Writing, and AI",
+          "url": "http://www.unemployednegativity.com/2024/09/automatic-against-people-reading.html",
+          "author": "waingake",
+          "publishedAt": "2026-09-20T10:27:20.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Automatic Against the People: Reading, Writing, and AI\n"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 0,
+          "clusterId": "01M2ZAF42Z2DM3658XXAYG2143",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQVJ9G1993MZJQRBTVS",
+          "title": "AI and the Destruction of the Creative Commons",
+          "url": "https://news.ycombinator.com/item?id=49774329",
+          "author": "rakel_rakel",
+          "publishedAt": "2026-09-20T10:07:51.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "AI and the Destruction of the Creative Commons\nArticle URL: https://www.chesterwisniewski.com/post/2026-09-13-ai-is-destroying-the-creative-commons/\n\nComments URL: https://news.ycombinator.com/item?id=49774329\n\nPoints: 2\n\n# Comments: 0"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 188,
+          "clusterId": "01M2ZAF42ZS2Y4PT0VY30JYFXB",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQXGC9152F3598C8D69",
+          "title": "AI and the Destruction of the Creative Commons",
+          "url": "https://www.chesterwisniewski.com/post/2026-09-13-ai-is-destroying-the-creative-commons/",
+          "author": "rakel_rakel",
+          "publishedAt": "2026-09-20T10:07:51.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "AI and the Destruction of the Creative Commons\n"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 0,
+          "clusterId": "01M2ZAF430FDQ5Y0EY2QF6ZG91",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQY0NQPJXCANH11ERXN",
+          "title": "Jev is the fastest-adopted model in AI Gateway history",
+          "url": "https://news.ycombinator.com/item?id=49774164",
+          "author": "flashbrew",
+          "publishedAt": "2026-09-20T09:38:26.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Jev is the fastest-adopted model in AI Gateway history\nArticle URL: https://vercel.com/blog/ai-gateway-jev-model-launch\n\nComments URL: https://news.ycombinator.com/item?id=49774164\n\nPoints: 1\n\n# Comments: 1"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 151,
+          "clusterId": "01M2ZAF431X9N0T8CKKW2DR1GS",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFQZ7CZG6DPCEEY8EASH",
+          "title": "Jev is the fastest-adopted model in AI Gateway history",
+          "url": "https://vercel.com/blog/ai-gateway-jev-model-launch",
+          "author": "flashbrew",
+          "publishedAt": "2026-09-20T09:38:26.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Jev is the fastest-adopted model in AI Gateway history\n"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 0,
+          "clusterId": "01M2ZAF431SF8JF4M2KY3C4NKK",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFR0DWYZ52XB70QNVJAH",
+          "title": "Show HN: Delightful Cells – reliable AI batch processing for spreadsheets",
+          "url": "https://news.ycombinator.com/item?id=49774124",
+          "author": "sumtsui",
+          "publishedAt": "2026-09-20T09:31:29.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Show HN: Delightful Cells – reliable AI batch processing for spreadsheets\nArticle URL: https://delightfulcells.com\n\nComments URL: https://news.ycombinator.com/item?id=49774124\n\nPoints: 1\n\n# Comments: 1"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 127,
+          "clusterId": "01M2ZAF432VZEMZYHSRCF2X3GJ",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        },
+        {
+          "id": "01M2Z6AFR1D9ADA1Q499HPCD9Y",
+          "title": "Show HN: Delightful Cells – reliable AI batch processing for spreadsheets",
+          "url": "https://delightfulcells.com/",
+          "author": "sumtsui",
+          "publishedAt": "2026-09-20T09:31:29.000Z",
+          "upstreamFirstSeenAt": null,
+          "firstSeenAt": "2026-09-20T10:38:21.432Z",
+          "lastSeenAt": "2026-09-20T10:38:21.432Z",
+          "relevance": "needs_context",
+          "reason": "现有材料不足以确认实质 AI 关系，需补上下文或授权后的语义复核。",
+          "evidence": [
+            "Show HN: Delightful Cells – reliable AI batch processing for spreadsheets\n"
+          ],
+          "readability": "metadata",
+          "guideKind": "none",
+          "rights": {
+            "aiAllowed": false,
+            "exportAllowed": false
+          },
+          "discoveries": [
+            {
+              "channelName": "Hacker News · newest_ai",
+              "sourceGroup": "community",
+              "stream": "newest_ai",
+              "firstSeenAt": "2026-09-20T10:38:21.432Z"
+            }
+          ],
+          "bodyCharacters": 0,
+          "clusterId": "01M2ZAF432R2994QYJQ97D1CWV",
+          "clusterTitle": "AI 资料 · 原文标题待译"
+        }
+      ]
+    }
+  }
+}

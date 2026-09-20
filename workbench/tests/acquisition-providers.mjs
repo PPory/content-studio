@@ -1,7 +1,8 @@
 // Deterministic connector contract tests. These do NOT assert live upstream connectivity.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { collectAiHot } from '../server/acquisition/connectors/aihot.mjs';
-import { collectFollowBuilders, FOLLOW_FILES, normalizeFollowBundle } from '../server/acquisition/connectors/follow-builders.mjs';
+import { collectFollowBuilders, FOLLOW_FILES, normalizeFollowBundle, replayFollowSnapshots } from '../server/acquisition/connectors/follow-builders.mjs';
 const response = json => ({ status: 200, headers: {}, json, text: JSON.stringify(json), snapshotId: 'fixture' });
 const drain = async iterator => { const result = []; for await (const page of iterator) result.push(page); return result; };
 const row = id => ({ id, title: `Title ${id}`, summary: 'Summary only', links: { original: `https://example.org/${id}` } });
@@ -72,3 +73,27 @@ assert.equal(historyCalls,1);assert.equal(resumed[0].checkpoint.scan.page,2);
 await assert.rejects(()=>drain(collectFollowBuilders({channel:{},checkpoint:{lastCompleteSha:a,lastCompleteAt:'2026-09-19'},request:async url=>response(url.includes('/compare/')?{status:'diverged'}:{sha:b})})),e=>e.code==='history_gap');
 assert.equal(FOLLOW_FILES.length,4);
 console.log('acquisition-providers: mock contract tests passed (not live integration)');
+
+// Clearly synthetic replay/date fixtures; no network or production-store mutation.
+const replayBundle = structuredClone(bundle);
+replayBundle['feed-podcasts.json'].podcasts[0].publishedAt = '2026-09-10T11:30:00.000Z';
+replayBundle['state-feed.json'].seenVideos.one = 1789886275989;
+const saved = Object.fromEntries(FOLLOW_FILES.map(file => [file, { text: JSON.stringify(replayBundle[file]), snapshotId: file }]));
+const replayCheckpoint = {lastCompleteSha:b,lastCompleteAt:'2026-09-20T01:00:00Z',files:Object.fromEntries(FOLLOW_FILES.map(file => [file,{snapshotId:file,contentHash:createHash('sha256').update(saved[file].text).digest('hex')}]))};
+let replayRequests = 0;
+const replayed = await drain(collectFollowBuilders({ channel:{},checkpoint:replayCheckpoint,now:new Date('2026-09-21'),readSnapshot:async id=>saved[id],request:async()=>{replayRequests++;return response({sha:b});} }));
+assert.equal(replayRequests,1,'unchanged SHA must reuse local evidence without fetching body again');
+assert.equal(replayed[0].items.length,3);
+assert.equal(replayed[0].outcome,'no_new');
+assert.equal(replayed[0].coverage.replayed,true);
+assert.equal(replayed[0].items[1].publishedAt,'2026-09-10T11:30:00.000Z');
+assert.equal(replayed[0].items[2].publishedAt,null,'feed generatedAt cannot fill missing publication date');
+assert.equal(replayed[0].items[1].metadata.upstreamFirstSeenAt,new Date(1789886275989).toISOString());
+assert.equal(replayed[0].items[1].metadata.checkedAt,'2026-09-21T00:00:00.000Z');
+assert.deepEqual(replayed[0].checkpoint,replayCheckpoint);
+assert.equal(await replayFollowSnapshots({channel:{},checkpoint:replayCheckpoint,readSnapshot:async()=>null}),null);
+assert.equal(await replayFollowSnapshots({channel:{},checkpoint:replayCheckpoint,readSnapshot:async()=>({text:'{}'})}),null,'mismatched snapshot hashes are not replayed');
+const missingReplay = await drain(collectFollowBuilders({channel:{},checkpoint:replayCheckpoint,request:async()=>response({sha:b})}));
+assert.equal(missingReplay[0].coverage.reason,'upstream_unchanged');
+assert.equal(missingReplay[0].coverage.localSnapshotUnavailable,true);
+console.log('follow-builders: local replay and separate date semantics passed');

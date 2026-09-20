@@ -47,6 +47,8 @@ const acquisitionAcceptanceSql = fs.readFileSync(new URL('./migrations/0030-acqu
 
 const acquisition24hSql = fs.readFileSync(new URL('./migrations/0031-acquisition-24h.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
+const acquisitionReviewSql = fs.readFileSync(new URL('./migrations/0032-acquisition-review.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -169,6 +171,7 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 29, name: 'acquisition-v3', sql: acquisitionV3Sql, checksum: crypto.createHash('sha256').update(acquisitionV3Sql).digest('hex') }),
   Object.freeze({ version: 30, name: 'acquisition-acceptance', sql: acquisitionAcceptanceSql, checksum: crypto.createHash('sha256').update(acquisitionAcceptanceSql).digest('hex') }),
   Object.freeze({ version: 31, name: 'acquisition-24h', sql: acquisition24hSql, checksum: crypto.createHash('sha256').update(acquisition24hSql).digest('hex') }),
+  Object.freeze({ version: 32, name: 'acquisition-review', sql: acquisitionReviewSql, checksum: crypto.createHash('sha256').update(acquisitionReviewSql).digest('hex') }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;
