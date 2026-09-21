@@ -1,3 +1,4 @@
+import { IntelligenceReader } from "./IntelligenceReader.jsx";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AcquisitionResource } from './AcquisitionResource.jsx';
 import { markdown } from './BriefReading.jsx';
@@ -43,7 +44,7 @@ export function AcquisitionReview({onGo,onLink}) {
     <details className="acquisition-review-secondary" open={secondaryScopes.some(item=>item.key===scope)}><summary>待处理与已审阅范围</summary><ViewTabs items={secondaryScopes} value={scope} onChange={changeScope} label="次级阅读范围"/></details>
     <details className="acquisition-review-processing"><summary>重处理已有材料与统计口径</summary><p>本地处理会更新相关性、阅读版本与自动聚簇，保留原始正文和人工分组；语义处理仅向已配置模型发送已获 AI 处理授权的材料。</p><div className="intel-v2-actions"><button className="btn" disabled={busy} onClick={()=>process(false)}>确认本地重处理</button><button className="btn" disabled={busy} onClick={()=>process(true)}>确认处理已授权材料（AI）</button><button className="text-action" disabled={busy} onClick={load}>刷新审阅列表</button></div><p>以下统计针对已保存资料与当前处理结果，以稳定原文身份去重；不等于本轮抓取量。抓取、窗外与重复量见「本次采集」。</p><dl className="acquisition-times">{Object.entries({materials:'已有资料',readable:'可读资料',irrelevant:'无关资料',needsContext:'待补上下文',unreadable:'不可读资料',pending:'待审阅资料',clusters:'聚簇'}).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{stats[key] ?? '—'}</dd></div>)}</dl></details>
     {busy && <p role="status">正在处理，请稍候…</p>}{notice && <p role="status">{notice}</p>}<ErrorNote error={error} what="读取或更新审阅资料" onRetry={load}/>
-    {!data && !error ? <Loading rows={4}/> : !clusters.length ? <Empty><h3>此范围暂无聚簇</h3><p>这不表示来源没有内容。可查看待补正文与主题待复核，或展开「重处理已有材料」运行本地规则，无需重新采集。</p></Empty> : clusters.map(cluster=><Cluster key={cluster.id} cluster={cluster} clusters={clusters} busy={busy} onAction={action} onGo={onGo} onLink={onLink}/>)}
+    {!data && !error ? <Loading rows={4}/> : !clusters.length ? <Empty><h3>此范围暂无聚簇</h3><p>这不表示来源没有内容。可查看待补正文与主题待复核，或展开「重处理已有材料」运行本地规则，无需重新采集。</p></Empty> : <IntelligenceReader items={clusters} label="本期材料" title={item=>item.title || "标题待核对"} meta={item=>`${item.items?.length || 0} 份原始材料 · ${({kept:"已保留",ignored:"已忽略",unreviewed:"待审阅"}[item.status] || item.status || "待审阅")}`} render={cluster=><Cluster cluster={cluster} clusters={clusters} busy={busy} onAction={action} onGo={onGo} onLink={onLink}/>}/>}
     <div className="intel-v2-actions"><button className="btn" disabled={busy || !offset} onClick={()=>setOffset(Math.max(0,offset-20))}>上一页</button><span className="intel-v2-hint">第 {Math.floor(offset/20)+1} 页</span><button className="btn" disabled={busy || data?.nextOffset==null} onClick={()=>setOffset(data.nextOffset)}>下一页</button></div>
   </section>;
 }

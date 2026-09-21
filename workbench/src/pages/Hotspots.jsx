@@ -1,8 +1,9 @@
+import { IntelligenceHeader } from "../components/IntelligenceHeader.jsx";
 import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { SourceResearchPicker } from "../components/SourceResearchPicker.jsx";
 import { api } from "../lib/api.js";
-import { ErrorNote, Empty, Loading, Note, FilterHeader, SearchBox, ViewTabs, Toast, relTime } from "../components/ui.jsx";
+import { ErrorNote, Empty, Loading, Note, SearchBox, ViewTabs, Toast, relTime } from "../components/ui.jsx";
 import "./hotspot-bridge.css";
 import { ArticleOverlay } from "../components/ArticleOverlay.jsx";
 import { ReactionPicker } from "../components/ReactionPicker.jsx";
@@ -99,9 +100,9 @@ export function Hotspots({ onIntake, onGo }) {
   }, []);
 
   return (
-    <>
+    <div className="intel-workspace intel-hot-page">
       <IntelligenceNav current="hot" onGo={onGo} />
-      <FilterHeader
+      <IntelligenceHeader
         title="AI 热点"
         desc="刷新、看原文、收进灵感库。这一页不做分析，也不会替你写。"
         chips={
@@ -143,7 +144,7 @@ export function Hotspots({ onIntake, onGo }) {
 
       {linking && <SourceResearchPicker source={linking} onClose={()=>setLinking(null)} onGo={onGo}/> }
       <Toast text={toast} onClose={() => setToast(null)} />
-    </>
+    </div>
   );
 }
 

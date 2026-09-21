@@ -1,8 +1,9 @@
+import { IntelligenceHeader } from "../components/IntelligenceHeader.jsx";
 import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { SourceResearchPicker } from "../components/SourceResearchPicker.jsx";
 import { api } from "../lib/api.js";
-import { Empty, ErrorNote, PageHeader, SearchBox, Toast } from "../components/ui.jsx";
+import { Empty, ErrorNote, SearchBox, Toast } from "../components/ui.jsx";
 import { IconRadar2 } from "../components/icons.jsx";
 import "./intelligence.css";
 
@@ -70,9 +71,9 @@ export function Intelligence({view, initialAction, onGo}) {
   const startTopic = async event => {event.preventDefault();const name=topic.trim();if(!name)return;const result=await act("start",async()=>{let profile=data.profiles.find(p=>p.name===name);if(!profile){const saved=await api.intelligenceProfile({name,query:name,frequency:"manual"});profile=saved.profile;}if(!profile?.id)throw new Error("主题保存失败，请重试");setSelectedTopic(profile.id);await api.intelligenceRun(profile.id);return profile;},"正在寻找相关资料，结果会自动出现在这里");if(result)setTopic("");};
   const saveProfile = async event => {event.preventDefault();const result=await act("profile",()=>api.intelligenceProfile({...editing,query:editing.query?.trim() || editing.name.trim()}),"关注方向已保存");if(result)setEditing(null);};
   const saveNote = async event => {event.preventDefault();const result=await act("note",()=>api.intelligenceSource(note),"已收集，下次相关调研会参考这条记录");if(result){const body=note.body;setNote({title:"",body:"",url:""});setShowNote(false);try{const linked=await api.wikiConnections(body.slice(0,500));setConnections(linked.items || []);}catch{setNotice("灵感已保存，Wiki 关联暂时无法读取");}}};
-  return <div className="intelligence">
+  return <div className="intel-workspace intelligence">
     <IntelligenceNav current={view} onGo={onGo} />
-    <PageHeader
+    <IntelligenceHeader
       title={page === "runs" ? "处理记录" : page === "settings" ? "关注与调研" : page === "inbox" ? (initialAction === "manual" ? "我的灵感" : "收集箱") : "选题发现"}
       aside={page === "runs" ? <button className="btn" onClick={()=>onGo("intel")}>返回精选</button> : page === "settings"
         ? <button className="btn btn-primary" onClick={()=>setEditing(fresh())}>添加主题</button>
@@ -104,7 +105,7 @@ export function Intelligence({view, initialAction, onGo}) {
         {data.profiles.map(profile=><article className="intel-profile" key={profile.id}><div><h2>{profile.name}</h2><p className="intel-hint">{{manual:"需要时调研",daily:"每天跟进",weekly:"每周跟进"}[profile.frequency]}{profile.enabled === false && " · 已暂停"}</p></div><div className="intel-actions"><button className="btn" disabled={Boolean(busy) || active.some(r=>r.profileId===profile.id)} onClick={()=>act(profile.id,()=>api.intelligenceRun(profile.id),"已开始调研")}>调研一次</button><button className="btn" onClick={()=>setEditing({...fresh(),...profile})}>编辑</button>{profile.frequency!=="manual" && <button className="btn" disabled={Boolean(busy)} onClick={()=>act(profile.id,()=>api.intelligenceProfile({...profile,enabled:!profile.enabled}))}>{profile.enabled ? "暂停" : "启用"}</button>}</div></article>)}
         <p className="intel-hint intel-schedule-note">定期调研在工作台开启时执行，错过的计划会在下次开启后补跑。</p>
         </>}
-        <section className="intel-history"><h2>调研记录</h2>{!data.runs.length && <p className="intel-hint">首次执行后，这里会记录实际来源覆盖和结果。</p>}{data.runs.map(run=><details key={run.id} className="intel-run"><summary><span>{data.profiles.find(p=>p.id===run.profileId)?.name || "调研"}</span><span>{STATUS[run.status] || run.status} · {time(run.createdAt)}</span></summary>{run.stage && <p>{stageLabel(run.stage)}</p>}{run.error && <p className="intel-error">{run.error}</p>}{run.coverage?.filter(c=>c.provider !== "plan").map((c,index)=><IntelligenceStep key={`${c.provider}-${index}`} step={c}/>)}{run.coverage?.filter(c=>c.uncertain).map(c=><label className="intel-recovery" key={c.provider}>{sourceLabel(c.provider)} 采集恢复 ID<p className="intel-hint">上次请求结果未确认。请从服务商任务记录填写已有采集 ID，避免重复付费；没有 ID 时不会重新发起付费采集。</p><input value={recovery[run.id]?.[c.provider] || ""} placeholder="s_…" onChange={e=>setRecovery({...recovery,[run.id]:{...recovery[run.id],[c.provider]:e.target.value}})}/></label>)}{["failed","partial","cancelled"].includes(run.status) && <button className="btn" disabled={Boolean(busy)} onClick={()=>act(run.id,()=>api.intelligenceRetry(run.id,{snapshotIds:recovery[run.id] || {}}),"已重新安排调研")}>重试调研</button>}</details>)}</section>
+        <section className="intel-history">{page === "settings" && <h2>调研记录</h2>}<div className="intel-history-columns" aria-hidden="true"><span>主题 / 任务</span><span>处理状态</span><span>开始时间</span></div>{!data.runs.length && <p className="intel-hint">首次执行后，这里会记录实际来源覆盖和结果。</p>}{data.runs.map(run=><details key={run.id} className="intel-run"><summary><span>{data.profiles.find(p=>p.id===run.profileId)?.name || "调研"}</span><span className="intel-run-state" data-state={run.status}>{STATUS[run.status] || run.status}</span><time>{time(run.createdAt)}</time></summary>{run.stage && <p>{stageLabel(run.stage)}</p>}{run.error && <p className="intel-error">{run.error}</p>}{run.coverage?.filter(c=>c.provider !== "plan").map((c,index)=><IntelligenceStep key={`${c.provider}-${index}`} step={c}/>)}{run.coverage?.filter(c=>c.uncertain).map(c=><label className="intel-recovery" key={c.provider}>{sourceLabel(c.provider)} 采集恢复 ID<p className="intel-hint">上次请求结果未确认。请从服务商任务记录填写已有采集 ID，避免重复付费；没有 ID 时不会重新发起付费采集。</p><input value={recovery[run.id]?.[c.provider] || ""} placeholder="s_…" onChange={e=>setRecovery({...recovery,[run.id]:{...recovery[run.id],[c.provider]:e.target.value}})}/></label>)}{["failed","partial","cancelled"].includes(run.status) && <button className="btn" disabled={Boolean(busy)} onClick={()=>act(run.id,()=>api.intelligenceRetry(run.id,{snapshotIds:recovery[run.id] || {}}),"已重新安排调研")}>重试调研</button>}</details>)}</section>
       </>}
     </>}
     {linking && <SourceResearchPicker source={linking} onClose={()=>setLinking(null)} onGo={onGo}/> }

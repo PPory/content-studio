@@ -1,16 +1,9 @@
+import { IntelligenceReader } from "../components/IntelligenceReader.jsx";
+import { IntelligenceHeader } from "../components/IntelligenceHeader.jsx";
 import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
-// 情报 · 今日精选 / 解读详情 / 每周回顾。
-//
-// 这一页每天要做的事只有一件：**一批精选进来，逐条判断留、弃、还是展开成选题。**
-// 所有版面决定都从这句话推出来——
-//   - 页名和说明不占正文（外壳页头已经写了「情报 / 今日精选」，见 `lib/view-slots.js`）；
-//   - 系统状态（这批什么时候采的、覆盖了哪些来源）压成一行，它是注解不是主角；
-//   - 读一条不离开列表（右侧 peek 面板），↑/↓ 换条、Esc 关掉、S 收藏、E 不感兴趣；
-//   - 一屏只有一颗实心黑：「获取一批精选」，或者面板里的「加入选题」。
-//
-// ⚠️ **页头、页签、空态、错误框、时间格式一律用 `components/ui.jsx` 那一份。**
-// 这一页曾经每样都自己写了一遍（`.brief-page-header` / `.brief-tabs` / `.brief-empty` …），
-// 于是同一个动作在情报和别的模块长两个样子，而两边都不会报错。
+// 情报内容区按设计参考使用页内标题、双列精选和目录阅读布局。
+// 原有侧栏与二级导航保持不变；共用筛选、错误、空态和确认组件。
+// 来源与处理失败仍可展开核对，候选不会因阅读或切换视图而写入。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api.js";
@@ -18,7 +11,7 @@ import { AssistantPane } from "../components/assistant/AssistantPane.jsx";
 import { IntelligenceAngles } from "../components/IntelligenceAngles.jsx";
 import { BriefPeek } from "../components/BriefPeek.jsx";
 import { BriefReading, briefCardMeta, briefDate, confidenceLabel, editorialLabel, freshnessLabel, markdown, platformName, safeUrl, sourceDate } from "../components/BriefReading.jsx";
-import { Empty, ErrorNote, FilterHeader, LayoutToggle, Loading, Note, PageHeader, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
+import { Empty, ErrorNote, LayoutToggle, Loading, Note, SectionHead, Toast, ViewTabs } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
 import { useLayoutMode } from "../lib/use-layout-mode.js";
 import { IconRadar2, IconSettings } from "../components/icons.jsx";
@@ -264,14 +257,13 @@ export function IntelligenceFeed({ view, state, onGo }) {
   const startMerge = async (ids) => {
     onGo("intel-topics", JSON.stringify({briefIds:ids}));
   };
-  const report = data.reports.find((r) => r.id === state);
   const latestRun = data.latestRun;
   const errorNote = error ? <ErrorNote error={{ message: error }} what="读取情报" onRetry={() => load()} /> : null;
 
   // ---- 整页详情 -----------------------------------------------------------
   if (detail) {
     return (
-      <div className="intel-feed intel-feed--detail">
+      <div className="intel-feed intel-feed--detail intel-workspace-reading">
         <IntelligenceNav current="intel" onGo={onGo} />
         {!brief ? (
           detailError ? (
@@ -360,9 +352,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
   // ---- 每周回顾 -----------------------------------------------------------
   if (reports) {
     return (
-      <div className="intel-feed">
+      <div className="intel-feed intel-workspace">
         <IntelligenceNav current="intel-reports" onGo={onGo} />
-        <PageHeader
+        <IntelligenceHeader
           title="每周回顾"
           count={data.reports.length || undefined}
           aside={
@@ -381,7 +373,9 @@ export function IntelligenceFeed({ view, state, onGo }) {
           }
         />
         {errorNote}
-        {loading ? <Loading rows={4} /> : report ? (
+        {loading ? <Loading rows={4} /> : !data.reports.length ? (
+          <Empty icon={IconRadar2}><h2>把一周的信息连起来</h2><p>点击「生成本周回顾」，整理本周的变化、实践与待观察问题。</p></Empty>
+        ) : <IntelligenceReader items={data.reports} label="每周回顾" selectedKey={state || ""} onSelect={id=>onGo("intel-reports",id || undefined)} title={item=>item.title} meta={item=>`${briefDate(item.periodStart || item.coverage?.from)} — ${briefDate(item.periodEnd || item.coverage?.to)}`} render={report=>(
           <article className="brief-report">
             <button type="button" className="btn btn-sm brief-back" onClick={() => onGo("intel-reports")}>← 全部周报</button>
             <h1>{report.title}</h1>
@@ -404,25 +398,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
               </section>
             ) : null}
           </article>
-        ) : !data.reports.length ? (
-          <Empty icon={IconRadar2}>
-            <h2>把一周的信息连起来</h2>
-            <p>点击「生成本周回顾」，整理本周的变化、实践与待观察问题。</p>
-          </Empty>
-        ) : (
-          <div className="rows brief-reports">
-            {data.reports.map((r) => (
-              <div className="row" key={r.id}>
-                <button type="button" className="row-head" onClick={() => onGo("intel-reports", r.id)}>
-                  <span className="row-title">{r.title}</span>
-                  <span className="row-meta">
-                    {briefDate(r.periodStart || r.coverage?.from)} — {briefDate(r.periodEnd || r.coverage?.to)}
-                  </span>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        )}/>}
       {dismissDialog()}
         <Toast text={notice?.text} detail={notice?.detail} onUndo={notice?.undo} onClose={() => setNotice(null)} />
       </div>
@@ -431,11 +407,10 @@ export function IntelligenceFeed({ view, state, onGo }) {
 
   // ---- 今日精选 -----------------------------------------------------------
   return (
-    <div className="intel-feed">
+    <div className="intel-feed intel-workspace">
       <IntelligenceNav current="intel" onGo={onGo} />
-      {/* 胶囊、动作和计数走和 找题 / 选题 / 复盘 / 数据 / 热点 同一份页头。
-          说明句不传：它是给第一次来的人的，不该每天占着第一屏最上面一行（空态里有）。 */}
-      <FilterHeader
+      {/* 情报内共用页头；筛选沿用 ViewTabs 行为，仅在本区使用下划线样式。 */}
+      <IntelligenceHeader
         title="精选"
         chips={
           <ViewTabs
@@ -686,7 +661,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
           </button>
           <span className="brief-row__summary">{item.summary}</span>
           <span className="row-meta">
-            <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {freshnessLabel(item.freshnessKind)} · {briefCardMeta(item)}</span>
+            <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {briefCardMeta(item)}</span>
             <span className="brief-card__acts">
               {item.dismissed ? (
                 <button type="button" className="text-action" disabled={Boolean(busy)} onClick={() => dismiss(item, false)}>恢复推荐</button>
@@ -737,7 +712,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
               否则按钮的可访问名就不再是标题本身了。 */}
           <span className="brief-card__sr">{item.read ? "已读" : "未读"}</span>
           <span className="brief-card__kind">
-            {item.analysis ? (item.analysis.documentCount > 1 ? `综合 ${item.analysis.documentCount} 份` : "单篇") : ""}
+            {freshnessLabel(item.freshnessKind)}{item.analysis ? (item.analysis.documentCount > 1 ? ` · 综合 ${item.analysis.documentCount} 份` : " · 单篇") : ""}
             {item.changeNote ? " · 有更新" : ""}
           </span>
         </div>
@@ -747,7 +722,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
         </button>
         <p className="brief-card__summary">{item.summary}</p>
         <footer>
-          <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {freshnessLabel(item.freshnessKind)} · {briefCardMeta(item)}</span>
+          <span className="brief-card__meta">{editorialLabel(item.editorialState)} · {briefCardMeta(item)}</span>
           {/* 「已忽略」那一档里，这一行唯一要回答的问题是「要不要拿回来」 */}
           <span className="brief-card__acts">
             {item.dismissed ? (
