@@ -1,3 +1,4 @@
+import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
 // 情报 · 今日精选 / 解读详情 / 每周回顾。
 //
 // 这一页每天要做的事只有一件：**一批精选进来，逐条判断留、弃、还是展开成选题。**
@@ -238,6 +239,8 @@ export function IntelligenceFeed({ view, state, onGo }) {
     const onKey = (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey || typingIn(event.target)) return;
       if (settingsOpen || dismissing) return;
+      // Let native links activate before handling the reading shortcut.
+      if (event.key === "Enter" && event.target instanceof Element && event.target.closest("a[href]")) return;
       const active = peekIndex >= 0 ? items[peekIndex] : null;
       const keys = {
         ArrowDown: () => step(1), j: () => step(1),
@@ -269,6 +272,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
   if (detail) {
     return (
       <div className="intel-feed intel-feed--detail">
+        <IntelligenceNav current="intel" onGo={onGo} />
         {!brief ? (
           detailError ? (
             <section className="brief-detail-fallback">
@@ -357,6 +361,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
   if (reports) {
     return (
       <div className="intel-feed">
+        <IntelligenceNav current="intel-reports" onGo={onGo} />
         <PageHeader
           title="每周回顾"
           count={data.reports.length || undefined}
@@ -427,6 +432,7 @@ export function IntelligenceFeed({ view, state, onGo }) {
   // ---- 今日精选 -----------------------------------------------------------
   return (
     <div className="intel-feed">
+      <IntelligenceNav current="intel" onGo={onGo} />
       {/* 胶囊、动作和计数走和 找题 / 选题 / 复盘 / 数据 / 热点 同一份页头。
           说明句不传：它是给第一次来的人的，不该每天占着第一屏最上面一行（空态里有）。 */}
       <FilterHeader
@@ -469,7 +475,6 @@ export function IntelligenceFeed({ view, state, onGo }) {
         }
       />
 
-      <nav className="brief-management" aria-label="情报管理"><button className="text-action" onClick={()=>onGo("intel-channels")}>信源管理</button><button className="text-action" onClick={()=>onGo("intel-runs")}>处理记录</button><button className="text-action" onClick={()=>onGo("intel-reports")}>每周回顾</button><button className="text-action" onClick={()=>onGo("hot")}>AI 热点</button></nav>
       {errorNote}
 
       {loading ? <Loading rows={5} /> : (

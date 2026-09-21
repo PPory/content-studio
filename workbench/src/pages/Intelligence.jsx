@@ -1,3 +1,4 @@
+import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { SourceResearchPicker } from "../components/SourceResearchPicker.jsx";
 import { api } from "../lib/api.js";
@@ -70,6 +71,7 @@ export function Intelligence({view, initialAction, onGo}) {
   const saveProfile = async event => {event.preventDefault();const result=await act("profile",()=>api.intelligenceProfile({...editing,query:editing.query?.trim() || editing.name.trim()}),"关注方向已保存");if(result)setEditing(null);};
   const saveNote = async event => {event.preventDefault();const result=await act("note",()=>api.intelligenceSource(note),"已收集，下次相关调研会参考这条记录");if(result){const body=note.body;setNote({title:"",body:"",url:""});setShowNote(false);try{const linked=await api.wikiConnections(body.slice(0,500));setConnections(linked.items || []);}catch{setNotice("灵感已保存，Wiki 关联暂时无法读取");}}};
   return <div className="intelligence">
+    <IntelligenceNav current={view} onGo={onGo} />
     <PageHeader
       title={page === "runs" ? "处理记录" : page === "settings" ? "关注与调研" : page === "inbox" ? (initialAction === "manual" ? "我的灵感" : "收集箱") : "选题发现"}
       aside={page === "runs" ? <button className="btn" onClick={()=>onGo("intel")}>返回精选</button> : page === "settings"

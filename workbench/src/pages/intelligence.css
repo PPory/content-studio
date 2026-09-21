@@ -149,3 +149,11 @@
 .intel-result-toolbar > .intel-hint { flex:1; margin:0; }
 .intel-result-toolbar > .search-box { flex-shrink:0; }
 @media(max-width:640px) { .intel-result-toolbar > .intel-hint {flex-basis:100%;} .intel-result-toolbar > .search-box {width:100%;} }
+
+/* Processing history shares the reference board's quiet disclosure rows. */
+.intel-history .intel-run { padding: 18px 0; }
+.intel-history .intel-run > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; }
+.intel-history .intel-run > summary > span:first-child { font-weight: 600; }
+.intel-history .intel-run > summary > span:last-child { color: var(--text-3); font-size: var(--fs-xs); }
+.intel-history .intel-run[open] { border-bottom-color: var(--border-strong); }
+.intel-history .intel-run > summary:focus-visible { outline: 2px solid var(--text-2); outline-offset: 4px; }

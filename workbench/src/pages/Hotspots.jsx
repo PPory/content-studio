@@ -1,3 +1,4 @@
+import { IntelligenceNav } from "../components/IntelligenceNav.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { SourceResearchPicker } from "../components/SourceResearchPicker.jsx";
 import { api } from "../lib/api.js";
@@ -99,6 +100,7 @@ export function Hotspots({ onIntake, onGo }) {
 
   return (
     <>
+      <IntelligenceNav current="hot" onGo={onGo} />
       <FilterHeader
         title="AI 热点"
         desc="刷新、看原文、收进灵感库。这一页不做分析，也不会替你写。"

@@ -24,7 +24,6 @@
 .brief-v2-labels { display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--text-3); }
 .brief-v2-section { margin:22px 0; line-height:1.85; }
 .brief-v2-section h2 { font-size:14px; color:var(--text-2); }
-.brief-management { display:flex; flex-wrap:wrap; gap:16px; margin:12px 0 18px; font-size:13px; }
 .brief-dismiss-reasons { padding:10px 0; display:flex; flex-wrap:wrap; gap:8px; }
 @media(max-width:600px) { .intel-topic-content dl>div { grid-template-columns:1fr; gap:4px; } .intel-topic-preview { padding:14px; } .intel-v2-toolbar { align-items:stretch; } .intel-v2-toolbar>* { max-width:100%; } }
 .acquisition-panel { margin:28px 0; border-top:1px solid var(--border); padding-top:18px; }
@@ -113,3 +112,47 @@
 .acquisition-review .intel-v2-actions { flex-wrap:wrap; }
 .acquisition-review :focus-visible,.acquisition-reading-body :focus-visible { outline:2px solid var(--text-2); outline-offset:3px; }
 @media(max-width:600px) { .acquisition-review-cluster { padding:18px 0; } .acquisition-review-cluster h2 { font-size:18px; } .acquisition-cluster-edit label { flex-wrap:wrap; } .acquisition-review .markdown-body pre { max-width:100%; overflow:auto; } }
+
+/* Intelligence reference board: rows for text, white surfaces for original reading. */
+.intel-topics-page .intel-v2-list > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 28px;
+  padding: 26px 0;
+}
+.intel-topics-page .intel-v2-list > article > header { grid-column: 1 / -1; align-items: baseline; }
+.intel-topics-page .intel-v2-list > article > .intel-v2-actions { align-self: start; margin: 0; }
+.intel-topics-page .intel-v2-state {
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.intel-topics-page .intel-v2-state[data-state="ready"] { color: var(--text-1); font-weight: 650; }
+.intel-topics-page .intel-topic-content { min-width: 0; }
+.intel-topics-page .intel-topic-content dl { margin: 0; }
+.intel-topics-page .intel-topic-content dl > div { grid-template-columns: 112px minmax(0, 1fr); gap: 16px; }
+.intel-topics-page .intel-topic-content dd { overflow-wrap: anywhere; }
+.intel-topics-page .intel-topic-content blockquote { margin: 12px 0; padding-left: 16px; border-left: 2px solid var(--border-strong); }
+.intel-channels-page .acquisition-group > h3 { padding: 12px 0; }
+.intel-channels-page .intel-v2-list article > header { gap: 10px 16px; }
+.intel-channels-page .intel-v2-list article > header > h2 { flex: 1; }
+.intel-channels-page .intel-channel-error { border-left: 2px solid currentColor; padding-left: 12px; }
+.intel-resources-page .intel-v2-resource > summary { font-size: var(--fs-base); font-weight: 550; }
+.intel-resources-page .intel-v2-resource > summary span { font-weight: 400; }
+.intel-resources-page .intel-v2-resource[open] { padding-bottom: 24px; }
+.intel-resources-page :is(.acquisition-reading-body, .acquisition-raw-body, .intel-resource-body--long) {
+  background: var(--surface);
+  padding: 20px 24px;
+  border-radius: var(--r-md);
+  margin-top: 16px;
+}
+.intel-resources-page .acquisition-resource-filters { padding-block: 12px; border-bottom: 1px solid var(--border); }
+.intel-v2-resource > summary:focus-visible { outline: 2px solid var(--text-2); outline-offset: 4px; }
+@media (max-width: 600px) {
+  .intel-topics-page .intel-v2-list > article { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 20px 0; }
+  .intel-topics-page .intel-topic-content dl > div { grid-template-columns: 1fr; gap: 4px; }
+  .intel-channels-page .intel-v2-list article > header > h2 { flex-basis: 70%; }
+  .intel-resources-page :is(.acquisition-reading-body, .acquisition-raw-body, .intel-resource-body--long) { padding: 16px; }
+  .intel-resources-page .acquisition-resource-filters label { flex-wrap: wrap; }
+}
