@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {openWorkspace} from '../server/storage/workspace.mjs';
+import {addIntelligenceSource} from '../server/domain/intelligence.mjs';
+import {intelligenceLibrary} from '../server/domain/intelligence-library.mjs';
+import {visibleDerived} from '../server/acquisition/compatibility.mjs';
+const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-intel-library-'));let w;
+try {
+ w=await openWorkspace({xenhoHome:root});
+ const add=(i,overrides={})=>addIntelligenceSource(w,{title:`AI experiment ${i}`,url:`https://library.example/${i}`,body:`A language model report ${i}. `+'verified detail '.repeat(70),provider:'web',readLevel:'original',...overrides});
+ const sources=w.db.transaction(()=>Array.from({length:520},(_,i)=>add(i)))();
+ const duplicate=add(0,{body:'A longer revised report. '+'verified detail '.repeat(100)});
+ let page=intelligenceLibrary(w,{limit:'100',offset:'500'});
+ assert.equal(intelligenceLibrary(w,{group:'legacy'}).total,520);
+ assert.equal(page.total,520);assert.equal(page.items.length,20);assert.equal(page.hasMore,false);
+ const ids=[];for(let offset=0;offset<520;offset+=100)ids.push(...intelligenceLibrary(w,{offset,limit:100}).items.map(i=>i.id));
+ assert.equal(new Set(ids).size,520,'stable pages do not repeat records');
+ page=intelligenceLibrary(w,{q:'AI experiment 0'});assert.equal(page.total,1);assert.equal(page.items[0].id,duplicate.id);assert.equal(page.items[0].aliasSourceIds.length,2);assert.equal(page.items[0].body.length,600);assert.equal(page.items[0].bodyTruncated,true);
+ assert.equal(intelligenceLibrary(w,{q:'definitely absent'}).total,0);
+ assert.equal(intelligenceLibrary(w,{q:'verified detail'}).total,520);
+ for(const input of [{limit:0},{limit:101},{limit:1.1},{offset:-1},{offset:'NaN'},{offset:Infinity},{q:{}},{q:'x'.repeat(501)},{group:'unknown'}])assert.throws(()=>intelligenceLibrary(w,input),e=>e.status===400);
+ const source=sources[1],derived={title:'An AI interpretation',body:'Derived private text',evidence:[{sourceId:source.id,quote:'report'}]};
+ w.db.prepare("UPDATE intel_sources SET acquisition_identity=?,rights_json=? WHERE id=?").run('rights-test',JSON.stringify({aiAllowed:true,exportAllowed:true}),source.id);
+ assert.equal(visibleDerived(w,derived).body,derived.body);
+ w.db.prepare("UPDATE intel_sources SET rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:false,exportAllowed:true}),source.id);
+ const hidden=visibleDerived(w,derived);assert.equal(hidden.contentRestricted,true);assert.equal(hidden.editorialState,'needs_review');assert.deepEqual(hidden.evidence,[]);assert.notEqual(hidden.body,derived.body);
+ assert.equal(intelligenceLibrary(w,{q:source.title}).total,111,'AI revocation does not remove locally readable originals');
+ w.db.prepare("UPDATE intel_sources SET rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:true,exportAllowed:false}),source.id);
+ assert.equal(visibleDerived(w,derived).body,derived.body,'export rights differ from AI-derived display rights');
+ w.db.prepare("UPDATE intel_sources SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(source.id);
+ assert.equal(visibleDerived(w,derived).contentRestricted,true);assert(!intelligenceLibrary(w,{q:source.title,limit:100}).items.some(i=>i.id===source.id));
+ w.db.prepare("UPDATE intel_sources SET deleted_at='2026-01-01' WHERE id=?").run(sources[2].id);
+ assert.equal(intelligenceLibrary(w).total,518);
+ assert.deepEqual(w.db.pragma('foreign_key_check'),[]);
+ console.log('intelligence-library: 520 sources, pagination, canonical dedup, full body search, invalid inputs, expiry/deletion and AI revocation passed');
+} finally {w?.close();assert(!path.relative(os.tmpdir(),root).startsWith('..'));await fs.rm(root,{recursive:true,force:true});}

@@ -1,3 +1,5 @@
+import { refreshIntelligenceFeed } from '../domain/intelligence-feed.mjs';
+import { unifiedAvailable } from '../domain/intelligence-unified.mjs';
 import { errorStatus, successStatus } from './health.mjs';
 import { collectAiHot } from './connectors/aihot.mjs';
 import { collectFollowBuilders } from './connectors/follow-builders.mjs';
@@ -60,6 +62,13 @@ export function scheduleAcquisition(w,{now=new Date(),env={},startup=false}={}) 
       w.db.prepare('UPDATE intel_channels SET next_due_at=? WHERE id=?').run(new Date(slotTime+interval*1000).toISOString(),channel.id);
     }
   })();
+  // Consume completed scheduled acquisition without changing polling or permissions.
+  if(unifiedAvailable(w)){
+   const latest=w.db.prepare("SELECT max(finished_at) at FROM acquisition_runs WHERE status='completed'").get()?.at;
+   const last=w.db.prepare("SELECT value FROM intel_unified_state WHERE key='acquisition-watermark'").get()?.value;
+   const active=w.db.prepare("SELECT id FROM local_jobs WHERE kind LIKE 'acquisition.%' AND status IN ('queued','retry','running') LIMIT 1").get();
+   if(latest&&latest!==last&&!active){refreshIntelligenceFeed(w,{collect:false});w.db.prepare("INSERT INTO intel_unified_state(key,value) VALUES('acquisition-watermark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(latest);}
+  }
   return out;
 }
 async function* fulltext({w,payload,channel,request,authorizedSources}) {

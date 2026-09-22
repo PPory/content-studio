@@ -1,3 +1,4 @@
+import { unifiedAvailable, unifiedAcquisitionPending, deferUnifiedRun, executeUnifiedBriefs } from './intelligence-unified.mjs';
 import { collectedForAnalysis, sourcePermission } from '../acquisition/compatibility.mjs';
 import fs from "node:fs";
 import { normalizeSocialRows, isSocialPost } from "./intelligence-social.mjs";
@@ -122,6 +123,10 @@ export async function executeIntelligence(w,env,{runId},deps={}) {
  current(w,runId,deps);
  updateRun(w,runId,"running","正在调研");
  try{
+  if(p.output==='briefs'&&p.providers.includes('collected')&&unifiedAvailable(w)){
+   if(unifiedAcquisitionPending(w,runId))return deferUnifiedRun(w,runId,'正在更新已启用来源，已有推荐仍可阅读');
+   return await executeUnifiedBriefs(w,env,runId,{...deps,assertCurrent:()=>current(w,runId,deps)});
+  }
   let plan=stepState(w,runId,"plan");
   if(plan.status!=="done") {updateRun(w,runId,"running","理解主题，准备搜索");plan=p.providers.every(x=>['collected','channels','local','aihot'].includes(x))?{query:p.query}:await researchPlan(env,p,deps);current(w,runId,deps);saveStep(w,runId,"plan","done",plan);}
   const collection={...p,focus:p.query,query:plan.query||p.query};

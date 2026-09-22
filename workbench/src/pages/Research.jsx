@@ -1,3 +1,4 @@
+import { LegacyTopicOpen, IntelligenceIntentEvidence } from "../components/IntelligenceIntentEvidence.jsx";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TopicArticle } from "../components/TopicArticle.jsx";
 import "./topic-workspace.css";
@@ -17,6 +18,7 @@ import { useLayoutMode } from "../lib/use-layout-mode.js";
 const PAGE_SIZE = 12;
 
 export function Research({ researchId, onGo, onForceGo, registerNavigationGuard }) {
+  if(researchId?.startsWith("legacy:"))return <LegacyTopicOpen id={researchId} onGo={onGo}/>;
   return researchId ? <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} /> : <ResearchList onGo={onGo} />;
 }
 function ResearchList({ onGo }) {
@@ -72,6 +74,7 @@ function ResearchList({ onGo }) {
     <PageHeader title="选题" aside={<button className="btn btn-primary btn-sm" aria-expanded={creating || items?.length === 0} onClick={() => creating ? setCreating(false) : openCreate()}>{creating ? "收起新建" : "＋ 新建选题"}</button>} />
     <form className="research-create" hidden={!creating && items?.length !== 0} onSubmit={create}><label>你想弄明白什么？<input ref={input} aria-label="你想弄明白什么" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="从一个真实的疑问开始" /></label><button className="btn btn-primary" disabled={busy || !question.trim()}>{busy ? "正在创建…" : "开始展开"}</button></form>
     <ErrorNote error={createError} what="创建选题" />
+    <button className="text-action" onClick={()=>onGo("bridge")}>从已有知识探索选题</button>
     <div className="research-overview-toolbar"><h2>我的选题 <span>{items?.length ?? "—"}</span></h2><div className="research-overview-tools"><SearchBox value={query} onChange={value => { setQuery(value); setPage(0); }} placeholder="搜索选题或笔记…" ariaLabel="搜索选题" /><LayoutToggle value={layout} onChange={setLayout} /></div></div>
     <ErrorNote error={error} what="读取选题" onRetry={load} />
     {items === null && !error ? <Loading rows={3} /> : null}
@@ -90,7 +93,7 @@ function ResearchList({ onGo }) {
             <span>{when}</span>
           </span>
           <span className="research-row__acts">
-            <RowDelete onDelete={() => trash(item)} title={`移入回收站：${title}`} onOpenChange={(open) => setConfirmRow(open ? item.id : "")} />
+            {!item.legacyTopic && <RowDelete onDelete={() => trash(item)} title={`移入回收站：${title}`} onOpenChange={(open) => setConfirmRow(open ? item.id : "")} />}
           </span>
         </div>
       </div>;
@@ -103,11 +106,11 @@ function ResearchList({ onGo }) {
           <footer><span>{Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`}</span><span>继续展开 →</span></footer>
         </button>
         <span className="research-card__acts">
-          <RowDelete
+          {!item.legacyTopic && <RowDelete
             onDelete={() => trash(item)}
             title={`移入回收站：${title}`}
             onOpenChange={(open) => setConfirmRow(open ? item.id : "")}
-          />
+          />}
         </span>
       </article>;
     })}</div>
@@ -134,7 +137,7 @@ function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard })
   const positionKey=`xenho:research-position:${id}`;
   const modalOpen=find || transfer!==null || excerpt!==null || Boolean(pending);
   const dialog=useDialog(modalOpen,()=>{if(!busy){setFind(false);setTransfer(null);setExcerpt(null);setPending(null);}});
-  useEffect(()=>{alive.current=true;let active=true;api.research(id).then(({research:r})=>{if(!active)return;latest.current=r;setRecord(r);let stored={};try{stored=JSON.parse(localStorage.getItem(positionKey)||"{}")}catch{}const found=r.conversations?.find(c=>c.id===stored.conversation?.id)||r.conversations?.[0]||null;setConversation(found);linkedConversation.current=found?.id||"";setProjectId(r.projects?.find(p=>p.id===stored.projectId)?.id||r.projects?.[0]?.id||"");setTab(stored.tab==="article"&&r.projects?.length?"article":"notes");setReady(true);api.recordActivity("research",id,{mode:"open"}).catch(()=>{});api.researchSummary(id).then(x=>{if(active)setSummary(x.summary)}).catch(e=>{if(active)setSummaryError(e)});}).catch(setError);return()=>{active=false;alive.current=false;};},[id]);
+  useEffect(()=>{alive.current=true;let active=true;api.research(id).then(({research:r})=>{if(!active)return;latest.current=r;setRecord(r);let stored={};try{stored=JSON.parse(localStorage.getItem(positionKey)||"{}")}catch{}const found=r.conversations?.find(c=>c.id===stored.conversation?.id)||r.conversations?.[0]||null;setConversation(found);linkedConversation.current=found?.id||"";setProjectId(r.projects?.find(p=>p.id===stored.projectId)?.id||r.projects?.[0]?.id||"");setTab(stored.tab==="article"&&r.projects?.length?"article":"notes");setReady(true);api.recordActivity("research",id,{mode:"open"}).catch(()=>{});!r.contentRestricted&&api.researchSummary(id).then(x=>{if(active)setSummary(x.summary)}).catch(e=>{if(active)setSummaryError(e)});}).catch(setError);return()=>{active=false;alive.current=false;};},[id]);
   useEffect(()=>{if(!ready)return;try{localStorage.setItem(positionKey,JSON.stringify({tab,conversation,projectId}));}catch{}},[tab,conversation,projectId,ready]);
   const summon=useCallback(()=>{setMobileChat(true);requestAnimationFrame(()=>chatRef.current?.querySelector("textarea")?.focus());},[]);
   useAssistantSummonTarget("research",summon);
@@ -157,6 +160,7 @@ function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard })
   async function selectConversation(value){if(!await saveAll())return;setConversation(record.conversations.find(c=>c.id===value)||null);linkedConversation.current=value;setChatKey(k=>k+1);setPrompt(null);setHandoff(null);}
   async function newConversation(){if(!await saveAll())return;setConversation(null);linkedConversation.current="";setChatKey(k=>k+1);setPrompt(null);setHandoff(null);summon();}
   if(!record||!ready)return <section className="task-page"><ErrorNote error={error} what="读取选题"/>{!error?<Loading rows={3}/>:null}</section>;
+  if(record.contentRestricted)return <section className="task-page"><button className="btn" onClick={()=>onGo("research")}>← 返回选题</button><h1>选题来源访问受限</h1><p>相关来源已过期或权限发生变化。原有笔记仍保留，当前不能读取、编辑或交给 AI 处理。</p></section>;
   const articleMode=tab==="article"&&Boolean(projectId);
   const summaryText=summary?.text?.replace(/chat-[a-zA-Z0-9_-]+:\d+/g, token => {
     const index=summary.sources?.findIndex(source=>source.id===token);return index>=0?`[${index+1}]`:"[讨论记录]";
@@ -227,6 +231,7 @@ function ResearchDetail({ id, onGo, onForceGo = onGo, registerNavigationGuard })
               </details>
               <section className="topic-notebook">{/* 保存的结果贴着保存动作。它原来吊在左上角「所有选题」旁边——离你刚才动手的地方一整屏远。 */}
               <header><h2>我的笔记</h2><small role="status">{busy?"保存中…":status||"已保存"}</small><button className="btn btn-sm" disabled={!edited||busy} onClick={save}>保存笔记</button></header><textarea ref={notesRef} aria-label="我的笔记" className="topic-notes" rows={6} value={record.notes||""} onChange={e=>change("notes",e.target.value)} onBlur={save} placeholder="写下自己的判断，或从右侧讨论中摘录。"/></section>
+              <IntelligenceIntentEvidence intents={record.intelligenceIntents} onGo={onGo}/>
               <details className="topic-detail"><summary>未解的问题{record.openQuestions?.trim()?" · 有记录":""}</summary><textarea aria-label="未解问题" rows={4} placeholder="还有哪些地方需要核实或继续讨论？" value={record.openQuestions||""} onChange={e=>change("openQuestions",e.target.value)} onBlur={save}/></details>
               <details className="topic-detail" open><summary>关联资料 <span>{record.references?.length||0}</span></summary><div className="topic-linked">{record.references?.map(r=><article key={r.id}><button disabled={r.missing} onClick={()=>onGo("library",`${r.kind}:${r.id}`)}><IconFileText size={16}/>{r.title||"来源已失效"}</button></article>)}</div><button className="btn btn-sm" onClick={()=>setShowSources(true)}>{record.references?.length?"管理资料":"关联一份资料"}</button></details>
             </div>}

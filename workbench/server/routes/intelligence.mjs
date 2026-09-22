@@ -1,3 +1,4 @@
+import { intelligenceLibrary } from "../domain/intelligence-library.mjs";
 import { fail,json,readJsonBody } from "../lib/http.mjs";
 import { intelligenceOverview,intelligenceSource,collectHotIntelligenceSource,linkIntelligenceSource,saveIntelligenceProfile,enqueueIntelligence,retryIntelligence,cancelIntelligence,addIntelligenceSource,adoptIntelligenceCard,setIntelligenceCard } from "../domain/intelligence.mjs";
 function route(method,path,action){return {method,path,handler:async c=>{try{
@@ -6,6 +7,7 @@ function route(method,path,action){return {method,path,handler:async c=>{try{
  json(c.res,{ok:true,...await action({...c,workspace,body})});
  }catch(e){fail(c.res,e.message,{status:e.status||400});}}};}
 export const intelligenceRoutes=[
+ route("GET","/api/workspace/intelligence/library",({workspace,url})=>intelligenceLibrary(workspace,Object.fromEntries(url.searchParams))),
  route("POST","/api/workspace/intelligence/hot-collection",({workspace,body})=>({source:collectHotIntelligenceSource(workspace,body)})),
  route("POST","/api/workspace/intelligence/sources/:id/research",({workspace,params,body})=>({research:linkIntelligenceSource(workspace,params.id,body)})),
  route("GET","/api/workspace/intelligence/sources/:id",({workspace,params})=>({source:intelligenceSource(workspace,params.id)})),

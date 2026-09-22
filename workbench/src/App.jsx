@@ -34,7 +34,7 @@ import { Sources } from "./pages/Sources.jsx";
 import { Shelf } from "./pages/Shelf.jsx";
 import { Hotspots } from "./pages/Hotspots.jsx";
 import { IntelligenceFeed } from "./pages/IntelligenceFeed.jsx";
-import { IntelligenceTopics } from "./pages/IntelligenceTopics.jsx";
+import { IntelligenceUnified } from "./pages/IntelligenceUnified.jsx";
 import { IntelligenceResources } from "./pages/IntelligenceResources.jsx";
 import { IntelligenceChannels } from "./pages/IntelligenceChannels.jsx";
 import { Intelligence } from "./pages/Intelligence.jsx";
@@ -54,9 +54,9 @@ import { assistantSummonDestination, summonAssistant } from "./lib/assistant-sum
  */
 const STATUS_RETRY_MS = [3000, 8000, 20000];
 
-const CONTENT_VIEWS = new Set(["research", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
+const CONTENT_VIEWS = new Set(["bridge", "research", "ideas", "seeds", "content", "project", "series", "series-detail", "topics", "drafts", "typeset"]);
 const KNOWLEDGE_VIEWS = new Set(["library", "knowledge", "entries", "shelf", "sources", "notes", "personal-assets"]);
-const DISCOVER_VIEWS = new Set(["intel-topics", "intel-resources", "intel-channels", "intel-runs", "bridge", "intel", "intel-detail", "intel-reports", "intel-legacy", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
+const DISCOVER_VIEWS = new Set(["intel-topics", "intel-resources", "intel-channels", "intel-runs", "intel", "intel-detail", "intel-reports", "intel-inbox", "intel-settings", "discover", "hot", "insights", "materials", "collections", "inbox"]);
 // 知识库的来源归类。⚠️ 和每本书的「藏书 / 资料」正交：那个管正文能不能改。
 const SHELF_KINDS = Object.freeze(["书籍"]);
 /**
@@ -88,7 +88,7 @@ const SUBNAV_HOME = {
   "intel-channels": "intel",
   "intel-runs": "intel",
   "intel-inbox": "intel-resources",
-  bridge: "intel-topics",
+  bridge: "research",
   hot: "intel-resources",
   "intel-reports": "intel",
   project: "content",
@@ -123,12 +123,7 @@ const NAV = [
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },
   ] },
-  // 情报围绕阅读精选、形成选题和保留资料组织。
-  { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v), children: [
-    { to: "intel", label: "精选" },
-    { to: "intel-topics", label: "选题" },
-    { to: "intel-resources", label: "资料" },
-  ] },
+  { key: "discover", to: "intel", match: (v) => DISCOVER_VIEWS.has(v) },
   { key: "review", to: "review", match: (v) => REVIEW_VIEWS.has(v), children: [
     { to: "review", label: "复盘" },
     { to: "review-performance", label: "数据" },
@@ -199,8 +194,16 @@ function readHash() {
     window.history.replaceState(null, "", canonical);
     return legacyMaterial;
   }
+  if (decodedView === "intel-topics") {
+    let pending = false;
+    try { pending = !!JSON.parse(decodedState || "{}").briefIds?.length; } catch {}
+    const target = {view: pending ? "intel" : "research", state: pending ? decodedState : (decodedState?.startsWith("legacy:") ? decodedState : "")};
+    window.history.replaceState(null,"",`#/${target.view}${target.state ? `/${encodeURIComponent(target.state)}` : ""}`);
+    return target;
+  }
   // 发现旧入口只做兼容跳转，不再让用户经过一张中转页。
-  const view = decodedView === "discover" ? "hot" : decodedView;
+  // 旧版工具书签仍进入对应设置或原始资料，其余回到统一阅读。
+  const view = decodedView === "discover" ? "intel" : decodedView === "intel-legacy" ? (decodedState === "settings" ? "intel-settings" : decodedState === "inbox" ? "intel-resources" : "intel") : decodedView;
   const known = VIEWS.includes(view) ? view : "today";
   /**
    * ⚠️ **没带状态时套上那个源的 `defaultState`，而且写回地址栏。**
@@ -673,7 +676,7 @@ export function App() {
               // ⚠️ 归属判据只写在 `SUBNAV_HOME` 那一张表里，别在这儿再列一遍 view 名
               const child = item?.children?.find((c) => c.to === (SUBNAV_HOME[route.view] || route.view));
               // 辅助页面在所属主入口之后补充当前页名。
-              const leaf = ({"intel-channels":"信源管理","intel-runs":"处理记录","intel-settings":"关注设置","intel-reports":"每周回顾",hot:"AI 热点",bridge:"知识选题"})[route.view] || (route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "");
+              const leaf = ({"intel-channels":"信源管理","intel-runs":"处理详情","intel-resources":"原始资料","intel-settings":"关注设置","intel-reports":"每周回顾",hot:"AI 热点",bridge:"知识选题"})[route.view] || (route.view === "entries" && String(route.state || "").startsWith("review") ? "待审阅" : "");
               return (
                 <>
                   {Icon ? <Icon aria-hidden="true" stroke={1.7} /> : null}
@@ -808,18 +811,16 @@ export function App() {
                 />
               ) : route.view === "hot" ? (
                 <Hotspots onIntake={setIntake} onGo={go} />
-              ) : route.view === "intel-topics" ? (
-                <IntelligenceTopics state={route.state} onGo={go} />
               ) : ["intel-resources", "intel-inbox"].includes(route.view) ? (
                 <IntelligenceResources onGo={go} />
               ) : route.view === "intel-channels" ? (
                 <IntelligenceChannels onGo={go} />
               ) : route.view === "intel-runs" ? (
                 <Intelligence view="intel-runs" onGo={go} />
-              ) : ["intel", "intel-detail", "intel-reports", "intel-settings", "insights"].includes(route.view) ? (
+              ) : route.view === "intel-reports" ? (
                 <IntelligenceFeed view={route.view} state={route.state} onGo={go} />
-              ) : ["intel-inbox", "intel-legacy"].includes(route.view) ? (
-                <Intelligence view={route.view === "intel-inbox" || route.state === "inbox" ? "intel-inbox" : route.state === "settings" ? "intel-settings" : "intel"} initialAction={route.view === "intel-inbox" ? "manual" : undefined} onGo={route.view === "intel-legacy" ? (view, state) => go(view === "intel-settings" || view === "intel-inbox" || view === "intel" ? "intel-legacy" : view, view === "intel-settings" ? "settings" : view === "intel-inbox" ? "inbox" : state) : go} />
+              ) : ["intel", "intel-detail", "intel-settings", "insights"].includes(route.view) ? (
+                <IntelligenceUnified view={route.view} state={route.state} onGo={go} />
               ) : route.view === "typeset" ? (
                 <Typeset onGo={go} />
               ) : route.view === "shelf" ? (

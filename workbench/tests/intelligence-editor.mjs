@@ -45,5 +45,10 @@ try {
  const candidate=(key,q)=>({groupKey:key,storyKey:key,title:key,summary:'有依据的概括',reason:'与学习有关',body:'解释原理。[来源1]',confidence:'reliable',kind:'practice',evidence:[{sourceId:originalSources.find(s=>s.title===key).id,quote:q}],wiki:[]});
  const repaired=await generateDailyBriefs(w,{},r,originalSources,[],{completeJson:async(_env,input)=>{if(JSON.parse(input.user).step==='organize')return {data:{groups}};repairCalls++;return repairCalls===1?{data:{briefs:[candidate('already-valid',quote),candidate('repairable','This fabricated quotation is not in the source.'),candidate('unrepairable','Another unsupported quotation with no source.')]}}:{data:{repairs:[{index:1,evidence:[{sourceId:originalSources[1].id,quote}]},{index:2,evidence:[{sourceId:originalSources[2].id,quote:'Still not present in the original source.'}]}]}};}});
  assert.equal(repairCalls,2,'at most one repair model call');assert.equal(repaired.saved.length,2);assert.equal(repaired.repaired,1);assert.equal(repaired.rejected,1,'unsupported repair still rejected');
+ const restrictedSource=intelligenceBrief(w,b.id).evidence[0].sourceId;
+ w.db.prepare("UPDATE intel_sources SET acquisition_identity='permission-test',rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:false,exportAllowed:true}),restrictedSource);
+ let composeChecked=false;
+ await generateDailyBriefs(w,{},r,originalSources,[],{completeJson:async(_env,input)=>{const d=JSON.parse(input.user);if(d.step==='organize'){assert(!d.previous?.some(x=>x.id===b.id));return {data:{groups}};}composeChecked=true;assert.deepEqual(d.userDiscussionSignals,[],'restricted old discussion is not sent as personalization');assert(!d.previous.some(x=>x.id===b.id));return {data:{briefs:[]}};}});
+ assert(composeChecked);
  console.log('intelligence-editor: provider search, brief generation, chat privacy, persistence and blocking passed');
 } finally {w?.close();await fs.rm(root,{recursive:true,force:true});}

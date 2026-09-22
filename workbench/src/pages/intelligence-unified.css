@@ -1,0 +1,39 @@
+.intel-unified .intel-page-heading { padding-top: 24px; }
+.intel-unified .intel-page-actions { align-items: center; }
+.intel-unified .intel-section-nav { margin: 0; padding: 0; border: 0; background: none; }
+.intel-unified .intel-nav-more { margin: 0; }
+.unified-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.unified-toolbar .view-tabs { margin-bottom: 0; }
+.unified-filters { font-size: 13px; }
+.unified-filters > summary, .unified-update-status > summary { cursor: pointer; }
+.unified-filters[open] { flex: 1; }
+.unified-filters > div { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 16px 0; }
+.unified-filters label { display: grid; gap: 6px; }
+.unified-filters select { max-width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-ctl); color: var(--text-1); background: var(--surface); font: inherit; }
+.unified-update-status { color: var(--text-3); font-size: 12px; margin: 0 0 24px; line-height: 1.8; }
+.intel-workspace.intel-unified .brief-card { padding: 22px; gap: 10px; }
+.intel-workspace.intel-unified .brief-card__summary { font-size: 14px; line-height: 1.85; }
+.intel-workspace.intel-unified .brief-card__meta { font-size: 12px; margin: 4px 0; flex: none; white-space: normal; overflow-wrap: anywhere; }
+.intel-unified .brief-card__pick { opacity: 1; }
+.unified-card-value { font-size: 13px; line-height: 1.8; margin: 0; color: var(--text-2); }
+.unified-card-value strong { font-weight: 500; }
+.intel-unified .brief-card footer { justify-content: flex-start; gap: 18px; }
+.unified-card-more { position: relative; margin-left: auto; font-size: 12px; }
+.unified-card-more summary { cursor: pointer; min-height: 34px; padding-top: 8px; }
+.unified-card-more > div { position: absolute; right: 0; top: 100%; z-index: 20; display: grid; min-width: 190px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; box-shadow: 0 4px 16px #0001; }
+.unified-card-more button { border: 0; background: none; text-align: left; padding: 12px; color: var(--text-1); font: inherit; cursor: pointer; }
+.unified-card-more button:hover { background: var(--surface-2); }
+.unified-notice { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; background: var(--surface-2); border-left: 2px solid var(--text-1); font-size: 14px; }
+.unified-load-more { display: block; margin: 24px auto; }
+.intel-unified-full .brief-detail-toolbar { flex-wrap: wrap; gap: 12px; }
+.intel-unified-full .brief-detail-toolbar > div { flex-wrap: wrap; }
+.intel-unified :is(summary,button,a,input,select,textarea):focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+@media(max-width:700px) {
+ .unified-toolbar { flex-wrap: wrap; align-items: start; }
+ .unified-filters { padding-bottom: 12px; }
+ .unified-filters > div { flex-direction: column; align-items: stretch; }
+ .intel-workspace.intel-unified .brief-card { padding: 18px; }
+ .intel-unified .brief-selection-bar { position: sticky; bottom: 0; }
+ .intel-unified .brief-peek__foot { flex-wrap: wrap; }
+}
+@media(prefers-reduced-motion:reduce){.intel-unified *{transition:none!important;scroll-behavior:auto!important;}}

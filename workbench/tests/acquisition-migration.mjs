@@ -37,7 +37,7 @@ try {
  assert.equal(w.db.pragma('user_version', { simple: true }), WORKSPACE_SCHEMA_VERSION);
  const files = await fs.readdir(backupsDir), snapshots = files.filter(f => f.endsWith('.sqlite')); assert.equal(snapshots.length, 1);
  const recoveryFile = path.join(backupsDir, snapshots[0]), manifest = JSON.parse(await fs.readFile(recoveryFile + '.json', 'utf8'));
- assert.equal(manifest.fromVersion, 28); assert.equal(manifest.toVersion, 29); assert.equal(manifest.integrity, 'ok');
+ assert.equal(manifest.fromVersion, 28); assert.equal(manifest.toVersion, WORKSPACE_SCHEMA_VERSION); assert.equal(manifest.integrity, 'ok');
  assert.equal(manifest.sha256, hash(await fs.readFile(recoveryFile)));
  backup = new Database(recoveryFile, { readonly: true, fileMustExist: true });
  assert.equal(backup.pragma('user_version', { simple: true }), 28); assert.equal(backup.pragma('integrity_check', { simple: true }), 'ok'); assert.deepEqual(backup.pragma('foreign_key_check'), []);
@@ -51,9 +51,9 @@ try {
  for (const [table, n] of Object.entries(beforeCounts)) if (table !== 'intel_channels' && table !== 'schema_migrations') assert.equal(w.db.prepare(`SELECT count(*) n FROM ${quote(table)}`).get().n, n, `unexpected count change: ${table}`);
  assert.deepEqual(w.db.pragma('foreign_key_check'), []);
  backup.close(); backup = null; w.close(); w = await openWorkspace({ xenhoHome: root });
- assert.equal((await fs.readdir(backupsDir)).filter(f => f.endsWith('.sqlite')).length, 1, 'reopening v29 must not create another migration point');
+ assert.equal((await fs.readdir(backupsDir)).filter(f => f.endsWith('.sqlite')).length, 1, 'reopening current schema must not create another migration point');
  assert.deepEqual(await Promise.all(protectedFiles.map(fingerprint)), beforeProduction, 'production files changed during isolated test; investigate concurrent writers');
- console.log('acquisition migration passed: v28 recovery hash/integrity/all-table reconciliation, v29 IDs/disabled state, production read-only fingerprints unchanged');
+ console.log('acquisition migration passed: v28 recovery hash/integrity/all-table reconciliation, current IDs/disabled state, production read-only fingerprints unchanged');
 } finally {
  backup?.close(); w?.close();
  if (priorHome === undefined) delete process.env.XENHO_HOME; else process.env.XENHO_HOME = priorHome;

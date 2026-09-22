@@ -1,4 +1,6 @@
 import { aiPersonalAssets, assistantPersonalAssetProject, personalAssetPrompt, personalAssetDestination } from "../domain/personal-assets.mjs";
+import { researchIntelligenceRestricted } from "../domain/intelligence-topic-intents.mjs";
+import { assertSourcePermission } from "../acquisition/compatibility.mjs";
 import { intelligenceBrief } from "../domain/intelligence-feed.mjs";
 import { noteDiscussionContext } from "../domain/note-insights.mjs";
 import { getResearch, projectResearches } from "../domain/research.mjs";
@@ -131,6 +133,7 @@ function assistantActiveKey(scopeId) {
 }
 
 async function readIndex(scopeId) {
+  assertScopeReadable(scopeId);
   const workspace = currentWorkspace();
   const scope = clean(scopeId, 240);
   const rows = workspace.db.prepare(`SELECT c.id,c.record_json FROM ai_conversations c
@@ -149,7 +152,24 @@ async function writeIndex(scopeId, index) {
   return data;
 }
 
+function assertScopeReadable(scopeId, { forAi = false } = {}) {
+  const w = currentWorkspace();
+  const record = scopeId?.startsWith("research:") ? getResearch(w, scopeId.slice(9))
+    : scopeId?.startsWith("intelligence:") ? intelligenceBrief(w, scopeId.slice(13)) : null;
+  if (record?.contentRestricted) throw Object.assign(new Error("引用权限已变化，暂不能读取或继续这份内容的讨论"), { status: 403 });
+  if (forAi && record) {
+    if (scopeId.startsWith("research:") && researchIntelligenceRestricted(w, scopeId.slice(9), "ai")) throw Object.assign(new Error("这份选题的引用资料尚未获准发送给外部模型"), { status: 403 });
+    const briefs = scopeId.startsWith("intelligence:") ? [record]
+      : (record.intelligenceIntents || []).flatMap(intent => (intent.briefIds || []).map(id => intelligenceBrief(w, id)));
+    for (const brief of briefs) {
+      if (brief.contentRestricted) throw Object.assign(new Error("引用权限已变化，暂不能发送相关内容"), { status: 403 });
+      for (const source of brief.sources || []) assertSourcePermission(source, "ai");
+    }
+  }
+}
+
 async function readConversationRecord(scopeId, conversationId) {
+  assertScopeReadable(scopeId);
   const id = safeConversationId(conversationId);
   if (!id) return null;
   const row = currentWorkspace().db.prepare(`SELECT c.record_json FROM ai_conversations c
@@ -162,8 +182,7 @@ async function readConversationRecord(scopeId, conversationId) {
 async function writeConversationRecord(scopeId, record, options = {}) {
   const workspace = currentWorkspace();
   const scope = clean(scopeId, 240);
-  if (scope.startsWith("research:")) getResearch(workspace, scope.slice(9));
-  if (scope.startsWith("intelligence:")) intelligenceBrief(workspace, scope.slice(13));
+  assertScopeReadable(scope);
   const data = normalizeConversationRecord(scope, record.id, {
     ...record,
     updatedAt: options.touch === false ? (record.updatedAt || record.createdAt || now()) : now(),
@@ -1011,6 +1030,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
   const scopeId = clean(input.scopeId, 240);
   const message = clean(input.message, 8_000);
   if (!scopeId) throw Object.assign(new Error("缺少当前对话范围"), { status: 400 });
+  assertScopeReadable(scopeId, { forAi: true });
 
   const record = await ensureConversation(scopeId, input.conversationId, { model: input.model || env.AGENT_LLM_MODEL, permissionMode: input.permissionMode, forceNew: Boolean(input.startNew && !input.conversationId) });
   const pendingAttachments = (record.attachments || []).filter((item) => !item.usedAt);
@@ -1169,6 +1189,7 @@ export async function runAssistantTurn(env, input = {}, options = {}) {
     const timeoutMs = Math.max(60_000, Math.min(15 * 60_000, Number(env.AGENT_ASSISTANT_TIMEOUT_MS) || 5 * 60_000));
     let timeout;
     if (runState.cancelled) throw Object.assign(new Error("本轮已停止"), { code: "ASSISTANT_CANCELLED" });
+    assertScopeReadable(scopeId, { forAi: true });
     const runPromise = (options.createRun || createPiRun)({
       env: runtimeEnv,
       runDir: dir,

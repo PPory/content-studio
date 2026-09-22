@@ -34,7 +34,7 @@ try{
  const counts=()=>({research:w.db.prepare('SELECT count(*) n FROM researches').get().n,projects:w.db.prepare('SELECT count(*) n FROM projects').get().n});
  const before=counts();assert.throws(()=>keepDirection(w,'x'.repeat(64)),e=>e.status===409);
  browser=await pw.chromium.launch();page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5243/#/intel');await page.locator('.subnav').getByRole('button',{name:'选题',exact:true}).click();await page.getByRole('button',{name:'从已有知识探索',exact:true}).click();await page.locator('.opportunity-home .view-tabs').waitFor();assert.equal(await page.locator('.view-head__name').innerText().then(t=>t.split('知识选题').length-1),1,'面包屑里页名只出现一次');assert.equal(await page.locator('.opportunity-home h2').filter({hasText:'发现方向'}).count(),0,'页面不再自我介绍');assert(await page.locator('.nav').innerText().then(t=>!t.includes('内容机会')));
+ await page.goto('http://127.0.0.1:5243/#/research');await page.getByRole('button',{name:'从已有知识探索选题',exact:true}).click();await page.locator('.opportunity-home .view-tabs').waitFor();assert.equal(await page.locator('.view-head__name').innerText().then(t=>t.split('知识选题').length-1),1,'面包屑里页名只出现一次');assert.equal(await page.locator('.opportunity-home h2').filter({hasText:'发现方向'}).count(),0,'页面不再自我介绍');assert(await page.locator('.nav').innerText().then(t=>!t.includes('内容机会')));
  assert.equal(await page.locator('.direction-overview-card').count(),3);assert.equal(await page.locator('.opportunity-brief').count(),0);
  // 卡片 / 列表双视图，选择记在 localStorage（每页一份）。
  await page.getByRole('button',{name:'列表视图',exact:true}).click();

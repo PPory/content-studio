@@ -49,6 +49,11 @@ const acquisition24hSql = fs.readFileSync(new URL('./migrations/0031-acquisition
 
 const acquisitionReviewSql = fs.readFileSync(new URL('./migrations/0032-acquisition-review.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
+const intelligenceUnifiedSql = fs.readFileSync(new URL('./migrations/0033-intelligence-unified.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const intelligenceTopicIntentsSql = fs.readFileSync(new URL('./migrations/0034-intelligence-topic-intents.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
+const intelligenceAliasesSql = fs.readFileSync(new URL('./migrations/0035-intelligence-aliases.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
 export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({
     version: 1,
@@ -172,6 +177,9 @@ export const WORKSPACE_MIGRATIONS = Object.freeze([
   Object.freeze({ version: 30, name: 'acquisition-acceptance', sql: acquisitionAcceptanceSql, checksum: crypto.createHash('sha256').update(acquisitionAcceptanceSql).digest('hex') }),
   Object.freeze({ version: 31, name: 'acquisition-24h', sql: acquisition24hSql, checksum: crypto.createHash('sha256').update(acquisition24hSql).digest('hex') }),
   Object.freeze({ version: 32, name: 'acquisition-review', sql: acquisitionReviewSql, checksum: crypto.createHash('sha256').update(acquisitionReviewSql).digest('hex') }),
+  Object.freeze({ version: 33, name: 'intelligence-unified', sql: intelligenceUnifiedSql, checksum: crypto.createHash('sha256').update(intelligenceUnifiedSql).digest('hex') }),
+  Object.freeze({ version: 34, name: 'intelligence-topic-intents', sql: intelligenceTopicIntentsSql, checksum: crypto.createHash('sha256').update(intelligenceTopicIntentsSql).digest('hex') }),
+  Object.freeze({ version: 35, name: 'intelligence-aliases', sql: intelligenceAliasesSql, checksum: crypto.createHash('sha256').update(intelligenceAliasesSql).digest('hex') }),
 ]);
 
 export const WORKSPACE_SCHEMA_VERSION = WORKSPACE_MIGRATIONS.at(-1)?.version || 0;

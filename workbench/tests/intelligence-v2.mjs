@@ -15,7 +15,7 @@ try {
  w=await openWorkspace({xenhoHome:root,migrations:WORKSPACE_MIGRATIONS.filter(m=>m.version<=26)});
  const p=saveIntelligenceProfile(w,{name:'V2 upgrade',query:'Agent',providers:['web'],output:'briefs'}),run=enqueueIntelligence(w,p.id);
  const original='In six runs, two outputs failed the independent check. This small sample does not establish general reliability.';
- w.db.prepare('INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)').run('legacy-source','legacy-fingerprint',JSON.stringify({title:'Small experiment',body:original,url:'https://example.com/experiment',provider:'web',readLevel:'original'}),new Date().toISOString());
+ w.db.prepare('INSERT INTO intel_sources(id,fingerprint,data_json,created_at) VALUES(?,?,?,?)').run('legacy-source','legacy-fingerprint',JSON.stringify({title:'LLM model experiment',body:original,url:'https://example.com/experiment',provider:'web',readLevel:'original'}),new Date().toISOString());
  w.db.prepare('INSERT INTO intel_run_sources VALUES(?,?)').run(run.id,'legacy-source');
  w.close();w=await openWorkspace({xenhoHome:root});
  assert.equal(w.db.pragma('user_version',{simple:true}),WORKSPACE_SCHEMA_VERSION);

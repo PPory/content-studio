@@ -1,3 +1,4 @@
+import { sourcePermission } from './compatibility.mjs';
 import { publisherIdentity } from './source-presentation.mjs';
 import { createUlid } from '../storage/ids.mjs';
 import { canonicalSourceUrl, contentHash, persistIntelligenceCluster, sourceFromRow } from '../domain/intelligence-quality.mjs';
@@ -9,7 +10,7 @@ const now = () => new Date().toISOString();
 const parse = value => JSON.parse(value || '{}');
 const fail = message => { throw Object.assign(new Error(message),{status:400}); };
 const activeRows = w => w.db.prepare("SELECT * FROM intel_sources WHERE deleted_at IS NULL AND (expires_at IS NULL OR expires_at>?) AND origin_kind='external' ORDER BY created_at DESC,id").all(now());
-const canSend = (w,id,grants) => {const r=w.db.prepare('SELECT *,rights_json,deleted_at,expires_at FROM intel_sources WHERE id=?').get(id);return r && !r.deleted_at && (!r.expires_at || Date.parse(r.expires_at)>Date.now()) && (parse(r.rights_json).aiAllowed===true || grants?.get(id)===processingHash(sourceFromRow(r))); };
+const canSend = (w,id,grants) => {const r=w.db.prepare('SELECT *,rights_json,deleted_at,expires_at FROM intel_sources WHERE id=?').get(id);return r && !r.deleted_at && (!r.expires_at || Date.parse(r.expires_at)>Date.now()) && (sourcePermission(sourceFromRow(r),'ai') || grants?.get(id)===processingHash(sourceFromRow(r))); };
 function centralityGuard(source,data) {
  const local=classifyAiRelevance(source);
  if(data.method==='semantic'&&data.relevance==='ai_relevant'&&local.reason.startsWith('AI 仅在正文局部') && !(/\bRAG\b|retrieval.augmented generation/i.test(source.title||'')&&/\bLLMs?\b|large language models?|大语言模型/i.test(source.body||'')))return {...data,relevance:'needs_context',proposedRelevance:'ai_relevant',reason:'模型认为局部 AI 内容相关，但尚未确认 AI 是主体或与核心事件直接相关；保留模型依据，交由人工复核。',modelReason:data.reason};
@@ -135,7 +136,7 @@ export async function processReview(w,env={},input={},deps={}) {
   const {replayFollowSnapshots}=await import('./connectors/follow-builders.mjs');
   const {getChannel,checkpointFor,commitPage}=await import('./store.mjs');
   let replayed=0;
-  for(const row of w.db.prepare("SELECT id FROM intel_channels WHERE platform='follow_builders'").all()){
+  for(const row of (input.skipReplay?[]:w.db.prepare("SELECT id FROM intel_channels WHERE platform='follow_builders'").all())){
    const channel=getChannel(w,row.id),checkpoint=checkpointFor(w,row.id);
    const page=await replayFollowSnapshots({channel,checkpoint,readSnapshot:id=>w.db.prepare('SELECT payload_text AS text,id AS snapshotId,observed_at AS observedAt FROM acquisition_snapshots WHERE id=? AND channel_id=?').get(id,channel.id)||null});
    if(page){commitPage(w,channel,page);replayed+=page.items.length;}
@@ -147,7 +148,7 @@ export async function processReview(w,env={},input={},deps={}) {
    for(const s of candidates){const cached=cacheGet(w,processingHash(s),'classification-guide');const p=await semanticSource(w,env,s,deps);if(!cached)calls++;saveProcessing(w,s,p);}
   }
   const materials=materialProjection(w);ensureReviewClusters(w,materials);
-  if(input.semantic===true)await groupReviewSources(w,env,materials.filter(s=>!input.sourceIds||s.aliasSourceIds.some(id=>input.sourceIds.includes(id))),deps);
+  if(input.semantic===true&&!input.skipGrouping)await groupReviewSources(w,env,materials.filter(s=>!input.sourceIds||s.aliasSourceIds.some(id=>input.sourceIds.includes(id))),deps);
   return {processed,replayed,modelCalls:calls,permissionRequired:sources.filter(s=>processingFor(w,s).relevance!=='not_ai'&&!canSend(w,s.id,deps.authorizedSources)).length,...reviewOverview(w)};
  } finally {locks.delete(w.db);}
 }
@@ -189,6 +190,7 @@ export function reviewAction(w,id,input={}) {
  const row=w.db.prepare("SELECT * FROM acquisition_cluster_reviews WHERE cluster_id=? AND status<>'superseded'").get(id);if(!row)fail('聚簇不存在，请先重处理已有资料');
  if(!['keep','ignore','restore','split','merge','reconsider'].includes(input.action))fail('不支持的审阅操作');
  return w.db.transaction(()=>{
+  let splitClusterId=null;
   if(['keep','ignore','restore'].includes(input.action))w.db.prepare('UPDATE acquisition_cluster_reviews SET status=?,manual=1,updated_at=? WHERE cluster_id=?').run({keep:'kept',ignore:'ignored',restore:'unreviewed'}[input.action],now(),id);
   if(input.action==='reconsider'){
    for(const r of w.db.prepare('SELECT s.* FROM intel_sources s JOIN acquisition_review_members m ON m.source_id=s.id WHERE m.cluster_id=? AND s.deleted_at IS NULL').all(id)){
@@ -205,11 +207,23 @@ export function reviewAction(w,id,input={}) {
    if(!selected.length||selected.length>=members.length||selected.some(x=>!members.includes(x)))fail('选择本簇的部分资料拆分，不能拆空原簇');
    const sources=materialProjection(w).filter(s=>s.aliasSourceIds.some(x=>selected.includes(x)));
    if(sources.some(s=>s.aliasSourceIds.some(x=>!selected.includes(x))))fail('同一原文的发现路径不能拆成不同资料');
-   const newId=createReviewCluster(w,sources,{key:`reading:manual:${createUlid()}`,manual:true});
+   const newId=createReviewCluster(w,sources,{key:`reading:manual:${createUlid()}`,manual:true});splitClusterId=newId;
+   if(w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_unified_state'").get()){
+    const old=w.db.prepare("SELECT b.id FROM intel_briefs b,json_each(b.data_json,'$.evidence') e JOIN acquisition_review_members m ON m.source_id=json_extract(e.value,'$.sourceId') WHERE m.cluster_id=? ORDER BY b.created_at LIMIT 1").get(id);
+    if(old)w.db.prepare('INSERT OR IGNORE INTO intel_unified_state(key,value) VALUES(?,?)').run(`manual-brief:${id}`,old.id);
+    w.db.prepare('INSERT INTO intel_unified_state(key,value) VALUES(?,?)').run(`manual-brief:${newId}`,'new');
+   }
    for(const s of selected)w.db.prepare('UPDATE acquisition_review_members SET cluster_id=? WHERE source_id=?').run(newId,s);
    w.db.prepare('UPDATE acquisition_cluster_reviews SET manual=1,updated_at=? WHERE cluster_id=?').run(now(),id);
   }
+  // Legacy review links update the same reading objects, retaining all history.
+  if(w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_unified_sources'").get()){
+   const ids=w.db.prepare("SELECT DISTINCT b.id FROM intel_briefs b,json_each(b.data_json,'$.evidence') e JOIN acquisition_review_members m ON m.source_id=json_extract(e.value,'$.sourceId') WHERE m.cluster_id=?").all(id);
+   for(const b of ids){if(['ignore','restore'].includes(input.action))w.db.prepare('UPDATE intel_briefs SET dismissed=? WHERE id=?').run(Number(input.action==='ignore'),b.id);}
+   if(['reconsider','restore','split','merge'].includes(input.action))w.db.prepare("UPDATE intel_unified_sources SET status='pending',attempts=0 WHERE source_id IN (SELECT source_id FROM acquisition_review_members WHERE cluster_id=? OR cluster_id=?)").run(id,input.targetId||id);
+   if(splitClusterId)w.db.prepare("UPDATE intel_unified_sources SET status='pending',attempts=0 WHERE source_id IN (SELECT source_id FROM acquisition_review_members WHERE cluster_id=?)").run(splitClusterId);
+  }
   w.db.prepare('INSERT INTO acquisition_review_actions VALUES(?,?,?,?,?)').run(createUlid(),id,input.action,JSON.stringify({sourceIds:input.sourceIds||[],targetId:input.targetId||null}),now());
-  return {clusterId:id,action:input.action};
+  return {clusterId:id,action:input.action,...(splitClusterId?{splitClusterId}:{})};
  })();
 }

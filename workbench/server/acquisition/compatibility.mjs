@@ -29,14 +29,14 @@ export function localAiHot(w,{forAi=false}={}) {
 export function visibleDerived(w, data) {
   const ids = new Set((data.evidence || []).map(e => e.sourceId).filter(Boolean));
   const unavailable = [...ids].some(id => {
-    const row = w.db.prepare('SELECT acquisition_identity,deleted_at,expires_at FROM intel_sources WHERE id=?').get(id);
-    return row?.acquisition_identity && (row.deleted_at || (row.expires_at && Date.parse(row.expires_at) <= Date.now()));
+    const row = w.db.prepare('SELECT acquisition_identity,deleted_at,expires_at,rights_json FROM intel_sources WHERE id=?').get(id);
+    return row?.acquisition_identity && (row.deleted_at || (row.expires_at && Date.parse(row.expires_at) <= Date.now()) || JSON.parse(row.rights_json||'{}').aiAllowed!==true);
   });
   if (!unavailable && !Object.values(data).includes('引用内容已移除，需重新核查')) return data;
-  const hidden = { ...data, evidence: [], editorialState: 'needs_review' };
-  const retained = new Set(['id','storyKey','briefIds','versions','coverage','evidence','editorialState','confidence','freshnessKind','publishedAt','createdAt','updatedAt']);
+  const hidden = { ...data, evidence: [], editorialState: 'needs_review', contentRestricted: true };
+  const retained = new Set(['contentRestricted','id','storyKey','briefIds','versions','coverage','evidence','editorialState','confidence','freshnessKind','publishedAt','createdAt','updatedAt']);
   for (const key of Object.keys(hidden)) {
-    if (!retained.has(key)) hidden[key] = Array.isArray(hidden[key]) ? [] : hidden[key] !== null && typeof hidden[key] === 'object' ? {} : typeof hidden[key] === 'string' ? '引用内容已过期或移除，需重新核查' : hidden[key];
+    if (!retained.has(key)) hidden[key] = Array.isArray(hidden[key]) ? [] : hidden[key] !== null && typeof hidden[key] === 'object' ? {} : typeof hidden[key] === 'string' ? '引用内容权限已变化、过期或移除，需重新核查' : hidden[key];
   }
   return hidden;
 }

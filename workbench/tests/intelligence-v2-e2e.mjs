@@ -31,17 +31,15 @@ try {
  const env={XENHO_HOME:vars.XENHO_HOME,AGENT_INGEST_BASE_URL:`http://127.0.0.1:${model.address().port}/v1`,AGENT_INGEST_API_KEY:'isolated-test-key',AGENT_INGEST_MODEL:'test-only'};
  server=await createServer({root:ROOT,configFile:false,plugins:[react(),workbenchApi(env)],server:{host:'127.0.0.1',port:5264,strictPort:true,open:false},logLevel:'error'});await server.listen();
  browser=await pw.chromium.launch();page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/#/intel');await page.getByLabel(`选择：${brief.title}`).check();await page.getByRole('button',{name:'一起展开成选题',exact:true}).click();await page.getByRole('button',{name:'确认保存选题',exact:true}).waitFor();
- assert.equal(modelCalls,1);assert.equal((await api('intelligence/topics')).opportunities.length,0,'真实预览API没有写入选题');
- const shots=path.join(ROOT,'output','playwright');await fs.mkdir(shots,{recursive:true});await page.screenshot({path:path.join(shots,'intelligence-v2-e2e-preview.png'),fullPage:true});
- await page.getByRole('button',{name:'确认保存选题',exact:true}).click();await page.getByRole('button',{name:'开始研究',exact:true}).waitFor();const saved=(await api('intelligence/topics')).opportunities[0];assert.equal(saved.readiness,'needs_evidence');
- await page.reload();await page.getByRole('heading',{name:saved.workingTitle,exact:true}).waitFor();assert.equal(modelCalls,1,'重新打开读取已保存选题');
- await page.getByRole('button',{name:'开始研究',exact:true}).click();await page.getByRole('button',{name:'确认开始研究',exact:true}).click();await page.waitForURL(/#\/research\//);await page.getByLabel('我的笔记',{exact:true}).waitFor();
+ await page.goto(base+'/#/intel');await page.locator('.brief-card').filter({hasText:brief.title}).getByRole('button',{name:'加入选题',exact:true}).click();await page.getByRole('button',{name:'查看选题',exact:true}).waitFor();
+ assert.equal(modelCalls,0,'直接选中情报无需调用模型');assert.equal((await api('intelligence/topics')).opportunities.length,0,'不产生第二套中间候选');
+ await page.getByRole('button',{name:'查看选题',exact:true}).click();await page.waitForURL(/#\/research\//);await page.getByLabel('我的笔记',{exact:true}).waitFor();
  const id=decodeURIComponent(page.url().split('#/research/')[1]),research=(await api('researches/'+id)).research;
- assert(research.notes.includes('不宣称所有模型都适用'));assert(research.openQuestions.includes('设计检查并记录实际结果'));assert(research.references.length===1);
- assert.equal((await api(`intelligence/topics/${saved.id}/start`,{confirmed:true})).research.id,id,'接口重复提交返回同一研究');
+ assert.equal(research.references.length,1);assert.equal(research.intelligenceIntents.length,1);assert.deepEqual(research.intelligenceIntents[0].briefIds,[brief.id]);
+ await page.reload();await page.getByLabel('我的笔记',{exact:true}).waitFor();assert.equal(modelCalls,0);
  assert.deepEqual((await api('intelligence/briefs/'+brief.id)).brief.researchIds,[id]);
+ const shots=path.join(ROOT,'output','playwright');await fs.mkdir(shots,{recursive:true});
  await page.getByRole('button',{name:'开始写文章',exact:true}).click();await page.getByRole('button',{name:'创建文章',exact:true}).click();await page.getByLabel('文章标题',{exact:true}).waitFor();
  assert.equal((await api('researches/'+id)).research.projects.length,1);await page.screenshot({path:path.join(shots,'intelligence-v2-e2e-research.png'),fullPage:true});
- assert.deepEqual(errors,[]);console.log('intelligence-v2-e2e: real HTTP, SQLite, model transport stub, preview without writes, save/reload, research provenance/idempotency and article creation passed');
+ assert.deepEqual(errors,[]);console.log('intelligence-v2-e2e: real HTTP, SQLite, direct topic intent with zero model calls, reload, provenance and article creation passed');
 }finally{w?.close();await browser?.close();await server?.close();await server?.xenhoClose?.();if(model)await new Promise(resolve=>model.close(resolve));for(const[k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}const rel=path.relative(os.tmpdir(),temp);assert(rel&&!rel.startsWith('..'));await fs.rm(temp,{recursive:true,force:true});}

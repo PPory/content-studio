@@ -1,3 +1,6 @@
+import { sourcePermission } from '../acquisition/compatibility.mjs';
+import { sourceFromRow } from './intelligence-quality.mjs';
+import { legacyResearchTopics, researchIntelligenceIntents, researchIntelligenceRestricted } from './intelligence-topic-intents.mjs';
 import { initializeNote } from "./personal-assets.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { createProjectExploration } from "./project-notebook.mjs";
@@ -25,25 +28,30 @@ export function libraryItems(w, { q = "", kind = "", limit = 100 } = {}) {
   text(q, 500); text(kind, 20);
   const size = Number.isSafeInteger(Number(limit)) ? Math.max(1,Math.min(200,Number(limit))) : 100;
   if (kind && !["material","wiki","source","capture","seed"].includes(kind)) throw error("资料类型无效");
-  return w.db.prepare(`SELECT *,substr(body,1,500) excerpt FROM (${librarySql}) WHERE (?='' OR kind=?) AND (?='' OR instr(lower(title||char(10)||body),lower(?))>0) ORDER BY updatedAt DESC LIMIT ?`).all(kind,kind,q,q,size).map(({body,...item}) => item);
+  return w.db.prepare(`SELECT *,substr(body,1,500) excerpt FROM (${librarySql}) WHERE (?='' OR kind=?) AND (?='' OR instr(lower(title||char(10)||body),lower(?))>0) ORDER BY updatedAt DESC LIMIT ?`).all(kind,kind,q,q,size).map(({body,...item}) => {if(item.kind!=="capture")return item;const {body:raw,...visible}=libraryItem(w,item.kind,item.id);return {...visible,excerpt:visible.excerpt.slice(0,500)};});
 }
 export function libraryItem(w, kind, id) {
   const item = w.db.prepare(`SELECT *,substr(body,1,20000) excerpt FROM (${librarySql}) WHERE kind=? AND id=?`).get(kind,id);
   if (!item) throw error("资料不存在或已移除",404);
+  if(kind==='capture') {
+    const sources=w.db.prepare('SELECT * FROM intel_sources WHERE capture_id=?').all(id);
+    if(sources.some(row=>row.deleted_at||(row.expires_at&&Date.parse(row.expires_at)<=Date.now())||!sourcePermission(sourceFromRow(row),'export')))return {...item,title:'引用资料不可用',body:'',sourceUrl:'',excerpt:'引用权限已变化或资料已过期，请重新核查',unavailable:true};
+  }
   return item;
 }
 export function getResearch(w,id) {
   const row = researchRow(w,id);
+  const contentRestricted=researchIntelligenceRestricted(w,id),restrictionMessage='引用权限已变化或资料已过期，相关选题内容暂不可读取。原文仍保留，恢复权限后可继续编辑。';
   const references = w.db.prepare("SELECT kind,entity_id id FROM research_references WHERE research_id=? ORDER BY created_at").all(id).map(ref => {
     try { const {body,...item} = libraryItem(w,ref.kind,ref.id); return item; }
     catch (e) { if(e.status!==404) throw e; return {...ref,title:"资料已移除",excerpt:"",missing:true}; }
   });
   const conversations = w.db.prepare(`SELECT DISTINCT c.id,c.title,c.scope_id scopeId,e.updated_at updatedAt FROM ai_conversations c JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.scope_id=? OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=?) ORDER BY e.updated_at DESC`).all(`research:${id}`,id);
   const projects = w.db.prepare(`SELECT p.id,p.title,l.selected_text selectedText FROM research_projects l JOIN projects p ON p.id=l.project_id JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE l.research_id=? ORDER BY l.created_at DESC`).all(id);
-  return {id,title:row.question || "未命名研究",question:row.question,notes:row.notes,openQuestions:row.open_questions,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at,scopeId:`research:${id}`,references,conversations,projects};
+  return {id,contentRestricted,title:contentRestricted?"引用受限的选题":row.question || "未命名研究",question:contentRestricted?"引用受限的选题":row.question,notes:contentRestricted?restrictionMessage:row.notes,openQuestions:contentRestricted?"":row.open_questions,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at,scopeId:`research:${id}`,references,conversations,projects,intelligenceIntents:researchIntelligenceIntents(w,id)};
 }
 export function listResearches(w) {
-  return w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240)};});
+  return [...w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240)};}),...legacyResearchTopics(w)].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 }
 /**
  * 把一个选题移入回收站 / 拿回来。
@@ -83,6 +91,7 @@ export function saveResearch(w,id,input) {
   for(const key of ["question","notes","openQuestions"]) if(Object.hasOwn(input,key)) text(input[key],key==="question"?1000:key==="notes"?100000:20000);
   return w.repository.transaction(() => {
     const row=researchRow(w,id);
+    if(researchIntelligenceRestricted(w,id))throw error('引用资料不可用时不能覆盖选题原文，请先恢复来源权限或有效资料',403);
     if(row.version!==input.expectedVersion) throw error("研究已在另一处更新，请重新载入后再保存",409);
     const now=stamp(),question=input.question??row.question,notes=input.notes??row.notes;
     w.db.prepare("UPDATE researches SET question=?,notes=?,open_questions=?,version=version+1,updated_at=? WHERE id=?").run(question,notes,input.openQuestions??row.open_questions,now,id);
@@ -170,5 +179,5 @@ export function recentWork(w,{includeHidden=false}={}) {
   return w.db.prepare(`SELECT a.*,coalesce(s.pinned,0) pinned,coalesce(s.hidden,0) hidden,coalesce(s.position_json,'{}') position,max(a.updatedAt,coalesce(v.visited_at,a.updatedAt)) touchedAt FROM (
     SELECT r.id,'research' kind,CASE WHEN r.question='' THEN '未命名研究' ELSE r.question END title,substr(r.notes,1,240) excerpt,max(r.updated_at,coalesce((SELECT max(json_extract(message.value,'$.createdAt')) FROM ai_conversations c JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL,json_each(c.record_json,'$.messages') message WHERE (c.scope_id='research:'||r.id OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=r.id)) AND json_extract(message.value,'$.role')='user'),r.updated_at)) updatedAt FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL
     UNION ALL SELECT p.id,'project',p.title,substr(coalesce(nullif(d.body_markdown,''),json_extract(n.notes_json,'$.thought'),''),1,240),max(e.updated_at,coalesce(de.updated_at,e.updated_at),coalesce(n.updated_at,e.updated_at)) FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL LEFT JOIN project_primary_drafts pd ON pd.project_id=p.id LEFT JOIN drafts d ON d.id=pd.draft_id LEFT JOIN entities de ON de.id=d.id LEFT JOIN project_notebooks n ON n.project_id=p.id WHERE p.status!='parked' AND (d.id IS NULL OR (de.deleted_at IS NULL AND d.workflow_status NOT IN ('已发布','已弃用')))
-  ) a LEFT JOIN work_states s ON s.entity_id=a.id LEFT JOIN workspace_activity v ON v.entity_id=a.id AND v.mode='open' WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,touchedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>({...row,pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)}));
+  ) a LEFT JOIN work_states s ON s.entity_id=a.id LEFT JOIN workspace_activity v ON v.entity_id=a.id AND v.mode='open' WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,touchedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>{const r=row.kind==="research"?getResearch(w,row.id):null;return {...row,...(r?.contentRestricted?{title:r.title,excerpt:r.notes,contentRestricted:true}:{}),pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)};});
 }

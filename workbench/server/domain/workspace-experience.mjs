@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { researchIntelligenceRestricted } from "./intelligence-topic-intents.mjs";
 import { libraryItem, getResearch, recentWork } from "./research.mjs";
 import { projectDto } from "../workspace/workspace-view.mjs";
 import { intelligenceFeedSummary, feedPreferences } from "./intelligence-feed.mjs";
@@ -97,6 +98,7 @@ export function wikiConnections(w,q="") {
 }
 function discussionSnapshot(w,id) {
  const research=getResearch(w,id);
+ if(research.contentRestricted||researchIntelligenceRestricted(w,id,"ai"))throw fail("引用权限已变化，暂不能读取或整理这份选题的讨论",403);
  const conversations=[...research.conversations].reverse().map(c=>({id:c.id,record:w.db.prepare("SELECT record_json FROM ai_conversations WHERE id=?").get(c.id).record_json}));
  const fingerprint=hash({question:research.question,conversations});
  // Keep actual recent message bytes. The returned source IDs refer to persisted records.
