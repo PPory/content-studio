@@ -1,5 +1,5 @@
 import { canonicalBriefId } from './intelligence-unified.mjs';
-import { assertSourcePermission, visibleDerived } from '../acquisition/compatibility.mjs';
+import { assertSourcePermission, sourcePermission, visibleDerived } from '../acquisition/compatibility.mjs';
 import { createUlid } from '../storage/ids.mjs';
 import { sha256Json, sourceContainsVerbatim } from './integrity.mjs';
 import { sourceFromRow } from './intelligence-quality.mjs';
@@ -11,6 +11,26 @@ function source(w,id){
  const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
  if(!row||row.deleted_at||(row.expires_at&&Date.parse(row.expires_at)<=Date.now()))throw bad('引用资料已过期或移除，请重新选择',409);
  const item=sourceFromRow(row);assertSourcePermission(item,'export');return item;
+}
+/**
+ * 加入选题时，一份资料能带走多少：
+ * - 有导出许可：整篇复制进研究（原逻辑）；
+ * - 没有导出许可（新采集资料的默认状态）或 Reddit 原文已按保留期清除：只挂标题和原文链接，
+ *   卡片里经过核验的短引文仍随选题意图保存。
+ * 用户删除的资料、撤回 AI 许可的资料仍然拒绝。
+ */
+function sourceState(w,id){
+ const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);
+ if(!row)return null;
+ const retired=row.content_status==='retention_expired'||(!row.deleted_at&&Boolean(row.expires_at)&&Date.parse(row.expires_at)<=Date.now());
+ if(row.deleted_at&&!retired)return null;
+ const item=sourceFromRow(row),raw=JSON.parse(row.data_json||'{}');
+ if(!retired&&row.acquisition_identity&&!sourcePermission(item,'ai'))return null;
+ return {item,retired,exportable:!retired&&sourcePermission(item,'export'),url:raw.url||'',title:raw.title&&!retired?raw.title:''};
+}
+function attachLink(w,researchId,state,fallback){
+ const id=w.domain.createCapture({kind:'web',title:state.title||fallback.title||'原文链接',bodyMarkdown:'',sourceUrl:state.url||fallback.url||'',actor:'user',confirmed:true});
+ researchReference(w,researchId,{kind:'capture',id});
 }
 function attachSource(w,researchId,item){
  let id=w.db.prepare('SELECT capture_id FROM intel_sources WHERE id=?').get(item.id).capture_id;
@@ -35,8 +55,12 @@ export function createIntelligenceTopicIntent(w,input){
  // Re-read stored evidence instead of trusting a redacted client projection.
  const sourceIds=[...new Set(ids.flatMap(id=>{const r=w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id);if(!r)throw bad('情报不存在',404);return (JSON.parse(r.data_json).evidence||[]).map(e=>e.sourceId);} ))];
  if(!sourceIds.length)throw bad('情报缺少可核对的来源',409);
- const sources=new Map(sourceIds.map(id=>[id,source(w,id)]));
- for(const id of ids){const d=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json);for(const e of d.evidence||[])if(!sources.get(e.sourceId)||!sourceContainsVerbatim(sources.get(e.sourceId).body,e.quote))throw bad('情报引用的原文已经变化，请重新核查',409);}
+ const states=new Map(sourceIds.map(id=>[id,sourceState(w,id)]));
+ if([...states.values()].some(x=>!x))throw bad('引用资料已移除或权限已变化，请重新核查',409);
+ const sources=new Map([...states].filter(([,x])=>!x.retired).map(([id,x])=>[id,x.item]));
+ const evidenceUrl=new Map();
+ // 原文已按保留期清除的，引文在生成卡片时已核验过，这里无从再比对，沿用当时的结果。
+ for(const id of ids){const d=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json);for(const e of d.evidence||[]){if(e.url)evidenceUrl.set(e.sourceId,e.url);if(states.get(e.sourceId).retired)continue;if(!sourceContainsVerbatim(sources.get(e.sourceId).body,e.quote))throw bad('情报引用的原文已经变化，请重新核查',409);}}
  const briefs=ids.map(id=>intelligenceBrief(w,id));
  const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||briefs[0].title),1000);
  const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null};
@@ -47,7 +71,7 @@ export function createIntelligenceTopicIntent(w,input){
   let research=payload.researchId?getResearch(w,payload.researchId):createResearch(w,{question,notes});
   if(payload.researchId&&notes)research=saveResearch(w,research.id,{expectedVersion:research.version,notes:[research.notes,notes].filter(Boolean).join('\n\n')});
   const at=new Date().toISOString();
-  for(const item of sources.values())attachSource(w,research.id,item);
+  for(const [id,state] of states){if(state.exportable)attachSource(w,research.id,state.item);else attachLink(w,research.id,state,{title:briefs[0].title,url:evidenceUrl.get(id)});}
   for(const b of briefs){
    w.db.prepare('INSERT OR IGNORE INTO intel_brief_researches(brief_id,research_id,created_at) VALUES(?,?,?)').run(b.id,research.id,at);
    w.db.prepare('INSERT INTO intel_feedback(id,brief_id,version,action,value,created_at) VALUES(?,?,?,?,1,?)').run(createUlid(),b.id,b.version,'topic_saved',at);
@@ -73,7 +97,7 @@ export function researchIntelligenceRestricted(w,id,purpose="export"){
  return false;
 }
 function visibleIntent(w,data){
- const unavailable=(data.sourceIds||[]).some(id=>{try{source(w,id);return false;}catch{return true;}});
+ const unavailable=(data.sourceIds||[]).some(id=>!sourceState(w,id));
  return unavailable?{briefIds:data.briefIds,sourceIds:data.sourceIds,angle:null,notes:'引用权限已变化或资料已过期，请重新核查',evidence:[],nonClaims:['引用权限已变化或资料已过期，请重新核查'],unavailable:true}:visibleDerived(w,data);
 }
 export function legacyResearchTopics(w){

@@ -48,8 +48,13 @@ try {
  w.db.prepare('INSERT INTO research_projects(research_id,project_id,selected_text,created_at) VALUES(?,?,?,?)').run(existing.id,projectId,'',at);
  const beforeReuse=w.db.prepare('SELECT count(*) n FROM researches').get().n;assert.equal(openLegacyIntelligenceTopic(w,'bridge',reusedOpportunity,{confirmed:true}).id,existing.id);assert.equal(w.db.prepare('SELECT count(*) n FROM researches').get().n,beforeReuse);assert(!listResearches(w).some(r=>r.id===`legacy:bridge:${reusedOpportunity}`));
  w.db.prepare("UPDATE intel_sources SET acquisition_identity='test',rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:true,exportAllowed:false}),source.id);
- assert.throws(()=>createIntelligenceTopicIntent(w,{...input,operationId:'no-permission'}),e=>e.status===403);
- assert.throws(()=>createIntelligenceTopicIntent(w,input),e=>e.status===403);
+ // 没有导出许可仍可加入选题：只挂标题与原文链接，原文不复制进研究（2026-09-23）。
+ const linkOnly=createIntelligenceTopicIntent(w,{...input,operationId:"no-permission"});
+ assert.equal(linkOnly.reused,false);const linkedBodies=w.db.prepare("SELECT c.body_markdown body,c.source_url url FROM research_references r JOIN captures c ON c.id=r.entity_id WHERE r.research_id=? AND r.kind='capture'").all(linkOnly.research.id);assert(linkedBodies.length&&linkedBodies.every(c=>c.body===''&&c.url==='https://example.com/experiment'),'link-only reference must not copy the original');
+ assert.equal(createIntelligenceTopicIntent(w,input).reused,true);
+ w.db.prepare("UPDATE intel_sources SET rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:false,exportAllowed:false}),source.id);
+ assert.throws(()=>createIntelligenceTopicIntent(w,{...input,operationId:'ai-revoked'}),e=>e.status===409,'revoked AI permission still blocks new topics');
+ w.db.prepare("UPDATE intel_sources SET rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:true,exportAllowed:false}),source.id);
  configureAssistantWorkspace(w);
  assert.throws(()=>researchSummary(w,legacy.id),e=>e.status===403);
  await assert.rejects(()=>refreshResearchSummary({WORKSPACE_EXPERIENCE_COMPLETE_JSON:()=>{throw new Error('Must not send');}},w,legacy.id),e=>e.status===403);
@@ -58,9 +63,12 @@ try {
  const originalNotes=w.db.prepare('SELECT notes FROM researches WHERE id=?').get(legacy.id).notes;
  const restricted=getResearch(w,legacy.id);assert.equal(restricted.contentRestricted,true);assert(!restricted.notes.includes('旧角度'));assert(!recentWork(w).find(r=>r.id===legacy.id).excerpt.includes('旧角度'));
  assert.throws(()=>saveResearch(w,legacy.id,{expectedVersion:restricted.version,notes:restricted.notes}),e=>e.status===403);assert.equal(w.db.prepare('SELECT notes FROM researches WHERE id=?').get(legacy.id).notes,originalNotes);
- assert.equal(getResearch(w,first.research.id).references[0].unavailable,true);assert.equal(getResearch(w,first.research.id).intelligenceIntents[0].unavailable,true);
+ assert.equal(getResearch(w,first.research.id).references[0].unavailable,true);
+ // 只撤导出许可：研究里复制过的原文要遮住，但选题意图里的短引文属于 AI 许可范围内的展示，仍然可见。
+ assert.notEqual(getResearch(w,first.research.id).intelligenceIntents[0].unavailable,true);
  w.db.prepare('UPDATE intel_sources SET rights_json=?,expires_at=? WHERE id=?').run(JSON.stringify({aiAllowed:true,exportAllowed:true}),'2000-01-01T00:00:00Z',source.id);
- assert.throws(()=>createIntelligenceTopicIntent(w,{...input,operationId:'expired'}),e=>e.status===409);
+ // 保留期到期不是删除：仍可加入选题，只挂链接，沿用生成卡片时核验过的引文。
+ assert.equal(createIntelligenceTopicIntent(w,{...input,operationId:'expired',angle:null}).reused,false);
  assert.equal(getResearch(w,first.research.id).references[0].excerpt.includes('two outputs'),false);
  const secondSource=addIntelligenceSource(w,{title:'AI文档测试',body:'A separate AI document experiment compared three output formats and reported different review costs.',url:'https://other.example.com/document',provider:'web',readLevel:'original'},run.id);
  const secondBrief=saveIntelligenceBriefs(w,run.id,[{storyKey:'document-formats',title:'文档输出格式影响AI产物验收',summary:'作者比较文档输出格式',reason:'输出格式影响验收',body:'实验观察了不同文档格式的审阅成本。',confidence:'watch',kind:'practice',evidence:[{sourceId:secondSource.id,quote:secondSource.body}],uncertainties:['作者的小样本观察'],claims:[]}]).saved[0];

@@ -21,7 +21,8 @@ function editorReadingHistory(w) {
 export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
  const preferences=feedPreferences(w),feed=intelligenceFeed(w);
  const blocked=new Set((feed.blockedSources||[]).map(s=>typeof s==="string"?s:s.host));
- const allowed=uniqueIntelligenceSources(sources.filter(s=>sourcePermission(s,'ai')).filter(s=>(w.db.pragma('user_version',{simple:true})>=32?processingFor(w,s):classifyAiRelevance(s)).relevance==='ai_relevant')).filter(s=>s.originKind!=='internal').filter(s=>{try{const host=new URL(s.url).hostname;return ![...blocked].some(b=>host===b||host.endsWith(`.${b}`));}catch{return true;}});
+ // contextIds：随主帖一起送来的 Reddit 评论。评论不单独做相关性判断，靠主帖的判断进入同组，仍不算独立证据。
+ const allowed=uniqueIntelligenceSources(sources.filter(s=>sourcePermission(s,'ai')).filter(s=>(w.db.pragma('user_version',{simple:true})>=32?processingFor(w,s):classifyAiRelevance(s)).relevance==='ai_relevant'||deps.contextIds?.has(s.id))).filter(s=>s.originKind!=='internal').filter(s=>{try{const host=new URL(s.url).hostname;return ![...blocked].some(b=>host===b||host.endsWith(`.${b}`));}catch{return true;}});
  const history=()=>editorReadingHistory(w);
  let remaining=75000;
  const perSource=Math.min(6500,Math.floor(75000/Math.max(1,allowed.length)));

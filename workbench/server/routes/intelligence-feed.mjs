@@ -1,11 +1,13 @@
 import {exploreIntelligenceAngles} from '../domain/intelligence-angles.mjs';
 import { json,fail,readJsonBody } from '../lib/http.mjs';
-import { intelligenceFeed,intelligenceFeedSummary,intelligenceBrief,feedbackIntelligenceBrief,blockIntelligenceSource,mergeIntelligenceBriefs,saveFeedPreferences,refreshIntelligenceFeed,createIntelligenceReport } from '../domain/intelligence-feed.mjs';
+import { intelligenceFeed,intelligenceFeedSummary,intelligenceBrief,feedbackIntelligenceBrief,blockIntelligenceSource,mergeIntelligenceBriefs,saveFeedPreferences,refreshIntelligenceFeed,createIntelligenceReport,saveIntelligenceSettings } from '../domain/intelligence-feed.mjs';
 function route(method,path,action){return {method,path,handler:async c=>{try{const workspace=await c.workspace;if(!workspace?.db?.open)throw Object.assign(new Error('本地工作区尚未就绪'),{status:503});const body=method==='GET'?{}:await readJsonBody(c.req,100000);json(c.res,{ok:true,...await action({...c,workspace,body})});}catch(e){fail(c.res,e.message,{status:e.status||400});}}};}
 const base='/api/workspace/intelligence';
 export const intelligenceFeedRoutes=[
  route('POST',base+'/briefs/:id/angles',async({workspace,env,params})=>await exploreIntelligenceAngles(workspace,env,params.id)),
- route('GET',base+'/feed',({workspace})=>intelligenceFeed(workspace)),
+ route('GET',base+'/feed',({workspace,env})=>intelligenceFeed(workspace,{env})),
+ // 一次性授权与自动更新开关；授权放开后立即整理最近 7 天已采到的资料
+ route('POST',base+'/feed/settings',({workspace,env,body})=>saveIntelligenceSettings(workspace,body,env)),
  // 首页那一行只要三个数，不该为此把 300 条简报正文搬一遍
  route('GET',base+'/feed/summary',({workspace})=>intelligenceFeedSummary(workspace)),
  route('GET',base+'/briefs/:id',({workspace,params})=>({brief:intelligenceBrief(workspace,params.id)})),

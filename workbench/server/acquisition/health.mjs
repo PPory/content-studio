@@ -1,5 +1,6 @@
 export function errorStatus(error) {
  const message=String(error?.message||error||'');
+ if(error?.code==='quota_exhausted'||/QUOTA_EXHAUSTED/.test(message))return 'QUOTA_EXHAUSTED';
  if(error?.status===429||/限流|HTTP 429|rate.limit|预算已用完/i.test(message))return 'RATE_LIMITED';
  if(/PAID_ACCESS_BLOCKED/i.test(message))return 'PAID_ACCESS_BLOCKED';
  if(error?.blocked||[401,403].includes(error?.status)||/OAuth|approval|批准|AUTH_BLOCKED|HTTP 40[13]/i.test(message))return 'AUTH_BLOCKED';

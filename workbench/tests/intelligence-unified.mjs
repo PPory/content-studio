@@ -10,14 +10,16 @@ import {unifiedSummary,reconcileUnifiedSources,mergeBriefIdentities,canonicalBri
 import {persistIntelligenceCluster} from '../server/domain/intelligence-quality.mjs';
 import {reviewAction} from '../server/acquisition/review.mjs';
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-unified-'));let w;
+// 情报只整理 7 天内发布的资料；夹具默认是一小时前发布的。
+const fresh=new Date(Date.now()-3600000).toISOString();
 try {
  w=await openWorkspace({xenhoHome:root});
  // Supports running before the registry lands; all operations remain in this isolated database.
  w.db.exec(await fs.readFile(new URL('../server/storage/migrations/0033-intelligence-unified.sql',import.meta.url),'utf8'));
  const profile=saveIntelligenceProfile(w,{name:'测试情报',query:'AI',providers:['collected'],output:'briefs'});
  const quote='The language model experiment used a limited sample and requires independent verification.';
- const sources=Array.from({length:11},(_,i)=>addIntelligenceSource(w,{title:`LLM experiment ${i}`,url:`https://publisher${i}.example/report`,body:`${quote} Report identity ${i}.`,provider:'web',readLevel:'original'}));
- const blocked=addIntelligenceSource(w,{title:'LLM private content',url:'https://private.example/report',body:quote+' private text',provider:'web',readLevel:'original'});
+ const sources=Array.from({length:11},(_,i)=>addIntelligenceSource(w,{publishedAt:fresh,title:`LLM experiment ${i}`,url:`https://publisher${i}.example/report`,body:`${quote} Report identity ${i}.`,provider:'web',readLevel:'original'}));
+ const blocked=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM private content',url:'https://private.example/report',body:quote+' private text',provider:'web',readLevel:'original'});
  w.db.prepare("UPDATE intel_sources SET acquisition_identity='private-test',rights_json='{}' WHERE id=?").run(blocked.id);
  let modelCalls=0;const inspected=[];
  const deps={completeJson:async(_env,input)=>{modelCalls++;const d=JSON.parse(input.user);
@@ -38,7 +40,7 @@ try {
  const count=modelCalls;const second=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:second.id},deps);
  assert.equal(modelCalls,count,'unchanged materials do not consume model calls');assert.equal(intelligenceFeed(w).briefs.length,11);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).saved,true);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).dismissed,true);
  // A fresh source advances despite a preceding permanent model failure; retries are finite.
- const failing=addIntelligenceSource(w,{title:'LLM failing source',url:'https://failed.example/report',body:quote+' failure fixture',provider:'web',readLevel:'original'});
+ const failing=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM failing source',url:'https://failed.example/report',body:quote+' failure fixture',provider:'web',readLevel:'original'});
  const third=enqueueIntelligence(w,profile.id);let attempts=0;const failDeps={completeJson:async()=>{attempts++;throw Error('model unavailable');}};
  await executeIntelligence(w,{}, {runId:third.id},failDeps);await executeIntelligence(w,{}, {runId:third.id},failDeps);
  assert.equal(attempts,2);assert.equal(unifiedSummary(w).failures,1);assert.equal(intelligenceFeed(w).briefs.length,11);
@@ -79,7 +81,7 @@ try {
  await executeUnifiedBriefs(w,{},manualRefresh.id,deps);
  assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(failing.id).status,'done','recovered model can process a previously exhausted source');
  const localCount=1200;
- w.db.transaction(()=>{for(let i=0;i<localCount;i++)addIntelligenceSource(w,{title:'Netflix TV shows and movies '+i,url:'https://local-filter.example/'+i,body:'A discussion of movies and television with no technical subject.',provider:'web',readLevel:'original'});})();
+ w.db.transaction(()=>{for(let i=0;i<localCount;i++)addIntelligenceSource(w,{publishedAt:fresh,title:'Netflix TV shows and movies '+i,url:'https://local-filter.example/'+i,body:'A discussion of movies and television with no technical subject.',provider:'web',readLevel:'original'});})();
  const beforeLocal=modelCalls,localRun=enqueueIntelligence(w,profile.id);
  const localResult=await executeIntelligence(w,{}, {runId:localRun.id},deps);
  assert.equal(localResult.status,'done','local exclusions clear in one run without a delayed continuation');
@@ -88,8 +90,8 @@ try {
  const channel=(sourceGroup)=>w.db.prepare('SELECT id FROM intel_channels WHERE source_group=? LIMIT 1').get(sourceGroup)?.id;
  const aiChannel=channel('aihot'),t2Channel=channel('t2_media');
  assert(aiChannel&&t2Channel,'the isolated workspace has the built-in source catalog');
- const native=addIntelligenceSource(w,{title:'LLM experiment from AIhot',url:'https://native.example/report',body:quote+' Native AIhot report.',provider:'web',readLevel:'original'});
- const strict=addIntelligenceSource(w,{title:'LLM experiment in T2 media',url:'https://strict.example/report',body:quote+' T2 media report.',provider:'web',readLevel:'original'});
+ const native=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM experiment from AIhot',url:'https://native.example/report',body:quote+' Native AIhot report.',provider:'web',readLevel:'original'});
+ const strict=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM experiment in T2 media',url:'https://strict.example/report',body:quote+' T2 media report.',provider:'web',readLevel:'original'});
  const at=new Date().toISOString();
  for(const [source,channelId] of [[native,aiChannel],[strict,t2Channel]])w.db.prepare('INSERT INTO source_discoveries(source_id,channel_id,discovery_key,metadata_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?)').run(source.id,channelId,'test','{}',at,at);
  const beforeSemantic=inspected.length,strategyRun=enqueueIntelligence(w,profile.id);

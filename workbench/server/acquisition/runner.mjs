@@ -17,6 +17,7 @@ import { acquisitionWindow, batchPlatformLimit, channelItemLimit, gateAcquisitio
 
 import { processLocalSource, ensureReviewClusters } from './review.mjs';
 import { sourceFromRow } from '../domain/intelligence-quality.mjs';
+import { intelligenceAiConsent, REDDIT_DAILY_LIMITS } from '../domain/intelligence-pool.mjs';
 
 export const ACQUISITION_KINDS=['acquisition.sync','acquisition.validate','acquisition.backfill','acquisition.fulltext','acquisition.revalidate'];
 const connectors={aihot:collectAiHot,follow_builders:collectFollowBuilders,community:collectCommunity,reddit:collectReddit};
@@ -49,7 +50,7 @@ export function scheduleAcquisition(w,{now=new Date(),env={},startup=false}={}) 
       if(channel.access_status==='blocked')continue;
       if(w.db.prepare("SELECT r.id FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.channel_id=? AND r.kind IN ('sync','validate','backfill') AND j.status IN ('queued','retry','running')").get(channel.id))continue;
       // Fixed UTC interval keys coalesce missed slots; the connector replays missing history.
-      const interval=Math.max(300,channel.poll_seconds||3600),offset=channel.stream==='daily'?600000:0;
+      const interval=Math.max(300,channel.platform==='reddit'?86400:channel.poll_seconds||3600),offset=channel.stream==='daily'?600000:0;
       const slotTime=Math.floor((now.getTime()-offset)/(interval*1000))*interval*1000+offset,slot=new Date(slotTime).toISOString();
       // Calendar-based providers only poll within their documented local publication window.
       if(channel.platform==='follow_builders'||channel.stream==='daily') {
@@ -141,12 +142,14 @@ export async function executeAcquisition(w,env,payload,job,execution={},dependen
       const paid=['true','1'].includes(String(env.REDDIT_PAID_ACQUISITION_APPROVED));
       if(paid&&env.BRIGHTDATA_API_KEY){channel.access_status='approved';if(!dependencies.oneRunPaidApproval)w.db.prepare("UPDATE intel_channels SET access_status='approved' WHERE id=?").run(channel.id);}
       channel.options.aiAllowed=false;
+      // 评论和帖子能否交给模型，只看用户在情报页的一次性授权；通用 allow_ai 开关对 Reddit 仍然无效。
+      channel.options.redditAiConsent=intelligenceAiConsent(w).reddit===true;
       channel.options.threadId=payload.threadId;
     }
     const collect=dependencies.collect||connectors[channel.adapter];
     if(!collect)throw acquisitionError('信源需要手动阅读或适配器未配置',{blocked:true});
     const readSnapshot=id=>w.db.prepare('SELECT payload_text AS text,id AS snapshotId,observed_at AS observedAt FROM acquisition_snapshots WHERE id=? AND channel_id=?').get(id,channel.id)||null;
-    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request,authorizedSources:dependencies.authorizedFulltextSources}):collect({channel,checkpoint:initial,request,readSnapshot,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData,runLimits:dependencies.runLimits});
+    const iterable=payload.mode==='fulltext'?fulltext({w,payload,channel,request,authorizedSources:dependencies.authorizedFulltextSources}):collect({channel,checkpoint:initial,request,readSnapshot,signal,env,mode:payload.mode,budget:payload.mode==='validate'?6:20,now:new Date(at),window,providerState,brightData:dependencies.brightData,runLimits:dependencies.runLimits||(channel.platform==='reddit'?REDDIT_DAILY_LIMITS:undefined)});
     let acceptedByChannel=0;
     for await(const page of iterable) {
       check();last=page;

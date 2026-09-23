@@ -1,6 +1,8 @@
 import { finishAcquisitionBatches } from './acquisition/batches.mjs';
 import { scheduleAcquisition } from './acquisition/runner.mjs';
 import { scheduleIntelligence } from "./domain/intelligence.mjs";
+import { scheduleIntelligenceAutoUpdate } from './domain/intelligence-feed.mjs';
+import { cleanupAcquisition } from './acquisition/store.mjs';
 // 把本地 API 挂进 Vite dev server 的中间件链，而不是另起一个进程 + 配代理。
 // 一个进程、一条 npm run dev、没有端口对不上的问题，也不需要 concurrently 这类依赖。
 //
@@ -20,6 +22,9 @@ import { serveTypeset } from "./routes/tools.mjs";
 import { openWorkspace } from "./storage/workspace.mjs";
 import { runtimeXenhoHome } from "./storage/workspace-paths.mjs";
 
+// 维护里的附加任务失败不能拖垮整轮 tick（tick 同时负责消费本地任务队列）。
+const quietly = (task) => { try { return task(); } catch (error) { return { error: error instanceof Error ? error.message : String(error) }; } };
+
 export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {}) {
   const xenhoHome = runtimeXenhoHome(env);
   const pendingRestore = await applyPendingWorkspaceRestore({ xenhoHome });
@@ -34,6 +39,10 @@ export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {})
         acquisitionBatches: workspace.db.pragma('user_version',{simple:true})>=30 ? finishAcquisitionBatches(workspace) : null,
         acquisition: env.ACQUISITION_AUTOSTART === "true" ? scheduleAcquisition(workspace, { now, env, startup: acquisitionStartup && !(acquisitionStartup=false) }) : [],
         intelligence: scheduleIntelligence(workspace, { now }),
+        // Reddit 原文 48 小时保留期必须兑现，不能只在开启 ACQUISITION_AUTOSTART 时才清理。
+        acquisitionCleanup: env.ACQUISITION_AUTOSTART === "true" ? null : quietly(() => cleanupAcquisition(workspace, { now })),
+        // 用户授权后，应用打开期间每 6 小时自动更新情报（与按频道轮询的原始采集无关）。
+        intelligenceAutoUpdate: quietly(() => scheduleIntelligenceAutoUpdate(workspace, { now })),
         recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
         reconciledWikiCandidates: reconcileWikiIngestCandidates(workspace, { now }),
       }),

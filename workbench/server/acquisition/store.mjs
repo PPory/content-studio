@@ -52,7 +52,8 @@ function upsertItem(w,channel,item,at) {
     return {id,duplicates:1};
   }
   const restricted=channel.platform==='reddit';
-  const rights={...item.rights,aiAllowed:restricted?item.rights?.aiAllowed===true&&channel.access_status==='approved':channel.options.aiAllowed===true,exportAllowed:!restricted&&channel.options.exportAllowed===true};
+  // Reddit 的 AI 许可来自情报页的一次性授权（runner 运行时写入 redditAiConsent，通用 aiAllowed 对 Reddit 无效），且必须是已批准的付费采集；导出始终禁止。
+  const rights={...item.rights,aiAllowed:restricted?channel.options.redditAiConsent===true&&channel.access_status==='approved':channel.options.aiAllowed===true,exportAllowed:!restricted&&channel.options.exportAllowed===true};
   let body=String(item.body||item.summary||'');
   if(Buffer.byteLength(body)>30*1024*1024)throw acquisitionError('单份原文超过存储预算',{retry:false});
   const full=['original','full_text'].includes(item.readLevel)||item.contentStatus==='full_text';
@@ -127,7 +128,9 @@ export function redactSource(w,id,reason='retention_expired',{tombstone=true}={}
   const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(id);if(!row)return;
   const at=stamp();
   if(tombstone)for(const alias of w.db.prepare('SELECT identity FROM acquisition_aliases WHERE source_id=?').all(id))w.db.prepare('INSERT OR REPLACE INTO acquisition_tombstones(identity,reason,deleted_at) VALUES(?,?,?)').run(alias.identity,reason,at);
-  w.db.prepare("UPDATE intel_sources SET data_json=?,content_status=?,deleted_at=?,rights_json='{}',canonical_url='',publisher_key='',origin_ref=NULL WHERE id=?").run(encode({title:'内容已移除',body:'',url:'',author:'',provider:'reddit',readLevel:'summary',acquisition:true}),reason,at,id);
+  const previous=JSON.parse(row.data_json||'{}'),retired=reason==='retention_expired';
+  // 保留期到期只清原文；发布时间和内容类型不是原文，留着卡片才知道自己是哪天的。
+  w.db.prepare("UPDATE intel_sources SET data_json=?,content_status=?,deleted_at=?,rights_json='{}',canonical_url='',publisher_key='',origin_ref=NULL WHERE id=?").run(encode({title:'内容已移除',body:'',url:'',author:'',provider:'reddit',readLevel:'summary',acquisition:true,...(retired?{publishedAt:previous.publishedAt||null,contentKind:previous.contentKind||null,dateBasis:previous.dateBasis||'reported'}:{})}),reason,at,id);
   w.db.prepare("UPDATE acquisition_source_versions SET data_json='{}' WHERE source_id=?").run(id);
   w.db.prepare('DELETE FROM acquisition_segments WHERE version_id IN (SELECT id FROM acquisition_source_versions WHERE source_id=?)').run(id);
   w.db.prepare("UPDATE source_discoveries SET metadata_json='{}' WHERE source_id=?").run(id);
@@ -135,7 +138,10 @@ export function redactSource(w,id,reason='retention_expired',{tombstone=true}={}
   // Restricted content cannot be exported to captures; old derived intelligence still needs scrubbing.
   for(const table of ['intel_cards','intel_briefs','intel_brief_versions']) {
     for(const record of w.db.prepare(`SELECT rowid AS rid,data_json FROM ${table} WHERE data_json LIKE ?`).all(`%${id}%`)) {
-      const data=JSON.parse(record.data_json);data.evidence=(data.evidence||[]).filter(e=>e.sourceId!==id);
+      const data=JSON.parse(record.data_json);
+      // 保留期到期（2026-09-23 决策）：卡片保留中文摘要，引文截到 200 字并记下原帖链接，不再整卡抹掉。
+      if(retired&&table!=='intel_cards'){data.evidence=(data.evidence||[]).map(e=>e.sourceId===id?{...e,quote:String(e.quote||'').slice(0,200),url:e.url||previous.url||'',sourceRetired:true}:e);w.db.prepare(`UPDATE ${table} SET data_json=? WHERE rowid=?`).run(encode(data),record.rid);continue;}
+      data.evidence=(data.evidence||[]).filter(e=>e.sourceId!==id);
       for(const field of ['body','summary','technical','claims','title','coreClaim'])if(field in data)data[field]=Array.isArray(data[field])?[]:'引用内容已移除，需重新核查';
       data.editorialState='needs_review';
       w.db.prepare(`UPDATE ${table} SET data_json=? WHERE rowid=?`).run(encode(data),record.rid);

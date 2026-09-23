@@ -20,6 +20,8 @@ export async function trigger(key, datasetId, rows, { discoverBy, limitPerInput,
   const payload=limitPerInput?{input:rows,limit_per_input:limitPerInput}:rows;
   const response=await fetchImpl(`${API}/trigger?${query}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(payload),signal:timeoutSignal(signal,30000)});
   const result=await json(response);
+  // 额度用尽不是凭据问题：不重试、不把频道标成 blocked，情报社区类由 Hacker News 补位，充值后下次自动恢复。
+  if(!response.ok&&(response.status===402||/insufficient|balance|credit|quota|payment/i.test(result.text)))throw new BrightDataError(`QUOTA_EXHAUSTED：Bright Data 额度不足（HTTP ${response.status}）`,'充值或等待额度恢复；社区内容暂由 Hacker News 提供',{status:response.status,code:'quota_exhausted',retry:false});
   if(!response.ok)throw new BrightDataError(`Bright Data 触发失败（HTTP ${response.status}）：${result.text.slice(0,300)}`,'检查 dataset 权限与输入 schema',{status:response.status,blocked:[401,403].includes(response.status)});
   if(!result.data?.snapshot_id)throw new BrightDataError(`Bright Data 触发未返回 snapshot_id：${result.text.slice(0,300)}`,'停止重试，先核对 dataset 与输入 schema',{code:'invalid_schema',retry:false});
   return result.data.snapshot_id;

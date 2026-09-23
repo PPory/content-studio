@@ -2,17 +2,32 @@ import { createUlid } from '../storage/ids.mjs';
 import { sourceFromRow } from '../domain/intelligence-quality.mjs';
 import { enqueueAcquisition } from './runner.mjs';
 import { acquisitionWindow, mergeAcquisitionStats } from './window.mjs';
+import { POOL_CHANNEL_SQL, MAX_BACKFILL_MS, REDDIT_MIN_INTERVAL_MS } from '../domain/intelligence-pool.mjs';
 const empty=()=>({fetched:0,inWindow:0,outsideWindow:0,unknownTimestamp:0,limited:0,inserted:0,updated:0,duplicate:0,failed:0,deepRead:0});
 const names={'aihot:selected':'AIHOT Selected','aihot:hot':'AIHOT Hot','aihot:daily':'AIHOT Daily','follow_builders:feed-x.json':'Follow Builders X','follow_builders:feed-podcasts.json':'Follow Builders Podcast','follow_builders:feed-blogs.json':'Follow Builders Blog','follow_builders:state-feed.json':'Follow Builders State','t2_media:feed':'T2 Media','community:hacker_news':'Hacker News','community:reddit_posts':'Reddit Posts','community:reddit_comments':'Reddit Comments','community:github':'GitHub','community:arxiv':'arXiv','community:stackoverflow':'Stack Overflow','community:devto':'Dev.to'};
 function streamKey(group,platform,stream,kind){return `${group}:${group==='community'?platform==='reddit'?kind==='comment'?'reddit_comments':'reddit_posts':platform:stream}`;}
+/**
+ * 每个频道从上次成功覆盖的终点接着采（留 2 小时重叠应对上游延迟），最多回溯 7 天，至少覆盖 24 小时。
+ * 几天没开应用时，窗口外的新内容不会再被当作「超出窗口」丢掉。
+ */
+function channelWindowStart(w,channelId,window){
+ const end=Date.parse(window.windowEnd),floor=end-MAX_BACKFILL_MS,base=Date.parse(window.windowStart);
+ const last=w.db.prepare("SELECT max(window_end_at) at FROM acquisition_runs WHERE channel_id=? AND status='completed' AND kind IN ('sync','backfill')").get(channelId)?.at;
+ if(!last)return window.windowStart;
+ return new Date(Math.max(floor,Math.min(base,Date.parse(last)-2*3600000))).toISOString();
+}
 export function startAcquisitionBatch(w,{confirmed,trigger='manual'}={}) {
  if(confirmed!==true)throw Object.assign(new Error('请确认同步现有来源并保存真实资料'),{status:400});
  return w.db.transaction(()=>{
  const active=w.db.prepare("SELECT b.id FROM acquisition_batches b JOIN acquisition_runs r ON r.batch_id=b.id JOIN local_jobs j ON j.id=r.job_id WHERE j.status IN ('queued','retry','running') ORDER BY b.started_at DESC LIMIT 1").get();
  if(active)return batchOverview(w,active.id).batch;
- const channels=w.db.prepare("SELECT * FROM intel_channels WHERE source_group IN ('aihot','follow_builders','t2_media','community') AND desired_enabled=1 AND user_disabled=0 ORDER BY source_group,name").all();
+ // 只调度情报池：arXiv、GitHub、dev.to 等频道保留配置，但不再随「更新情报」采集。
+ const recent=Date.now()-REDDIT_MIN_INTERVAL_MS;
+ const channels=w.db.prepare(`SELECT * FROM intel_channels WHERE ${POOL_CHANNEL_SQL} AND desired_enabled=1 AND user_disabled=0 ORDER BY source_group,name`).all()
+  // Reddit 按条计费：一天只跑一次，手动点也一样；因授权缺失被拦的不算跑过。
+  .filter(c=>c.platform!=='reddit'||!w.db.prepare("SELECT id FROM acquisition_runs WHERE channel_id=? AND kind IN ('sync','validate') AND status IN ('completed','failed','running','queued') AND COALESCE(started_at,created_at)>=?").get(c.id,new Date(recent).toISOString()));
  const id=createUlid(),at=new Date().toISOString(),window=acquisitionWindow({mode:'sync',now:new Date(at)});w.db.prepare('INSERT INTO acquisition_batches(id,trigger_kind,started_at,channel_count,window_start_at,window_end_at) VALUES(?,?,?,?,?,?)').run(id,trigger,at,channels.length,window.windowStart,window.windowEnd);
- for(const c of channels)enqueueAcquisition(w,c.id,{trigger,slot:`batch:${id}`,batchId:id,explicit:true,windowStartAt:window.windowStart,windowEndAt:window.windowEnd});
+ for(const c of channels)enqueueAcquisition(w,c.id,{trigger,slot:`batch:${id}`,batchId:id,explicit:true,windowStartAt:channelWindowStart(w,c.id,window),windowEndAt:window.windowEnd});
  return batchOverview(w,id).batch;
  })();
 }

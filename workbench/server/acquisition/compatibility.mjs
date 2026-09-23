@@ -29,8 +29,12 @@ export function localAiHot(w,{forAi=false}={}) {
 export function visibleDerived(w, data) {
   const ids = new Set((data.evidence || []).map(e => e.sourceId).filter(Boolean));
   const unavailable = [...ids].some(id => {
-    const row = w.db.prepare('SELECT acquisition_identity,deleted_at,expires_at,rights_json FROM intel_sources WHERE id=?').get(id);
-    return row?.acquisition_identity && (row.deleted_at || (row.expires_at && Date.parse(row.expires_at) <= Date.now()) || JSON.parse(row.rights_json||'{}').aiAllowed!==true);
+    const row = w.db.prepare('SELECT acquisition_identity,deleted_at,expires_at,rights_json,content_status FROM intel_sources WHERE id=?').get(id);
+    if (!row?.acquisition_identity) return false;
+    // 保留期到期不是撤权：卡片保留摘要与短引文（redactSource 负责截短）。删除和撤回 AI 许可仍然遮罩。
+    if (row.content_status === 'retention_expired') return false;
+    // 已过期但尚未清理的，同样按保留期处理（下一次维护会截短引文）。
+    return Boolean(row.deleted_at) || JSON.parse(row.rights_json||'{}').aiAllowed!==true;
   });
   if (!unavailable && !Object.values(data).includes('引用内容已移除，需重新核查')) return data;
   const hidden = { ...data, evidence: [], editorialState: 'needs_review', contentRestricted: true };

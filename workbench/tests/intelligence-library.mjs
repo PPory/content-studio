@@ -30,7 +30,8 @@ try {
  w.db.prepare("UPDATE intel_sources SET rights_json=? WHERE id=?").run(JSON.stringify({aiAllowed:true,exportAllowed:false}),source.id);
  assert.equal(visibleDerived(w,derived).body,derived.body,'export rights differ from AI-derived display rights');
  w.db.prepare("UPDATE intel_sources SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(source.id);
- assert.equal(visibleDerived(w,derived).contentRestricted,true);assert(!intelligenceLibrary(w,{q:source.title,limit:100}).items.some(i=>i.id===source.id));
+ // 保留期到期：原文从资料库消失，但卡片保留摘要（2026-09-23 决策）；删除和撤回 AI 许可才遮罩卡片。
+ assert.notEqual(visibleDerived(w,derived).contentRestricted,true);assert(!intelligenceLibrary(w,{q:source.title,limit:100}).items.some(i=>i.id===source.id));
  w.db.prepare("UPDATE intel_sources SET deleted_at='2026-01-01' WHERE id=?").run(sources[2].id);
  assert.equal(intelligenceLibrary(w).total,518);
  assert.deepEqual(w.db.pragma('foreign_key_check'),[]);
