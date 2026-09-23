@@ -18,48 +18,165 @@
 .unified-filter-settings { margin-top: 14px; }
 .unified-update-status { display: flex; align-items: center; gap: 10px; min-height: 22px; color: var(--text-3); font-size: 12px; margin: 0 0 18px; line-height: 1.7; }
 .unified-update-status.has-problem { color: var(--text-2); }
-/* 卡片尺寸对齐「选题」页（research-list.css 的 .research-card-grid / .research-card）：
-   一屏能扫完 6–8 张，单张卡只负责「值不值得点开」。 */
-.intel-unified .intel-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
-.intel-workspace.intel-unified .brief-card { padding: 13px 15px 11px; gap: 7px; min-height: 0; }
-.intel-workspace.intel-unified .brief-card__title { font-size: var(--fs-base); min-height: calc(2 * 1.5 * var(--fs-base)); }
-.intel-workspace.intel-unified .brief-card__meta { margin: 0; flex: none; font-size: var(--fs-2xs); }
-.intel-unified .brief-card footer { justify-content: flex-start; gap: 14px; padding-top: 9px; }
-.intel-unified .brief-card footer .btn-sm { min-height: 28px; padding: 3px 10px; }
-/* 列表行：动作区平时收起，悬停、聚焦或已有状态（已收藏 / 已加入选题）时出现，和选题页的行一致。 */
-/* 标题列固定宽度，摘要列才能对齐成一列。 */
-.intel-rows .brief-row__open { flex: 0 0 34%; max-width: 34%; }
-.intel-row__acts { display: flex; align-items: center; gap: 12px; opacity: 0; transition: opacity 0.14s var(--ease); }
-.intel-row__acts .btn-sm { min-height: 28px; padding: 3px 10px; }
-.intel-rows .row:hover .intel-row__acts,
-.intel-rows .row:focus-within .intel-row__acts,
-.intel-row__acts:has([aria-pressed="true"], .topic-linked, .topic-links) { opacity: 1; }
-.unified-card-more { margin-left: auto; font-size: 12px; }
-.unified-card-more .anchored-popover__trigger { min-width: 32px; padding: 5px; font-size: 16px; letter-spacing: 1px; }
+
+/* ── 卡片：每张同一个骨架 ─────────────────────────────────────
+   顶行（未读点 + 标记 + 勾选框）固定 22px、每张都有；标题和概要各占满两行高度；底行贴底。
+   上一版顶行时有时无、未读点塞在标题里、页脚用 opacity 藏着却还占高度——同一排的卡三处都对不齐。
+   选择器带 `.intel-unified` 两级，是为了盖过 intelligence-workspace.css 里那套旧精选卡的尺寸。 */
+.intel-unified .intel-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; align-items: stretch; }
+.intel-workspace.intel-unified .intel-card { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 12px 14px 8px; cursor: pointer; }
+.intel-card__top { display: flex; align-items: center; gap: 8px; height: 22px; min-width: 0; }
+.intel-card__marks { display: flex; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.intel-card__top .brief-card__pick { flex: none; margin-left: auto; }
+.intel-workspace.intel-unified .intel-card .brief-card__title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: calc(2 * 1.5 * var(--fs-base)); font-size: var(--fs-base); line-height: 1.5; letter-spacing: 0;
+}
+.intel-workspace.intel-unified .intel-card .brief-card__summary {
+  -webkit-line-clamp: 2; min-height: calc(2 * 1.7 * var(--fs-sm)); margin: 0;
+  font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2);
+}
+.intel-workspace.intel-unified .intel-card__foot {
+  display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 30px; margin-top: auto; padding-top: 4px; border-top: 0; opacity: 1;
+}
+.intel-workspace.intel-unified .intel-card__foot .brief-card__meta { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--fs-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 未读：标题前的一个小圆点。卡片里放在顶行，行和目录里放在标题前。 */
+.intel-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+:is(.brief-row__open, .intel-index__title) > .intel-dot { margin-right: 7px; vertical-align: middle; transform: translateY(-1px); }
+
+/* ── 标记：只给会改变判断的东西上色（规则见 docs/design-system.md「状态」） ── */
+.intel-marks { display: inline-flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
+.intel-mark { display: inline-flex; align-items: center; gap: 3px; color: var(--text-2); font-size: var(--fs-2xs); font-weight: 500; line-height: 20px; white-space: nowrap; }
+.intel-mark svg { flex: none; width: 13px; height: 13px; }
+.intel-mark.is-worth { padding: 0 8px 0 6px; border-radius: 999px; color: var(--lane-intel); background: color-mix(in srgb, var(--lane-intel) 13%, transparent); font-weight: 600; }
+.intel-mark.is-urgent { color: var(--emph); font-weight: 600; }
+.intel-mark.is-quiet { color: var(--text-3); font-weight: 400; }
+
+/* ── 卡片动作：三个真正的按钮，平时透明，指上去才浮起来 ──
+   已发生的状态（已收藏、已加入选题）单独常驻，没发生的动作悬停或聚焦时才出现。 */
+.intel-acts { display: inline-flex; flex: none; align-items: center; gap: 2px; }
+.intel-acts > * { opacity: 0; transition: opacity 0.14s var(--ease); }
+:is(.intel-card, .row):is(:hover, :focus-within) .intel-acts > *,
+.intel-acts > :is([aria-pressed="true"], .topic-linked, .topic-links) { opacity: 1; }
+.intel-act, .intel-acts .anchored-popover__trigger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; min-height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--r-ctl);
+  background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); white-space: nowrap; cursor: pointer;
+  transition: background-color 0.14s var(--ease), color 0.14s var(--ease);
+}
+.intel-act--icon, .intel-acts .unified-card-more .anchored-popover__trigger { width: 28px; min-width: 28px; padding: 0; }
+.intel-act svg, .intel-acts .anchored-popover__trigger svg { flex: none; width: 16px; height: 16px; }
+.intel-act:hover:not(:disabled), .intel-acts .anchored-popover__trigger:hover { background: var(--surface-2); color: var(--text-1); }
+.intel-act:disabled { opacity: 0.4; cursor: not-allowed; }
+.intel-act[aria-pressed="true"] { color: var(--text-1); }
+/* 已加入选题：品牌绿本来就是「走到哪儿了」的颜色。 */
+.intel-acts :is(.topic-linked, .topic-links .anchored-popover__trigger) { color: var(--brand); font-weight: 500; }
+.unified-card-more { margin: 0; }
 .unified-card-menu, .topic-links__menu { display: grid; min-width: 205px; }
 .unified-card-menu button, .topic-links__menu button { border: 0; background: none; text-align: left; padding: 10px; color: var(--text-1); font: inherit; cursor: pointer; }
 .unified-card-menu button:hover, .topic-links__menu button:hover { background: var(--surface-2); }
-.topic-linked { color: var(--text-1); }
-.topic-links .anchored-popover__trigger { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-ctl); color: var(--text-1); font-size: 12px; }
+
+/* ── 列表模式：同一套标记和动作。标题列固定宽度，概要才能对齐成一列。 ── */
+.intel-rows .brief-row__open { flex: 0 0 34%; max-width: 34%; }
+.intel-row__info { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.intel-row__info > * { flex: none; }
+.intel-rows .row-meta .brief-card__meta { overflow: visible; }
+
+/* ── 详情打开时：左边窄目录，右边宽预览 ─────────────────────────
+   目录约 380px（标题两行 + 标记与来源数），剩下的都给预览：1440 屏上约 770px，1920 屏封顶 1000px。
+   上一版反过来——预览 28vw、左边还是整张宽卡，读的地方比扫的地方窄。 */
+.intel-unified .intel-feed__body { --peek-w: clamp(480px, calc(100vw - var(--sidebar-w) - var(--main-pad) - 400px), 1000px); }
+.intel-index { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.intel-index__item { display: grid; gap: 4px; padding: 11px 12px 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.intel-index__item:hover { background: var(--surface-2); }
+.intel-index__item.is-active { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.intel-index__title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  padding: 0; border: 0; background: none; color: var(--text-1); font: inherit;
+  font-size: var(--fs-sm); font-weight: 600; line-height: 1.55; text-align: left; cursor: pointer;
+}
+.intel-index__item.is-read .intel-index__title { color: var(--text-2); font-weight: 500; }
+.intel-index__meta { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; overflow: hidden; color: var(--text-3); font-size: var(--fs-2xs); white-space: nowrap; }
+.intel-index__meta > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.intel-unified .brief-peek__body { padding: 24px 36px 40px; }
+
+/* 滚到底自动加载；按钮留给键盘和不支持 IntersectionObserver 的环境。 */
+.unified-more { display: flex; justify-content: center; margin: 20px 0 28px; color: var(--text-3); font-size: var(--fs-xs); }
+
+.topic-linked { color: var(--brand); }
 .unified-detail-feedback { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 18px 0; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
 .unified-notice { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; background: var(--surface-2); border-left: 2px solid var(--text-1); font-size: 14px; }
-.unified-load-more { display: block; margin: 24px auto; }
 .intel-unified-full .brief-detail-toolbar { flex-wrap: wrap; gap: 12px; }
 .intel-unified-full .brief-detail-toolbar > div { flex-wrap: wrap; }
+.intel-unified-full .brief-reading { max-width: 780px; }
 .intel-unified :is(summary,button,a,input,select,textarea):focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+
+/* ── 事件详情：头部 → 发生了什么 → 创作判断 → 为什么重要 → 深度解读 → 来源与讨论（折叠） ── */
+.event-reading { display: grid; max-width: 720px; min-width: 0; }
+.event-reading__head { display: grid; gap: 8px; justify-items: start; padding-bottom: 20px; }
+.event-reading__title { margin: 0; color: var(--text-1); font-size: var(--fs-xl); font-weight: 650; line-height: 1.4; }
+.event-reading.is-dense .event-reading__title { font-size: 21px; }
+.event-reading__stats { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+.event-reading__part { padding: 20px 0; border-top: 1px solid var(--border); }
+.event-reading__part > h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.event-reading__part > p { margin: 0 0 8px; color: var(--text-1); font-size: var(--fs-base); line-height: 1.8; }
+.event-reading__part > p:last-child { margin-bottom: 0; }
+.event-reading__ai { padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-3); font-size: var(--fs-2xs); font-weight: 500; line-height: 1.7; }
+.event-reading__muted { color: var(--text-3); font-weight: 400; }
+/* 创作判断：一块淡赭底——和卡片上「值得做」同一个颜色，读者一眼认得出这是那一张的「为什么」。 */
+.event-reading__creation {
+  display: grid; gap: 8px; justify-items: start; margin: 0 0 20px; padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--lane-intel) 24%, transparent); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--lane-intel) 7%, var(--surface));
+}
+.event-reading__verdict { margin: 0; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; line-height: 1.7; }
+.event-reading__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__angle span { color: var(--lane-intel); font-weight: 600; }
+.event-reading__creation .btn { margin-top: 2px; }
+.event-reading__body .markdown-body { font-size: var(--fs-base); line-height: 1.85; }
+/* 解读正文里的小标题降到正文字号：它们是「深度解读」这一段里的层次，不能比段名还大。 */
+.event-reading__body .markdown-body :is(h1, h2, h3, h4) { margin: 20px 0 8px; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; line-height: 1.6; }
+.event-reading__body .markdown-body > :first-child { margin-top: 0; }
+.event-reading__deep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.event-reading__note { margin: 0 0 12px; color: var(--text-3); font-size: var(--fs-xs); }
+.event-reading .event-reading__fold { padding: 14px 0; border-top: 1px solid var(--border); }
+.event-reading__fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; list-style: none; }
+.event-reading__fold > summary::-webkit-details-marker { display: none; }
+.event-reading__fold > summary::before { content: ""; align-self: center; width: 6px; height: 6px; margin-right: 2px; border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3); transform: rotate(-45deg); }
+.event-reading__fold[open] > summary::before { transform: rotate(45deg); }
+.event-reading__fold ul { margin: 10px 0 0; padding-left: 20px; font-size: var(--fs-sm); line-height: 1.75; }
+.event-reading__sources-fold { padding-bottom: 4px; }
+.event-reading__group { margin-top: 16px; }
+.event-reading__group h4 { margin: 0 0 8px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 500; }
+.event-reading .event-reading__sources { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.event-reading__sources li { display: grid; gap: 2px; min-width: 0; }
+.event-reading__sources a { color: var(--text-1); font-size: var(--fs-sm); line-height: 1.55; text-decoration: none; overflow-wrap: anywhere; }
+.event-reading__sources a:hover { text-decoration: underline; }
+.event-reading__src-meta { color: var(--text-3); font-size: var(--fs-2xs); }
+.event-reading__sources blockquote { margin: 6px 0 0; padding: 4px 10px; border-left: 2px solid var(--border-strong); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.event-reading__sources blockquote span { color: var(--text-3); }
+
+@media (hover: none) {
+ .intel-acts > * { opacity: 1; }
+}
+@media (max-width: 1000px) {
+ .intel-unified .brief-peek__body { padding: 16px 18px 24px; }
+}
 @media(max-width:700px) {
  .unified-toolbar { flex-wrap: wrap; align-items: start; }
  .unified-toolbar__actions { width: 100%; }
  .unified-toolbar__actions .search-box { width: auto; flex: 1; }
  .unified-filter-panel { position: fixed; inset: auto 16px 16px; width: auto; max-height: min(70vh, 520px); overflow: auto; }
- .intel-workspace.intel-unified .brief-card { padding: 13px 14px 11px; }
  .intel-rows .row-head { flex-wrap: wrap; row-gap: 6px; }
  .intel-rows .brief-row__open { max-width: none; flex: 1 1 calc(100% - 30px); white-space: normal; }
  .intel-rows .row-meta { width: 100%; justify-content: space-between; flex-wrap: wrap; }
- .intel-row__acts { opacity: 1; }
+ .intel-acts > * { opacity: 1; }
  .intel-unified .brief-card__pick { opacity: 1; }
  .intel-unified .brief-selection-bar { position: sticky; bottom: 0; }
  .intel-unified .brief-peek__foot { flex-wrap: wrap; }
+ .event-reading__title, .event-reading.is-dense .event-reading__title { font-size: var(--fs-lg); }
 }
 @media(prefers-reduced-motion:reduce){.intel-unified *{transition:none!important;scroll-behavior:auto!important;}}
 
@@ -69,64 +186,3 @@
 .intel-consent label:has(> input[type=checkbox]) { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; line-height: 1.6; }
 .intel-consent input[type=checkbox] { margin-top: 4px; flex: none; }
 .intel-consent__hint { margin: 10px 0; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-3); }
-
-/* 热点事件详情：AI 概要在上，来源清单原样照搬在下，两者用标签和分区分开。 */
-.event-reading { display: grid; gap: 14px; }
-.event-reading__labels { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; color: var(--text-3); font-size: var(--fs-2xs); }
-.event-reading__labels span:last-child:not(:first-child) { padding: 0 6px; border: 1px solid var(--border); border-radius: var(--r-ctl); }
-.event-reading__title { margin: 0; font-size: var(--fs-lg); line-height: 1.45; }
-.event-reading__summary { margin: 0; color: var(--text-1); font-size: var(--fs-base); line-height: 1.75; }
-.event-reading__why { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
-.event-reading__why strong { font-weight: 500; }
-.event-reading__deep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
-.event-reading__note { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
-.event-reading__section h3 { margin: 6px 0 8px; font-size: var(--fs-sm); font-weight: 600; }
-.event-reading__sources { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.event-reading__sources li { display: grid; gap: 2px; min-width: 0; }
-.event-reading__sources a { color: var(--text-1); font-size: var(--fs-sm); line-height: 1.5; text-decoration: none; overflow-wrap: anywhere; }
-.event-reading__sources a:hover { text-decoration: underline; }
-.event-reading__src-meta { color: var(--text-3); font-size: var(--fs-2xs); }
-
-/* ── 创作判断层 ─────────────────────────────────────────── */
-/* 唯一保留的状态标签：抢时效会改变你今天的动作，用暖色强调「拦一眼」；其余评级不单独摆出来。 */
-.intel-badge { display: inline-flex; align-items: center; flex: none; padding: 0 7px; border: 1px solid var(--emph-line); border-radius: 999px; color: var(--emph); font-size: var(--fs-2xs); font-weight: 600; line-height: 1.8; white-space: nowrap; }
-
-/* 今天值得做：带序号的清单。第 1 名标题大一档，其余同一节奏；次要动作悬停才出现。 */
-.intel-today { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
-.intel-today__item { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 4px 16px; align-items: start; padding: 18px 8px 18px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
-.intel-today__item:hover { background: var(--surface-2); }
-.intel-today__item.is-active { box-shadow: inset 2px 0 0 var(--accent); background: var(--surface-2); }
-.intel-today__rank { padding-top: 1px; color: var(--text-3); font-size: var(--fs-lg); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; line-height: 1.4; }
-.intel-today__main { display: grid; gap: 6px; min-width: 0; }
-.intel-today__title { padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-md); font-weight: 600; line-height: 1.45; color: var(--text-1); text-align: left; cursor: pointer; }
-.intel-today__item.is-first .intel-today__title { font-size: var(--fs-lg); }
-.intel-today__item.is-first .intel-today__rank { color: var(--text-1); }
-.intel-today__item.is-read .intel-today__title { color: var(--text-2); font-weight: 500; }
-.intel-today__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.6; }
-.intel-today__angle span, .event-reading__angle span { color: var(--text-3); }
-.intel-today__meta { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
-.intel-today__side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-height: 100%; }
-.intel-today__acts { display: flex; align-items: center; gap: 12px; margin-top: auto; opacity: 0; transition: opacity 0.14s var(--ease); }
-.intel-today__item:hover .intel-today__acts, .intel-today__item:focus-within .intel-today__acts,
-.intel-today__acts:has([aria-pressed=true], .topic-linked, .topic-links) { opacity: 1; }
-
-/* 全部热点：顶行只在有内容时出现；没有时勾选框浮在右上角，不占一行。页脚动作悬停才出现，已发生的状态常驻。 */
-.intel-workspace.intel-unified .brief-card { position: relative; }
-.intel-unified .brief-card.has-no-top > .brief-card__pick { position: absolute; top: 12px; right: 12px; }
-.intel-unified .brief-card.has-no-top .brief-card__title { padding-right: 20px; }
-.intel-unified .brief-card footer { opacity: 0; transition: opacity 0.14s var(--ease); }
-.intel-unified .brief-card:hover footer, .intel-unified .brief-card:focus-within footer,
-.intel-unified .brief-card footer:has([aria-pressed=true], .topic-linked, .topic-links) { opacity: 1; }
-@media (hover: none) {
- .intel-today__acts, .intel-unified .brief-card footer { opacity: 1; }
-}
-@media (max-width: 700px) {
- .intel-today__item { grid-template-columns: 26px minmax(0, 1fr); }
- .intel-today__side { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; }
- .intel-today__acts { margin-top: 0; opacity: 1; }
-}
-
-/* 详情里的创作判断：理由当结论，角度是下一步，按钮就是那个动作。 */
-.event-reading__creation { display: grid; gap: 8px; justify-items: start; padding: 12px 14px; border-radius: var(--r-md); background: var(--surface-2); }
-.event-reading__verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; }
-.event-reading__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.6; }

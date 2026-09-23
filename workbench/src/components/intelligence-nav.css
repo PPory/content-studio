@@ -64,7 +64,10 @@
 .anchored-popover__panel.is-end { right: 0; }
 .anchored-popover__panel.is-start { left: 0; }
 .intel-nav-more { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
-.intel-nav-more .anchored-popover__trigger { min-width: 36px; padding: 4px 8px; font-size: 17px; letter-spacing: 1px; }
+/* 「更多」是一枚真正的图标，不是三个字符加字距：字符点的间距随字体变，和旁边的按钮对不齐。 */
+.intel-nav-more .anchored-popover__trigger { display: inline-flex; align-items: center; justify-content: center; width: 34px; min-width: 34px; padding: 0; border-radius: var(--r-ctl); }
+.intel-nav-more .anchored-popover__trigger:hover { background: var(--surface-2); color: var(--text-1); }
+.intel-nav-more .anchored-popover__trigger svg { width: 18px; height: 18px; }
 .intel-nav-menu { display: grid; }
 .intel-nav-menu a { min-height: 36px; margin: 0; padding: 8px; border: 0; color: var(--text-2); white-space: nowrap; }
 .intel-nav-menu a:hover { background: var(--surface-2); color: var(--text-1); }

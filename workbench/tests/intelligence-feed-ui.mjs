@@ -44,7 +44,7 @@ try{
  else if(url.pathname.endsWith("/reports")){const report={id:"report-one",title:"这一周的变化与实践",body:"## 本周回顾\n\n完整周报内容。",periodStart:"2026-09-01",periodEnd:stamp,evidence:[{sourceId:"source-one",title:"周报测试出处",url:"https://example.com/model",quote:"仅用于测试的公开原文。"}]};state.reports.push(report);result={ok:true,report};}
  else if(url.pathname.endsWith("/merge")){merged=body;result={ok:true,research:{id:"research-merged"}};}
  await route.fulfill({contentType:"application/json",body:JSON.stringify(result)});});
- await page.goto(base+"/#/intel");await page.getByRole('tab',{name:'全部热点',exact:true}).click();assert.equal(refreshes,0,'打开首页不自动采集');
+ await page.goto(base+"/#/intel");await page.getByRole('tab',{name:'热点',exact:true}).click();assert.equal(refreshes,0,'打开首页不自动采集');
  await page.getByRole('button',{name:'更新情报',exact:true}).click();await page.getByText('正在更新情报，已有内容仍可阅读',{exact:true}).waitFor();assert.equal(refreshes,1);
  await page.locator('.brief-card__title').filter({hasText:state.briefs[0].title}).click();await page.locator('.brief-peek').getByText('模拟详情暂不可用',{exact:false}).waitFor();assert.equal(state.briefs[0].read,false);
  await page.locator('.brief-peek').getByRole('button',{name:'重试',exact:true}).click();await page.locator('.brief-peek').getByRole('heading',{name:'综合理解',exact:true}).waitFor();assert.equal(state.briefs[0].read,true);
