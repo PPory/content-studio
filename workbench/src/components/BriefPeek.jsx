@@ -40,6 +40,8 @@ export function BriefPeek({
   onCorrectGroup,
   onGo,
   onBlock,
+  // 页面可以换一种正文渲染（热点事件卡用 EventReading），不传就用通用的 BriefReading。
+  reading,
 }) {
   return (
     <aside className="brief-peek" aria-label="情报详情">
@@ -74,7 +76,7 @@ export function BriefPeek({
           <Loading rows={4} />
         ) : (
           <>
-            <BriefReading brief={brief} onGo={onGo} onBlock={onBlock} dense />
+            {reading?.(brief) || <BriefReading brief={brief} onGo={onGo} onBlock={onBlock} dense />}
             {onCorrectGroup ? <div className="unified-detail-feedback"><span>资料归到一起有误？</span><button type="button" className="text-action" onClick={onCorrectGroup}>纠正分组</button></div> : null}
           </>
         )}

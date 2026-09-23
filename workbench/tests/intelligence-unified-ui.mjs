@@ -14,7 +14,7 @@ const shots=path.join(ROOT,'output/playwright/intel-refinement');await fs.mkdir(
 const source={id:'raw1',title:'模型更新原始说明',body:'模型在对照任务中改善，真实环境仍需验证。',url:'https://example.com/release',provider:'web',originKind:'external',publishedAt:'2026-09-20',sourceGroup:'aihot'};
 const briefs=Array.from({length:11},(_,i)=>({id:`b${i}`,title:`模型更新的实际变化 ${i+1}`,summary:i%3===0?'对照任务显示改善，真实工作流仍待核对。作者指出适用范围有限，尚需在日常写作和资料整理中复测。':'对照任务显示改善，真实工作流仍待核对。',whyItMatters:i%2?'可以核对来源的具体任务和样本。':'可用自己的重复任务做一次对照。',body:'原始说明表明模型在对照任务中改善。',uncertainties:['真实环境未验证'],evidence:[{sourceId:'raw1',quote:source.body}],sourceMeta:[source],sources:[source],sourceDocuments:[source],sourceCount:1,sourceGroups:i%2?['community']:['aihot'],editorialState:i===10?'needs_review':'ready',freshnessKind:'recent_event',read:false,saved:false,dismissed:false,version:1,researchLinks:[],reviewClusterId:i===1?'cluster-1':null}));
 const feed=()=>({ok:true,briefs,featuredIds:briefs.slice(0,8).map(b=>b.id),recommendationIds:briefs.slice(0,10).map(b=>b.id),activeRuns:[],preferences:{directions:['AI 实践']},processing:{newCount:10,updatedCount:0,pending:0,failures:0,permissionRequired:intake&&!intake.consent.publicSources?1500:0},lastSuccessfulUpdate:'2026-09-22T09:00:00Z',...(intake?{intake}:{})});
-let intake=null,settingsBody=null;
+let intake=null,settingsBody=null,deepenCalls=0;
 const researches=[{id:'existing',title:'已有选题',question:'已有选题',notes:'用户已有笔记',references:[],projects:[],conversations:[],updatedAt:'2026-09-20'}];
 const operations=new Map();let calls=0,reads=0,failDetail=true,previews=0,lastIntent,server,browser,page;
 try{
@@ -25,6 +25,7 @@ try{
  await page.route('**/api/workspace/intelligence**',async route=>{
   const req=route.request(),url=new URL(req.url()),body=req.method()==='GET'?{}:req.postDataJSON();
   if(url.pathname.endsWith('/feed'))return send(route,feed());
+  if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},body:'## 发生了什么\n\n深度解读正文：官方说明与第三方评测都提到价格下降。'});},1500);return send(route,{deepen:e.deepen});}
   if(url.pathname.endsWith('/feed/settings')){settingsBody=body;intake={...intake,consent:{publicSources:body.publicSources??intake.consent.publicSources,reddit:body.reddit??intake.consent.reddit},autoUpdate:body.autoUpdate??intake.autoUpdate};return send(route,{intake,run:body.publicSources?{id:'r2',status:'queued'}:null});}
   if(url.pathname.endsWith('/summary'))return send(route,{unread:10,saved:0});
   if(url.pathname.endsWith('/feed/refresh'))return send(route,{run:{id:'r1',status:'queued'}});
@@ -56,6 +57,19 @@ try{
  await page.reload();await page.locator('.brief-card').first().waitFor();assert.equal(await page.locator('.brief-card').count(),10);
  await page.goto('http://127.0.0.1:5276/#/intel-topics');await page.locator('.research-overview').waitFor();assert.match(page.url(),/#\/research/);assert.equal(previews,0);
  await page.goto('http://127.0.0.1:5276/#/intel-resources');await page.getByRole('heading',{name:'原始资料',exact:true}).waitFor();await page.locator('.intel-reader').waitFor();await page.getByRole('textbox',{name:'搜索原始资料'}).fill('无匹配');await page.getByRole('heading',{name:'没有匹配的原始资料'}).waitFor();
+ // 热点事件卡：卡面是来源数和讨论数；点开先看 AI 概要和来源，深度解读自动生成、完成后替换。
+ const eventBrief={id:'ev1',title:'Anthropic 发布 Claude Opus 5.5',summary:'多家媒体报道新模型发布，价格低于上一代。',whyItMatters:'影响模型选型和成本',editorialState:'ready',read:false,saved:false,depth:'headline',evidence:[],sourceMeta:[{provider:'aihot',originKind:'external'}],primaryDate:'2026-09-22T18:00:00Z',
+  event:{kind:'event',heat:30,sourceCount:23,discussionCount:16,latestAt:'2026-09-22T18:00:00Z',members:[{sourceId:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',publisher:'X：Claude',platform:'aihot',publishedAt:'2026-09-22T18:00:00Z',kind:'external_digest'},{sourceId:'s2',title:'Opus 5.5 is great at long refactors',url:'https://reddit.example/opus',platform:'reddit',publishedAt:'2026-09-22T19:00:00Z',kind:'post',score:250,comments:80}]}};
+ briefs.unshift(eventBrief);await page.goto('http://127.0.0.1:5276/#/intel');await page.reload();
+ const eventCard=page.locator('[data-brief="ev1"]');await eventCard.waitFor();
+ assert.match(await eventCard.innerText(),/23 个来源 · 16 条讨论/);assert.match(await eventCard.innerText(),/热点事件/);
+ await eventCard.locator('.brief-card__title').click();const peek=page.locator('.brief-peek');await peek.getByText('AI 概要',{exact:true}).waitFor();
+ await peek.getByRole('heading',{name:'来源（1）'}).waitFor();await peek.getByRole('heading',{name:'大家怎么说（1）'}).waitFor();await peek.getByText('250 赞',{exact:false}).waitFor();
+ await peek.getByText('正在生成深度解读',{exact:false}).waitFor();assert.equal(deepenCalls,1,'打开时自动生成一次');
+ await page.screenshot({path:path.join(shots,'13-event-peek.png'),fullPage:false});
+ await peek.getByText('深度解读正文',{exact:false}).waitFor({timeout:15000});assert.equal(deepenCalls,1,'生成中不重复请求');
+ await page.keyboard.press('Escape');await peek.waitFor({state:'detached'});
+ briefs.shift();
  // 卡片 / 列表双模式：和选题页同一颗开关，刷新后保持；列表行同样能收藏、加入选题。
  await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();
  const cardBox=await page.locator('.brief-card').first().boundingBox();assert(cardBox.height<260,'卡片高度对齐选题页，不再是大卡：'+cardBox.height);
