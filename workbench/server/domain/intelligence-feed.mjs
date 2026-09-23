@@ -57,7 +57,7 @@ function briefResearchLinks(w,id){return w.db.prepare("SELECT r.id FROM intel_br
 function feedRun(w,id){const run=intelligenceRun(w,id),sources=runSources(w,id);const adopted=w.db.prepare('SELECT data_json FROM intel_briefs WHERE run_id=?').all(id).flatMap(r=>JSON.parse(r.data_json).evidence.map(e=>e.sourceId));return {...run,window:intelligenceRunWindow(run),sourceStats:intelligenceSourceStats(sources,adopted,run.config.providers,{config:run.config,coverage:run.coverage}),briefCount:w.db.prepare('SELECT count(*) n FROM intel_briefs WHERE run_id=?').get(id).n};}
 function intelligenceBriefBase(w,id){const r=briefRow(w,id);id=r.id;const data=visibleDerived(w,JSON.parse(r.data_json));const sourceMeta=briefSourceMeta(w,data.evidence);const sources=intelligenceReadingSources(data.evidence,sourceMeta.map(meta=>({...sourceFromRow(w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(meta.id)),...meta})));const sourceDocuments=intelligenceSourceDocuments(sources);const identityIds=briefIdentityIds(w,id),conversations=identityIds.flatMap(identityId=>w.db.prepare('SELECT c.id,c.title,c.scope_id scopeId,e.updated_at updatedAt FROM ai_conversations c JOIN entities e ON e.id=c.id AND e.deleted_at IS NULL WHERE c.scope_id=? ORDER BY e.updated_at DESC').all(`intelligence:${identityId}`));return {id:r.id,...data,...briefReviewMeta(w,data.evidence),clusterId:r.cluster_id,editorialState:data.editorialState||r.editorial_state,freshnessKind:r.freshness_kind,runId:r.run_id,editionDate:r.edition_date,version:r.version,readVersion:r.read_version,read:intelBriefRead(r),saved:Boolean(r.saved),helpful:Boolean(r.helpful),dismissed:Boolean(r.dismissed),sourceCount:sourceDocuments.length,sourceMeta,publicationRange:intelligencePublicationRange(sourceMeta),...briefRecency(sourceMeta),scopeId:`intelligence:${id}`,body:intelligenceCitationText(data.body),technical:intelligenceCitationText(data.technical),sources,sourceDocuments,conversations,researchIds:w.db.prepare('SELECT l.research_id id FROM intel_brief_researches l JOIN entities e ON e.id=l.research_id AND e.deleted_at IS NULL WHERE l.brief_id=?').all(id).map(x=>x.id),mergedFrom:identityIds.filter(x=>x!==id),history:identityIds.flatMap(identityId=>w.db.prepare('SELECT version,run_id runId,data_json,created_at createdAt FROM intel_brief_versions WHERE brief_id=? ORDER BY version DESC').all(identityId).map(({data_json,...x})=>({...x,briefId:identityId,...visibleDerived(w,JSON.parse(data_json))}))),createdAt:r.created_at,updatedAt:r.updated_at};}
 function intelligenceFeedBase(w,{env={},now=Date.now()}={}){const briefs=w.db.prepare('SELECT * FROM intel_briefs ORDER BY edition_date DESC,updated_at DESC').all().filter(r=>canonicalBriefId(w,r.id)===r.id).map(r=>{const {body,technical,...data}=visibleDerived(w,JSON.parse(r.data_json));const sourceMeta=briefSourceMeta(w,data.evidence);return {id:r.id,...data,...briefReviewMeta(w,data.evidence),clusterId:r.cluster_id,editorialState:data.editorialState||r.editorial_state,freshnessKind:r.freshness_kind,runId:r.run_id,editionDate:r.edition_date,version:r.version,readVersion:r.read_version,read:r.read_version>=r.version,saved:Boolean(r.saved),helpful:Boolean(r.helpful),dismissed:Boolean(r.dismissed),sourceCount:new Set(sourceMeta.map(intelligenceDocumentKey)).size,sourceMeta,publicationRange:intelligencePublicationRange(sourceMeta),...briefRecency(sourceMeta),scopeId:`intelligence:${r.id}`,createdAt:r.created_at,updatedAt:r.updated_at};});const latestEditionDate=briefs.find(b=>b.editorialState==='ready')?.editionDate||briefs[0]?.editionDate||null;return {briefs,// 旧流程生成的卡不再进推荐，只留在已收藏、历史和选题里（和事件卡内容重复）。
- recommendationIds:rankIntelligenceBriefs(briefs.some(b=>b.event)?briefs.filter(b=>b.event):briefs,null,briefs.length||1,{fresh:true,now}),opportunityIds:rankOpportunities(briefs,{now}),intake:intelligenceIntake(w,env),processing:{...unifiedSummary(w),...(()=>{const r=w.db.prepare("SELECT id FROM intel_runs WHERE json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC LIMIT 1").get();return r?stepState(w,r.id,'unified'):{};})()},featuredIds:rankIntelligenceBriefs(briefs,latestEditionDate),qualitySummary:intelligenceQualitySummary(w),lastSuccessfulUpdate:w.db.prepare("SELECT updated_at FROM intel_runs WHERE status='done' AND json_extract(config_json,'$.output')='briefs' ORDER BY updated_at DESC LIMIT 1").get()?.updated_at||null,reports:w.db.prepare('SELECT * FROM intel_reports ORDER BY created_at DESC LIMIT 30').all().map(r=>({id:r.id,...visibleDerived(w,JSON.parse(r.data_json)),createdAt:r.created_at})),blockedSources:blockedIntelligenceSources(w),preferences:feedPreferences(w),activeRuns:w.db.prepare("SELECT id FROM intel_runs WHERE status IN ('queued','running') AND json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC").all().map(r=>intelligenceRun(w,r.id)).filter(r=>['queued','running'].includes(r.status)),latestEditionDate,latestRun:(()=>{const r=w.db.prepare("SELECT id FROM intel_runs WHERE json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC LIMIT 1").get();return r?feedRun(w,r.id):null;})(),unreadEarlierCount:briefs.filter(b=>intelBriefUnread(b)&&b.editionDate!==latestEditionDate).length};}
+ recommendationIds:rankIntelligenceBriefs(briefs.some(b=>b.event)?briefs.filter(b=>b.event):briefs,null,briefs.length||1,{fresh:true,now}),intake:intelligenceIntake(w,env),processing:{...unifiedSummary(w),...(()=>{const r=w.db.prepare("SELECT id FROM intel_runs WHERE json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC LIMIT 1").get();return r?stepState(w,r.id,'unified'):{};})()},featuredIds:rankIntelligenceBriefs(briefs,latestEditionDate),qualitySummary:intelligenceQualitySummary(w),lastSuccessfulUpdate:w.db.prepare("SELECT updated_at FROM intel_runs WHERE status='done' AND json_extract(config_json,'$.output')='briefs' ORDER BY updated_at DESC LIMIT 1").get()?.updated_at||null,reports:w.db.prepare('SELECT * FROM intel_reports ORDER BY created_at DESC LIMIT 30').all().map(r=>({id:r.id,...visibleDerived(w,JSON.parse(r.data_json)),createdAt:r.created_at})),blockedSources:blockedIntelligenceSources(w),preferences:feedPreferences(w),activeRuns:w.db.prepare("SELECT id FROM intel_runs WHERE status IN ('queued','running') AND json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC").all().map(r=>intelligenceRun(w,r.id)).filter(r=>['queued','running'].includes(r.status)),latestEditionDate,latestRun:(()=>{const r=w.db.prepare("SELECT id FROM intel_runs WHERE json_extract(config_json,'$.output')='briefs' ORDER BY created_at DESC LIMIT 1").get();return r?feedRun(w,r.id):null;})(),unreadEarlierCount:briefs.filter(b=>intelBriefUnread(b)&&b.editionDate!==latestEditionDate).length};}
 
 function researchLinksForBriefs(w) {
  const links=new Map();
@@ -172,8 +172,20 @@ const DAY_MS=86400000;
  * 多样性只影响前 8 张：同一发布方最多 2 张、同一信源类别最多 3 张，超出的排到后面而不是丢掉。
  * 不传 `fresh` 时保持按期次挑精选的旧行为。
  */
+/**
+ * 事件卡在同一时间档内的分数 = 价值 × 时效 × (1 + log2(1+热度)/3)。
+ * 模型的创作判断定档位，热度决定档内先后：被广泛报道的大事件（热度 50+ 约 ×3）
+ * 排在只有一个来源的小事（约 ×1.5）之前；值得做的排在同样热的普通事件之前。
+ * 读没读过不参与排序——点开一张卡不该让列表跳位。
+ */
+const VALUE_WEIGHT={high:3,medium:2,low:1};
+export function eventScore(event){
+ const c=event.creation,value=VALUE_WEIGHT[c?.value]||1;
+ const urgency=c&&c.value!=='low'&&c.window==='24h'?1.3:1;
+ return value*urgency*(1+Math.log2(1+(event.heat||0))/3);
+}
 export function rankIntelligenceBriefs(briefs,edition,limit=8,{fresh=false,now=Date.now()}={}){
- const score=b=>b.event?(b.event.heat||0)*2+(b.read?0:1):(b.quality?.independentEvidenceCount||0)*2+(b.suggestedUses?.length||0)+(b.read?0:2)+(b.kind==='practice'?1:0);
+ const score=b=>b.event?eventScore(b.event):(b.quality?.independentEvidenceCount||0)*2+(b.suggestedUses?.length||0)+(b.read?0:2)+(b.kind==='practice'?1:0);
  const publisherOf=b=>b.sourceMeta.find(s=>s.originKind==='external')?.publisherKey||b.id;
  if(!fresh){
   const candidates=briefs.filter(b=>b.editorialState==='ready'&&!b.dismissed&&(!edition||b.editionDate===edition));
@@ -198,19 +210,6 @@ export function rankIntelligenceBriefs(briefs,edition,limit=8,{fresh=false,now=D
  return [...first,...later].slice(0,limit);
 }
 
-const OPPORTUNITY_WINDOW_MS=72*3600000;
-/**
- * 「今天值得做」：最近 72 小时、创作价值中或高、没被忽略的事件卡。
- * 分数 = 价值 × 时效 × (1 + log2(1+热度)/3)：模型的判断定档位，热度决定档内先后——
- * 被广泛报道的大事件（热度 50+ 约 ×3）自然排在只有一个来源的小事（约 ×1.5）之前。
- */
-export function rankOpportunities(briefs,{now=Date.now()}={}){
- const at=typeof now==='number'?now:Date.parse(now);
- const value={high:3,medium:2},urgency={'24h':1.3,week:1,evergreen:0.8};
- const score=b=>{const c=b.event.creation;return value[c.value]*(urgency[c.window]||1)*(1+Math.log2(1+(b.event.heat||0))/3);};
- return briefs.filter(b=>b.event?.creation&&value[b.event.creation.value]&&b.editorialState==='ready'&&!b.dismissed&&at-Date.parse(b.event.latestAt||0)<=OPPORTUNITY_WINDOW_MS)
-  .sort((a,b)=>score(b)-score(a)).map(b=>b.id);
-}
 const truthy=value=>['true','1'].includes(String(value||'').trim().toLowerCase());
 /** 情报页顶部状态需要的：授权、自动更新、Reddit 采集情况。只读，不触发任何采集。 */
 export function intelligenceIntake(w,env={}){

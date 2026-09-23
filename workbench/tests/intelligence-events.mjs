@@ -9,7 +9,7 @@ import { addIntelligenceSource, saveIntelligenceProfile, enqueueIntelligence } f
 import { saveIntelligenceAiConsent } from '../server/domain/intelligence-pool.mjs';
 import { executeUnifiedBriefs } from '../server/domain/intelligence-unified.mjs';
 import { versionedEntities } from '../server/domain/intelligence-events.mjs';
-import { intelligenceFeed, feedbackIntelligenceBrief, intelligenceBrief, rankOpportunities } from '../server/domain/intelligence-feed.mjs';
+import { intelligenceFeed, feedbackIntelligenceBrief, intelligenceBrief, rankIntelligenceBriefs } from '../server/domain/intelligence-feed.mjs';
 import { requestDeepen, executeDeepen, deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
 
@@ -91,18 +91,18 @@ try {
   assert.ok(rabbit && rabbit.event.members.some(m => m.sourceId === rabbitB.id), '模型指出的漏合并生效');
   assert.equal(feed().briefs.filter(b => b.event?.members?.some(m => m.sourceId === rabbitB.id)).length, 1);
   assert.equal(feed().recommendationIds[0], opus.id, '最热的事件排在最前');
-  // ── 创作判断：只留价值、时效、角度、理由；「今天值得做」按价值定档、热度定先后 ──
+  // ── 创作判断：只留价值、时效、角度、理由；并入热点排序，同一时间档里值得做、热度大的在前 ──
   assert.deepEqual(Object.keys(opus.event.creation).sort(), ['angle', 'reason', 'value', 'window'], '不再区分平台');
   assert.ok(lastJudged.length && lastJudged[0].zhSources !== undefined, '判断输入带中文来源数');
-  const opportunities = feed().opportunityIds;
+  const order = feed().recommendationIds;
   const hnCard = cardWith(hn.id);
-  assert.equal(opportunities[0], opus.id, '热度最高的高价值事件排第一');
-  assert.ok(opportunities.indexOf(hnCard.id) > 0, '只有一个讨论的小事排在大事件之后');
-  const mk = (id, value, heat, window = '24h') => ({ id, editorialState: 'ready', dismissed: false, event: { heat, latestAt: iso(now - H), creation: { value, window, angle: '', reason: '' } } });
-  assert.deepEqual(rankOpportunities([mk('small-high', 'high', 2), mk('big-high', 'high', 57), mk('big-medium', 'medium', 57), mk('low', 'low', 90)]), ['big-high', 'big-medium', 'small-high'], '价值定档、热度定先后：大事件的「中」可以排在单一来源的「高」前面；「低」不进');
-  assert.deepEqual(rankOpportunities([{ ...mk('old', 'high', 50), event: { ...mk('old', 'high', 50).event, latestAt: iso(now - 80 * H) } }]), [], '超过 72 小时不进');
-  assert.ok(!opportunities.includes(rabbit.id), '低价值事件不进今天值得做');
-  assert.deepEqual(rankOpportunities(feed().briefs), opportunities);
+  assert.ok(order.indexOf(hnCard.id) > order.indexOf(opus.id), '只有一个讨论的小事排在大事件之后');
+  assert.ok(order.includes(rabbit.id), '低价值事件仍在热点里，只是不标「值得做」');
+  const mk = (id, value, heat, window = '24h') => ({ id, editorialState: 'ready', dismissed: false, recencyAt: iso(now - H), updatedAt: iso(now), sourceMeta: [], sourceGroups: [id], event: { heat, latestAt: iso(now - H), creation: value ? { value, window, angle: '', reason: '' } : null } });
+  const rank = items => rankIntelligenceBriefs(items, null, items.length, { fresh: true, now });
+  assert.deepEqual(rank([mk('small-high', 'high', 2), mk('big-plain', null, 57), mk('big-high', 'high', 57), mk('big-medium', 'medium', 57), mk('big-low', 'low', 57)]),
+    ['big-high', 'big-medium', 'small-high', 'big-plain', 'big-low'], '价值定档、热度定先后：大事件的「中」可以排在单一来源的「高」前面；没判断和「低」排在后面');
+  assert.deepEqual(rank([{ ...mk('yesterday-high', 'high', 57), recencyAt: iso(now - 30 * H) }, mk('today-plain', null, 1)]), ['today-plain', 'yesterday-high'], '先按时间分档，档内才看价值');
   // 旧流程的非事件卡不进推荐（内容和事件卡重复），但仍能在列表里找到。
   w.db.prepare("INSERT INTO intel_briefs(id,story_key,run_id,data_json,version,edition_date,created_at,updated_at,editorial_state,freshness_kind) VALUES('legacy-card','legacy',?,?,1,'2026-09-23',?,?,'ready','recent_event')").run(run.id, JSON.stringify({ title: '旧流程的卡', summary: '旧摘要', evidence: [{ sourceId: opusEn.id, quote: 'Anthropic releases' }], editorialState: 'ready' }), iso(now), iso(now));
   assert.ok(feed().briefs.some(b => b.id === 'legacy-card')); assert.ok(!feed().recommendationIds.includes('legacy-card'), '推荐只收事件卡');
