@@ -1,5 +1,7 @@
 import {exploreIntelligenceAngles} from '../domain/intelligence-angles.mjs';
 import {requestDeepen} from '../domain/intelligence-deepen.mjs';
+import {splitEventMembers} from '../domain/intelligence-events.mjs';
+import {canonicalBriefId} from '../domain/intelligence-unified.mjs';
 import { json,fail,readJsonBody } from '../lib/http.mjs';
 import { intelligenceFeed,intelligenceFeedSummary,intelligenceBrief,feedbackIntelligenceBrief,blockIntelligenceSource,mergeIntelligenceBriefs,saveFeedPreferences,refreshIntelligenceFeed,createIntelligenceReport,saveIntelligenceSettings } from '../domain/intelligence-feed.mjs';
 function route(method,path,action){return {method,path,handler:async c=>{try{const workspace=await c.workspace;if(!workspace?.db?.open)throw Object.assign(new Error('本地工作区尚未就绪'),{status:503});const body=method==='GET'?{}:await readJsonBody(c.req,100000);json(c.res,{ok:true,...await action({...c,workspace,body})});}catch(e){fail(c.res,e.message,{status:e.status||400});}}};}
@@ -14,6 +16,8 @@ export const intelligenceFeedRoutes=[
  route('GET',base+'/briefs/:id',({workspace,params})=>({brief:intelligenceBrief(workspace,params.id)})),
  // 点开事件卡时生成深度解读；已有或正在生成时只返回状态。
  route('POST',base+'/briefs/:id/deepen',({workspace,params,body})=>({deepen:requestDeepen(workspace,params.id,{force:body?.force===true})})),
+ // 「这几条不是同一件事」：把来源移成一件新事件，原卡立即去掉它们。
+ route('POST',base+'/briefs/:id/split',({workspace,params,body})=>{if(body?.confirmed!==true)throw Object.assign(new Error('请确认移出这些来源'),{status:400});const id=canonicalBriefId(workspace,params.id);return {...splitEventMembers(workspace,id,body.sourceIds),brief:intelligenceBrief(workspace,id)};}),
  route('POST',base+'/briefs/:id/feedback',({workspace,params,body})=>({brief:feedbackIntelligenceBrief(workspace,params.id,body)})),
  route('POST',base+'/blocked-sources',({workspace,body})=>({blockedSources:blockIntelligenceSource(workspace,body)})),
  route('POST',base+'/merge',({workspace,body})=>({research:mergeIntelligenceBriefs(workspace,body)})),

@@ -92,7 +92,7 @@ try {
   assert.equal(feed().briefs.filter(b => b.event?.members?.some(m => m.sourceId === rabbitB.id)).length, 1);
   assert.equal(feed().recommendationIds[0], opus.id, '最热的事件排在最前');
   // ── 创作判断：只留价值、时效、角度、理由；并入热点排序，同一时间档里值得做、热度大的在前 ──
-  assert.deepEqual(Object.keys(opus.event.creation).sort(), ['angle', 'reason', 'value', 'window'], '不再区分平台');
+  assert.deepEqual(Object.keys(opus.event.creation).sort(), ['angle', 'modelValue', 'reason', 'value', 'window'], '不再区分平台；modelValue 留着模型原本的判断');
   assert.ok(lastJudged.length && lastJudged[0].zhSources !== undefined, '判断输入带中文来源数');
   const order = feed().recommendationIds;
   const hnCard = cardWith(hn.id);
