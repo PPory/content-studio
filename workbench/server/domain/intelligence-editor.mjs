@@ -21,14 +21,14 @@ function editorReadingHistory(w) {
 export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
  const preferences=feedPreferences(w),feed=intelligenceFeed(w);
  const blocked=new Set((feed.blockedSources||[]).map(s=>typeof s==="string"?s:s.host));
- // contextIds：随主帖一起送来的 Reddit 评论。评论不单独做相关性判断，靠主帖的判断进入同组，仍不算独立证据。
+ // contextIds：已在统一整理里通过相关性判断的资料（补全文后指纹会变），以及随主帖送来的 Reddit 评论（不单独判断，仍不算独立证据）。
  const allowed=uniqueIntelligenceSources(sources.filter(s=>sourcePermission(s,'ai')).filter(s=>(w.db.pragma('user_version',{simple:true})>=32?processingFor(w,s):classifyAiRelevance(s)).relevance==='ai_relevant'||deps.contextIds?.has(s.id))).filter(s=>s.originKind!=='internal').filter(s=>{try{const host=new URL(s.url).hostname;return ![...blocked].some(b=>host===b||host.endsWith(`.${b}`));}catch{return true;}});
  const history=()=>editorReadingHistory(w);
  let remaining=75000;
  const perSource=Math.min(6500,Math.floor(75000/Math.max(1,allowed.length)));
  const excerpts=allowed.map(s=>{const body=s.body.slice(0,Math.min(perSource,remaining));remaining-=body.length;return {...s,body,truncated:body.length<s.body.length};}).filter(s=>s.body);
  assertCurrentSourceRights(w,excerpts);
- let groups=await organizeIntelligenceSources(env,{sources:excerpts,directions:preferences.directions,previous:history().previous},deps);
+ let groups=await organizeIntelligenceSources(env,{sources:excerpts,directions:preferences.directions,previous:history().previous,allowSummary:Boolean(deps.unified)},deps);
  if(deps.unified){
   const manual=new Map();
   for(const source of excerpts){const r=w.db.prepare('SELECT r.*,c.title,c.cluster_kind FROM acquisition_review_members m JOIN acquisition_cluster_reviews r ON r.cluster_id=m.cluster_id JOIN intel_clusters c ON c.id=r.cluster_id WHERE m.source_id=? AND r.manual=1').get(source.id);if(r)manual.set(source.id,r);}
@@ -49,6 +49,7 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
    'body按阅读需要使用Markdown二级标题：发生了什么、可以怎样理解、值得带走的认识、还不能确定什么。简单消息可合并或省略不必要分区，不凑七个栏目；核心事实、原文观点与AI解释假设明确区分，标题不把解释假设说成定论。受众、写作角度与动笔准备留到用户主动探索时，不在日常解读中展开。',
    'body为完整中文解读：发生了什么/作者实际说了什么、关键机制或观点、适用场景、局限和争议。建议300至600字，必要时用例子，发布者自报性能或公司宣传需明确归因，未复测就不写成已证明；融资不证明商业可行性、行业垄断或形成壁垒。事实、来源自述和AI推断分清。technical为可选深入解释、论文/代码入口，未实际读取不冒充核验。',
    'confidence=reliable表示有充分出处，不等于宣称源头所有观点均属事实；证据不足但值得关注用watch，并在body说明不确定之处。最多两张watch。kind=update/practice/evergreen，旧内容和background:true不冒充近日新变化，要说明为何现在值得看。',
+   'readLevel=summary的资料只是订阅源给的摘要：只能写摘要里明说的事实，不补充细节、数字或推测原文内容；这类卡的body要说明「目前只取得摘要」。',
    'evidence每项必须使用输入sourceId及至少8字符的连续逐字原话，不能翻译改写。wiki只能引用输入真实ID，没有自然连接就空。本地知识不完善，缺少Wiki关联不是排除有价值情报的理由；是否保留依据关注方向、信息价值与外部原文，不以已有Wiki覆盖范围限制探索。正文逐字引用编号以[引文1]等人类可读编号对应evidence数组，不输出内部ID。',
    '同一事件沿用历史storyKey；更新已有卡需existingId和明确changeNote，说明实际新增证据、不同观点或实践结果。没实质变化就不再推荐，不生成新storyKey逃过去重。不要让一个兴趣覆盖全部类别。',
    '每张另含whyItMatters和audienceTakeaway字符串、uncertainties字符串数组（必须列出适用边界或尚未知条件）、suggestedUses字符串数组和claims数组。claims逐条覆盖标题、摘要、正文核心主张，每项{text,kind:author_report|observation|interpretation|hypothesis,attribution,evidenceIds:[e1],limitations:[]}。e1等按evidence数组顺序编号，不造编号。保留样本量、时间、实验条件、源头归属；不要把六次实验外推为普遍事实。',

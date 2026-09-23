@@ -6,7 +6,7 @@ const base='/api/workspace/intelligence';
 export const intelligenceFeedRoutes=[
  route('POST',base+'/briefs/:id/angles',async({workspace,env,params})=>await exploreIntelligenceAngles(workspace,env,params.id)),
  route('GET',base+'/feed',({workspace,env})=>intelligenceFeed(workspace,{env})),
- // 一次性授权与自动更新开关；授权放开后立即整理最近 7 天已采到的资料
+ // 一次性授权与自动更新开关；授权放开后立即完整更新一次
  route('POST',base+'/feed/settings',({workspace,env,body})=>saveIntelligenceSettings(workspace,body,env)),
  // 首页那一行只要三个数，不该为此把 300 条简报正文搬一遍
  route('GET',base+'/feed/summary',({workspace})=>intelligenceFeedSummary(workspace)),

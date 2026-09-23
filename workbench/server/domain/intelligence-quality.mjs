@@ -42,6 +42,13 @@ export function backfillIntelligenceIdentity(w) {
  w.repository.transaction(()=>{for(const row of w.db.prepare('SELECT * FROM intel_sources WHERE content_hash IS NULL ORDER BY created_at').all())persistSourceIdentity(w,row.id,{...JSON.parse(row.data_json),id:row.id});w.db.exec("UPDATE intel_sources SET parent_item_id=(SELECT p.id FROM intel_sources p WHERE p.canonical_url=intel_sources.canonical_url AND p.source_kind IN ('post','article') ORDER BY p.created_at LIMIT 1),root_item_id=(SELECT p.id FROM intel_sources p WHERE p.canonical_url=intel_sources.canonical_url AND p.source_kind IN ('post','article') ORDER BY p.created_at LIMIT 1) WHERE source_kind='comment' AND parent_item_id IS NULL");});
 }
 export function externalEvidence(source) { const m=sourceIdentity(source); return m.originKind==='external' && !['comment','external_digest'].includes(m.sourceKind) && !source.deletedAt && (!source.expiresAt || Date.parse(source.expiresAt)>Date.now()) && Boolean(m.canonicalUrl) && source.readLevel==='original'; }
+/**
+ * 可以作为卡片依据的外部资料：原文或订阅源给的摘要都算（2026-09-23 决策：先补全文，补不到用摘要，并标「仅基于摘要」）。
+ * 评论和日报汇编仍不能单独撑起一张卡。只用于「有没有外部来源」「综合卡是否至少两份」这类门槛；
+ * 排序用的 independentEvidenceCount 仍只数全文。
+ */
+export function externalReadable(source) { const m=sourceIdentity(source); return m.originKind==='external' && !['comment','external_digest'].includes(m.sourceKind) && !source.deletedAt && (!source.expiresAt || Date.parse(source.expiresAt)>Date.now()) && Boolean(m.canonicalUrl) && ['original','summary'].includes(source.readLevel); }
+export function readableDocumentCount(sources) { return new Set(sources.filter(externalReadable).map(s=>sourceIdentity(s).provenanceGroupKey)).size; }
 export function independentEvidenceCount(sources) {const groups=new Set(),hashes=new Set();let count=0;for(const s of sources.filter(externalEvidence)){const m=sourceIdentity(s);if(!groups.has(m.provenanceGroupKey)&&!hashes.has(m.contentHash))count++;groups.add(m.provenanceGroupKey);hashes.add(m.contentHash);}return count;}
 export function persistIntelligenceCluster(w,group,sources) {
  const key=contentHash(group.key.toLowerCase().replace(/[\s\p{P}]/gu,''));

@@ -21,7 +21,7 @@ try {
  w=await openWorkspace({xenhoHome:vars.XENHO_HOME});
  const profile=saveIntelligenceProfile(w,{name:'V2完整流程',query:'任务验收',providers:['web'],output:'briefs'}),run=enqueueIntelligence(w,profile.id);
  const quote='这是隔离验收原文：需要直接检查任务产物，不能仅依赖模型的完成声明。';
- const source=addIntelligenceSource(w,{provider:'web',title:'独立验收实验说明',url:'https://example.com/acceptance',body:quote+'该材料仅供软件测试，不代表真实实验结论。',contentKind:'article',readLevel:'original'},run.id);
+ const source=addIntelligenceSource(w,{provider:'web',publishedAt:new Date(Date.now()-3600000).toISOString(),title:'独立验收实验说明',url:'https://example.com/acceptance',body:quote+'该材料仅供软件测试，不代表真实实验结论。',contentKind:'article',readLevel:'original'},run.id);
  const item={storyKey:'e2e-acceptance',title:'如何检查任务产物是否真正完成',summary:'隔离案例用于验证证据可追溯的工作流。',reason:'帮助创作者检查产物',body:'## 发生了什么\n\n材料说明需要检查实际产物。[引文1]',confidence:'watch',kind:'practice',whyItMatters:'把验收变成可执行步骤',audienceTakeaway:'检查实际产物',suggestedUses:['设计一份验收清单'],uncertainties:['这是隔离测试材料'],claims:[{text:'材料提出检查实际产物',kind:'author_report',attribution:'材料作者',evidenceIds:['e1']}],evidence:[{sourceId:source.id,quote}]};
  const brief=saveIntelligenceBriefs(w,run.id,[item],[],null,[{index:0,verdict:'supported',claims:[{id:'c1',verdict:'supported'}]}]).saved[0];
  w.db.prepare("UPDATE intel_runs SET status='done' WHERE id=?").run(run.id);w.close();w=null;

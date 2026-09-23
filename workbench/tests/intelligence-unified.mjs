@@ -18,7 +18,8 @@ try {
  w.db.exec(await fs.readFile(new URL('../server/storage/migrations/0033-intelligence-unified.sql',import.meta.url),'utf8'));
  const profile=saveIntelligenceProfile(w,{name:'测试情报',query:'AI',providers:['collected'],output:'briefs'});
  const quote='The language model experiment used a limited sample and requires independent verification.';
- const sources=Array.from({length:11},(_,i)=>addIntelligenceSource(w,{publishedAt:fresh,title:`LLM experiment ${i}`,url:`https://publisher${i}.example/report`,body:`${quote} Report identity ${i}.`,provider:'web',readLevel:'original'}));
+ // 一次更新最多分 10 组；夹具用 10 份独立资料。
+ const sources=Array.from({length:10},(_,i)=>addIntelligenceSource(w,{publishedAt:fresh,title:`LLM experiment ${i}`,url:`https://publisher${i}.example/report`,body:`${quote} Report identity ${i}.`,provider:'web',readLevel:'original'}));
  const blocked=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM private content',url:'https://private.example/report',body:quote+' private text',provider:'web',readLevel:'original'});
  w.db.prepare("UPDATE intel_sources SET acquisition_identity='private-test',rights_json='{}' WHERE id=?").run(blocked.id);
  let modelCalls=0;const inspected=[];
@@ -32,21 +33,21 @@ try {
  const run=enqueueIntelligence(w,profile.id);
  let result=await executeIntelligence(w,{}, {runId:run.id},deps);
  assert.equal(result.status,'queued','first batch schedules continuation');
- assert.equal(intelligenceFeed(w).briefs.length,8);
+ assert.equal(intelligenceFeed(w).briefs.length,0,'卡片等语义判断全部结束后一次生成，同一事件的报道才能合并');
  result=await executeIntelligence(w,{}, {runId:run.id},deps);
- assert.equal(result.status,'done');assert.equal(intelligenceFeed(w).briefs.length,11);assert.equal(unifiedSummary(w).permissionRequired,1);
- assert.equal(intelligenceFeed(w).recommendationIds.length,11,'full recommendation set is not limited to eight');
+ assert.equal(result.status,'done');assert.equal(intelligenceFeed(w).briefs.length,10);assert.equal(unifiedSummary(w).permissionRequired,1);
+ assert.equal(intelligenceFeed(w).recommendationIds.length,10,'full recommendation set is not limited to eight');
  const selected=intelligenceFeed(w).briefs[0];feedbackIntelligenceBrief(w,selected.id,{saved:true,dismissed:true});
  const count=modelCalls;const second=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:second.id},deps);
- assert.equal(modelCalls,count,'unchanged materials do not consume model calls');assert.equal(intelligenceFeed(w).briefs.length,11);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).saved,true);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).dismissed,true);
+ assert.equal(modelCalls,count,'unchanged materials do not consume model calls');assert.equal(intelligenceFeed(w).briefs.length,10);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).saved,true);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).dismissed,true);
  // A fresh source advances despite a preceding permanent model failure; retries are finite.
  const failing=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM failing source',url:'https://failed.example/report',body:quote+' failure fixture',provider:'web',readLevel:'original'});
  const third=enqueueIntelligence(w,profile.id);let attempts=0;const failDeps={completeJson:async()=>{attempts++;throw Error('model unavailable');}};
  await executeIntelligence(w,{}, {runId:third.id},failDeps);await executeIntelligence(w,{}, {runId:third.id},failDeps);
- assert.equal(attempts,2);assert.equal(unifiedSummary(w).failures,1);assert.equal(intelligenceFeed(w).briefs.length,11);
+ assert.equal(attempts,2);assert.equal(unifiedSummary(w).failures,1);assert.equal(intelligenceFeed(w).briefs.length,10);
  w.db.exec(await fs.readFile(new URL('../server/storage/migrations/0035-intelligence-aliases.sql',import.meta.url),'utf8'));
  const canonical=intelligenceFeed(w).briefs[1].id;const originalCount=w.db.prepare('SELECT count(*) n FROM intel_briefs').get().n;
- mergeBriefIdentities(w,canonical,[selected.id]);assert.equal(canonicalBriefId(w,selected.id),canonical);assert.equal(intelligenceBrief(w,selected.id).id,canonical);assert.equal(intelligenceBrief(w,canonical).saved,true);assert.equal(intelligenceBrief(w,canonical).dismissed,true);assert.equal(intelligenceFeed(w).briefs.length,10);assert.equal(w.db.prepare('SELECT count(*) n FROM intel_briefs').get().n,originalCount,'historical rows remain intact');feedbackIntelligenceBrief(w,selected.id,{dismissed:false});assert.equal(intelligenceBrief(w,canonical).dismissed,false);
+ mergeBriefIdentities(w,canonical,[selected.id]);assert.equal(canonicalBriefId(w,selected.id),canonical);assert.equal(intelligenceBrief(w,selected.id).id,canonical);assert.equal(intelligenceBrief(w,canonical).saved,true);assert.equal(intelligenceBrief(w,canonical).dismissed,true);assert.equal(intelligenceFeed(w).briefs.length,9);assert.equal(w.db.prepare('SELECT count(*) n FROM intel_briefs').get().n,originalCount,'historical rows remain intact');feedbackIntelligenceBrief(w,selected.id,{dismissed:false});assert.equal(intelligenceBrief(w,canonical).dismissed,false);
  // A manual split must survive regeneration, including the selected side and user state.
  const splitSources=[sources[3],sources[4]],briefsBefore=intelligenceFeed(w).briefs;
  const original=briefsBefore.find(b=>b.evidence.some(e=>e.sourceId===splitSources[0].id));

@@ -5,6 +5,7 @@ import { sourcePermission } from '../acquisition/compatibility.mjs';
 import { saveStep, stepState, updateRun, intelligenceRun } from './intelligence.mjs';
 import { generateDailyBriefs } from './intelligence-editor.mjs';
 import { inIntelligencePool, sourceIsFresh, poolChannelSql, RECOMMEND_WINDOW_MS } from './intelligence-pool.mjs';
+import { enqueueAcquisition } from '../acquisition/runner.mjs';
 
 const now=()=>new Date().toISOString();
 export const unifiedAvailable=w=>Boolean(w.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='intel_unified_sources'").get());
@@ -78,7 +79,7 @@ export async function executeUnifiedBriefs(w,env,runId,deps={}) {
   reconcileUnifiedSources(w);
   saveStep(w,runId,'unified','running',{...previous,intakeReady:true});
  }
- const budget={semantic:previous.budget?.semantic||0,brief:previous.budget?.brief||0,quota:{...(previous.budget?.quota||{})}};
+ const budget={semantic:previous.budget?.semantic||0,brief:previous.budget?.brief||0,quota:{...(previous.budget?.quota||{})},fulltextRequested:previous.budget?.fulltextRequested===true};
  const channels=channelIndex(w);
  // A retained processing row is queued for composition; exhausted rows are never retried implicitly.
  w.db.prepare("UPDATE intel_unified_sources SET status='failed' WHERE status IN ('processing','semantic_pending','retry') AND attempts>=2").run();
@@ -118,7 +119,24 @@ export async function executeUnifiedBriefs(w,env,runId,deps={}) {
    w.db.prepare("UPDATE intel_unified_sources SET status=?,attempts=attempts+?,last_error=?,updated_at=? WHERE source_id=?").run(status,status==='retry'?1:0,status==='retry'?'语义处理失败或引文未通过校验':'',now(),source.id);
   }
  }
- const eligible=pickBrief(w,budget,8);
+ // 卡片生成等语义判断全部结束后只做一次：预算内的资料一起分组，同一事件的多条报道才能合成一张卡。
+ const semanticLeft=pickSemantic(w,channels,budget,1).length>0||w.db.prepare("SELECT count(*) n FROM intel_unified_sources WHERE status IN ('pending','retry') AND attempts<2").get().n>0;
+ if(!semanticLeft&&!budget.fulltextRequested){
+  // 先补全文：只抓已判为 AI 相关、只有摘要的资料，每份一次；Reddit 和 HN 讨论帖不抓。
+  const fulltextTried=w.db.prepare("SELECT 1 FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.kind='fulltext' AND json_extract(j.payload_json,'$.sourceId')=? LIMIT 1");
+  let requested=0;
+  for(const source of pickBrief(w,budget,UNIFIED_BUDGET.brief)){
+   const row=w.db.prepare('SELECT channel_id,content_status,content_hash FROM intel_sources WHERE id=?').get(source.id);
+   const platform=channels.get(row?.channel_id)?.platform||source.platform||source.provider;
+   if(!row?.channel_id||!['summary_only','metadata'].includes(row.content_status)||platform==='reddit'||(platform==='hacker_news'&&source.sourceKind==='post')||!/^https?:\/\//.test(source.url||''))continue;
+   if(fulltextTried.get(source.id))continue;
+   try{enqueueAcquisition(w,row.channel_id,{mode:'fulltext',trigger:'intelligence',sourceId:source.id,fulltextUrl:source.url,slot:`body:${source.id}:${row.content_hash}`});requested++;}catch{}
+  }
+  budget.fulltextRequested=true;
+  if(requested){saveStep(w,runId,'unified','running',{...stepState(w,runId,'unified'),budget});return deferUnifiedRun(w,runId,`正在补全 ${requested} 篇原文`);}
+ }
+ if(!semanticLeft&&w.db.prepare("SELECT 1 FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.kind='fulltext' AND j.status IN ('queued','retry','running') LIMIT 1").get()){saveStep(w,runId,'unified','running',{...stepState(w,runId,'unified'),budget});return deferUnifiedRun(w,runId,'正在补全原文');}
+ const eligible=semanticLeft?[]:pickBrief(w,budget,UNIFIED_BUDGET.brief);
  const saved=[];let rejected=0,unchanged=0;
  if(eligible.length){
   budget.brief+=eligible.length;
@@ -132,12 +150,19 @@ export async function executeUnifiedBriefs(w,env,runId,deps={}) {
   for(const source of eligible)w.db.prepare("UPDATE intel_unified_sources SET attempts=attempts+1,updated_at=? WHERE source_id=?").run(now(),source.id);
   const wiki=w.db.prepare("SELECT p.id,p.title,substr(p.body_markdown,1,1200) body FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL ORDER BY e.updated_at DESC LIMIT 30").all();
   try {
+   // 已通过语义判断的资料补完全文后指纹会变，本地规则可能重新判为待定；它们和随帖评论一样直接放行进分组。
+   for(const source of eligible)contextIds.add(source.id);
    const result=await generateDailyBriefs(w,env,intelligenceRun(w,runId),[...eligible,...context],wiki,{...deps,unified:true,contextIds});
    deps.assertCurrent?.();
    saved.push(...result.saved);rejected=result.rejected;unchanged=result.unchanged;
+   // 模型没分进任何组的资料视为不值得写，不再重试；分了组却没成卡的（校验未过）留一次重试。
+   const groups=stepState(w,runId,'organize').groups||[],grouped=new Set(groups.flatMap(g=>g.sourceIds||[]));
+   // 分组数到了上限（10 组）时，没轮到的资料不算被模型否决，原样留到下次更新。
+   const capped=groups.length>=10;
    for(const source of eligible){
     const brief=w.db.prepare("SELECT b.id,b.editorial_state FROM intel_briefs b,json_each(b.data_json,'$.evidence') e WHERE json_extract(e.value,'$.sourceId')=? ORDER BY b.updated_at DESC LIMIT 1").get(source.id);
-    w.db.prepare("UPDATE intel_unified_sources SET status=?,brief_id=COALESCE(?,brief_id),last_error='',updated_at=? WHERE source_id=?").run(brief?brief.editorial_state==='ready'?'done':'retry':rejected?'retry':'filtered',brief?.id||null,now(),source.id);
+    w.db.prepare("UPDATE intel_unified_sources SET status=?,brief_id=COALESCE(?,brief_id),last_error='',updated_at=? WHERE source_id=?").run(brief?brief.editorial_state==='ready'?'done':'retry':grouped.has(source.id)?'retry':capped?'processing':'filtered',brief?.id||null,now(),source.id);
+    if(!brief&&!grouped.has(source.id)&&capped)w.db.prepare('UPDATE intel_unified_sources SET attempts=max(0,attempts-1) WHERE source_id=?').run(source.id);
    }
   } catch(error){
    if(error.cancelled||error.leaseLost)throw error;

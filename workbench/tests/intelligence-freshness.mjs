@@ -46,6 +46,7 @@ const iso = ms => new Date(ms).toISOString();
   assert.equal(deep.primaryDate, iso(NOW - 40 * DAY), '深读显示原文日期');
   assert.equal(deep.recencyAt, iso(NOW - DAY), '深读按首次出现时间进推荐');
   assert.equal(deep.deepRead, true);
+  assert.deepEqual(fresh([brief('deep-read', 0.1, { deepRead: true }), brief('news', 5)]), ['news', 'deep-read'], '深读排在所有新闻之后');
 
   assert.equal(sourceIsFresh({ publishedAt: iso(NOW - 3 * DAY) }, { now: NOW }), true);
   assert.equal(sourceIsFresh({ publishedAt: iso(NOW - 8 * DAY) }, { now: NOW }), false);
@@ -191,7 +192,59 @@ try {
   w.db.prepare('UPDATE acquisition_batches SET started_at=?').run(iso(now - 7 * 3600000));
   assert.equal(scheduleIntelligenceAutoUpdate(w, { now: new Date() }), null, '未授权时不自动更新');
 
-  console.log('intelligence-freshness: 7-day gate, bands, diversity, consent, Reddit rights, pool/stale/context, budget, edition date, retention, catch-up windows and auto update passed');
+  // ── 授权触发完整更新（含采集）──
+  w.db.prepare("UPDATE intel_runs SET status='done'").run();
+  w.db.prepare("UPDATE local_jobs SET status='done' WHERE status IN ('queued','retry','running')").run();
+  const batchesBefore = w.db.prepare('SELECT count(*) n FROM acquisition_batches').get().n;
+  assert.ok(saveIntelligenceSettings(w, { publicSources: true }).run?.id, '授权后立即更新');
+  assert.equal(w.db.prepare('SELECT count(*) n FROM acquisition_batches').get().n, batchesBefore + 1, '授权后的更新包含采集');
+  w.db.prepare("UPDATE intel_runs SET status='done'").run();
+  w.db.prepare("UPDATE local_jobs SET status='done' WHERE status IN ('queued','retry','running')").run();
+
+  // ── 摘要资料：先补全文，补不到用摘要成卡并标注；一次更新只分一次组 ──
+  w.db.prepare("UPDATE intel_unified_sources SET status='done'").run();
+  const summarySource = (channel, identity, body, patch = {}) => {
+    const source = acquired(channel, identity, iso(now - 2 * 3600000), { body, readLevel: 'summary', url: `https://${identity}.example/story`, ...patch });
+    w.db.prepare("UPDATE intel_sources SET content_status='summary_only',rights_json=? WHERE id=?").run(JSON.stringify({ aiAllowed: true, exportAllowed: false }), source.id);
+    return source;
+  };
+  const gptA = summarySource(media, 'gpt6-a', 'OpenAI released GPT-6 Sol and GPT-6 Luna with API prices about half of GPT-5.6.');
+  const gptB = summarySource(channelRow('t2.the_verge_ai'), 'gpt6-b', 'GPT-6 Luna is rolling out to desktop apps and free users, according to OpenAI.');
+  const hn = channelRow('community.hacker_news.best');
+  const hnPost = summarySource(hn, 'hn-thread', 'Discussion thread about GPT-6 pricing on Hacker News.');
+  w.db.prepare("UPDATE intel_sources SET source_kind='post' WHERE id=?").run(hnPost.id);
+  reconcileUnifiedSources(w);
+  for (const s of [gptA, gptB, hnPost]) w.db.prepare("UPDATE intel_unified_sources SET status='processing',attempts=0 WHERE source_id=?").run(s.id);
+  const summaryRun = enqueueIntelligence(w, profile.id);
+  const organized = [];
+  const summaryDeps = { completeJson: async (_env, input) => {
+    const d = JSON.parse(input.user);
+    if (d.step === 'organize') { organized.push(d.sources.map(s => s.id)); return { data: { groups: [{ key: 'gpt6-launch', focus: 'GPT-6 发布', connection: '两家媒体报道同一次发布', relationship: 'same_event', sourceIds: [gptA.id, gptB.id] }] } }; }
+    if (d.step === 'compose') return { data: { briefs: [{ groupKey: 'gpt6-launch', storyKey: 'gpt6-launch', title: 'OpenAI 发布 GPT-6 Sol 与 Luna', summary: '两份报道摘要称新模型价格约为上一代一半。', reason: '判断是否切换模型', body: '目前只取得摘要：OpenAI 发布了两款新模型。', confidence: 'watch', kind: 'update', evidence: [{ sourceId: gptA.id, quote: 'OpenAI released GPT-6 Sol and GPT-6 Luna' }, { sourceId: gptB.id, quote: 'GPT-6 Luna is rolling out to desktop apps' }], whyItMatters: '价格变化影响选型', audienceTakeaway: '先看官方价格表', uncertainties: ['只取得摘要'], suggestedUses: ['对比现有模型成本'], claims: [{ text: 'OpenAI 发布两款新模型', kind: 'author_report', attribution: '媒体报道', evidenceIds: ['e1', 'e2'], limitations: ['仅摘要'] }] }] } };
+    if (d.step === 'scope-review') return { data: { reviews: d.candidates.map(c => ({ index: c.index, verdict: 'supported', claims: [{ id: 'c1', verdict: 'supported' }] })) } };
+    throw Error('unexpected model task ' + (d.step || 'material'));
+  } };
+  let summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
+  assert.equal(summaryResult.status, 'queued', '先等补全文');
+  const fulltextFor = id => w.db.prepare("SELECT count(*) n FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.kind='fulltext' AND json_extract(j.payload_json,'$.sourceId')=?").get(id).n;
+  assert.equal(fulltextFor(gptA.id), 1); assert.equal(fulltextFor(gptB.id), 1);
+  assert.equal(fulltextFor(hnPost.id), 0, 'HN 讨论帖不抓全文');
+  assert.equal(organized.length, 0, '补全文期间不生成卡片');
+  summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
+  assert.equal(summaryResult.status, 'queued', '补全文任务没结束就继续等');
+  w.db.prepare("UPDATE local_jobs SET status='failed' WHERE id IN (SELECT job_id FROM acquisition_runs WHERE kind='fulltext')").run();
+  summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
+  assert.notEqual(summaryResult.status, 'queued');
+  assert.equal(fulltextFor(gptA.id), 1, '每份资料只尝试一次补全文');
+  assert.equal(organized.length, 1, '一次更新只分一次组');
+  assert.deepEqual(new Set(organized[0]), new Set([gptA.id, gptB.id, hnPost.id]), '预算内的资料一起交给模型分组');
+  const summaryCard = w.db.prepare("SELECT data_json,editorial_state FROM intel_briefs WHERE story_key IS NOT NULL AND json_extract(data_json,'$.storyKey')='gpt6-launch'").get();
+  assert.ok(summaryCard, '补不到全文的摘要资料也能成卡');
+  assert.equal(JSON.parse(summaryCard.data_json).readScope, 'summary', '所有引文来自摘要的卡如实标注');
+  const status2 = id => w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(id)?.status;
+  assert.equal(status2(hnPost.id), 'filtered', '模型没分进任何组的资料不再重试');
+
+  console.log('intelligence-freshness: 7-day gate, bands, diversity, deep reads last, consent + full update, Reddit rights, pool/stale/context, budget, edition date, retention, catch-up windows, auto update, fulltext once, summary cards and single grouping passed');
 } finally {
   w?.close();
   await fs.rm(root, { recursive: true, force: true });

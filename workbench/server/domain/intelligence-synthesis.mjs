@@ -1,6 +1,8 @@
 import { completeJson } from '../lib/model-json.mjs';
 import { intelligenceDocumentCount } from './intelligence-evidence.mjs';
-export async function organizeIntelligenceSources(env,{sources,directions,previous,eventOnly=false},deps={}){
+import { readableDocumentCount } from './intelligence-quality.mjs';
+// allowSummary：统一整理里订阅摘要也算来源（2026-09-23），否则摘要组会在这里被悄悄丢掉。
+export async function organizeIntelligenceSources(env,{sources,directions,previous,eventOnly=false,allowSummary=false},deps={}){
  const response=await (deps.completeJson||completeJson)(env,{system:[
   '仅处理与 AI 直接实质相关的内容。来源品牌、作者任职或泛学习/认知/生活/普通科技不能作为相关依据。',
   ...(eventOnly ? ['这是阅读列表事件聚簇。主题分类另存 topic，严禁因共同模型名、关键词、机制或问题而合并。仅同一具体发生的事件可 same_event，其他全部 standalone。用中文 focus，给每个同事件成员提供 eventEvidence:[{sourceId,quote}]；quote 必须从原文连续复制至少30字符并包含具体事件行为。'] : []),
@@ -17,7 +19,7 @@ export async function organizeIntelligenceSources(env,{sources,directions,previo
   if(!item||typeof item.key!=='string'||!item.key.trim()||keys.has(item.key)||typeof item.focus!=='string'||!item.focus.trim()||typeof item.connection!=='string'||!item.connection.trim()||!['same_event','complementary','contrasting','standalone'].includes(item.relationship))continue;
   const sourceIds=[...new Set(Array.isArray(item.sourceIds)?item.sourceIds:[])].filter(id=>byId.has(id)&&!used.has(id)).slice(0,12);
   if(!sourceIds.length)continue;
-  const documentCount=eventOnly?new Set(sourceIds.map(id=>byId.get(id).url||id)).size:intelligenceDocumentCount(sourceIds.map(id=>byId.get(id)));
+  const documentCount=eventOnly?new Set(sourceIds.map(id=>byId.get(id).url||id)).size:(allowSummary?readableDocumentCount:intelligenceDocumentCount)(sourceIds.map(id=>byId.get(id)));
   if(!documentCount)continue;
   groups.push({key:item.key.slice(0,500),focus:item.focus.slice(0,500),connection:item.connection.slice(0,1500),relationship:documentCount>1?item.relationship:'standalone',sourceIds,...(eventOnly?{eventEvidence:item.eventEvidence}: {})});keys.add(item.key);sourceIds.forEach(id=>used.add(id));
  }
