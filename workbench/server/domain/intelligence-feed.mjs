@@ -9,7 +9,7 @@ import { sha256Json, sourceContainsVerbatim } from './integrity.mjs';
 import { intelligenceRun, runSources, saveIntelligenceProfile, enqueueIntelligence, saveStep, stepState } from './intelligence.mjs';
 import { createResearch, saveResearch, getResearch, researchReference, researchConversation } from './research.mjs';
 import { completeJson } from '../lib/model-json.mjs';
-import { deepenState } from './intelligence-deepen.mjs';
+import { deepenStatus, eventWiki } from './intelligence-deepen.mjs';
 import { intelligenceAiConsent, saveIntelligenceAiConsent, intelligenceAutoUpdate, setIntelligenceAutoUpdate, RECOMMEND_WINDOW_MS, AUTO_UPDATE_INTERVAL_MS } from './intelligence-pool.mjs';
 const stamp=()=>new Date().toISOString();
 const bad=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -74,7 +74,11 @@ function researchLinksForBriefs(w) {
 export function intelligenceBrief(w,id){
  const brief=intelligenceBriefBase(w,id);
  const links=briefResearchLinks(w,brief.id);
- return {...brief,researchLinks:links,researchIds:links.map(link=>link.id),deepen:deepenState(w,brief.id)};
+ // Wiki 连接记着当时的版本：词条之后改过，详情里提示「这篇知识之后有更新」。
+ const wiki=(brief.wiki||[]).map(k=>{const cur=w.db.prepare('SELECT current_revision revision FROM wiki_pages WHERE id=?').get(k.id);return {...k,updatedSince:k.revision!=null&&cur!=null&&cur.revision!==k.revision};});
+ // 还没深读的事件：本地算一下知识库里可能相关的词条数，提示「深入解读」会用到它们（不调用模型）。
+ const wikiCandidates=brief.event&&brief.depth!=='deep'?eventWiki(w,brief).length:0;
+ return {...brief,wiki,researchLinks:links,researchIds:links.map(link=>link.id),deepen:{...deepenStatus(w,brief.id),wikiCandidates}};
 }
 export function intelligenceFeed(w,options={}){
  const result=intelligenceFeedBase(w,options);
@@ -103,11 +107,25 @@ export function intelligenceFeedSummary(w){
   earlierUnread:count(`edition_date <> ? AND ${INTEL_BRIEF_UNREAD_SQL}`,latestEditionDate),
  };
 }
+/**
+ * 深读新结构的白名单（2026-09-24）：关键事实必须指向真实引文编号；「大家怎么说」只能引用本事件的讨论来源；
+ * 切入方向只给一个。越界的项直接丢掉，不让它拖垮整张解读。
+ */
+function deepExtras(item,prev,evidenceCount){
+ const t=(v,n)=>typeof v==='string'?v.trim().slice(0,n):'';
+ const ids=v=>Array.isArray(v)?[...new Set(v.filter(x=>typeof x==='string'&&/^e\d+$/.test(x)&&Number(x.slice(1))>=1&&Number(x.slice(1))<=evidenceCount))].slice(0,6):[];
+ const keyFacts=(Array.isArray(item.keyFacts)?item.keyFacts:[]).map(f=>({text:t(f?.text,300),evidenceIds:ids(f?.evidenceIds)})).filter(f=>f.text&&f.evidenceIds.length).slice(0,4);
+ const talk=new Set((prev.event?.members||[]).filter(m=>['reddit','hacker_news'].includes(m.platform)).map(m=>m.sourceId));
+ const voices=(Array.isArray(item.voices)?item.voices:[]).filter(v=>v&&typeof v==='object'&&talk.has(v.sourceId)&&['support','doubt','experience'].includes(v.stance)).map(v=>({stance:v.stance,text:t(v.text,300),sourceId:v.sourceId})).filter(v=>v.text).slice(0,4);
+ const a=item.angle&&typeof item.angle==='object'?item.angle:{};
+ const angle=t(a.direction,200)?{direction:t(a.direction,200),readerValue:t(a.readerValue,200),needs:(Array.isArray(a.needs)?a.needs:[]).map(x=>t(x,200)).filter(Boolean).slice(0,3)}:null;
+ return {keyFacts,voices,useFor:t(item.useFor,400),notFor:t(item.notFor,400),angle,deepAt:new Date().toISOString(),deepMemberCount:prev.event?.memberCount||0,deepNewSources:0,deepDevelopment:'',deepStale:false};
+}
 export function saveIntelligenceBriefs(w,runId,items,wikiItems=[],groups=null,scopeReviews=[],options={}){if(!Array.isArray(items))throw bad('模型没有返回精选数组');const run=intelligenceRun(w,runId),byId=new Map(runSources(w,runId).map(s=>[s.id,s]));const saved=[],rejectionReasons=[],savedGroups=new Set();let rejected=0,unchanged=0,watchCount=0;
  w.repository.transaction(()=>{for(const [index,item] of items.slice(0,10).entries()){try{object(item);const group=groups?.find(g=>g.key===item.groupKey);if(groups&&(!group||savedGroups.has(group.key)))throw bad("同一问题只能形成一张精选，且必须对应资料分组");const evidence=Array.isArray(item.evidence)?item.evidence:[];if(!evidence.length||evidence.length>12)throw bad('缺少真实来源');for(const e of evidence){object(e);const s=byId.get(e.sourceId);if(!s||!sourcePermission(s,'ai')||!(s.readLevel==='original'||(options.unified&&s.readLevel==='summary'))||typeof e.quote!=='string'||e.quote.trim().length<8||!sourceContainsVerbatim(s.body,e.quote)||isBlockedIntelligenceSource(w,s.url))throw bad('来源引用不真实或已屏蔽');}if(!evidence.some(e=>(options.unified?externalReadable:externalEvidence)(byId.get(e.sourceId))))throw bad('精选至少需要一份外部原文');
  if(group&&(evidence.some(e=>!group.sourceIds.includes(e.sourceId))||(group.relationship!=='standalone'&&!options.deepen&&(options.unified?readableDocumentCount:intelligenceDocumentCount)(evidence.map(e=>byId.get(e.sourceId)))<2)))throw bad('综合解读的依据未覆盖对应资料组');
  // Wiki enriches an independently grounded brief; an invalid optional link cannot discard it.
- const wiki=[],linkedWiki=new Set();for(const k of (Array.isArray(item.wiki)?item.wiki:[])){if(wiki.length>=3)break;if(!k||typeof k.id!=='string'||!k.id.trim()||k.id.length>100||linkedWiki.has(k.id)||!wikiItems.some(x=>x.id===k.id))continue;const actual=w.db.prepare('SELECT p.id,p.title FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?').get(k.id);if(!actual)continue;wiki.push({id:k.id,title:actual.title,reason:typeof k.reason==='string'?k.reason.trim().slice(0,1000):''});linkedWiki.add(k.id);}
+ const wiki=[],linkedWiki=new Set();for(const k of (Array.isArray(item.wiki)?item.wiki:[])){if(wiki.length>=3)break;if(!k||typeof k.id!=='string'||!k.id.trim()||k.id.length>100||linkedWiki.has(k.id)||!wikiItems.some(x=>x.id===k.id))continue;const actual=w.db.prepare('SELECT p.id,p.title FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?').get(k.id);if(!actual)continue;const clip=(v,n)=>typeof v==='string'?v.trim().slice(0,n):'';wiki.push({id:k.id,title:actual.title,reason:clip(k.reason,1000)||clip(k.point,1000),...(['explain','apply','extend','challenge'].includes(k.relation)?{relation:k.relation}:{}),...(clip(k.point,300)?{point:clip(k.point,300)}:{}),...(clip(k.helps,300)?{helps:clip(k.helps,300)}:{}),revision:wikiItems.find(x=>x.id===k.id)?.revision??null});linkedWiki.add(k.id);}
  const data={storyKey:text(group?.key||item.storyKey||item.title,500,true),title:text(item.title,500,true),summary:text(item.summary,2000,true),reason:text(item.reason,2000,true),body:text(item.body,40000,true),technical:text(item.technical||'',12000),confidence:item.confidence||'watch',kind:item.kind||'update',changeNote:text(item.changeNote||'',2000),evidence:evidence.map(e=>({sourceId:e.sourceId,quote:e.quote})),wiki,...(group?{analysis:{focus:group.focus,connection:group.connection,relationship:group.relationship,documentCount:intelligenceDocumentCount(evidence.map(e=>byId.get(e.sourceId)))}}:{})};if(!['reliable','watch'].includes(data.confidence)||!['update','practice','evergreen'].includes(data.kind))throw bad('精选分类无效');if(data.confidence==='watch'&&watchCount>=2)throw bad('每次精选最多两篇待观察内容');
  const quality=assessBriefQuality(item,byId,scopeReviews.find(r=>r.index===index));Object.assign(data,quality);
  // 所有引文都出自订阅摘要时如实标注，界面显示「仅基于摘要」。
@@ -121,7 +139,7 @@ export function saveIntelligenceBriefs(w,runId,items,wikiItems=[],groups=null,sc
   // 深度解读必须过全部硬校验；不过就不覆盖热点层，原因交给调用方记录。
   const prev=JSON.parse(old.data_json);data.storyKey=prev.storyKey;
   if(data.editorialState!=='ready')throw bad('深度解读未通过校验：'+(data.quality?.reasons||[]).join('；'));
-  data.changeNote=data.changeNote||'生成深度解读';data.depth='deep';data.event=prev.event;data.summaryBy='ai';
+  data.changeNote=data.changeNote||'生成深度解读';data.depth='deep';data.event=prev.event;data.summaryBy='ai';Object.assign(data,deepExtras(item,prev,evidence.length));
  }else if(old){const prev=JSON.parse(old.data_json);data.storyKey=prev.storyKey;const upgraded=old.editorial_state!=='ready'&&data.editorialState==='ready';if(upgraded&&!data.changeNote)data.changeNote='补齐主张、用途与证据范围复核';const regrouped=Boolean(manualCluster)&&(prev.storyKey!==group.key||JSON.stringify(prev.evidence.map(e=>e.sourceId).sort())!==JSON.stringify(evidence.map(e=>e.sourceId).sort()));if(regrouped){data.changeNote='按用户修正重新整理资料分组';data.storyKey=group.key;}const hasNew=evidence.some(e=>!prev.evidence.some(p=>p.sourceId===e.sourceId&&p.quote===e.quote));if((!hasNew&&!upgraded&&!regrouped)||!data.changeNote){unchanged++;continue;}data.evidence=[...new Map([...data.evidence,...(manualCluster?[]:prev.evidence)].map(e=>[e.sourceId+'\n'+e.quote,e])).values()].slice(0,12);}
  const id=old?.id||createUlid(),version=(old?.version||0)+1,now=stamp(),edition=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date(run.createdAt));w.db.prepare('INSERT INTO intel_briefs(id,story_key,run_id,data_json,version,edition_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET run_id=excluded.run_id,data_json=excluded.data_json,version=excluded.version,updated_at=excluded.updated_at').run(id,old?.story_key||key,runId,JSON.stringify(data),version,edition,now,now);w.db.prepare('INSERT INTO intel_brief_versions(brief_id,version,run_id,data_json,created_at) VALUES(?,?,?,?,?)').run(id,version,runId,JSON.stringify(data),now);const clusterId=old?.cluster_id||persistIntelligenceCluster(w,group||{key:data.storyKey,focus:data.title,relationship:'standalone'},(group?.sourceIds||evidence.map(e=>e.sourceId)).map(id=>byId.get(id)).filter(Boolean));w.db.prepare('UPDATE intel_briefs SET cluster_id=?,editorial_state=?,freshness_kind=? WHERE id=?').run(clusterId,data.editorialState,data.freshnessKind,id);if(options.unified&&evidence.some(e=>w.db.prepare("SELECT r.cluster_id FROM acquisition_review_members m JOIN acquisition_cluster_reviews r ON r.cluster_id=m.cluster_id WHERE m.source_id=? AND r.status='ignored'").get(e.sourceId)))w.db.prepare('UPDATE intel_briefs SET dismissed=1 WHERE id=?').run(id);if(manualCluster)w.db.prepare('INSERT INTO intel_unified_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`manual-brief:${manualCluster}`,id);saved.push(id);if(group)savedGroups.add(group.key);if(data.confidence==='watch')watchCount++;
  }catch(e){if(e.status===400||e.status===404){rejected++;rejectionReasons.push({index,title:typeof item?.title==='string'?item.title.slice(0,160):'',error:e.message});continue;}throw e;}}});return {saved:saved.map(id=>intelligenceBrief(w,id)),rejected,unchanged,rejectionReasons};}

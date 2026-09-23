@@ -9,7 +9,9 @@ import { addIntelligenceSource, saveIntelligenceProfile, enqueueIntelligence } f
 import { saveIntelligenceAiConsent } from '../server/domain/intelligence-pool.mjs';
 import { executeUnifiedBriefs } from '../server/domain/intelligence-unified.mjs';
 import { actionKinds, sameEvent, versionedEntities, properEntities, calibrateWorth, splitEventMembers } from '../server/domain/intelligence-events.mjs';
-import { intelligenceFeed } from '../server/domain/intelligence-feed.mjs';
+import { intelligenceFeed, intelligenceBrief } from '../server/domain/intelligence-feed.mjs';
+import { requestDeepen, executeDeepen, deepenState } from '../server/domain/intelligence-deepen.mjs';
+import { createUlid } from '../server/storage/ids.mjs';
 
 // ── 归并边界：同型号只说明可能相关，动作对得上才是同一件事 ──
 const doc = (title, hours = 0) => { const grams = new Set(); const t = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2)); return { title, time: Date.now() - hours * 3600000, versioned: versionedEntities(title), proper: properEntities(title), grams, actions: actionKinds(title) }; };
@@ -122,8 +124,87 @@ try {
   const split = cardWith(releaseEn.id);
   assert.ok(split && split.id !== target.id, '移出的来源单独成卡，模型的 mergeInto 不能合回去');
   assert.ok(!cardWith(release.id).event.members.some(m => m.sourceId === releaseEn.id), '本地归并也不会把它并回去');
+  // ── 深读：同一套结构填满；Wiki 按事件检索、排除同源；关键事实过数字校验；旧解读可更新 ──
+  const stamp = iso(now);
+  const wikiPage = (title, body, sourceEntity = null) => {
+    const id = createUlid();
+    w.repository.transaction(() => {
+      w.repository.createEntity({ id, type: 'wiki_page', now: new Date(now) });
+      w.db.prepare("INSERT INTO wiki_pages(id,title,page_type,summary,body_markdown,current_revision,schema_version,created_at,updated_at) VALUES (?,?,'concept',?,?,1,1,?,?)").run(id, title, `${title}的摘要`, body, stamp, stamp);
+      if (sourceEntity) w.db.prepare('INSERT INTO wiki_page_sources(page_id,source_entity_id,created_at) VALUES(?,?,?)').run(id, sourceEntity, stamp);
+    });
+    return id;
+  };
+  const pricing = wikiPage('Claude Opus 模型定价与 API 成本', '## 背景\n\n咖啡豆产地和烘焙曲线决定风味，这一段和模型无关，只是笔记里的杂项。\n\n## 定价\n\nClaude Opus 系列的 API 定价按输入输出 token 计费，Opus 5.5 发布时价格更低，成本评估要看实际调用量。');
+  const coffee = wikiPage('咖啡烘焙笔记', '浅烘保留花果香，深烘带来焦糖和坚果风味。');
+  // 同源：这篇 Wiki 是从本事件成员 release 提炼的，不能拿来和它互相印证。
+  const capture = w.domain.createCapture({ kind: 'web', title: 'Opus 5.5 报道', bodyMarkdown: '', sourceUrl: '', actor: 'user', confirmed: true });
+  w.db.prepare('UPDATE intel_sources SET capture_id=? WHERE id=?').run(capture, release.id);
+  const sameSource = wikiPage('Anthropic 发布 Claude Opus 5.5 笔记', 'Anthropic 发布 Claude Opus 5.5，成本更低，这是从那篇报道整理的。', capture);
+  const deepCard = cardWith(release.id);
+  const headline = intelligenceBrief(w, deepCard.id);
+  assert.equal(headline.deepen.status, 'none', '打开详情不自动排队深读');
+  assert.ok(headline.deepen.wikiCandidates >= 1, '热点层提示知识库里有可能相关的内容');
+  const srcBody = s => w.db.prepare("SELECT json_extract(data_json,'$.body') b FROM intel_sources WHERE id=?").get(s.id).b;
+  let deepInput = null, fakeNumber = true;
+  const deepDeps = { completeJson: async (_env, input) => {
+    const d = JSON.parse(input.user);
+    if (d.step === 'compose') {
+      deepInput = d;
+      const main = d.sources.find(x => x.id === release.id);
+      return { data: { briefs: [{ groupKey: d.groups[0].key, title: 'Anthropic 发布 Claude Opus 5.5', summary: 'Anthropic 发布 Claude Opus 5.5，成本更低。',
+        keyFacts: [{ text: fakeNumber ? '价格下降 73%' : 'Anthropic 发布了 Claude Opus 5.5', evidenceIds: ['e1'] }, { text: '越界的编号', evidenceIds: ['e9'] }],
+        body: '来源没有说明具体价格，只说成本更低。', claims: [{ text: 'Anthropic 发布 Claude Opus 5.5', kind: 'author_report', attribution: 'Anthropic', evidenceIds: ['e1'], limitations: ['只有厂商说明'] }],
+        uncertainties: ['没有第三方复测'], voices: [{ stance: 'doubt', text: '不存在的帖子', sourceId: 'not-a-member' }], useFor: '需要评估模型成本的人', notFor: '只用网页聊天的读者',
+        angle: { direction: '讲清 Opus 5.5 的成本变化该怎么算', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] },
+        wiki: [{ id: pricing, relation: 'explain', point: 'API 按 token 计费', helps: '解释成本为什么要按调用量算' }, { id: 'made-up-wiki', relation: 'apply', point: 'x', helps: 'y' }],
+        whyItMatters: '影响选型', confidence: 'reliable', kind: 'update', changeNote: d.previous ? '这次新增的是企业版定价' : '', evidence: [{ sourceId: release.id, quote: (main?.body || srcBody(release)).slice(0, 24) }] }] } };
+    }
+    if (d.step === 'scope-review') return { data: { reviews: d.candidates.map(c => ({ index: c.index, verdict: 'supported', claims: c.claims.map(x => ({ id: x.id, verdict: 'supported' })) })) } };
+    throw Error('unexpected ' + d.step);
+  } };
+  const finish = async (runId) => {
+    let step = await executeDeepen(w, {}, { briefId: deepCard.id, runId, sequence: 0 }, deepDeps);
+    if (step.deferred) { w.db.prepare("UPDATE local_jobs SET status='failed' WHERE kind='acquisition.fulltext'").run(); step = await executeDeepen(w, {}, { briefId: deepCard.id, runId, sequence: 1 }, deepDeps); }
+    return step;
+  };
+  await finish(requestDeepen(w, deepCard.id).runId);
+  assert.equal(deepenState(w, deepCard.id).status, 'failed', '关键事实里编造的数字被拦下');
+  assert.match(deepenState(w, deepCard.id).error, /数字/);
+  const wikiIds = deepInput.wiki.map(x => x.id);
+  assert.ok(wikiIds.includes(pricing), '传给模型的是按事件检索的相关 Wiki');
+  assert.ok(!wikiIds.includes(coffee), '无关的不传');
+  assert.ok(!wikiIds.includes(sameSource), '从本事件来源提炼的 Wiki 被排除');
+  assert.ok(!deepInput.wiki.find(x => x.id === pricing).body.includes('咖啡豆'), '只取相关的段落');
+  fakeNumber = false;
+  await finish(requestDeepen(w, deepCard.id, { force: true }).runId);
+  const deep = intelligenceBrief(w, deepCard.id);
+  assert.equal(deep.depth, 'deep');
+  assert.deepEqual(deep.keyFacts, [{ text: 'Anthropic 发布了 Claude Opus 5.5', evidenceIds: ['e1'] }], '越界编号的关键事实被丢掉');
+  assert.deepEqual(deep.voices, [], '不是本事件讨论来源的观点被丢掉');
+  assert.equal(deep.useFor, '需要评估模型成本的人'); assert.equal(deep.notFor, '只用网页聊天的读者');
+  assert.deepEqual(deep.angle, { direction: '讲清 Opus 5.5 的成本变化该怎么算', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] });
+  assert.equal(deep.wiki.length, 1, '编造的 Wiki id 被丢掉');
+  assert.equal(deep.wiki[0].relation, 'explain'); assert.equal(deep.wiki[0].revision, 1); assert.equal(deep.wiki[0].updatedSince, false);
+  w.db.prepare('UPDATE wiki_pages SET current_revision=2 WHERE id=?').run(pricing);
+  assert.equal(intelligenceBrief(w, deepCard.id).wiki[0].updatedSince, true, '词条之后改过会提示');
+  assert.ok(deep.event?.members?.length && deep.deepMemberCount > 0);
+  // 新来源进来：标记「之后新增」，可以更新解读，模型拿到上一版。
+  add('t2.techcrunch_ai', 'Claude Opus 5.5 发布：Anthropic 公布更多定价细节', { hours: 0.1 });
+  await update();
+  const stale = intelligenceBrief(w, deepCard.id);
+  assert.equal(stale.deepStale, true); assert.ok(stale.deepNewSources >= 1);
+  await update();
+  assert.equal(intelligenceBrief(w, deepCard.id).deepStale, true, '第二次更新后仍看得出解读旧了');
+  const again = requestDeepen(w, deepCard.id);
+  assert.equal(again.status, 'queued', '旧解读可以更新');
+  deepInput = null;
+  await finish(again.runId);
+  assert.ok(deepInput.previous?.keyFacts?.length, '更新时把上一版交给模型');
+  const refreshed = intelligenceBrief(w, deepCard.id);
+  assert.equal(refreshed.deepStale, false); assert.equal(refreshed.changeNote, '这次新增的是企业版定价');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split passed');
+  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });

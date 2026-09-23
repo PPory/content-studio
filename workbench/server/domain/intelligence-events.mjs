@@ -331,7 +331,10 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
     const prev = old ? JSON.parse(old.data_json) : null;
     let data;
     if (prev?.depth === 'deep') {
-      data = { ...prev, event, deepStale: (prev.event?.memberCount || 0) < e.members.length };
+      // 以生成解读时的成员数为准（事件卡每次更新都会改 event.memberCount，用它比较第二次更新后就看不出旧了）。
+      const base = prev.deepMemberCount ?? prev.event?.memberCount ?? 0;
+      data = { ...prev, event, deepStale: base < e.members.length, deepNewSources: Math.max(0, e.members.length - base),
+        deepDevelopment: e.judgement.development === 'new_facts' ? e.judgement.developmentNote : (prev.deepDevelopment || '') };
     } else {
       data = { storyKey: e.key, title: e.judgement.title, summary: e.judgement.summary, reason: e.judgement.whyItMatters, whyItMatters: e.judgement.whyItMatters, body: '', technical: '', confidence: 'watch', kind: e.judgement.kind === 'practice' ? 'practice' : 'update',
         // 有新事实时写「这次新增的是…」；只是多了报道时只记数量，不当成进展。
