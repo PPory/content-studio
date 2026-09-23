@@ -17,8 +17,15 @@ import { markdown, platformName, safeUrl, sourceDate } from "./BriefReading.jsx"
 import { IconClock, IconCode, IconMessageCircle, IconSparkles } from "./icons.jsx";
 
 export const eventKindLabel = { event: "热点事件", discussion: "社区热议", practice: "实践" };
-/** 选题上的一行：「抢时效 · 截止 9/24」。 */
-export const creationLine = (c) => (c ? [c.window === "24h" ? "抢时效" : c.window === "week" ? "本周内" : c.window === "evergreen" ? "长青" : "", c.deadline ? `截止 ${new Date(c.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` : ""].filter(Boolean).join(" · ") : "");
+/**
+ * 选题上的一行。时效只是建议（「建议 24 小时内」）；2026-09-24 之前加入的选题带着截止时间，照旧显示「截止 9/24」。
+ */
+export const windowLabel = { "24h": "24 小时内", week: "本周", evergreen: "长青" };
+export const creationLine = (c) => {
+  if (!c) return "";
+  if (c.deadline) return [c.window === "24h" ? "抢时效" : c.window === "week" ? "本周内" : "", `截止 ${new Date(c.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`].filter(Boolean).join(" · ");
+  return windowLabel[c.window] ? `建议${c.window === "evergreen" ? "：" : " "}${windowLabel[c.window]}` : "";
+};
 const isTalk = (m) => ["reddit", "hacker_news"].includes(m.platform);
 const talkName = (key) => ({ reddit: "Reddit", hacker_news: "Hacker News" }[key] || platformName(key));
 const worthIt = (c) => c && c.value !== "low";

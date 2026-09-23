@@ -12,6 +12,8 @@ import { actionKinds, sameEvent, versionedEntities, properEntities, calibrateWor
 import { intelligenceFeed, intelligenceBrief } from '../server/domain/intelligence-feed.mjs';
 import { requestDeepen, executeDeepen, deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { createUlid } from '../server/storage/ids.mjs';
+import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
+import { getResearch } from '../server/domain/research.mjs';
 
 // ── 归并边界：同型号只说明可能相关，动作对得上才是同一件事 ──
 const doc = (title, hours = 0) => { const grams = new Set(); const t = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2)); return { title, time: Date.now() - hours * 3600000, versioned: versionedEntities(title), proper: properEntities(title), grams, actions: actionKinds(title) }; };
@@ -203,8 +205,18 @@ try {
   assert.ok(deepInput.previous?.keyFacts?.length, '更新时把上一版交给模型');
   const refreshed = intelligenceBrief(w, deepCard.id);
   assert.equal(refreshed.deepStale, false); assert.equal(refreshed.changeNote, '这次新增的是企业版定价');
+  // 加入选题：切入方向、读者价值、待补材料和帮你形成判断的 Wiki 一起带走；不复制 Wiki 全文，不编截止日期。
+  const topic = createIntelligenceTopicIntent(w, { operationId: 'deep-topic', briefIds: [deepCard.id], confirmed: true, creation: { angle: refreshed.angle.direction, window: '24h', readerValue: refreshed.angle.readerValue, needs: refreshed.angle.needs } });
+  const saved = JSON.parse(w.db.prepare('SELECT data_json FROM intelligence_topic_intents WHERE operation_id=?').get('deep-topic').data_json);
+  assert.deepEqual(saved.creation, { angle: '讲清 Opus 5.5 的成本变化该怎么算', window: '24h', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] });
+  assert.deepEqual(saved.wikiLinks.map(k => [k.id, k.relation, k.revision]), [[pricing, 'explain', 2]], 'Wiki 引用带着更新解读时的版本（词条前面改到了第 2 版）和连接方式');
+  const research = getResearch(w, topic.research.id);
+  assert.ok(w.db.prepare("SELECT 1 FROM research_references WHERE research_id=? AND kind='wiki' AND entity_id=?").get(topic.research.id, pricing), 'Wiki 挂到选题的资料里');
+  assert.match(research.openQuestions, /官方价格表/, '开写前还缺什么进入待解决问题');
+  assert.match(research.openQuestions, /没有第三方复测/, '主要的不确定项也带上');
+  assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad-needs', briefIds: [deepCard.id], confirmed: true, creation: { angle: 'x', needs: 'not-a-list' } }), e => e.status === 400);
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update passed');
+  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });

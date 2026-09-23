@@ -71,7 +71,8 @@ function ResearchList({ onGo }) {
   }
   const term = query.trim().toLowerCase();
   // 从情报按做法加入的选题带截止时间：有截止的排前面、越近越靠前，其余照旧按最近改动。
-  const deadlineOf = item => Date.parse(creationOf(item)?.deadline || "") || Infinity;
+  // 旧选题按截止时间排；新选题只有建议时效，按「24 小时内 → 本周」排在前面，不虚构日期。
+  const deadlineOf = item => { const c = creationOf(item); const at = Date.parse(c?.deadline || ""); if (at) return at; const base = Date.parse(item.createdAt || "") || Date.now(); return c?.window === "24h" ? base + 86400000 : c?.window === "week" ? base + 5 * 86400000 : Infinity; };
   const filtered = (items || []).filter(item => !term || `${item.question || item.title} ${item.notes || item.excerpt || ""}`.toLowerCase().includes(term))
     .sort((a, b) => (deadlineOf(a) - deadlineOf(b)) || ((Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0)));
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));

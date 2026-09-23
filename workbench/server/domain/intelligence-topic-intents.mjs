@@ -47,15 +47,25 @@ function normalizeAngle(input,sources){
  angle.evidence=input.evidence.map(e=>{const s=sources.get(e?.sourceId);const quote=text(e?.quote,10000);if(!s||!quote||!sourceContainsVerbatim(s.body,quote))throw bad('角度引用未通过原文校验');return {sourceId:s.id,quote,title:s.title};});
  return angle;
 }
-const WINDOW_DAYS={'24h':1,week:5,evergreen:null};
-/** 按创作判断加入选题：切入角度，以及由时效窗口算出的截止时间（长青不设）。 */
+const WINDOWS=['24h','week','evergreen'];
+/**
+ * 按创作建议加入选题：切入方向、建议时效、读者价值和开写前还缺什么（2026-09-24）。
+ * 时效只是建议，不再生成「点击时刻 + 1 天」这种看起来像客观截止日的日期；要不要定截止由用户自己决定。
+ */
 function normalizeTopicCreation(input){
  if(input==null)return null;
  if(typeof input!=='object'||Array.isArray(input))throw bad('选题做法格式无效');
- const angle=text(input.angle??'',400);
- if(input.window!==undefined&&!(input.window in WINDOW_DAYS))throw bad('选题时效无效');
- const days=WINDOW_DAYS[input.window];
- return {angle,window:input.window||null,deadline:days?new Date(Date.now()+days*86400000).toISOString():null};
+ const angle=text(input.angle??'',400),readerValue=text(input.readerValue??'',400);
+ if(input.window!==undefined&&input.window!==null&&!WINDOWS.includes(input.window))throw bad('选题时效无效');
+ if(input.needs!==undefined&&(!Array.isArray(input.needs)||input.needs.length>5))throw bad('选题待补材料格式无效');
+ const needs=(input.needs||[]).map(x=>text(x,300)).filter(Boolean);
+ return {angle,window:input.window||null,...(readerValue?{readerValue}:{}),...(needs.length?{needs}:{})};
+}
+/** 深读里的知识连接：只带引用和连接理由（记下当时的 Wiki 版本），不复制 Wiki 全文。 */
+function wikiLinksOf(briefs){
+ const seen=new Set(),links=[];
+ for(const b of briefs)for(const k of b.wiki||[]){if(!k?.id||seen.has(k.id))continue;seen.add(k.id);links.push({id:k.id,title:k.title||'',revision:k.revision??null,relation:k.relation||null,point:k.point||k.reason||''});}
+ return links.slice(0,6);
 }
 export function createIntelligenceTopicIntent(w,input){
  if(input?.confirmed!==true)throw bad('请确认将情报加入选题');
@@ -76,12 +86,16 @@ export function createIntelligenceTopicIntent(w,input){
  const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||creation?.angle||briefs[0].title),1000);
  const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null,creation};
  // 截止时间按调用时刻算，不能进幂等签名，否则重试会被当成另一次操作。
- const hash=sha256Json({...payload,creation:creation?{angle:creation.angle,window:creation.window}:null,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
+ const hash=sha256Json({...payload,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
+ const wikiLinks=wikiLinksOf(briefs);
+ // 开写前还缺什么：创作建议里的待补材料，加上解读里最主要的几条不确定项。
+ const open=[...(creation?.needs||[]),...briefs.flatMap(b=>b.uncertainties||[]).slice(0,3)].filter(Boolean);
+ const openQuestions=[...new Set(open)].map(x=>`- ${x}`).join('\n');
  return w.repository.transaction(()=>{
   const old=w.db.prepare('SELECT * FROM intelligence_topic_intents WHERE operation_id=?').get(operationId);
   if(old){if(old.payload_hash!==hash)throw bad('操作标识已用于其他选题，请重新提交',409);return {research:getResearch(w,old.research_id),reused:true};}
-  let research=payload.researchId?getResearch(w,payload.researchId):createResearch(w,{question,notes});
-  if(payload.researchId&&notes)research=saveResearch(w,research.id,{expectedVersion:research.version,notes:[research.notes,notes].filter(Boolean).join('\n\n')});
+  let research=payload.researchId?getResearch(w,payload.researchId):createResearch(w,{question,notes,openQuestions});
+  if(payload.researchId&&(notes||openQuestions))research=saveResearch(w,research.id,{expectedVersion:research.version,...(notes?{notes:[research.notes,notes].filter(Boolean).join('\n\n')}:{}),...(openQuestions?{openQuestions:[research.openQuestions,openQuestions].filter(Boolean).join('\n')}:{})});
   const at=new Date().toISOString();
   for(const [id,state] of states){if(state.exportable)attachSource(w,research.id,state.item);else attachLink(w,research.id,state,{title:briefs[0].title,url:evidenceUrl.get(id)});}
   for(const b of briefs){
@@ -89,7 +103,9 @@ export function createIntelligenceTopicIntent(w,input){
    w.db.prepare('INSERT INTO intel_feedback(id,brief_id,version,action,value,created_at) VALUES(?,?,?,?,1,?)').run(createUlid(),b.id,b.version,'topic_saved',at);
    for(const c of b.conversations||[])researchConversation(w,research.id,{conversationId:c.id});
   }
-  const data={...payload,sourceIds,briefVersions:Object.fromEntries(briefs.map(b=>[b.id,b.version])),evidence:briefs.flatMap(b=>b.evidence||[]),nonClaims:[...new Set([...briefs.flatMap(b=>b.uncertainties||[]),'来源作者的经历不等于我的个人经历；情报解读与选题角度仍需核对'])]};
+  // 帮你形成判断的那几篇 Wiki 一起挂到选题上（词条被删了就跳过，不挡住保存）。
+  for(const k of wikiLinks){try{researchReference(w,research.id,{kind:'wiki',id:k.id});}catch(e){if(e.status!==404)throw e;}}
+  const data={...payload,sourceIds,wikiLinks,briefVersions:Object.fromEntries(briefs.map(b=>[b.id,b.version])),evidence:briefs.flatMap(b=>b.evidence||[]),nonClaims:[...new Set([...briefs.flatMap(b=>b.uncertainties||[]),'来源作者的经历不等于我的个人经历；情报解读与选题角度仍需核对'])]};
   w.db.prepare('INSERT INTO intelligence_topic_intents(operation_id,payload_hash,research_id,data_json,created_at) VALUES(?,?,?,?,?)').run(operationId,hash,research.id,JSON.stringify(data),at);
   w.domain.audit('intelligence.topic_intent',research.id,{operationId,briefIds:ids,sourceIds});
   return {research:getResearch(w,research.id),reused:false};

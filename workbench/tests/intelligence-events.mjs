@@ -125,11 +125,11 @@ try {
   // ── 加入选题：热点卡的来源只挂链接 ──
   const topic = createIntelligenceTopicIntent(w, { operationId: 'event-topic', briefIds: [opus.id], confirmed: true });
   assert.ok(topic.research.id);
-  // 按做法加入：记下平台、形式、角度和截止时间；重试复用，换做法另建。
+  // 按创作建议加入：记下角度和建议时效（不自动生成截止时间）；重试复用，换角度另建。
   const asX = { angle: '讲清 Opus 5.5 贵在哪便宜在哪', window: '24h' };
   const xTopic = createIntelligenceTopicIntent(w, { operationId: 'event-x', briefIds: [opus.id], confirmed: true, creation: asX });
   const intent = JSON.parse(w.db.prepare('SELECT data_json FROM intelligence_topic_intents WHERE operation_id=?').get('event-x').data_json);
-  assert.equal(intent.creation.angle, asX.angle); assert.ok(Date.parse(intent.creation.deadline) - Date.now() < 86400000 + 60000, '抢时效截止时间是一天内');
+  assert.equal(intent.creation.angle, asX.angle); assert.equal(intent.creation.window, '24h'); assert.equal(intent.creation.deadline, undefined, '时效只是建议，不编截止日期');
   assert.equal(xTopic.research.question, asX.angle, '选题问题默认用做法的角度');
   assert.equal(createIntelligenceTopicIntent(w, { operationId: 'event-x', briefIds: [opus.id], confirmed: true, creation: asX }).reused, true, '重试复用');
   const weekly = createIntelligenceTopicIntent(w, { operationId: 'event-week', briefIds: [opus.id], confirmed: true, creation: { angle: '成本账', window: 'week' } });
