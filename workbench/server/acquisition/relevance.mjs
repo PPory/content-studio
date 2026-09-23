@@ -3,7 +3,7 @@ import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { xhtmlToMd } from '../lib/books.mjs';
 
-export const REVIEW_RULE_VERSION = 'ai-reading-1.1';
+export const REVIEW_RULE_VERSION = 'ai-reading-1.2';
 export const processingHash = source => contentHash(JSON.stringify([source.title || '', source.body || '', source.contentStatus || source.readLevel || '', source.sourceKind || source.contentKind || '']));
 const direct = /\b(?:ChatGPT|GPT[- ]?\d[\w.-]*|LLMs?|large language models?|generative AI|machine learning|neural networks?|diffusion models?|language models?|Claude(?: Code)?|Gemini|DeepSeek|Qwen|Llama|Codex)\b|人工智能|大语言模型|大模型|生成式|神经网络|机器学习|智能体/iu;
 const mechanism = /(?:\bagents?\b.{0,150}\b(?:tools?|MCP|inference|reasoning|autonomous|tasks?|prompts?)\b|\b(?:fine[- ]?tun\w*|tokeni[sz]\w*|inference|transformer|model weights|context window|tool calling|reinforcement learning)\b)|模型.{0,30}(?:推理|训练|参数|权重|上下文)|(?:自主|工具调用|多轮).{0,20}(?:代理|模型)/isu;

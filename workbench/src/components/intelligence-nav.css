@@ -42,9 +42,32 @@
 }
 
 /* Secondary reading destinations stay available without competing with the workflow. */
-.intel-nav-more { position: relative; margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
-.intel-nav-more > summary { cursor: pointer; padding: 12px 0; min-height: 42px; box-sizing: border-box; }
-.intel-nav-more > div { position: absolute; right: 0; top: 100%; z-index: 12; display: grid; min-width: 140px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: 0 4px 16px #0001; }
-.intel-nav-more > summary:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.anchored-popover { position: relative; }
+.anchored-popover__trigger {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.anchored-popover__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 180px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.anchored-popover__panel.is-end { right: 0; }
+.anchored-popover__panel.is-start { left: 0; }
+.intel-nav-more { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
+.intel-nav-more .anchored-popover__trigger { min-width: 36px; padding: 4px 8px; font-size: 17px; letter-spacing: 1px; }
+.intel-nav-menu { display: grid; }
+.intel-nav-menu a { min-height: 36px; margin: 0; padding: 8px; border: 0; color: var(--text-2); white-space: nowrap; }
+.intel-nav-menu a:hover { background: var(--surface-2); color: var(--text-1); }
+.anchored-popover__trigger:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 .intel-resource-filter-details { margin: 12px 0; color: var(--text-3); font-size: var(--fs-xs); }
 .intel-resource-filter-details > summary { cursor: pointer; }

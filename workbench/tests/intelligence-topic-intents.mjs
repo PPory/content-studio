@@ -5,7 +5,7 @@ import path from 'node:path';
 import { buildContentBridgeContext } from '../server/domain/content-bridge-context.mjs';
 import { openWorkspace } from '../server/storage/workspace.mjs';
 import { saveIntelligenceProfile, enqueueIntelligence, addIntelligenceSource } from '../server/domain/intelligence.mjs';
-import { saveIntelligenceBriefs, intelligenceBrief } from '../server/domain/intelligence-feed.mjs';
+import { saveIntelligenceBriefs, intelligenceBrief, intelligenceFeed } from '../server/domain/intelligence-feed.mjs';
 import { createIntelligenceTopicIntent, openLegacyIntelligenceTopic } from '../server/domain/intelligence-topic-intents.mjs';
 import { getResearch, listResearches, createResearch, saveResearch, recentWork } from '../server/domain/research.mjs';
 import { researchSummary, refreshResearchSummary } from '../server/domain/workspace-experience.mjs';
@@ -28,6 +28,8 @@ try {
  const existing=createResearch(w,{question:'已有选题',notes:'保留原文'});
  const linked=createIntelligenceTopicIntent(w,{...input,operationId:'three',researchId:existing.id});assert.equal(linked.research.id,existing.id);assert.equal(linked.research.question,'已有选题');assert.match(linked.research.notes,/保留原文/);assert.match(linked.research.notes,/用户真实想法/);
  assert.equal(intelligenceBrief(w,brief.id).researchIds.length,3);
+ assert.equal(intelligenceFeed(w).briefs.find(item=>item.id===brief.id).researchLinks.length,3,'card links survive feed reload');
+ assert(intelligenceFeed(w).briefs.find(item=>item.id===brief.id).researchLinks.some(link=>link.id===existing.id&&link.title==='已有选题'));
  assert.equal(w.db.prepare('SELECT count(*) n FROM projects').get().n,0);
  assert.equal(w.db.prepare('SELECT count(*) n FROM ai_conversations').get().n,0);
  const at=new Date().toISOString(),data=JSON.stringify({question:'旧已确认选题',angle:'旧角度',evidence:[{sourceId:source.id,quote}],wiki:[],nonClaims:['不能推广']});

@@ -112,7 +112,7 @@ try {
   await notebook.getByLabel("创作方向（可选）").selectOption("");
   await until(() => request(notebookRoute), (r) => r.notebook.agendaId === null, "移除方向限制");
   await page.screenshot({ path: screenshots.desktop, fullPage: true });
-  for (const [route, selected] of [["assistant", "AI助手"], ["entries", "知识"], ["shelf", "知识"], ["sources", "知识"], ["bridge", "情报"], ["series", "内容"], ["typeset", "内容"], ["hot", "情报"], ["review", "运营"]]) {
+  for (const [route, selected] of [["assistant", "AI助手"], ["entries", "知识"], ["shelf", "知识"], ["sources", "知识"], ["bridge", "内容"], ["series", "内容"], ["typeset", "内容"], ["hot", "情报"], ["review", "运营"]]) {
     await page.goto(`${base}/#/${route}`);
     await page.locator(`.sidebar .nav-item[data-current="true"]`).filter({ hasText: selected }).waitFor();
     check(`旧深链 ${route} 保持可达与高亮`, true);

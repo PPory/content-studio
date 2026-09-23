@@ -78,6 +78,25 @@ try {
  assert.deepEqual(w.db.prepare('SELECT status,attempts FROM intel_unified_sources WHERE source_id=?').get(failing.id),{status:'pending',attempts:0},'explicit user update permits a fresh bounded retry');
  await executeUnifiedBriefs(w,{},manualRefresh.id,deps);
  assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(failing.id).status,'done','recovered model can process a previously exhausted source');
+ const localCount=1200;
+ w.db.transaction(()=>{for(let i=0;i<localCount;i++)addIntelligenceSource(w,{title:'Netflix TV shows and movies '+i,url:'https://local-filter.example/'+i,body:'A discussion of movies and television with no technical subject.',provider:'web',readLevel:'original'});})();
+ const beforeLocal=modelCalls,localRun=enqueueIntelligence(w,profile.id);
+ const localResult=await executeIntelligence(w,{}, {runId:localRun.id},deps);
+ assert.equal(localResult.status,'done','local exclusions clear in one run without a delayed continuation');
+ assert.equal(modelCalls,beforeLocal,'local exclusions do not call the model');
+ assert(unifiedSummary(w).filtered>=localCount);
+ const channel=(sourceGroup)=>w.db.prepare('SELECT id FROM intel_channels WHERE source_group=? LIMIT 1').get(sourceGroup)?.id;
+ const aiChannel=channel('aihot'),t2Channel=channel('t2_media');
+ assert(aiChannel&&t2Channel,'the isolated workspace has the built-in source catalog');
+ const native=addIntelligenceSource(w,{title:'LLM experiment from AIhot',url:'https://native.example/report',body:quote+' Native AIhot report.',provider:'web',readLevel:'original'});
+ const strict=addIntelligenceSource(w,{title:'LLM experiment in T2 media',url:'https://strict.example/report',body:quote+' T2 media report.',provider:'web',readLevel:'original'});
+ const at=new Date().toISOString();
+ for(const [source,channelId] of [[native,aiChannel],[strict,t2Channel]])w.db.prepare('INSERT INTO source_discoveries(source_id,channel_id,discovery_key,metadata_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?)').run(source.id,channelId,'test','{}',at,at);
+ const beforeSemantic=inspected.length,strategyRun=enqueueIntelligence(w,profile.id);
+ await executeIntelligence(w,{}, {runId:strategyRun.id},deps);
+ assert.equal(inspected.length-beforeSemantic,1,'T2 needs semantic relevance; substantive AIhot passes the local scope gate');
+ assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(native.id).status,'done');
+ assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(strict.id).status,'done');
  assert.deepEqual(w.db.pragma('foreign_key_check'),[]);
- console.log('intelligence-unified: 11-item continuation, permission isolation, stable states, manual split, interrupted recovery, cache, bounded retry and manual recovery passed');
+ console.log('intelligence-unified: continuation, 1200 local exclusions in one run, source strategies, permission isolation, stable states, manual split and bounded recovery passed');
 } finally {w?.close();assert(!path.relative(os.tmpdir(),root).startsWith('..'));await fs.rm(root,{recursive:true,force:true});}

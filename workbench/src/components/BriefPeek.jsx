@@ -36,6 +36,8 @@ export function BriefPeek({
   onNext,
   onFeedback,
   onMerge,
+  mergeLabel = "加入选题",
+  onCorrectGroup,
   onGo,
   onBlock,
 }) {
@@ -71,7 +73,10 @@ export function BriefPeek({
         ) : !brief ? (
           <Loading rows={4} />
         ) : (
-          <BriefReading brief={brief} onGo={onGo} onBlock={onBlock} dense />
+          <>
+            <BriefReading brief={brief} onGo={onGo} onBlock={onBlock} dense />
+            {onCorrectGroup ? <div className="unified-detail-feedback"><span>资料归到一起有误？</span><button type="button" className="text-action" onClick={onCorrectGroup}>纠正分组</button></div> : null}
+          </>
         )}
         {loading && brief ? <p role="status">正在读取…</p> : null}
       </div>
@@ -106,7 +111,7 @@ export function BriefPeek({
           {brief?.dismissed ? "恢复推荐" : "不感兴趣"}
         </button>
         <button type="button" className="btn btn-sm btn-primary" disabled={!brief} onClick={onMerge}>
-          加入选题
+          {mergeLabel}
         </button>
       </footer>
     </aside>
