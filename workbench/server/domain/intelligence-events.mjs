@@ -6,7 +6,7 @@ import { sha256Json } from './integrity.mjs';
 import { sourceFromRow } from './intelligence-quality.mjs';
 import { classifyAiRelevance } from '../acquisition/relevance.mjs';
 import { sourcePermission } from '../acquisition/compatibility.mjs';
-import { inIntelligencePool, RECOMMEND_WINDOW_MS, creatorPlatforms, CREATOR_PLATFORMS } from './intelligence-pool.mjs';
+import { inIntelligencePool, RECOMMEND_WINDOW_MS } from './intelligence-pool.mjs';
 import { completeJson } from '../lib/model-json.mjs';
 
 export const EVENT_WINDOW_MS = 72 * 3600000;
@@ -179,18 +179,17 @@ export function eventStats(event) {
   const zhSources = main.filter(m => /[\u3400-\u9fff]/.test(m.title)).length;
   return { zhSources, participants: obs?.participantCount || 0, heat: Math.round(heat * 10) / 10, sourceCount: Math.max(publishers.size, obs?.sourceCount || 0), discussionCount: community.length + (obs?.signalCount || 0), latestAt: Math.max(0, ...main.map(m => m.time)), kindHint, relevant, aihot: obs ? { rank: obs.rank ?? null, sourceCount: obs.sourceCount || 0, signalCount: obs.signalCount || 0 } : null };
 }
-// 规则版本进指纹：判断字段变了，现有事件各重判一次；主战场变了也重判。
-export const JUDGE_VERSION = 'event-v2';
-const memberFingerprint = (e, platforms = []) => sha256Json([JUDGE_VERSION, platforms, ...e.members.map(m => m.id).sort()]);
+// 规则版本进指纹：判断字段变了，现有事件各重判一次。
+export const JUDGE_VERSION = 'event-v3';
+const memberFingerprint = e => sha256Json([JUDGE_VERSION, ...e.members.map(m => m.id).sort()]);
 
 // ── 批量判断 ────────────────────────────────────────────────────
 const pick = (v, list, fallback) => list.includes(v) ? v : fallback;
-/** 创作判断只收白名单值；平台不在主战场里的做法丢掉。缺失时视为「低价值、仅消息」，不会进「今天值得做」。 */
-export function normalizeCreation(c, platforms) {
+/** 创作判断只收白名单值。缺失时视为「低价值」，不会进「今天值得做」。 */
+export function normalizeCreation(c) {
   if (!c || typeof c !== 'object') return null;
   const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
-  const formats = (Array.isArray(c.formats) ? c.formats : []).filter(f => f && platforms.includes(f.platform) && text(f.form, 20)).slice(0, 3).map(f => ({ platform: f.platform, form: text(f.form, 20), angle: text(f.angle, 120) }));
-  return { value: pick(c.value, ['high', 'medium', 'low'], 'low'), window: pick(c.window, ['24h', 'week', 'evergreen'], 'week'), zhGap: pick(c.zhGap, ['large', 'normal', 'saturated'], 'normal'), handsOn: pick(c.handsOn, ['available', 'waitlist', 'news_only'], 'news_only'), formats, reason: text(c.reason, 200) };
+  return { value: pick(c.value, ['high', 'medium', 'low'], 'low'), window: pick(c.window, ['24h', 'week', 'evergreen'], 'week'), angle: text(c.angle, 160), reason: text(c.reason, 200) };
 }
 const readState = (w, key) => { const r = w.db.prepare('SELECT value FROM intel_unified_state WHERE key=?').get(key); try { return r ? JSON.parse(r.value) : null; } catch { return null; } };
 const writeState = (w, key, value) => w.db.prepare('INSERT INTO intel_unified_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value));
@@ -204,20 +203,20 @@ const JUDGE_SYSTEM = [
   'kind：event=新闻/发布/研究/行业事件；discussion=社区里被热烈讨论的问题或经验；practice=个人实践、方法与心得。',
   'title：中文陈述句，30 字左右，只写输入里能看到的事实，不夸大，不写成问句。summary：两句、100 字以内，说清发生了什么，不补充输入里没有的数字和细节。whyItMatters：一句、40 字以内，说明对 AI 从业者或创作者的具体意义，不写空话。',
   '如果两个输入事件其实是同一件事，在较小的那个上填 mergeInto=另一个事件的 id。',
-  '对 keep=true 的事件再给 creation（创作判断），读者是这位创作者本人：value=high|medium|low（值不值得专门做一条内容；好新闻不等于值得做）；window=24h|week|evergreen（抢时效 / 本周内 / 长青）；zhGap=large|normal|saturated（中文圈信息差，参考 zhSources 中文来源数和 participants 参与数：中文报道少而英文圈热=large）；handsOn=available|waitlist|news_only（普通人现在能不能上手试）；formats 1–3 个 {platform,form,angle}，platform 只能从输入 platforms 里选；reason 一句话。',
-  '平台参照：x=X 中文号，做快评或线程，价值在于把英文圈热点第一时间讲给中文读者，适合 24h；wechat=公众号/贴图，做深度解读、盘点、图解，1–3 天；video=抖音/视频号，做实测演示或口播解读，需要有画面可拍，handsOn=available 时更合适；xhs=小红书，做教程、清单、避坑。form 用 2–6 个字（如 快评线程、深度解读、实测演示、口播解读、盘点图解）；angle 是一句具体的切入角度，不写空话。',
-  '只返回 JSON：{"events":[{"id":"输入id","keep":true,"kind":"event","title":"","summary":"","whyItMatters":"","mergeInto":null,"creation":{"value":"high","window":"24h","zhGap":"large","handsOn":"available","formats":[{"platform":"x","form":"快评线程","angle":""}],"reason":""}}]}，每个输入事件都要返回一项。'
+  '对 keep=true 的事件再给 creation（创作判断），读者是这位创作者本人：value=high|medium|low（值不值得专门做一条内容；好新闻不等于值得做）。high 每批最多 5 个，只给真正值得专门做一条的；medium 给有明确可做角度的；其余一律 low。参考 sources 来源数、discussions 讨论数、zhSources 中文来源数、participants 参与数：英文圈热而中文报道少的更值得做。',
+  'window=24h|week|evergreen（抢时效 / 本周内 / 长青）；angle 是一句具体的切入角度（怎么讲这件事才有看头），不写空话；reason 一句话说明为什么值得或不值得做。不区分发布平台。',
+  '只返回 JSON：{"events":[{"id":"输入id","keep":true,"kind":"event","title":"","summary":"","whyItMatters":"","mergeInto":null,"creation":{"value":"medium","window":"week","angle":"","reason":""}}]}，每个输入事件都要返回一项。'
 ].join('\n');
 /**
  * 按热度取前 80 个事件，成员没变的直接用缓存；其余每 40 个一次调用。
  * 模型失败不抛出：没判断到的事件这次不出卡，下次更新再试。
  */
 export async function judgeEvents(w, env, events, deps = {}) {
-  const at = deps.now || Date.now(), platforms = creatorPlatforms(w);
+  const at = deps.now || Date.now();
   const candidates = events.filter(e => e.relevant && e.latestAt >= at - EVENT_WINDOW_MS).sort((a, b) => b.heat - a.heat).slice(0, JUDGE_LIMIT);
   const todo = [];
   for (const e of candidates) {
-    const cached = readState(w, `event-judge:${e.key}`), fp = memberFingerprint(e, platforms);
+    const cached = readState(w, `event-judge:${e.key}`), fp = memberFingerprint(e);
     if (cached?.fingerprint === fp) e.judgement = cached.result; else todo.push(e);
   }
   let calls = 0, failures = 0;
@@ -225,15 +224,15 @@ export async function judgeEvents(w, env, events, deps = {}) {
     const chunk = todo.slice(i, i + JUDGE_CHUNK), ids = new Set(chunk.map(e => e.key));
     try {
       calls++;
-      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', platforms: platforms.map(p => ({ id: p, name: CREATOR_PLATFORMS[p] })), events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e) })) }), maxTokens: 14000 });
+      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e) })) }), maxTokens: 14000 });
       deps.assertCurrent?.();
       for (const r of Array.isArray(response.data?.events) ? response.data.events : []) {
         if (!r || !ids.has(r.id)) continue;
         const e = chunk.find(x => x.key === r.id);
         const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
-        const result = { keep: r.keep === true && Boolean(text(r.title, 200)), kind: ['event', 'discussion', 'practice'].includes(r.kind) ? r.kind : e.kindHint, title: text(r.title, 200), summary: text(r.summary, 400), whyItMatters: text(r.whyItMatters, 200), mergeInto: typeof r.mergeInto === 'string' && r.mergeInto !== r.id && candidates.some(x => x.key === r.mergeInto) ? r.mergeInto : null, creation: normalizeCreation(r.creation, platforms) };
+        const result = { keep: r.keep === true && Boolean(text(r.title, 200)), kind: ['event', 'discussion', 'practice'].includes(r.kind) ? r.kind : e.kindHint, title: text(r.title, 200), summary: text(r.summary, 400), whyItMatters: text(r.whyItMatters, 200), mergeInto: typeof r.mergeInto === 'string' && r.mergeInto !== r.id && candidates.some(x => x.key === r.mergeInto) ? r.mergeInto : null, creation: normalizeCreation(r.creation) };
         e.judgement = result;
-        writeState(w, `event-judge:${e.key}`, { fingerprint: memberFingerprint(e, platforms), result, at: now() });
+        writeState(w, `event-judge:${e.key}`, { fingerprint: memberFingerprint(e), result, at: now() });
       }
     } catch (error) {
       if (error.cancelled || error.leaseLost) throw error;
@@ -256,7 +255,7 @@ function applyMerges(w, events, mergeBriefIdentities) {
     })();
     target.members.push(...e.members); Object.assign(target, eventStats(target));
     // 合并是模型自己的判断，合并后的成员不必再判一次。
-    if (target.judgement) writeState(w, `event-judge:${target.key}`, { fingerprint: memberFingerprint(target, creatorPlatforms(w)), result: target.judgement, at: now() });
+    if (target.judgement) writeState(w, `event-judge:${target.key}`, { fingerprint: memberFingerprint(target), result: target.judgement, at: now() });
     const from = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${e.key}`), to = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${target.key}`);
     if (from && to) mergeBriefIdentities(w, to.id, [from.id]);
     else if (from) w.db.prepare('UPDATE intel_briefs SET story_key=? WHERE id=?').run(`event:${target.key}`, from.id);

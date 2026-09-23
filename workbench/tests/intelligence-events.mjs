@@ -10,7 +10,6 @@ import { saveIntelligenceAiConsent } from '../server/domain/intelligence-pool.mj
 import { executeUnifiedBriefs } from '../server/domain/intelligence-unified.mjs';
 import { versionedEntities } from '../server/domain/intelligence-events.mjs';
 import { intelligenceFeed, feedbackIntelligenceBrief, intelligenceBrief, rankOpportunities } from '../server/domain/intelligence-feed.mjs';
-import { setCreatorPlatforms } from '../server/domain/intelligence-pool.mjs';
 import { requestDeepen, executeDeepen, deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
 
@@ -63,7 +62,7 @@ try {
       const title = e.items[0].title;
       const hotOne = e.items.some(i => /Opus 5\.5|GPT-6 Sol/.test(i.title));
       return { id: e.id, keep: !title.includes('iPad'), kind: e.kindHint, title: `中文：${title.slice(0, 30)}`, summary: '两句概要。只写输入里的事实。', whyItMatters: '对选型有影响', mergeInto: title.includes('兔子公司') ? idOf('Rabbit') : null,
-        creation: { value: hotOne ? 'high' : /Rabbit|兔子/.test(title) ? 'low' : 'medium', window: hotOne ? '24h' : 'week', zhGap: 'large', handsOn: 'available', reason: '理由', formats: [{ platform: 'x', form: '快评线程', angle: '一句角度' }, { platform: 'xhs', form: '教程', angle: '不在主战场' }, { platform: 'wechat', form: '深度解读', angle: '讲清成本变化' }] } };
+        creation: { value: hotOne || /Show HN/.test(title) ? 'high' : /Rabbit|兔子/.test(title) ? 'low' : 'medium', window: hotOne || /Show HN/.test(title) ? '24h' : 'week', angle: '一句角度', reason: '理由' } };
     }) } };
   } };
   const run = enqueueIntelligence(w, profile.id);
@@ -92,28 +91,27 @@ try {
   assert.ok(rabbit && rabbit.event.members.some(m => m.sourceId === rabbitB.id), '模型指出的漏合并生效');
   assert.equal(feed().briefs.filter(b => b.event?.members?.some(m => m.sourceId === rabbitB.id)).length, 1);
   assert.equal(feed().recommendationIds[0], opus.id, '最热的事件排在最前');
-  // ── 创作判断：白名单过滤、只在主战场里给做法；「今天值得做」排除低价值 ──
-  assert.equal(opus.event.creation.value, 'high');
-  assert.deepEqual(opus.event.creation.formats.map(f => f.platform), ['x', 'wechat'], '不在主战场的平台被过滤');
-  assert.ok(judge && lastJudged.length && JSON.parse(JSON.stringify(lastJudged[0])).zhSources !== undefined, '判断输入带中文来源数');
+  // ── 创作判断：只留价值、时效、角度、理由；「今天值得做」按价值定档、热度定先后 ──
+  assert.deepEqual(Object.keys(opus.event.creation).sort(), ['angle', 'reason', 'value', 'window'], '不再区分平台');
+  assert.ok(lastJudged.length && lastJudged[0].zhSources !== undefined, '判断输入带中文来源数');
   const opportunities = feed().opportunityIds;
-  assert.equal(opportunities[0] === opus.id || opportunities[0] === solCard.id, true, '高价值、抢时效的事件排在前面');
+  const hnCard = cardWith(hn.id);
+  assert.equal(opportunities[0], opus.id, '热度最高的高价值事件排第一');
+  assert.ok(opportunities.indexOf(hnCard.id) > 0, '只有一个讨论的小事排在大事件之后');
+  const mk = (id, value, heat, window = '24h') => ({ id, editorialState: 'ready', dismissed: false, event: { heat, latestAt: iso(now - H), creation: { value, window, angle: '', reason: '' } } });
+  assert.deepEqual(rankOpportunities([mk('small-high', 'high', 2), mk('big-high', 'high', 57), mk('big-medium', 'medium', 57), mk('low', 'low', 90)]), ['big-high', 'big-medium', 'small-high'], '价值定档、热度定先后：大事件的「中」可以排在单一来源的「高」前面；「低」不进');
+  assert.deepEqual(rankOpportunities([{ ...mk('old', 'high', 50), event: { ...mk('old', 'high', 50).event, latestAt: iso(now - 80 * H) } }]), [], '超过 72 小时不进');
   assert.ok(!opportunities.includes(rabbit.id), '低价值事件不进今天值得做');
-  assert.deepEqual(rankOpportunities(feed().briefs, { platform: 'video' }), [], '按平台筛选：没有适合视频的做法');
+  assert.deepEqual(rankOpportunities(feed().briefs), opportunities);
+  // 旧流程的非事件卡不进推荐（内容和事件卡重复），但仍能在列表里找到。
+  w.db.prepare("INSERT INTO intel_briefs(id,story_key,run_id,data_json,version,edition_date,created_at,updated_at,editorial_state,freshness_kind) VALUES('legacy-card','legacy',?,?,1,'2026-09-23',?,?,'ready','recent_event')").run(run.id, JSON.stringify({ title: '旧流程的卡', summary: '旧摘要', evidence: [{ sourceId: opusEn.id, quote: 'Anthropic releases' }], editorialState: 'ready' }), iso(now), iso(now));
+  assert.ok(feed().briefs.some(b => b.id === 'legacy-card')); assert.ok(!feed().recommendationIds.includes('legacy-card'), '推荐只收事件卡');
 
-  // ── 重跑：成员不变不重判、不重复出卡；主战场改变后重判一次 ──
+  // ── 重跑：成员不变不重判、不重复出卡 ──
   const count = feed().briefs.length, callsBefore = judgeCalls;
   await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, judge);
   assert.equal(judgeCalls, callsBefore, '成员不变的事件用缓存，不再调用模型');
   assert.equal(feed().briefs.length, count);
-  setCreatorPlatforms(w, ['wechat', 'x', 'xhs']);
-  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, judge);
-  assert.equal(judgeCalls, callsBefore + 1, '主战场变了重判一次');
-  assert.ok(intelligenceBrief(w, opus.id).event.creation.formats.some(f => f.platform === 'xhs'));
-  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, judge);
-  assert.equal(judgeCalls, callsBefore + 1, '之后照常用缓存');
-  setCreatorPlatforms(w, ['wechat', 'x', 'video']);
-  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, judge);
 
   // ── 新成员：同一张卡更新，收藏和已读保留 ──
   feedbackIntelligenceBrief(w, opus.id, { saved: true, read: true });
@@ -128,15 +126,15 @@ try {
   const topic = createIntelligenceTopicIntent(w, { operationId: 'event-topic', briefIds: [opus.id], confirmed: true });
   assert.ok(topic.research.id);
   // 按做法加入：记下平台、形式、角度和截止时间；重试复用，换做法另建。
-  const asX = { platform: 'x', form: '快评线程', angle: '讲清 Opus 5.5 贵在哪便宜在哪', window: '24h' };
+  const asX = { angle: '讲清 Opus 5.5 贵在哪便宜在哪', window: '24h' };
   const xTopic = createIntelligenceTopicIntent(w, { operationId: 'event-x', briefIds: [opus.id], confirmed: true, creation: asX });
   const intent = JSON.parse(w.db.prepare('SELECT data_json FROM intelligence_topic_intents WHERE operation_id=?').get('event-x').data_json);
-  assert.equal(intent.creation.platform, 'x'); assert.ok(Date.parse(intent.creation.deadline) - Date.now() < 86400000 + 60000, '抢时效截止时间是一天内');
+  assert.equal(intent.creation.angle, asX.angle); assert.ok(Date.parse(intent.creation.deadline) - Date.now() < 86400000 + 60000, '抢时效截止时间是一天内');
   assert.equal(xTopic.research.question, asX.angle, '选题问题默认用做法的角度');
   assert.equal(createIntelligenceTopicIntent(w, { operationId: 'event-x', briefIds: [opus.id], confirmed: true, creation: asX }).reused, true, '重试复用');
-  const wechat = createIntelligenceTopicIntent(w, { operationId: 'event-wechat', briefIds: [opus.id], confirmed: true, creation: { platform: 'wechat', form: '深度解读', angle: '成本账', window: 'week' } });
-  assert.notEqual(wechat.research.id, xTopic.research.id, '换一个做法另建选题');
-  assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad', briefIds: [opus.id], confirmed: true, creation: { platform: 'tiktok', form: 'x' } }), e => e.status === 400);
+  const weekly = createIntelligenceTopicIntent(w, { operationId: 'event-week', briefIds: [opus.id], confirmed: true, creation: { angle: '成本账', window: 'week' } });
+  assert.notEqual(weekly.research.id, xTopic.research.id, '换一个角度另建选题');
+  assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad', briefIds: [opus.id], confirmed: true, creation: { angle: 'x', window: 'month' } }), e => e.status === 400);
 
   // ── 按需深读 ──
   const deepen = requestDeepen(w, opus.id);
@@ -170,6 +168,22 @@ try {
   assert.equal(deepenState(w, solCard.id).status, 'failed');
   assert.ok(deepenState(w, solCard.id).error, '失败原因可见');
   assert.equal(intelligenceBrief(w, solCard.id).depth, 'headline', '失败时保留热点层');
+  // 引文先没过、修复后通过：仍按深读保存，事件信息不丢（真实运行里 Opus 5.5 那张卡踩过这个坑）。
+  const repairTarget = requestDeepen(w, astraCard.id);
+  const astraBody = body(astra);
+  const repairDeps = { completeJson: async (_env, input) => {
+    if (String(input.system).includes('只修正候选解读的引文')) return { data: { repairs: [{ index: 0, evidence: [{ sourceId: astra.id, quote: astraBody.slice(0, 30) }] }] } };
+    const d = JSON.parse(input.user);
+    if (d.step === 'compose') return { data: { briefs: [{ groupKey: d.groups[0].key, storyKey: 'x', title: 'OpenAI 发布 GPT-6 Astra 基准测试', summary: '媒体报道了基准测试。', reason: '判断能力', body: '目前只取得摘要。', confidence: 'watch', kind: 'update', evidence: [{ sourceId: astra.id, quote: 'this sentence is not in the source at all' }], whyItMatters: '判断能力', audienceTakeaway: '看原文', uncertainties: ['只取得摘要'], suggestedUses: ['对比'], claims: [{ text: '媒体报道基准测试', kind: 'author_report', attribution: '媒体', evidenceIds: ['e1'], limitations: ['仅摘要'] }] }] } };
+    if (d.step === 'scope-review') return { data: { reviews: d.candidates.map(c => ({ index: c.index, verdict: 'supported', claims: [{ id: 'c1', verdict: 'supported' }] })) } };
+    throw Error('unexpected ' + d.step);
+  } };
+  w.db.prepare("UPDATE local_jobs SET status='failed' WHERE kind='acquisition.fulltext'").run();
+  await executeDeepen(w, {}, { briefId: astraCard.id, runId: repairTarget.runId, sequence: 0 }, repairDeps);
+  w.db.prepare("UPDATE local_jobs SET status='failed' WHERE kind='acquisition.fulltext'").run();
+  await executeDeepen(w, {}, { briefId: astraCard.id, runId: repairTarget.runId, sequence: 1 }, repairDeps);
+  const repaired = intelligenceBrief(w, astraCard.id);
+  assert.equal(repaired.depth, 'deep', '修复后的深读仍按深读保存'); assert.ok(repaired.event?.members?.length, '事件信息不丢');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
   console.log('intelligence-events: entity matching, AIhot seeds, same-event merge, stale/irrelevant/digest exclusion, discussion cards, model merges, judge cache, stable cards with user state, topic handoff, on-demand deep read and failure fallback passed');
 } finally {

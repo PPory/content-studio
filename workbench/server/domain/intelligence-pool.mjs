@@ -31,10 +31,6 @@ export function intelligenceAiConsent(w) {
   const value = readState(w, 'ai-consent');
   return { publicSources: value?.publicSources === true, reddit: value?.reddit === true, at: value?.at || null };
 }
-/** 创作主战场：创作判断只在这些平台里给做法建议。默认公众号/贴图、X 中文号、抖音/视频号（2026-09-23）。 */
-export const CREATOR_PLATFORMS = Object.freeze({ wechat: '公众号/贴图', x: 'X 中文号', video: '抖音/视频号', xhs: '小红书' });
-export function creatorPlatforms(w) { const value = readState(w, 'creator-platforms'); const list = Array.isArray(value?.platforms) ? value.platforms.filter(p => p in CREATOR_PLATFORMS) : []; return list.length ? list : ['wechat', 'x', 'video']; }
-export function setCreatorPlatforms(w, platforms) { const list = [...new Set((platforms || []).filter(p => p in CREATOR_PLATFORMS))]; if (!list.length) throw Object.assign(new Error('至少选择一个创作平台'), { status: 400 }); writeState(w, 'creator-platforms', { platforms: list }); return list; }
 export function intelligenceAutoUpdate(w) { return readState(w, 'auto-update')?.enabled !== false; }
 export function setIntelligenceAutoUpdate(w, enabled) { writeState(w, 'auto-update', { enabled: enabled === true }); return enabled === true; }
 

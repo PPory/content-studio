@@ -74,7 +74,8 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
   const byIndex=new Map((Array.isArray(repair.data?.repairs)?repair.data.repairs:[]).filter(r=>invalid.some(i=>i.index===r.index)).map(r=>[r.index,r]));
   let remainingWatch=2-result.saved.filter(b=>b.confidence==='watch').length;
   const revised=candidates.filter(c=>byIndex.has(c.index)).filter(c=>c.confidence!=='watch'||remainingWatch-->0).map(c=>({...response.data.briefs[c.index],evidence:byIndex.get(c.index).evidence}));
-  const fixed=saveIntelligenceBriefs(w,run.id,revised,wiki,groups,await reviewBriefScopes(w,env,run,revised,excerpts,deps),{unified:deps.unified});
+  // 深读的修复也必须按深读保存，否则修好的解读会当成普通卡覆盖掉事件信息。
+  const fixed=saveIntelligenceBriefs(w,run.id,revised,wiki,groups,await reviewBriefScopes(w,env,run,revised,excerpts,deps),{unified:deps.unified,deepen:deps.deepen,existingId:deps.existingId});
   const repairedKeys=new Set(fixed.saved.map(b=>b.storyKey));
   const remaining=result.rejectionReasons.filter(r=>!repairedKeys.has(response.data.briefs[r.index]?.groupKey||response.data.briefs[r.index]?.storyKey||response.data.briefs[r.index]?.title));
   return {...result,saved:[...result.saved,...fixed.saved],unchanged:result.unchanged+fixed.unchanged,rejected:remaining.length,rejectionReasons:remaining,repaired:fixed.saved.length};

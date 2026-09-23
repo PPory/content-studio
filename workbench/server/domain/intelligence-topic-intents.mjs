@@ -48,14 +48,14 @@ function normalizeAngle(input,sources){
  return angle;
 }
 const WINDOW_DAYS={'24h':1,week:5,evergreen:null};
-/** 按一个具体做法加入选题：平台、形式、角度，以及由时效窗口算出的截止时间（长青不设）。 */
+/** 按创作判断加入选题：切入角度，以及由时效窗口算出的截止时间（长青不设）。 */
 function normalizeTopicCreation(input){
  if(input==null)return null;
  if(typeof input!=='object'||Array.isArray(input))throw bad('选题做法格式无效');
- if(!['wechat','x','video','xhs'].includes(input.platform))throw bad('选题平台无效');
- const form=text(input.form??'',40),angle=text(input.angle??'',400);if(!form)throw bad('选题形式不能为空');
- const days=WINDOW_DAYS[input.window];if(input.window!==undefined&&!(input.window in WINDOW_DAYS))throw bad('选题时效无效');
- return {platform:input.platform,form,angle,window:input.window||null,deadline:days?new Date(Date.now()+days*86400000).toISOString():null};
+ const angle=text(input.angle??'',400);
+ if(input.window!==undefined&&!(input.window in WINDOW_DAYS))throw bad('选题时效无效');
+ const days=WINDOW_DAYS[input.window];
+ return {angle,window:input.window||null,deadline:days?new Date(Date.now()+days*86400000).toISOString():null};
 }
 export function createIntelligenceTopicIntent(w,input){
  if(input?.confirmed!==true)throw bad('请确认将情报加入选题');
@@ -76,7 +76,7 @@ export function createIntelligenceTopicIntent(w,input){
  const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||creation?.angle||briefs[0].title),1000);
  const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null,creation};
  // 截止时间按调用时刻算，不能进幂等签名，否则重试会被当成另一次操作。
- const hash=sha256Json({...payload,creation:creation?{platform:creation.platform,form:creation.form,angle:creation.angle,window:creation.window}:null,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
+ const hash=sha256Json({...payload,creation:creation?{angle:creation.angle,window:creation.window}:null,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
  return w.repository.transaction(()=>{
   const old=w.db.prepare('SELECT * FROM intelligence_topic_intents WHERE operation_id=?').get(operationId);
   if(old){if(old.payload_hash!==hash)throw bad('操作标识已用于其他选题，请重新提交',409);return {research:getResearch(w,old.research_id),reused:true};}
