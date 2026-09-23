@@ -45,7 +45,7 @@ try {
   await route.fulfill({contentType:"application/json",body:JSON.stringify(result)});
  });
  // 单一阅读主线：精选排序由服务端决定，历史待复核仅通过筛选访问。
- await page.goto(base+'/#/intel');await page.locator('.brief-card').first().waitFor();assert.equal(await page.locator('.brief-card').count(),8);assert((await page.locator('.brief-card').first().innerText()).includes(briefs[7].title));assert.equal(await page.locator('.brief-card__title').filter({hasText:'历史记录需要重新核对'}).count(),0);
+ await page.goto(base+'/#/intel');await page.getByRole('tab',{name:'全部热点',exact:true}).click();await page.locator('.brief-card').first().waitFor();assert.equal(await page.locator('.brief-card').count(),8);assert((await page.locator('.brief-card').first().innerText()).includes(briefs[7].title));assert.equal(await page.locator('.brief-card__title').filter({hasText:'历史记录需要重新核对'}).count(),0);
  assert.equal(await page.locator('.subnav[aria-label="情报下的页面"]').count(),0);
  await page.locator('.unified-filters summary').click();await page.getByLabel('情报阅读范围',{exact:true}).selectOption('history');await page.getByRole('button',{name:/查看更多/}).click();await page.locator('.brief-card__title').filter({hasText:'历史记录需要重新核对'}).click();await page.locator('.brief-peek').getByText('缺少证据范围复核',{exact:true}).waitFor();
  const shots=path.join(ROOT,'output','playwright');await fs.mkdir(shots,{recursive:true});

@@ -31,7 +31,7 @@ try {
  const env={XENHO_HOME:vars.XENHO_HOME,AGENT_INGEST_BASE_URL:`http://127.0.0.1:${model.address().port}/v1`,AGENT_INGEST_API_KEY:'isolated-test-key',AGENT_INGEST_MODEL:'test-only'};
  server=await createServer({root:ROOT,configFile:false,plugins:[react(),workbenchApi(env)],server:{host:'127.0.0.1',port:5264,strictPort:true,open:false},logLevel:'error'});await server.listen();
  browser=await pw.chromium.launch();page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/#/intel');await page.locator('.brief-card').filter({hasText:brief.title}).getByRole('button',{name:'加入选题',exact:true}).click();await page.getByRole('button',{name:'查看选题',exact:true}).waitFor();
+ await page.goto(base+'/#/intel');await page.getByRole('tab',{name:'全部热点',exact:true}).click();await page.locator('.brief-card').filter({hasText:brief.title}).getByRole('button',{name:'加入选题',exact:true}).click();await page.getByRole('button',{name:'查看选题',exact:true}).waitFor();
  assert.equal(modelCalls,0,'直接选中情报无需调用模型');assert.equal((await api('intelligence/topics')).opportunities.length,0,'不产生第二套中间候选');
  await page.getByRole('button',{name:'查看选题',exact:true}).click();await page.waitForURL(/#\/research\//);await page.getByLabel('我的笔记',{exact:true}).waitFor();
  const id=decodeURIComponent(page.url().split('#/research/')[1]),research=(await api('researches/'+id)).research;

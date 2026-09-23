@@ -60,3 +60,6 @@
   .task-page.research-overview { padding: 24px 16px 48px; }
   .research-overview .task-page-head { margin-bottom: 24px; }
 }
+
+/* 从情报按做法加入的选题：平台 · 形式 · 截止时间。 */
+.research-creation { margin: 0; color: var(--text-2); font-size: var(--fs-2xs); }

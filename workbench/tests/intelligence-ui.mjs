@@ -47,7 +47,7 @@ try{
  assert.equal(await page.getByRole('button',{name:'添加资料或灵感',exact:true}).count(),0);
  await page.getByRole('button',{name:'记录自己的想法',exact:true}).click();await page.waitForURL(/#\/notes/);
  // 旧版情报工作台已下线：旧书签落到今日精选，不再渲染旧页。
- await page.goto("http://127.0.0.1:5238/#/intel-legacy");await page.getByRole("tab",{name:"推荐",exact:true}).waitFor();assert(!await page.getByLabel("这次想了解什么？",{exact:true}).count(),"旧版选题发现已下线");
+ await page.goto("http://127.0.0.1:5238/#/intel-legacy");await page.getByRole("tab",{name:"全部热点",exact:true}).click();assert(!await page.getByLabel("这次想了解什么？",{exact:true}).count(),"旧版选题发现已下线");
  await page.goto("http://127.0.0.1:5238/#/hot");await page.getByRole("tab",{name:"AI 热点",exact:true}).waitFor();assert(!await page.getByRole("button",{name:"平台热榜",exact:true}).count());
  assert.equal(errors.length,0,errors.join("\n"));console.log("情报 UI：处理记录取消/恢复重试、原始资料空态与笔记入口、旧版路由下线、导航与手机截图通过（API 使用隔离桩）");
 }catch(error){console.log(await page?.locator("body").innerText());throw error;}

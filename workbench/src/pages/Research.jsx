@@ -13,6 +13,10 @@ import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { handOffUndo, useUndoToast } from "../lib/use-undo-toast.js";
 import { useLayoutMode } from "../lib/use-layout-mode.js";
+import { formatText } from "../components/EventReading.jsx";
+/** 最近一条带做法的情报选题意图。 */
+const creationOf = item => (item.intelligenceIntents || []).map(i => i.creation).filter(Boolean).at(-1) || null;
+const creationLine = c => c ? `${formatText(c)}${c.deadline ? ` · 截止 ${new Date(c.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` : ""}` : "";
 
 // 一屏放得下多少张。卡片按情报卡收紧之后 6 张会剩一大片空白。
 const PAGE_SIZE = 12;
@@ -66,8 +70,10 @@ function ResearchList({ onGo }) {
     catch (e) { setCreateError(e); } finally { setBusy(false); }
   }
   const term = query.trim().toLowerCase();
+  // 从情报按做法加入的选题带截止时间：有截止的排前面、越近越靠前，其余照旧按最近改动。
+  const deadlineOf = item => Date.parse(creationOf(item)?.deadline || "") || Infinity;
   const filtered = (items || []).filter(item => !term || `${item.question || item.title} ${item.notes || item.excerpt || ""}`.toLowerCase().includes(term))
-    .sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
+    .sort((a, b) => (deadlineOf(a) - deadlineOf(b)) || ((Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0)));
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages - 1);
   return <section className="task-page research-overview">
@@ -89,6 +95,7 @@ function ResearchList({ onGo }) {
         <div className="row-head">
           <button type="button" className="row-title research-row__open" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>{title}</button>
           <span className="row-meta">
+            {creationLine(creationOf(item)) && <span className="research-creation">{creationLine(creationOf(item))}</span>}
             <span>{item.references?.length || 0} 份资料 · {item.conversations?.length || 0} 段讨论 · {item.projects?.length || 0} 篇文章</span>
             <span>{when}</span>
           </span>
@@ -102,7 +109,7 @@ function ResearchList({ onGo }) {
       return <article key={item.id} className="research-card" data-confirm={confirmRow === item.id ? "" : undefined}>
         <button type="button" className="research-card__open" aria-label={`打开选题：${title}`} onClick={() => onGo("research", item.id)}>
           <h2>{title}</h2><p>{item.notes?.trim() || item.excerpt || "还没有留下笔记，可以先和 AI 聊聊这个问题。"}</p>
-          <div className="research-card-counts"><span>{item.references?.length || 0} 份资料</span><span>{item.conversations?.length || 0} 段讨论</span><span>{item.projects?.length || 0} 篇文章</span></div>
+          {creationLine(creationOf(item)) && <p className="research-creation">{creationLine(creationOf(item))}</p>}<div className="research-card-counts"><span>{item.references?.length || 0} 份资料</span><span>{item.conversations?.length || 0} 段讨论</span><span>{item.projects?.length || 0} 篇文章</span></div>
           <footer><span>{Number.isNaN(date.getTime()) ? "" : `${date.toLocaleDateString("zh-CN")} 更新`}</span><span>继续展开 →</span></footer>
         </button>
         <span className="research-card__acts">

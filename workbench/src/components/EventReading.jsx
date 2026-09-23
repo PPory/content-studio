@@ -6,6 +6,16 @@
 import { BriefReading, platformName, sourceDate } from "./BriefReading.jsx";
 
 export const eventKindLabel = { event: "热点事件", discussion: "社区热议", practice: "实践" };
+export const platformLabel = { wechat: "公众号", x: "X", video: "视频", xhs: "小红书" };
+export const creationLabels = {
+  value: { high: "很值得做", medium: "值得做", low: "可不做" },
+  window: { "24h": "抢时效", week: "本周内", evergreen: "长青" },
+  zhGap: { large: "信息差大", normal: "信息差一般", saturated: "中文已饱和" },
+  handsOn: { available: "可上手", waitlist: "待开放", news_only: "仅消息" },
+};
+/** 「值得做 · 抢时效 · 信息差大」这一行。 */
+export const creationTags = (c) => (c ? [creationLabels.value[c.value], creationLabels.window[c.window], creationLabels.zhGap[c.zhGap], c.handsOn === "available" ? "可上手" : ""].filter(Boolean) : []);
+export const formatText = (f) => `${platformLabel[f.platform] || f.platform} ${f.form}`;
 const isTalk = (m) => ["reddit", "hacker_news"].includes(m.platform);
 
 function SourceList({ items, talk }) {
@@ -26,7 +36,7 @@ function SourceList({ items, talk }) {
   );
 }
 
-export function EventReading({ brief, onGo, onBlock, onRetryDeep, dense = false }) {
+export function EventReading({ brief, onGo, onBlock, onRetryDeep, onAddFormat, dense = false }) {
   const event = brief.event || {};
   const members = event.members || [];
   const news = members.filter((m) => !isTalk(m) && m.kind !== "comment");
@@ -61,6 +71,21 @@ export function EventReading({ brief, onGo, onBlock, onRetryDeep, dense = false 
             )}
           </div>
         </>
+      )}
+      {event.creation && (
+        <section className="event-reading__section event-reading__creation">
+          <h3>创作判断</h3>
+          <p className="event-reading__tags">{creationTags(event.creation).map((t) => <span key={t}>{t}</span>)}</p>
+          {event.creation.reason && <p className="event-reading__reason">{event.creation.reason}</p>}
+          <ul className="event-reading__formats">
+            {(event.creation.formats || []).map((f) => (
+              <li key={`${f.platform}:${f.form}`}>
+                <div><strong>{formatText(f)}</strong>{f.angle && <span>{f.angle}</span>}</div>
+                {onAddFormat && <button type="button" className="btn btn-sm" onClick={() => onAddFormat(f)}>按这个加入选题</button>}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <section className="event-reading__section">
         <h3>来源（{news.length}）</h3>
