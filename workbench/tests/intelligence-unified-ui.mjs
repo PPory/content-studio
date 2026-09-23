@@ -13,7 +13,8 @@ const require=createRequire(import.meta.url);const {chromium}=require(require.re
 const shots=path.join(ROOT,'output/playwright/intel-refinement');await fs.mkdir(shots,{recursive:true});
 const source={id:'raw1',title:'模型更新原始说明',body:'模型在对照任务中改善，真实环境仍需验证。',url:'https://example.com/release',provider:'web',originKind:'external',publishedAt:'2026-09-20',sourceGroup:'aihot'};
 const briefs=Array.from({length:11},(_,i)=>({id:`b${i}`,title:`模型更新的实际变化 ${i+1}`,summary:i%3===0?'对照任务显示改善，真实工作流仍待核对。作者指出适用范围有限，尚需在日常写作和资料整理中复测。':'对照任务显示改善，真实工作流仍待核对。',whyItMatters:i%2?'可以核对来源的具体任务和样本。':'可用自己的重复任务做一次对照。',body:'原始说明表明模型在对照任务中改善。',uncertainties:['真实环境未验证'],evidence:[{sourceId:'raw1',quote:source.body}],sourceMeta:[source],sources:[source],sourceDocuments:[source],sourceCount:1,sourceGroups:i%2?['community']:['aihot'],editorialState:i===10?'needs_review':'ready',freshnessKind:'recent_event',read:false,saved:false,dismissed:false,version:1,researchLinks:[],reviewClusterId:i===1?'cluster-1':null}));
-const feed=()=>({ok:true,briefs,featuredIds:briefs.slice(0,8).map(b=>b.id),recommendationIds:briefs.slice(0,10).map(b=>b.id),activeRuns:[],preferences:{directions:['AI 实践']},processing:{newCount:10,updatedCount:0,pending:0,failures:0},lastSuccessfulUpdate:'2026-09-22T09:00:00Z'});
+const feed=()=>({ok:true,briefs,featuredIds:briefs.slice(0,8).map(b=>b.id),recommendationIds:briefs.slice(0,10).map(b=>b.id),activeRuns:[],preferences:{directions:['AI 实践']},processing:{newCount:10,updatedCount:0,pending:0,failures:0,permissionRequired:intake&&!intake.consent.publicSources?1500:0},lastSuccessfulUpdate:'2026-09-22T09:00:00Z',...(intake?{intake}:{})});
+let intake=null,settingsBody=null;
 const researches=[{id:'existing',title:'已有选题',question:'已有选题',notes:'用户已有笔记',references:[],projects:[],conversations:[],updatedAt:'2026-09-20'}];
 const operations=new Map();let calls=0,reads=0,failDetail=true,previews=0,lastIntent,server,browser,page;
 try{
@@ -24,6 +25,7 @@ try{
  await page.route('**/api/workspace/intelligence**',async route=>{
   const req=route.request(),url=new URL(req.url()),body=req.method()==='GET'?{}:req.postDataJSON();
   if(url.pathname.endsWith('/feed'))return send(route,feed());
+  if(url.pathname.endsWith('/feed/settings')){settingsBody=body;intake={...intake,consent:{publicSources:body.publicSources??intake.consent.publicSources,reddit:body.reddit??intake.consent.reddit},autoUpdate:body.autoUpdate??intake.autoUpdate};return send(route,{intake,run:body.publicSources?{id:'r2',status:'queued'}:null});}
   if(url.pathname.endsWith('/summary'))return send(route,{unread:10,saved:0});
   if(url.pathname.endsWith('/feed/refresh'))return send(route,{run:{id:'r1',status:'queued'}});
   if(url.pathname.endsWith('/topics/preview')){previews++;return send(route,{},503);}
@@ -54,7 +56,15 @@ try{
  await page.reload();await page.locator('.brief-card').first().waitFor();assert.equal(await page.locator('.brief-card').count(),10);
  await page.goto('http://127.0.0.1:5276/#/intel-topics');await page.locator('.research-overview').waitFor();assert.match(page.url(),/#\/research/);assert.equal(previews,0);
  await page.goto('http://127.0.0.1:5276/#/intel-resources');await page.getByRole('heading',{name:'原始资料',exact:true}).waitFor();await page.locator('.intel-reader').waitFor();await page.getByRole('textbox',{name:'搜索原始资料'}).fill('无匹配');await page.getByRole('heading',{name:'没有匹配的原始资料'}).waitFor();
+ // 未授权：状态行说清楚缺口，一次确认后开始整理；工具菜单出现自动更新开关。
+ intake={consent:{publicSources:false,reddit:false,at:null},autoUpdate:true,redditApproved:false,reddit:null};await page.goto('http://127.0.0.1:5276/#/intel');await page.getByText('最近 7 天采到 1500 条新资料，还没授权交给模型整理').waitFor();
+ await page.getByRole('button',{name:'允许并开始整理',exact:true}).first().click();const consentDialog=page.getByRole('dialog',{name:'AI 整理授权'});await consentDialog.waitFor();await consentDialog.getByText('Reddit 需要先在「设置」里批准付费采集',{exact:false}).waitFor();
+ await page.screenshot({path:path.join(shots,'09-consent-dialog.png'),fullPage:false});
+ await consentDialog.getByRole('button',{name:'允许并开始整理',exact:true}).click();await consentDialog.waitFor({state:'detached'});assert.deepEqual(settingsBody,{publicSources:true,reddit:false,autoUpdate:true});
+ await page.getByText('已开始整理最近 7 天的资料',{exact:false}).waitFor();assert.equal(await page.getByText('还没授权交给模型整理',{exact:false}).count(),0);
+ await page.getByRole('button',{name:'情报工具'}).click();await page.getByRole('menuitemcheckbox',{name:'✓ 自动更新（每 6 小时）'}).click();await page.waitForTimeout(100);assert.deepEqual(settingsBody,{autoUpdate:false});
+ intake={...intake,reddit:{healthStatus:'QUOTA_EXHAUSTED'}};await page.reload();await page.getByText('Reddit 额度不足，社区内容暂由 Hacker News 补位').waitFor();intake=null;
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'07-feed-mobile-390.png'),fullPage:true});await page.locator('[data-brief="b0"] .brief-card__title').click();await page.getByRole('button',{name:'关闭详情',exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'08-reading-mobile-390.png'),fullPage:true});
- assert.deepEqual(errors,[]);console.log('PASS unified UI: one reading flow, 8 + more, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
+ assert.deepEqual(errors,[]);console.log('PASS unified UI: one reading flow, AI consent + auto update + Reddit quota status, 8 + more, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
 }catch(e){console.log(await page?.locator('body').innerText());throw e;}
 finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}assert(path.dirname(temp)===os.tmpdir());await fs.rm(temp,{recursive:true,force:true});}

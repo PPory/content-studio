@@ -50,3 +50,10 @@
  .intel-unified .brief-peek__foot { flex-wrap: wrap; }
 }
 @media(prefers-reduced-motion:reduce){.intel-unified *{transition:none!important;scroll-behavior:auto!important;}}
+
+/* AI 整理授权：勾选项是一行「框 + 说明」，不沿用设置弹窗里上下堆叠的 label。 */
+.intel-consent fieldset { border: 0; padding: 0; margin: 16px 0 0; }
+.intel-consent legend { padding: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.intel-consent label:has(> input[type=checkbox]) { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; line-height: 1.6; }
+.intel-consent input[type=checkbox] { margin-top: 4px; flex: none; }
+.intel-consent__hint { margin: 10px 0; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-3); }

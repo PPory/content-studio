@@ -46,6 +46,7 @@ export const api = {
   intelligenceBrief: id => req(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}`),
   intelligenceFeedback: (id, body) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/feedback`, body),
   intelligenceRefreshFeed: () => postJson("/api/workspace/intelligence/feed/refresh", {}),
+  intelligenceSaveSettings: (input) => postJson("/api/workspace/intelligence/feed/settings", input),
   intelligenceReport: () => postJson("/api/workspace/intelligence/reports", {}),
   intelligencePreferences: body => postJson("/api/workspace/intelligence/preferences", body),
   intelligenceMerge: body => postJson("/api/workspace/intelligence/merge", body),

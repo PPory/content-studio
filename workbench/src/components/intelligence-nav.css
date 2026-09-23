@@ -68,6 +68,11 @@
 .intel-nav-menu { display: grid; }
 .intel-nav-menu a { min-height: 36px; margin: 0; padding: 8px; border: 0; color: var(--text-2); white-space: nowrap; }
 .intel-nav-menu a:hover { background: var(--surface-2); color: var(--text-1); }
+/* 页面自带的菜单项（按钮）与跳转项同一节奏，前面用细线隔开。 */
+.intel-nav-menu button { min-height: 36px; padding: 8px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer; }
+.intel-nav-menu a + button { border-top: 1px solid var(--border); }
+.intel-nav-menu button:hover { background: var(--surface-2); color: var(--text-1); }
+.intel-nav-menu button:focus-visible { outline: 2px solid var(--text-1); outline-offset: -2px; }
 .anchored-popover__trigger:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 .intel-resource-filter-details { margin: 12px 0; color: var(--text-3); font-size: var(--fs-xs); }
 .intel-resource-filter-details > summary { cursor: pointer; }
