@@ -13,10 +13,10 @@ import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { handOffUndo, useUndoToast } from "../lib/use-undo-toast.js";
 import { useLayoutMode } from "../lib/use-layout-mode.js";
-import { formatText } from "../components/EventReading.jsx";
+import { creationLine as creationText } from "../components/EventReading.jsx";
 /** 最近一条带做法的情报选题意图。 */
 const creationOf = item => (item.intelligenceIntents || []).map(i => i.creation).filter(Boolean).at(-1) || null;
-const creationLine = c => c ? `${formatText(c)}${c.deadline ? ` · 截止 ${new Date(c.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` : ""}` : "";
+const creationLine = c => creationText(c);
 
 // 一屏放得下多少张。卡片按情报卡收紧之后 6 张会剩一大片空白。
 const PAGE_SIZE = 12;

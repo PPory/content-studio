@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { ErrorNote, Loading } from './ui.jsx';
-import { formatText } from './EventReading.jsx';
+import { creationLine } from './EventReading.jsx';
 export function LegacyTopicOpen({id,onGo}) {
  const [item,setItem]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false);
  const [,kind,...parts]=id.split(':');const legacyId=parts.join(':');
@@ -13,7 +13,7 @@ export function IntelligenceIntentEvidence({intents,onGo}) {
   return <details className="topic-detail" open>
     <summary>来自情报的选题意图 · {intents.length}</summary>
     {intents.map(intent=><section key={intent.operationId} className="intel-topic-content">
-      {intent.creation&&<p className="research-creation">按「{formatText(intent.creation)}」来做{intent.creation.angle?`：${intent.creation.angle}`:''}{intent.creation.deadline?` · 截止 ${new Date(intent.creation.deadline).toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'})}`:''}</p>}
+      {intent.creation&&<p className="research-creation">{intent.creation.angle?`切入：${intent.creation.angle} · `:''}{creationLine(intent.creation)}</p>}
       <p>{intent.notes}</p>
       {intent.angle && <div>
         <h3>{typeof intent.angle==='string'?intent.angle:intent.angle.question}</h3>

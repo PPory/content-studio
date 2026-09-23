@@ -87,21 +87,46 @@
 .event-reading__sources a:hover { text-decoration: underline; }
 .event-reading__src-meta { color: var(--text-3); font-size: var(--fs-2xs); }
 
-/* 创作判断层：平台筛选、卡片上的「适合」行、做法选择、详情里的判断区。 */
-.intel-platforms { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-.intel-platforms .chip { min-height: 28px; padding: 3px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
-.intel-platforms .chip[aria-pressed="true"] { border-color: var(--text-1); color: var(--text-1); font-weight: 600; }
-.intel-workspace.intel-unified .brief-card__fits { margin: 0; color: var(--text-2); font-size: var(--fs-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topic-formats button { display: grid; gap: 2px; max-width: 320px; }
-.topic-formats button span { color: var(--text-3); font-size: var(--fs-2xs); white-space: normal; }
-.event-reading__tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
-.event-reading__tags span { padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-2); font-size: var(--fs-2xs); }
-.event-reading__reason { margin: 8px 0 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
-.event-reading__formats { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.event-reading__formats li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
-.event-reading__formats li div { display: grid; gap: 2px; min-width: 0; font-size: var(--fs-sm); }
-.event-reading__formats li span { color: var(--text-3); font-size: var(--fs-2xs); }
-.event-reading__formats .btn-sm { flex: none; }
-.intel-platform-settings { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; padding: 0; border: 0; }
-.intel-platform-settings legend { margin-bottom: 6px; color: var(--text-3); font-size: var(--fs-xs); }
-.intel-platform-settings label { display: flex !important; align-items: center; gap: 6px; margin: 4px 0 !important; }
+/* ── 创作判断层 ─────────────────────────────────────────── */
+/* 唯一保留的状态标签：抢时效会改变你今天的动作，用暖色强调「拦一眼」；其余评级不单独摆出来。 */
+.intel-badge { display: inline-flex; align-items: center; flex: none; padding: 0 7px; border: 1px solid var(--emph-line); border-radius: 999px; color: var(--emph); font-size: var(--fs-2xs); font-weight: 600; line-height: 1.8; white-space: nowrap; }
+
+/* 今天值得做：带序号的清单。第 1 名标题大一档，其余同一节奏；次要动作悬停才出现。 */
+.intel-today { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.intel-today__item { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 4px 16px; align-items: start; padding: 18px 8px 18px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.intel-today__item:hover { background: var(--surface-2); }
+.intel-today__item.is-active { box-shadow: inset 2px 0 0 var(--accent); background: var(--surface-2); }
+.intel-today__rank { padding-top: 1px; color: var(--text-3); font-size: var(--fs-lg); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; line-height: 1.4; }
+.intel-today__main { display: grid; gap: 6px; min-width: 0; }
+.intel-today__title { padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-md); font-weight: 600; line-height: 1.45; color: var(--text-1); text-align: left; cursor: pointer; }
+.intel-today__item.is-first .intel-today__title { font-size: var(--fs-lg); }
+.intel-today__item.is-first .intel-today__rank { color: var(--text-1); }
+.intel-today__item.is-read .intel-today__title { color: var(--text-2); font-weight: 500; }
+.intel-today__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.6; }
+.intel-today__angle span, .event-reading__angle span { color: var(--text-3); }
+.intel-today__meta { margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+.intel-today__side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-height: 100%; }
+.intel-today__acts { display: flex; align-items: center; gap: 12px; margin-top: auto; opacity: 0; transition: opacity 0.14s var(--ease); }
+.intel-today__item:hover .intel-today__acts, .intel-today__item:focus-within .intel-today__acts,
+.intel-today__acts:has([aria-pressed=true], .topic-linked, .topic-links) { opacity: 1; }
+
+/* 全部热点：顶行只在有内容时出现；没有时勾选框浮在右上角，不占一行。页脚动作悬停才出现，已发生的状态常驻。 */
+.intel-workspace.intel-unified .brief-card { position: relative; }
+.intel-unified .brief-card.has-no-top > .brief-card__pick { position: absolute; top: 12px; right: 12px; }
+.intel-unified .brief-card.has-no-top .brief-card__title { padding-right: 20px; }
+.intel-unified .brief-card footer { opacity: 0; transition: opacity 0.14s var(--ease); }
+.intel-unified .brief-card:hover footer, .intel-unified .brief-card:focus-within footer,
+.intel-unified .brief-card footer:has([aria-pressed=true], .topic-linked, .topic-links) { opacity: 1; }
+@media (hover: none) {
+ .intel-today__acts, .intel-unified .brief-card footer { opacity: 1; }
+}
+@media (max-width: 700px) {
+ .intel-today__item { grid-template-columns: 26px minmax(0, 1fr); }
+ .intel-today__side { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; }
+ .intel-today__acts { margin-top: 0; opacity: 1; }
+}
+
+/* 详情里的创作判断：理由当结论，角度是下一步，按钮就是那个动作。 */
+.event-reading__creation { display: grid; gap: 8px; justify-items: start; padding: 12px 14px; border-radius: var(--r-md); background: var(--surface-2); }
+.event-reading__verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; }
+.event-reading__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.6; }

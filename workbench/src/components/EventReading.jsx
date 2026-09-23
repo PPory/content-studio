@@ -6,16 +6,8 @@
 import { BriefReading, platformName, sourceDate } from "./BriefReading.jsx";
 
 export const eventKindLabel = { event: "热点事件", discussion: "社区热议", practice: "实践" };
-export const platformLabel = { wechat: "公众号", x: "X", video: "视频", xhs: "小红书" };
-export const creationLabels = {
-  value: { high: "很值得做", medium: "值得做", low: "可不做" },
-  window: { "24h": "抢时效", week: "本周内", evergreen: "长青" },
-  zhGap: { large: "信息差大", normal: "信息差一般", saturated: "中文已饱和" },
-  handsOn: { available: "可上手", waitlist: "待开放", news_only: "仅消息" },
-};
-/** 「值得做 · 抢时效 · 信息差大」这一行。 */
-export const creationTags = (c) => (c ? [creationLabels.value[c.value], creationLabels.window[c.window], creationLabels.zhGap[c.zhGap], c.handsOn === "available" ? "可上手" : ""].filter(Boolean) : []);
-export const formatText = (f) => `${platformLabel[f.platform] || f.platform} ${f.form}`;
+/** 选题上的一行：「抢时效 · 截止 9/24」。 */
+export const creationLine = (c) => (c ? [c.window === "24h" ? "抢时效" : c.window === "week" ? "本周内" : c.window === "evergreen" ? "长青" : "", c.deadline ? `截止 ${new Date(c.deadline).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}` : ""].filter(Boolean).join(" · ") : "");
 const isTalk = (m) => ["reddit", "hacker_news"].includes(m.platform);
 
 function SourceList({ items, talk }) {
@@ -36,7 +28,7 @@ function SourceList({ items, talk }) {
   );
 }
 
-export function EventReading({ brief, onGo, onBlock, onRetryDeep, onAddFormat, dense = false }) {
+export function EventReading({ brief, onGo, onBlock, onRetryDeep, onAddAngle, dense = false }) {
   const event = brief.event || {};
   const members = event.members || [];
   const news = members.filter((m) => !isTalk(m) && m.kind !== "comment");
@@ -72,19 +64,12 @@ export function EventReading({ brief, onGo, onBlock, onRetryDeep, onAddFormat, d
           </div>
         </>
       )}
-      {event.creation && (
-        <section className="event-reading__section event-reading__creation">
-          <h3>创作判断</h3>
-          <p className="event-reading__tags">{creationTags(event.creation).map((t) => <span key={t}>{t}</span>)}</p>
-          {event.creation.reason && <p className="event-reading__reason">{event.creation.reason}</p>}
-          <ul className="event-reading__formats">
-            {(event.creation.formats || []).map((f) => (
-              <li key={`${f.platform}:${f.form}`}>
-                <div><strong>{formatText(f)}</strong>{f.angle && <span>{f.angle}</span>}</div>
-                {onAddFormat && <button type="button" className="btn btn-sm" onClick={() => onAddFormat(f)}>按这个加入选题</button>}
-              </li>
-            ))}
-          </ul>
+      {event.creation && event.creation.value !== "low" && (
+        // 评级本身不单独摆出来：理由当结论，角度是下一步，按钮就是那个动作。
+        <section className="event-reading__creation">
+          <p className="event-reading__verdict">{event.creation.reason || "值得做一条内容"}{event.creation.window === "24h" && <span className="intel-badge">抢时效</span>}</p>
+          {event.creation.angle && <p className="event-reading__angle"><span>切入：</span>{event.creation.angle}</p>}
+          {onAddAngle && <button type="button" className="btn btn-sm btn-primary" onClick={onAddAngle}>按这个角度加入选题</button>}
         </section>
       )}
       <section className="event-reading__section">

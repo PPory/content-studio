@@ -61,26 +61,26 @@ try{
  await page.goto('http://127.0.0.1:5276/#/intel-resources');await page.getByRole('heading',{name:'原始资料',exact:true}).waitFor();await page.locator('.intel-reader').waitFor();await page.getByRole('textbox',{name:'搜索原始资料'}).fill('无匹配');await page.getByRole('heading',{name:'没有匹配的原始资料'}).waitFor();
  // 热点事件卡：卡面是来源数和讨论数；点开先看 AI 概要和来源，深度解读自动生成、完成后替换。
  const eventBrief={id:'ev1',researchLinks:[],title:'Anthropic 发布 Claude Opus 5.5',summary:'多家媒体报道新模型发布，价格低于上一代。',whyItMatters:'影响模型选型和成本',editorialState:'ready',read:false,saved:false,depth:'headline',evidence:[],sourceMeta:[{provider:'aihot',originKind:'external'}],primaryDate:'2026-09-22T18:00:00Z',
-  event:{kind:'event',creation:{value:'high',window:'24h',zhGap:'large',handsOn:'available',reason:'英文圈刚发布，中文报道还少',formats:[{platform:'x',form:'快评线程',angle:'讲清 Opus 5.5 贵在哪便宜在哪'},{platform:'wechat',form:'深度解读',angle:'成本账'}]},heat:30,sourceCount:23,discussionCount:16,latestAt:'2026-09-22T18:00:00Z',members:[{sourceId:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',publisher:'X：Claude',platform:'aihot',publishedAt:'2026-09-22T18:00:00Z',kind:'external_digest'},{sourceId:'s2',title:'Opus 5.5 is great at long refactors',url:'https://reddit.example/opus',platform:'reddit',publishedAt:'2026-09-22T19:00:00Z',kind:'post',score:250,comments:80}]}};
+  event:{kind:'event',creation:{value:'high',window:'24h',angle:'讲清 Opus 5.5 贵在哪便宜在哪',reason:'英文圈刚发布，中文报道还少'},heat:30,sourceCount:23,discussionCount:16,latestAt:'2026-09-22T18:00:00Z',members:[{sourceId:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',publisher:'X：Claude',platform:'aihot',publishedAt:'2026-09-22T18:00:00Z',kind:'external_digest'},{sourceId:'s2',title:'Opus 5.5 is great at long refactors',url:'https://reddit.example/opus',platform:'reddit',publishedAt:'2026-09-22T19:00:00Z',kind:'post',score:250,comments:80}]}};
  briefs.unshift(eventBrief);await page.goto('http://127.0.0.1:5276/#/intel');await page.reload();
  const eventCard=page.locator('[data-brief="ev1"]');await eventCard.waitFor();
- assert.match(await eventCard.innerText(),/23 个来源 · 16 条讨论/);assert.match(await eventCard.innerText(),/很值得做 · 抢时效/,"有创作价值的事件卡显示创作标签");
+ assert.match(await eventCard.innerText(),/23 个来源 · 16 条讨论/);assert.match(await eventCard.innerText(),/抢时效/,"卡片顶行只留抢时效");assert.doesNotMatch(await eventCard.innerText(),/很值得做|适合：/);
  await eventCard.locator('.brief-card__title').click();const peek=page.locator('.brief-peek');await peek.getByText('AI 概要',{exact:true}).waitFor();
  await peek.getByRole('heading',{name:'来源（1）'}).waitFor();await peek.getByRole('heading',{name:'大家怎么说（1）'}).waitFor();await peek.getByText('250 赞',{exact:false}).waitFor();
  await peek.getByText('正在生成深度解读',{exact:false}).waitFor();assert.equal(deepenCalls,1,'打开时自动生成一次');
  await page.screenshot({path:path.join(shots,'13-event-peek.png'),fullPage:false});
  await peek.getByText('深度解读正文',{exact:false}).waitFor({timeout:15000});assert.equal(deepenCalls,1,'生成中不重复请求');
  await page.keyboard.press('Escape');await peek.waitFor({state:'detached'});
- // 今天值得做：创作标签、角度、适合平台；按平台筛选；按做法加入选题。
+ // 今天值得做：带序号的清单，标题、切入角度、理由；只有「抢时效」一个标签；悬停出现加入选题。
  await page.getByRole('tab',{name:'今天值得做'}).click();
  const today=page.locator('[data-brief="ev1"]');await today.waitFor();const todayText=await today.innerText();
- assert.match(todayText,/很值得做 · 抢时效 · 信息差大 · 可上手/);assert.match(todayText,/角度：讲清 Opus 5\.5/);assert.match(todayText,/适合：X 快评线程 · 公众号 深度解读/);
- assert.equal(await page.locator('.brief-card').count(),1,'只放有创作价值的事件');
- await page.screenshot({path:path.join(shots,'14-today-desktop-1440.png'),fullPage:false});
- await page.getByRole('button',{name:'视频',exact:true}).click();await page.getByRole('heading',{name:'今天没有特别值得做的'}).waitFor();await page.getByText('没有适合视频的事件',{exact:false}).waitFor();
- await page.getByRole('button',{name:'全部',exact:true}).click();await today.waitFor();
- await today.getByRole('button',{name:'选择做法加入选题'}).click();await page.getByRole('menuitem',{name:/X 快评线程/}).click();
- await page.waitForTimeout(300);assert.deepEqual(lastIntent.creation,{platform:'x',form:'快评线程',angle:'讲清 Opus 5.5 贵在哪便宜在哪',window:'24h'},'按做法加入选题带上平台、形式、角度和时效');
+ assert.equal(await page.locator('.intel-today__item').count(),1,'只放有创作价值的事件');assert.equal(await page.locator('.brief-card').count(),0,'不是宫格');
+ assert.match(todayText,/^1/);assert.match(todayText,/切入：讲清 Opus 5\.5/);assert.match(todayText,/英文圈刚发布，中文报道还少 · 23 个来源 · 16 条讨论/);assert.match(todayText,/抢时效/);
+ assert.doesNotMatch(todayText,/很值得做|信息差|可上手|适合：/,'不再摆评级标签和平台');assert.equal(await page.locator('.intel-platforms').count(),0,'没有平台筛选');
+ assert.equal(await page.getByRole('group',{name:'显示方式'}).count(),0,'清单不提供卡片/列表切换');
+ await today.hover();await page.screenshot({path:path.join(shots,'14-today-desktop-1440.png'),fullPage:false});
+ await today.getByRole('button',{name:'加入选题',exact:true}).click();
+ await page.waitForTimeout(300);assert.deepEqual(lastIntent.creation,{angle:'讲清 Opus 5.5 贵在哪便宜在哪',window:'24h'},'加入选题带上切入角度和时效');
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'今天值得做 390px 无横向滚动');await page.screenshot({path:path.join(shots,'15-today-mobile-390.png'),fullPage:false});await page.setViewportSize({width:1440,height:960});
  await page.getByRole('tab',{name:'全部热点'}).click();
  briefs.shift();
