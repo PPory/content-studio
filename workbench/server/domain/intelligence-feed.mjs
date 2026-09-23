@@ -195,7 +195,10 @@ export function intelligenceIntake(w,env={}){
  const reddit=w.db.prepare("SELECT r.status,r.health_status healthStatus,r.error,r.started_at startedAt,r.finished_at finishedAt FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE c.platform='reddit' AND r.kind IN ('sync','validate') ORDER BY r.created_at DESC LIMIT 1").get()||null;
  const redditSuccess=w.db.prepare("SELECT max(r.finished_at) at FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE c.platform='reddit' AND r.status='completed'").get()?.at||null;
  const lastBatch=w.db.prepare('SELECT started_at startedAt,finished_at finishedAt,status FROM acquisition_batches ORDER BY started_at DESC LIMIT 1').get()||null;
- return {consent:intelligenceAiConsent(w),autoUpdate:intelligenceAutoUpdate(w),redditApproved:truthy(env.REDDIT_PAID_ACQUISITION_APPROVED)&&Boolean(env.BRIGHTDATA_API_KEY),reddit:reddit?{...reddit,lastSuccessAt:redditSuccess}:null,lastBatch};
+ const batchRuns=lastBatch&&!lastBatch.finishedAt?w.db.prepare("SELECT c.name,c.platform,j.status FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=(SELECT id FROM acquisition_batches ORDER BY started_at DESC LIMIT 1) AND r.kind IN ('sync','validate','backfill')").all():[];
+ const open=batchRuns.filter(r=>['queued','retry','running'].includes(r.status));
+ const progress=batchRuns.length?{total:batchRuns.length,finished:batchRuns.length-open.length,running:batchRuns.find(r=>r.status==='running')?.name||null,redditOnly:open.length>0&&open.every(r=>r.platform==='reddit')}:null;
+ return {progress,consent:intelligenceAiConsent(w),autoUpdate:intelligenceAutoUpdate(w),redditApproved:truthy(env.REDDIT_PAID_ACQUISITION_APPROVED)&&Boolean(env.BRIGHTDATA_API_KEY),reddit:reddit?{...reddit,lastSuccessAt:redditSuccess}:null,lastBatch};
 }
 /**
  * 用户在情报页确认授权或切换自动更新。授权放开后立即完整更新一次（含采集；Reddit 仍受一天一次的限制），
@@ -212,6 +215,22 @@ export function saveIntelligenceSettings(w,input,env={}){
  }
  if(input.autoUpdate!==undefined)setIntelligenceAutoUpdate(w,input.autoUpdate);
  return {intake:intelligenceIntake(w,env),run};
+}
+/**
+ * Reddit 采集比其它信源慢得多，更新情报不等它。它全部跑完后（没有排队中的 Reddit 任务），
+ * 如果有比上次整理更晚完成的 Reddit 运行，就只整理、不采集地补一轮。水位记在 intel_unified_state，避免重复。
+ */
+export function scheduleRedditArrival(w){
+ if(!unifiedAvailable(w)||!intelligenceAiConsent(w).reddit)return null;
+ if(w.db.prepare("SELECT 1 FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id JOIN intel_channels c ON c.id=r.channel_id WHERE c.platform='reddit' AND j.status IN ('queued','retry','running') LIMIT 1").get())return null;
+ if(w.db.prepare("SELECT id FROM intel_runs WHERE status IN ('queued','running') AND json_extract(config_json,'$.output')='briefs' LIMIT 1").get())return null;
+ const latest=w.db.prepare("SELECT max(r.finished_at) at FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE c.platform='reddit' AND r.status='completed'").get()?.at;
+ const mark=w.db.prepare("SELECT value FROM intel_unified_state WHERE key='reddit-watermark'").get()?.value;
+ if(!latest||latest===mark)return null;
+ w.db.prepare("INSERT INTO intel_unified_state(key,value) VALUES('reddit-watermark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(latest);
+ const lastRun=w.db.prepare("SELECT max(updated_at) at FROM intel_runs WHERE json_extract(config_json,'$.output')='briefs'").get()?.at;
+ if(lastRun&&lastRun>latest)return null;
+ return refreshIntelligenceFeed(w,{collect:false});
 }
 /** 应用打开期间每 6 小时自动更新一次；启动时若距上次超过 6 小时也会补一次。只在用户授权后生效。 */
 export function scheduleIntelligenceAutoUpdate(w,{now=new Date()}={}){

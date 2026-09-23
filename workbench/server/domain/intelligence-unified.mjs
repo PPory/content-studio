@@ -50,9 +50,10 @@ export function deferUnifiedRun(w,runId,stage) {
  const {job}=w.jobs.enqueue({kind:'intelligence.research',idempotencyKey:`intel-unified:${runId}:${sequence}`,payload:{runId},dueAt:new Date(Date.now()+15000).toISOString(),maxAttempts:2});
  w.db.prepare('UPDATE intel_runs SET job_id=? WHERE id=?').run(job.id,runId);updateRun(w,runId,'queued',stage);return intelligenceRun(w,runId);
 }
+// 只等快的信源和补全文；Reddit 慢（每个社区要等几分钟快照），到了之后由 scheduleRedditArrival 再补整理一轮。
 export function unifiedAcquisitionPending(w,runId){
  const step=stepState(w,runId,'acquire');if(!step.batchId)return false;
- return Boolean(w.db.prepare("SELECT r.id FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE (r.batch_id=? OR r.kind='fulltext') AND j.status IN ('queued','retry','running') LIMIT 1").get(step.batchId));
+ return Boolean(w.db.prepare("SELECT r.id FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id JOIN intel_channels c ON c.id=r.channel_id WHERE ((r.batch_id=? AND c.platform<>'reddit') OR r.kind='fulltext') AND j.status IN ('queued','retry','running') LIMIT 1").get(step.batchId));
 }
 // 每次「更新情报」的模型预算。超出的资料留到下次；过了 7 天自然转为 stale，不会无限积压。
 export const UNIFIED_BUDGET=Object.freeze({semantic:60,brief:40,quota:{t2_media:25,community:25},contextComments:5});

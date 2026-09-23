@@ -12,8 +12,9 @@ import { trigger, BrightDataError } from '../server/acquisition/providers/bright
 import { errorStatus } from '../server/acquisition/health.mjs';
 import { visibleDerived } from '../server/acquisition/compatibility.mjs';
 import { intelligenceAiConsent, saveIntelligenceAiConsent, sourceIsFresh, inIntelligencePool, RECOMMEND_WINDOW_MS } from '../server/domain/intelligence-pool.mjs';
-import { rankIntelligenceBriefs, briefRecency, saveIntelligenceBriefs, scheduleIntelligenceAutoUpdate, saveIntelligenceSettings } from '../server/domain/intelligence-feed.mjs';
-import { reconcileUnifiedSources, executeUnifiedBriefs, UNIFIED_BUDGET } from '../server/domain/intelligence-unified.mjs';
+import { rankIntelligenceBriefs, briefRecency, saveIntelligenceBriefs, scheduleIntelligenceAutoUpdate, saveIntelligenceSettings, scheduleRedditArrival, intelligenceIntake } from '../server/domain/intelligence-feed.mjs';
+import { reconcileUnifiedSources, executeUnifiedBriefs, UNIFIED_BUDGET, unifiedAcquisitionPending } from '../server/domain/intelligence-unified.mjs';
+import { saveStep } from '../server/domain/intelligence.mjs';
 import { saveIntelligenceProfile, enqueueIntelligence, addIntelligenceSource } from '../server/domain/intelligence.mjs';
 
 const DAY = 86400000, NOW = Date.parse('2026-09-23T04:00:00.000Z');
@@ -175,6 +176,27 @@ try {
   assert.equal(startOf(reddit.id), undefined, 'Reddit 20 小时内不重复采集');
   assert.ok(startOf(channelRow('community.reddit.machinelearning').id), '其他 Reddit 社区照常');
   assert.equal(startOf(arxiv.id), undefined, 'arXiv 不再随更新情报采集');
+  // Reddit 排在队尾：任务串行执行，它不能堵住其它信源。
+  const order = w.db.prepare('SELECT c.platform FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? ORDER BY r.rowid').all(batch.id).map(r => r.platform);
+  assert.ok(order.includes('reddit') && order.slice(order.indexOf('reddit')).every(p => p === 'reddit'), 'Reddit 排在批次最后');
+  // 整理只等快的信源：其它都完成、只剩 Reddit 时不再等待；进度能说出「只剩 Reddit」。
+  const waitRun = enqueueIntelligence(w, profile.id);
+  saveStep(w, waitRun.id, 'acquire', 'running', { batchId: batch.id });
+  assert.equal(unifiedAcquisitionPending(w, waitRun.id), true, '其它信源没采完时要等');
+  const progressBefore = intelligenceIntake(w).progress;
+  assert.ok(progressBefore.total > progressBefore.finished && !progressBefore.redditOnly);
+  w.db.prepare("UPDATE local_jobs SET status='done' WHERE id IN (SELECT r.job_id FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? AND c.platform<>'reddit')").run(batch.id);
+  assert.equal(unifiedAcquisitionPending(w, waitRun.id), false, '只剩 Reddit 时不等它');
+  assert.equal(intelligenceIntake(w).progress.redditOnly, true);
+  // Reddit 采完后自动补整理一轮，只一次。
+  w.db.prepare("UPDATE local_jobs SET status='done' WHERE status IN ('queued','retry','running')").run();
+  w.db.prepare("UPDATE intel_runs SET status='done',updated_at=?").run(iso(now - 3600000));
+  w.db.prepare("UPDATE acquisition_runs SET status='completed',finished_at=? WHERE id=(SELECT r.id FROM acquisition_runs r JOIN intel_channels c ON c.id=r.channel_id WHERE r.batch_id=? AND c.platform='reddit' LIMIT 1)").run(iso(now), batch.id);
+  const arrival = scheduleRedditArrival(w);
+  assert.ok(arrival?.id, 'Reddit 到了之后补整理');
+  assert.equal(w.db.prepare("SELECT count(*) n FROM acquisition_batches WHERE started_at>?").get(iso(now + 1000)).n, 0, '补整理不重新采集');
+  w.db.prepare("UPDATE intel_runs SET status='done'").run();
+  assert.equal(scheduleRedditArrival(w), null, '同一批 Reddit 只补一次');
 
   // ── 自动更新：授权后才生效，6 小时内不重复 ──
   assert.equal(scheduleIntelligenceAutoUpdate(w, { now: new Date() }), null, '已有进行中的批次时不重复触发');
@@ -244,7 +266,7 @@ try {
   const status2 = id => w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(id)?.status;
   assert.equal(status2(hnPost.id), 'filtered', '模型没分进任何组的资料不再重试');
 
-  console.log('intelligence-freshness: 7-day gate, bands, diversity, deep reads last, consent + full update, Reddit rights, pool/stale/context, budget, edition date, retention, catch-up windows, auto update, fulltext once, summary cards and single grouping passed');
+  console.log('intelligence-freshness: 7-day gate, bands, diversity, deep reads last, consent + full update, Reddit rights, pool/stale/context, budget, edition date, retention, catch-up windows, auto update, Reddit last / not awaited / arrival refresh, fulltext once, summary cards and single grouping passed');
 } finally {
   w?.close();
   await fs.rm(root, { recursive: true, force: true });

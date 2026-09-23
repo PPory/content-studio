@@ -22,8 +22,9 @@ export function startAcquisitionBatch(w,{confirmed,trigger='manual'}={}) {
  const active=w.db.prepare("SELECT b.id FROM acquisition_batches b JOIN acquisition_runs r ON r.batch_id=b.id JOIN local_jobs j ON j.id=r.job_id WHERE j.status IN ('queued','retry','running') ORDER BY b.started_at DESC LIMIT 1").get();
  if(active)return batchOverview(w,active.id).batch;
  // 只调度情报池：arXiv、GitHub、dev.to 等频道保留配置，但不再随「更新情报」采集。
+ // Reddit 排在最后：任务串行执行，它每个社区要等 Bright Data 快照几分钟，排前面会堵住其它信源。
  const recent=Date.now()-REDDIT_MIN_INTERVAL_MS;
- const channels=w.db.prepare(`SELECT * FROM intel_channels WHERE ${POOL_CHANNEL_SQL} AND desired_enabled=1 AND user_disabled=0 ORDER BY source_group,name`).all()
+ const channels=w.db.prepare(`SELECT * FROM intel_channels WHERE ${POOL_CHANNEL_SQL} AND desired_enabled=1 AND user_disabled=0 ORDER BY platform='reddit',source_group,name`).all()
   // Reddit 按条计费：一天只跑一次，手动点也一样；因授权缺失被拦的不算跑过。
   .filter(c=>c.platform!=='reddit'||!w.db.prepare("SELECT id FROM acquisition_runs WHERE channel_id=? AND kind IN ('sync','validate') AND status IN ('completed','failed','running','queued') AND COALESCE(started_at,created_at)>=?").get(c.id,new Date(recent).toISOString()));
  const id=createUlid(),at=new Date().toISOString(),window=acquisitionWindow({mode:'sync',now:new Date(at)});w.db.prepare('INSERT INTO acquisition_batches(id,trigger_kind,started_at,channel_count,window_start_at,window_end_at) VALUES(?,?,?,?,?,?)').run(id,trigger,at,channels.length,window.windowStart,window.windowEnd);

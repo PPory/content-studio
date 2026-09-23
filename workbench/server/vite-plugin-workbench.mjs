@@ -1,7 +1,7 @@
 import { finishAcquisitionBatches } from './acquisition/batches.mjs';
 import { scheduleAcquisition } from './acquisition/runner.mjs';
 import { scheduleIntelligence } from "./domain/intelligence.mjs";
-import { scheduleIntelligenceAutoUpdate } from './domain/intelligence-feed.mjs';
+import { scheduleIntelligenceAutoUpdate, scheduleRedditArrival } from './domain/intelligence-feed.mjs';
 import { cleanupAcquisition } from './acquisition/store.mjs';
 // 把本地 API 挂进 Vite dev server 的中间件链，而不是另起一个进程 + 配代理。
 // 一个进程、一条 npm run dev、没有端口对不上的问题，也不需要 concurrently 这类依赖。
@@ -43,6 +43,8 @@ export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {})
         acquisitionCleanup: env.ACQUISITION_AUTOSTART === "true" ? null : quietly(() => cleanupAcquisition(workspace, { now })),
         // 用户授权后，应用打开期间每 6 小时自动更新情报（与按频道轮询的原始采集无关）。
         intelligenceAutoUpdate: quietly(() => scheduleIntelligenceAutoUpdate(workspace, { now })),
+        // Reddit 慢，更新情报不等它；它采完后补整理一轮。
+        redditArrival: quietly(() => scheduleRedditArrival(workspace)),
         recoveredWikiJobs: recoverQueuedWikiIngests(workspace, { now }),
         reconciledWikiCandidates: reconcileWikiIngestCandidates(workspace, { now }),
       }),
