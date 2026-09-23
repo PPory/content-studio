@@ -18,13 +18,22 @@
 .unified-filter-settings { margin-top: 14px; }
 .unified-update-status { display: flex; align-items: center; gap: 10px; min-height: 22px; color: var(--text-3); font-size: 12px; margin: 0 0 18px; line-height: 1.7; }
 .unified-update-status.has-problem { color: var(--text-2); }
-.intel-workspace.intel-unified .brief-card { padding: 20px; gap: 9px; min-height: 330px; }
-.intel-workspace.intel-unified .brief-card__title { min-height: calc(2 * 1.55 * 17px); }
-.intel-workspace.intel-unified .brief-card__summary { font-size: 14px; line-height: 1.72; -webkit-line-clamp: 3; min-height: calc(3 * 1.72 * 14px); }
-.intel-workspace.intel-unified .brief-card__meta { font-size: 12px; margin: 4px 0; flex: none; white-space: normal; overflow-wrap: anywhere; }
-.unified-card-value { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: calc(2 * 1.65 * 13px); font-size: 13px; line-height: 1.65; margin: 0; color: var(--text-2); }
-.unified-card-value strong { font-weight: 500; }
-.intel-unified .brief-card footer { justify-content: flex-start; gap: 18px; }
+/* 卡片尺寸对齐「选题」页（research-list.css 的 .research-card-grid / .research-card）：
+   一屏能扫完 6–8 张，单张卡只负责「值不值得点开」。 */
+.intel-unified .intel-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.intel-workspace.intel-unified .brief-card { padding: 13px 15px 11px; gap: 7px; min-height: 0; }
+.intel-workspace.intel-unified .brief-card__title { font-size: var(--fs-base); min-height: calc(2 * 1.5 * var(--fs-base)); }
+.intel-workspace.intel-unified .brief-card__meta { margin: 0; flex: none; font-size: var(--fs-2xs); }
+.intel-unified .brief-card footer { justify-content: flex-start; gap: 14px; padding-top: 9px; }
+.intel-unified .brief-card footer .btn-sm { min-height: 28px; padding: 3px 10px; }
+/* 列表行：动作区平时收起，悬停、聚焦或已有状态（已收藏 / 已加入选题）时出现，和选题页的行一致。 */
+/* 标题列固定宽度，摘要列才能对齐成一列。 */
+.intel-rows .brief-row__open { flex: 0 0 34%; max-width: 34%; }
+.intel-row__acts { display: flex; align-items: center; gap: 12px; opacity: 0; transition: opacity 0.14s var(--ease); }
+.intel-row__acts .btn-sm { min-height: 28px; padding: 3px 10px; }
+.intel-rows .row:hover .intel-row__acts,
+.intel-rows .row:focus-within .intel-row__acts,
+.intel-row__acts:has([aria-pressed="true"], .topic-linked, .topic-links) { opacity: 1; }
 .unified-card-more { margin-left: auto; font-size: 12px; }
 .unified-card-more .anchored-popover__trigger { min-width: 32px; padding: 5px; font-size: 16px; letter-spacing: 1px; }
 .unified-card-menu, .topic-links__menu { display: grid; min-width: 205px; }
@@ -43,8 +52,11 @@
  .unified-toolbar__actions { width: 100%; }
  .unified-toolbar__actions .search-box { width: auto; flex: 1; }
  .unified-filter-panel { position: fixed; inset: auto 16px 16px; width: auto; max-height: min(70vh, 520px); overflow: auto; }
- .intel-workspace.intel-unified .brief-card { padding: 18px; }
- .intel-workspace.intel-unified .brief-card { min-height: 0; }
+ .intel-workspace.intel-unified .brief-card { padding: 13px 14px 11px; }
+ .intel-rows .row-head { flex-wrap: wrap; row-gap: 6px; }
+ .intel-rows .brief-row__open { max-width: none; flex: 1 1 calc(100% - 30px); white-space: normal; }
+ .intel-rows .row-meta { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+ .intel-row__acts { opacity: 1; }
  .intel-unified .brief-card__pick { opacity: 1; }
  .intel-unified .brief-selection-bar { position: sticky; bottom: 0; }
  .intel-unified .brief-peek__foot { flex-wrap: wrap; }

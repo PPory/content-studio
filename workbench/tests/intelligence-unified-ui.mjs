@@ -56,12 +56,22 @@ try{
  await page.reload();await page.locator('.brief-card').first().waitFor();assert.equal(await page.locator('.brief-card').count(),10);
  await page.goto('http://127.0.0.1:5276/#/intel-topics');await page.locator('.research-overview').waitFor();assert.match(page.url(),/#\/research/);assert.equal(previews,0);
  await page.goto('http://127.0.0.1:5276/#/intel-resources');await page.getByRole('heading',{name:'原始资料',exact:true}).waitFor();await page.locator('.intel-reader').waitFor();await page.getByRole('textbox',{name:'搜索原始资料'}).fill('无匹配');await page.getByRole('heading',{name:'没有匹配的原始资料'}).waitFor();
+ // 卡片 / 列表双模式：和选题页同一颗开关，刷新后保持；列表行同样能收藏、加入选题。
+ await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();
+ const cardBox=await page.locator('.brief-card').first().boundingBox();assert(cardBox.height<260,'卡片高度对齐选题页，不再是大卡：'+cardBox.height);
+ await page.getByRole('button',{name:'列表视图',exact:true}).click();await page.locator('.brief-row').first().waitFor();assert.equal(await page.locator('.brief-card').count(),0);
+ await page.screenshot({path:path.join(shots,'10-list-desktop-1440.png'),fullPage:false});
+ await page.reload();await page.locator('.brief-row').first().waitFor();assert.equal(await page.locator('.brief-card').count(),0,'刷新后保持列表模式');
+ const listRow=page.locator('[data-brief="b3"]');await listRow.hover();await listRow.getByRole('button',{name:'收藏',exact:true}).click();await listRow.getByRole('button',{name:'已收藏',exact:true}).waitFor();
+ await listRow.locator('.brief-row__open').click();await page.locator('.brief-peek').waitFor();await page.keyboard.press('Escape');await page.locator('.brief-peek').waitFor({state:'detached'});
+ await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'列表模式 390px 无横向滚动');await page.screenshot({path:path.join(shots,'11-list-mobile-390.png'),fullPage:false});await page.setViewportSize({width:1440,height:960});
+ await page.getByRole('button',{name:'卡片视图',exact:true}).click();await page.locator('.brief-card').first().waitFor();await page.screenshot({path:path.join(shots,'12-card-desktop-1440.png'),fullPage:false});
  // 未授权：状态行说清楚缺口，一次确认后开始整理；工具菜单出现自动更新开关。
- intake={consent:{publicSources:false,reddit:false,at:null},autoUpdate:true,redditApproved:false,reddit:null};await page.goto('http://127.0.0.1:5276/#/intel');await page.getByText('最近 7 天采到 1500 条新资料，还没授权交给模型整理').waitFor();
+ intake={consent:{publicSources:false,reddit:false,at:null},autoUpdate:true,redditApproved:false,reddit:null};await page.reload();await page.getByText('最近 7 天采到 1500 条新资料，还没授权交给模型整理').waitFor();
  await page.getByRole('button',{name:'允许并开始整理',exact:true}).first().click();const consentDialog=page.getByRole('dialog',{name:'AI 整理授权'});await consentDialog.waitFor();await consentDialog.getByText('Reddit 需要先在「设置」里批准付费采集',{exact:false}).waitFor();
  await page.screenshot({path:path.join(shots,'09-consent-dialog.png'),fullPage:false});
  await consentDialog.getByRole('button',{name:'允许并开始整理',exact:true}).click();await consentDialog.waitFor({state:'detached'});assert.deepEqual(settingsBody,{publicSources:true,reddit:false,autoUpdate:true});
- await page.getByText('已开始整理最近 7 天的资料',{exact:false}).waitFor();assert.equal(await page.getByText('还没授权交给模型整理',{exact:false}).count(),0);
+ await page.getByText('已开始更新情报',{exact:false}).waitFor();assert.equal(await page.getByText('还没授权交给模型整理',{exact:false}).count(),0);
  await page.getByRole('button',{name:'情报工具'}).click();await page.getByRole('menuitemcheckbox',{name:'✓ 自动更新（每 6 小时）'}).click();await page.waitForTimeout(100);assert.deepEqual(settingsBody,{autoUpdate:false});
  intake={...intake,reddit:{healthStatus:'QUOTA_EXHAUSTED'}};await page.reload();await page.getByText('Reddit 额度不足，社区内容暂由 Hacker News 补位').waitFor();intake=null;
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'07-feed-mobile-390.png'),fullPage:true});await page.locator('[data-brief="b0"] .brief-card__title').click();await page.getByRole('button',{name:'关闭详情',exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'08-reading-mobile-390.png'),fullPage:true});
