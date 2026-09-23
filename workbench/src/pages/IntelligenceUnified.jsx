@@ -57,14 +57,18 @@ export function IntelligenceUnified({view="intel",state,onGo}) {
   const apply = next => {setData(d=>d?{...d,briefs:d.briefs.map(b=>b.id===next.id?next:b)}:d);setBrief(b=>b?.id===next.id?next:b);};
   useEffect(()=>{
     if(!activeId){setBrief(null);setDetailError(null);return;}let stopped=false;setBrief(null);setDetailError(null);
-    api.intelligenceBrief(activeId).then(async r=>{if(stopped)return;setBrief(r.brief);if(r.brief.event&&r.brief.depth!=="deep"&&!["queued","running","failed"].includes(r.brief.deepen?.status)){api.intelligenceDeepen(r.brief.id).then(d=>{if(!stopped)setBrief(b=>b?.id===r.brief.id?{...b,deepen:d.deepen}:b);}).catch(()=>{});}if(!r.brief.read){try{const read=await api.intelligenceFeedback(r.brief.id,{read:true});if(!stopped)apply(read.brief);}catch(e){if(!stopped)setError(e);}}}).catch(e=>{if(!stopped)setDetailError(e);});
+    // 深读不再点开就生成（2026-09-24）：用户点「深入解读」才排队，快速翻十张卡不会在后台排出十个任务。
+    api.intelligenceBrief(activeId).then(async r=>{if(stopped)return;setBrief(r.brief);if(!r.brief.read){try{const read=await api.intelligenceFeedback(r.brief.id,{read:true});if(!stopped)apply(read.brief);}catch(e){if(!stopped)setError(e);}}}).catch(e=>{if(!stopped)setDetailError(e);});
     return()=>{stopped=true;};
   },[activeId,nonce]);
-  // 深度解读生成中：每 3 秒看一次，生成完就换成完整解读。
-  const deepening=brief?.event&&brief.depth!=="deep"&&["queued","running"].includes(brief.deepen?.status);
-  useEffect(()=>{if(!deepening)return;const id=brief.id;const timer=setInterval(()=>{if(document.hidden)return;api.intelligenceBrief(id).then(r=>{setBrief(b=>b?.id===id?r.brief:b);if(r.brief.depth==="deep")apply(r.brief);}).catch(()=>{});},3000);return()=>clearInterval(timer);},[deepening,brief?.id]);
-  const retryDeep=()=>brief&&api.intelligenceDeepen(brief.id,{force:true}).then(d=>setBrief(b=>b?.id===brief.id?{...b,deepen:d.deepen}:b)).catch(setError);
-  const reading=item=>item.event?<EventReading brief={item} onGo={onGo} onBlock={block} onRetryDeep={retryDeep} onAddAngle={()=>addFromCreation(item)} dense/>:null;
+  // 深度解读排队或生成中（包括更新旧解读）：每 3 秒看一次真实阶段，结束就换成新内容。
+  const deepening=brief?.event&&["queued","running"].includes(brief.deepen?.status);
+  useEffect(()=>{if(!deepening)return;const id=brief.id;const timer=setInterval(()=>{if(document.hidden)return;api.intelligenceBrief(id).then(r=>{setBrief(b=>b?.id===id?r.brief:b);if(!["queued","running"].includes(r.brief.deepen?.status))apply(r.brief);}).catch(()=>{});},3000);return()=>clearInterval(timer);},[deepening,brief?.id]);
+  const startDeep=force=>brief&&api.intelligenceDeepen(brief.id,{force:Boolean(force)}).then(d=>setBrief(b=>b?.id===brief.id?{...b,deepen:{...b.deepen,...d.deepen}}:b)).catch(setError);
+  // 「这几条不是同一件事」：在来源那一行确认后移出，原卡立即去掉这条来源。
+  const splitSource=async(item,member)=>{const r=await act("split",()=>api.intelligenceSplit(item.id,[member.sourceId]));if(r){apply(r.brief);setNotice({text:"已移出，下次更新时它会单独成卡"});}};
+  const openStory=storyKey=>{const target=(data?.briefs||[]).find(b=>b.storyKey===storyKey);if(target)setPeekId(target.id);else setNotice({text:"那件事暂时没有单独的卡片"});};
+  const reading=item=>item.event?<EventReading brief={item} onGo={onGo} onDeep={startDeep} onAddAngle={()=>addFromCreation(item)} onSplit={member=>splitSource(item,member)} onOpenRelated={openStory} dense/>:null;
   const act=async(key,fn)=>{setBusy(key);setError(null);try{return await fn();}catch(e){setError(e);return null;}finally{setBusy("");}};
   async function feedback(item,patch){const r=await act(item.id,()=>api.intelligenceFeedback(item.id,patch));if(!r)return;apply(r.brief);if(patch.dismissed){setNotice({text:"已忽略，可随时恢复",undo:()=>feedback(item,{dismissed:false})});if(peekId===item.id)setPeekId("");}else setNotice({text:patch.dismissed===false?"已恢复推荐":patch.saved===undefined?"已记录":patch.saved?"已收藏":"已取消收藏"});}
   async function addTopic(ids,angle,options={}){
@@ -102,8 +106,8 @@ export function IntelligenceUnified({view="intel",state,onGo}) {
   const notification=notice&&<div className="unified-notice" role="status"><span>{notice.text}</span>{notice.undo&&<button className="text-action" onClick={()=>{notice.undo();setNotice(null);}}>撤销</button>}{notice.researchId&&<button className="text-action" onClick={()=>onGo("research",notice.researchId)}>查看选题</button>}<button className="text-action" onClick={()=>setNotice(null)} aria-label="关闭提示">关闭</button></div>;
   const openCorrection=item=>{setPeekId(item.id);setSplitIds([]);setMergeTarget("");setCorrection(item);};
   const links=item=>item.researchLinks||item.researchIds?.map(id=>({id,title:"查看选题"}))||[];
-  // 事件卡带创作判断时，加入选题会带上切入角度和时效（截止时间由服务端算）。
-  const addFromCreation=item=>{const c=item.event?.creation;return addTopic([item.id],null,c&&c.value!=="low"?{creation:{angle:c.angle,window:c.window}}:{});};
+  // 加入选题带上创作建议：深读过的用深读里那个有依据的方向（含读者价值、还需补充），否则用热点层的切入角度。时效只是建议。
+  const addFromCreation=item=>{const c=item.event?.creation,a=item.depth==="deep"&&item.angle?.direction?item.angle:null;const creation=a?{angle:a.direction,window:c?.value!=="low"?c?.window||null:null,...(a.readerValue?{readerValue:a.readerValue}:{}),...(a.needs?.length?{needs:a.needs}:{})}:c&&c.value!=="low"?{angle:c.angle,window:c.window}:null;return addTopic([item.id],null,creation?{creation}:{});};
   // 卡片动作是三个图标按钮：收藏、加入选题、更多。已发生的状态（已收藏、已加入选题）常驻，其余悬停才出现。
   const topicControl=item=>{
     const topics=links(item);

@@ -14,7 +14,7 @@ const shots=path.join(ROOT,'output/playwright/intel-refinement');await fs.mkdir(
 const source={id:'raw1',title:'模型更新原始说明',body:'模型在对照任务中改善，真实环境仍需验证。',url:'https://example.com/release',provider:'web',originKind:'external',publishedAt:'2026-09-20',sourceGroup:'aihot'};
 const briefs=Array.from({length:40},(_,i)=>({id:`b${i}`,title:`模型更新的实际变化 ${i+1}`,summary:i%3===0?'对照任务显示改善，真实工作流仍待核对。作者指出适用范围有限，尚需在日常写作和资料整理中复测。':'对照任务显示改善，真实工作流仍待核对。',whyItMatters:i%2?'可以核对来源的具体任务和样本。':'可用自己的重复任务做一次对照。',body:'原始说明表明模型在对照任务中改善。',uncertainties:['真实环境未验证'],evidence:[{sourceId:'raw1',quote:source.body}],sourceMeta:[source],sources:[source],sourceDocuments:[source],sourceCount:1,sourceGroups:i%2?['community']:['aihot'],editorialState:i===39?'needs_review':'ready',freshnessKind:'recent_event',read:false,saved:false,dismissed:false,version:1,researchLinks:[],reviewClusterId:i===1?'cluster-1':null}));
 const feed=()=>({ok:true,briefs,featuredIds:briefs.slice(0,8).map(b=>b.id),recommendationIds:briefs.slice(0,38).map(b=>b.id),activeRuns:[],preferences:{directions:['AI 实践']},processing:{newCount:10,updatedCount:0,pending:0,failures:0,permissionRequired:intake&&!intake.consent.publicSources?1500:0},lastSuccessfulUpdate:'2026-09-22T09:00:00Z',...(intake?{intake}:{})});
-let intake=null,settingsBody=null,deepenCalls=0;
+let intake=null,settingsBody=null,deepenCalls=0,splitCalls=0;
 const researches=[{id:'existing',title:'已有选题',question:'已有选题',notes:'用户已有笔记',references:[],projects:[],conversations:[],updatedAt:'2026-09-20'}];
 const operations=new Map();let calls=0,reads=0,failDetail=true,previews=0,lastIntent,server,browser,page;
 try{
@@ -25,7 +25,11 @@ try{
  await page.route('**/api/workspace/intelligence**',async route=>{
   const req=route.request(),url=new URL(req.url()),body=req.method()==='GET'?{}:req.postDataJSON();
   if(url.pathname.endsWith('/feed'))return send(route,feed());
-  if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},body:'## 发生了什么\n\n深度解读正文：官方说明与第三方评测都提到价格下降。'});},1500);return send(route,{deepen:e.deepen});}
+  if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running',stage:'正在补全 2 篇原文'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},summary:'Anthropic 发布 Opus 5.5，价格更低。',body:'深度解读正文：官方说明与第三方评测都提到价格下降。',
+   keyFacts:[{text:'官方称每 token 价格更低',evidenceIds:['e1']}],evidence:[{sourceId:'s1',quote:'每token价格更低'}],sources:[{id:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',provider:'aihot',readLevel:'original',quotes:[{number:1,quote:'每token价格更低'}]}],
+   claims:[{id:'c1',text:'价格比上一代更低',kind:'author_report',attribution:'Anthropic',evidenceIds:['e1'],limitations:['没有第三方复测']}],uncertainties:['只有官方说明'],useFor:'要评估模型成本的人',notFor:'只用网页聊天的读者',
+   angle:{direction:'讲清 Opus 5.5 的成本账',readerValue:'帮读者估算调用成本',needs:['官方价格表']},wiki:[{id:'wk1',title:'模型定价',relation:'explain',point:'API 按 token 计费',helps:'解释成本为什么要按调用量算'}]});},1500);return send(route,{deepen:e.deepen});}
+  if(url.pathname.endsWith('/split')){splitCalls++;const e=briefs.find(b=>b.id==='ev1');e.event.members=e.event.members.filter(m=>!body.sourceIds.includes(m.sourceId));return send(route,{brief:e,moved:body.sourceIds});}
   if(url.pathname.endsWith('/feed/settings')){settingsBody=body;intake={...intake,consent:{publicSources:body.publicSources??intake.consent.publicSources,reddit:body.reddit??intake.consent.reddit},autoUpdate:body.autoUpdate??intake.autoUpdate};return send(route,{intake,run:body.publicSources?{id:'r2',status:'queued'}:null});}
   if(url.pathname.endsWith('/summary'))return send(route,{unread:10,saved:0});
   if(url.pathname.endsWith('/feed/refresh'))return send(route,{run:{id:'r1',status:'queued'}});
@@ -64,7 +68,7 @@ try{
  await page.goto('http://127.0.0.1:5276/#/intel-resources');await page.getByRole('heading',{name:'原始资料',exact:true}).waitFor();await page.locator('.intel-reader').waitFor();await page.getByRole('textbox',{name:'搜索原始资料'}).fill('无匹配');await page.getByRole('heading',{name:'没有匹配的原始资料'}).waitFor();
  // 热点事件卡：卡面是来源数和讨论数；点开先看 AI 概要和来源，深度解读自动生成、完成后替换。
  const eventBrief={id:'ev1',researchLinks:[],title:'Anthropic 发布 Claude Opus 5.5',summary:'多家媒体报道新模型发布，价格低于上一代。',whyItMatters:'影响模型选型和成本',editorialState:'ready',read:false,saved:false,depth:'headline',evidence:[],sourceMeta:[{provider:'aihot',originKind:'external'}],primaryDate:'2026-09-22T18:00:00Z',
-  event:{kind:'event',creation:{value:'high',window:'24h',angle:'讲清 Opus 5.5 贵在哪便宜在哪',reason:'英文圈刚发布，中文报道还少'},heat:30,sourceCount:23,discussionCount:16,latestAt:'2026-09-22T18:00:00Z',members:[{sourceId:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',publisher:'X：Claude',platform:'aihot',publishedAt:'2026-09-22T18:00:00Z',kind:'external_digest'},{sourceId:'s2',title:'Opus 5.5 is great at long refactors',url:'https://reddit.example/opus',platform:'reddit',publishedAt:'2026-09-22T19:00:00Z',kind:'post',score:250,comments:80}]}};
+  event:{kind:'event',creation:{value:'high',window:'24h',angle:'讲清 Opus 5.5 贵在哪便宜在哪',reason:'英文圈刚发布，中文报道还少'},heat:30,sourceCount:23,discussionCount:16,latestAt:'2026-09-22T18:00:00Z',members:[{sourceId:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',publisher:'X：Claude',platform:'aihot',publishedAt:'2026-09-22T18:00:00Z',kind:'external_digest'},{sourceId:'s3',title:'Anthropic releases Claude Opus 5.5',url:'https://example.com/opus-en',publisher:'The Verge',platform:'web',publishedAt:'2026-09-22T18:30:00Z',kind:'article'},{sourceId:'s2',title:'Opus 5.5 is great at long refactors',url:'https://reddit.example/opus',platform:'reddit',publishedAt:'2026-09-22T19:00:00Z',kind:'post',score:250,comments:80}]}};
  briefs.unshift(eventBrief);await page.goto('http://127.0.0.1:5276/#/intel');await page.reload();
  const eventCard=page.locator('[data-brief="ev1"]');await eventCard.waitFor();
  const eventText=await eventCard.innerText();
@@ -74,17 +78,31 @@ try{
  await eventCard.locator('.brief-card__title').click();const peek=page.locator('.brief-peek');await peek.getByText('AI 概要',{exact:true}).waitFor();
  const widths=await page.evaluate(()=>({index:document.querySelector('.intel-index').getBoundingClientRect().width,peek:document.querySelector('.brief-peek').getBoundingClientRect().width}));
  assert(widths.index<=400&&widths.peek>=700,'目录窄、预览宽：'+JSON.stringify(widths));assert.equal(await page.locator('.brief-card').count(),0,'目录不是卡片');
- // 详情五段：发生了什么 → 创作判断 → 为什么重要 → 深度解读 → 来源与讨论（默认折叠）。
- const parts=await peek.locator('.event-reading__part > h3, .event-reading__creation, .event-reading__sources-fold > summary').evaluateAll(els=>els.map(e=>e.getAttribute('aria-label')||(e.matches('summary')?e.firstElementChild:e).textContent.replace('AI 概要','').trim().split(/\s/)[0]));
- assert.deepEqual(parts,['发生了什么','创作判断','为什么重要','深度解读','来源与讨论'],JSON.stringify(parts));
- await peek.getByText('切入：',{exact:false}).waitFor();
- assert.equal(await peek.getByRole('heading',{name:'报道（1）'}).isVisible(),false,'来源默认折叠');
- await peek.getByText('来源与讨论',{exact:true}).click();await peek.getByRole('heading',{name:'报道（1）'}).waitFor();await peek.getByRole('heading',{name:'大家怎么说（1）'}).waitFor();await peek.getByText('250 赞',{exact:false}).waitFor();
- await peek.getByText('正在生成：抓取原文',{exact:false}).waitFor();assert.equal(deepenCalls,1,'打开时自动生成一次');
+ // 详情结构：发生了什么 → 具体怎么回事 → 依据与边界 → （与已有知识的连接）→ 有什么用，可以怎么继续。
+ const parts=()=>peek.locator('.event-reading__part > h3').evaluateAll(els=>els.map(e=>e.textContent.replace('AI 概要','').trim()));
+ assert.deepEqual(await parts(),['发生了什么','具体怎么回事','依据与边界','有什么用，可以怎么继续'],JSON.stringify(await parts()));
+ await page.waitForTimeout(600);assert.equal(deepenCalls,0,'打开详情不自动深读');
+ await peek.getByText('深入解读会补全原文',{exact:false}).waitFor();
+ // 时效只是建议，不叫截止。
+ await peek.getByText('建议 24 小时内',{exact:false}).waitFor();assert.doesNotMatch(await peek.innerText(),/截止/);
+ // 前 3 个来源直接可见，全部来源与讨论折叠。
+ assert.equal(await peek.getByRole('heading',{name:'报道（2）'}).isVisible(),false,'全部来源默认折叠');
+ await peek.getByText('全部来源与讨论',{exact:true}).click();await peek.getByRole('heading',{name:'报道（2）'}).waitFor();await peek.getByRole('heading',{name:'大家怎么说（1）'}).waitFor();await peek.getByText('250 赞',{exact:false}).waitFor();
+ // 移出：先在提示条里确认，再调用接口。
+ await peek.getByRole('button',{name:'移出这件事'}).first().click();assert.equal(splitCalls,0,'先在原处确认');
+ await peek.getByRole('button',{name:'确认移出',exact:true}).click();await page.getByText('已移出',{exact:false}).waitFor();assert.equal(splitCalls,1);
  await page.screenshot({path:path.join(shots,'13-event-peek.png'),fullPage:false});
+ // 点「深入解读」才生成，显示真实阶段。
+ await peek.getByRole('button',{name:'深入解读',exact:true}).click();await peek.getByText('正在补全 2 篇原文',{exact:false}).waitFor();assert.equal(deepenCalls,1);
  await peek.getByText('深度解读正文',{exact:false}).waitFor({timeout:15000});assert.equal(deepenCalls,1,'生成中不重复请求');
- await peek.getByRole('button',{name:'按这个角度加入选题',exact:true}).click();
- await page.waitForTimeout(300);assert.deepEqual(lastIntent.creation,{angle:'讲清 Opus 5.5 贵在哪便宜在哪',window:'24h'},'加入选题带上切入角度和时效');
+ await peek.getByText('官方称每 token 价格更低',{exact:false}).waitFor();
+ await peek.getByRole('button',{name:'查看引文 1'}).first().click();await peek.getByText('读取了全文',{exact:false}).waitFor();
+ await peek.getByRole('heading',{name:'来源自己的判断'}).waitFor();await peek.getByRole('heading',{name:'仍缺的证据'}).waitFor();
+ assert.deepEqual(await parts(),['发生了什么','具体怎么回事','依据与边界','与你已有知识的连接','有什么用，可以怎么继续'],'有知识连接时才出现那一段');
+ await peek.getByText('解释',{exact:true}).waitFor();await peek.getByText('知识库只说明你整理过相关内容',{exact:false}).waitFor();
+ await page.screenshot({path:path.join(shots,'16-event-deep.png'),fullPage:false});
+ await peek.getByRole('button',{name:'按这个方向加入选题',exact:true}).click();
+ await page.waitForTimeout(300);assert.deepEqual(lastIntent.creation,{angle:'讲清 Opus 5.5 的成本账',window:'24h',readerValue:'帮读者估算调用成本',needs:['官方价格表']},'深读过的用深读里的方向、读者价值和待补材料');
  await page.keyboard.press('Escape');await peek.waitFor({state:'detached'});
  // 只看值得做：筛选里的一项，不是单独页签。
  await page.getByRole('button',{name:'筛选情报'}).click();await page.getByLabel('只看值得做').check();await page.keyboard.press('Escape');
@@ -110,6 +128,6 @@ try{
  await page.getByRole('button',{name:'情报工具'}).click();await page.getByRole('menuitemcheckbox',{name:'✓ 自动更新（每 6 小时）'}).click();await page.waitForTimeout(100);assert.deepEqual(settingsBody,{autoUpdate:false});
  intake={...intake,reddit:{healthStatus:'QUOTA_EXHAUSTED'}};await page.reload();await page.getByText('Reddit 额度不足，社区内容暂由 Hacker News 补位').waitFor();intake=null;
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'07-feed-mobile-390.png'),fullPage:true});await page.locator('[data-brief="b0"] .brief-card__title').click();await page.getByRole('button',{name:'关闭详情',exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'08-reading-mobile-390.png'),fullPage:true});
- assert.deepEqual(errors,[]);console.log('PASS unified UI: one hot page with marks, aligned cards, infinite scroll, narrow index + wide preview, five-part detail with folded sources, AI consent + auto update + Reddit quota status, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
+ assert.deepEqual(errors,[]);console.log('PASS unified UI: one hot page with marks, aligned cards, infinite scroll, narrow index + wide preview, manual deep read with real stage, evidence layers, citations, wiki connections, split, suggested timing, AI consent + auto update + Reddit quota status, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
 }catch(e){console.log(await page?.locator('body').innerText());throw e;}
 finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}assert(path.dirname(temp)===os.tmpdir());await fs.rm(temp,{recursive:true,force:true});}

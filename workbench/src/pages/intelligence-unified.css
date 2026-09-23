@@ -118,7 +118,11 @@
 .event-reading__head { display: grid; gap: 8px; justify-items: start; padding-bottom: 20px; }
 .event-reading__title { margin: 0; color: var(--text-1); font-size: var(--fs-xl); font-weight: 650; line-height: 1.4; }
 .event-reading.is-dense .event-reading__title { font-size: 21px; }
-.event-reading__stats { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+.event-reading__stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
+/* 阅读范围的真实状态（基于摘要、解读截至某日）：安静的一行，不是每张卡都挂的免责声明。 */
+.event-reading__state { margin: 0; color: var(--text-2); font-size: var(--fs-xs); }
+.event-reading__new { margin: 0 0 8px; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
+.event-reading__facts { display: grid; gap: 6px; margin: 10px 0 0; padding-left: 20px; font-size: var(--fs-base); line-height: 1.75; }
 .event-reading__part { padding: 20px 0; border-top: 1px solid var(--border); }
 .event-reading__part > h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
 .event-reading__part > p { margin: 0 0 8px; color: var(--text-1); font-size: var(--fs-base); line-height: 1.8; }
@@ -135,12 +139,54 @@
 .event-reading__angle { margin: 0; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
 .event-reading__angle span { color: var(--lane-intel); font-weight: 600; }
 .event-reading__creation .btn { margin-top: 2px; }
+.event-reading__creation .event-reading__muted { margin: 0; font-size: var(--fs-xs); }
 .event-reading__body .markdown-body { font-size: var(--fs-base); line-height: 1.85; }
 /* 解读正文里的小标题降到正文字号：它们是「深度解读」这一段里的层次，不能比段名还大。 */
 .event-reading__body .markdown-body :is(h1, h2, h3, h4) { margin: 20px 0 8px; color: var(--text-1); font-size: var(--fs-base); font-weight: 600; line-height: 1.6; }
 .event-reading__body .markdown-body > :first-child { margin-top: 0; }
-.event-reading__deep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
-.event-reading__note { margin: 0 0 12px; color: var(--text-3); font-size: var(--fs-xs); }
+.event-reading__deep { display: grid; justify-items: start; gap: 8px; padding: 12px 14px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__deep p { margin: 0; }
+.event-reading__deep[role=status] { display: flex; align-items: center; gap: 8px; }
+/* 进行中的小圆点是静止的：状态靠文字说清，不用转圈动画吸引注意。 */
+.event-reading__pulse { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+.event-reading__fail { color: var(--emph); }
+.event-reading__stale { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.6; }
+
+/* ③ 依据与边界：按「谁在说」分组，小标题安静，限制那一组用暖色竖线提醒。 */
+.event-reading__claims { margin: 0 0 14px; }
+.event-reading__claims h4 { margin: 0 0 6px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 500; }
+.event-reading__claims ul { display: grid; gap: 6px; margin: 0; padding-left: 20px; font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__claims.is-limit { padding-left: 12px; border-left: 2px solid var(--emph-line); }
+.event-reading__claims.is-limit ul { padding-left: 16px; }
+.event-reading__stance { display: inline-block; margin-right: 6px; color: var(--text-3); font-size: var(--fs-xs); }
+.event-reading__related { margin: 4px 0 10px; font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__related .text-action { font-size: inherit; }
+
+/* 引文编号：小号上标式按钮，点开在原处展开出处卡。 */
+.event-cite { margin: 0 0 0 2px; padding: 0 2px; border: 0; background: none; color: var(--cite-num); font: inherit; font-size: 0.8em; vertical-align: 1px; cursor: pointer; }
+.event-cite[aria-expanded=true] { text-decoration: underline; }
+.event-cite__card { display: block; margin: 6px 0 4px; padding: 8px 10px; border-left: 2px solid var(--cite-line); border-radius: 0 var(--r-ctl) var(--r-ctl) 0; background: var(--cite-wash); color: var(--text-1); font-size: var(--fs-xs); line-height: 1.7; }
+.event-cite__card q { display: block; }
+.event-cite__src { display: block; margin-top: 4px; color: var(--text-3); }
+.event-cite__src a { color: var(--text-2); }
+
+/* ④ 与已有知识的连接：连接方式用知识链的颜色（--lane-knowledge），「质疑或修正」用暖色，一眼分得出。 */
+.event-reading__wiki { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.event-reading__wiki li > p { margin: 0 0 4px; font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__wiki-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.event-reading__wiki-head .text-action { font-size: var(--fs-sm); font-weight: 600; }
+.event-reading__rel { padding: 0 7px; border-radius: 999px; color: var(--lane-knowledge); background: color-mix(in srgb, var(--lane-knowledge) 12%, transparent); font-size: var(--fs-2xs); font-weight: 600; line-height: 1.8; }
+.event-reading__rel.is-challenge { color: var(--emph); background: color-mix(in srgb, var(--emph) 12%, transparent); }
+
+/* 来源清单里的「移出这件事」：低调的文字按钮，悬停才显出颜色。 */
+.event-reading__split { margin-left: 10px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: var(--fs-2xs); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.event-reading__split:hover { color: var(--emph); }
+.event-reading__confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-left: 10px; color: var(--text-2); }
+.event-reading__confirm .text-action { font-size: var(--fs-2xs); }
+.event-reading__split-hint { margin: 12px 0 0; font-size: var(--fs-xs); }
+.event-reading__note, .event-reading__part > .event-reading__note { margin: 0 0 12px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.7; }
+.event-reading__part > .event-reading__note:last-child { margin: 10px 0 0; }
+.event-reading__note .text-action { margin-left: 8px; font-size: inherit; }
 .event-reading .event-reading__fold { padding: 14px 0; border-top: 1px solid var(--border); }
 .event-reading__fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; list-style: none; }
 .event-reading__fold > summary::-webkit-details-marker { display: none; }

@@ -1,18 +1,18 @@
-// 热点事件的详情（2026-09-23）：热点层和深读层共用一个骨架，深读只是把「深度解读」那一段填满。
+// 热点事件的详情（2026-09-24 质量收口）：热点层和深读层共用一个骨架，深读只是把各段填得更完整。
 //
-//   头部        标记 · 标题 · 来源数与最新时间
-//   ① 发生了什么  概要（热点层标「AI 概要」）
-//   ② 创作判断    价值非低时出现：理由当结论，切入角度是下一步，按钮就是那个动作
-//   ③ 为什么重要
-//   ④ 深度解读    生成中 / 失败原因与重试 / 解读正文与还不确定的部分
-//   ⑤ 来源与讨论  默认折叠——它是用来核对的，不是用来先读的
+//   头部        标记 · 标题 · 信息日期 · 阅读范围（线索 / 取得的材料 / 独立来源分开写）
+//   ① 发生了什么      一句结论 + 关键事实（带引文编号）
+//   ② 具体怎么回事    深读正文；热点层这里是「深入解读」入口和真实状态
+//   ③ 依据与边界      来源明确说明 / 来源自己的判断 / 系统的解释 / 仍缺的证据 / 大家怎么说；全部来源折叠在最后
+//   ④ 与你已有知识的连接  有才出现
+//   ⑤ 有什么用，可以怎么继续
+//
+// ⚠️ **先让人看懂、知道能信到哪一步，再引导创作。** 重要的依据和限制默认可见，
+// 只有全部原文和全部讨论折叠——它们是用来核对的，不是用来先读的。
 //
 // ⚠️ **来源清单是原样照搬，概要是 AI 写的——两者在界面上必须分得开。**
-// 热点层不做逐字引文校验，可信度来自「每条来源都能点开核对」；所以概要旁边标「AI 概要」，
-// 来源行只放发布方、原标题、时间，不做改写。严格校验只在深度解读那一层。
-//
-// 不再套通用的 `BriefReading`：那边的「已通过精选校验 / 近期更新」、出处行、
-// 「可以如何使用」（和切入角度重复）是给旧流程的卡准备的，放在事件详情里全是噪音。
+// 热点层标「AI 概要」；深读层的每条事实都能点开看到出处和读取范围（全文或摘要）。
+import { useState } from "react";
 import { markdown, platformName, safeUrl, sourceDate } from "./BriefReading.jsx";
 import { IconClock, IconCode, IconMessageCircle, IconSparkles } from "./icons.jsx";
 
@@ -29,6 +29,14 @@ export const creationLine = (c) => {
 const isTalk = (m) => ["reddit", "hacker_news"].includes(m.platform);
 const talkName = (key) => ({ reddit: "Reddit", hacker_news: "Hacker News" }[key] || platformName(key));
 const worthIt = (c) => c && c.value !== "low";
+const shortTime = (value) => { const t = new Date(value || ""); return Number.isNaN(t.getTime()) ? "" : t.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
+const relationLabel = { explain: "解释", apply: "应用", extend: "补充", challenge: "质疑或修正" };
+const stanceLabel = { support: "看重", doubt: "担心", experience: "用过的人说" };
+const claimGroups = [
+  ["observation", "来源明确说明"],
+  ["author_report", "来源自己的判断"],
+  ["interpretation", "系统的解释"],
+];
 
 /**
  * 卡片、目录和详情头部共用的标记。只给会改变判断的东西上色：
@@ -48,122 +56,216 @@ export function EventMarks({ brief, withDepth = false }) {
   return marks.length ? <span className="intel-marks">{marks}</span> : null;
 }
 
-function SourceList({ items, talk, quotes }) {
+/** 引文编号：点开在原处看到这句依据来自哪里、原话是什么、系统读的是全文还是摘要。 */
+function Cite({ ids, brief }) {
+  const [open, setOpen] = useState(null);
+  const evidence = brief.evidence || [];
+  const numbers = (ids || []).map((id) => Number(String(id).slice(1))).filter((n) => n >= 1 && n <= evidence.length);
+  if (!numbers.length) return null;
+  const source = (n) => (brief.sources || []).find((s) => (s.quotes || []).some((q) => q.number === n));
+  const card = (n) => {
+    const s = source(n);
+    if (!s) return "来源已不可用";
+    const url = safeUrl(s.url);
+    return <>{url ? <a href={url} target="_blank" rel="noreferrer">{s.title || "查看原文"}</a> : s.title}{` · ${s.author || platformName(s.provider)}`}{sourceDate(s.publishedAt) ? ` · ${sourceDate(s.publishedAt)}` : ""}{` · ${s.readLevel === "original" ? "读取了全文" : "只取得摘要"}`}</>;
+  };
+  return (
+    <>
+      {numbers.map((n) => (
+        <button key={n} type="button" className="event-cite" aria-expanded={open === n} aria-label={`查看引文 ${n}`} onClick={() => setOpen(open === n ? null : n)}>[{n}]</button>
+      ))}
+      {open && (
+        <span className="event-cite__card" role="note">
+          <q>{evidence[open - 1]?.quote}</q>
+          <span className="event-cite__src">{card(open)}</span>
+        </span>
+      )}
+    </>
+  );
+}
+
+/** 「移出这件事」在原处确认：确认按钮就出现在被点的那一行，不跑到页面顶上。 */
+function SourceList({ items, talk, onSplit, canSplit }) {
+  const [pending, setPending] = useState(null);
   return (
     <ul className="event-reading__sources">
-      {items.map((m) => {
-        const cited = quotes.get(m.sourceId) || [];
-        return (
-          <li key={m.sourceId}>
-            {safeUrl(m.url) ? <a href={safeUrl(m.url)} target="_blank" rel="noreferrer">{m.title || "查看原文"}</a> : <span>{m.title || "原文已按保留期清除"}</span>}
-            <span className="event-reading__src-meta">
-              {talk ? talkName(m.platform) : m.publisher || platformName(m.platform)}
-              {m.score ? ` · ${m.score} 赞` : ""}
-              {m.comments ? ` · ${m.comments} 评论` : ""}
-              {sourceDate(m.publishedAt) ? ` · ${sourceDate(m.publishedAt)}` : ""}
-            </span>
-            {cited.map((q) => <blockquote key={q.number}><span>[引文{q.number}]</span> {q.quote}</blockquote>)}
-          </li>
-        );
-      })}
+      {items.map((m) => (
+        <li key={m.sourceId}>
+          {safeUrl(m.url) ? <a href={safeUrl(m.url)} target="_blank" rel="noreferrer">{m.title || "查看原文"}</a> : <span>{m.title || "原文已按保留期清除"}</span>}
+          <span className="event-reading__src-meta">
+            {talk ? talkName(m.platform) : m.publisher || platformName(m.platform)}
+            {m.score ? ` · ${m.score} 赞` : ""}
+            {m.comments ? ` · ${m.comments} 评论` : ""}
+            {sourceDate(m.publishedAt) ? ` · ${sourceDate(m.publishedAt)}` : ""}
+            {canSplit && onSplit && m.kind !== "comment" && (pending === m.sourceId
+              ? <span className="event-reading__confirm">它会单独成卡，之后不会再被合回来。<button type="button" className="text-action" onClick={() => { setPending(null); onSplit(m); }}>确认移出</button><button type="button" className="text-action" onClick={() => setPending(null)}>取消</button></span>
+              : <button type="button" className="event-reading__split" onClick={() => setPending(m.sourceId)}>移出这件事</button>)}
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }
 
-export function EventReading({ brief, onRetryDeep, onAddAngle, dense = false }) {
+/** ② 里的深读入口：说清楚深读会多给什么；状态只写真实发生的（排队、补原文、写解读、失败原因）。 */
+function DeepControl({ brief, onDeep }) {
+  const d = brief.deepen || {};
+  const busy = ["queued", "running"].includes(d.status);
+  if (busy) return <div className="event-reading__deep" role="status"><span className="event-reading__pulse" aria-hidden="true" />{d.status === "queued" ? "已排队，马上开始" : d.stage || "正在生成"}{d.estimateSec ? `（上次大约用了 ${d.estimateSec} 秒）` : ""}。完成后会自动出现在这里。</div>;
+  return (
+    <div className="event-reading__deep">
+      {d.status === "failed" && <p className="event-reading__fail">上次没能生成：{d.error || "原因未知"}。</p>}
+      <p>深入解读会补全原文、核对每条事实的出处，整理证据与分歧{d.wikiCandidates ? `，并结合你知识库里 ${d.wikiCandidates} 篇可能相关的内容` : ""}。{d.estimateSec ? `上次大约用了 ${d.estimateSec} 秒。` : ""}</p>
+      {onDeep && <button type="button" className="btn btn-sm" onClick={() => onDeep(d.status === "failed")}>{d.status === "failed" ? "重新生成" : "深入解读"}</button>}
+    </div>
+  );
+}
+
+export function EventReading({ brief, onDeep, onAddAngle, onSplit, onOpenRelated, onGo, dense = false }) {
   const event = brief.event || {};
   const members = event.members || [];
   const news = members.filter((m) => !isTalk(m) && m.kind !== "comment");
   const talk = members.filter(isTalk);
   const deep = brief.depth === "deep";
-  const state = brief.deepen?.status;
   const c = event.creation;
-  const latest = event.latestAt ? new Date(event.latestAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-  // 深读时，每条来源下面附上解读引用的原文段落。
-  const quotes = new Map((deep ? brief.sourceDocuments || brief.sources || [] : []).filter((s) => s.quotes?.length).map((s) => [s.id, s.quotes]));
-  const publishers = [...new Set(news.map((m) => m.publisher || platformName(m.platform)).filter(Boolean))];
-  const takeaway = brief.audienceTakeaway || brief.audience_takeaway;
-  const uncertain = Array.isArray(brief.uncertainties) ? brief.uncertainties.filter(Boolean) : [];
+  const busy = ["queued", "running"].includes(brief.deepen?.status);
+  const publishers = new Set(news.map((m) => m.publisher || m.platform));
+  const scope = [
+    event.sourceCount > news.length ? `聚合到 ${event.sourceCount} 条线索` : "",
+    `取得 ${news.length} 份材料`,
+    publishers.size > 1 ? `${publishers.size} 个独立来源` : news.length ? "单一来源" : "",
+    talk.length ? `${talk.length} 条讨论` : "",
+  ].filter(Boolean).join(" · ");
+  const state = [
+    !deep && brief.readScope === "summary" ? "概要基于订阅摘要" : "",
+    deep && (brief.evidence || []).length && (brief.sources || []).length && (brief.sources || []).every((s) => s.readLevel !== "original") ? "解读只取得了摘要，没有读到全文" : "",
+    deep && brief.deepStale ? `解读截至 ${shortTime(brief.deepAt) || "上一版"}，之后新增 ${brief.deepNewSources || "若干"} 个来源` : "",
+  ].filter(Boolean);
+  const claims = Array.isArray(brief.claims) ? brief.claims : [];
+  const limits = [...new Set([...(brief.uncertainties || []), ...claims.flatMap((x) => x.limitations || [])])].filter(Boolean);
+  const voices = Array.isArray(brief.voices) ? brief.voices : [];
+  const wiki = deep ? (brief.wiki || []).filter((k) => k.relation || k.point || k.reason) : [];
+  const angle = deep && brief.angle ? brief.angle : c && worthIt(c) ? { direction: c.angle || "", readerValue: "", needs: [] } : null;
+  // 2026-09-24 之前生成的深读是一篇四段式长文，没有关键事实；如实说明，并给一个按新结构重新生成的入口。
+  const legacyDeep = deep && !brief.keyFacts;
+  const useFor = brief.useFor || (deep ? brief.audienceTakeaway : "");
+  const related = event.related || [];
   return (
     <article className={`event-reading ${dense ? "is-dense" : ""}`}>
       <header className="event-reading__head">
         <EventMarks brief={brief} />
         <h2 className="event-reading__title">{brief.title}</h2>
         <p className="event-reading__stats">
-          {event.sourceCount || news.length} 个来源{event.discussionCount ? ` · ${event.discussionCount} 条讨论` : ""}{latest ? ` · 最新 ${latest}` : ""}
+          {shortTime(event.progressAt || event.latestAt) && <span>信息日期 {shortTime(event.progressAt || event.latestAt)}</span>}
+          <span>{scope}</span>
         </p>
+        {state.map((s) => <p key={s} className="event-reading__state">{s}</p>)}
       </header>
 
       <section className="event-reading__part">
         <h3>发生了什么{!deep && <span className="event-reading__ai">AI 概要</span>}</h3>
+        {deep && /^这次新增/.test(brief.changeNote || "") && <p className="event-reading__new">{brief.changeNote}</p>}
         <p className="event-reading__lead">{brief.summary}</p>
+        {deep && brief.keyFacts?.length > 0 && (
+          <ul className="event-reading__facts">{brief.keyFacts.map((f, i) => <li key={i}>{f.text}<Cite ids={f.evidenceIds} brief={brief} /></li>)}</ul>
+        )}
+        {!deep && brief.changeNote && <p className="event-reading__note">{brief.changeNote}</p>}
       </section>
 
-      {worthIt(c) && (
-        <section className="event-reading__creation" aria-label="创作判断">
-          <p className="event-reading__verdict">{c.reason || "值得做一条内容"}</p>
-          {c.angle && <p className="event-reading__angle"><span>切入：</span>{c.angle}</p>}
-          {onAddAngle && <button type="button" className="btn btn-sm" onClick={onAddAngle}>按这个角度加入选题</button>}
-        </section>
-      )}
+      <section className="event-reading__part">
+        <h3>具体怎么回事</h3>
+        {deep ? (
+          <>
+            {brief.deepStale && (
+              <div className="event-reading__stale" role="status">
+                <span>之后新增 {brief.deepNewSources || "若干"} 个来源{brief.deepDevelopment ? `，其中有新进展：${brief.deepDevelopment}` : "，目前看只是更多报道"}。</span>
+                {busy ? <span>{brief.deepen.stage || "正在更新"}…</span> : onDeep && <button type="button" className="text-action" onClick={() => onDeep(true)}>更新解读</button>}
+              </div>
+            )}
+            {legacyDeep && !brief.deepStale && <p className="event-reading__note">这是旧版解读（一篇长文，还没有按「事实 / 依据 / 用途」整理）。{onDeep && !busy && <button type="button" className="text-action" onClick={() => onDeep(true)}>按新结构重新生成</button>}{busy && `${brief.deepen.stage || "正在生成"}…`}</p>}
+            <div className="event-reading__body">{markdown(brief.body || "")}</div>
+          </>
+        ) : <DeepControl brief={brief} onDeep={onDeep} />}
+      </section>
 
-      {(brief.whyItMatters || takeaway) && (
+      <section className="event-reading__part">
+        <h3>依据与边界</h3>
+        {deep ? (
+          <>
+            {claimGroups.map(([kind, label]) => {
+              const items = claims.filter((x) => (kind === "interpretation" ? ["interpretation", "hypothesis"].includes(x.kind) : x.kind === kind));
+              return items.length ? (
+                <div key={kind} className="event-reading__claims">
+                  <h4>{label}</h4>
+                  <ul>{items.map((x) => <li key={x.id || x.text}>{x.text}{kind === "author_report" && x.attribution ? <span className="event-reading__muted">（{x.attribution}）</span> : null}<Cite ids={x.evidenceIds} brief={brief} /></li>)}</ul>
+                </div>
+              ) : null;
+            })}
+            {limits.length > 0 && <div className="event-reading__claims is-limit"><h4>仍缺的证据</h4><ul>{limits.slice(0, 6).map((x) => <li key={x}>{x}</li>)}</ul></div>}
+            {voices.length > 0 && (
+              <div className="event-reading__claims">
+                <h4>大家怎么说</h4>
+                <ul>{voices.map((v, i) => { const m = members.find((x) => x.sourceId === v.sourceId); return <li key={i}><span className="event-reading__stance">{stanceLabel[v.stance]}</span>{v.text}{m && safeUrl(m.url) ? <a className="event-reading__muted" href={safeUrl(m.url)} target="_blank" rel="noreferrer"> · {talkName(m.platform)}</a> : null}</li>; })}</ul>
+              </div>
+            )}
+          </>
+        ) : (
+          news.length > 0 && <SourceList items={news.slice(0, 3)} />
+        )}
+        {related.length > 0 && (
+          <p className="event-reading__related"><span className="event-reading__muted">同一型号的其它事件：</span>{related.map((r, i) => <span key={r.storyKey}>{i ? "、" : ""}{onOpenRelated ? <button type="button" className="text-action" onClick={() => onOpenRelated(r.storyKey)}>{r.title}</button> : r.title}</span>)}</p>
+        )}
+        <details className="event-reading__fold event-reading__sources-fold">
+          <summary>
+            <span>全部来源与讨论</span>
+            {/* 头部的线索数含 AIhot 聚合的上游来源；这里数的是手上能点开核对的链接。 */}
+            <span className="event-reading__muted">{[news.length ? `${news.length} 篇报道` : "", talk.length ? `${talk.length} 个讨论帖` : ""].filter(Boolean).join(" · ")}</span>
+          </summary>
+          {news.length > 0 && <section className="event-reading__group"><h4>报道（{news.length}）</h4><SourceList items={news} onSplit={onSplit} canSplit={news.length > 1} /></section>}
+          {talk.length > 0 && <section className="event-reading__group"><h4>大家怎么说（{talk.length}）</h4><SourceList items={talk} talk /></section>}
+          {news.length > 1 && onSplit && <p className="event-reading__muted event-reading__split-hint">有来源说的不是同一件事？点它旁边的「移出这件事」，它会单独成卡，之后也不会再被合回来。</p>}
+        </details>
+      </section>
+
+      {wiki.length > 0 && (
         <section className="event-reading__part">
-          <h3>为什么重要</h3>
-          {brief.whyItMatters && <p>{brief.whyItMatters}</p>}
-          {deep && takeaway && <p><span className="event-reading__muted">读者能带走：</span>{takeaway}</p>}
+          <h3>与你已有知识的连接</h3>
+          <ul className="event-reading__wiki">
+            {wiki.map((k) => (
+              <li key={k.id}>
+                <p className="event-reading__wiki-head">
+                  {onGo ? <button type="button" className="text-action" onClick={() => onGo("entries", k.id)}>《{k.title}》</button> : <strong>《{k.title}》</strong>}
+                  {k.relation && <span className={`event-reading__rel is-${k.relation}`}>{relationLabel[k.relation]}</span>}
+                  {k.updatedSince && <span className="event-reading__muted">这篇知识之后有更新</span>}
+                </p>
+                {(k.point || k.reason) && <p>{k.point || k.reason}</p>}
+                {k.helps && <p className="event-reading__muted">能帮你：{k.helps}</p>}
+              </li>
+            ))}
+          </ul>
+          <p className="event-reading__note">知识库只说明你整理过相关内容，不代表已经验证；它也不是这件事的外部证据。</p>
         </section>
       )}
 
       <section className="event-reading__part">
-        <h3>深度解读</h3>
-        {deep ? (
+        <h3>有什么用，可以怎么继续</h3>
+        {deep && (useFor || brief.notFor) ? (
           <>
-            {brief.deepStale && <p className="event-reading__note">这个事件之后又有新来源，下面的解读基于较早的资料。</p>}
-            <div className="event-reading__body">{markdown(brief.body || brief.reason)}</div>
-            {uncertain.length > 0 && (
-              <details className="event-reading__fold">
-                <summary>还不确定的部分（{uncertain.length}）</summary>
-                <ul>{uncertain.map((u, i) => <li key={i}>{typeof u === "string" ? u : u.description || u.title || ""}</li>)}</ul>
-              </details>
-            )}
+            {useFor && <p><span className="event-reading__muted">适合：</span>{useFor}</p>}
+            {brief.notFor && <p><span className="event-reading__muted">暂时不需要关注：</span>{brief.notFor}</p>}
           </>
-        ) : (
-          <div className="event-reading__deep" role="status">
-            {state === "failed" ? (
-              <>
-                <span>这次没能生成：{brief.deepen?.error || "原因未知"}。上面的概要和下面的来源仍可用。</span>
-                {onRetryDeep && <button type="button" className="text-action" onClick={onRetryDeep}>重新生成</button>}
-              </>
-            ) : (
-              <span>正在生成：抓取原文、核对引文，大约 30–60 秒。生成好会自动出现在这里。</span>
-            )}
+        ) : brief.whyItMatters ? <p>{brief.whyItMatters}</p> : null}
+        {angle && (angle.direction || c?.reason) && (
+          <div className="event-reading__creation" aria-label="创作建议">
+            {c?.reason && worthIt(c) && <p className="event-reading__verdict">{c.reason}</p>}
+            {angle.direction && <p className="event-reading__angle"><span>切入方向：</span>{angle.direction}</p>}
+            {angle.readerValue && <p className="event-reading__angle"><span>读者价值：</span>{angle.readerValue}</p>}
+            {angle.needs?.length > 0 && <p className="event-reading__angle"><span>还需补充：</span>{angle.needs.join("；")}</p>}
+            {c?.window && worthIt(c) && <p className="event-reading__muted">{creationLine({ window: c.window })}（这是建议，要不要做、什么时候做由你决定）</p>}
+            {onAddAngle && <button type="button" className="btn btn-sm" onClick={onAddAngle}>按这个方向加入选题</button>}
           </div>
         )}
       </section>
-
-      <details className="event-reading__fold event-reading__sources-fold">
-        <summary>
-          <span>来源与讨论</span>
-          <span className="event-reading__muted">
-            {/* 头部的「N 个来源」含 AIhot 聚合的来源数；这里数的是手上能点开核对的链接，换个量词免得两个数打架。 */}
-            {[news.length ? `${news.length} 篇报道` : "", talk.length ? `${talk.length} 个讨论帖` : ""].filter(Boolean).join(" · ")}
-            {publishers.length ? ` · ${publishers.slice(0, 3).join("、")}${publishers.length > 3 ? " 等" : ""}` : ""}
-          </span>
-        </summary>
-        {news.length > 0 && (
-          <section className="event-reading__group">
-            <h4>报道（{news.length}）</h4>
-            <SourceList items={news} quotes={quotes} />
-          </section>
-        )}
-        {talk.length > 0 && (
-          <section className="event-reading__group">
-            <h4>大家怎么说（{talk.length}）</h4>
-            <SourceList items={talk} talk quotes={quotes} />
-          </section>
-        )}
-      </details>
     </article>
   );
 }
