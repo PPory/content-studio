@@ -68,7 +68,9 @@ export function assessBriefQuality(item,byId,scopeReview) {
  // Numeric checks are deterministic. Semantic scope is reviewed separately and labelled as AI review.
  const quotes=evidence.map(e=>e.quote).join('\n');
  const nums=v=>(String(v||'').match(/\d+(?:\.\d+)?%?/g)||[]);
- if(nums([item.title,item.summary,...claims.map(c=>c.text)].join('\n')).some(n=>!nums(quotes).includes(n)))reasons.push('数字不在所引原文中');
+ // 数字要能在原文里找到：短引文里，或被引用来源的全文里（2026-09-23）。编造的数字两处都没有，照样拦下。
+ const sourceNums=new Set(nums(evidence.map(e=>byId.get(e.sourceId)?.body||'').join('\n')));
+ if(nums([item.title,item.summary,...claims.map(c=>c.text)].join('\n')).some(n=>!nums(quotes).includes(n)&&!sourceNums.has(n)))reasons.push('数字不在所引原文中');
  const checked=scopeReview?.verdict==='supported' && Array.isArray(scopeReview.claims) && scopeReview.claims.length===claims.length && claims.every(c=>scopeReview.claims.some(r=>r.id===c.id&&r.verdict==='supported'));
  if(!checked)reasons.push('标题、摘要和主张尚未通过范围复核');
  if(checked)evidence.forEach(e=>e.scopeCheck='ai_reviewed');

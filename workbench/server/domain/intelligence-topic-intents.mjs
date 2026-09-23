@@ -47,6 +47,16 @@ function normalizeAngle(input,sources){
  angle.evidence=input.evidence.map(e=>{const s=sources.get(e?.sourceId);const quote=text(e?.quote,10000);if(!s||!quote||!sourceContainsVerbatim(s.body,quote))throw bad('角度引用未通过原文校验');return {sourceId:s.id,quote,title:s.title};});
  return angle;
 }
+const WINDOW_DAYS={'24h':1,week:5,evergreen:null};
+/** 按一个具体做法加入选题：平台、形式、角度，以及由时效窗口算出的截止时间（长青不设）。 */
+function normalizeTopicCreation(input){
+ if(input==null)return null;
+ if(typeof input!=='object'||Array.isArray(input))throw bad('选题做法格式无效');
+ if(!['wechat','x','video','xhs'].includes(input.platform))throw bad('选题平台无效');
+ const form=text(input.form??'',40),angle=text(input.angle??'',400);if(!form)throw bad('选题形式不能为空');
+ const days=WINDOW_DAYS[input.window];if(input.window!==undefined&&!(input.window in WINDOW_DAYS))throw bad('选题时效无效');
+ return {platform:input.platform,form,angle,window:input.window||null,deadline:days?new Date(Date.now()+days*86400000).toISOString():null};
+}
 export function createIntelligenceTopicIntent(w,input){
  if(input?.confirmed!==true)throw bad('请确认将情报加入选题');
  const operationId=text(input.operationId,160);if(!operationId)throw bad('缺少本次操作标识');
@@ -62,9 +72,11 @@ export function createIntelligenceTopicIntent(w,input){
  // 原文已按保留期清除的，引文在生成卡片时已核验过，这里无从再比对，沿用当时的结果。
  for(const id of ids){const d=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json);for(const e of d.evidence||[]){if(e.url)evidenceUrl.set(e.sourceId,e.url);if(states.get(e.sourceId).retired||e.headline)continue;if(!sourceContainsVerbatim(sources.get(e.sourceId).body,e.quote))throw bad('情报引用的原文已经变化，请重新核查',409);}}
  const briefs=ids.map(id=>intelligenceBrief(w,id));
- const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||briefs[0].title),1000);
- const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null};
- const hash=sha256Json({...payload,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
+ const creation=normalizeTopicCreation(input.creation);
+ const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||creation?.angle||briefs[0].title),1000);
+ const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null,creation};
+ // 截止时间按调用时刻算，不能进幂等签名，否则重试会被当成另一次操作。
+ const hash=sha256Json({...payload,creation:creation?{platform:creation.platform,form:creation.form,angle:creation.angle,window:creation.window}:null,briefIds:[...new Set(input.briefIds)],question:input.question??null,angle:angle&&typeof angle==='object'?{...angle,evidence:angle.evidence.map(({title,...e})=>e)}:angle});
  return w.repository.transaction(()=>{
   const old=w.db.prepare('SELECT * FROM intelligence_topic_intents WHERE operation_id=?').get(operationId);
   if(old){if(old.payload_hash!==hash)throw bad('操作标识已用于其他选题，请重新提交',409);return {research:getResearch(w,old.research_id),reused:true};}
@@ -89,11 +101,14 @@ export function researchIntelligenceIntents(w,id){
 }
 export function researchIntelligenceRestricted(w,id,purpose="export"){
  if(!w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_brief_researches'").get())return false;
- const ids=new Set();
- for(const r of w.db.prepare('SELECT data_json FROM intel_cards WHERE research_id=?').all(id))for(const e of JSON.parse(r.data_json).evidence||[])ids.add(e.sourceId);
- for(const r of w.db.prepare('SELECT b.data_json FROM intel_briefs b JOIN intel_brief_researches l ON l.brief_id=b.id WHERE l.research_id=?').all(id))for(const e of JSON.parse(r.data_json).evidence||[])ids.add(e.sourceId);
- for(const r of w.db.prepare("SELECT s.id FROM intel_sources s JOIN research_references f ON f.entity_id=s.capture_id AND f.kind='capture' WHERE f.research_id=?").all(id))ids.add(r.id);
- for(const sourceId of ids){try{assertSourcePermission(source(w,sourceId),purpose);}catch{return true;}}
+ // 复制过原文的来源（capture 里有正文）按导出许可检查；只挂了链接的来源没有复制任何原文，
+ // 只在被删除或撤回 AI 许可时才让选题受限（2026-09-23，热点事件卡的来源默认只挂链接）。
+ const linked=new Set(),copied=new Set();
+ for(const r of w.db.prepare('SELECT data_json FROM intel_cards WHERE research_id=?').all(id))for(const e of JSON.parse(r.data_json).evidence||[])linked.add(e.sourceId);
+ for(const r of w.db.prepare('SELECT b.data_json FROM intel_briefs b JOIN intel_brief_researches l ON l.brief_id=b.id WHERE l.research_id=?').all(id))for(const e of JSON.parse(r.data_json).evidence||[])linked.add(e.sourceId);
+ for(const r of w.db.prepare("SELECT s.id FROM intel_sources s JOIN research_references f ON f.entity_id=s.capture_id AND f.kind='capture' WHERE f.research_id=?").all(id))copied.add(r.id);
+ for(const sourceId of copied){try{assertSourcePermission(source(w,sourceId),purpose);}catch{return true;}}
+ for(const sourceId of linked){if(copied.has(sourceId))continue;if(!sourceState(w,sourceId))return true;}
  return false;
 }
 function visibleIntent(w,data){
