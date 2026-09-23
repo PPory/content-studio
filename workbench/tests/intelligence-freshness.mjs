@@ -13,7 +13,7 @@ import { errorStatus } from '../server/acquisition/health.mjs';
 import { visibleDerived } from '../server/acquisition/compatibility.mjs';
 import { intelligenceAiConsent, saveIntelligenceAiConsent, sourceIsFresh, inIntelligencePool, RECOMMEND_WINDOW_MS } from '../server/domain/intelligence-pool.mjs';
 import { rankIntelligenceBriefs, briefRecency, saveIntelligenceBriefs, scheduleIntelligenceAutoUpdate, saveIntelligenceSettings, scheduleRedditArrival, intelligenceIntake } from '../server/domain/intelligence-feed.mjs';
-import { reconcileUnifiedSources, executeUnifiedBriefs, UNIFIED_BUDGET, unifiedAcquisitionPending } from '../server/domain/intelligence-unified.mjs';
+import { reconcileUnifiedSources, executeUnifiedBriefs, unifiedAcquisitionPending } from '../server/domain/intelligence-unified.mjs';
 import { saveStep } from '../server/domain/intelligence.mjs';
 import { saveIntelligenceProfile, enqueueIntelligence, addIntelligenceSource } from '../server/domain/intelligence.mjs';
 
@@ -102,34 +102,26 @@ try {
   const comment = commitPage(w, redditChannel(true), page([redditItem('t1_comment', { sourceKind: 'comment', title: 'Reddit comment', body: 'In my test the 4-bit agent was twice as fast but missed tool calls more often than the 8-bit one.' })])).ids[0];
   w.db.prepare('UPDATE intel_sources SET root_item_id=?,parent_item_id=? WHERE id=?').run(post, post, comment);
 
-  // ── 统一整理：池外、过期、评论上下文、预算与配额 ──
+  // ── 统一整理：池外、过期、评论上下文；不再逐份调用模型，一次批量判断 ──
   const outside = acquired(arxiv, 'arxiv-paper', iso(now - DAY));
   const staleMedia = acquired(media, 'stale-media', iso(now - 9 * DAY));
-  saveIntelligenceAiConsent(w, { publicSources: true, reddit: true });
-  const quota = UNIFIED_BUDGET.quota.t2_media;
-  for (let i = 0; i < quota + 5; i++) acquired(media, `media-${i}`, iso(now - (i + 2) * 3600000));
+  for (let i = 0; i < 30; i++) acquired(media, `media-${i}`, iso(now - (i + 2) * 3600000));
   saveIntelligenceAiConsent(w, { publicSources: true, reddit: true });
   const profile = saveIntelligenceProfile(w, { name: '新鲜度测试', query: 'AI', providers: ['collected'], output: 'briefs' });
   const run = enqueueIntelligence(w, profile.id);
-  const classified = [], composeSources = [];
+  let judgeCalls = 0, perSource = 0;
   const deps = { completeJson: async (_env, input) => {
     const d = JSON.parse(input.user);
-    if (d.material) { classified.push(d.material); const quote = d.material.match(/The language model agent report[^.]+\.|Running a local LLM agent[^;]+/)[0]; return { data: { relevance: 'ai_relevant', reason: '讨论模型智能体', evidence: [quote], title: '模型智能体评测', guideClaims: [{ text: '作者报告评测', quotes: [quote] }], topic: 'AI', uncertainties: [] } }; }
-    if (d.step === 'organize') { composeSources.push(...d.sources.map(s => s.id)); return { data: { groups: [] } }; }
-    throw Error('unexpected model task');
+    if (d.material) { perSource++; throw Error('热点流程不应逐份调用模型'); }
+    if (d.step === 'event-judge') { judgeCalls++; return { data: { events: d.events.map(e => ({ id: e.id, keep: true, kind: e.kindHint, title: '一个 AI 事件', summary: '概要。', whyItMatters: '意义' })) } }; }
+    throw Error('unexpected model task ' + d.step);
   } };
-  let result = await executeUnifiedBriefs(w, {}, run.id, deps);
-  for (let guard = 0; result.status === 'queued' && guard < 30; guard++) result = await executeUnifiedBriefs(w, {}, run.id, deps);
-  assert.notEqual(result.status, 'queued', '预算用完后本次更新结束，不空转');
+  const result = await executeUnifiedBriefs(w, {}, run.id, deps);
+  assert.notEqual(result.status, 'queued', '一次跑完，不分轮等待');
+  assert.equal(perSource, 0, '不再逐份做语义判断'); assert.equal(judgeCalls, 1, '一次批量判断');
   const status = id => w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(id)?.status;
   assert.equal(status(outside.id), 'out_of_scope'); assert.equal(status(staleMedia.id), 'stale'); assert.equal(status(old.id), 'stale');
-  assert.equal(status(comment), 'context', 'Reddit 评论不单独做语义判断');
-  assert.ok(!classified.some(m => m.includes('twice as fast')), '评论没有单独花模型调用');
-  const mediaCalls = classified.filter(m => /agent report (media-\d+|recent) /.test(m)).length;
-  assert.equal(mediaCalls, quota, `T2 媒体每次更新最多 ${quota} 次语义判断`);
-  assert.ok(classified.length <= UNIFIED_BUDGET.semantic);
-  assert.equal(w.db.prepare("SELECT count(*) n FROM intel_unified_sources WHERE status='semantic_pending'").get().n, 6, '超出配额的资料留到下次（31 份 T2 资料，本次整理 25 份）');
-  assert.ok(composeSources.includes(post) && composeSources.includes(comment), '主帖进卡片生成时带上评论作为上下文');
+  assert.equal(status(comment), 'context', 'Reddit 评论挂到帖子上，不单独判断');
   reconcileUnifiedSources(w);
   assert.equal(status(outside.id), 'out_of_scope', '重复对账保持稳定');
 
@@ -223,50 +215,7 @@ try {
   w.db.prepare("UPDATE intel_runs SET status='done'").run();
   w.db.prepare("UPDATE local_jobs SET status='done' WHERE status IN ('queued','retry','running')").run();
 
-  // ── 摘要资料：先补全文，补不到用摘要成卡并标注；一次更新只分一次组 ──
-  w.db.prepare("UPDATE intel_unified_sources SET status='done'").run();
-  const summarySource = (channel, identity, body, patch = {}) => {
-    const source = acquired(channel, identity, iso(now - 2 * 3600000), { body, readLevel: 'summary', url: `https://${identity}.example/story`, ...patch });
-    w.db.prepare("UPDATE intel_sources SET content_status='summary_only',rights_json=? WHERE id=?").run(JSON.stringify({ aiAllowed: true, exportAllowed: false }), source.id);
-    return source;
-  };
-  const gptA = summarySource(media, 'gpt6-a', 'OpenAI released GPT-6 Sol and GPT-6 Luna with API prices about half of GPT-5.6.');
-  const gptB = summarySource(channelRow('t2.the_verge_ai'), 'gpt6-b', 'GPT-6 Luna is rolling out to desktop apps and free users, according to OpenAI.');
-  const hn = channelRow('community.hacker_news.best');
-  const hnPost = summarySource(hn, 'hn-thread', 'Discussion thread about GPT-6 pricing on Hacker News.');
-  w.db.prepare("UPDATE intel_sources SET source_kind='post' WHERE id=?").run(hnPost.id);
-  reconcileUnifiedSources(w);
-  for (const s of [gptA, gptB, hnPost]) w.db.prepare("UPDATE intel_unified_sources SET status='processing',attempts=0 WHERE source_id=?").run(s.id);
-  const summaryRun = enqueueIntelligence(w, profile.id);
-  const organized = [];
-  const summaryDeps = { completeJson: async (_env, input) => {
-    const d = JSON.parse(input.user);
-    if (d.step === 'organize') { organized.push(d.sources.map(s => s.id)); return { data: { groups: [{ key: 'gpt6-launch', focus: 'GPT-6 发布', connection: '两家媒体报道同一次发布', relationship: 'same_event', sourceIds: [gptA.id, gptB.id] }] } }; }
-    if (d.step === 'compose') return { data: { briefs: [{ groupKey: 'gpt6-launch', storyKey: 'gpt6-launch', title: 'OpenAI 发布 GPT-6 Sol 与 Luna', summary: '两份报道摘要称新模型价格约为上一代一半。', reason: '判断是否切换模型', body: '目前只取得摘要：OpenAI 发布了两款新模型。', confidence: 'watch', kind: 'update', evidence: [{ sourceId: gptA.id, quote: 'OpenAI released GPT-6 Sol and GPT-6 Luna' }, { sourceId: gptB.id, quote: 'GPT-6 Luna is rolling out to desktop apps' }], whyItMatters: '价格变化影响选型', audienceTakeaway: '先看官方价格表', uncertainties: ['只取得摘要'], suggestedUses: ['对比现有模型成本'], claims: [{ text: 'OpenAI 发布两款新模型', kind: 'author_report', attribution: '媒体报道', evidenceIds: ['e1', 'e2'], limitations: ['仅摘要'] }] }] } };
-    if (d.step === 'scope-review') return { data: { reviews: d.candidates.map(c => ({ index: c.index, verdict: 'supported', claims: [{ id: 'c1', verdict: 'supported' }] })) } };
-    throw Error('unexpected model task ' + (d.step || 'material'));
-  } };
-  let summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
-  assert.equal(summaryResult.status, 'queued', '先等补全文');
-  const fulltextFor = id => w.db.prepare("SELECT count(*) n FROM acquisition_runs r JOIN local_jobs j ON j.id=r.job_id WHERE r.kind='fulltext' AND json_extract(j.payload_json,'$.sourceId')=?").get(id).n;
-  assert.equal(fulltextFor(gptA.id), 1); assert.equal(fulltextFor(gptB.id), 1);
-  assert.equal(fulltextFor(hnPost.id), 0, 'HN 讨论帖不抓全文');
-  assert.equal(organized.length, 0, '补全文期间不生成卡片');
-  summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
-  assert.equal(summaryResult.status, 'queued', '补全文任务没结束就继续等');
-  w.db.prepare("UPDATE local_jobs SET status='failed' WHERE id IN (SELECT job_id FROM acquisition_runs WHERE kind='fulltext')").run();
-  summaryResult = await executeUnifiedBriefs(w, {}, summaryRun.id, summaryDeps);
-  assert.notEqual(summaryResult.status, 'queued');
-  assert.equal(fulltextFor(gptA.id), 1, '每份资料只尝试一次补全文');
-  assert.equal(organized.length, 1, '一次更新只分一次组');
-  assert.deepEqual(new Set(organized[0]), new Set([gptA.id, gptB.id, hnPost.id]), '预算内的资料一起交给模型分组');
-  const summaryCard = w.db.prepare("SELECT data_json,editorial_state FROM intel_briefs WHERE story_key IS NOT NULL AND json_extract(data_json,'$.storyKey')='gpt6-launch'").get();
-  assert.ok(summaryCard, '补不到全文的摘要资料也能成卡');
-  assert.equal(JSON.parse(summaryCard.data_json).readScope, 'summary', '所有引文来自摘要的卡如实标注');
-  const status2 = id => w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(id)?.status;
-  assert.equal(status2(hnPost.id), 'filtered', '模型没分进任何组的资料不再重试');
-
-  console.log('intelligence-freshness: 7-day gate, bands, diversity, deep reads last, consent + full update, Reddit rights, pool/stale/context, budget, edition date, retention, catch-up windows, auto update, Reddit last / not awaited / arrival refresh, fulltext once, summary cards and single grouping passed');
+  console.log('intelligence-freshness: 7-day gate, bands, diversity, deep reads last, consent + full update, Reddit rights, pool/stale/context without per-source model calls, edition date, retention, catch-up windows, auto update and Reddit last / not awaited / arrival refresh passed');
 } finally {
   w?.close();
   await fs.rm(root, { recursive: true, force: true });

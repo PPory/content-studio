@@ -60,7 +60,7 @@ export function createIntelligenceTopicIntent(w,input){
  const sources=new Map([...states].filter(([,x])=>!x.retired).map(([id,x])=>[id,x.item]));
  const evidenceUrl=new Map();
  // 原文已按保留期清除的，引文在生成卡片时已核验过，这里无从再比对，沿用当时的结果。
- for(const id of ids){const d=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json);for(const e of d.evidence||[]){if(e.url)evidenceUrl.set(e.sourceId,e.url);if(states.get(e.sourceId).retired)continue;if(!sourceContainsVerbatim(sources.get(e.sourceId).body,e.quote))throw bad('情报引用的原文已经变化，请重新核查',409);}}
+ for(const id of ids){const d=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json);for(const e of d.evidence||[]){if(e.url)evidenceUrl.set(e.sourceId,e.url);if(states.get(e.sourceId).retired||e.headline)continue;if(!sourceContainsVerbatim(sources.get(e.sourceId).body,e.quote))throw bad('情报引用的原文已经变化，请重新核查',409);}}
  const briefs=ids.map(id=>intelligenceBrief(w,id));
  const angle=normalizeAngle(input.angle,sources),notes=text(input.notes??''),question=text(input.question??((typeof angle==='object'&&angle?.question)||briefs[0].title),1000);
  const payload={briefIds:ids,angle,notes,question,researchId:input.researchId?text(input.researchId,160):null};

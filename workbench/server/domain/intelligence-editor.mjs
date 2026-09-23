@@ -28,7 +28,8 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
  const perSource=Math.min(6500,Math.floor(75000/Math.max(1,allowed.length)));
  const excerpts=allowed.map(s=>{const body=s.body.slice(0,Math.min(perSource,remaining));remaining-=body.length;return {...s,body,truncated:body.length<s.body.length};}).filter(s=>s.body);
  assertCurrentSourceRights(w,excerpts);
- let groups=await organizeIntelligenceSources(env,{sources:excerpts,directions:preferences.directions,previous:history().previous,allowSummary:Boolean(deps.unified)},deps);
+ // fixedGroups：深度解读已经知道要写哪一个事件，跳过分组。
+ let groups=deps.fixedGroups?deps.fixedGroups.map(g=>({...g,sourceIds:g.sourceIds.filter(id=>excerpts.some(s=>s.id===id))})).filter(g=>g.sourceIds.length):await organizeIntelligenceSources(env,{sources:excerpts,directions:preferences.directions,previous:history().previous,allowSummary:Boolean(deps.unified)},deps);
  if(deps.unified){
   const manual=new Map();
   for(const source of excerpts){const r=w.db.prepare('SELECT r.*,c.title,c.cluster_kind FROM acquisition_review_members m JOIN acquisition_cluster_reviews r ON r.cluster_id=m.cluster_id JOIN intel_clusters c ON c.id=r.cluster_id WHERE m.source_id=? AND r.manual=1').get(source.id);if(r)manual.set(source.id,r);}
@@ -56,9 +57,11 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
    '只返回JSON {"briefs":[{"groupKey":"分组key","existingId":"可选","storyKey":"稳定事件标识","title":"","summary":"","reason":"","body":"Markdown解读","technical":"可选Markdown","confidence":"reliable","kind":"update","changeNote":"仅实质更新","whyItMatters":"为何值得关注","audienceTakeaway":"读者可带走的认识","uncertainties":["明确未知或限制"],"suggestedUses":["具体用途"],"claims":[{"text":"核心主张","kind":"author_report","attribution":"来源作者","evidenceIds":["e1"],"limitations":["适用条件"]}],"evidence":[{"sourceId":"","quote":""}],"wiki":[{"id":"","reason":""}]}]}'
   ].join('\n'),user:JSON.stringify({step:"compose",groups,directions:preferences.directions,focus:run.config.query,period:run.createdAt,coverage:run.coverage,sources:excerpts,wiki,...history(),negativeFeedback:w.db.prepare("SELECT action,reason,count(*) count FROM intel_feedback WHERE value=1 AND reason IS NOT NULL GROUP BY action,reason").all()}),maxTokens:14000});
  deps.assertCurrent?.();
+ // 深度解读只写这一个事件：只取第一张，并钉在固定分组上。
+ if(deps.fixedGroups&&Array.isArray(response.data?.briefs))response.data.briefs=response.data.briefs.slice(0,1).map(b=>({...b,groupKey:groups[0]?.key}));
  const scopeReviews=await reviewBriefScopes(w,env,run,response.data?.briefs,excerpts,deps);
  saveStep(w,run.id,'compose','done',{inputCount:excerpts.length,outputCount:response.data?.briefs?.length||0,model:response.model||null,usage:response.usage||null,cost:null,ruleVersion:'intel-v2.1'});
- const result=saveIntelligenceBriefs(w,run.id,response.data?.briefs,wiki,groups,scopeReviews,{unified:deps.unified});
+ const result=saveIntelligenceBriefs(w,run.id,response.data?.briefs,wiki,groups,scopeReviews,{unified:deps.unified,deepen:deps.deepen,existingId:deps.existingId});
  saveStep(w,run.id,'quality','done',{inputCount:response.data?.briefs?.length||0,ready:result.saved.filter(b=>b.editorialState==='ready').length,needsReview:result.saved.filter(b=>b.editorialState!=='ready').length,rejected:result.rejected,rejectionReasons:result.rejectionReasons,ruleVersion:'intel-v2.1'});
  const invalid=(result.rejectionReasons||[]).filter(r=>r.error==='来源引用不真实或已屏蔽');
  if(!invalid.length)return result;

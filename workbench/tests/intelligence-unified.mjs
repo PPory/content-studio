@@ -1,105 +1,54 @@
+// 统一整理（热点事件雷达，2026-09-23）：一次跑完、权限隔离、成员不变不重复调用、模型失败可恢复、
+// 大量无关资料只在本地过滤、卡片身份合并后用户状态保留。独立的临时 XENHO_HOME，模型为模拟。
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {openWorkspace} from '../server/storage/workspace.mjs';
-import {addIntelligenceSource,saveIntelligenceProfile,enqueueIntelligence,updateRun} from '../server/domain/intelligence.mjs';
+import {addIntelligenceSource,saveIntelligenceProfile,enqueueIntelligence} from '../server/domain/intelligence.mjs';
 import {executeIntelligence} from '../server/domain/intelligence-runner.mjs';
-import {intelligenceFeed,feedbackIntelligenceBrief,saveIntelligenceBriefs,intelligenceBrief,refreshIntelligenceFeed} from '../server/domain/intelligence-feed.mjs';
-import {unifiedSummary,reconcileUnifiedSources,mergeBriefIdentities,canonicalBriefId,executeUnifiedBriefs} from '../server/domain/intelligence-unified.mjs';
-import {persistIntelligenceCluster} from '../server/domain/intelligence-quality.mjs';
-import {reviewAction} from '../server/acquisition/review.mjs';
+import {intelligenceFeed,feedbackIntelligenceBrief,intelligenceBrief} from '../server/domain/intelligence-feed.mjs';
+import {unifiedSummary,mergeBriefIdentities,canonicalBriefId} from '../server/domain/intelligence-unified.mjs';
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'xenho-unified-'));let w;
 // 情报只整理 7 天内发布的资料；夹具默认是一小时前发布的。
 const fresh=new Date(Date.now()-3600000).toISOString();
 try {
  w=await openWorkspace({xenhoHome:root});
- // Supports running before the registry lands; all operations remain in this isolated database.
- w.db.exec(await fs.readFile(new URL('../server/storage/migrations/0033-intelligence-unified.sql',import.meta.url),'utf8'));
  const profile=saveIntelligenceProfile(w,{name:'测试情报',query:'AI',providers:['collected'],output:'briefs'});
- const quote='The language model experiment used a limited sample and requires independent verification.';
- // 一次更新最多分 10 组；夹具用 10 份独立资料。
- const sources=Array.from({length:10},(_,i)=>addIntelligenceSource(w,{publishedAt:fresh,title:`LLM experiment ${i}`,url:`https://publisher${i}.example/report`,body:`${quote} Report identity ${i}.`,provider:'web',readLevel:'original'}));
- const blocked=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM private content',url:'https://private.example/report',body:quote+' private text',provider:'web',readLevel:'original'});
+ const topics=['Opus 5.5','GPT-6 Sol','Gemini 4 Flash','Qwen-Image 2.1','Llama 6'];
+ const sources=topics.map((t,i)=>addIntelligenceSource(w,{publishedAt:fresh,title:`${t} language model release report`,url:`https://publisher${i}.example/report`,body:`The ${t} language model release was reported with pricing and benchmark details.`,provider:'web',readLevel:'original'}));
+ const blocked=addIntelligenceSource(w,{publishedAt:fresh,title:'Mistral 9 private language model report',url:'https://private.example/report',body:'Mistral 9 private text about a language model.',provider:'web',readLevel:'original'});
  w.db.prepare("UPDATE intel_sources SET acquisition_identity='private-test',rights_json='{}' WHERE id=?").run(blocked.id);
- let modelCalls=0;const inspected=[];
- const deps={completeJson:async(_env,input)=>{modelCalls++;const d=JSON.parse(input.user);
-  if(d.material){assert.ok(!d.material.includes('private text'));inspected.push(d.material);return {data:{relevance:'ai_relevant',reason:'原文讨论模型实验',evidence:[quote],title:'模型实验提供有限样本的观察',guideClaims:[{text:'作者说明实验有范围限制',quotes:[quote]}],topic:'模型实验',uncertainties:['需要独立验证']}};}
-  if(d.step==='organize')return {data:{groups:d.sources.map(s=>({key:`experiment:${s.id}`,focus:s.title,connection:'单篇实验报告',relationship:'standalone',sourceIds:[s.id]}))}};
-  if(d.step==='scope-review')return {data:{reviews:d.candidates.map(c=>({index:c.index,verdict:'supported',claims:[{id:'c1',verdict:'supported'}]}))}};
-  if(d.step==='compose')return {data:{briefs:d.groups.map(g=>({groupKey:g.key,storyKey:g.key,title:'模型实验需要独立检查',summary:'作者报告有限样本的实验，需要独立验证。',reason:'帮助判断模型输出',body:'作者报告实验采用有限样本，仍需独立验证。',confidence:'reliable',kind:'practice',evidence:[{sourceId:g.sourceIds[0],quote}],wiki:[],whyItMatters:'模型输出需要验证',audienceTakeaway:'核对实际产物',uncertainties:['有限样本'],suggestedUses:['设计自己的检查'],claims:[{text:'作者称实验需要独立验证',kind:'author_report',attribution:'实验作者',evidenceIds:['e1'],limitations:['有限样本']}]}))}};
-  throw Error('unexpected model task');
- }};
+ let calls=0,seen=[],fail=false;
+ const deps={completeJson:async(_env,input)=>{const d=JSON.parse(input.user);if(d.step!=='event-judge')throw Error('unexpected model task '+(d.step||'material'));calls++;if(fail)throw Error('model unavailable');seen=d.events.flatMap(e=>e.items.map(i=>i.title));
+  return {data:{events:d.events.map(e=>({id:e.id,keep:true,kind:'event',title:`事件：${e.items[0].title.slice(0,20)}`,summary:'概要。',whyItMatters:'意义'}))}};}};
  const run=enqueueIntelligence(w,profile.id);
  let result=await executeIntelligence(w,{}, {runId:run.id},deps);
- assert.equal(result.status,'queued','first batch schedules continuation');
- assert.equal(intelligenceFeed(w).briefs.length,0,'卡片等语义判断全部结束后一次生成，同一事件的报道才能合并');
- result=await executeIntelligence(w,{}, {runId:run.id},deps);
- assert.equal(result.status,'done');assert.equal(intelligenceFeed(w).briefs.length,10);assert.equal(unifiedSummary(w).permissionRequired,1);
- assert.equal(intelligenceFeed(w).recommendationIds.length,10,'full recommendation set is not limited to eight');
+ assert.equal(result.status,'done','一次跑完，不再分轮等待');
+ assert.equal(calls,1,'所有事件一次批量判断');
+ assert(!seen.some(t=>t.includes('Mistral 9')),'未授权的资料不发给模型');
+ assert.equal(unifiedSummary(w).permissionRequired,1);
+ assert.equal(intelligenceFeed(w).briefs.length,5,'不同型号各自成卡');
+ assert.equal(intelligenceFeed(w).recommendationIds.length,5);
  const selected=intelligenceFeed(w).briefs[0];feedbackIntelligenceBrief(w,selected.id,{saved:true,dismissed:true});
- const count=modelCalls;const second=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:second.id},deps);
- assert.equal(modelCalls,count,'unchanged materials do not consume model calls');assert.equal(intelligenceFeed(w).briefs.length,10);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).saved,true);assert.equal(intelligenceFeed(w).briefs.find(b=>b.id===selected.id).dismissed,true);
- // A fresh source advances despite a preceding permanent model failure; retries are finite.
- const failing=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM failing source',url:'https://failed.example/report',body:quote+' failure fixture',provider:'web',readLevel:'original'});
- const third=enqueueIntelligence(w,profile.id);let attempts=0;const failDeps={completeJson:async()=>{attempts++;throw Error('model unavailable');}};
- await executeIntelligence(w,{}, {runId:third.id},failDeps);await executeIntelligence(w,{}, {runId:third.id},failDeps);
- assert.equal(attempts,2);assert.equal(unifiedSummary(w).failures,1);assert.equal(intelligenceFeed(w).briefs.length,10);
- w.db.exec(await fs.readFile(new URL('../server/storage/migrations/0035-intelligence-aliases.sql',import.meta.url),'utf8'));
- const canonical=intelligenceFeed(w).briefs[1].id;const originalCount=w.db.prepare('SELECT count(*) n FROM intel_briefs').get().n;
- mergeBriefIdentities(w,canonical,[selected.id]);assert.equal(canonicalBriefId(w,selected.id),canonical);assert.equal(intelligenceBrief(w,selected.id).id,canonical);assert.equal(intelligenceBrief(w,canonical).saved,true);assert.equal(intelligenceBrief(w,canonical).dismissed,true);assert.equal(intelligenceFeed(w).briefs.length,9);assert.equal(w.db.prepare('SELECT count(*) n FROM intel_briefs').get().n,originalCount,'historical rows remain intact');feedbackIntelligenceBrief(w,selected.id,{dismissed:false});assert.equal(intelligenceBrief(w,canonical).dismissed,false);
- // A manual split must survive regeneration, including the selected side and user state.
- const splitSources=[sources[3],sources[4]],briefsBefore=intelligenceFeed(w).briefs;
- const original=briefsBefore.find(b=>b.evidence.some(e=>e.sourceId===splitSources[0].id));
- const merged=briefsBefore.find(b=>b.evidence.some(e=>e.sourceId===splitSources[1].id));
- const fixtureData=JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(original.id).data_json);
- fixtureData.evidence=splitSources.map(s=>({sourceId:s.id,quote}));w.db.prepare('UPDATE intel_briefs SET data_json=? WHERE id=?').run(JSON.stringify(fixtureData),original.id);
- mergeBriefIdentities(w,original.id,[merged.id]);feedbackIntelligenceBrief(w,original.id,{saved:true});
- const cluster=persistIntelligenceCluster(w,{key:'test:manual-split',focus:'LLM grouped experiments',relationship:'complementary'},splitSources);
- w.db.prepare('INSERT OR REPLACE INTO acquisition_cluster_reviews(cluster_id,status,manual,data_json,updated_at) VALUES(?,?,?,?,?)').run(cluster,'unreviewed',0,'{}',new Date().toISOString());
- for(const source of splitSources)w.db.prepare('INSERT OR REPLACE INTO acquisition_review_members(source_id,cluster_id) VALUES(?,?)').run(source.id,cluster);
- const split=reviewAction(w,cluster,{confirmed:true,action:'split',sourceIds:[splitSources[0].id]});assert(split.splitClusterId);
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(splitSources[0].id).status,'pending');
- const splitRun=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:splitRun.id},deps);
- const splitCards=intelligenceFeed(w).briefs.filter(b=>b.evidence.some(e=>splitSources.some(s=>s.id===e.sourceId)));
- assert.equal(splitCards.length,2,'split yields two independently readable cards');
- assert(splitCards.every(b=>b.evidence.length===1),'split does not append old grouped evidence back');
- assert.equal(intelligenceBrief(w,original.id).saved,true,'original card state survives correction');
- const callCount=modelCalls;const stableRun=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:stableRun.id},deps);assert.equal(modelCalls,callCount);
- reviewAction(w,split.splitClusterId,{confirmed:true,action:'merge',targetId:cluster});
- const mergeRun=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:mergeRun.id},{completeJson:async(env,input)=>{const result=await deps.completeJson(env,input),d=JSON.parse(input.user);if(d.step==='compose')for(const brief of result.data.briefs)brief.evidence=d.groups.find(g=>g.key===brief.groupKey).sourceIds.map(sourceId=>({sourceId,quote}));return result;}});
- const mergedCards=intelligenceFeed(w).briefs.filter(b=>b.evidence.some(e=>splitSources.some(s=>s.id===e.sourceId)));
- assert.equal(mergedCards.length,1,'explicit manual merge restores one canonical card');assert.equal(mergedCards[0].evidence.length,2);assert.equal(mergedCards[0].saved,true);
- w.db.prepare("UPDATE intel_unified_sources SET status='processing',attempts=1 WHERE source_id=?").run(sources[7].id);
- w.db.prepare("UPDATE intel_unified_sources SET status='processing',attempts=2 WHERE source_id=?").run(sources[6].id);
- const interruptedRun=enqueueIntelligence(w,profile.id);await executeIntelligence(w,{}, {runId:interruptedRun.id},deps);
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(sources[7].id).status,'done','interrupted composition resumes');
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(sources[6].id).status,'failed','interrupted retries remain bounded');
- refreshIntelligenceFeed(w,{collect:false});
- assert.deepEqual(w.db.prepare('SELECT status,attempts FROM intel_unified_sources WHERE source_id=?').get(failing.id),{status:'failed',attempts:2},'automatic refresh cannot reset exhausted retries');
- const manualRefresh=refreshIntelligenceFeed(w,{collect:true});
- assert.deepEqual(w.db.prepare('SELECT status,attempts FROM intel_unified_sources WHERE source_id=?').get(failing.id),{status:'pending',attempts:0},'explicit user update permits a fresh bounded retry');
- await executeUnifiedBriefs(w,{},manualRefresh.id,deps);
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(failing.id).status,'done','recovered model can process a previously exhausted source');
- const localCount=1200;
- w.db.transaction(()=>{for(let i=0;i<localCount;i++)addIntelligenceSource(w,{publishedAt:fresh,title:'Netflix TV shows and movies '+i,url:'https://local-filter.example/'+i,body:'A discussion of movies and television with no technical subject.',provider:'web',readLevel:'original'});})();
- const beforeLocal=modelCalls,localRun=enqueueIntelligence(w,profile.id);
- const localResult=await executeIntelligence(w,{}, {runId:localRun.id},deps);
- assert.equal(localResult.status,'done','local exclusions clear in one run without a delayed continuation');
- assert.equal(modelCalls,beforeLocal,'local exclusions do not call the model');
- assert(unifiedSummary(w).filtered>=localCount);
- const channel=(sourceGroup)=>w.db.prepare('SELECT id FROM intel_channels WHERE source_group=? LIMIT 1').get(sourceGroup)?.id;
- const aiChannel=channel('aihot'),t2Channel=channel('t2_media');
- assert(aiChannel&&t2Channel,'the isolated workspace has the built-in source catalog');
- const native=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM experiment from AIhot',url:'https://native.example/report',body:quote+' Native AIhot report.',provider:'web',readLevel:'original'});
- const strict=addIntelligenceSource(w,{publishedAt:fresh,title:'LLM experiment in T2 media',url:'https://strict.example/report',body:quote+' T2 media report.',provider:'web',readLevel:'original'});
- const at=new Date().toISOString();
- for(const [source,channelId] of [[native,aiChannel],[strict,t2Channel]])w.db.prepare('INSERT INTO source_discoveries(source_id,channel_id,discovery_key,metadata_json,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?)').run(source.id,channelId,'test','{}',at,at);
- const beforeSemantic=inspected.length,strategyRun=enqueueIntelligence(w,profile.id);
- await executeIntelligence(w,{}, {runId:strategyRun.id},deps);
- assert.equal(inspected.length-beforeSemantic,1,'T2 needs semantic relevance; substantive AIhot passes the local scope gate');
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(native.id).status,'done');
- assert.equal(w.db.prepare('SELECT status FROM intel_unified_sources WHERE source_id=?').get(strict.id).status,'done');
+ await executeIntelligence(w,{}, {runId:enqueueIntelligence(w,profile.id).id},deps);
+ assert.equal(calls,1,'成员不变不再调用模型');assert.equal(intelligenceFeed(w).briefs.length,5);
+ assert.equal(intelligenceBrief(w,selected.id).saved,true);assert.equal(intelligenceBrief(w,selected.id).dismissed,true);
+ // 模型失败：这次不出新卡、不抛出；恢复后下一次更新补上。
+ const late=addIntelligenceSource(w,{publishedAt:fresh,title:'DeepSeek V5 language model release report',url:'https://late.example/report',body:'The DeepSeek V5 language model release report.',provider:'web',readLevel:'original'});
+ fail=true;result=await executeIntelligence(w,{}, {runId:enqueueIntelligence(w,profile.id).id},deps);
+ assert.equal(result.status,'partial','模型失败如实标记');assert.equal(intelligenceFeed(w).briefs.length,5);
+ fail=false;await executeIntelligence(w,{}, {runId:enqueueIntelligence(w,profile.id).id},deps);
+ assert.ok(intelligenceFeed(w).briefs.some(b=>b.event?.members?.some(m=>m.sourceId===late.id)),'模型恢复后补上');
+ // 大量明显无关的资料在本地过滤，不进模型。
+ w.db.transaction(()=>{for(let i=0;i<1200;i++)addIntelligenceSource(w,{publishedAt:fresh,title:'Netflix TV shows and movies '+i,url:'https://local-filter.example/'+i,body:'A discussion of movies and television with no technical subject.',provider:'web',readLevel:'original'});})();
+ const before=calls;const localResult=await executeIntelligence(w,{}, {runId:enqueueIntelligence(w,profile.id).id},deps);
+ assert.equal(localResult.status,'done');assert.equal(calls,before,'无关资料不调用模型');
+ assert(unifiedSummary(w).filtered>=1200);
+ // 卡片身份合并：别名可解析，用户状态并入规范卡。
+ const canonical=intelligenceFeed(w).briefs.find(b=>b.id!==selected.id).id;
+ mergeBriefIdentities(w,canonical,[selected.id]);
+ assert.equal(canonicalBriefId(w,selected.id),canonical);assert.equal(intelligenceBrief(w,selected.id).id,canonical);assert.equal(intelligenceBrief(w,canonical).saved,true);
  assert.deepEqual(w.db.pragma('foreign_key_check'),[]);
- console.log('intelligence-unified: continuation, 1200 local exclusions in one run, source strategies, permission isolation, stable states, manual split and bounded recovery passed');
+ console.log('intelligence-unified: single pass, permission isolation, judge cache, user state, model failure recovery, 1200 local exclusions and identity merge passed');
 } finally {w?.close();assert(!path.relative(os.tmpdir(),root).startsWith('..'));await fs.rm(root,{recursive:true,force:true});}
