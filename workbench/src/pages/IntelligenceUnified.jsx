@@ -97,6 +97,13 @@ export function IntelligenceUnified({view="intel",state,onGo}) {
   const updating=Boolean(data?.activeRuns?.length);
   const processingProblem=Boolean(data?.processing?.failures||data?.processing?.permissionRequired||data?.processing?.needsContext);
   const processingCount=Number(data?.processing?.pending||0);
+  // 说清楚现在在哪一步：采集进度（第几个信源）比「整理 N 份」更接近真实情况；Reddit 慢，不让它挡住其它信源。
+  const progress=data?.intake?.progress,stage=data?.activeRuns?.[0]?.stage||"";
+  const collecting=progress&&progress.finished<progress.total&&!progress.redditOnly;
+  const updateText=collecting?`正在采集信源（${progress.finished}/${progress.total}）${progress.running?`：${progress.running}`:""}…`
+    :/补全|整理|筛选|导读/.test(stage)?`${stage}${progress?.redditOnly?" · Reddit 仍在采集，到了会自动补上":""}…`
+    :progress?.redditOnly?"其它信源已整理完；Reddit 社区仍在采集，到了会自动补上"
+    :processingCount>0?`正在整理 ${processingCount} 份新增资料…`:"正在同步信源并整理情报…";
   const intake=data?.intake,needsConsent=Boolean(intake&&!intake.consent?.publicSources),gap=Number(data?.processing?.permissionRequired||0);
   const redditQuota=intake?.reddit?.healthStatus==="QUOTA_EXHAUSTED";
   const openConsent=()=>setConsent({publicSources:true,reddit:intake?.redditApproved?(intake?.consent?.reddit??true):false,autoUpdate:intake?.autoUpdate!==false,...(intake?.consent?.publicSources?{publicSources:true,reddit:Boolean(intake.consent.reddit)}:{})});
@@ -117,7 +124,7 @@ export function IntelligenceUnified({view="intel",state,onGo}) {
           <LayoutToggle value={layout} onChange={setLayout}/>
         </div>
       </div>
-      {data&&<p className={`unified-update-status ${processingProblem||needsConsent||redditQuota?"has-problem":""}`}>{updating?<>{processingCount>0?`正在整理 ${processingCount} 份新增资料…`:"正在同步信源并整理情报…"}</>:needsConsent?<><span>{gap?`最近 7 天采到 ${gap} 条新资料，还没授权交给模型整理`:"新采集的资料需要授权后才能整理成情报"}</span><button className="text-action" onClick={openConsent}>允许并开始整理</button></>:redditQuota?<><span>Reddit 额度不足，社区内容暂由 Hacker News 补位</span><button className="text-action" onClick={()=>onGo("intel-runs")}>查看详情</button></>:processingProblem?<><span>{gap?`${gap} 条近期资料还没授权整理`:"部分资料需要处理"}</span><button className="text-action" onClick={()=>gap?openConsent():onGo("intel-runs")}>{gap?"查看授权":"查看详情"}</button></>:data.lastSuccessfulUpdate?<span>最近更新 {new Date(data.lastSuccessfulUpdate).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>:<span>尚未更新</span>}</p>}
+      {data&&<p className={`unified-update-status ${processingProblem||needsConsent||redditQuota?"has-problem":""}`}>{updating?<>{updateText}</>:needsConsent?<><span>{gap?`最近 7 天采到 ${gap} 条新资料，还没授权交给模型整理`:"新采集的资料需要授权后才能整理成情报"}</span><button className="text-action" onClick={openConsent}>允许并开始整理</button></>:redditQuota?<><span>Reddit 额度不足，社区内容暂由 Hacker News 补位</span><button className="text-action" onClick={()=>onGo("intel-runs")}>查看详情</button></>:processingProblem?<><span>{gap?`${gap} 条近期资料还没授权整理`:"部分资料需要处理"}</span><button className="text-action" onClick={()=>gap?openConsent():onGo("intel-runs")}>{gap?"查看授权":"查看详情"}</button></>:data.lastSuccessfulUpdate?<span>最近更新 {new Date(data.lastSuccessfulUpdate).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>:<span>尚未更新</span>}</p>}
     </>:<header className="brief-detail-toolbar"><button className="btn" onClick={()=>onGo("intel")}>← 返回情报</button><div>{brief&&controls(brief)}<button className="btn" onClick={()=>setChat(v=>!v)}>{chat?"收起讨论":"和 AI 聊聊"}</button></div></header>}
     {error&&<ErrorNote error={error} what="处理情报" onRetry={load}/>} {notification}
     {full?<>{detailError?<ErrorNote error={detailError} what="打开情报" onRetry={()=>setNonce(n=>n+1)}/>:!brief?<Loading rows={4}/>:<div className={`brief-detail-layout ${chat?"with-chat":""}`}><article className="brief-reading"><BriefReading brief={brief} onGo={onGo} onBlock={block}/>{brief.reviewClusterId&&<div className="unified-detail-feedback"><span>资料归到一起有误？</span><button className="text-action" onClick={()=>openCorrection(brief)}>纠正分组</button></div>}<IntelligenceAngles key={`${brief.id}:${brief.version}`} brief={brief} onChoose={angle=>addTopic([brief.id],angle)}/></article>{chat&&<aside className="brief-chat"><AssistantPane embedded scope="global" surface="page" scopeId={brief.scopeId||`intelligence:${brief.id}`} initialConversationId={brief.conversations?.[0]?.id||""} document={{title:brief.title,body:brief.body,intelligenceId:brief.id}} materials={[]} target={{kind:"none",editable:false}} draftStorageKey={`intelligence:${brief.id}`}/></aside>}</div>}</>:<>
