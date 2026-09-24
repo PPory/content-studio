@@ -28,7 +28,7 @@ try{
   if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running',stage:'正在补全 2 篇原文'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},summary:'Anthropic 发布 Opus 5.5，价格更低。',body:'深度解读正文：官方说明与第三方评测都提到价格下降。',
    keyFacts:[{text:'官方称每 token 价格更低',evidenceIds:['e1']}],evidence:[{sourceId:'s1',quote:'每token价格更低'}],sources:[{id:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',provider:'aihot',readLevel:'original',quotes:[{number:1,quote:'每token价格更低'}]}],
    claims:[{id:'c1',text:'价格比上一代更低',kind:'author_report',attribution:'Anthropic',evidenceIds:['e1'],limitations:['没有第三方复测']}],uncertainties:['只有官方说明'],useFor:'要评估模型成本的人',notFor:'只用网页聊天的读者',
-   angle:{direction:'讲清 Opus 5.5 的成本账',readerValue:'帮读者估算调用成本',needs:['官方价格表']},wiki:[{id:'wk1',title:'模型定价',relation:'explain',point:'API 按 token 计费',helps:'解释成本为什么要按调用量算'}]});},1500);return send(route,{deepen:e.deepen});}
+   angle:{direction:'讲清 Opus 5.5 的成本账',readerValue:'帮读者估算调用成本',needs:['官方价格表']},wiki:[{id:'wk1',title:'心理账户',relation:'explain',quote:'人们对事物变化幅度通常依靠比例感知',application:'「每 token 便宜 40%」是比例口径，读者该用自己每月的调用量算账单。',revision:1},{id:'wk-old',title:'商业目标',reason:'关联商业目标与变现路径规划'}]});},1500);return send(route,{deepen:e.deepen});}
   if(url.pathname.endsWith('/split')){splitCalls++;const e=briefs.find(b=>b.id==='ev1');e.event.members=e.event.members.filter(m=>!body.sourceIds.includes(m.sourceId));return send(route,{brief:e,moved:body.sourceIds});}
   if(url.pathname.endsWith('/feed/settings')){settingsBody=body;intake={...intake,consent:{publicSources:body.publicSources??intake.consent.publicSources,reddit:body.reddit??intake.consent.reddit},autoUpdate:body.autoUpdate??intake.autoUpdate};return send(route,{intake,run:body.publicSources?{id:'r2',status:'queued'}:null});}
   if(url.pathname.endsWith('/summary'))return send(route,{unread:10,saved:0});
@@ -100,7 +100,11 @@ try{
  await peek.getByRole('heading',{name:'来源自己的判断'}).waitFor();await peek.getByRole('heading',{name:'仍缺的证据'}).waitFor();
  assert.deepEqual(await parts(),['发生了什么','具体怎么回事','依据与边界','与你已有知识的连接','有什么用，可以怎么继续'],'有知识连接时才出现那一段');
  await peek.getByText('解释',{exact:true}).waitFor();await peek.getByText('知识库只说明你整理过相关内容',{exact:false}).waitFor();
+ await peek.getByText('你的笔记：',{exact:false}).waitFor();await peek.getByText('由此形成的切入方向',{exact:true}).waitFor();
+ assert.equal(await peek.getByText('《商业目标》',{exact:false}).count(),0,'没有原话的旧式连接不显示');
+ assert.equal(await peek.getByText('切入方向：',{exact:false}).count(),0,'有连接时切入方向只在连接段末尾出现一次');
  await page.screenshot({path:path.join(shots,'16-event-deep.png'),fullPage:false});
+ await peek.getByText('由此形成的切入方向',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:path.join(shots,'17-event-wiki-lens.png'),fullPage:false});
  await peek.getByRole('button',{name:'按这个方向加入选题',exact:true}).click();
  await page.waitForTimeout(300);assert.deepEqual(lastIntent.creation,{angle:'讲清 Opus 5.5 的成本账',window:'24h',readerValue:'帮读者估算调用成本',needs:['官方价格表']},'深读过的用深读里的方向、读者价值和待补材料');
  await page.keyboard.press('Escape');await peek.waitFor({state:'detached'});

@@ -61,5 +61,7 @@
   .research-overview .task-page-head { margin-bottom: 24px; }
 }
 
-/* 从情报按做法加入的选题：平台 · 形式 · 截止时间。 */
+/* 从情报加入的选题：切入角度、建议时效（旧选题带截止时间），以及用到的知识笔记。 */
 .research-creation { margin: 0; color: var(--text-2); font-size: var(--fs-2xs); }
+.research-wiki-links { margin: 4px 0 0; padding: 0; list-style: none; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.7; }
+.research-wiki-links span { color: var(--text-3); }

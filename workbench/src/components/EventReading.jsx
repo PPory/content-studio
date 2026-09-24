@@ -115,7 +115,7 @@ function DeepControl({ brief, onDeep }) {
   return (
     <div className="event-reading__deep">
       {d.status === "failed" && <p className="event-reading__fail">上次没能生成：{d.error || "原因未知"}。</p>}
-      <p>深入解读会补全原文、核对每条事实的出处，整理证据与分歧{d.wikiCandidates ? `，并结合你知识库里 ${d.wikiCandidates} 篇可能相关的内容` : ""}。{d.estimateSec ? `上次大约用了 ${d.estimateSec} 秒。` : ""}</p>
+      <p>深入解读会补全原文、核对每条事实的出处，整理证据与分歧{d.wikiCandidates ? `，并在你的 ${d.wikiCandidates} 篇知识笔记里找能用来解释它的视角` : ""}。{d.estimateSec ? `上次大约用了 ${d.estimateSec} 秒。` : ""}</p>
       {onDeep && <button type="button" className="btn btn-sm" onClick={() => onDeep(d.status === "failed")}>{d.status === "failed" ? "重新生成" : "深入解读"}</button>}
     </div>
   );
@@ -144,7 +144,8 @@ export function EventReading({ brief, onDeep, onAddAngle, onSplit, onOpenRelated
   const claims = Array.isArray(brief.claims) ? brief.claims : [];
   const limits = [...new Set([...(brief.uncertainties || []), ...claims.flatMap((x) => x.limitations || [])])].filter(Boolean);
   const voices = Array.isArray(brief.voices) ? brief.voices : [];
-  const wiki = deep ? (brief.wiki || []).filter((k) => k.relation || k.point || k.reason) : [];
+  // 只显示引了笔记原话的连接；上一代深读留下的「关联某某」式连接不再显示（有「按新结构重新生成」的入口）。
+  const wiki = deep ? (brief.wiki || []).filter((k) => k.quote && (k.application || k.reason)) : [];
   const angle = deep && brief.angle ? brief.angle : c && worthIt(c) ? { direction: c.angle || "", readerValue: "", needs: [] } : null;
   // 2026-09-24 之前生成的深读是一篇四段式长文，没有关键事实；如实说明，并给一个按新结构重新生成的入口。
   const legacyDeep = deep && !brief.keyFacts;
@@ -228,6 +229,8 @@ export function EventReading({ brief, onDeep, onAddAngle, onSplit, onOpenRelated
       </section>
 
       {wiki.length > 0 && (
+        // 你的笔记是看这件事的视角：每条写清「用哪个观点 × 这件事的哪个事实 → 能讲出什么」，并附笔记原话；
+        // 切入方向建立在这些连接上，所以放在这一段的末尾，而不是另起一段各说各话。
         <section className="event-reading__part">
           <h3>与你已有知识的连接</h3>
           <ul className="event-reading__wiki">
@@ -236,13 +239,20 @@ export function EventReading({ brief, onDeep, onAddAngle, onSplit, onOpenRelated
                 <p className="event-reading__wiki-head">
                   {onGo ? <button type="button" className="text-action" onClick={() => onGo("entries", k.id)}>《{k.title}》</button> : <strong>《{k.title}》</strong>}
                   {k.relation && <span className={`event-reading__rel is-${k.relation}`}>{relationLabel[k.relation]}</span>}
-                  {k.updatedSince && <span className="event-reading__muted">这篇知识之后有更新</span>}
+                  {k.updatedSince && <span className="event-reading__muted">这篇笔记之后有更新</span>}
                 </p>
-                {(k.point || k.reason) && <p>{k.point || k.reason}</p>}
-                {k.helps && <p className="event-reading__muted">能帮你：{k.helps}</p>}
+                <p>{k.application || k.reason}</p>
+                <p className="event-reading__wiki-quote"><span>你的笔记：</span>「{k.quote}」</p>
               </li>
             ))}
           </ul>
+          {angle?.direction && (
+            <div className="event-reading__lens">
+              <p className="event-reading__lens-label">由此形成的切入方向</p>
+              <p>{angle.direction}{angle.readerValue ? <span className="event-reading__muted">（{angle.readerValue}）</span> : null}</p>
+              {angle.needs?.length > 0 && <><p className="event-reading__lens-label">还需要补充</p><p>{angle.needs.join("；")}</p></>}
+            </div>
+          )}
           <p className="event-reading__note">知识库只说明你整理过相关内容，不代表已经验证；它也不是这件事的外部证据。</p>
         </section>
       )}
@@ -255,12 +265,14 @@ export function EventReading({ brief, onDeep, onAddAngle, onSplit, onOpenRelated
             {brief.notFor && <p><span className="event-reading__muted">暂时不需要关注：</span>{brief.notFor}</p>}
           </>
         ) : brief.whyItMatters ? <p>{brief.whyItMatters}</p> : null}
+        {deep && !legacyDeep && !wiki.length && <p className="event-reading__note">你的知识库里暂未找到能直接用上的视角。</p>}
         {angle && (angle.direction || c?.reason) && (
           <div className="event-reading__creation" aria-label="创作建议">
             {c?.reason && worthIt(c) && <p className="event-reading__verdict">{c.reason}</p>}
-            {angle.direction && <p className="event-reading__angle"><span>切入方向：</span>{angle.direction}</p>}
-            {angle.readerValue && <p className="event-reading__angle"><span>读者价值：</span>{angle.readerValue}</p>}
-            {angle.needs?.length > 0 && <p className="event-reading__angle"><span>还需补充：</span>{angle.needs.join("；")}</p>}
+            {/* 有知识连接时，切入方向已经写在连接那一段的末尾，这里不再重复。 */}
+            {!wiki.length && angle.direction && <p className="event-reading__angle"><span>切入方向：</span>{angle.direction}</p>}
+            {!wiki.length && angle.readerValue && <p className="event-reading__angle"><span>读者价值：</span>{angle.readerValue}</p>}
+            {!wiki.length && angle.needs?.length > 0 && <p className="event-reading__angle"><span>还需补充：</span>{angle.needs.join("；")}</p>}
             {c?.window && worthIt(c) && <p className="event-reading__muted">{creationLine({ window: c.window })}（这是建议，要不要做、什么时候做由你决定）</p>}
             {onAddAngle && <button type="button" className="btn btn-sm" onClick={onAddAngle}>按这个方向加入选题</button>}
           </div>

@@ -177,6 +177,14 @@
 .event-reading__wiki-head .text-action { font-size: var(--fs-sm); font-weight: 600; }
 .event-reading__rel { padding: 0 7px; border-radius: 999px; color: var(--lane-knowledge); background: color-mix(in srgb, var(--lane-knowledge) 12%, transparent); font-size: var(--fs-2xs); font-weight: 600; line-height: 1.8; }
 .event-reading__rel.is-challenge { color: var(--emph); background: color-mix(in srgb, var(--emph) 12%, transparent); }
+/* 笔记原话：安静的引文样式，和外部来源的蓝色引文分开（这是你自己的笔记，不是外部证据）。 */
+.event-reading__wiki-quote { margin: 2px 0 0; padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--lane-knowledge) 40%, transparent); color: var(--text-2); font-size: var(--fs-xs) !important; line-height: 1.7; }
+.event-reading__wiki-quote span { color: var(--text-3); }
+/* 由连接形成的切入方向：和创作判断同一块淡赭底，一眼看出这是「可以怎么做」。 */
+.event-reading__lens { display: grid; gap: 2px; margin: 16px 0 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--lane-intel) 24%, transparent); border-radius: var(--r-md); background: color-mix(in srgb, var(--lane-intel) 7%, var(--surface)); }
+.event-reading__lens p { margin: 0; font-size: var(--fs-sm); line-height: 1.7; }
+.event-reading__lens .event-reading__lens-label { margin-top: 6px; color: var(--lane-intel); font-size: var(--fs-xs); font-weight: 600; }
+.event-reading__lens .event-reading__lens-label:first-child { margin-top: 0; }
 
 /* 来源清单里的「移出这件事」：低调的文字按钮，悬停才显出颜色。 */
 .event-reading__split { margin-left: 10px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: var(--fs-2xs); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

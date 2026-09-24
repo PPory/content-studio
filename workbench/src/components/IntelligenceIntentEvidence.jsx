@@ -14,6 +14,8 @@ export function IntelligenceIntentEvidence({intents,onGo}) {
     <summary>来自情报的选题意图 · {intents.length}</summary>
     {intents.map(intent=><section key={intent.operationId} className="intel-topic-content">
       {intent.creation&&<p className="research-creation">{intent.creation.angle?`切入：${intent.creation.angle} · `:''}{creationLine(intent.creation)}</p>}
+      {/* 当时帮你形成判断的知识笔记：只带引用和一句连接说明，不复制笔记全文。 */}
+      {intent.wikiLinks?.length>0&&<ul className="research-wiki-links">{intent.wikiLinks.map(k=><li key={k.id}><span>用到的知识：</span>《{k.title}》{k.application||k.point?`——${k.application||k.point}`:''}</li>)}</ul>}
       <p>{intent.notes}</p>
       {intent.angle && <div>
         <h3>{typeof intent.angle==='string'?intent.angle:intent.angle.question}</h3>
