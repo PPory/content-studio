@@ -39,7 +39,7 @@ const env = {
       { name: "场景 → 误读 → 真相 → 下一次怎么办", fit: "先让读者认出自己", sections: [{ heading: "一个熟悉的场景", purpose: "写到第三段突然心慌", uses: [] }, { heading: "你以为：我不行", purpose: "说出读者心里那句话", uses: [] }] },
       { name: "问答体", fit: "短平快", sections: [{ heading: "问：卡住是不是没天赋", purpose: "答：不是", uses: [] }] },
     ], titles: [{ text: "写到一半心慌，不是你不行", why: "反常识" }, { text: "每次写到一半就卡住？", why: "问题式" }] }, model: "mock" },
-  CONTENT_PROJECT_COMPLETE_JSON: async () => ({ data: { title: "写到一半心慌，不是你不行", body_markdown: "你一定有过这种时刻：写到第三段，突然心慌。\n\n## 卡住，真的说明没天赋吗\n\n【待补：几条真实读者的原话】\n\n## 身体在准备，不是你不行\n\n心跳加快是大脑在调资源。", note: "" } }),
+  CONTENT_PROJECT_COMPLETE_JSON: async () => ({ data: { title: "写到一半心慌，不是你不行", body_markdown: "你一定有过这种时刻：写到第三段，突然心慌。\n\n## 卡住，真的说明没天赋吗\n\n【待补：几条真实读者的原话】\n\n【待补：一份讲写作结构的资料】\n\n## 身体在准备，不是你不行\n\n心跳加快是大脑在调资源。", note: "" } }),
 };
 
 try {
@@ -57,6 +57,13 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   // 结构和初稿要调模型：在测试进程里用模拟模型跑同一段领域代码，界面走的仍是真实的请求与返回。
   await page.route("**/plan/structures", async (route) => { const r = await proposeStructures(env, w, { projectId, force: true }); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, ...r }) }); });
+  let angleCalls = 0;
+  await page.route("**/plan/angles", async (route) => {
+    angleCalls += 1;
+    if (angleCalls === 1) return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ ok: false, error: "测试：模型暂时不可用" }) });
+    const r = await proposeAngles(env, w, { projectId, force: true });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, ...r }) });
+  });
   await page.route("**/plan/draft", async (route) => { const r = await writeDraft(env, w, { projectId }); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, ...r, ...planView(w, env, projectId) }) }); });
 
   await page.goto(`${base}/#/project/${projectId}`);
@@ -75,8 +82,9 @@ try {
   await options.first().waitFor();
   check("推荐的角度有标记和理由", await flow.locator(".tf-rec").count() === 1 && (await flow.locator(".tf-why").innerText()).includes("笔记"));
   check("默认选中推荐的角度", await options.nth(0).getAttribute("aria-checked") === "true");
-  await options.nth(1).focus(); await page.keyboard.press("Enter");
-  check("键盘能换选中的角度", await options.nth(1).getAttribute("aria-checked") === "true");
+  await options.nth(0).focus(); await page.keyboard.press("ArrowDown");
+  check("方向键能换选中的角度", await options.nth(1).getAttribute("aria-checked") === "true");
+  check("顶上只有一个标题，来源写在小字里", (await flow.locator(".topic-flow__head h1").innerText()).includes("写到一半就卡住"));
   await page.screenshot({ path: screenshots.desktop, fullPage: true });
   await flow.getByRole("button", { name: "用这个角度", exact: true }).click();
 
@@ -116,15 +124,50 @@ try {
   await page.locator(".cm-content").waitFor();
   await page.locator(".cm-gap").first().waitFor();
   check("初稿直接出现在正文里，【待补】高亮", (await page.locator(".cm-content").innerText()).includes("你一定有过这种时刻"));
+  check("选的标题就是这篇的标题（不被模型起的标题盖掉）", await page.locator(".project-draft__title").inputValue() === "写到一半心慌，不是你不行");
+  // 「N 处待补」：点一下跳到下一处并选中。
+  await page.locator(".draft-trail__gaps").click();
+  check("点「N 处待补」跳到一处待补并选中", (await page.evaluate(() => String(document.getSelection()))).includes("待补"));
   check("编辑器上方有进度线", await page.locator(".draft-trail").count() === 1);
   await page.screenshot({ path: screenshots.draft, fullPage: false });
   await page.locator(".draft-trail button").nth(1).click();
   await page.getByRole("region", { name: "选角度" }).waitFor();
   check("写完初稿还能回到选角度", true);
   await page.locator(".topic-flow__trail button", { hasText: "初稿" }).click();
-  await page.locator(".cm-gap").first().click();
+  await page.locator(".cm-gap", { hasText: "一份讲写作结构的资料" }).click();
   await page.getByRole("region", { name: "补齐" }).waitFor();
-  check("点【待补】回到补齐", true);
+  check("点【待补：X】回到补齐并标出 X 那一项", await flow.locator(".tf-gap.is-focus", { hasText: "一份讲写作结构的资料" }).count() === 1);
+  // 从编辑器点回来之后往后走，再刷新数据（放进一份资料）：停在当前这一步，不被拉回补齐。
+  await flow.locator(".topic-flow__trail button", { hasText: "结构" }).click();
+  await flow.getByRole("region", { name: "定结构" }).waitFor();
+  check("已有正文时按钮写「按这个结构重写」并说明结果", await flow.getByRole("button", { name: "按这个结构重写" }).count() === 1 && (await flow.innerText()).includes("整篇对比"));
+  if (await page.locator(".piece-lib.is-collapsed").count()) await page.getByRole("button", { name: /^展开资料/ }).click();
+  await page.getByRole("button", { name: "补资料" }).click();
+  await page.getByLabel("搜资料库或贴链接").fill("https://example.com/another");
+  await page.getByRole("button", { name: /把这个链接放进来/ }).click();
+  await page.waitForTimeout(800);
+  check("刷新数据不把人拉回之前跳到的那一步", await flow.getByRole("region", { name: "定结构" }).count() === 1);
+  // 换两种结构：上一组留着，可以切回去看。
+  await flow.getByRole("button", { name: /换两种结构/ }).click();
+  await flow.getByRole("group", { name: "看哪一组结构" }).waitFor();
+  check("重新生成后上一组还在", await flow.getByRole("button", { name: "上一组" }).count() === 1);
+  // 想角度失败：说清原因，「重试」真的再请求一次。
+  await flow.locator(".topic-flow__trail button").nth(1).click();
+  await flow.getByRole("button", { name: /再想三个/ }).click();
+  await flow.locator(".tf-error").waitFor();
+  check("失败时有重试", await flow.locator(".tf-error").getByRole("button", { name: "重试" }).count() === 1);
+  await flow.locator(".tf-error").getByRole("button", { name: "重试" }).click();
+  await flow.getByRole("group", { name: "看哪一组角度" }).waitFor();
+  check("重试真的再请求了一次，成功后上一组角度还在", angleCalls === 2);
+  // 资料栏：详情就地展开，移除要两步。
+  const libItems = page.locator(".piece-lib__scroll > section li");
+  const before = await libItems.count();
+  await libItems.first().getByRole("button", { name: "详情" }).click();
+  check("详情就地展开，不离开这篇", await page.locator(".piece-lib__detail").count() === 1 && page.url().includes("#/project/"));
+  await libItems.first().getByRole("button", { name: "移除" }).click();
+  await libItems.first().getByRole("button", { name: "确认移除" }).click();
+  await page.waitForFunction((n) => document.querySelectorAll(".piece-lib__scroll > section li").length === n - 1, before);
+  check("移除要点两下，点完就从这篇拿掉", true);
 
   // 补资料：没输入时不列资料库里无关的东西；贴链接只给一行「把这个链接放进来」。
   if (await page.locator(".piece-lib.is-collapsed").count()) await page.getByRole("button", { name: /^展开资料/ }).click();
@@ -136,6 +179,8 @@ try {
   await add.getByRole("button", { name: "关闭" }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload(); await flow.waitFor();
+  check("手机上资料栏默认收成一行，流程排在前面", await page.locator(".piece-lib.is-collapsed .piece-lib__rail-label").isVisible() && (await page.locator(".piece-lib").boundingBox()).height < 60);
   await page.screenshot({ path: screenshots.mobile, fullPage: true });
   check("小屏页面没有横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   check("浏览器无页面异常", errors.length === 0);

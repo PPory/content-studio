@@ -146,7 +146,9 @@ try {
   await page.locator(".draft-trail button").first().click();
   await flow.getByRole("region",{name:"读懂"}).waitFor();
   check("正文写了也能回到选题流程",true);
-  await page.getByRole("button",{name:"跳过，直接写",exact:true}).click();
+  // 正文已经有字：顶栏写「回到正文」而不是「跳过，直接写」。
+  check("有正文时顶栏写回到正文",await page.getByRole("button",{name:"回到正文",exact:true}).count()===1&&await page.getByRole("button",{name:"跳过，直接写",exact:true}).count()===0);
+  await page.getByRole("button",{name:"回到正文",exact:true}).click();
   await editor.waitFor();
   await page.getByRole("button",{name:"导出",exact:false}).first().click();
   const [exported]=await Promise.all([page.waitForResponse(r=>r.url().includes("/export")),page.getByRole("menuitem",{name:/^Markdown/}).click()]);check("可导出文章",exported.ok());
