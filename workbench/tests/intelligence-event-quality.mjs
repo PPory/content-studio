@@ -9,7 +9,7 @@ import { addIntelligenceSource, saveIntelligenceProfile, enqueueIntelligence } f
 import { saveIntelligenceAiConsent } from '../server/domain/intelligence-pool.mjs';
 import { executeUnifiedBriefs } from '../server/domain/intelligence-unified.mjs';
 import { actionKinds, sameEvent, versionedEntities, properEntities, calibrateWorth, splitEventMembers } from '../server/domain/intelligence-events.mjs';
-import { intelligenceFeed, intelligenceBrief } from '../server/domain/intelligence-feed.mjs';
+import { intelligenceFeed, intelligenceBrief, saveFeedPreferences } from '../server/domain/intelligence-feed.mjs';
 import { requestDeepen, executeDeepen, deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { createUlid } from '../server/storage/ids.mjs';
 import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
@@ -48,10 +48,10 @@ try {
   const fiveDays = add('t2.the_decoder', 'Mistral 推出 Devstral 3 编程模型', { hours: 24 * 5 });
   const profile = saveIntelligenceProfile(w, { name: '质量测试', query: 'AI', providers: ['collected'], output: 'briefs' });
 
-  let calls = 0, lastEvents = [], development = 'more_coverage';
+  let calls = 0, lastEvents = [], lastFocus = null, development = 'more_coverage';
   const judge = { completeJson: async (_env, input) => {
     const d = JSON.parse(input.user);
-    calls++; lastEvents = d.events;
+    calls++; lastEvents = d.events; lastFocus = d.focus ?? null;
     return { data: { events: d.events.map(e => ({ id: e.id, keep: true, kind: 'event', title: `中文：${e.items[0].title.slice(0, 24)}`, summary: '概要。', whyItMatters: '意义',
       mergeInto: null, development: e.previous ? development : null, developmentNote: e.previous && development === 'new_facts' ? '这次新增的是官方定价细节' : '',
       creation: { value: 'high', window: '24h', angle: '角度', reason: '理由' } })) } };
@@ -273,8 +273,18 @@ try {
   assert.match(research.openQuestions, /官方价格表/, '开写前还缺什么进入待解决问题');
   assert.match(research.openQuestions, /没有第三方复测/, '主要的不确定项也带上');
   assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad-needs', briefIds: [deepCard.id], confirmed: true, creation: { angle: 'x', needs: 'not-a-list' } }), e => e.status === 400);
+  // 关注方向：没设过时不带；设了之后判断输入带上方向，并且重判一次；之后照常用缓存。
+  assert.equal(lastFocus, null, '系统默认方向不注入判断');
+  const beforeFocus = calls;
+  saveFeedPreferences(w, { directions: ['AI 编程工具', '模型定价'] });
+  await update();
+  assert.deepEqual(lastFocus, ['AI 编程工具', '模型定价'], '判断输入带上用户自己设的关注方向');
+  assert.ok(calls > beforeFocus, '改了方向，下次更新重判');
+  const afterFocus = calls;
+  await update();
+  assert.equal(calls, afterFocus, '方向没变就照常用缓存');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity (no person-name bridges, unjudged cards refreshed) passed');
+  console.log('intelligence-event-quality: focus directions, merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity (no person-name bridges, unjudged cards refreshed) passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });

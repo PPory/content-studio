@@ -280,7 +280,14 @@ export function eventStats(event) {
 }
 // 规则版本进指纹：判断字段变了，现有事件各重判一次。成员的内容版本也进指纹：同一条来源内容变了要重判。
 export const JUDGE_VERSION = 'event-v5';
-const memberFingerprint = e => sha256Json([JUDGE_VERSION, ...e.members.map(m => `${m.id}:${m.row?.content_hash || ''}`).sort()]);
+// 用户的关注方向也进指纹：改了方向，下次更新重判一次。一次更新里只在判断开始时读一次。
+let focusSig = '[]';
+const memberFingerprint = e => sha256Json([JUDGE_VERSION, focusSig, ...e.members.map(m => `${m.id}:${m.row?.content_hash || ''}`).sort()]);
+/** 用户自己设过的关注方向（系统默认方向不算：不拿别人的偏好给你排序）。 */
+export function userFocus(w) {
+  const row = w.db.prepare('SELECT data_json FROM intel_feed_preferences WHERE id=1').get();
+  try { const d = row ? JSON.parse(row.data_json) : null; return Array.isArray(d?.directions) ? d.directions.filter(x => typeof x === 'string' && x.trim()).slice(0, 8) : []; } catch { return []; }
+}
 const memberIds = e => e.members.map(m => m.id).sort();
 
 // ── 批量判断 ────────────────────────────────────────────────────
@@ -302,6 +309,7 @@ const JUDGE_SYSTEM = [
   '对每个事件判断 keep：只有与 AI 直接实质相关（模型、智能体、AI 产品与应用、AI 研究、AI 行业与政策、AI 实践经验）且有具体信息量时为 true；纯营销、泛科技、与 AI 无关、空洞转发为 false。',
   'kind：event=新闻/发布/研究/行业事件；discussion=社区里被热烈讨论的问题或经验；practice=个人实践、方法与心得。',
   'title：中文陈述句，30 字左右，只写输入里能看到的事实，不夸大，不写成问句。summary：两句、100 字以内，说清发生了什么，不补充输入里没有的数字和细节。whyItMatters：一句、40 字以内，说明对 AI 从业者或创作者的具体意义，不写空话。',
+  '输入带 focus 时，那是这位创作者自己写的关注方向：符合方向、又有具体可做角度的事件，creation.value 可以高一档；不符合方向的照常判断 keep，不因此判为无关；与 AI 无关或信息量低的事件不能因为沾上方向就判高。',
   '如果两个输入事件其实是同一件事，在较小的那个上填 mergeInto=另一个事件的 id。只提到同一个型号不等于同一件事：发布、被曝漏洞、有人做了实践是不同的事，不要合并。',
   '带 previous 的事件是之前判断过、这次来了新资料的：对照 previous 判断 development=new_facts（有新的事实、数字、进展）或 more_coverage（只是更多报道或转述）；new_facts 时写 developmentNote，一句「这次新增的是……」，只写输入里能看到的。',
   '对 keep=true 的事件再给 creation（创作判断），读者是这位创作者本人：value=high|medium|low（值不值得专门做一条内容；好新闻不等于值得做）。high 每批最多 5 个，只给真正值得专门做一条的；medium 给有明确可做角度的；其余一律 low。参考 sources 来源数、discussions 讨论数、zhSources 中文来源数、participants 参与数：英文圈热而中文报道少的更值得做。',
@@ -314,6 +322,8 @@ const JUDGE_SYSTEM = [
  */
 export async function judgeEvents(w, env, events, deps = {}) {
   const at = deps.now || Date.now();
+  const focus = userFocus(w);
+  focusSig = JSON.stringify(focus);
   const splits = splitPairs(w);
   for (const e of events) { e.cached = readState(w, `event-judge:${e.key}`); e.anchorAt = e.cached?.result?.progressAt ? Date.parse(e.cached.result.progressAt) : e.latestAt; }
   // 7 天内的事件都有资格；近 72 小时的先判，同档按热度。数量上限不变，调用次数不变。
@@ -333,7 +343,7 @@ export async function judgeEvents(w, env, events, deps = {}) {
     const chunk = todo.slice(i, i + JUDGE_CHUNK), ids = new Set(chunk.map(e => e.key));
     try {
       calls++;
-      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e), ...(previousOf(e) ? { previous: previousOf(e) } : {}) })) }), maxTokens: 14000 });
+      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', ...(focus.length ? { focus } : {}), events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e), ...(previousOf(e) ? { previous: previousOf(e) } : {}) })) }), maxTokens: 14000 });
       deps.assertCurrent?.();
       for (const r of Array.isArray(response.data?.events) ? response.data.events : []) {
         if (!r || !ids.has(r.id)) continue;
