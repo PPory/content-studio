@@ -79,3 +79,17 @@
 .anchored-popover__trigger:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 .intel-resource-filter-details { margin: 12px 0; color: var(--text-3); font-size: var(--fs-xs); }
 .intel-resource-filter-details > summary { cursor: pointer; }
+
+/* ── 「···」菜单（页头和卡片共用） ──────────────────────────────
+   一行一项、不折行；需要时下面一行灰色小字说明会发生什么。面板带一层很淡的阴影，
+   浮在卡片之上——没有阴影时白色面板和白色卡片糊成一片，看不出是弹出来的。 */
+.anchored-popover__panel.intel-menu { display: grid; gap: 1px; min-width: 196px; padding: 4px; box-shadow: 0 6px 20px rgba(15, 15, 20, 0.08), 0 1px 3px rgba(15, 15, 20, 0.06); }
+.intel-menu :is(a, button) { display: flex; align-items: center; min-height: 32px; margin: 0; padding: 6px 10px; border: 0; border-radius: var(--r-ctl); background: none; color: var(--text-1); font: inherit; font-size: var(--fs-sm); font-weight: 400; line-height: 1.4; text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.intel-menu :is(a, button):hover { background: var(--surface-2); color: var(--text-1); }
+.intel-menu :is(a, button):focus-visible { outline: 2px solid var(--text-1); outline-offset: -2px; }
+.intel-menu a[aria-current="page"] { font-weight: 600; }
+/* 去处和设置之间一条细线。 */
+.intel-menu a + button { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 var(--r-ctl) var(--r-ctl); padding-top: 9px; }
+.intel-menu .intel-menu-item { flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 7px 10px; }
+.intel-menu .intel-menu-item small { color: var(--text-3); font-size: var(--fs-2xs); line-height: 1.4; }
+@media (prefers-color-scheme: dark) { .anchored-popover__panel.intel-menu { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); } }

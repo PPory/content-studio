@@ -59,7 +59,9 @@
 .intel-acts { display: inline-flex; flex: none; align-items: center; gap: 2px; }
 .intel-acts > * { opacity: 0; transition: opacity 0.14s var(--ease); }
 :is(.intel-card, .row):is(:hover, :focus-within) .intel-acts > *,
-.intel-acts > :is([aria-pressed="true"], .topic-linked, .topic-links) { opacity: 1; }
+.intel-acts > :is([aria-pressed="true"], .topic-linked, .topic-links, .is-state),
+/* 菜单打开时它所在的按钮必须不透明，否则鼠标一离开卡片，整个菜单跟着变淡。 */
+.intel-acts > :has(.anchored-popover__panel) { opacity: 1; }
 .intel-act, .intel-acts .anchored-popover__trigger {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   height: 28px; min-height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--r-ctl);
@@ -74,9 +76,11 @@
 /* 已加入选题：品牌绿本来就是「走到哪儿了」的颜色。 */
 .intel-acts :is(.topic-linked, .topic-links .anchored-popover__trigger) { color: var(--brand); font-weight: 500; }
 .unified-card-more { margin: 0; }
-.unified-card-menu, .topic-links__menu { display: grid; min-width: 205px; }
-.unified-card-menu button, .topic-links__menu button { border: 0; background: none; text-align: left; padding: 10px; color: var(--text-1); font: inherit; cursor: pointer; }
-.unified-card-menu button:hover, .topic-links__menu button:hover { background: var(--surface-2); }
+.topic-links__menu { display: grid; min-width: 205px; }
+.topic-links__menu button { border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: var(--r-ctl); color: var(--text-1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.topic-links__menu button:hover { background: var(--surface-2); }
+/* 收藏页常驻的「移出收藏」：文字按钮，和图标按钮同高。 */
+.intel-act--text { padding: 0 8px; color: var(--text-2); }
 
 /* ── 列表模式：同一套标记和动作。标题列固定宽度，概要才能对齐成一列。 ── */
 .intel-rows .brief-row__open { flex: 0 0 34%; max-width: 34%; }
