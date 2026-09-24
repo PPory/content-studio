@@ -127,7 +127,9 @@ function briefSummary(w,id){
   return {id:r.id,title:d.title||'',summary:d.summary||'',whyItMatters:d.whyItMatters||'',depth:d.depth||'headline',body:String(d.body||'').slice(0,6000),
    keyFacts:(d.keyFacts||[]).map(f=>typeof f==='string'?f:f?.text).filter(Boolean).slice(0,6),useFor:d.useFor||'',notFor:d.notFor||'',uncertainties:(d.uncertainties||[]).slice(0,4),
    wiki:(d.wiki||[]).filter(k=>k?.id).slice(0,4).map(k=>({id:k.id,title:k.title||'',quote:k.quote||'',application:k.application||k.reason||''})),
-   sources:(d.evidence||[]).map(e=>e.sourceId).filter((x,i,a)=>x&&a.indexOf(x)===i).slice(0,8)};
+   sources:(d.evidence||[]).map(e=>e.sourceId).filter((x,i,a)=>x&&a.indexOf(x)===i).slice(0,8),
+   // 解读正文里的 [引文N] 对应 evidence 的第 N 条（和情报详情同一编号，见 intelligenceReadingSources）：给原话、来源标题和原文链接，选题里点角标就能核对。
+   citations:(d.evidence||[]).slice(0,30).map((e,i)=>{let src=null;try{const row=w.db.prepare('SELECT * FROM intel_sources WHERE id=?').get(e.sourceId);src=row?sourceFromRow(row):null;}catch{}return {number:i+1,quote:String(e.quote||'').slice(0,400),title:src?.title||'',url:src?.url||''};})};
  }catch{return null;}
 }
 export function researchIntelligenceIntents(w,id){

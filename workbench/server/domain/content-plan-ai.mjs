@@ -141,7 +141,7 @@ export async function proposeAngles(env, w, { projectId, force = false } = {}) {
 }
 
 /** 选定一个角度（或自己写的一句）：写回构思，缺口成为清单项；已写的构思和清单不覆盖，只追加。 */
-export function chooseAngle(w, projectId, { angleId = "", own = "" } = {}) {
+export function chooseAngle(w, projectId, { angleId = "", own = "", from = "" } = {}) {
   const { nb, plan } = readPlan(w, projectId);
   let angle;
   if (own) {
@@ -149,7 +149,8 @@ export function chooseAngle(w, projectId, { angleId = "", own = "" } = {}) {
     if (!text) throw bad("先写一句你想讲的角度");
     angle = { id: "own", how: "", title: text, was: "", is: "", audience: "", gain: "", wiki: null, gaps: [] };
   } else {
-    angle = plan.angles?.items?.find((a) => a.id === angleId);
+    // from: "prev"——从上一组里选（重新想过之后又觉得上一组的更好）。
+    angle = (from === "prev" ? plan.anglesPrev : plan.angles)?.items?.find((a) => a.id === angleId);
     if (!angle) throw bad("这个角度已经不在了，请刷新后再选", 409);
   }
   const changed = plan.chosenAngleId !== angle.id || plan.chosenAngle?.title !== angle.title;
@@ -206,8 +207,14 @@ export async function proposeStructures(env, w, { projectId, force = false } = {
   return planView(w, env, projectId);
 }
 
-export function chooseStructure(w, projectId, { structure = 0, title = 0 } = {}) {
-  const { plan } = readPlan(w, projectId);
+export function chooseStructure(w, projectId, { structure = 0, title = 0, from = "" } = {}) {
+  let { plan } = readPlan(w, projectId);
+  // 从上一组里选：两组对调，写初稿用的就是选中的那一组；刚才那组变成「上一组」，还能切回来。
+  if (from === "prev") {
+    if (!plan.structuresPrev?.items?.length) throw bad("上一组结构已经不在了，请刷新后再选", 409);
+    writePlan(w, projectId, { structures: plan.structuresPrev, structuresPrev: plan.structures });
+    plan = readPlan(w, projectId).plan;
+  }
   if (!plan.structures?.items?.[structure]) throw bad("这个结构已经不在了，请刷新后再选", 409);
   if (!plan.structures.titles?.[title]) throw bad("这个标题已经不在了，请刷新后再选", 409);
   // 一篇只有一个标题（正文标题）：选标题就是改它。已经有主稿就直接改主稿标题（正文不动，留版本）；
@@ -232,6 +239,8 @@ export async function writeDraft(env, w, { projectId } = {}) {
     instruction: `标题用「${title}」。结构只决定每一节讲什么；小标题用文章自己的说法，要自然、像给读者看的，不要照抄结构里的小标题，也不要写「开头：」「其实：」这类标签。缺的材料写成【待补：具体缺什么】。`,
   });
   const master = w.db.prepare("SELECT d.id,d.body_markdown body FROM drafts d JOIN project_primary_drafts p ON p.draft_id=d.id AND p.project_id=?").get(projectId);
+  // 第四步选过标题就用选的那个（一篇只有一个标题，选标题就是改它）；模型自己起的标题只在没选过时用。
+  if (plan.titleChosen && title) draft.title = title;
   const gaps = (draft.body.match(/【待补[:：][^】]*】/g) || []).length;
   const words = draft.body.replace(/\s+/g, "").length;
   if (master && !String(master.body || "").trim()) {
