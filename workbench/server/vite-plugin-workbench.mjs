@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import { finishAcquisitionBatches } from './acquisition/batches.mjs';
 import { scheduleAcquisition } from './acquisition/runner.mjs';
 import { scheduleIntelligence } from "./domain/intelligence.mjs";
@@ -63,6 +65,17 @@ export async function startLocalWorkspaceRuntime(env = {}, jobDependencies = {})
 export function workbenchApi(env, { jobDependencies = {} } = {}) {
   return {
     name: "creator-workbench-api",
+    /**
+     * ⚠️ 测试和预览（XENHO_HOME 在系统临时目录里）用自己的依赖预构建缓存，不碰 `node_modules/.vite`。
+     * 两边共用一份时，测试起的服务一重建依赖，正开着的工作台窗口再加载页面就会拿到过期的依赖、
+     * 内容打不开（2026-09-24 真实发生过）。正式运行不走这条，缓存位置照旧。
+     */
+    config() {
+      const home = runtimeXenhoHome(env);
+      const relative = home ? path.relative(os.tmpdir(), path.resolve(home)) : "";
+      if (!home || !relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+      return { cacheDir: path.join(os.tmpdir(), "xenho-vite-test-cache") };
+    },
     configureServer(server) {
       // 启动失败的原因要留住。只写日志的话，界面上只剩一句「尚未就绪」，
       // 而 tmp/dev-server.err.log 没有任何入口提到过——用户看到的是一个查不出原因的死局。
