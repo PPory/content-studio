@@ -132,20 +132,25 @@ export function IntelligenceUnified({view="intel",state,onGo}) {
   </>;
   const pickBox=item=><label className="brief-card__pick"><input type="checkbox" aria-label={`选择：${item.title}`} checked={selected.includes(item.id)} disabled={!selected.includes(item.id)&&selected.length>=8} onChange={()=>pick(item.id)}/></label>;
   const materials=item=>item.event?[`${item.event.sourceCount} 个来源`,item.event.discussionCount?`${item.event.discussionCount} 条讨论`:"",shortDate(item.primaryDate||item.event.latestAt)].filter(Boolean).join(" · "):`${cardMeta(item)}${item.sourceCount?` · ${item.sourceCount} 份材料`:""}${item.editorialState!=="ready"?" · 待复核":""}`;
-  const unread=item=>!item.read&&<span className="intel-dot" role="img" aria-label="未读"/>;
+  // 未读圆点不占文字行的位置：卡片和目录里放在左上角的留白里，列表行里给已读的也留一个同宽的空位——
+  // 否则有点和没点的两张卡，后面的标记、标题会错开（2026-09-24 用户指出）。
+  const unread=item=>!item.read&&<span className="intel-dot intel-dot--corner" role="img" aria-label="未读"/>;
+  const unreadSlot=item=><span className={`intel-dot-slot ${item.read?"":"is-unread"}`} role={item.read?undefined:"img"} aria-label={item.read?undefined:"未读"}/>;
   // 整张卡可点（按钮、勾选框除外）；标题仍是按钮，键盘从它进入。
   const openRow=(event,item)=>{if(event.target.closest("button,a,input,label,[role=menu],.anchored-popover"))return;setPeekId(item.id);};
   // 每张卡同一个骨架：顶行（未读点 + 标记 + 勾选框）、两行标题、两行概要、底行（信息 + 动作）。同一排等高，底行贴底。
   const card=item=><article className={`brief-card intel-card ${item.read?"is-read":""} ${peekId===item.id?"is-active":""} ${selected.includes(item.id)?"is-picked":""}`} key={item.id} data-brief={item.id} onClick={e=>openRow(e,item)}>
-    <div className="intel-card__top">{unread(item)}<span className="intel-card__marks">{marks(item)}</span>{pickBox(item)}</div>
-    <button type="button" className="brief-card__title" onClick={()=>setPeekId(item.id)}>{item.title}</button>
+    {unread(item)}
+    <div className="intel-card__top"><span className="intel-card__marks">{marks(item)}</span>{pickBox(item)}</div>
+    {/* 标题从顶端排：按钮默认把内容垂直居中，单行标题会落在两行高度的中间，和旁边的两行标题错开。 */}
+    <button type="button" className="brief-card__title" onClick={()=>setPeekId(item.id)}><span>{item.title}</span></button>
     <p className="brief-card__summary">{item.summary}</p>
     <footer className="intel-card__foot"><span className="brief-card__meta">{materials(item)}</span><span className="intel-acts">{controls(item)}</span></footer>
   </article>;
   // 列表行走共用的 `.rows / .row`（Wiki、选题同一种）：未读点、标题、概要、标记与信息、悬停出现的动作。
-  const row=item=><div className={`row brief-row ${item.read?"is-read":""} ${peekId===item.id?"is-active":""} ${selected.includes(item.id)?"is-picked":""}`} key={item.id} data-brief={item.id}><div className="row-head">{pickBox(item)}<button type="button" className="row-title brief-row__open" onClick={()=>setPeekId(item.id)}>{unread(item)}{item.title}</button><span className="brief-row__summary">{item.summary}</span><span className="row-meta"><span className="intel-row__info">{marks(item)}<span className="brief-card__meta">{materials(item)}</span></span><span className="intel-row__acts intel-acts">{controls(item)}</span></span></div></div>;
+  const row=item=><div className={`row brief-row ${item.read?"is-read":""} ${peekId===item.id?"is-active":""} ${selected.includes(item.id)?"is-picked":""}`} key={item.id} data-brief={item.id}><div className="row-head">{pickBox(item)}{unreadSlot(item)}<button type="button" className="row-title brief-row__open" onClick={()=>setPeekId(item.id)}>{item.title}</button><span className="brief-row__summary">{item.summary}</span><span className="row-meta"><span className="intel-row__info">{marks(item)}<span className="brief-card__meta">{materials(item)}</span></span><span className="intel-row__acts intel-acts">{controls(item)}</span></span></div></div>;
   // 详情打开时左边换成紧凑目录：标题 + 标记与来源数，一屏扫十几条，动作都在详情底栏。
-  const indexItem=item=><li key={item.id} data-brief={item.id} className={`intel-index__item ${item.read?"is-read":""} ${peekId===item.id?"is-active":""}`} onClick={e=>openRow(e,item)}><button type="button" className="intel-index__title" aria-current={peekId===item.id?"true":undefined} onClick={()=>setPeekId(item.id)}>{unread(item)}{item.title}</button><p className="intel-index__meta">{marks(item)}<span>{item.event?`${item.event.sourceCount} 个来源 · ${shortDate(item.primaryDate||item.event.latestAt)}`:cardMeta(item)}</span></p></li>;
+  const indexItem=item=><li key={item.id} data-brief={item.id} className={`intel-index__item ${item.read?"is-read":""} ${peekId===item.id?"is-active":""}`} onClick={e=>openRow(e,item)}>{unread(item)}<button type="button" className="intel-index__title" aria-current={peekId===item.id?"true":undefined} onClick={()=>setPeekId(item.id)}>{item.title}</button><p className="intel-index__meta">{marks(item)}<span>{item.event?`${item.event.sourceCount} 个来源 · ${shortDate(item.primaryDate||item.event.latestAt)}`:cardMeta(item)}</span></p></li>;
   const updating=Boolean(data?.activeRuns?.length);
   // 只提示需要你做事的：还没授权的新资料。旧流程逐份处理留下的失败 / 待补上下文计数现在不再产生，挂着只会一直吓人。
   const processingProblem=Boolean(data?.processing?.permissionRequired);

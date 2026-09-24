@@ -29,9 +29,11 @@
 .intel-card__marks { display: flex; flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .intel-card__top .brief-card__pick { flex: none; margin-left: auto; }
 .intel-workspace.intel-unified .intel-card .brief-card__title {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: flex; align-items: flex-start; overflow: hidden;
   min-height: calc(2 * 1.5 * var(--fs-base)); font-size: var(--fs-base); line-height: 1.5; letter-spacing: 0;
 }
+/* 两行截断放在里层：外层按钮用 flex 顶端对齐，单行标题的首行和两行标题的首行在同一高度。 */
+.intel-workspace.intel-unified .intel-card .brief-card__title > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .intel-workspace.intel-unified .intel-card .brief-card__summary {
   -webkit-line-clamp: 2; min-height: calc(2 * 1.7 * var(--fs-sm)); margin: 0;
   font-size: var(--fs-sm); line-height: 1.7; color: var(--text-2);
@@ -44,7 +46,13 @@
 
 /* 未读：标题前的一个小圆点。卡片里放在顶行，行和目录里放在标题前。 */
 .intel-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-:is(.brief-row__open, .intel-index__title) > .intel-dot { margin-right: 7px; vertical-align: middle; transform: translateY(-1px); }
+/* 卡片和目录：未读点放在左上角的留白里，不占文字行的位置。 */
+.intel-card, .intel-index__item { position: relative; }
+.intel-dot--corner { position: absolute; top: 20px; left: 5px; }
+.intel-index__item > .intel-dot--corner { top: 19px; left: 4px; }
+/* 列表行：已读的也留同宽的空位，标题列始终对齐。 */
+.intel-dot-slot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+.intel-dot-slot.is-unread { background: var(--accent); }
 
 /* ── 标记：只给会改变判断的东西上色（规则见 docs/design-system.md「状态」） ── */
 .intel-marks { display: inline-flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
