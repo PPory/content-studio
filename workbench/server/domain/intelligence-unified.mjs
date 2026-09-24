@@ -3,6 +3,7 @@ import { processingHash, REVIEW_RULE_VERSION } from '../acquisition/relevance.mj
 import { sourcePermission } from '../acquisition/compatibility.mjs';
 import { saveStep, stepState, updateRun, intelligenceRun } from './intelligence.mjs';
 import { admitSources, clusterEvents, judgeEvents, upsertEventCards } from './intelligence-events.mjs';
+import { summarizeBuilders } from './intelligence-digest.mjs';
 import { inIntelligencePool, sourceIsFresh, poolChannelSql, RECOMMEND_WINDOW_MS } from './intelligence-pool.mjs';
 
 const now=()=>new Date().toISOString();
@@ -79,7 +80,9 @@ export async function executeUnifiedBriefs(w,env,runId,deps={}) {
  const judged=await judgeEvents(w,env,events,deps);
  deps.assertCurrent?.();
  const cards=upsertEventCards(w,runId,events,{mergeBriefIdentities});
- const summary={...unifiedSummary(w),intakeReady:true,admitted,events:events.length,judge:judged,newCount:cards.created,updatedCount:cards.updated,withheld:cards.withheld};
+ // 速览里 Follow Builders 的中文摘要：批量一次，失败不影响这次更新。
+ const builders=await summarizeBuilders(w,env,deps);
+ const summary={...unifiedSummary(w),intakeReady:true,admitted,events:events.length,judge:judged,builders,newCount:cards.created,updatedCount:cards.updated,withheld:cards.withheld};
  const acquisition=stepState(w,runId,'acquire');
  const acquisitionFailures=acquisition.batchId?w.db.prepare("SELECT count(*) n FROM acquisition_runs WHERE batch_id=? AND status IN ('failed','blocked')").get(acquisition.batchId).n:0;
  saveStep(w,runId,'unified','done',{...summary,acquisitionFailures});

@@ -1,6 +1,7 @@
 import {exploreIntelligenceAngles} from '../domain/intelligence-angles.mjs';
 import {requestDeepen} from '../domain/intelligence-deepen.mjs';
 import {splitEventMembers} from '../domain/intelligence-events.mjs';
+import {intelligenceDigest} from '../domain/intelligence-digest.mjs';
 import {canonicalBriefId} from '../domain/intelligence-unified.mjs';
 import { json,fail,readJsonBody } from '../lib/http.mjs';
 import { intelligenceFeed,intelligenceFeedSummary,intelligenceBrief,feedbackIntelligenceBrief,blockIntelligenceSource,mergeIntelligenceBriefs,saveFeedPreferences,refreshIntelligenceFeed,createIntelligenceReport,saveIntelligenceSettings } from '../domain/intelligence-feed.mjs';
@@ -9,6 +10,8 @@ const base='/api/workspace/intelligence';
 export const intelligenceFeedRoutes=[
  route('POST',base+'/briefs/:id/angles',async({workspace,env,params})=>await exploreIntelligenceAngles(workspace,env,params.id)),
  route('GET',base+'/feed',({workspace,env})=>intelligenceFeed(workspace,{env})),
+ // 速览：AIhot 精选 / Follow Builders 按天原样列出，标出已进热点的。只读已采集的数据。
+ route('GET',base+'/digest',({workspace,url})=>intelligenceDigest(workspace,{kind:url?.searchParams?.get('kind')||'selected',days:url?.searchParams?.get('days')})),
  // 一次性授权与自动更新开关；授权放开后立即完整更新一次
  route('POST',base+'/feed/settings',({workspace,env,body})=>saveIntelligenceSettings(workspace,body,env)),
  // 首页那一行只要三个数，不该为此把 300 条简报正文搬一遍

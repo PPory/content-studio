@@ -180,14 +180,25 @@ export function linkIntelligenceSource(w,id,input={}) {
   if(!target&&!question)throw bad("请选择选题或填写一个问题");
   return w.repository.transaction(()=>{
     const source=intelligenceSource(w,id);
-    assertSourcePermission(source);
+    // 采集来的资料默认只允许本地阅读：没有导出许可时只把标题和原文链接挂进选题，不复制正文
+    // （和热点卡加入选题一致）。撤回了 AI 许可的仍然拒绝。
+    const exportable=sourcePermission(source,'export');
+    if(!exportable){
+      if(source.acquisition&&!sourcePermission(source,'ai'))assertSourcePermission(source);
+      if(!/^https?:\/\//i.test(source.url||''))throw bad("这条资料没有原文链接，暂时不能带入选题");
+    }
     const row=w.db.prepare("SELECT capture_id FROM intel_sources WHERE id=?").get(id);
-    let captureId=row.capture_id;
+    // 只挂链接的不记到资料上：capture_id 表示「正文已复制进研究」，会按导出许可检查。
+    let captureId=exportable?row.capture_id:null;
     if(captureId && w.repository.getEntity(captureId)?.type!=="capture")throw bad("来源资料已移除，请先恢复资料",404);
     let research=target?getResearch(w,target):null;
     if(!research&&captureId){const previous=w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL JOIN research_references f ON f.research_id=r.id WHERE r.question=? AND f.kind='capture' AND f.entity_id=?").get(question,captureId);if(previous)research=getResearch(w,previous.id);}
+    // 只挂链接的没有记在资料上，按「同一个问题 + 同一个原文链接」去重，重复点不会多建选题、多挂链接。
+    let linkCapture=null;
+    if(!exportable){const previous=w.db.prepare("SELECT r.id,c.id capture FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL JOIN research_references f ON f.research_id=r.id AND f.kind='capture' JOIN captures c ON c.id=f.entity_id JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL WHERE c.source_url=? AND (r.id=? OR (?='' AND r.question=?)) LIMIT 1").get(source.url,target,target,question);if(previous){research=getResearch(w,previous.id);linkCapture=previous.capture;}}
+    if(linkCapture)return research;
     if(!research)research=createResearch(w,{question});
-    if(!captureId){captureId=w.domain.createCapture({kind:source.url?"web":"excerpt",title:source.title,bodyMarkdown:source.body,sourceUrl:source.url,actor:"user",confirmed:true});w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(captureId,id);}
+    if(!captureId){captureId=w.domain.createCapture({kind:source.url?"web":"excerpt",title:source.title,bodyMarkdown:exportable?source.body:"",sourceUrl:source.url,actor:"user",confirmed:true});if(exportable)w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(captureId,id);}
     researchReference(w,research.id,{kind:"capture",id:captureId});
     return getResearch(w,research.id);
   });

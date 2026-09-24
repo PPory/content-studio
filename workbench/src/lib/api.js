@@ -48,6 +48,7 @@ export const api = {
   intelligenceRefreshFeed: () => postJson("/api/workspace/intelligence/feed/refresh", {}),
   intelligenceSaveSettings: (input) => postJson("/api/workspace/intelligence/feed/settings", input),
   intelligenceDeepen: (id, input = {}) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/deepen`, input),
+  intelligenceDigest: (kind) => req(`/api/workspace/intelligence/digest?kind=${encodeURIComponent(kind)}`),
   intelligenceSplit: (id, sourceIds) => postJson(`/api/workspace/intelligence/briefs/${encodeURIComponent(id)}/split`, { sourceIds, confirmed: true }),
   intelligenceReport: () => postJson("/api/workspace/intelligence/reports", {}),
   intelligencePreferences: body => postJson("/api/workspace/intelligence/preferences", body),
