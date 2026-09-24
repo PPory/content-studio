@@ -49,12 +49,16 @@ export function intelligenceDigest(w, { kind = 'selected', days = 7 } = {}) {
   const hidden = kind === 'builders' ? list.filter(r => ['filtered', 'out_of_scope'].includes(r.unified_status)).length : 0;
   const shown = kind === 'builders' ? list.filter(r => !['filtered', 'out_of_scope'].includes(r.unified_status)) : list;
   const hot = hotCards(w, shown.map(r => r.id));
+  // 卡片流（沿用最早 AIhot 热点页的呈现）：信源、完整摘要、AIhot 详情链接；Follow Builders 给显示名、互动数和推文全文。
+  // 播客转写动辄几万字，不下发，只给节目名和标题。已过保留期的资料 sourceFromRow 已清空 metadata，链接跟着消失。
   const items = shown.map(row => {
-    const s = sourceFromRow(row), publishedAt = new Date(row.at).toISOString(), body = String(s.body || '').replace(/\s+/g, ' ').trim();
-    const base = { id: row.id, title: s.title || body.slice(0, 80) || '未命名资料', url: s.url || '', publishedAt, day: dayOf(publishedAt), hot: hot.get(row.id) || null };
-    return kind === 'selected'
-      ? { ...base, summary: body.slice(0, 160) }
-      : { ...base, author: s.author || '', kind: row.source_kind === 'podcast_transcript' ? 'podcast' : 'post', text: body.slice(0, 400), zh: builderSummary(w, row) };
+    const s = sourceFromRow(row), m = s.metadata || {}, publishedAt = new Date(row.at).toISOString(), body = String(s.body || '').trim();
+    const flat = body.replace(/\s+/g, ' ');
+    const base = { id: row.id, title: s.title || flat.slice(0, 80) || '未命名资料', url: s.url || '', publishedAt, day: dayOf(publishedAt), hot: hot.get(row.id) || null };
+    if (kind === 'selected') return { ...base, summary: flat.slice(0, 400), source: m.source?.name || s.author || '', aihotUrl: m.links?.aihot || '' };
+    const podcast = row.source_kind === 'podcast_transcript', num = v => Number.isFinite(v) ? v : null;
+    return { ...base, author: s.author || '', name: typeof m.attribution === 'string' ? m.attribution : '', kind: podcast ? 'podcast' : 'post',
+      text: podcast ? '' : body.replace(/[ \t]*\n\s*\n\s*/g, '\n').slice(0, 1500), zh: builderSummary(w, row), likes: num(m.likes), replies: num(m.replies), retweets: num(m.retweets) };
   });
   const days_ = [];
   for (const item of items) { let g = days_.at(-1); if (!g || g.day !== item.day) days_.push(g = { day: item.day, items: [] }); g.items.push(item); }

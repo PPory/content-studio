@@ -35,6 +35,9 @@ try {
   // 发布时间不是 ISO 格式的旧资料：不能被按文本当成最新的混进来。
   const odd = add('aihot.selected', 'Claude in Chrome is generally available', { hours: 1 });
   w.db.prepare("UPDATE intel_sources SET data_json=json_set(data_json,'$.publishedAt','Tue, 26 Aug 2026 00:00:00 GMT'),created_at=? WHERE id=?").run(iso(now - 30 * 24 * H), odd.id);
+  // 卡片流要的字段：AIhot 的信源名和详情链接、Follow Builders 的显示名和互动数。
+  w.db.prepare(`UPDATE intel_sources SET data_json=json_set(data_json,'$.metadata',json(?)) WHERE id=?`).run(JSON.stringify({ source: { name: 'X：Claude Devs (@ClaudeDevs)' }, links: { aihot: 'https://aihot.news/items/q1' } }), quiet.id);
+  w.db.prepare(`UPDATE intel_sources SET data_json=json_set(data_json,'$.metadata',json(?)) WHERE id=?`).run(JSON.stringify({ attribution: 'Nikunj Kothari', likes: 120, replies: 8 }), tweet.id);
   const profile = saveIntelligenceProfile(w, { name: '速览测试', query: 'AI', providers: ['collected'], output: 'briefs' });
 
   let summaryCalls = 0, summaryFails = false, lastSummaryIds = [];
@@ -71,6 +74,7 @@ try {
   assert.equal(hotItem.hot?.briefId, card.id, '已进热点的指向那张卡');
   assert.equal(quietItem.hot, null, '没进热点的标为 null');
   assert.ok(quietItem.summary.length > 0);
+  assert.equal(quietItem.source, 'X：Claude Devs (@ClaudeDevs)'); assert.equal(quietItem.aihotUrl, 'https://aihot.news/items/q1');
   assert.equal(selected.inHot, 1);
   // 被合并掉的别名卡不算「在热点里」。
   const other = w.db.prepare("SELECT id FROM intel_briefs WHERE id<>? AND story_key LIKE 'event:%' LIMIT 1").get(card.id);
@@ -84,7 +88,11 @@ try {
   const builders = intelligenceDigest(w, { kind: 'builders' }).days.flatMap(d => d.items);
   const t = builders.find(i => i.id === tweet.id), p = builders.find(i => i.id === podcast.id);
   assert.equal(t.author, 'nikunj'); assert.equal(t.kind, 'post'); assert.equal(t.zh, '中文摘要：nikunj 说的事');
-  assert.equal(p.kind, 'podcast');
+  assert.equal(t.name, 'Nikunj Kothari'); assert.equal(t.likes, 120); assert.equal(t.replies, 8); assert.equal(t.retweets, null, '没有的互动数给 null');
+  assert.ok(t.text.startsWith('I spend ~2 hours'), '推文给全文');
+  w.db.prepare("UPDATE intel_sources SET data_json=json_set(data_json,'$.body',?) WHERE id=?").run('First line.\n\n \nSecond line.', tweet.id);
+  assert.equal(intelligenceDigest(w, { kind: 'builders' }).days.flatMap(d => d.items).find(i => i.id === tweet.id).text, 'First line.\nSecond line.', '空行合并，引文不留大段空白');
+  assert.equal(p.kind, 'podcast'); assert.equal(p.text, '', '播客转写不下发');
   assert.throws(() => intelligenceDigest(w, { kind: 'dailies' }), e => e.status === 400, '不放 AIhot 日报');
 
   // 加入选题：采集资料没有导出许可，只挂标题和原文链接，不复制正文，也不记到资料上。
