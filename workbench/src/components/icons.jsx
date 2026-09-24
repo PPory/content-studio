@@ -118,6 +118,7 @@ export {
   IconListDetails,
   IconGripVertical,
   IconArrowRight,
+  IconPlayerPause, // 选题列表行尾的「先放着」
   IconFileImport,
   IconSend,
   IconCopy,

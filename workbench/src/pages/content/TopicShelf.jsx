@@ -7,7 +7,7 @@
 // 这个页签的右侧是「重新扫描」「自己搭一个」。原来单独的「从我的知识里找」页面不再作为入口（选题方法见 docs/工作流.md）。
 import { useState } from "react";
 import { RowDelete, ViewTabs, relTime } from "../../components/ui.jsx";
-import { IconArrowRight, IconBooks, IconBulb, IconLoader2, IconPlus, IconRadar2, IconRefresh, IconSparkles } from "../../components/icons.jsx";
+import { IconArrowRight, IconPlayerPause, IconBooks, IconBulb, IconLoader2, IconPlus, IconRadar2, IconRefresh, IconSparkles } from "../../components/icons.jsx";
 
 const WINDOW = { "24h": "建议 24 小时内写", week: "建议本周内写" };
 const SECTIONS = [
@@ -64,23 +64,26 @@ function FoundCard({ found, scanning, onAdd }) {
 
 /**
  * 列表视图：和「在写」同一张表（`.ptable`，见 ProjectTable.jsx）。列只有三件事：走到哪一步 → 标题（来源、建议时效压在下面）→ 多久没动；
- * 指到这一行时最后一格换成点下去要做的事。先放着 / 删掉是行的兄弟节点（行本身是 button）。
+ * 指到这一行时最后一格换成点下去要做的事。先放着 / 删掉是行的兄弟节点（行本身是 button），
+ * 和「在写」的「放进合集 / 删掉」一样是两格 34px 的图标，表头也留两格同宽——宽度不一致「更新」就和时间对不齐。
+ * 进度、标题、时间按第一行文字的基线对齐：标题下多一行小字时，标题不能被顶上去。
  * AI 找到的也在表里：点这一行就是加入选题。
  */
 function TopicTable({ list, found, scanning, onOpen, onPark, onRemove, onAdd }) {
   const [confirming, setConfirming] = useState("");
   const [adding, setAdding] = useState("");
   const add = async (c) => { setAdding(c.directionId); try { await onAdd(c); } finally { setAdding(""); } };
-  return <div className="ptable topic-table" role="table" aria-label="选题" style={{ "--ptable-cols": "150px minmax(0, 1fr) 150px" }}>
+  return <div className="ptable topic-table" role="table" aria-label="选题" style={{ "--ptable-cols": "180px minmax(0, 1fr) 120px" }}>
     <div className="ptable__head" role="row">
       <div className="ptable__headgrid"><span role="columnheader">进度</span><span role="columnheader">选题</span><span role="columnheader">更新</span></div>
-      <span aria-hidden="true" className="topic-table__actcol" />
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
     </div>
     {list.map((item) => {
       const o = item.origin || {}, stage = item.stage || { key: "new", label: "还没选角度" };
       return <div className="ptable__line" key={item.key} data-topic={item.id} data-confirm={confirming === item.key ? "" : undefined}>
         <button className="ptable__row" role="row" onClick={() => onOpen(item)} aria-label={`打开选题「${item.title}」`}>
-          <span role="cell"><span className={`topic-stage is-${stage.key}`}>{stage.label}</span></span>
+          <span role="cell"><span className={`topic-stage is-${stage.key}`} title={stage.label}>{stage.label}</span></span>
           <span className="ptable__title" role="cell">
             <b title={item.title}>{item.title}</b>
             {o.window || (o.title && o.title !== item.title) || o.kind === "legacy" ? <em className="ptable__series topic-table__sub">
@@ -91,8 +94,10 @@ function TopicTable({ list, found, scanning, onOpen, onPark, onRemove, onAdd }) 
           </span>
           <span className="ptable__tail" role="cell"><time>{relTime(item.updatedAt)}</time><em className="ptable__next" aria-hidden="true">{stage.key === "draft" ? "接着改" : "接着整理"}<IconArrowRight size={14} stroke={1.8} /></em></span>
         </button>
-        <span className="ptable__acts topic-table__acts">
-          {onPark && item.kind === "project" && confirming !== item.key ? <button type="button" className="text-action" onClick={() => onPark(item)}>先放着</button> : null}
+        {onPark && item.kind === "project"
+          ? <button type="button" className="ptable__file" onClick={() => onPark(item)} aria-label={`先放着「${item.title}」`} title="先放着（稿子和构思都在，随时接着做）"><IconPlayerPause size={14} stroke={1.7} aria-hidden="true" /></button>
+          : <span className="ptable__file" aria-hidden="true" />}
+        <span className="ptable__acts">
           <RowDelete onDelete={() => onRemove(item)} label="删掉" title={`删掉选题「${item.title}」——移入回收站，可以撤销`} onOpenChange={(open) => setConfirming(open ? item.key : "")} />
         </span>
       </div>;
@@ -104,7 +109,8 @@ function TopicTable({ list, found, scanning, onOpen, onPark, onRemove, onAdd }) 
           {c.knowledgeAnchors?.length ? <em className="ptable__series topic-table__sub"><span>知识：{c.knowledgeAnchors.map((a) => a.title).filter(Boolean).join("、")}</span></em> : null}</span>
         <span className="ptable__tail" role="cell"><time>{adding === c.directionId ? "正在加入…" : "还没加入"}</time><em className="ptable__next" aria-hidden="true">加入选题<IconPlus size={14} stroke={1.8} /></em></span>
       </button>
-      <span className="ptable__acts topic-table__acts" />
+      <span className="ptable__file" aria-hidden="true" />
+      <span className="ptable__acts" />
     </div>)}
   </div>;
 }

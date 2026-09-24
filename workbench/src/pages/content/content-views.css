@@ -45,10 +45,12 @@
 .topic-card.is-found .content-card__actions { border-top-style: dashed; }
 .topic-card.is-found .content-card__actions .btn { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-2xs); }
 .topic-card.is-found .content-card__actions svg { width: 14px; height: 14px; }
-/* 选题的列表视图：沿用 .ptable，只补行尾两颗操作（先放着 + 删掉）和标题下那行小字。 */
-.topic-table .ptable__head > .topic-table__actcol { width: 96px; }
-.topic-table__acts { width: 96px; grid-auto-flow: column; justify-content: end; gap: 4px; padding-right: 4px; }
-.topic-table__acts .text-action { font-size: var(--fs-xs); white-space: nowrap; }
+/* 选题的列表视图：沿用 .ptable（行尾两格 34px 图标和「在写」一致），只补三处：
+   进度一列放不下时省略；每格按第一行文字的基线对齐；标题下那行小字。 */
+.topic-table .ptable__row { align-items: baseline; padding-block: 14px; }
+.topic-table .topic-stage { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-table .topic-stage::before { display: inline-block; margin-right: 6px; vertical-align: 2px; }
+.topic-table .topic-stage svg { vertical-align: -2px; margin-right: 4px; }
 .topic-table__sub { display: flex; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .topic-table__sub > span { overflow: hidden; text-overflow: ellipsis; }
 .topic-table__sub .is-urgent { color: var(--emph); font-weight: 600; flex: none; }
