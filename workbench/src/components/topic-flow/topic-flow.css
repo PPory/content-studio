@@ -150,4 +150,35 @@
 .draft-trail b.is-long { display: inline-block; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .draft-trail__meta { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
 .draft-trail__meta em { font-style: normal; color: var(--emph); }
-.project-draft__label--trail .draft-trail__meta em { padding: 0; background: none; color: var(--emph); }
+.draft-trail__meta { display: inline-flex; align-items: center; gap: 10px; }
+.draft-trail__gaps, .draft-trail__pending { border: 0; background: none; padding: 2px 4px; margin: 0 -4px; border-radius: var(--r-sm); font: inherit; cursor: pointer; }
+.draft-trail__gaps { color: var(--emph); }
+.draft-trail__pending { color: var(--brand); font-weight: 600; }
+.draft-trail__gaps:hover, .draft-trail__pending:hover { background: var(--surface-2); }
+.draft-trail__gaps:focus-visible, .draft-trail__pending:focus-visible { outline: 2px solid var(--text-1); outline-offset: 1px; }
+/* 从正文里点【待补：X】回来：X 那一项轻轻标一下（左侧一道强调色），不闪烁。 */
+.tf-gap.is-focus { box-shadow: inset 3px 0 0 var(--emph); padding-left: 14px; margin-left: -14px; }
+/* 重新生成之后「这一组 / 上一组」的切换：两个安静的文字页签。 */
+.tf-sets { display: flex; gap: 4px; margin: 0; font-size: var(--fs-xs); }
+.tf-sets button { border: 0; background: none; padding: 3px 8px; border-radius: var(--r-sm); color: var(--text-3); font: inherit; cursor: pointer; }
+.tf-sets button[aria-pressed="true"] { color: var(--text-1); background: var(--surface-2); font-weight: 600; }
+.tf-sets button:focus-visible { outline: 2px solid var(--text-1); outline-offset: 2px; }
+/* 引文角标可点（原话在悬停提示里，点开原文）；末尾一份完整引文清单，给触屏和键盘用。 */
+.tf-cite a { color: var(--brand); text-decoration: none; font-family: var(--font-mono); font-size: .72em; padding: 0 2px; border-radius: 3px; }
+.tf-cite a:hover { background: var(--brand-wash); }
+.tf-cite a:focus-visible { outline: 2px solid var(--text-1); outline-offset: 1px; }
+.tf-citations { font-size: var(--fs-xs); color: var(--text-2); }
+.tf-citations summary { cursor: pointer; color: var(--text-3); }
+.tf-citations ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.tf-citations li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; line-height: 1.6; scroll-margin-top: 80px; }
+.tf-citations li:target { background: var(--brand-wash); border-radius: var(--r-sm); }
+.tf-citations__n { grid-row: span 2; font-family: var(--font-mono); color: var(--text-3); }
+.tf-citations q { color: var(--text-1); }
+.tf-citations a, .tf-citations li > span:last-child { color: var(--text-3); overflow-wrap: anywhere; }
+.tf-note--warn { border-left: 2px solid var(--emph); }
+.tf-note p { margin: 0 0 4px; }
+.tf-note__err { margin-left: 10px; color: var(--danger); font-size: var(--fs-2xs); }
+/* 出错：原因 + 能做的事（重试 / 打开设置 / 先不管），和下面的内容隔开一段。 */
+.tf-error { display: grid; gap: 8px; margin: 0 0 24px; }
+.tf-error__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; }
+.topic-flow__trail b.is-long { display: inline-block; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }

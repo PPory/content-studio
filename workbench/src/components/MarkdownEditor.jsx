@@ -25,7 +25,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { creationApi } from "../lib/creation-api.js";
 import { resolveAssistantPolicy } from "../lib/assistant-policy.js";
-import { gapExtension } from "../lib/editor-gaps.js";
+import { gapExtension, jumpToNextGap } from "../lib/editor-gaps.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import { clearTextRevision, setTextRevisionDiff, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
@@ -397,7 +397,8 @@ function revealText(view, text) {
 
 export function MarkdownEditor({
   value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled,
-  onGapClick,                      // 点初稿里的【待补：…】（选题流程：回到「补齐」）
+  onGapClick,                      // 点初稿里的【待补：…】（选题流程：回到「补齐」，参数是缺的是什么）
+  gapJumpRequest,                  // { id }：跳到光标后面的下一处【待补】（「N 处待补」逐处点过去）
   citations, onCitations, onCiteClick, revealRequest,
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
@@ -643,7 +644,7 @@ export function MarkdownEditor({
           syntaxHighlighting(mdHighlight),
           cmTheme,
           citationExtension,
-          gapExtension(() => onGapClickRef.current?.()),
+          gapExtension((label) => onGapClickRef.current?.(label)),
           aiDraftExtension,
           textRevisionExtension,
           inlineAnswerExtension,
@@ -946,6 +947,7 @@ export function MarkdownEditor({
       revealCitation(view.current, revealRequest.id, revealRequest.seq || 0);
     }
   }, [revealRequest]);
+  useEffect(() => { if (view.current && gapJumpRequest?.id) jumpToNextGap(view.current); }, [gapJumpRequest?.id]);
 
   /**
    * 「去这儿改」：进编辑器的同时跳到被点名的那一段。
