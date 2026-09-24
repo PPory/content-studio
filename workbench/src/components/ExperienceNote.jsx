@@ -8,7 +8,7 @@ import { api } from "../lib/api.js";
 import { ErrorNote } from "./ui.jsx";
 
 export function ExperienceNote({ projectId, topic = "", onDone, onCancel }) {
-  const [title, setTitle] = useState(() => `实测：${topic}`.slice(0, 60));
+  const [title, setTitle] = useState(() => topic.slice(0, 60));
   const [body, setBody] = useState("");
   const [destinations, setDestinations] = useState(null);
   const [busy, setBusy] = useState(false);

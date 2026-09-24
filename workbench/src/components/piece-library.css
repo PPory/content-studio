@@ -1,0 +1,53 @@
+/* 资料 + 中间一栏是一行：网格第一列（右侧协作是第二列）。左边贴到 `.main` 边缘，抵掉网格的左内边距。 */
+.piece-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 28px; align-items: start; margin-left: -20px; min-width: 0; }
+.piece-row > .piece-lib:not(.is-collapsed) { width: 256px; }
+@media (max-width: 920px) { .piece-row { grid-template-columns: minmax(0, 1fr); margin-left: 0; gap: 12px; } .piece-row > .piece-lib:not(.is-collapsed) { width: auto; } }
+/* 这篇的资料（左栏）。和右侧协作栏同一种形态：贴边一整列，只有一道边线；条目是安静的行，不是卡片。 */
+.piece-lib {
+  display: flex; flex-direction: column; min-height: 0; align-self: stretch;
+  border-right: 1px solid var(--border); background: var(--surface);
+  /* 钉在顶栏下面（顶栏本身也是 sticky，top:0 会被它盖住） */
+  margin: -18px 0 -32px; position: sticky; top: var(--project-bar-h, 52px);
+  height: calc(100vh - var(--shell-chrome-h) - var(--project-bar-h) - var(--project-block-h, 0px));
+}
+.piece-lib__head { display: flex; align-items: center; gap: var(--sp-4); padding: 14px 12px 10px 18px; }
+.piece-lib__head strong { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
+.piece-lib__head span { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-3); margin-right: auto; }
+.piece-lib__scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 18px 24px; display: grid; gap: 18px; align-content: start; }
+.piece-lib h3 { margin: 0 0 4px; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: .08em; color: var(--text-3); }
+.piece-lib ul { list-style: none; margin: 0; padding: 0; }
+.piece-lib li { display: grid; gap: 2px; padding: 9px 0; border-top: 1px solid var(--border); transition: background .6s var(--ease); }
+.piece-lib li:first-child { border-top: 0; }
+.piece-lib li.is-fresh { background: var(--brand-wash); margin: 0 -8px; padding-inline: 8px; border-radius: var(--r-sm); }
+.piece-lib__title { font-size: var(--fs-sm); line-height: 1.5; color: var(--text-1); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.piece-lib__meta { font-size: var(--fs-2xs); color: var(--text-3); }
+.piece-lib__acts { display: flex; gap: 12px; margin-top: 2px; font-size: var(--fs-2xs); }
+.piece-lib__acts button, .piece-lib__acts a { padding: 0; border: 0; background: none; color: var(--text-2); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
+.piece-lib__acts button:hover, .piece-lib__acts a:hover { color: var(--text-1); }
+.piece-lib__acts svg { width: 12px; height: 12px; }
+.piece-lib__empty { margin: 0; font-size: var(--fs-xs); line-height: 1.6; color: var(--text-3); }
+.piece-lib__add { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; padding: 7px; border: 1px dashed var(--border-strong); border-radius: var(--r-ctl); background: none; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
+.piece-lib__add:hover { color: var(--text-1); border-color: var(--text-3); }
+.piece-lib__add svg { width: 14px; height: 14px; }
+.piece-lib__panel { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.piece-lib__panel-head { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-xs); }
+.piece-lib__panel input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text-1); font: inherit; font-size: var(--fs-xs); }
+.piece-lib__results { display: grid; gap: 2px; max-height: 220px; overflow: auto; }
+.piece-lib__results li { padding: 0; border: 0; }
+.piece-lib__results button { width: 100%; display: grid; gap: 1px; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; cursor: pointer; color: var(--text-1); font-size: var(--fs-xs); }
+.piece-lib__results button:hover { background: var(--surface); }
+.piece-lib__results small { color: var(--text-3); font-size: var(--fs-2xs); }
+.piece-lib__link { display: flex; gap: 6px; }
+/* 收起：一条窄边，写正文时不占地方。 */
+.piece-lib.is-collapsed { width: 48px; border-right-color: transparent; background: transparent; }
+.piece-lib__rail { display: grid; justify-items: center; gap: 2px; margin: 14px auto 0; width: 36px; padding: 8px 0 6px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.piece-lib__rail b { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2xs); color: var(--text-3); }
+.piece-lib__rail:hover { color: var(--text-1); border-color: var(--border-strong); }
+.piece-lib__rail svg { width: 17px; height: 17px; }
+@media (max-width: 920px) {
+  .piece-lib { position: relative; height: auto; margin: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .piece-lib.is-collapsed { width: auto; }
+  .piece-lib__rail { grid-auto-flow: column; justify-content: start; gap: 6px; width: auto; margin: 0; padding: 6px 12px; }
+  .piece-lib__scroll { max-height: 50vh; }
+}
+@media (prefers-reduced-motion: reduce) { .piece-lib li { transition: none; } }

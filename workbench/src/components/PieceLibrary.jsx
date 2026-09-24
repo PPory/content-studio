@@ -1,0 +1,107 @@
+// 这篇的资料（2026-09-24）：工作区左栏，选题和写作共用。
+//
+// 分四组：来源（情报和网页原文）、知识（Wiki）、我的实测（挂在这一篇上的经历类个人资产）、补充资料。
+// 每条只给三件事：引用（写正文时插到光标处）、详情、原文。补资料在这里一处完成：从资料库挑、或贴一个链接。
+// 资料挂在这篇背后的研究记录上（`ensureProjectResearch`），起稿时 `projectCreativeContext` 会读到。
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { api } from "../lib/api.js";
+import { IconArrowUpRight, IconBooks, IconChevronLeft, IconPlus, IconX } from "./icons.jsx";
+import { ErrorNote } from "./ui.jsx";
+import "./piece-library.css";
+
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const groupOf = (ref) => ref.kind === "wiki" ? "知识" : ref.sourceUrl ? "来源" : "补充资料";
+
+export function PieceLibrary({ projectId, materials = [], writing = false, onCite, onGo, onChanged, controlRef }) {
+  const key = "piece-library-collapsed";
+  // 写正文时默认收起，给编辑器让出空间；手动开过就记住。
+  const [collapsed, setCollapsed] = useState(() => { const v = store.get(key); return v === null ? writing : v === "1"; });
+  const [refs, setRefs] = useState(null), [assets, setAssets] = useState([]), [error, setError] = useState(null);
+  const [adding, setAdding] = useState(false), [fresh, setFresh] = useState("");
+  const researchId = useRef("");
+  const toggle = (v) => { setCollapsed(v); store.set(key, v ? "1" : "0"); };
+
+  const load = useCallback(async () => {
+    try {
+      const [{ researches }, personal] = await Promise.all([api.projectResearches(projectId), api.projectPersonalAssets(projectId).catch(() => ({ references: [] }))]);
+      researchId.current = researches?.[0]?.id || "";
+      setRefs((researches?.[0]?.references || []).filter((r) => !r.missing));
+      setAssets(personal.references || []);
+      setError(null);
+    } catch (e) { setError(e); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+  // 补齐那一步的「找到了，放进资料」从外面打开这里的添加面板。
+  useImperativeHandle(controlRef, () => ({ add: () => { toggle(false); setAdding(true); }, reload: load }), [load]);
+
+  async function attach(item) {
+    const id = researchId.current || (await api.projectResearch(projectId)).researchId;
+    researchId.current = id;
+    await api.researchReference(id, { kind: item.kind, id: item.id });
+    setFresh(`${item.kind}:${item.id}`); setTimeout(() => setFresh(""), 2400);
+    setAdding(false); await load(); onChanged?.();
+  }
+
+  const groups = { 来源: [], 知识: [], 补充资料: [] };
+  for (const r of refs || []) groups[groupOf(r)].push(r);
+  const extras = materials.map((m) => ({ id: m.id, kind: "material", title: m.title, nature: m.type, sourceUrl: m.sourceUrl || "", excerpt: m.content }));
+  groups.补充资料.push(...extras);
+  const count = (refs?.length || 0) + extras.length + assets.length;
+
+  if (collapsed) return <aside className="piece-lib is-collapsed" aria-label="这篇的资料">
+    <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title="展开这篇的资料" aria-label={`展开资料（${count} 份）`}><IconBooks aria-hidden="true" /><b>{count}</b></button>
+  </aside>;
+
+  const item = (r) => {
+    const id = `${r.kind}:${r.id}`;
+    return <li key={id} className={fresh === id ? "is-fresh" : ""}>
+      <span className="piece-lib__title">{r.title || "未命名资料"}</span>
+      <span className="piece-lib__meta">{[r.nature, r.sourceUrl ? hostOf(r.sourceUrl) : ""].filter(Boolean).join(" · ")}</span>
+      <span className="piece-lib__acts">
+        {writing && onCite ? <button type="button" onClick={() => onCite(r)}>引用</button> : null}
+        <button type="button" onClick={() => r.kind === "wiki" ? onGo?.("entries", r.id) : r.kind === "material" ? onGo?.("materials", "") : onGo?.("library", id)}>详情</button>
+        {r.sourceUrl ? <a href={r.sourceUrl} target="_blank" rel="noreferrer">原文<IconArrowUpRight aria-hidden="true" /></a> : null}
+      </span>
+    </li>;
+  };
+
+  return <aside className="piece-lib" aria-label="这篇的资料">
+    <header className="piece-lib__head">
+      <strong>资料</strong><span>{count}</span>
+      <button type="button" className="icon-btn" onClick={() => toggle(true)} aria-label="收起资料"><IconChevronLeft aria-hidden="true" /></button>
+    </header>
+    <ErrorNote error={error} what="读取这篇的资料" onRetry={load} />
+    <div className="piece-lib__scroll">
+      {Object.entries(groups).map(([name, list]) => list.length ? <section key={name}><h3>{name}</h3><ul>{list.map(item)}</ul></section> : null)}
+      <section>
+        <h3>我的实测</h3>
+        {assets.length ? <ul>{assets.map((a) => <li key={a.id || a.assetId}><span className="piece-lib__title">{a.title}</span><span className="piece-lib__meta">个人资产 · 这篇的 AI 可以用</span></li>)}</ul>
+          : <p className="piece-lib__empty">还没有。需要亲身经历的角度，会在「补齐」里请你记下来。</p>}
+      </section>
+      {refs && !count ? <p className="piece-lib__empty">这篇还没有资料。</p> : null}
+      {adding ? <AddPanel onPick={attach} onClose={() => setAdding(false)} projectTitle="" /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
+    </div>
+  </aside>;
+}
+
+function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } }
+
+/** 补资料：从资料库搜一条挂上，或者贴一个链接（先存成一条记一下，再挂上）。 */
+function AddPanel({ onPick, onClose }) {
+  const [q, setQ] = useState(""), [items, setItems] = useState([]), [link, setLink] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  useEffect(() => { let alive = true; const t = setTimeout(() => api.library(q, "").then((r) => { if (alive) setItems((r.items || []).slice(0, 8)); }).catch(() => {}), 200); return () => { alive = false; clearTimeout(t); }; }, [q]);
+  async function pick(item) { setBusy(true); setError(null); try { await onPick(item); } catch (e) { setError(e); } finally { setBusy(false); } }
+  async function addLink(e) {
+    e.preventDefault(); if (!/^https?:\/\//i.test(link.trim())) return;
+    setBusy(true); setError(null);
+    try { const note = await api.quickNote({ text: link.trim(), sourceUrl: link.trim() }); await onPick({ kind: "capture", id: note.item?.id || note.id }); }
+    catch (err) { setError(err); } finally { setBusy(false); }
+  }
+  return <div className="piece-lib__panel" role="group" aria-label="补资料">
+    <div className="piece-lib__panel-head"><strong>补资料</strong><button type="button" className="icon-btn" onClick={onClose} aria-label="关闭"><IconX aria-hidden="true" /></button></div>
+    <input id="piece-lib-search" aria-label="搜资料库" placeholder="搜资料库：标题或正文里的词" value={q} onChange={(e) => setQ(e.target.value)} />
+    <ul className="piece-lib__results">{items.map((it) => <li key={`${it.kind}:${it.id}`}><button type="button" disabled={busy} onClick={() => pick(it)}><span>{it.title || "未命名"}</span><small>{it.nature || it.kind}</small></button></li>)}</ul>
+    <form onSubmit={addLink} className="piece-lib__link"><input id="piece-lib-link" aria-label="贴一个链接" placeholder="或者贴一个链接 https://…" value={link} onChange={(e) => setLink(e.target.value)} /><button className="btn btn-sm" disabled={busy || !/^https?:\/\//i.test(link.trim())}>放进来</button></form>
+    <ErrorNote error={error} what="补资料" />
+  </div>;
+}

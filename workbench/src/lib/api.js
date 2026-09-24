@@ -87,6 +87,14 @@ export const api = {
   // 一篇内容一个工作区：研究 → 内容、内容 → 研究，缺哪边补哪边（可重复调用）。
   researchContent: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/content`, {}),
   projectResearch: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/research`, {}),
+  // 选题到初稿（2026-09-24）：读懂 → 选角度 → 补齐 → 定结构 → 写初稿。
+  projectPlan: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/plan`),
+  planAngles: (id, force = false) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/angles`, { force }),
+  planChooseAngle: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/choose-angle`, body),
+  planStructures: (id, force = false) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/structures`, { force }),
+  planChooseStructure: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/choose-structure`, body),
+  planDraft: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/draft`, {}),
+  directionToContent: (id) => postJson(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}/content`, {}),
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
   library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
   quickNotes: (q = "", tag = "") => req(`/api/workspace/quick-notes?${new URLSearchParams({ q, tag })}`),

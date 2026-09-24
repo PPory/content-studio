@@ -25,6 +25,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { creationApi } from "../lib/creation-api.js";
 import { resolveAssistantPolicy } from "../lib/assistant-policy.js";
+import { gapExtension } from "../lib/editor-gaps.js";
 import { citationExtension, citationField, focusCitationAt, revealCitation, setCitations } from "../lib/editor-citations.js";
 import { addAiDraft, aiDraftExtension, aiDraftField, confirmAiDraft } from "../lib/editor-ai-drafts.js";
 import { clearTextRevision, setTextRevisionDiff, startTextRevision, textRevisionExtension, textRevisionField } from "../lib/editor-text-revisions.js";
@@ -396,6 +397,7 @@ function revealText(view, text) {
 
 export function MarkdownEditor({
   value, onChange, ariaLabel = "正文", insertRequest, onInsertHandled,
+  onGapClick,                      // 点初稿里的【待补：…】（选题流程：回到「补齐」）
   citations, onCitations, onCiteClick, revealRequest,
   revealText: revealTextRequest,   // { text, nonce } —— 打开编辑器时跳到某一段（真实性告警的「去这儿改」）
   toolbarExtra,                    // 写作推动等只在部分编辑场景出现的轻量动作
@@ -415,6 +417,8 @@ export function MarkdownEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onCiteClickRef = useRef(onCiteClick);
+  const onGapClickRef = useRef(onGapClick);
+  onGapClickRef.current = onGapClick;
   onCiteClickRef.current = onCiteClick;
   const onCitationsRef = useRef(onCitations);
   onCitationsRef.current = onCitations;
@@ -639,6 +643,7 @@ export function MarkdownEditor({
           syntaxHighlighting(mdHighlight),
           cmTheme,
           citationExtension,
+          gapExtension(() => onGapClickRef.current?.()),
           aiDraftExtension,
           textRevisionExtension,
           inlineAnswerExtension,

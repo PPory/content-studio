@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./writing-surface.css";
-import { ProjectNotebook } from "../components/ProjectNotebook.jsx";
+import { TopicFlow } from "../components/topic-flow/TopicFlow.jsx";
+import { DraftTrail } from "../components/topic-flow/DraftTrail.jsx";
+import { PieceLibrary } from "../components/PieceLibrary.jsx";
 import { api, downloadProjectExport } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { contentShelf, projectPhase } from "../lib/content-projects.js";
@@ -8,14 +10,12 @@ import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { ProjectAssistantRail } from "../components/ProjectAssistantRail.jsx";
-import { ContentIntentPanel } from "../components/ContentIntentPanel.jsx";
-import { ProjectStartPanel } from "../components/ProjectStartPanel.jsx";
 import { ExperimentPanel } from "../components/ExperimentPanel.jsx";
 import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
-import { ErrorNote, Loading, StatePill, ViewTabs } from "../components/ui.jsx";
+import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import { ProjectPersonalAssets } from "../components/ProjectPersonalAssets.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
@@ -24,7 +24,7 @@ import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.j
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
 import { clearTemporaryProject, isBlankTemporaryDraft, isTemporaryProject } from "../lib/temporary-project.js";
-import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
+import { IconSparkles, IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 /**
  * 导出格式。
@@ -63,8 +63,16 @@ function materialText(item) {
   return `> ${item.content || item.title}${source}`;
 }
 
+// 标题框按内容撑高。侧栏开合会改变它的宽度、换行随之变化，所以也要跟着宽度重新量一次。
+const titleObservers = new WeakMap();
 function resizeProjectTitle(node) {
   if (!node) return;
+  if (!titleObservers.has(node) && typeof ResizeObserver === "function") {
+    let width = node.clientWidth;
+    // 放到下一帧再量：在回调里直接改高度会触发「ResizeObserver loop」。
+    const observer = new ResizeObserver(() => requestAnimationFrame(() => { if (node.isConnected && node.clientWidth !== width) { width = node.clientWidth; resizeProjectTitle(node); } }));
+    observer.observe(node); titleObservers.set(node, observer);
+  }
   node.style.height = "auto";
   node.style.height = `${node.scrollHeight}px`;
 }
@@ -251,7 +259,9 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
    */
   const viewKey = `content-view:${projectId}`;
   const [view, setView] = useState(() => { try { return localStorage.getItem(viewKey) || ""; } catch { return ""; } });
-  const [railRequest, setRailRequest] = useState(null);
+  const [planReload, setPlanReload] = useState(0);
+  const [flowStep, setFlowStep] = useState(0);
+  const libRef = useRef(null);
 
   const acceptProject = useCallback((next, preferredId = "") => {
     const drafts = projectReleaseDrafts(next);
@@ -290,8 +300,10 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const topic = project ? contentShelf(project) === "选题" : false;
   // 有构思可看（从情报 / 知识来的、或者已经写下想讲什么）才默认停在构思；
   // 点「新建内容」开的白纸直接进正文——那颗按钮承诺的就是「写下第一句话就可以开始」。
-  const planned = topic && ((project.plan?.origin?.kind && project.plan.origin.kind !== "own") || Boolean(project.plan?.thought?.trim()));
-  const shownView = view || (planned ? "plan" : "draft");
+  // 有选题简报可看（从情报 / 知识来的、或者已经写下想讲什么）：还没写就停在选题流程；
+  // 点「新建内容」开的白纸直接进正文——那颗按钮承诺的就是「写下第一句话就可以开始」。
+  const briefable = (project?.plan?.origin?.kind && project.plan.origin.kind !== "own") || Boolean(project?.plan?.thought?.trim());
+  const shownView = view || (topic && briefable ? "flow" : "draft");
   const draft = drafts.find((item) => item.id === selectedDraftId) || masterDraft;
   const dirty = !!draft && releaseChanged(draft, form);
   const blankTemporary = isBlankTemporaryDraft({ temporary, title: form.title, body: form.body, materials: project?.materials });
@@ -616,36 +628,31 @@ ${(form.body || "").slice(0, 3000)}`);
    * 切到正文 = 开始写：还没有主稿就先建（同一个 `start-writing`，不弹框、不重问方向——
    * 构思里写过的方向和读者，起稿时直接读）。切换前先存构思：同一时刻只挂一个构思实例。
    */
-  /**
-   * AI 辅助写作（搭结构 / 起初稿）。写正文时在侧栏的构思里，在构思视图时就放在构思下面——
-   * 那正是「想清楚了，接下来怎么开写」的位置。在构思视图里插入候选，会先切到正文再放进去。
-   */
-  const writingHelp = (inPlan) => ["策划中", "写作中"].includes(project.stage) ? (
-    <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
-      contextVersion={notebookVersion}
-      projectId={projectId}
-      empty={!String(form.body || "").trim()}
-      needsDraft={!masterDraft}
-      busy={busy}
-      onGo={onGo}
-      onStartDraft={() => transition("start-writing")}
-      onInsert={(request) => {
-        if (inPlan) { setView("draft"); try { localStorage.setItem(viewKey, "draft"); } catch {} }
-        setInsertRequest({ id: `start-${Date.now()}`, ...request });
-      }}
-    /></details>
-  ) : null;
   /** 只刷新「从哪来 / 还缺什么」：整页重载会把还没存的正文换回已保存的版本。 */
   async function refreshPlan() {
     try { const { project: next } = await api.project(projectId); setProject((current) => current && { ...current, plan: next.plan }); onChanged?.(); } catch (e) { setError(e); }
   }
   async function switchView(next) {
     if (next === shownView) return;
-    if (notebookDirty && !(await notebookSave.current?.())) return;
     if (next === "draft" && !project.masterDraft && project.stage === "策划中" && !(await transition("start-writing"))) return;
+    if (next === "draft") setFlowStep(0);
     setView(next);
     try { localStorage.setItem(viewKey, next); } catch {}
   }
+  /** 从编辑器回到选题流程的某一步（进度线、【待补】）。 */
+  const backToStep = (n) => { setFlowStep(n); setView("flow"); try { localStorage.setItem(viewKey, "flow"); } catch {} };
+  /**
+   * 选题流程写完初稿之后：正文原来是空的，服务端已经写进主稿——重新读一次项目，切到正文；
+   * 正文里已经有字，服务端只给了候选——走编辑器的整篇对比审阅，由用户决定用不用。
+   */
+  async function handleDraft(result) {
+    if (result?.written) { await load(); setNotice("初稿写好了"); }
+    else if (result?.candidate?.body) setInsertRequest({ id: `plan-draft-${Date.now()}`, text: result.candidate.body, scope: "document", spacing: "exact", targetKind: "whole-document", resultKind: "candidate", ai: true, kind: "AI 初稿" });
+    setView("draft");
+    try { localStorage.setItem(viewKey, "draft"); } catch {}
+  }
+  const cite = (ref) => setInsertRequest({ id: `cite-${Date.now()}`, text: ref.kind === "material" ? materialText({ content: ref.excerpt || ref.title, sourceUrl: ref.sourceUrl }) : ref.sourceUrl ? `[${ref.title}](${ref.sourceUrl})` : `《${ref.title}》`, spacing: ref.kind === "material" ? "paragraph" : "inline" });
+  const askAssistant = (prompt) => { setAssistantHandoff({ id: `plan-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); };
 
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
@@ -777,6 +784,8 @@ ${(form.body || "").slice(0, 3000)}`);
             * 它是关于这一篇的动作，但一篇稿子从头到尾也就导那么一两次；
             * 而「写完了，去发布」是这条操作条存在的理由。低频的排前面、小一号、不上色。
             */}
+          {/* 右侧协作的开关放在顶栏：原来浮在正文右上角，展开后和协作栏的标题叠在一起。 */}
+          {project.stage !== "待发布" ? <button type="button" className="btn" onClick={() => summonAssistant({ routeView: "project" })}><IconSparkles aria-hidden="true" />协作</button> : null}
           {draft ? <div className="project-export">
             <button
               type="button"
@@ -829,10 +838,9 @@ ${(form.body || "").slice(0, 3000)}`);
                 />
               ) : null}
             </>
-          ) : topic && shownView === "plan" ? (
-            <button className="btn btn-primary" onClick={() => switchView("draft")} disabled={busy}>
-              {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}开始写
-            </button>
+          ) : shownView === "flow" ? (
+            /* 选题流程里每一屏自己有主按钮；顶栏只留一个安静的出口，不再多一颗实心按钮。 */
+            <button className="btn" onClick={() => switchView("draft")} disabled={busy}>跳过，直接写</button>
           ) : mainAction ? (
             /**
              * ⚠️ **正文为空时这颗按钮必须点不动。**
@@ -885,19 +893,15 @@ ${(form.body || "").slice(0, 3000)}`);
             experiment={<ExperimentPanel projectId={projectId} publication={project.publication?.latest} onGo={onGo} compact />}
           />
         ) : <>
+        {/* 左栏资料 + 中间（选题流程或正文）是一行；右侧协作仍是网格的第二列。 */}
+        <div className="piece-row">
+        <PieceLibrary controlRef={libRef} projectId={projectId} materials={project.materials || []} writing={shownView === "draft"} onCite={shownView === "draft" && draftEditable ? cite : null} onGo={onGo} onChanged={() => { setPlanReload((n) => n + 1); refreshPlan(); }} />
         <main className="project-draft">
-          {/* 同一篇内容的两面：构思和正文随时往返，不需要「转成文章」这一步。 */}
-          <ViewTabs label="这篇内容" value={shownView} onChange={switchView} items={[{ key: "plan", label: "构思" }, { key: "draft", label: "正文" }]} />
-          {shownView === "plan" ? (
-            <ProjectNotebook key={`plan:${projectId}`} projectId={projectId} plan={project.plan} onGo={onGo}
-              origin={project.plan?.origin?.kind === "bridge" ? <ContentIntentPanel projectId={projectId} onGo={onGo} onAsk={(prompt) => { setAssistantHandoff({ id: `intent-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} /> : null}
-              onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
-              onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }}
-              onPlanChanged={refreshPlan} onOpenMaterials={() => setRailRequest({ id: Date.now(), tool: "资料" })}
-              onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
-          ) : null}
-          {shownView === "plan" ? writingHelp(true) : draft ? (
+          {shownView === "flow" ? (
+            <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowStep} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={() => libRef.current?.add()} onGo={onGo} />
+          ) : draft ? (
             <>
+              {briefable || project.plan?.stage?.key === "draft" ? <DraftTrail projectId={projectId} body={form.body} reloadKey={planReload} onPick={backToStep} /> : null}
               <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>
               <textarea
                 ref={resizeProjectTitle}
@@ -922,6 +926,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 onChange={(value) => changeForm("body", value)}
                 ariaLabel={draft.id === masterDraft?.id ? "主稿正文" : `${draft.platform} 版本正文`}
                 insertRequest={insertRequest}
+                onGapClick={briefable ? () => backToStep(3) : undefined}
                 onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
                 onCursorChange={(position) => { cursor.current = position; }}
                 onSelectionChange={(value) => { selection.current = value; setActiveSelection(value); }}
@@ -957,11 +962,12 @@ ${(form.body || "").slice(0, 3000)}`);
              */
             <div className="project-draft__empty">
               <h2>还没开始写</h2>
-              <p>点右上角的<b>「{PRIMARY_ACTION[project.stage]?.label || "建立主稿"}」</b>建立主稿；想先理清楚，就切回「构思」。</p>
+              <p>点右上角的<b>「{PRIMARY_ACTION[project.stage]?.label || "建立主稿"}」</b>建立主稿{briefable ? "；想先理清楚，就回到选题简报" : ""}。</p>
             </div>
           )}
           <ErrorNote error={error} what="更新内容项目" />
         </main>
+        </div>
 
         {project.stage === "待发布" && draft ? (
           <ProjectReleaseRail
@@ -990,19 +996,8 @@ ${(form.body || "").slice(0, 3000)}`);
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <ProjectAssistantRail
-            openRequest={railRequest}
-            notebook={shownView === "plan" ? null : <>
-      <ProjectNotebook compact key={`rail:${projectId}`} projectId={projectId} plan={project.plan} onGo={onGo}
-        origin={project.plan?.origin?.kind === "bridge" ? <ContentIntentPanel projectId={projectId} onGo={onGo} onAsk={(prompt) => { setAssistantHandoff({ id: `intent-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} /> : null}
-        onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
-        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }}
-        onPlanChanged={refreshPlan} onOpenMaterials={() => setRailRequest({ id: Date.now(), tool: "资料" })}
-        onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
-
-      {writingHelp(false)}
-
-
-            </>}
+            tools={["协作"]}
+            notebook={null}
             handoffRequest={assistantHandoff}
             reviewingCandidate={candidateReviewFocused}
             recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}

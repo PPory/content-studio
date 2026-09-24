@@ -7,7 +7,7 @@ import { IconChevronDown, IconFileText, IconX } from "./icons.jsx";
 // One optional companion to the document. Hidden panels stay mounted to preserve
 // unsaved notebook input and the current conversation when changing tools.
 // `notebook` 为空时不显示「构思」工具（工作区在构思视图时，构思就在中间）；`openRequest` 让外面点「补资料」时直接打开对应工具。
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, notebook = null, openRequest = null, children }) {
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, notebook = null, openRequest = null, tools: only = null, children }) {
   const [active, setActive] = useState(null);
   const [assistantOpened, setAssistantOpened] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -55,14 +55,15 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       onOpenMaterials={() => openTool("资料")} />
   </div>;
   return <>
-    <nav className="writing-tools" aria-label="写作辅助" hidden={reviewingCandidate}>
-      {(notebook ? ["构思", "资料", "协作"] : ["资料", "协作"]).map((tool) => <button key={tool} type="button" className="btn btn-sm"
+    <nav className="writing-tools" aria-label="写作辅助" hidden={reviewingCandidate || only?.length === 1}>
+      {(only || (notebook ? ["构思", "资料", "协作"] : ["资料", "协作"])).map((tool) => <button key={tool} type="button" className="btn btn-sm"
         ref={(element) => { triggers.current[tool] = element; }} aria-pressed={active === tool} aria-controls={`writing-panel-${tool}`}
         onClick={() => active === tool ? close() : openTool(tool)}>{tool}</button>)}
     </nav>
     <aside className="project-rail project-assistant writing-companion" data-collapsed={!active ? "true" : undefined}
       data-reviewing={reviewingCandidate ? "true" : undefined} aria-hidden={reviewingCandidate || !active || undefined} aria-label="写作辅助区" ref={railRef}>
-      <header className="writing-companion__head"><strong>{active}</strong><button type="button" className="icon-btn" onClick={close} aria-label="关闭写作辅助"><IconX aria-hidden="true" /></button></header>
+      {/* 只有「协作」一个工具时，对话面板自己有标题和收起按钮，这一行就是重复的。 */}
+      <header className="writing-companion__head" hidden={only?.length === 1}><strong>{active}</strong><button type="button" className="icon-btn" onClick={close} aria-label="关闭写作辅助"><IconX aria-hidden="true" /></button></header>
       <section id="writing-panel-构思" className="writing-companion__scroll" aria-label="构思" hidden={active !== "构思"}>{notebook}</section>
       <section id="writing-panel-资料" className="writing-companion__scroll" aria-label="项目素材" hidden={active !== "资料"}>{children}{active === "资料" ? recall : null}</section>
       <section id="writing-panel-协作" className="writing-companion__chat" aria-label="协作" hidden={active !== "协作"}>
