@@ -25,6 +25,9 @@ try{
  await page.route('**/api/workspace/intelligence**',async route=>{
   const req=route.request(),url=new URL(req.url()),body=req.method()==='GET'?{}:req.postDataJSON();
   if(url.pathname.endsWith('/feed'))return send(route,feed());
+  if(url.pathname.endsWith('/digest')){const kind=url.searchParams.get('kind');const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+   return send(route,kind==='builders'?{kind,total:1,inHot:0,hiddenOffTopic:2,days:[{day:today,items:[{id:'fb1',title:'I spend 2 hours a day building side projects',author:'nikunj',kind:'post',text:'I spend 2 hours a day building side projects with agents and it changed how I work.',zh:'每天花两小时用 Agent 做副业项目，改变了工作方式',url:'https://x.example/1',publishedAt:new Date().toISOString(),day:today,hot:null}]}]}
+    :{kind,total:2,inHot:1,hiddenOffTopic:0,days:[{day:today,items:[{id:'sel1',title:'模型更新的实际变化 2',summary:'在热点里的一条',url:'https://a.example/1',publishedAt:new Date().toISOString(),day:today,hot:{briefId:'b1',title:'模型更新的实际变化 2'}},{id:'sel2',title:'Claude Code 澄清 Cloud sessions 按订阅计费',summary:'没进热点的一条',url:'https://a.example/2',publishedAt:new Date().toISOString(),day:today,hot:null}]}]});}
   if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running',stage:'正在补全 2 篇原文'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},summary:'Anthropic 发布 Opus 5.5，价格更低。',body:'深度解读正文：官方说明与第三方评测都提到价格下降。',
    keyFacts:[{text:'官方称每 token 价格更低',evidenceIds:['e1']}],evidence:[{sourceId:'s1',quote:'每token价格更低'}],sources:[{id:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',provider:'aihot',readLevel:'original',quotes:[{number:1,quote:'每token价格更低'}]}],
    claims:[{id:'c1',text:'价格比上一代更低',kind:'author_report',attribution:'Anthropic',evidenceIds:['e1'],limitations:['没有第三方复测']}],uncertainties:['只有官方说明'],useFor:'要评估模型成本的人',notFor:'只用网页聊天的读者',
@@ -131,6 +134,17 @@ try{
  await page.screenshot({path:path.join(shots,'18-saved-menu.png'),fullPage:false});await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'筛选情报'}).click();assert.equal(await page.getByRole('button',{name:'设置关注方向'}).count(),0,'关注方向是设置，不在筛选里');await page.keyboard.press('Escape');
  await page.getByRole('tab',{name:'热点',exact:true}).click();await page.locator('.brief-card').first().waitFor();
+ // 速览：AIhot 精选 / Follow Builders；「在热点里」切回热点并打开那张卡；没进热点的可以加入选题。
+ await page.getByRole('tab',{name:'速览',exact:true}).click();await page.getByText('Claude Code 澄清 Cloud sessions 按订阅计费').waitFor();
+ assert.equal(await page.getByRole('button',{name:'筛选情报'}).count(),0,'速览里没有筛选');
+ await page.getByLabel('只看没进热点的').check();assert.equal(await page.getByText('模型更新的实际变化 2',{exact:true}).count(),0,'只看没进热点的');await page.getByLabel('只看没进热点的').uncheck();
+ await page.getByRole('button',{name:'加入选题',exact:true}).first().click();await page.getByRole('dialog',{name:'带入选题'}).waitFor();await page.getByRole('button',{name:'取消',exact:true}).click();
+ await page.getByRole('button',{name:'Follow Builders',exact:true}).click();await page.getByText('每天花两小时用 Agent 做副业项目',{exact:false}).waitFor();await page.getByText('@nikunj').waitFor();
+ await page.screenshot({path:path.join(shots,'19-digest-builders.png'),fullPage:false});
+ await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'速览 390px 无横向滚动');await page.setViewportSize({width:1440,height:960});
+ await page.getByRole('button',{name:'AIhot 精选',exact:true}).click();await page.getByRole('button',{name:'在热点里 →'}).click();
+ await page.locator('.brief-peek').waitFor();await page.getByRole('tab',{name:'热点',exact:true,selected:true}).waitFor();await page.locator('[data-brief="b1"].is-active').waitFor();
+ await page.keyboard.press('Escape');await page.locator('.brief-peek').waitFor({state:'detached'});
  // 未授权：状态行说清楚缺口，一次确认后开始整理；工具菜单出现自动更新开关。
  intake={consent:{publicSources:false,reddit:false,at:null},autoUpdate:true,redditApproved:false,reddit:null};await page.reload();await page.getByText('最近 7 天采到 1500 条新资料，还没授权交给模型整理').waitFor();
  await page.getByRole('button',{name:'允许并开始整理',exact:true}).first().click();const consentDialog=page.getByRole('dialog',{name:'AI 整理授权'});await consentDialog.waitFor();await consentDialog.getByText('Reddit 需要先在「设置」里批准付费采集',{exact:false}).waitFor();
@@ -140,6 +154,6 @@ try{
  await page.getByRole('button',{name:'情报工具'}).click();const toolsText=await page.locator('.intel-nav-menu').innerText();assert.match(toolsText,/原始资料[\s\S]*关注方向…/);assert.doesNotMatch(toolsText,/信源设置|每周回顾|AIhot 原始信息流|处理详情/,'不起作用和排查用的入口从菜单去掉');await page.getByRole('menuitemcheckbox',{name:'✓ 自动更新（每 6 小时）'}).click();await page.waitForTimeout(100);assert.deepEqual(settingsBody,{autoUpdate:false});
  intake={...intake,reddit:{healthStatus:'QUOTA_EXHAUSTED'}};await page.reload();await page.getByText('Reddit 额度不足，社区内容暂由 Hacker News 补位',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'查看详情'}).count(),0,'状态行就地说明，不跳处理详情');intake=null;
  await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});await page.goto('http://127.0.0.1:5276/#/intel');await page.locator('.brief-card').first().waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'07-feed-mobile-390.png'),fullPage:true});await page.locator('[data-brief="b0"] .brief-card__title').click();await page.getByRole('button',{name:'关闭详情',exact:true}).waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'08-reading-mobile-390.png'),fullPage:true});
- assert.deepEqual(errors,[]);console.log('PASS unified UI: one hot page with marks, aligned cards, infinite scroll, narrow index + wide preview, manual deep read with real stage, evidence layers, citations, wiki connections, split, suggested timing, AI consent + auto update + Reddit quota status, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
+ assert.deepEqual(errors,[]);console.log('PASS unified UI: digest tab (AIhot selected / Follow Builders, jump to hot card, add to topic), one hot page with marks, aligned cards, infinite scroll, narrow index + wide preview, manual deep read with real stage, evidence layers, citations, wiki connections, split, suggested timing, AI consent + auto update + Reddit quota status, failed reads, save/undo, direct/idempotent/multi/existing/angle handoff, old route, raw search, mobile, reduced motion');
 }catch(e){console.log(await page?.locator('body').innerText());throw e;}
 finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}assert(path.dirname(temp)===os.tmpdir());await fs.rm(temp,{recursive:true,force:true});}

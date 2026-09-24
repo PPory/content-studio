@@ -252,3 +252,39 @@
 .intel-consent label:has(> input[type=checkbox]) { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; line-height: 1.6; }
 .intel-consent input[type=checkbox] { margin-top: 4px; flex: none; }
 .intel-consent__hint { margin: 10px 0; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-3); }
+
+/* ── 速览（AIhot 精选 / Follow Builders） ─────────────────────────
+   行式列表，和热点的列表模式同一种安静的节奏；「在热点里」用品牌绿，表示「已经走到热点里了」。 */
+.intel-digest { display: grid; gap: 18px; }
+.intel-digest__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.intel-digest__kinds { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); }
+.intel-digest__kinds button { padding: 5px 12px; border: 0; border-radius: calc(var(--r-ctl) - 2px); background: none; color: var(--text-3); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.intel-digest__kinds button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg, var(--text-1)); font-weight: 600; }
+.intel-digest__missed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; }
+.intel-digest__missed input { accent-color: var(--accent); }
+.intel-digest__count { margin-left: auto; color: var(--text-3); font-size: var(--fs-xs); }
+.intel-digest__day h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
+.intel-digest__day h3 span { color: var(--text-3); font-size: var(--fs-2xs); font-weight: 400; }
+.intel-digest__day ul { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.intel-digest__author h4 { margin: 12px 0 4px; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
+.intel-digest__item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: start; padding: 10px 4px; border-bottom: 1px solid var(--border); }
+.intel-digest__item:hover { background: var(--surface-2); }
+.intel-digest__text { display: grid; gap: 3px; min-width: 0; }
+.intel-digest__title { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 500; line-height: 1.6; }
+.intel-digest__pending { color: var(--text-3); font-weight: 400; }
+.intel-digest__summary { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin: 0; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.6; }
+/* 英文原文：默认两行，点开看全文。 */
+.intel-digest__orig { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: var(--fs-xs); line-height: 1.6; text-align: left; cursor: pointer; }
+.intel-digest__orig.is-open { display: block; }
+.intel-digest__side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.intel-digest__time { color: var(--text-3); font-size: var(--fs-2xs); white-space: nowrap; }
+.intel-digest__acts { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+.intel-digest__act { padding: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-decoration: none; cursor: pointer; }
+.intel-digest__act:hover { color: var(--text-1); text-decoration: underline; }
+.intel-digest__hot { padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-size: var(--fs-xs); font-weight: 500; cursor: pointer; }
+.intel-digest__hot:hover { text-decoration: underline; }
+@media (max-width: 700px) {
+ .intel-digest__count { margin-left: 0; width: 100%; }
+ .intel-digest__item { grid-template-columns: minmax(0, 1fr); }
+ .intel-digest__side { flex-direction: row; justify-content: space-between; align-items: center; }
+}
