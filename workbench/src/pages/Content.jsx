@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { CONTENT_SHELVES, byTopicUrgency, contentShelf, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
-import { openResearchContent } from "../lib/open-content.js";
+import { openResearchContent, researchProjectId } from "../lib/open-content.js";
 import { TopicShelf } from "./content/TopicShelf.jsx";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, LayoutToggle, Loading, PageHeader, Toast } from "../components/ui.jsx";
@@ -91,8 +91,10 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   /** 先放着：整篇停下，稿子和构思都在；回执上的「撤销」就是「接着做」。 */
   const park = async (item) => {
     try {
-      await api.transitionProject(item.id, "park");
-      setToast({ text: `「${item.title}」先放着了`, detail: "在「先放着」里，随时可以接着做。", undo: async () => { await api.transitionProject(item.id, "resume"); setToast(null); onChanged?.(); load(); } });
+      // 还没建成内容的旧选题：先补建（服务端幂等），再搁置——和别的选题一样能先放着。
+      const projectId = item.kind === "project" ? item.id : await researchProjectId(item.id);
+      await api.transitionProject(projectId, "park");
+      setToast({ text: `「${item.title}」先放着了`, detail: "在「先放着」里，随时可以接着做。", undo: async () => { await api.transitionProject(projectId, "resume"); setToast(null); onChanged?.(); load(); } });
       onChanged?.(); await load();
     } catch (e) { setError(e); }
   };

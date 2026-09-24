@@ -39,7 +39,7 @@ function TopicCard({ item, onOpen, onPark, onRemove }) {
       </span>
     </button>
     <footer className="content-card__actions">
-      {onPark && item.kind === "project" ? <button className="btn btn-sm" onClick={() => onPark(item)}>先放着</button> : <span />}
+      {onPark ? <button className="btn btn-sm" onClick={() => onPark(item)}>先放着</button> : <span />}
       <span className="content-card__remove"><RowDelete onDelete={() => onRemove(item)} label="删掉" title={`删掉选题「${item.title}」——移入回收站，可以撤销`} /></span>
     </footer>
   </article>;
@@ -94,7 +94,7 @@ function TopicTable({ list, found, scanning, onOpen, onPark, onRemove, onAdd }) 
           </span>
           <span className="ptable__tail" role="cell"><time>{relTime(item.updatedAt)}</time><em className="ptable__next" aria-hidden="true">{stage.key === "draft" ? "接着改" : "接着整理"}<IconArrowRight size={14} stroke={1.8} /></em></span>
         </button>
-        {onPark && item.kind === "project"
+        {onPark
           ? <button type="button" className="ptable__file" onClick={() => onPark(item)} aria-label={`先放着「${item.title}」`} title="先放着（稿子和构思都在，随时接着做）"><IconPlayerPause size={14} stroke={1.7} aria-hidden="true" /></button>
           : <span className="ptable__file" aria-hidden="true" />}
         <span className="ptable__acts">
