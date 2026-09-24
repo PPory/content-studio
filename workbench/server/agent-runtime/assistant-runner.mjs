@@ -3,7 +3,7 @@ import { researchIntelligenceRestricted } from "../domain/intelligence-topic-int
 import { assertSourcePermission } from "../acquisition/compatibility.mjs";
 import { intelligenceBrief } from "../domain/intelligence-feed.mjs";
 import { noteDiscussionContext } from "../domain/note-insights.mjs";
-import { getResearch, projectResearches } from "../domain/research.mjs";
+import { attachToProject, getResearch, projectResearches } from "../domain/research.mjs";
 import { getProjectNotebook } from "../domain/project-notebook.mjs";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
@@ -1360,6 +1360,14 @@ export async function rewindAssistantConversation(scopeId, conversationId) {
   return { conversation: saved, message };
 }
 
+/** 协作范围落在哪一篇内容上：范围是项目本身，或是它的一篇稿子。都不是返回 null。 */
+function pieceOfScope(workspace, scopeId) {
+  const id = clean(scopeId, 240).replace(/^project:/, "");
+  if (!id) return null;
+  const project = workspace.db.prepare("SELECT p.id FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?").get(id);
+  if (project) return project.id;
+  return workspace.db.prepare("SELECT d.project_id id FROM drafts d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL JOIN entities pe ON pe.id=d.project_id AND pe.deleted_at IS NULL WHERE d.id=?").get(id)?.id || null;
+}
 export async function applyAssistantAction(env, scopeId, conversationId, actionId) {
   const record = await ensureConversation(scopeId, conversationId);
   const runtimeEnv = { ...env, AGENT_SESSION_MOUNTS: record.pathGrants || [], AGENT_PERMISSION_MODE: record.permissionMode };
@@ -1397,29 +1405,43 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     const workspace = currentWorkspace();
     const title = clean(action.title, 100) || clean(article.title, 100) || new URL(action.url).hostname;
     const canonicalUrl = new URL(action.url).toString();
-    const existing = workspace.db.prepare("SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.source_url = ? OR b.title = ?").get(canonicalUrl, title);
-    if (existing) throw Object.assign(new Error(`知识库里已经有「${title}」了`), { status: 409, hint: "换个标题，或者直接去「知识 → 来源」里看那一份。" });
-    // 网页收进来是**只读的文档**：事实要引用它，正文能随手改的话引用就不可信。
-    const book = await createBookRecord(workspace, {
-      title, author: clean(article.byline, 120), kind: "藏书", sourceKind: "文档",
-      sourceUrl: canonicalUrl, publishedAt: article.publishedAt || "",
-      chapters: [{ title, text: body }],
-    });
     /**
-     * 入库之后**自动排一次提炼**，不用你再去点一次。
-     *
-     * ⚠️ 自动的是**提炼**，不是**写入**：任务产出的是候选（`action_candidates`），
-     * 词条要等你在审阅卡上确认才落库。所以这里省掉的是一次纯粹的手工触发——
-     * 一件你在「同意收这份资料」时就已经默认要做的事——而不是省掉你的判断。
-     *
-     * 幂等键按来源实体定：同一份资料重复排队只会跑一次。
+     * 在一篇内容里（协作的范围是这篇的主稿或项目）找到的资料，确认时**同时放进这篇的资料**（左栏）。
+     * 2026-09-24 用户反馈：抓取入库之后在这篇里哪都看不到——收进知识库只是顺带，挂到这篇上才是他要的。
      */
-    const documents = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ? ORDER BY document_order").all(book.id);
-    for (const document of documents) {
-      workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(document.id, new Date().toISOString());
-      workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
+    const piece = pieceOfScope(workspace, scopeId);
+    const documentsOf = (bookId) => workspace.db.prepare("SELECT d.id FROM book_documents d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.book_id = ? ORDER BY d.document_order").all(bookId);
+    const existing = workspace.db.prepare("SELECT b.id FROM books b JOIN entities e ON e.id = b.id AND e.deleted_at IS NULL WHERE b.source_url = ? OR b.title = ?").get(canonicalUrl, title);
+    if (existing && piece) {
+      // 知识库里已经有了：不再入库一份，直接把已有的那份挂到这篇上。
+      const docs = documentsOf(existing.id);
+      attachToProject(workspace, piece, docs.map((d) => ({ kind: "source", id: d.id })));
+      result = { bookId: existing.id, title, url: action.url, existing: true, attachedTo: piece };
+    } else {
+      if (existing) throw Object.assign(new Error(`知识库里已经有「${title}」了`), { status: 409, hint: "换个标题，或者直接去「知识 → 来源」里看那一份。" });
+      // 网页收进来是**只读的文档**：事实要引用它，正文能随手改的话引用就不可信。
+      const book = await createBookRecord(workspace, {
+        title, author: clean(article.byline, 120), kind: "藏书", sourceKind: "文档",
+        sourceUrl: canonicalUrl, publishedAt: article.publishedAt || "",
+        chapters: [{ title, text: body }],
+      });
+      /**
+       * 入库之后**自动排一次提炼**，不用你再去点一次。
+       *
+       * ⚠️ 自动的是**提炼**，不是**写入**：任务产出的是候选（`action_candidates`），
+       * 词条要等你在审阅卡上确认才落库。所以这里省掉的是一次纯粹的手工触发——
+       * 一件你在「同意收这份资料」时就已经默认要做的事——而不是省掉你的判断。
+       *
+       * 幂等键按来源实体定：同一份资料重复排队只会跑一次。
+       */
+      const documents = workspace.db.prepare("SELECT id FROM book_documents WHERE book_id = ? ORDER BY document_order").all(book.id);
+      for (const document of documents) {
+        workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(document.id, new Date().toISOString());
+        workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
+      }
+      if (piece) attachToProject(workspace, piece, documents.map((d) => ({ kind: "source", id: d.id })));
+      result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability", queuedForDistill: documents.length, attachedTo: piece || "" };
     }
-    result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability", queuedForDistill: documents.length };
   } else if (action.type === "rewrite_body") {
     // ⚠️ **这一条永远不在这儿落地。** 正文的唯一写入路径是编辑器的候选采纳
     // （带版本、修订记录和审计）；服务端再开一条就是同一条业务规则实现两遍，

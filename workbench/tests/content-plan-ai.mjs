@@ -9,7 +9,7 @@ import { openWorkspace } from '../server/storage/workspace.mjs';
 import { saveIntelligenceProfile, enqueueIntelligence, addIntelligenceSource } from '../server/domain/intelligence.mjs';
 import { saveIntelligenceBriefs } from '../server/domain/intelligence-feed.mjs';
 import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
-import { researchReference, createResearch, ensureResearchProject, trashContent, restoreContent, listResearches } from '../server/domain/research.mjs';
+import { researchReference, createResearch, ensureResearchProject, trashContent, restoreContent, listResearches, attachToProject, projectResearches } from '../server/domain/research.mjs';
 import { getProjectNotebook, saveProjectNotebook } from '../server/domain/project-notebook.mjs';
 import { deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { planView, proposeAngles, chooseAngle, proposeStructures, chooseStructure, writeDraft } from '../server/domain/content-plan-ai.mjs';
@@ -121,6 +121,12 @@ try {
   const reopened = ensureResearchProject(w, lone.id);
   assert.ok(reopened.created && reopened.projectId !== loneProject, '补建新的一篇');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
+  // 协作里「放进这篇的资料」：挂到这篇背后的研究记录上（左栏读的就是它），重复挂不重复出现。
+  const wikiRef = w.db.prepare("SELECT p.id FROM wiki_pages p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL LIMIT 1").get();
+  assert.ok(wikiRef, '测试工作区里有一页 Wiki');
+  attachToProject(w, reopened.projectId, [{ kind: 'wiki', id: wikiRef.id }]);
+  attachToProject(w, reopened.projectId, [{ kind: 'wiki', id: wikiRef.id }]);
+  assert.equal(projectResearches(w, reopened.projectId)[0].references.filter((r) => r.id === wikiRef.id).length, 1, '挂上了，而且只有一份');
   console.log('content-plan-ai: trash content with its research, reopen after legacy delete;');
   console.log('content-plan-ai: auto deepen, read (intel/bridge), angles (verbatim wiki, experience gate, cache), choose angle, structures + titles, draft (write when empty, candidate otherwise, 待补 kept), knowledge → content passed');
 } finally {

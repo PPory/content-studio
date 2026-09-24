@@ -18,12 +18,14 @@ const ACTION_LABELS = {
   wiki_page: ["归档为 Wiki 页面", "确认归档"],
 };
 
-export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalLength = 0 }) {
+export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalLength = 0, inPiece = false }) {
   if (!action || action.status === "superseded") return null;
   const result = createAiResult({ ...action, kind: "action", status: action.status === "pending" ? "proposed" : action.status });
   const applied = result.status === "applied";
   const rejected = result.status === "rejected";
-  const [title, button] = ACTION_LABELS[result.type] || ["执行候选操作", "确认执行"];
+  // 在一篇内容里找到的网页：确认后放进这篇的资料（左栏），同时收进知识库。卡上要先说清会放到哪儿。
+  const [title, button] = inPiece && result.type === "knowledge_source_add" ? ["放进这篇的资料", "抓取并放进来"]
+    : ACTION_LABELS[result.type] || ["执行候选操作", "确认执行"];
   /**
    * 「整理全文」是这批卡里**唯一一张不在这儿落地的**。
    *
@@ -47,7 +49,7 @@ export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalL
   const detail = result.type === "create_content" ? `${result.title} · ${result.platform}`
     // 收资料这张卡上最该看的是**地址和理由**：地址决定你信不信这个来源，
     // 理由决定它值不值得占知识库的位置。两者都比「已由服务端校验范围」有用。
-    : result.type === "knowledge_source_add" ? [result.title, result.url, result.why].filter(Boolean).join(" · ")
+    : result.type === "knowledge_source_add" ? [result.title, result.url, result.why, inPiece ? "会同时收进知识库，别的文章也能用" : ""].filter(Boolean).join(" · ")
     : result.type === "knowledge_update" ? [
       { new_entry: "新词条", fact: "追加事实", definition: "更新定义" }[result.change],
       `「${result.entry}」：${result.text}`, `原文：${result.quote}`, result.sourceTitle ? `来源：${result.sourceTitle}` : "", result.why,
@@ -60,7 +62,8 @@ export function ActionCard({ action, onApply, onReject, onOpenRewrite, originalL
     <div><small>{applied ? "已执行" : rejected ? "已拒绝" : "等待你确认"}</small><b>{title}</b><p>{detail}</p></div>
     {applied ? (result.result?.projectId ? <button type="button" onClick={() => { window.location.hash = `#/project/${result.result.projectId}`; }}>打开内容</button>
       : result.result?.pageId ? <button type="button" onClick={() => { window.location.hash = `#/entries/${result.result.pageId}`; }}>打开 Wiki 页面</button>
-        : result.result?.entryId ? <button type="button" onClick={() => { window.location.hash = `#/entries/${result.result.entryId}`; }}>打开词条</button> : <span>已完成</span>)
+        : result.result?.entryId ? <button type="button" onClick={() => { window.location.hash = `#/entries/${result.result.entryId}`; }}>打开词条</button>
+          : result.result?.attachedTo ? <span>已放进这篇的资料</span> : <span>已完成</span>)
       : rejected ? <span>不会执行</span>
         : <div className="assistant-action-card__actions"><button type="button" onClick={() => onReject(result.id)}>拒绝</button><button type="button" className="is-primary" onClick={() => onApply(result.id)}>{button}</button></div>}
   </section>;

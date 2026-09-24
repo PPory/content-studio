@@ -214,6 +214,12 @@ export function ensureProjectResearch(w, projectId) {
     return { researchId: research.id, created: true };
   });
 }
+/** 把几份资料挂到一篇内容背后的研究记录上（没有就补一条），左栏「这篇的资料」读的就是这里。 */
+export function attachToProject(w, projectId, refs = []) {
+  const { researchId } = ensureProjectResearch(w, projectId);
+  for (const ref of refs) researchReference(w, researchId, ref);
+  return { researchId, attached: refs.length };
+}
 export function projectResearches(w,id) {
   w.domain.entity(id,"project");
   return w.db.prepare("SELECT r.id FROM researches r JOIN research_projects l ON l.research_id=r.id JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE l.project_id=? ORDER BY l.created_at").all(id).map(({id})=>getResearch(w,id));

@@ -92,7 +92,7 @@ async function prepareAssistantUpload(file) {
   return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp", lastModified: file.lastModified });
 }
 
-export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse, embedded = false, emptyMessage = "", composerTools = null, onSettled, onExcerpt }) {
+export function AssistantPane({ scope, surface, target = { kind: "none", editable: false }, scopeId, document = {}, materials = [], profile, promptRequest = null, handoffRequest = null, onActionApplied, initialConversationId = "", onConversationChange, draftStorageKey = "", onContinue, onClose, headerLead = null, headerSlots = null, projectContext = null, onCollapse, embedded = false, emptyMessage = "", composerTools = null, onSettled, onExcerpt }) {
   const policy = resolveAssistantPolicy({ scope, target });
   const presentation = ASSISTANT_SURFACES[surface];
   if (!presentation) throw new TypeError(`Unknown assistant surface: ${surface}`);
@@ -676,6 +676,7 @@ export function AssistantPane({ scope, surface, target = { kind: "none", editabl
     try {
       const result = await api.applyAssistantAction(scopeId, conversationId, actionId);
       applyConversation(result.conversation);
+      onActionApplied?.(result.action || null);
     } catch (next) { setError(next); }
   }
 

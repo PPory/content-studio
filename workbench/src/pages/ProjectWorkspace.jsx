@@ -1053,6 +1053,8 @@ ${(form.body || "").slice(0, 3000)}`);
             notebook={null}
             handoffRequest={assistantHandoff}
             promptRequest={assistantPrompt}
+            // 协作里确认「放进这篇的资料」之后，左栏马上看得到。
+            onActionApplied={(action) => { if (action?.result?.attachedTo) libRef.current?.reload(); }}
             reviewingCandidate={candidateReviewFocused}
             recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}
             scopeId={draft?.id || projectId}
