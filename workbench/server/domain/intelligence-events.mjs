@@ -193,7 +193,9 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
     const main = e.members.filter(m => m.kind !== 'comment');
     e.anchor = main.find(m => m.id === anchors.get(e.id)) || main[0] || null;
     if (main.length < 2 || !e.anchor) continue;
-    const out = new Set(main.filter(m => m !== e.anchor && !sameStory(m, e.anchor)).map(m => m.id));
+    // 模型认定并合并进来的报道（中英文名字对不上这类）保留，不被下一次检查拆开，否则每次更新都会来回翻。
+    const merged = new Set(readState(w, `event-merged:${e.key}`)?.sourceIds || []);
+    const out = new Set(main.filter(m => m !== e.anchor && !merged.has(m.id) && !sameStory(m, e.anchor)).map(m => m.id));
     if (!out.size) continue;
     for (const m of e.members) if (m.kind === 'comment' && out.has(m.row.root_item_id)) out.add(m.id);
     for (const id of out) { assigned.delete(id); evicted.push(id); }
@@ -230,7 +232,8 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
       // 同时像好几个事件时，归到成员最多的那个（通常就是这件事的主事件）。
       let best = null;
       for (const e of events.values()) {
-        if ((!best || e.members.length > best.members.length) && coreOf(e).some(m => sameEvent(d, m))) best = e;
+        // 时间上靠近某个核心成员，并且和锚点是同一件事——和纯度检查同一个标准，否则会被拉进来又清出去（靠人名间接串进来就是这样）。
+        if ((!best || e.members.length > best.members.length) && coreOf(e).some(m => sameEvent(d, m)) && (!e.anchor || sameStory(d, e.anchor))) best = e;
       }
       join(best || addEvent(`src:${d.id}`, d), d, best ? 'supporting' : 'primary');
     }
@@ -238,7 +241,7 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
     for (const e of [...events.values()].filter(e => created.has(e.id) && e.members.length === 1 && isHotStory(e.members[0]))) {
       const d = e.members[0];
       let target = null;
-      for (const o of events.values()) if (o !== e && o.members.length > 1 && (!target || o.members.length > target.members.length) && coreOf(o).some(m => sameEvent(d, m))) target = o;
+      for (const o of events.values()) if (o !== e && o.members.length > 1 && (!target || o.members.length > target.members.length) && coreOf(o).some(m => sameEvent(d, m)) && (!o.anchor || sameStory(d, o.anchor))) target = o;
       if (!target) continue;
       w.db.prepare('DELETE FROM intel_cluster_members WHERE cluster_id=?').run(e.id);
       w.db.prepare("UPDATE intel_clusters SET cluster_kind='event_merged' WHERE id=?").run(e.id);
@@ -315,7 +318,10 @@ export async function judgeEvents(w, env, events, deps = {}) {
   for (const e of events) { e.cached = readState(w, `event-judge:${e.key}`); e.anchorAt = e.cached?.result?.progressAt ? Date.parse(e.cached.result.progressAt) : e.latestAt; }
   // 7 天内的事件都有资格；近 72 小时的先判，同档按热度。数量上限不变，调用次数不变。
   const band = e => e.anchorAt >= at - EVENT_WINDOW_MS ? 0 : 1;
-  const candidates = events.filter(e => e.relevant && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => band(a) - band(b) || b.heat - a.heat).slice(0, JUDGE_LIMIT);
+  // 已经有卡、成员又变了的事件排最前：不重判的话，卡上会一直挂着旧成员和旧角度（纯度检查拆开混杂事件后尤其如此）。
+  const hasCard = new Set(w.db.prepare("SELECT story_key FROM intel_briefs WHERE story_key LIKE 'event:%'").all().map(r => r.story_key.slice(6)));
+  const stale = e => hasCard.has(e.key) && e.cached && e.cached.fingerprint !== memberFingerprint(e) ? 0 : 1;
+  const candidates = events.filter(e => e.relevant && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => stale(a) - stale(b) || band(a) - band(b) || b.heat - a.heat).slice(0, JUDGE_LIMIT);
   const todo = [];
   for (const e of candidates) {
     if (e.cached?.fingerprint === memberFingerprint(e)) e.judgement = e.cached.result; else todo.push(e);
@@ -364,6 +370,8 @@ function applyMerges(w, events, mergeBriefIdentities) {
       w.db.prepare("UPDATE intel_clusters SET cluster_kind='event_merged' WHERE id=?").run(e.id);
     })();
     target.members.push(...e.members); Object.assign(target, eventStats(target));
+    const kept = readState(w, `event-merged:${target.key}`)?.sourceIds || [];
+    writeState(w, `event-merged:${target.key}`, { sourceIds: [...new Set([...kept, ...e.members.map(m => m.id)])], at: now() });
     // 合并是模型自己的判断，合并后的成员不必再判一次。
     if (target.judgement) writeState(w, `event-judge:${target.key}`, { fingerprint: memberFingerprint(target), memberIds: memberIds(target), result: target.judgement, at: now() });
     const from = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${e.key}`), to = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${target.key}`);
@@ -388,6 +396,8 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
   const kept = live.filter(e => e.judgement?.keep).map(e => [e, models(e)]);
   const relatedOf = e => { const mine = models(e); return mine.size ? kept.filter(([o, theirs]) => o !== e && shares(mine, theirs)).slice(0, 5).map(([o]) => ({ storyKey: o.key, title: o.judgement.title })) : []; };
   for (const e of live) {
+    // 这次没轮到判断、但已经有卡的事件：沿用上次的判断，至少把成员和热度刷新，不让卡上挂着已经移走的报道。
+    if (!e.judgement && e.cached?.result && hasCardFor(w, e.key)) e.judgement = e.cached.result;
     if (!e.judgement) continue;
     const storyKey = `event:${e.key}`;
     let old = w.db.prepare('SELECT * FROM intel_briefs WHERE story_key=?').get(storyKey);
@@ -430,6 +440,7 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
   return { created, updated, withheld, events: live.filter(e => e.judgement?.keep).length };
 }
 
+const hasCardFor = (w, key) => Boolean(w.db.prepare('SELECT 1 FROM intel_briefs WHERE story_key=?').get(`event:${key}`));
 const hasAliases = w => Boolean(w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_brief_aliases'").get());
 
 // ── 「值得做」两条硬规则（2026-09-24，用户确认） ─────────────────────

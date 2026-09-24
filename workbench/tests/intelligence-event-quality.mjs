@@ -154,6 +154,18 @@ try {
   assert.ok(solAgain && solAgain.id !== cleaned.id && solAgain.event.members.some(m => m.sourceId === solCn.id), 'GPT-6 Sol 回到自己的卡');
   assert.equal(cardWith(patreon.id).id, patreonCard.id, 'Patreon 的卡身份不变');
   assert.ok(!cardWith(patreon.id).event.members.some(m => m.sourceId === sol.id), '模型的合并建议没有通过本地把关');
+  // 人名不能当桥：「Altman 称 GPT-6 Sol 定价…」在 GPT-6 Sol 这件事里，「Altman 向联合国简报」不跟着进来。
+  const altmanPrice = add('aihot.selected', 'Sam Altman 称 GPT-6 Sol 按任务定价没有对手', { hours: 0.12 });
+  const altmanUn = add('aihot.selected', 'Sam Altman 计划向联合国安理会就人工智能进行简报', { hours: 0.08 });
+  await update();
+  assert.ok(cardWith(altmanPrice.id)?.event.members.some(m => m.sourceId === sol.id), 'Altman 谈 GPT-6 Sol 定价归入 GPT-6 Sol');
+  assert.notEqual(cardWith(altmanUn.id)?.id, cardWith(sol.id).id, '只靠同一个人名串不进来');
+  // 这次没轮到判断的已有卡，也要刷新成员：模拟模型这次漏判了 Patreon 这件事。
+  for (const id of [solCn.id]) { w.db.prepare('DELETE FROM intel_cluster_members WHERE source_id=?').run(id); w.db.prepare("INSERT INTO intel_cluster_members(cluster_id,source_id,role) VALUES(?,?,'supporting')").run(patreonCluster, id); }
+  w.db.prepare("UPDATE intel_briefs SET data_json=json_set(data_json,'$.event.members',json(?)) WHERE id=?").run(JSON.stringify([...cardWith(patreon.id).event.members, { sourceId: solCn.id, title: 'GPT-6 Sol 发布：价格较上一代低 50%', platform: 'aihot', kind: 'article' }]), patreonCard.id);
+  const skipPatreon = { completeJson: async (env, input) => { const r = await judge.completeJson(env, input); r.data.events = r.data.events.filter(e => !JSON.parse(input.user).events.find(x => x.id === e.id)?.items.some(i => i.title.includes('Patreon'))); return r; } };
+  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, skipPatreon);
+  assert.ok(!feed().briefs.find(b => b.id === patreonCard.id).event.members.some(m => m.sourceId === solCn.id), '没轮到判断的卡也刷新成员，不挂着已经移走的报道');
 
   // ── 深读：同一套结构填满；Wiki 按事件检索、排除同源；关键事实过数字校验；旧解读可更新 ──
   const stamp = iso(now);
@@ -185,6 +197,7 @@ try {
     const d = JSON.parse(input.user);
     if (d.step === 'wiki-select') {
       selectCalls++; catalog = d.catalog;
+      assert.ok(d.event.excerpts.length > 0, '挑视角时能看到报道正文的开头，而不只是标题');
       if (selectFails) throw Object.assign(new Error('模型暂时不可用'), { status: 503 });
       return { data: { picks: [{ id: pricing, relation: 'explain', why: '按比例感知价格' }, { id: coffee, relation: 'apply', why: '凑数' }, { id: 'made-up-wiki', relation: 'apply', why: 'x' }] } };
     }
@@ -261,7 +274,7 @@ try {
   assert.match(research.openQuestions, /没有第三方复测/, '主要的不确定项也带上');
   assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad-needs', briefIds: [deepCard.id], confirmed: true, creation: { angle: 'x', needs: 'not-a-list' } }), e => e.status === 400);
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity passed');
+  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity (no person-name bridges, unjudged cards refreshed) passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });
