@@ -56,7 +56,8 @@ export function normalizeOutline(data, context) {
        * 结构层说错一条「这里用哪个材料」，代价是用户自己再挑一次；
        * 而把整份结构作废，代价是他什么都拿不到。真正不能放过的是起稿时的编造。
        */
-      uses: usesRaw.map((id) => known.get(clean(id, 120))).filter(Boolean)
+      // 同一份材料只列一次（模型常把同一个 id 写两遍）。
+      uses: [...new Set(usesRaw.map((id) => clean(id, 120)))].map((id) => known.get(id)).filter(Boolean)
         .map((element) => ({ id: element.id, label: element.label, typeLabel: element.typeLabel, origin: element.origin })),
       beats: (Array.isArray(item?.beats) ? item.beats : []).slice(0, 6).map((beat) => clean(beat, 500)).filter(Boolean),
     };

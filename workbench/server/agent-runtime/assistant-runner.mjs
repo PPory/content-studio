@@ -1415,7 +1415,7 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
     if (existing && piece) {
       // 知识库里已经有了：不再入库一份，直接把已有的那份挂到这篇上。
       const docs = documentsOf(existing.id);
-      attachToProject(workspace, piece, docs.map((d) => ({ kind: "source", id: d.id })));
+      attachToProject(workspace, piece, docs.map((d) => ({ kind: "source", id: d.id })), { by: "ai" });
       result = { bookId: existing.id, title, url: action.url, existing: true, attachedTo: piece };
     } else {
       if (existing) throw Object.assign(new Error(`知识库里已经有「${title}」了`), { status: 409, hint: "换个标题，或者直接去「知识 → 来源」里看那一份。" });
@@ -1439,7 +1439,7 @@ export async function applyAssistantAction(env, scopeId, conversationId, actionI
         workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,run_at) VALUES (?,'queued',?)").run(document.id, new Date().toISOString());
         workspace.jobs.enqueue({ idempotencyKey: `wiki.ingest:${document.id}`, kind: "wiki.ingest", payload: { sourceId: document.id } });
       }
-      if (piece) attachToProject(workspace, piece, documents.map((d) => ({ kind: "source", id: d.id })));
+      if (piece) attachToProject(workspace, piece, documents.map((d) => ({ kind: "source", id: d.id })), { by: "ai" });
       result = { bookId: book.id, title, url: action.url, words: article.words || body.length, via: article.via || "readability", queuedForDistill: documents.length, attachedTo: piece || "" };
     }
   } else if (action.type === "rewrite_body") {

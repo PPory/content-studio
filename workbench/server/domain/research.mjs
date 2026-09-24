@@ -214,10 +214,18 @@ export function ensureProjectResearch(w, projectId) {
     return { researchId: research.id, created: true };
   });
 }
-/** 把几份资料挂到一篇内容背后的研究记录上（没有就补一条），左栏「这篇的资料」读的就是这里。 */
-export function attachToProject(w, projectId, refs = []) {
+/**
+ * 把几份资料挂到一篇内容背后的研究记录上（没有就补一条），左栏「这篇的资料」读的就是这里。
+ * `by: "ai"`：在协作里确认 AI 找到的资料——记进构思的 plan.aiAdded，左栏标「AI 找到」。
+ */
+export function attachToProject(w, projectId, refs = [], { by = "" } = {}) {
   const { researchId } = ensureProjectResearch(w, projectId);
   for (const ref of refs) researchReference(w, researchId, ref);
+  if (by === "ai" && refs.length) {
+    const nb = getProjectNotebook(w, projectId), plan = nb.plan && typeof nb.plan === "object" ? nb.plan : {};
+    const aiAdded = [...new Set([...(plan.aiAdded || []), ...refs.map((r) => `${r.kind}:${r.id}`)])].slice(-100);
+    saveProjectNotebook(w, projectId, { expectedVersion: nb.version, plan: { ...plan, aiAdded } });
+  }
   return { researchId, attached: refs.length };
 }
 export function projectResearches(w,id) {

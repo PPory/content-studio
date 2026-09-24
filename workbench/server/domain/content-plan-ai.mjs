@@ -18,7 +18,7 @@ import { describeCreativeContext, projectCreativeContext } from "./content-proje
 import { normalizeOutline, proposeProjectDraft } from "./content-project-ai.mjs";
 import { getProjectNotebook, saveProjectNotebook } from "./project-notebook.mjs";
 import { deepenStatus } from "./intelligence-deepen.mjs";
-import { appendItems, parseChecklist } from "../../src/lib/content-checklist.js";
+import { appendItems, parseChecklist, removeItem } from "../../src/lib/content-checklist.js";
 
 const bad = (message, status = 400) => Object.assign(new Error(message), { status });
 const clean = (value, max = 2000) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -135,8 +135,8 @@ export async function proposeAngles(env, w, { projectId, force = false } = {}) {
     maxTokens: 5000,
   });
   const items = normalizeAngles(completion.data, ctx, wiki);
-  // 已选的角度另存了一份快照（chosenAngle），重新生成角度不会把它弄丢。
-  writePlan(w, projectId, { angles: { fingerprint: fp, generatedAt: new Date().toISOString(), items, model: completion.model || "" } });
+  // 已选的角度另存了一份快照（chosenAngle），重新生成角度不会把它弄丢；上一组留在 anglesPrev，界面上可以切回去看。
+  writePlan(w, projectId, { angles: { fingerprint: fp, generatedAt: new Date().toISOString(), items, model: completion.model || "" }, ...(plan.angles?.items?.length ? { anglesPrev: plan.angles } : {}) });
   return planView(w, env, projectId);
 }
 
@@ -153,12 +153,19 @@ export function chooseAngle(w, projectId, { angleId = "", own = "" } = {}) {
     if (!angle) throw bad("这个角度已经不在了，请刷新后再选", 409);
   }
   const changed = plan.chosenAngleId !== angle.id || plan.chosenAngle?.title !== angle.title;
+  // ⚠️ 不写「想讲什么」（thought）：那是作者自己的原话（记一下、知识探索带来的），选角度不能把它换成角度文案。
+  // 角度另由 describeCreativeContext 读 plan.chosenAngle 交给模型。写给谁 / 读者得到什么只在还空着时补上。
+  // 换角度：旧角度留下、还没勾的缺口行删掉（只删文字完全等于旧缺口的那几行），再追加新角度的缺口。
+  let questions = nb.questions;
+  if (changed && plan.chosenAngle?.gaps?.length) {
+    const old = new Set(plan.chosenAngle.gaps.map((g) => g.label));
+    for (const item of [...parseChecklist(questions).items].reverse()) if (!item.done && old.has(item.text)) questions = removeItem(questions, item.index);
+  }
   return saveProjectNotebook(w, projectId, {
     expectedVersion: nb.version,
-    thought: [angle.title, angle.is].filter(Boolean).join("\n"),
-    ...(angle.audience ? { audience: angle.audience } : {}),
-    ...(angle.gain ? { intent: angle.gain } : {}),
-    questions: appendItems(nb.questions, angle.gaps.filter((g) => g.kind === "find").map((g) => g.label)),
+    ...(angle.audience && !nb.audience?.trim() ? { audience: angle.audience } : {}),
+    ...(angle.gain && !nb.intent?.trim() ? { intent: angle.gain } : {}),
+    questions: appendItems(questions, angle.gaps.map((g) => g.label)),
     // 换了角度，旧的结构就不再作数（它是照着旧角度搭的）。
     plan: { ...plan, chosenAngleId: angle.id, chosenAngle: angle, ...(changed ? { structures: null, chosenStructure: 0, chosenTitle: 0 } : {}) },
   });
@@ -195,7 +202,7 @@ export async function proposeStructures(env, w, { projectId, force = false } = {
   if (!items.length) throw new Error("没能搭出可用的结构，请重试");
   const titles = (Array.isArray(data.titles) ? data.titles : []).slice(0, 3).map((t) => ({ text: clean(t?.text, 80), why: clean(t?.why, 120) })).filter((t) => t.text);
   if (!titles.length) titles.push({ text: plan.chosenAngle.title, why: "就用角度这一句" });
-  writePlan(w, projectId, { structures: { fingerprint: fp, generatedAt: new Date().toISOString(), items, titles, model: completion.model || "" }, chosenStructure: 0, chosenTitle: 0 });
+  writePlan(w, projectId, { structures: { fingerprint: fp, generatedAt: new Date().toISOString(), items, titles, model: completion.model || "" }, chosenStructure: 0, chosenTitle: 0, ...(plan.structures?.items?.length ? { structuresPrev: plan.structures } : {}) });
   return planView(w, env, projectId);
 }
 
@@ -203,7 +210,12 @@ export function chooseStructure(w, projectId, { structure = 0, title = 0 } = {})
   const { plan } = readPlan(w, projectId);
   if (!plan.structures?.items?.[structure]) throw bad("这个结构已经不在了，请刷新后再选", 409);
   if (!plan.structures.titles?.[title]) throw bad("这个标题已经不在了，请刷新后再选", 409);
-  return writePlan(w, projectId, { chosenStructure: structure, chosenTitle: title });
+  // 一篇只有一个标题（正文标题）：选标题就是改它。已经有主稿就直接改主稿标题（正文不动，留版本）；
+  // 还没有主稿时先记在 plan 里，写初稿时用它。主稿不在写作中（待发布等）时不动，只记下选择。
+  const text = plan.structures.titles[title].text;
+  const master = w.db.prepare("SELECT d.id,d.title,d.body_markdown body,d.workflow_status status FROM drafts d JOIN project_primary_drafts p ON p.draft_id=d.id AND p.project_id=? JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL").get(projectId);
+  if (master && master.title !== text && master.status === "写作中") w.domain.updateDraft(master.id, { title: text, bodyMarkdown: master.body || "", reason: "choose-title", actor: "user", now: new Date() });
+  return writePlan(w, projectId, { chosenStructure: structure, chosenTitle: title, titleChosen: true });
 }
 
 /**
@@ -222,13 +234,20 @@ export async function writeDraft(env, w, { projectId } = {}) {
   const master = w.db.prepare("SELECT d.id,d.body_markdown body FROM drafts d JOIN project_primary_drafts p ON p.draft_id=d.id AND p.project_id=?").get(projectId);
   const gaps = (draft.body.match(/【待补[:：][^】]*】/g) || []).length;
   const words = draft.body.replace(/\s+/g, "").length;
-  writePlan(w, projectId, { draftAt: new Date().toISOString(), draftStats: { words, gaps } });
   if (master && !String(master.body || "").trim()) {
+    writePlan(w, projectId, { draftAt: new Date().toISOString(), draftStats: { words, gaps }, pendingDraft: null });
     w.domain.updateDraft(master.id, { title: draft.title || title, bodyMarkdown: draft.body, generated: true, reason: "ai-first-draft", actor: "user", now: new Date() });
     return { written: true, words, gaps, title: draft.title || title };
   }
-  return { written: false, candidate: { title: draft.title || title, body: draft.body }, words, gaps };
+  // 正文已经有字：候选先存进 plan.pendingDraft——写一篇要半分钟以上，用户中途离开也不会白花这次调用；
+  // 回到正文时提示「有一版 AI 初稿等你看」，看过（采纳或弃用）由界面清掉。
+  const candidate = { title: draft.title || title, body: draft.body, at: new Date().toISOString() };
+  writePlan(w, projectId, { draftAt: new Date().toISOString(), draftStats: { words, gaps }, pendingDraft: candidate });
+  return { written: false, candidate, words, gaps };
 }
+
+/** 那版候选初稿看过了（采纳或弃用），清掉。 */
+export function clearPendingDraft(w, projectId) { return writePlan(w, projectId, { pendingDraft: null }); }
 
 /** 工作区要的全部：读懂那一步的材料、当前的 plan、资料是否更新了、走到了哪一步。 */
 export function planView(w, env, projectId) {
@@ -244,9 +263,17 @@ export function planView(w, env, projectId) {
     : kind === "bridge" ? { kind, problem: c?.problem?.statement || ctx.problem?.statement || "", hypothesis: (c?.problem?.origin || ctx.problem?.origin) === "hypothesis", now: c?.cognitiveGap || op?.cognitiveGap || "", know: c?.knowledgeExplanation || op?.knowledgeExplanation || "", core: c?.coreClaim || op?.coreClaim || "", counter: (ctx.counterarguments || []).slice(0, 2).map((x) => [x.claim, x.response].filter(Boolean).join(" —— ")) }
       : { kind, thought: nb.thought || "", notes: nb.evidenceNotes || "" };
   const checklist = parseChecklist(nb.questions).items;
+  // 一篇只有一个标题：主稿标题；还没有主稿时，第四步选过就用选的那个，否则用项目标题（也就是选题本身）。
+  const master = w.db.prepare("SELECT d.title FROM drafts d JOIN project_primary_drafts p ON p.draft_id=d.id AND p.project_id=? JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL").get(projectId);
+  const projectTitle = w.db.prepare("SELECT title FROM projects WHERE id=?").get(projectId)?.title || "";
+  const chosenTitle = plan.titleChosen ? plan.structures?.titles?.[plan.chosenTitle || 0]?.text : "";
+  const pieceTitle = clean(master?.title, 200) || chosenTitle || projectTitle;
+  // 原来的选题名作为来源放在标题下面的小字里：情报标题 / 读者的问题 / 选题本身。和标题一样就不写。
+  const origin = [kind === "intel" ? brief.title : kind === "bridge" ? read.problem : "", projectTitle].map((t) => clean(t, 200)).find((t) => t && t !== pieceTitle) || "";
   return {
-    read, wiki: wiki.map((p) => ({ id: p.id, title: p.title, summary: p.summary || "" })),
-    plan: { ...plan, anglesStale: Boolean(plan.angles?.items?.length && plan.angles.fingerprint !== anglesFp), structuresStale: Boolean(plan.structures?.items?.length && plan.structures.fingerprint !== structFp) },
+    read, wiki: wiki.map((p) => ({ id: p.id, title: p.title, summary: p.summary || "" })), pieceTitle, origin,
+    // 选定角度之后补的资料就是为这个角度补的，不算「角度过期」；还没选时资料变了才提示可以重新想。
+    plan: { ...plan, anglesStale: Boolean(!plan.chosenAngle && plan.angles?.items?.length && plan.angles.fingerprint !== anglesFp), structuresStale: Boolean(plan.structures?.items?.length && plan.structures.fingerprint !== structFp) },
     checklist, experienceCount: ctx.experiences.length, hasBody: !ctx.empty,
   };
 }

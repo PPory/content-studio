@@ -8,7 +8,7 @@ import { createProjectExploration, getProjectNotebook, saveProjectNotebook } fro
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { proposeProjectDraft, proposeProjectOutline } from "../domain/content-project-ai.mjs";
 import { projectCreativeContext } from "../domain/content-project.mjs";
-import { chooseAngle, chooseStructure, planView, proposeAngles, proposeStructures, writeDraft } from "../domain/content-plan-ai.mjs";
+import { chooseAngle, chooseStructure, clearPendingDraft, planView, proposeAngles, proposeStructures, writeDraft } from "../domain/content-plan-ai.mjs";
 
 /**
  * 结构候选的存放位置。
@@ -139,5 +139,6 @@ export const contentProjectRoutes = [
   { method: "POST", path: "/api/workspace/projects/:id/plan/choose-angle", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); chooseAngle(workspace, params.id, { angleId: body.angleId, own: body.own }); json(res, { ok: true, ...planView(workspace, env, params.id) }); }) },
   { method: "POST", path: "/api/workspace/projects/:id/plan/structures", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); json(res, { ok: true, ...(await proposeStructures(env, workspace, { projectId: params.id, force: body.force === true })) }); }) },
   { method: "POST", path: "/api/workspace/projects/:id/plan/choose-structure", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); chooseStructure(workspace, params.id, { structure: Number(body.structure) || 0, title: Number(body.title) || 0 }); json(res, { ok: true, ...planView(workspace, env, params.id) }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/pending-draft/clear", handler: guard(async ({ env, workspace, res, params }) => { clearPendingDraft(workspace, params.id); json(res, { ok: true, ...planView(workspace, env, params.id) }); }) },
   { method: "POST", path: "/api/workspace/projects/:id/plan/draft", handler: guard(async ({ env, workspace, res, params }) => { const result = await writeDraft(env, workspace, { projectId: params.id }); json(res, { ok: true, ...result, ...planView(workspace, env, params.id) }); }) },
 ];

@@ -47,8 +47,9 @@ function resolveElement(db, element) {
   if (base.sourceKind === "wiki_page") {
     const row = db.prepare(`SELECT p.title,p.summary,p.body_markdown AS body FROM wiki_pages p
       JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL WHERE p.id=?`).get(base.sourceId);
+    // 知识探索带来的锚点只知道 id：label 用 Wiki 的真实标题，别让「待核对知识来源」这类占位出现在结构里。
     return row
-      ? { ...base, origin: `Wiki · ${row.title}`, body: clean(row.summary || row.body, WIKI_BODY_LIMIT), available: true }
+      ? { ...base, label: base.label && base.label !== "待核对知识来源" ? base.label : row.title, origin: `Wiki · ${row.title}`, body: clean(row.summary || row.body, WIKI_BODY_LIMIT), available: true }
       : { ...base, origin: "Wiki（已不存在）", body: "", available: false };
   }
   if (base.sourceKind === "material") {
@@ -169,6 +170,9 @@ export function describeCreativeContext(context) {
     lines.push("# 当前构思（用户可随时修改；它优先于旧简报。以下不是已核实证据）");
     lines.push(`想讲什么：${n.thought || "尚未确定"}\n写给谁：${n.audience || "未定"}\n想让读者带走什么：${n.intent || "未定"}\n尚未想明白：${n.questions || "无"}\n待核实依据：${n.evidenceNotes || "无"}`);
     if (n.alternatives.length) lines.push(`候选讲法（未采纳，不要默认选一条）：${JSON.stringify(n.alternatives)}`);
+    // 选题流程里选定的角度：「想讲什么」是作者原话，角度是这篇怎么讲，两者都要交给模型。
+    const a = n.plan?.chosenAngle;
+    if (a?.title) lines.push([`选定的角度（这篇就按它来讲）：${a.title}`, a.was && `读者现在以为：${a.was}`, a.is && `这篇要讲清楚：${a.is}`].filter(Boolean).join("\n"));
     lines.push("构思可以只有疑问或经历。不要为凑齐框架捏造判断、读者需求或来源。证据不足时明确指出。");
   }
   // The project notebook may be a creation-time excerpt. Read current linked notes

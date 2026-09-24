@@ -12,7 +12,8 @@ import { createIntelligenceTopicIntent } from '../server/domain/intelligence-top
 import { researchReference, createResearch, ensureResearchProject, trashContent, restoreContent, listResearches, attachToProject, projectResearches } from '../server/domain/research.mjs';
 import { getProjectNotebook, saveProjectNotebook } from '../server/domain/project-notebook.mjs';
 import { deepenState } from '../server/domain/intelligence-deepen.mjs';
-import { planView, proposeAngles, chooseAngle, proposeStructures, chooseStructure, writeDraft } from '../server/domain/content-plan-ai.mjs';
+import { planView, proposeAngles, chooseAngle, proposeStructures, chooseStructure, writeDraft, clearPendingDraft } from '../server/domain/content-plan-ai.mjs';
+import { describeCreativeContext, projectCreativeContext } from '../server/domain/content-project.mjs';
 import { projectPlanSummary } from '../server/domain/content-plan.mjs';
 import { writeDiscoveryCache } from '../server/domain/content-discovery.mjs';
 import { directionKey, directionToContent } from '../server/domain/intelligence-directions.mjs';
@@ -63,18 +64,25 @@ try {
   const exp = view.plan.angles.items.find((a) => a.how === 'experience');
   assert.ok(exp.gaps.some((g) => g.kind === 'exp'), '没有经历时讲经历的角度必须带 exp 缺口');
   assert.equal(calls, 2);
+  assert.ok(view.plan.anglesPrev?.items?.length > 0, '强制重新生成时上一组留着，可以切回去看');
   await proposeAngles(env, w, { projectId });
   assert.equal(calls, 2, '资料没变不再调用模型');
 
-  // 选定角度：写回构思，find 缺口追加进清单，已有清单不覆盖。
-  const before = getProjectNotebook(w, projectId).questions;
+  // 选定角度：「想讲什么」是作者原话，不被角度覆盖；角度另交给模型。缺口（含只能作者来的）追加进清单，已有清单不覆盖。
+  const before = getProjectNotebook(w, projectId).questions, thoughtBefore = getProjectNotebook(w, projectId).thought;
   chooseAngle(w, projectId, { angleId: 'a1' });
   const nb = getProjectNotebook(w, projectId);
-  assert.match(nb.thought, /模型没变聪明/); assert.equal(nb.audience, '选模型的人'); assert.equal(nb.intent, '看懂厂商在卖什么');
+  assert.equal(nb.thought, thoughtBefore, '选角度不覆盖作者原话');
+  assert.match(describeCreativeContext(projectCreativeContext(w, projectId)), /选定的角度（这篇就按它来讲）：模型没变聪明/, '角度照样交给模型');
+  assert.equal(nb.audience || '选模型的人', '选模型的人'); assert.equal(nb.intent || '看懂厂商在卖什么', '看懂厂商在卖什么');
   assert.ok(nb.questions.startsWith(before.trim()), '已有清单不覆盖');
   assert.ok(openItems(nb.questions).includes('一个真实账单例子'));
   assert.equal(nb.plan.chosenAngle.id, 'a1');
   assert.equal(projectPlanSummary(w, projectId).stage.key, 'angle');
+  // 选定角度之后补的资料是为这个角度补的：不算角度过期。
+  const wikiRow = w.db.prepare("SELECT id,title FROM wiki_pages LIMIT 1").get();
+  attachToProject(w, projectId, [{ kind: 'wiki', id: wikiRow.id }]);
+  assert.equal(planView(w, env, projectId).plan.anglesStale, false, '选定角度后补资料不提示角度过期');
 
   // 结构：两种 + 三个标题；认不出的材料引用丢掉，不让整份结构失败。
   answers.structures = { structures: [
@@ -84,6 +92,7 @@ try {
   view = await proposeStructures(env, w, { projectId });
   assert.equal(view.plan.structures.items.length, 2); assert.equal(view.plan.structures.titles.length, 3);
   chooseStructure(w, projectId, { structure: 0, title: 0 });
+  assert.equal(planView(w, env, projectId).pieceTitle, '模型没变聪明，为什么说是大更新？', '一篇只有一个标题：选的标题就是它');
   assert.throws(() => chooseStructure(w, projectId, { structure: 5, title: 0 }), (e) => e.status === 409);
 
   // 初稿：正文空着时直接写进主稿，【待补】保留；再写一次（正文已有字）只给候选，不动正文。
@@ -96,10 +105,15 @@ try {
   const second = await writeDraft(env, w, { projectId });
   assert.equal(second.written, false); assert.ok(second.candidate.body.includes('跑分没动'));
   assert.match(master(), /【待补/, '已有正文不被覆盖');
+  assert.ok(getProjectNotebook(w, projectId).plan.pendingDraft?.body.includes('跑分没动'), '候选先存下来，中途离开也不丢');
+  clearPendingDraft(w, projectId);
+  assert.equal(getProjectNotebook(w, projectId).plan.pendingDraft, null);
 
-  // 换了角度，旧结构作废。
+  // 换了角度，旧结构作废；旧角度留下、还没勾的缺口从清单里拿掉，已有的其他项留着。
   chooseAngle(w, projectId, { own: '我自己的一个角度' });
   assert.equal(getProjectNotebook(w, projectId).plan.structures, null);
+  assert.ok(!openItems(getProjectNotebook(w, projectId).questions).includes('一个真实账单例子'), '换角度清掉旧的未勾缺口');
+  assert.ok(getProjectNotebook(w, projectId).questions.startsWith(before.trim()), '原有清单还在');
 
   // 「来自我的知识」：扫描找到的连接一步建成内容，读懂那一步是知识型。
   const connection = { problem: { statement: '写到一半就卡住，是不是没天赋？', origin: 'hypothesis', evidence: [] }, knowledgeExplanation: '大脑把生理唤醒误读成我不行。', coreClaim: '卡住不是没天赋', cognitiveGap: '以为卡住就是没天赋', fitReason: '符合议程', knowledgeAnchors: [{ wikiPageId: wikiId, title: '核心体验', reason: '示例' }], basis: [], evidenceGaps: [] };
@@ -108,6 +122,8 @@ try {
   assert.equal(directionToContent(w, directionKey(connection)).projectId, made.projectId, '重复加入是同一篇');
   const kv = planView(w, env, made.projectId);
   assert.equal(kv.read.kind, 'bridge'); assert.equal(kv.read.hypothesis, true); assert.equal(kv.read.core, '卡住不是没天赋');
+  const anchorTitle = w.db.prepare("SELECT title FROM wiki_pages WHERE id=?").get(wikiId).title;
+  assert.equal(projectCreativeContext(w, made.projectId).elements.find((e) => e.sourceId === wikiId)?.label, anchorTitle, '知识锚点用 Wiki 真实标题，不显示占位');
   assert.equal(projectPlanSummary(w, made.projectId).origin.kind, 'bridge');
   // 删掉一篇内容：背后的研究记录一起进回收站，选题列表里不会再冒出一张「还没有内容的选题」；撤销时一起回来。
   const lone = createResearch(w, { question: '删掉的选题不该再冒出来' });
