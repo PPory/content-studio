@@ -60,7 +60,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     ...researches.filter((item) => !item.projectId && !item.contentRestricted).map((item) => ({
       key: `r:${item.id}`, kind: "research", id: item.id, updatedAt: item.updatedAt, title: item.question || item.title || "未命名选题",
       origin: item.legacyTopic ? { kind: item.legacyTopic.kind === "bridge" ? "bridge" : "legacy" } : item.intelligenceIntents?.length ? { kind: "intel", title: item.intelligenceIntents.at(-1).brief?.title || "" } : { kind: "own" },
-      missing: null, stage: { key: "new", label: "打开后接着整理" },
+      missing: null, stage: { key: "new", label: "还没选角度" },
     })),
   ], [grouped, researches]);
   const counts = { ...Object.fromEntries(CONTENT_SHELVES.map((key) => [key, grouped[key].length])), 选题: topics.length };
@@ -76,7 +76,15 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   };
   const rescan = async () => {
     setScanning(true);
-    try { await api.scanContentDiscovery({ force: true }); await load(); } catch (e) { setError(e); } finally { setScanning(false); }
+    const before = new Set(found.map((c) => c.directionId));
+    try {
+      const r = await api.scanContentDiscovery({ force: true });
+      const fresh = (r?.scan?.connections || []).filter((c) => c.directionId && !before.has(c.directionId)).length;
+      // 扫完要说结果：找到几个新的；一个也没有时说清缺什么，而不是让列表静悄悄地没变。
+      setToast(fresh ? { text: `找到 ${fresh} 个新选题`, detail: "在「来自我的知识」里，点「加入选题」就能开始。" }
+        : { text: "这次没有找到新的选题", detail: r?.scan?.nothingFoundReason || "多记几篇 Wiki、收一些读者原话之后再扫。" });
+      await load();
+    } catch (e) { setError(e); } finally { setScanning(false); }
   };
   /** 先放着：整篇停下，稿子和构思都在；回执上的「撤销」就是「接着做」。 */
   const park = async (item) => {

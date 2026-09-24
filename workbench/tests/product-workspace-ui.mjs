@@ -490,15 +490,28 @@ try {
   // 还没打开过的旧选题可以移入回收站，也能撤销。
   {
     const card = page.locator(".topic-card", { hasText: "卡片选题 2：" }).first();
-    const title = await card.locator("h3").innerText();
-    await card.getByRole("button", { name: `移入回收站：${title}（可以撤销）` }).click();
+    const title = await card.locator("h2").innerText();
+    await card.getByRole("button", { name: `删掉选题「${title}」——移入回收站，可以撤销` }).click();
     await page.waitForTimeout(400);
-    await card.getByRole("button", { name: "移入回收站", exact: true }).click();
+    await card.getByRole("button", { name: "删掉", exact: true }).click();
     await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
-    check("选题可以移入回收站", await page.locator(".topic-card h3", { hasText: title }).count() === 0);
+    check("选题可以移入回收站", await page.locator(".topic-card h2", { hasText: title }).count() === 0);
     await page.getByRole("button", { name: "撤销", exact: true }).click();
-    await page.locator(".topic-card h3").filter({ hasText: title }).first().waitFor();
+    await page.locator(".topic-card h2").filter({ hasText: title }).first().waitFor();
     check("撤销把选题一步拿回来", true);
+  }
+  // 已经建成内容的选题删掉之后不能以「还没有内容的选题」再冒出来（背后的研究记录一起进回收站），撤销时一起回来。
+  {
+    const card = page.locator(`.topic-card[data-topic="${openedId}"]`);
+    const title = await card.locator("h2").innerText();
+    await card.getByRole("button", { name: `删掉选题「${title}」——移入回收站，可以撤销` }).click();
+    await page.waitForTimeout(400);
+    await card.getByRole("button", { name: "删掉", exact: true }).click();
+    await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
+    check("删掉建成内容的选题，不会再冒出一张同名选题", await page.locator(".topic-card h2", { hasText: title }).count() === 0);
+    await page.getByRole("button", { name: "撤销", exact: true }).click();
+    await page.locator(`.topic-card[data-topic="${openedId}"]`).waitFor();
+    check("撤销后还是原来那一篇", await page.locator(".topic-card h2", { hasText: title }).count() === 1);
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: path.join(shotDir, "research-cards-desktop.png"), fullPage: true });
