@@ -3,7 +3,9 @@ import { sourceFromRow } from './intelligence-quality.mjs';
 import { legacyResearchTopics, researchIntelligenceIntents, researchIntelligenceRestricted } from './intelligence-topic-intents.mjs';
 import { initializeNote } from "./personal-assets.mjs";
 import { createUlid } from "../storage/ids.mjs";
-import { createProjectExploration } from "./project-notebook.mjs";
+import { createHash } from "node:crypto";
+import { createProjectExploration, getProjectNotebook, saveProjectNotebook } from "./project-notebook.mjs";
+import { appendItems, checklistFromLines } from "../../src/lib/content-checklist.js";
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const stamp = () => new Date().toISOString();
 function text(value, max = 100000) {
@@ -51,7 +53,7 @@ export function getResearch(w,id) {
   return {id,contentRestricted,title:contentRestricted?"引用受限的选题":row.question || "未命名研究",question:contentRestricted?"引用受限的选题":row.question,notes:contentRestricted?restrictionMessage:row.notes,openQuestions:contentRestricted?"":row.open_questions,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at,scopeId:`research:${id}`,references,conversations,projects,intelligenceIntents:researchIntelligenceIntents(w,id)};
 }
 export function listResearches(w) {
-  return [...w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240)};}),...legacyResearchTopics(w)].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  return [...w.db.prepare("SELECT r.id FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL ORDER BY r.updated_at DESC").all().map(({id}) => {const r=getResearch(w,id);return {...r,excerpt:r.notes.slice(0,240),projectId:r.projects[0]?.id||null};}),...legacyResearchTopics(w)].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 }
 /**
  * 把一个选题移入回收站 / 拿回来。
@@ -132,6 +134,54 @@ export function researchProject(w,id,input) {
     return {...created,research:getResearch(w,id)};
   });
 }
+/**
+ * 一篇内容 = 一个工作区（2026-09-24）：研究记录继续承载挂上的资料、Wiki、情报意图和以前的讨论，
+ * 构思和正文在它关联的内容项目里。两者一对一；这两个函数负责「缺哪边就补哪边」，都可以重复调用。
+ */
+const stableUuid = (seed) => { const h = createHash("sha256").update(seed).digest("hex"); return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`; };
+function linkedProject(w, researchId) {
+  return w.db.prepare("SELECT l.project_id id FROM research_projects l JOIN entities e ON e.id=l.project_id AND e.deleted_at IS NULL WHERE l.research_id=? ORDER BY l.created_at LIMIT 1").get(researchId)?.id || null;
+}
+/**
+ * 研究 → 内容。没有关联内容时补建一篇，构思按研究预填：问题 → 想讲什么；未解的问题 → 还缺什么清单；
+ * 笔记 → 我的判断与笔记；最近一次情报加入时的读者价值 → 读者能得到什么。原研究不改。
+ * `extraItems`：已有内容时追加到清单里的新待补项（情报加入已有选题），不覆盖已写的内容。
+ */
+export function ensureResearchProject(w, id, { extraItems = [] } = {}) {
+  researchRow(w, id);
+  return w.repository.transaction(() => {
+    const existing = linkedProject(w, id);
+    if (existing) {
+      if (extraItems.length) {
+        const notebook = getProjectNotebook(w, existing), questions = appendItems(notebook.questions, extraItems);
+        if (questions !== notebook.questions) saveProjectNotebook(w, existing, { expectedVersion: notebook.version, questions });
+      }
+      return { projectId: existing, created: false };
+    }
+    // 补建要读研究原文；来源权限变了就不能读（已建好的内容照常打开，受限提示在内容里显示）。
+    const research = getResearch(w, id);
+    if (research.contentRestricted) throw error("引用资料不可用时不能打开这个选题，请先恢复来源权限或有效资料", 403);
+    const creation = (research.intelligenceIntents || []).map(i => i.creation).filter(Boolean).at(-1) || null;
+    const { projectId, notebook } = createProjectExploration(w, { requestKey: stableUuid(`research-content:${id}`), title: (research.question || "未命名").slice(0, 200), thought: research.question || "", discovery: { research: { id, scopeId: `research:${id}` } } });
+    const questions = appendItems(checklistFromLines(research.openQuestions || ""), extraItems);
+    saveProjectNotebook(w, projectId, { expectedVersion: notebook.version, questions, evidenceNotes: research.notes || "", intent: creation?.readerValue || "" });
+    w.db.prepare("INSERT OR IGNORE INTO research_projects(research_id,project_id,selected_text,created_at) VALUES(?,?,?,?)").run(id, projectId, "", stamp());
+    w.domain.audit("research.content_created", id, { projectId });
+    return { projectId, created: true };
+  });
+}
+/** 内容 → 研究：给一篇内容挂资料或情报时，需要它背后那条研究记录；没有就补一条（问题 = 内容标题）。 */
+export function ensureProjectResearch(w, projectId) {
+  w.domain.entity(projectId, "project");
+  return w.repository.transaction(() => {
+    const found = w.db.prepare("SELECT r.id FROM researches r JOIN research_projects l ON l.research_id=r.id JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE l.project_id=? ORDER BY l.created_at LIMIT 1").get(projectId);
+    if (found) return { researchId: found.id, created: false };
+    const title = w.db.prepare("SELECT title FROM projects WHERE id=?").get(projectId)?.title || "";
+    const research = createResearch(w, { question: title === "未命名" ? "" : title });
+    w.db.prepare("INSERT OR IGNORE INTO research_projects(research_id,project_id,selected_text,created_at) VALUES(?,?,?,?)").run(research.id, projectId, "", stamp());
+    return { researchId: research.id, created: true };
+  });
+}
 export function projectResearches(w,id) {
   w.domain.entity(id,"project");
   return w.db.prepare("SELECT r.id FROM researches r JOIN research_projects l ON l.research_id=r.id JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL WHERE l.project_id=? ORDER BY l.created_at").all(id).map(({id})=>getResearch(w,id));
@@ -179,5 +229,8 @@ export function recentWork(w,{includeHidden=false}={}) {
   return w.db.prepare(`SELECT a.*,coalesce(s.pinned,0) pinned,coalesce(s.hidden,0) hidden,coalesce(s.position_json,'{}') position,max(a.updatedAt,coalesce(v.visited_at,a.updatedAt)) touchedAt FROM (
     SELECT r.id,'research' kind,CASE WHEN r.question='' THEN '未命名研究' ELSE r.question END title,substr(r.notes,1,240) excerpt,max(r.updated_at,coalesce((SELECT max(json_extract(message.value,'$.createdAt')) FROM ai_conversations c JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL,json_each(c.record_json,'$.messages') message WHERE (c.scope_id='research:'||r.id OR c.id IN (SELECT conversation_id FROM research_conversations WHERE research_id=r.id)) AND json_extract(message.value,'$.role')='user'),r.updated_at)) updatedAt FROM researches r JOIN entities e ON e.id=r.id WHERE e.deleted_at IS NULL
     UNION ALL SELECT p.id,'project',p.title,substr(coalesce(nullif(d.body_markdown,''),json_extract(n.notes_json,'$.thought'),''),1,240),max(e.updated_at,coalesce(de.updated_at,e.updated_at),coalesce(n.updated_at,e.updated_at)) FROM projects p JOIN entities e ON e.id=p.id AND e.deleted_at IS NULL LEFT JOIN project_primary_drafts pd ON pd.project_id=p.id LEFT JOIN drafts d ON d.id=pd.draft_id LEFT JOIN entities de ON de.id=d.id LEFT JOIN project_notebooks n ON n.project_id=p.id WHERE p.status!='parked' AND (d.id IS NULL OR (de.deleted_at IS NULL AND d.workflow_status NOT IN ('已发布','已弃用')))
-  ) a LEFT JOIN work_states s ON s.entity_id=a.id LEFT JOIN workspace_activity v ON v.entity_id=a.id AND v.mode='open' WHERE (?=1 OR coalesce(s.hidden,0)=0) ORDER BY pinned DESC,touchedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>{const r=row.kind==="research"?getResearch(w,row.id):null;return {...row,...(r?.contentRestricted?{title:r.title,excerpt:r.notes,contentRestricted:true}:{}),pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)};});
+  ) a LEFT JOIN work_states s ON s.entity_id=a.id LEFT JOIN workspace_activity v ON v.entity_id=a.id AND v.mode='open' WHERE (?=1 OR coalesce(s.hidden,0)=0)
+    -- 已经有对应内容的选题不再单列一行（同一篇出现两次）；置顶过的照旧留着，置顶不能悄悄消失。
+    AND NOT (a.kind='research' AND coalesce(s.pinned,0)=0 AND EXISTS (SELECT 1 FROM research_projects l JOIN entities pe ON pe.id=l.project_id AND pe.deleted_at IS NULL WHERE l.research_id=a.id))
+    ORDER BY pinned DESC,touchedAt DESC LIMIT 100`).all(Number(includeHidden)).map(row=>{const r=row.kind==="research"?getResearch(w,row.id):null;return {...row,...(r?.contentRestricted?{title:r.title,excerpt:r.notes,contentRestricted:true}:{}),pinned:Boolean(row.pinned),hidden:Boolean(row.hidden),position:JSON.parse(row.position)};});
 }

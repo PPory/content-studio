@@ -2,7 +2,7 @@ import { cachedNoteInsight,generateNoteInsight,saveNoteThought,personalIntakeDes
 import { confirmPersonalAssetReference, projectPersonalAssetsForService } from "../domain/personal-assets.mjs";
 import { getNote,listNotes,saveNote,trashNote,getPersonalAsset,listPersonalAssets,personalAssetVersions,savePersonalAsset,trashPersonalAsset,referencePersonalAsset } from "../domain/personal-assets.mjs";
 import { fail,json,readJsonBody } from "../lib/http.mjs";
-import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
+import { createResearch,getResearch,listResearches,saveResearch,trashResearch,restoreResearch,researchReference,researchConversation,researchProject,projectResearches,ensureResearchProject,ensureProjectResearch,libraryItems,libraryItem,quickNote,recentWork,workState } from "../domain/research.mjs";
 function route(method,path,action) {
   return {method,path,handler:async context=>{
     try {
@@ -35,6 +35,9 @@ export const researchRoutes=[
  route("GET","/api/workspace/researches",({workspace})=>({researches:listResearches(workspace)})),
  route("POST","/api/workspace/researches",({workspace,body})=>({research:createResearch(workspace,body)})),
  route("GET","/api/workspace/researches/:id",({workspace,params})=>({research:getResearch(workspace,params.id)})),
+ // 一篇内容一个工作区：研究 → 内容、内容 → 研究，缺哪边补哪边，可重复调用。
+ route("POST","/api/workspace/researches/:id/content",({workspace,params})=>ensureResearchProject(workspace,params.id)),
+ route("POST","/api/workspace/projects/:id/research",({workspace,params})=>ensureProjectResearch(workspace,params.id)),
  route("POST","/api/workspace/researches/:id/trash",({workspace,params})=>({research:trashResearch(workspace,params.id)})),
  route("POST","/api/workspace/researches/:id/restore",({workspace,params})=>({research:restoreResearch(workspace,params.id)})),
  route("PUT","/api/workspace/researches/:id",({workspace,params,body})=>({research:saveResearch(workspace,params.id,body)})),

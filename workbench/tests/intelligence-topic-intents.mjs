@@ -30,7 +30,10 @@ try {
  assert.equal(intelligenceBrief(w,brief.id).researchIds.length,3);
  assert.equal(intelligenceFeed(w).briefs.find(item=>item.id===brief.id).researchLinks.length,3,'card links survive feed reload');
  assert(intelligenceFeed(w).briefs.find(item=>item.id===brief.id).researchLinks.some(link=>link.id===existing.id&&link.title==='已有选题'));
- assert.equal(w.db.prepare('SELECT count(*) n FROM projects').get().n,0);
+ // 加入选题就是建一篇内容（2026-09-24）：三个选题各对应一篇，重试不重复建。
+ assert.equal(w.db.prepare('SELECT count(*) n FROM projects').get().n,3);
+ assert.equal(w.db.prepare('SELECT count(DISTINCT research_id) n FROM research_projects').get().n,3);
+ assert.equal(createIntelligenceTopicIntent(w,input).projectId,first.projectId);
  assert.equal(w.db.prepare('SELECT count(*) n FROM ai_conversations').get().n,0);
  const at=new Date().toISOString(),data=JSON.stringify({question:'旧已确认选题',angle:'旧角度',evidence:[{sourceId:source.id,quote}],wiki:[],nonClaims:['不能推广']});
  for(const [id,status] of [['old-watch','watch'],['old-new','new']])w.db.prepare('INSERT INTO intel_cards(id,profile_id,fingerprint,run_id,data_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,p.id,id,run.id,data,status,at,at);

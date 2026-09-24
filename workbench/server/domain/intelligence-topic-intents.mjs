@@ -4,7 +4,7 @@ import { createUlid } from '../storage/ids.mjs';
 import { sha256Json, sourceContainsVerbatim } from './integrity.mjs';
 import { sourceFromRow } from './intelligence-quality.mjs';
 import { intelligenceBrief } from './intelligence-feed.mjs';
-import { createResearch, getResearch, saveResearch, researchReference, researchConversation } from './research.mjs';
+import { createResearch, getResearch, saveResearch, researchReference, researchConversation, ensureResearchProject } from './research.mjs';
 const bad=(message,status=400)=>Object.assign(new Error(message),{status});
 const text=(value,max=20000)=>{if(typeof value!=='string'||value.length>max)throw bad('选题文字格式或长度无效');return value.trim();};
 function source(w,id){
@@ -93,7 +93,7 @@ export function createIntelligenceTopicIntent(w,input){
  const openQuestions=[...new Set(open)].map(x=>`- ${x}`).join('\n');
  return w.repository.transaction(()=>{
   const old=w.db.prepare('SELECT * FROM intelligence_topic_intents WHERE operation_id=?').get(operationId);
-  if(old){if(old.payload_hash!==hash)throw bad('操作标识已用于其他选题，请重新提交',409);return {research:getResearch(w,old.research_id),reused:true};}
+  if(old){if(old.payload_hash!==hash)throw bad('操作标识已用于其他选题，请重新提交',409);const {projectId}=ensureResearchProject(w,old.research_id);return {research:getResearch(w,old.research_id),projectId,reused:true};}
   let research=payload.researchId?getResearch(w,payload.researchId):createResearch(w,{question,notes,openQuestions});
   if(payload.researchId&&(notes||openQuestions))research=saveResearch(w,research.id,{expectedVersion:research.version,...(notes?{notes:[research.notes,notes].filter(Boolean).join('\n\n')}:{}),...(openQuestions?{openQuestions:[research.openQuestions,openQuestions].filter(Boolean).join('\n')}:{})});
   const at=new Date().toISOString();
@@ -108,12 +108,23 @@ export function createIntelligenceTopicIntent(w,input){
   const data={...payload,sourceIds,wikiLinks,briefVersions:Object.fromEntries(briefs.map(b=>[b.id,b.version])),evidence:briefs.flatMap(b=>b.evidence||[]),nonClaims:[...new Set([...briefs.flatMap(b=>b.uncertainties||[]),'来源作者的经历不等于我的个人经历；情报解读与选题角度仍需核对'])]};
   w.db.prepare('INSERT INTO intelligence_topic_intents(operation_id,payload_hash,research_id,data_json,created_at) VALUES(?,?,?,?,?)').run(operationId,hash,research.id,JSON.stringify(data),at);
   w.domain.audit('intelligence.topic_intent',research.id,{operationId,briefIds:ids,sourceIds});
-  return {research:getResearch(w,research.id),reused:false};
+  // 加入选题就是建一篇内容（2026-09-24）：构思按研究预填；加入已有选题时新的待补项追加进那篇的清单。
+  const {projectId}=ensureResearchProject(w,research.id,{extraItems:[...new Set(open)]});
+  return {research:getResearch(w,research.id),projectId,reused:false};
  });
+}
+/** 构思里「为什么写」要的卡片概要：取当前版本（合并过的取规范卡），只读卡片记录，不拼整张详情。 */
+function briefSummary(w,id){
+ if(!id)return null;
+ try{
+  const r=w.db.prepare('SELECT id,data_json FROM intel_briefs WHERE id=?').get(canonicalBriefId(w,id));if(!r)return null;
+  const d=visibleDerived(w,JSON.parse(r.data_json));
+  return {id:r.id,title:d.title||'',summary:d.summary||'',whyItMatters:d.whyItMatters||'',keyFacts:(d.keyFacts||[]).map(f=>typeof f==='string'?f:f?.text).filter(Boolean).slice(0,6)};
+ }catch{return null;}
 }
 export function researchIntelligenceIntents(w,id){
  if(!w.db.prepare("SELECT name FROM sqlite_master WHERE name='intelligence_topic_intents'").get())return [];
- return w.db.prepare('SELECT operation_id,data_json,created_at FROM intelligence_topic_intents WHERE research_id=? ORDER BY created_at').all(id).map(r=>({operationId:r.operation_id,...visibleIntent(w,JSON.parse(r.data_json)),createdAt:r.created_at}));
+ return w.db.prepare('SELECT operation_id,data_json,created_at FROM intelligence_topic_intents WHERE research_id=? ORDER BY created_at').all(id).map(r=>{const v=visibleIntent(w,JSON.parse(r.data_json));return {operationId:r.operation_id,...v,...(v.unavailable?{}:{brief:briefSummary(w,v.briefIds?.[0])}),createdAt:r.created_at};});
 }
 export function researchIntelligenceRestricted(w,id,purpose="export"){
  if(!w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_brief_researches'").get())return false;

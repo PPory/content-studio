@@ -3,7 +3,7 @@ import { persistSourceIdentity, sourceFromRow } from './intelligence-quality.mjs
 import { intelligenceSourceMeta } from "./intelligence-source-meta.mjs";
 import { createUlid } from "../storage/ids.mjs";
 import { sha256Json, sourceContainsVerbatim } from "./integrity.mjs";
-import { createResearch, getResearch, researchReference, libraryItems, libraryItem } from "./research.mjs";
+import { createResearch, getResearch, researchReference, libraryItems, libraryItem, ensureResearchProject } from "./research.mjs";
 const now = () => new Date().toISOString();
 const json = JSON.stringify;
 const parse = JSON.parse;
@@ -196,11 +196,11 @@ export function linkIntelligenceSource(w,id,input={}) {
     // 只挂链接的没有记在资料上，按「同一个问题 + 同一个原文链接」去重，重复点不会多建选题、多挂链接。
     let linkCapture=null;
     if(!exportable){const previous=w.db.prepare("SELECT r.id,c.id capture FROM researches r JOIN entities e ON e.id=r.id AND e.deleted_at IS NULL JOIN research_references f ON f.research_id=r.id AND f.kind='capture' JOIN captures c ON c.id=f.entity_id JOIN entities ce ON ce.id=c.id AND ce.deleted_at IS NULL WHERE c.source_url=? AND (r.id=? OR (?='' AND r.question=?)) LIMIT 1").get(source.url,target,target,question);if(previous){research=getResearch(w,previous.id);linkCapture=previous.capture;}}
-    if(linkCapture)return research;
+    if(linkCapture)return {...research,projectId:ensureResearchProject(w,research.id).projectId};
     if(!research)research=createResearch(w,{question});
     if(!captureId){captureId=w.domain.createCapture({kind:source.url?"web":"excerpt",title:source.title,bodyMarkdown:exportable?source.body:"",sourceUrl:source.url,actor:"user",confirmed:true});if(exportable)w.db.prepare("UPDATE intel_sources SET capture_id=? WHERE id=?").run(captureId,id);}
     researchReference(w,research.id,{kind:"capture",id:captureId});
-    return getResearch(w,research.id);
+    return {...getResearch(w,research.id),projectId:ensureResearchProject(w,research.id).projectId};
   });
 }
 

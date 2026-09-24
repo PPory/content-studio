@@ -1,3 +1,4 @@
+import { projectPlanSummary } from "../domain/content-plan.mjs";
 import { PLATFORMS, PROJECT_STAGES } from "../domain/values.mjs";
 // 字数口径只有一处（中文按非空白字符数）。合集目录里的字数在服务端数完再给前端，
 // 别在前端对着 body 再数一遍——同一篇会显示两个数。
@@ -178,6 +179,9 @@ export function projectDto(workspace, projectId) {
     publication: { status: latest ? "已发布" : "未发布", latest, records: publicationRecords },
     review: reviewDto(workspace, latestRow),
     collections: seriesListForProject(workspace, projectId),
+    // 选题阶段要看的：从哪来、建议时效、还缺什么（`content-plan.mjs`，全部由已有记录推出）。
+    // 摘要算不出来（旧库缺表等）不能让项目页打不开。
+    plan: (() => { try { return projectPlanSummary(workspace, projectId); } catch { return null; } })(),
     releaseOptions: releaseOptions(),
     updatedAt: project.updated_at,
   };
