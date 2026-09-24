@@ -32,6 +32,9 @@ try {
   const tweet = add('follow_builders.bundle', 'I spend ~2 hours a day building side projects with agents', { hours: 5, kind: 'post', author: 'nikunj' });
   const podcast = add('follow_builders.bundle', 'When AI Improves Itself | Richard Socher', { hours: 28, kind: 'podcast_transcript', author: 'The MAD Podcast' });
   const noAi = add('follow_builders.bundle', 'Personal agents are the ultimate interface', { hours: 4, kind: 'post', author: 'levie', aiAllowed: false });
+  // 发布时间不是 ISO 格式的旧资料：不能被按文本当成最新的混进来。
+  const odd = add('aihot.selected', 'Claude in Chrome is generally available', { hours: 1 });
+  w.db.prepare("UPDATE intel_sources SET data_json=json_set(data_json,'$.publishedAt','Tue, 26 Aug 2026 00:00:00 GMT'),created_at=? WHERE id=?").run(iso(now - 30 * 24 * H), odd.id);
   const profile = saveIntelligenceProfile(w, { name: '速览测试', query: 'AI', providers: ['collected'], output: 'briefs' });
 
   let summaryCalls = 0, summaryFails = false, lastSummaryIds = [];
@@ -62,6 +65,7 @@ try {
   const selected = intelligenceDigest(w, { kind: 'selected' });
   assert.deepEqual(selected.days.map(d => d.day), [...new Set(selected.days.map(d => d.day))].sort().reverse(), '按天分组，新的在前');
   const items = selected.days.flatMap(d => d.items);
+  assert.ok(!items.some(i => i.id === odd.id), '非标准格式的旧发布时间按真实日期判断，超过 7 天不列');
   const hotItem = items.find(i => i.id === hotA.id), quietItem = items.find(i => i.id === quiet.id);
   const card = intelligenceFeed(w).briefs.find(b => b.event?.members?.some(m => m.sourceId === hotA.id));
   assert.equal(hotItem.hot?.briefId, card.id, '已进热点的指向那张卡');

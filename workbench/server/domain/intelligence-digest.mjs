@@ -15,12 +15,18 @@ const dayOf = iso => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai
 const readState = (w, key) => { const r = w.db.prepare('SELECT value FROM intel_unified_state WHERE key=?').get(key); try { return r ? JSON.parse(r.value) : null; } catch { return null; } };
 const writeState = (w, key, value) => w.db.prepare('INSERT INTO intel_unified_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value));
 
-/** 两个信源各自的资料行。Follow Builders 里被判为与 AI 无关的（跑题的推文）不列。 */
+/** 资料的时间：发布时间，不是标准格式或缺失时退回采集时间。 */
+const timeOf = row => { const d = JSON.parse(row.data_json || '{}'); const t = Date.parse(d.publishedAt || ''); return Number.isFinite(t) ? t : Date.parse(row.created_at) || 0; };
+/**
+ * 两个信源各自的资料行，按时间倒序。Follow Builders 里被判为与 AI 无关的（跑题的推文）不列。
+ * ⚠️ 时间在 JS 里解析后再筛：有的发布时间不是 ISO 格式（「Tue, 26 Aug …」），按文本比较会被当成最新的一条。
+ */
 function rows(w, kind, since) {
   const channel = kind === 'selected' ? "c.stable_key='aihot.selected'" : "c.source_group='follow_builders'";
+  const from = Date.parse(since);
   return w.db.prepare(`SELECT s.*,u.status unified_status FROM intel_sources s JOIN intel_channels c ON c.id=s.channel_id LEFT JOIN intel_unified_sources u ON u.source_id=s.id
-    WHERE ${channel} AND s.deleted_at IS NULL AND s.source_kind<>'comment' AND COALESCE(json_extract(s.data_json,'$.publishedAt'),s.created_at)>=?
-    ORDER BY COALESCE(json_extract(s.data_json,'$.publishedAt'),s.created_at) DESC`).all(since);
+    WHERE ${channel} AND s.deleted_at IS NULL AND s.source_kind<>'comment'`).all()
+    .map(row => ({ ...row, at: timeOf(row) })).filter(row => row.at >= from).sort((a, b) => b.at - a.at);
 }
 /** 资料所在的热点卡：只算界面上看得到的卡（ready、不是被合并掉的别名）。 */
 function hotCards(w, ids) {
@@ -44,7 +50,7 @@ export function intelligenceDigest(w, { kind = 'selected', days = 7 } = {}) {
   const shown = kind === 'builders' ? list.filter(r => !['filtered', 'out_of_scope'].includes(r.unified_status)) : list;
   const hot = hotCards(w, shown.map(r => r.id));
   const items = shown.map(row => {
-    const s = sourceFromRow(row), publishedAt = s.publishedAt || row.created_at, body = String(s.body || '').replace(/\s+/g, ' ').trim();
+    const s = sourceFromRow(row), publishedAt = new Date(row.at).toISOString(), body = String(s.body || '').replace(/\s+/g, ' ').trim();
     const base = { id: row.id, title: s.title || body.slice(0, 80) || '未命名资料', url: s.url || '', publishedAt, day: dayOf(publishedAt), hot: hot.get(row.id) || null };
     return kind === 'selected'
       ? { ...base, summary: body.slice(0, 160) }
