@@ -6,7 +6,7 @@ import { TopicShelf } from "./content/TopicShelf.jsx";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, LayoutToggle, Loading, PageHeader, Toast } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
-import { IconBooks, IconFileText, IconRefresh } from "../components/icons.jsx";
+import { IconFileText, IconRefresh } from "../components/icons.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import "./series.css";
@@ -22,6 +22,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   // 没选过时：有正在写的就先看「在写」，否则看「选题」。
   const [stage, setStage] = useState(() => { try { return sessionStorage.getItem("content-shelf") || ""; } catch { return ""; } });
   const [researches, setResearches] = useState([]);
+  // 「来自我的知识」：最近一次扫描找到、还没加入的「知识 × 读者问题」。只读缓存，重新扫描才调模型。
+  const [found, setFound] = useState([]), [scanning, setScanning] = useState(false);
   const [layout, setLayout] = useLayoutMode("content", "list");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
   const [filing, setFiling] = useState(null);
@@ -31,6 +33,10 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     setLoading(true);
     // 还没有对应内容的旧选题也列在「选题」里；读不到不挡住写作列表。
     api.researches().then((data) => setResearches(data.researches || [])).catch(() => setResearches([]));
+    Promise.all([api.contentDiscovery().catch(() => null), api.intelligenceDirections().catch(() => ({ directions: [] }))]).then(([scan, saved]) => {
+      const taken = new Set((saved?.directions || []).filter((d) => d.researchId).map((d) => d.id));
+      setFound((scan?.scan?.connections || []).filter((c) => c.directionId && !taken.has(c.directionId)).slice(0, 4));
+    });
     api.projects()
       .then((data) => { setResult(data); setError(null); })
       .catch(setError)
@@ -49,12 +55,12 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
     ...[...grouped["选题"]].sort(byTopicUrgency).map((project) => ({
       key: `p:${project.id}`, kind: "project", id: project.id, updatedAt: project.updatedAt,
       title: (project.title && project.title !== "未命名" ? project.title : project.plan?.thought?.trim()) || "未命名选题",
-      origin: project.plan?.origin || null, missing: project.plan?.missing || [],
+      origin: project.plan?.origin || null, missing: project.plan?.missing || [], stage: project.plan?.stage || null,
     })),
     ...researches.filter((item) => !item.projectId && !item.contentRestricted).map((item) => ({
       key: `r:${item.id}`, kind: "research", id: item.id, updatedAt: item.updatedAt, title: item.question || item.title || "未命名选题",
-      origin: item.legacyTopic ? { kind: "legacy" } : item.intelligenceIntents?.length ? { kind: "intel", title: item.intelligenceIntents.at(-1).brief?.title || "" } : { kind: "own" },
-      missing: null,
+      origin: item.legacyTopic ? { kind: item.legacyTopic.kind === "bridge" ? "bridge" : "legacy" } : item.intelligenceIntents?.length ? { kind: "intel", title: item.intelligenceIntents.at(-1).brief?.title || "" } : { kind: "own" },
+      missing: null, stage: { key: "new", label: "打开后接着整理" },
     })),
   ], [grouped, researches]);
   const counts = { ...Object.fromEntries(CONTENT_SHELVES.map((key) => [key, grouped[key].length])), 选题: topics.length };
@@ -64,6 +70,13 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const openTopic = async (item) => {
     if (item.kind === "project") return onGo("project", item.id);
     try { await openResearchContent(onGo, item.id); } catch (e) { setError(e); }
+  };
+  const addFound = async (c) => {
+    try { const { projectId } = await api.directionToContent(c.directionId); onChanged?.(); onGo("project", projectId); } catch (e) { setError(e); }
+  };
+  const rescan = async () => {
+    setScanning(true);
+    try { await api.scanContentDiscovery({ force: true }); await load(); } catch (e) { setError(e); } finally { setScanning(false); }
   };
   /** 先放着：整篇停下，稿子和构思都在；回执上的「撤销」就是「接着做」。 */
   const park = async (item) => {
@@ -126,7 +139,6 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             </button>
             {/* 四处共用一颗（`components/NewContentButton.jsx`），别在这儿再拼一份菜单 */}
             {/* 新建内容的另一种起点：从自己的知识和读者问题里找题（原「从已有知识探索选题」）。 */}
-            {workerReady ? <button className="btn" onClick={() => onGo("bridge", "")}><IconBooks aria-hidden="true" />从我的知识里找</button> : null}
             {workerReady ? <NewContentButton onGo={onGo} onChanged={onChanged} /> : null}
           </>
         }
@@ -175,8 +187,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               写下第一句话就可以开始，不必先定选题或填写计划。
             </Empty>
           ) : shelf === "选题" ? (
-            topics.length
-              ? <TopicShelf items={topics} onOpen={openTopic} onPark={park} onRemove={removeTopic} />
+            topics.length || found.length
+              ? <TopicShelf items={topics} found={found} scanning={scanning} onOpen={openTopic} onPark={park} onRemove={removeTopic} onAddFound={addFound} onScan={rescan} onBuild={() => onGo("bridge", "manual")} />
               : <Empty icon={IconFileText}>还没有选题。在情报里点「加入选题」，或者新建一篇、从我的知识里找。</Empty>
           ) : shown.length ? (
             layout === "card"
