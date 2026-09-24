@@ -1,9 +1,10 @@
 import { AnchoredPopover } from "./AnchoredPopover.jsx";
 import { IconDots } from "./icons.jsx";
 import "./intelligence-nav.css";
-// 只留真正有用的两个去处（2026-09-24）：信源设置里新增的信源进不了热点，每周回顾基于旧流程，
-// AIhot 原始信息流和「原始资料」按 AIhot 筛选重复——这三个从菜单去掉，页面暂留，直接访问地址仍能打开。
-const destinations=[["intel-resources","原始资料"],["intel-runs","处理详情"]];
+// 只留「原始资料」一个去处（2026-09-24）：信源设置里新增的信源进不了热点，每周回顾基于旧流程，
+// AIhot 原始信息流和「原始资料」按 AIhot 筛选重复，处理详情是排查用的内部视图——都从菜单去掉，
+// 页面暂留，直接访问地址仍能打开。更新出问题时，情报页的状态行会就地说明。
+const destinations=[["intel-resources","原始资料"]];
 /** Secondary tools never form a competing reading or topic workflow. */
 /** `extra`：当前页面自己的菜单项（如自动更新开关），排在跳转项之后。 */
 export function IntelligenceNav({current,onGo,extra}) {
