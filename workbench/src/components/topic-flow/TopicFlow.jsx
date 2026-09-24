@@ -77,7 +77,7 @@ export function TopicFlow({ projectId, title, onDraft, onAsk, onAddMaterial, onG
     </header>
     <ErrorNote error={error} what={busy === "angles" ? "想角度" : busy === "structures" ? "搭结构" : busy === "draft" ? "写初稿" : "这一步"} onRetry={() => setError(null)} />
     <div className="topic-flow__stage" key={step}>
-      {step === 1 ? <StageRead view={view} busy={busy === "angles"} onNext={() => plan.angles?.items?.length ? go(2) : run("angles", () => api.planAngles(projectId), 2)} onGo={onGo} /> : null}
+      {step === 1 ? <StageRead view={view} title={title} busy={busy === "angles"} onNext={() => plan.angles?.items?.length ? go(2) : run("angles", () => api.planAngles(projectId), 2)} onGo={onGo} /> : null}
       {step === 2 ? <StageAngles plan={plan} busy={busy} onRegenerate={() => run("angles", () => api.planAngles(projectId, true))}
         onChoose={(body) => run("choose", () => api.planChooseAngle(projectId, body), 3)} onAsk={onAsk} onGenerate={() => run("angles", () => api.planAngles(projectId))} /> : null}
       {step === 3 && angle ? <StageGaps projectId={projectId} view={view} onReload={load} onAsk={onAsk} onAddMaterial={onAddMaterial}

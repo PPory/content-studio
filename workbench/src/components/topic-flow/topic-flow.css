@@ -3,7 +3,8 @@
    品牌绿只用于选中和主按钮，强调橙只用于「24 小时内」和【待补】；一屏一个主按钮。 */
 .topic-flow { max-width: 720px; margin: 0 auto; padding: 8px 4px 72px; color: var(--text-1); scroll-margin-top: 24px; }
 .topic-flow__head { padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
-.topic-flow__head h1 { margin: 0; font-size: 26px; line-height: 1.35; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+/* 标题排满这一栏：balance 会把几行拉成一样长，长标题右边空出一大块（2026-09-24 用户反馈）。 */
+.topic-flow__head h1 { margin: 0; font-size: 26px; line-height: 1.35; font-weight: 700; letter-spacing: -.01em; text-wrap: pretty; }
 .topic-flow__from { margin: 8px 0 0; font-size: var(--fs-sm); color: var(--text-3); }
 .topic-flow__trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin-top: 14px; font-size: var(--fs-xs); }
 .topic-flow__crumb { display: inline-flex; align-items: center; }
@@ -27,6 +28,8 @@
 .tf-list { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 .tf-cite { font-family: var(--font-mono); font-size: 10px; color: var(--cite-num, var(--text-3)); margin-left: 1px; }
 .tf-block { display: grid; gap: 10px; padding-top: 22px; border-top: 1px solid var(--border); }
+/* 标题区已经有一条下边线；紧跟着的第一块再画上边线就成了两条。 */
+.tf-stage > .tf-block:first-child { padding-top: 0; border-top: 0; }
 .tf-block h2 { margin: 0; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: .1em; color: var(--text-3); }
 .tf-block > p { font-size: var(--fs-base); line-height: 1.8; }
 .tf-facts { margin: 0; padding: 0; list-style: none; counter-reset: f; display: grid; gap: 10px; }

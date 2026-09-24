@@ -20,7 +20,7 @@ function Body({ text }) {
   });
 }
 
-export function StageRead({ view, busy, onNext, onGo }) {
+export function StageRead({ view, title = "", busy, onNext, onGo }) {
   const { read, wiki } = view;
   const b = read.brief;
   const deepening = read.kind === "intel" && ["queued", "running"].includes(read.deepen?.status);
@@ -44,7 +44,9 @@ export function StageRead({ view, busy, onNext, onGo }) {
       {read.know ? <div className="tf-block"><h2>你的知识怎么解释</h2><p>{read.know}</p>{read.core ? <p className="tf-claim">{read.core}</p> : null}</div> : null}
       {read.counter?.length ? <div className="tf-block"><h2>反面意见</h2><ul className="tf-quiet">{read.counter.map((c, i) => <li key={i}>{c}</li>)}</ul></div> : null}
     </> : <>
-      <div className="tf-block"><h2>你想讲的</h2><p className="tf-question">{read.thought || "还没写下想讲什么。"}</p></div>
+      {/* 想讲的就是标题时不再抄一遍（记一下建的内容，标题就取自这句话）。 */}
+      {read.thought?.trim() && read.thought.trim() === title.trim() ? null
+        : <div className="tf-block"><h2>你想讲的</h2><p className="tf-question">{read.thought || "还没写下想讲什么。"}</p></div>}
       {read.notes ? <div className="tf-block"><h2>你之前记下的</h2><div className="tf-prose tf-prose--quiet"><Body text={read.notes} /></div></div> : null}
     </>}
     {wiki.length ? <div className="tf-block"><h2>可以借用的知识</h2><ul className="tf-wiki-list">{wiki.map((p) => <li key={p.id}><button type="button" className="text-action" onClick={() => onGo?.("entries", p.id)}>《{p.title}》</button>{p.summary ? <span>{p.summary}</span> : null}</li>)}</ul></div> : null}
