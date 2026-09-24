@@ -39,6 +39,7 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
   const [openId, setOpenId] = useState("");
   const [selected, setSelected] = useState({});
   const [success, setSuccess] = useState("");
+  const [recompiling, setRecompiling] = useState(null);
   const focused = useRef("");
 
   const load = useCallback(async () => {
@@ -68,12 +69,38 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
     window.requestAnimationFrame(() => document.getElementById(`knowledge-candidate-${item.id}`)?.scrollIntoView({ block: "center" }));
   }, [data, focusSourceId]);
 
-  const hasLiveRepair = (data?.candidates || []).some((item) => liveRepair(item) || liveResearch(item));
+  const hasLiveWork = Boolean(recompiling) || (data?.candidates || []).some((item) => liveRepair(item) || liveResearch(item));
   useEffect(() => {
-    if (!hasLiveRepair) return undefined;
+    if (!hasLiveWork) return undefined;
     const timer = window.setInterval(load, 2_000);
     return () => window.clearInterval(timer);
-  }, [hasLiveRepair, load]);
+  }, [hasLiveWork, load]);
+
+  useEffect(() => {
+    if (!recompiling || !data) return undefined;
+    const replacement = (data.candidates || []).find((item) => item.type === "compile"
+      && item.sourceId === recompiling.sourceId && item.id !== recompiling.oldId);
+    if (replacement) {
+      setRecompiling(null);
+      setOpenId(replacement.id);
+      setSuccess(`《${recompiling.title}》已重新编译，请审阅新候选。`);
+      window.requestAnimationFrame(() => document.getElementById(`knowledge-candidate-${replacement.id}`)?.scrollIntoView({ block: "center" }));
+      return undefined;
+    }
+    let active = true;
+    api.knowledgeSourceDocs(recompiling.bookId).then((result) => {
+      if (!active) return;
+      const source = (result.documents || []).find((item) => item.id === recompiling.sourceId);
+      if (source?.ingestStatus === "failed") {
+        setRecompiling(null);
+        setError(new Error(source.ingestError || "重新编译失败，请到来源页查看详情"));
+      } else if (source?.ingestStatus === "empty") {
+        setRecompiling(null);
+        setSuccess(`《${recompiling.title}》已重新编译，但没有生成通过校验的页面变更。`);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [data, recompiling]);
 
   const decide = useCallback(async (item, action) => {
     setBusy(item.id);
@@ -93,6 +120,22 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
       setBusy("");
     }
   }, [onDone, selected]);
+
+  const recompile = useCallback(async (item) => {
+    setBusy(item.id);
+    try {
+      const result = await api.queueKnowledgeIngest({ documentIds: [item.sourceId], retry: true });
+      if (!result.queued) throw new Error("这份来源已有编译任务，请稍后到来源页查看进度");
+      setData((current) => current && { ...current, candidates: current.candidates.filter((candidate) => candidate.id !== item.id) });
+      setRecompiling({ sourceId: item.sourceId, bookId: item.sourceBookId, oldId: item.id, title: item.sourceTitle });
+      setSuccess(`《${item.sourceTitle}》已重新进入编译队列，完成后会显示新候选。`);
+      onDone?.();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy("");
+    }
+  }, [onDone]);
 
   const generateRepair = useCallback(async (item) => {
     setBusy(`repair:${item.id}`);
@@ -149,7 +192,7 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
     + (item.type === "wiki-lint" ? item.findings?.length || 0
       : item.type === "research" ? item.sources?.length || 0 : item.pages?.length || 0), 0), [candidates]);
   const reportsOnly = candidates.length > 0 && candidates.every((item) => item.type === "wiki-lint");
-  const focusedMissing = Boolean(focusSourceId && data
+  const focusedMissing = Boolean(focusSourceId && data && !recompiling && !success
     && !candidates.some((item) => item.sourceId === focusSourceId || item.sourceBookId === focusSourceId));
   if (error) return <ErrorNote error={error} what="知识候选" onRetry={load} />;
   if (!candidates.length && !focusedMissing && !success) return null;
@@ -293,12 +336,9 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
                     </button> : null}
                   </>
                 ) : (
-                  /**
-                    * ⚠️ **过期就禁用，并且 `title` 上写清是哪几页、为什么。**
-                    * disabled 必须有真实原因且说得出来（design-system 的「控件」那条），
-                    * 而这里的原因很具体：这份候选算出来之后，那几页又被改过。
-                    */
-                  <button
+                  /* 页面版本变化后只能重新编译，不能用旧候选覆盖已更新的正文。 */
+                  item.type === "compile" && stale.length ? <button type="button" className="is-strong" disabled={!!busy}
+                    onClick={() => recompile(item)}>{busy === item.id ? "正在排队…" : "重新编译这份资料"}</button> : <button
                     type="button"
                     className="is-strong"
                     disabled={!!busy || kept === 0 || stale.length > 0}
@@ -330,8 +370,8 @@ export function IngestReview({ onDone, focusSourceId = "", pageRevisions = null 
                     <IconAlertTriangle size={14} stroke={1.8} aria-hidden="true" />
                     <span>
                       《{stale.map((page) => page.title).join("》《")}》在这份候选算出来之后又被改过
-                      （多半是刚才接受了另一份候选）。整份写入会被挡下，
-                      需要回到<b>来源</b>重新编译这份资料，再回来审阅。
+                      （多半是刚才接受了另一份候选）。整份写入会被挡下；
+                      请点上方按钮重新编译，完成后再审阅新候选。
                     </span>
                   </p>
                 ) : null}

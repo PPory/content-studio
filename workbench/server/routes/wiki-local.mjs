@@ -141,7 +141,7 @@ export function queueIngest(workspace, documents, { retry = false } = {}) {
   let chars = 0;
   for (const document of documents.slice(0, 20)) {
     const hash = crypto.createHash("sha256").update(document.body || "").digest("hex");
-    const previous = workspace.db.prepare("SELECT status, source_content_sha256 AS hash FROM source_ingests WHERE source_entity_id = ?").get(document.id);
+    const previous = workspace.db.prepare("SELECT status, candidate_id AS candidateId, source_content_sha256 AS hash FROM source_ingests WHERE source_entity_id = ?").get(document.id);
     const liveJob = workspace.db.prepare(`SELECT 1 FROM local_jobs
       WHERE deleted_at IS NULL AND kind='wiki.ingest' AND status IN ('queued','retry','running')
         AND json_extract(payload_json, '$.sourceId')=? LIMIT 1`).get(document.id);
@@ -166,10 +166,15 @@ export function queueIngest(workspace, documents, { retry = false } = {}) {
     if (!enqueued.created && !["queued", "retry", "running"].includes(enqueued.job.status)) {
       throw new Error(`来源 ${document.id} 未能进入编译队列`);
     }
-    workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,source_content_sha256,run_at)
-      VALUES (?,'queued',?,?) ON CONFLICT(source_entity_id) DO UPDATE SET status='queued',
-      candidate_id=NULL, source_content_sha256=excluded.source_content_sha256, error='', run_at=excluded.run_at`)
-      .run(document.id, hash, stamp);
+    workspace.repository.transaction(() => {
+      if (previous?.candidateId) workspace.db.prepare(`UPDATE action_candidates SET status='stale'
+        WHERE id=? AND status='proposed' AND action_type='wiki.pages.apply'
+          AND json_extract(payload_json, '$.kind')='wiki.compile'`).run(previous.candidateId);
+      workspace.db.prepare(`INSERT INTO source_ingests(source_entity_id,status,source_content_sha256,run_at)
+        VALUES (?,'queued',?,?) ON CONFLICT(source_entity_id) DO UPDATE SET status='queued',
+        candidate_id=NULL, source_content_sha256=excluded.source_content_sha256, error='', run_at=excluded.run_at`)
+        .run(document.id, hash, stamp);
+    });
     queued += 1;
     chars += String(document.body || "").length;
   }

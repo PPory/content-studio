@@ -7339,6 +7339,12 @@ button.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .ing__compare span { color: var(--text-3); }
 .ing__compare small { grid-column: 2; color: var(--text-3); }
 .ing__item--lint .ing__row { grid-template-columns: minmax(360px, 1fr) auto auto; }
+@media (max-width: 760px) {
+  .ing__row, .ing__item--lint .ing__row { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 8px 0; }
+  .ing__actions { flex-wrap: wrap; padding: 2px 0 4px 24px; }
+  .ing__actions button { white-space: nowrap; max-width: 100%; }
+  .ing__peek { justify-content: flex-start; padding-left: 24px; opacity: 1; }
+}
 .ing__item--lint .ing__body { padding-top: 0; }
 .ing__findings { list-style: none; margin: 0; padding: 0; }
 .ing__finding { padding: 0; border-top: 1px dashed var(--border); }

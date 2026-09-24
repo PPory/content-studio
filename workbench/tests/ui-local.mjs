@@ -17,6 +17,8 @@ const seriesReadShotFile = path.join(os.tmpdir(), "xenho-series-read.png");
 const seriesListShotFile = path.join(os.tmpdir(), "xenho-series-list.png");
 const wikiHomeShotFile = path.join(os.tmpdir(), "xenho-wiki-home.png");
 const wikiArticleShotFile = path.join(os.tmpdir(), "xenho-wiki-article.png");
+const wikiStaleShotFile = path.join(os.tmpdir(), "xenho-wiki-stale-review.png");
+const wikiStaleMobileShotFile = path.join(os.tmpdir(), "xenho-wiki-stale-review-mobile.png");
 const PORT = 5204;
 const oldHome = process.env.XENHO_HOME;
 const oldProxy = { HTTP_PROXY: process.env.HTTP_PROXY, HTTPS_PROXY: process.env.HTTPS_PROXY, NO_PROXY: process.env.NO_PROXY };
@@ -593,6 +595,43 @@ try {
   await focusedCandidate.waitFor();
   await focusedCandidate.locator(".ing__body").waitFor();
   check("来源的待审阅状态可以直达并展开对应候选", await focusedCandidate.locator(".ing__title").getAttribute("aria-expanded") === "true");
+  applyWikiCompile(workspace, {
+    proposal: {
+      sourceId: evidenceDocId, sourceSnapshotId: evidenceSnapshot.id,
+      sourceContentSha256: evidenceSnapshot.contentSha256,
+      sourceLocator: "UI 证据来源 · 证据章节", title: "更新审阅基线",
+      pages: [{
+        pageId: reviewPage.id, expectedRevision: reviewPage.revision, action: "update",
+        title: reviewPage.title, pageType: reviewPage.pageType, summary: reviewPage.summary,
+        bodyMarkdown: reviewPage.bodyMarkdown + "\n\n## 新版本\n\n页面在候选生成后又吸收了来源证据。",
+        changeSummary: "制造真实版本冲突以验证重编译入口",
+        citations: [{ quote: evidenceQuote, contribution: "支撑准确定位" }],
+        links: [{ toTitle: "来源：UI 证据来源 · 证据章节", relation: "依据来自", why: "方法由该 Raw 支撑" }],
+      }],
+    },
+  });
+  await page.reload();
+  const staleCandidate = page.locator(`[id="knowledge-candidate-${sourceReviewCandidate.id}"]`);
+  await staleCandidate.waitFor();
+  const recompileButton = staleCandidate.getByRole("button", { name: "重新编译这份资料" });
+  await recompileButton.waitFor();
+  check("版本冲突会显示可用的重新编译按钮，旧候选不能直接写入", await recompileButton.isEnabled()
+    && (await staleCandidate.innerText()).includes("在这份候选算出来之后又被改过"));
+  await recompileButton.focus();
+  check("键盘可聚焦重新编译操作", await recompileButton.evaluate((button) => document.activeElement === button));
+  if (process.argv.includes("--shots")) {
+    await staleCandidate.locator(".ing__row").screenshot({ path: wikiStaleShotFile });
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileButton = await recompileButton.boundingBox();
+    check("小屏重编译按钮保持横排可读", mobileButton && mobileButton.width > 120 && mobileButton.height < 60);
+    await staleCandidate.locator(".ing__row").screenshot({ path: wikiStaleMobileShotFile });
+    await page.setViewportSize(viewport);
+  }
+  await recompileButton.click();
+  check("审阅页重编译会让旧候选失效，且不直接改 Wiki 页面",
+    workspace.domain.actions.get(sourceReviewCandidate.id).status === "stale"
+    && workspace.db.prepare("SELECT COUNT(*) AS count FROM wiki_pages").get().count === wikiPagesBeforeReview);
   await page.goto("http://127.0.0.1:" + PORT + "/#/sources");
   await sourceName.waitFor();
 
@@ -749,7 +788,7 @@ try {
     && await assistantInput.inputValue() === "");
 
   check("真实浏览器没有页面异常", errors.length === 0, errors.join("\n"));
-  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}\n Wiki 首页：${wikiHomeShotFile}\n Wiki 页面：${wikiArticleShotFile}`);
+  if (process.argv.includes("--shots")) console.log(` 截图：${shotFile}\n 合集列表：${seriesListShotFile}\n 合集目录：${seriesShotFile}\n 目录局部：${seriesOutlineShotFile}\n 合集通读：${seriesReadShotFile}\n Wiki 首页：${wikiHomeShotFile}\n Wiki 页面：${wikiArticleShotFile}\n 过期候选：${wikiStaleShotFile}\n 过期候选小屏：${wikiStaleMobileShotFile}`);
   console.log("\n阶段 6 本地 UI 验证通过。");
 } finally {
   await browser?.close().catch(() => {});

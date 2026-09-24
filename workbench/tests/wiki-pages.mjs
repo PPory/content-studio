@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createBookRecord } from "../server/routes/books-local.mjs";
 import { createDefaultJobHandlers } from "../server/jobs/default-job-handlers.mjs";
+import { queueIngest } from "../server/routes/wiki-local.mjs";
 import { completeJson, ingestModelId } from "../server/lib/model-json.mjs";
 import { assertPublicArticleUrl } from "../server/lib/article.mjs";
 import { openWorkspace } from "../server/storage/workspace.mjs";
@@ -12,6 +13,7 @@ import {
   applyExplorationPage,
   applyWikiCompile,
   captureWikiSourceSnapshot,
+  compileSourceToWiki,
   splitSourceForReading,
   validateWikiLintRepair,
   validateWikiCompile,
@@ -259,6 +261,56 @@ try {
   check("524 错误不再显示 HTML，而是说明上游超时且 Raw 未损坏", true);
   await new Promise((resolve) => modelServer.close(resolve));
   modelServer = null;
+  const retryQuote = "Source evidence remains exact when a model response is retried.";
+  const retryBook = await createBookRecord(workspace, {
+    title: "Model JSON retry", sourceKind: "文档",
+    chapters: [{ title: "Model JSON retry", text: "# Model JSON retry\n\n" + retryQuote.repeat(6) }],
+  });
+  const retrySource = workspace.db.prepare("SELECT id,body_markdown AS body FROM book_documents WHERE book_id=?").get(retryBook.id);
+  let modelAttempts = 0;
+  const requestedLimits = [];
+  const validResponse = JSON.stringify({
+    compilationSummary: "A grounded review candidate was generated after retry.",
+    pages: [{
+      title: "Model JSON retry", pageType: "concept",
+      summary: "A source-grounded page after a model JSON retry.",
+      bodyMarkdown: "# Model JSON retry\n\n" + retryQuote
+        + "\n\nA retry only produces a review candidate; it cannot change the Wiki until the user accepts the grounded page.",
+      changeSummary: "Use the exact source evidence.",
+      citations: [{ quote: retryQuote, contribution: "Supports the page." }], links: [],
+    }],
+  });
+  modelServer = http.createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    requestedLimits.push(JSON.parse(body).max_tokens);
+    modelAttempts += 1;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: modelAttempts === 1 ? '{"pages":[' : validResponse } }] }));
+  });
+  await new Promise((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
+  const retryProposal = await compileSourceToWiki(workspace, {
+    AGENT_INGEST_BASE_URL: `http://127.0.0.1:${modelServer.address().port}`,
+    AGENT_INGEST_API_KEY: "local-test-key", AGENT_INGEST_MODEL: "local-test-model",
+  }, { sourceId: retrySource.id });
+  check("Malformed model JSON is retried once and the grounded result remains a review candidate",
+    modelAttempts === 2 && requestedLimits[0] === 8_000 && requestedLimits[1] === 16_000
+    && retryProposal.pages.length === 1 && !workspace.db.prepare("SELECT 1 FROM wiki_pages WHERE title=?").get("Model JSON retry"));
+  await new Promise((resolve) => modelServer.close(resolve));
+  modelServer = null;
+
+  const oldCandidate = workspace.domain.actions.propose({
+    actionType: "wiki.pages.apply", targetId: retrySource.id,
+    payload: { kind: "wiki.compile", ...retryProposal }, proposedBy: "ai",
+  });
+  workspace.db.prepare("INSERT INTO source_ingests(source_entity_id,status,candidate_id,source_content_sha256,run_at) VALUES (?,'proposed',?,?,?)")
+    .run(retrySource.id, oldCandidate.id, retryProposal.sourceContentSha256, new Date().toISOString());
+  const requeued = queueIngest(workspace, [retrySource], { retry: true });
+  const ingestState = workspace.db.prepare("SELECT status,candidate_id AS candidateId FROM source_ingests WHERE source_entity_id=?").get(retrySource.id);
+  check("Recompiling supersedes the old candidate without writing Wiki pages",
+    requeued.queued === 1 && workspace.domain.actions.get(oldCandidate.id).status === "stale"
+    && ingestState.status === "queued" && ingestState.candidateId === null
+    && !workspace.db.prepare("SELECT 1 FROM wiki_pages WHERE title=?").get("Model JSON retry"));
   const lintApplied = applyWikiCompile(workspace, {
     operation: "lint",
     proposal: {

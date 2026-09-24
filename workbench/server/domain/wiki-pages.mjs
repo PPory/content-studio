@@ -315,7 +315,7 @@ export async function compileSourceToWiki(workspace, env, { sourceId, model = ""
   const catalog = wikiPageCatalog(workspace).filter((page) => page.pageType !== "source_summary");
   const relevant = relevantWikiPages(workspace, source.body).filter((page) => page.pageType !== "source_summary");
   const read = await readAllSource(workspace, env, source, { model, signal });
-  const result = await completeJson(env, {
+  const request = {
     system: `${WIKI_COMPILER_SYSTEM_PROMPT}\n\n当前运行时 Schema：\n${schema.rules}`,
     user: [
       `当前来源 ID：${source.id}`,
@@ -326,7 +326,15 @@ export async function compileSourceToWiki(workspace, env, { sourceId, model = ""
     ].join("\n\n"),
     model,
     signal,
-  });
+  };
+  let result;
+  try {
+    result = await completeJson(env, request);
+  } catch (error) {
+    // 完整页面可能很长；只在模型返回无效 JSON 时再试一次。
+    if (!/^模型(?:返回的 JSON|没有返回 JSON)/.test(error.message)) throw error;
+    result = await completeJson(env, { ...request, maxTokens: 16_000 });
+  }
   const validated = validateWikiCompile(result.data, { source, catalog, existingPages: relevant });
   return {
     sourceId,
