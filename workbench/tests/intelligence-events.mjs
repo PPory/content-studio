@@ -61,7 +61,7 @@ try {
     return { data: { events: d.events.map(e => {
       const title = e.items[0].title;
       const hotOne = e.items.some(i => /Opus 5\.5|GPT-6 Sol/.test(i.title));
-      return { id: e.id, keep: !title.includes('iPad'), kind: e.kindHint, title: `中文：${title.slice(0, 30)}`, summary: '两句概要。只写输入里的事实。', whyItMatters: '对选型有影响', mergeInto: title.includes('兔子公司') ? idOf('Rabbit') : null,
+      return { id: e.id, keep: !title.includes('iPad'), kind: e.kindHint, title: /Rabbit|兔子/.test(title) ? '中文：Rabbit 转向软件智能体系统' : `中文：${title.slice(0, 30)}`, summary: '两句概要。只写输入里的事实。', whyItMatters: '对选型有影响', mergeInto: title.includes('兔子公司') ? idOf('Rabbit') : null,
         creation: { value: hotOne || /Show HN/.test(title) ? 'high' : /Rabbit|兔子/.test(title) ? 'low' : 'medium', window: hotOne || /Show HN/.test(title) ? '24h' : 'week', angle: '一句角度', reason: '理由' } };
     }) } };
   } };

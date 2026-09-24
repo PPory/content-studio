@@ -12,7 +12,7 @@ import { completeJson } from '../lib/model-json.mjs';
 // 72 小时决定先后，7 天决定资格（2026-09-24）：7 天内首次出现的资料都能建成事件，判断时近 72 小时的优先。
 export const EVENT_WINDOW_MS = 72 * 3600000;
 export const EVENT_MERGE_MS = 48 * 3600000;
-export const JUDGE_LIMIT = 80, JUDGE_CHUNK = 40;
+export const JUDGE_LIMIT = 80, JUDGE_CHUNK = 40, PRACTICE_RESERVE = 10;
 const now = () => new Date().toISOString();
 const log2 = x => Math.log2(1 + Math.max(0, Number(x) || 0));
 
@@ -150,8 +150,10 @@ function coreOf(e) {
 export function eventsCompatible(a, b) {
   const main = e => e.members.filter(m => m.kind !== 'comment').slice(0, 20);
   if (main(a).some(x => main(b).some(y => sameStory(x, y)))) return true;
-  const small = e => main(e).length <= 2 && main(e).every(m => !m.versioned.size);
-  return small(a) && small(b);
+  // 本地认不出（中英文标题对不上）时，看模型给两件事写的中文标题像不像：模型真认为是同一件事时，
+  // 它写的两个标题会很接近（新酶、「提速 3 倍」的中英文两张）；Patreon 挖人和 GPT-6 Sol 发布、Kyutai 和 ChatGPT Voice 就不像。
+  const ta = a.judgement?.title || '', tb = b.judgement?.title || '';
+  return Boolean(ta && tb) && jaccard(bigrams(ta), bigrams(tb)) >= 0.3;
 }
 /**
  * 锚点：卡片引文最多指向的那条来源（深读卡按深读引文算），所以留下的成员和卡上写的始终是同一件事；
@@ -194,7 +196,9 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
     e.anchor = main.find(m => m.id === anchors.get(e.id)) || main[0] || null;
     if (main.length < 2 || !e.anchor) continue;
     // 模型认定并合并进来的报道（中英文名字对不上这类）保留，不被下一次检查拆开，否则每次更新都会来回翻。
-    const merged = new Set(readState(w, `event-merged:${e.key}`)?.sourceIds || []);
+    // v2 之前记下的合并用的是「小事件一律放行」的旧把关（Kyutai 混进 ChatGPT Voice 就是这样），不再保留，按新标准重查。
+    const mergedState = readState(w, `event-merged:${e.key}`);
+    const merged = new Set(mergedState?.v === 2 ? mergedState.sourceIds || [] : []);
     const out = new Set(main.filter(m => m !== e.anchor && !merged.has(m.id) && !sameStory(m, e.anchor)).map(m => m.id));
     if (!out.size) continue;
     for (const m of e.members) if (m.kind === 'comment' && out.has(m.row.root_item_id)) out.add(m.id);
@@ -296,7 +300,7 @@ const pick = (v, list, fallback) => list.includes(v) ? v : fallback;
 export function normalizeCreation(c) {
   if (!c || typeof c !== 'object') return null;
   const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
-  return { value: pick(c.value, ['high', 'medium', 'low'], 'low'), window: pick(c.window, ['24h', 'week', 'evergreen'], 'week'), angle: text(c.angle, 160), reason: text(c.reason, 200) };
+  return { value: pick(c.value, ['high', 'medium', 'low'], 'low'), window: pick(c.window, ['24h', 'week', 'evergreen'], 'week'), angle: text(c.angle, 160), reason: text(c.reason, 200), ...(typeof c.fit === 'boolean' ? { fit: c.fit } : {}) };
 }
 const readState = (w, key) => { const r = w.db.prepare('SELECT value FROM intel_unified_state WHERE key=?').get(key); try { return r ? JSON.parse(r.value) : null; } catch { return null; } };
 const writeState = (w, key, value) => w.db.prepare('INSERT INTO intel_unified_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value));
@@ -309,12 +313,12 @@ const JUDGE_SYSTEM = [
   '对每个事件判断 keep：只有与 AI 直接实质相关（模型、智能体、AI 产品与应用、AI 研究、AI 行业与政策、AI 实践经验）且有具体信息量时为 true；纯营销、泛科技、与 AI 无关、空洞转发为 false。',
   'kind：event=新闻/发布/研究/行业事件；discussion=社区里被热烈讨论的问题或经验；practice=个人实践、方法与心得。',
   'title：中文陈述句，30 字左右，只写输入里能看到的事实，不夸大，不写成问句。summary：两句、100 字以内，说清发生了什么，不补充输入里没有的数字和细节。whyItMatters：一句、40 字以内，说明对 AI 从业者或创作者的具体意义，不写空话。',
-  '输入带 focus 时，那是这位创作者自己写的关注方向：符合方向、又有具体可做角度的事件，creation.value 可以高一档；不符合方向的照常判断 keep，不因此判为无关；与 AI 无关或信息量低的事件不能因为沾上方向就判高。',
+  '输入带 focus 时，那是这位创作者自己写的关注方向，只作辅助参考：热点本身就值得写，热度高、信息量大的事件照常可以判 high；符合方向、又有具体可做角度的事件可以高一档；不符合方向的照常判断 keep，不因此判为无关；与 AI 无关或信息量低的事件不能因为沾上方向就判高。带 focus 时 creation 里另给 fit=true|false，表示这件事是否贴合这些方向。',
   '如果两个输入事件其实是同一件事，在较小的那个上填 mergeInto=另一个事件的 id。只提到同一个型号不等于同一件事：发布、被曝漏洞、有人做了实践是不同的事，不要合并。',
   '带 previous 的事件是之前判断过、这次来了新资料的：对照 previous 判断 development=new_facts（有新的事实、数字、进展）或 more_coverage（只是更多报道或转述）；new_facts 时写 developmentNote，一句「这次新增的是……」，只写输入里能看到的。',
   '对 keep=true 的事件再给 creation（创作判断），读者是这位创作者本人：value=high|medium|low（值不值得专门做一条内容；好新闻不等于值得做）。high 每批最多 5 个，只给真正值得专门做一条的；medium 给有明确可做角度的；其余一律 low。参考 sources 来源数、discussions 讨论数、zhSources 中文来源数、participants 参与数：英文圈热而中文报道少的更值得做。',
   'window=24h|week|evergreen（抢时效 / 本周内 / 长青）；angle 是一句具体的切入角度（怎么讲这件事才有看头），不写空话；reason 一句话说明为什么值得或不值得做。不区分发布平台。',
-  '只返回 JSON：{"events":[{"id":"输入id","keep":true,"kind":"event","title":"","summary":"","whyItMatters":"","mergeInto":null,"development":null,"developmentNote":"","creation":{"value":"medium","window":"week","angle":"","reason":""}}]}，每个输入事件都要返回一项。'
+  '只返回 JSON：{"events":[{"id":"输入id","keep":true,"kind":"event","title":"","summary":"","whyItMatters":"","mergeInto":null,"development":null,"developmentNote":"","creation":{"value":"medium","window":"week","angle":"","reason":"","fit":true}}]}，每个输入事件都要返回一项。'
 ].join('\n');
 /**
  * 按热度取前 80 个事件，成员没变的直接用缓存；其余每 40 个一次调用。
@@ -331,7 +335,12 @@ export async function judgeEvents(w, env, events, deps = {}) {
   // 已经有卡、成员又变了的事件排最前：不重判的话，卡上会一直挂着旧成员和旧角度（纯度检查拆开混杂事件后尤其如此）。
   const hasCard = new Set(w.db.prepare("SELECT story_key FROM intel_briefs WHERE story_key LIKE 'event:%'").all().map(r => r.story_key.slice(6)));
   const stale = e => hasCard.has(e.key) && e.cached && e.cached.fingerprint !== memberFingerprint(e) ? 0 : 1;
-  const candidates = events.filter(e => e.relevant && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => stale(a) - stale(b) || band(a) - band(b) || b.heat - a.heat).slice(0, JUDGE_LIMIT);
+  const eligible = events.filter(e => e.relevant && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => stale(a) - stale(b) || band(a) - band(b) || b.heat - a.heat);
+  // 给个人实践留保底名额：Follow Builders 的一条推文只有一个来源、热度只按点赞折算，按热度永远排不进前 80，
+  // 于是从来没被判断过、也就从不出卡（2026-09-24 查到 8 条里 7 条没判过）。最近的先判，判过的有缓存，不重复花钱。
+  const head = eligible.slice(0, JUDGE_LIMIT - PRACTICE_RESERVE);
+  const practice = eligible.slice(head.length).filter(e => e.kindHint === 'practice' || e.members.some(m => m.group === 'follow_builders')).sort((a, b) => b.anchorAt - a.anchorAt);
+  const candidates = [...head, ...practice.slice(0, PRACTICE_RESERVE), ...eligible.slice(head.length).filter(e => !practice.includes(e))].slice(0, JUDGE_LIMIT);
   const todo = [];
   for (const e of candidates) {
     if (e.cached?.fingerprint === memberFingerprint(e)) e.judgement = e.cached.result; else todo.push(e);
@@ -339,6 +348,7 @@ export async function judgeEvents(w, env, events, deps = {}) {
   // 之前判断过、这次成员变了的事件，把上一版交给模型对照，判断是新进展还是只是更多报道。
   const previousOf = e => e.cached?.result && Array.isArray(e.cached.memberIds) && JSON.stringify(e.cached.memberIds) !== JSON.stringify(memberIds(e)) ? { title: e.cached.result.title, summary: e.cached.result.summary } : null;
   let calls = 0, failures = 0;
+  const pendingMerges = [];
   for (let i = 0; i < todo.length; i += JUDGE_CHUNK) {
     const chunk = todo.slice(i, i + JUDGE_CHUNK), ids = new Set(chunk.map(e => e.key));
     try {
@@ -351,14 +361,20 @@ export async function judgeEvents(w, env, events, deps = {}) {
         const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
         const previous = previousOf(e), development = previous && ['new_facts', 'more_coverage'].includes(r.development) ? r.development : null;
         const mergeTarget = typeof r.mergeInto === 'string' && r.mergeInto !== r.id && !splits.has(`${r.id}|${r.mergeInto}`) ? candidates.find(x => x.key === r.mergeInto) : null;
-        // 模型的合并建议要过本地把关：两边至少有一对报道真是同一件事。
-        const mergeInto = mergeTarget && eventsCompatible(e, mergeTarget) ? mergeTarget.key : null;
+        // 模型的合并建议要过本地把关，但要等这一批都判完再查：把关会比较两件事的中文标题，被合并的那件可能还没轮到。
+        if (mergeTarget) pendingMerges.push([e, mergeTarget]);
+        const mergeInto = null;
         // 事件时间 = 最近一次实质进展：只有新事实才前移；只是更多报道时沿用上一版的时间。没有上一版可比时用最新来源的时间。
         const progressAt = previous && development !== 'new_facts' && e.cached.result.progressAt ? e.cached.result.progressAt : new Date(e.latestAt).toISOString();
         const result = { keep: r.keep === true && Boolean(text(r.title, 200)), kind: ['event', 'discussion', 'practice'].includes(r.kind) ? r.kind : e.kindHint, title: text(r.title, 200), summary: text(r.summary, 400), whyItMatters: text(r.whyItMatters, 200), mergeInto, creation: normalizeCreation(r.creation),
           progressAt, development, developmentNote: development === 'new_facts' ? text(r.developmentNote, 120) : '' };
         e.judgement = result;
         writeState(w, `event-judge:${e.key}`, { fingerprint: memberFingerprint(e), memberIds: memberIds(e), result, at: now() });
+      }
+      for (const [e, target] of pendingMerges.splice(0)) {
+        if (!e.judgement || !eventsCompatible(e, target)) continue;
+        e.judgement.mergeInto = target.key;
+        writeState(w, `event-judge:${e.key}`, { fingerprint: memberFingerprint(e), memberIds: memberIds(e), result: e.judgement, at: now() });
       }
     } catch (error) {
       if (error.cancelled || error.leaseLost) throw error;
@@ -380,8 +396,8 @@ function applyMerges(w, events, mergeBriefIdentities) {
       w.db.prepare("UPDATE intel_clusters SET cluster_kind='event_merged' WHERE id=?").run(e.id);
     })();
     target.members.push(...e.members); Object.assign(target, eventStats(target));
-    const kept = readState(w, `event-merged:${target.key}`)?.sourceIds || [];
-    writeState(w, `event-merged:${target.key}`, { sourceIds: [...new Set([...kept, ...e.members.map(m => m.id)])], at: now() });
+    const prevMerged = readState(w, `event-merged:${target.key}`), kept = prevMerged?.v === 2 ? prevMerged.sourceIds || [] : [];
+    writeState(w, `event-merged:${target.key}`, { v: 2, sourceIds: [...new Set([...kept, ...e.members.map(m => m.id)])], at: now() });
     // 合并是模型自己的判断，合并后的成员不必再判一次。
     if (target.judgement) writeState(w, `event-judge:${target.key}`, { fingerprint: memberFingerprint(target), memberIds: memberIds(target), result: target.judgement, at: now() });
     const from = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${e.key}`), to = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${target.key}`);
@@ -463,7 +479,9 @@ export const WORTH_LIMIT = 5;
  * 模型原本的判断留在 modelValue 里，事件长大、名额空出来时会恢复。只改卡上的校准字段，不算新版本。
  */
 export function calibrateWorth(w, { now: at = Date.now() } = {}) {
-  const cards = w.db.prepare("SELECT id,data_json FROM intel_briefs WHERE story_key LIKE 'event:%' AND editorial_state='ready' AND dismissed=0").all()
+  // 已被合并掉、界面上看不到的卡（别名）不占名额。
+  const aliasFilter = hasAliases(w) ? ' AND id NOT IN (SELECT alias_id FROM intel_brief_aliases)' : '';
+  const cards = w.db.prepare(`SELECT id,data_json FROM intel_briefs WHERE story_key LIKE 'event:%' AND editorial_state='ready' AND dismissed=0${aliasFilter}`).all()
     .map(r => ({ id: r.id, data: JSON.parse(r.data_json) })).filter(c => c.data.event?.creation);
   const anchor = c => Date.parse(c.data.event.progressAt || c.data.event.latestAt || 0) || 0;
   const band = c => at - anchor(c) <= 24 * 3600000 ? 0 : at - anchor(c) <= EVENT_WINDOW_MS ? 1 : 2;
@@ -472,7 +490,9 @@ export function calibrateWorth(w, { now: at = Date.now() } = {}) {
     c.next = { value: model, demoted: null, model };
     if (model === 'high' && (e.sourceCount || 0) <= 1 && (e.discussionCount || 0) < 5) c.next = { value: 'medium', demoted: 'single_source', model };
   }
-  cards.filter(c => c.next.value === 'high' && at - anchor(c) <= RECOMMEND_WINDOW_MS).sort((a, b) => band(a) - band(b) || (b.data.event.heat || 0) - (a.data.event.heat || 0))
+  // 名额按热度为主、关注方向为辅：贴合方向的乘 1.3。很热的新闻照样能进，差不多热时优先贴合方向的（用户：热点也要抓，方向只作辅助参考）。
+  const worthScore = c => (1 + Math.log2(1 + (c.data.event.heat || 0)) / 3) * (c.data.event.creation?.fit ? 1.3 : 1);
+  cards.filter(c => c.next.value === 'high' && at - anchor(c) <= RECOMMEND_WINDOW_MS).sort((a, b) => band(a) - band(b) || worthScore(b) - worthScore(a))
     .slice(WORTH_LIMIT).forEach(c => { c.next = { value: 'medium', demoted: 'cap', model: c.next.model }; });
   const write = w.db.prepare('UPDATE intel_briefs SET data_json=? WHERE id=?');
   let changed = 0;

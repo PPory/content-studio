@@ -92,6 +92,22 @@ try {
   for (const id of fake) w.db.prepare('DELETE FROM intel_briefs WHERE id=?').run(id);
   calibrateWorth(w, { now });
   assert.equal(feed().briefs.find(b => b.id === releaseCard.id).event.creation.value, 'high', '名额空出来后恢复模型原本的判断');
+  // 名额热度为主、方向为辅：很热但不贴方向的照样进；热度差不多时贴方向的优先。看不到的别名卡不占名额。
+  const fake2 = [['hot-nofit', 40, false], ['a', 20, false], ['b', 15, false], ['c', 12, false], ['d', 12, false], ['fit-mid', 6, true], ['alias-high', 50, false]];
+  for (const [id, heat, fit] of fake2) {
+    const data = { storyKey: id, title: id, summary: '', evidence: [], editorialState: 'ready', depth: 'headline', event: { kind: 'event', heat, sourceCount: 3, discussionCount: 0, latestAt: iso(now - H), progressAt: iso(now - H), members: [], creation: { value: 'high', window: 'week', angle: '', reason: '', fit } } };
+    w.db.prepare("INSERT INTO intel_briefs(id,story_key,run_id,data_json,version,edition_date,created_at,updated_at,editorial_state,freshness_kind) VALUES(?,?,?,?,1,'2026-09-24',?,?,'ready','recent_event')").run(id, `event:${id}`, releaseCard.runId, JSON.stringify(data), iso(now), iso(now));
+  }
+  w.db.prepare('INSERT INTO intel_brief_aliases(alias_id,canonical_id,created_at) VALUES(?,?,?)').run('alias-high', 'hot-nofit', iso(now));
+  calibrateWorth(w, { now });
+  const valueOf = id => JSON.parse(w.db.prepare('SELECT data_json FROM intel_briefs WHERE id=?').get(id).data_json).event.creation.value;
+  assert.equal(valueOf('hot-nofit'), 'high', '很热的新闻不贴方向也照样是「值得做」');
+  assert.equal(valueOf('fit-mid'), 'high', '贴合方向、热度中等的，胜过热度差不多但不贴方向的');
+  // 热度最高的别名卡如果占名额，c、d 都会被挤出去；它不占，c、d 里恰好还有一个能进。
+  assert.equal([valueOf('c'), valueOf('d')].filter(v => v === 'high').length, 1, '看不到的别名卡不占名额；热度相近又不贴方向的只让出一个名额');
+  w.db.prepare('DELETE FROM intel_brief_aliases WHERE alias_id=?').run('alias-high');
+  for (const [id] of fake2) w.db.prepare('DELETE FROM intel_briefs WHERE id=?').run(id);
+  calibrateWorth(w, { now });
 
   // 缓存：成员和内容都没变不重判；同一条来源内容变了会重判。
   const before = calls;
