@@ -60,6 +60,13 @@ export function persistIntelligenceCluster(w,group,sources) {
  return id;
 }
 const texts=(v,max=8)=>Array.isArray(v)?v.filter(x=>typeof x==='string'&&x.trim()).slice(0,max).map(x=>x.trim().slice(0,1500)):[];
+/**
+ * 数字比对用的归一形式（2026-09-24）：5.0 与 5、2.00 与 2 视为一致，「40%」也认「40」；
+ * 日期写法（2026年9月24日、9月24日、2026-09-24、9/24）不参与比对——它们不是「编出来的数字」这类风险。
+ */
+const DATE_RE=/\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?|\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{1,2}-\d{1,2}|\b\d{1,2}\/\d{1,2}\b/g;
+export const normalizeNumber=raw=>{const pct=raw.endsWith('%');let n=pct?raw.slice(0,-1):raw;n=n.replace(/,/g,'');if(n.includes('.'))n=n.replace(/0+$/,'').replace(/\.$/,'');n=n.replace(/^0+(?=\d)/,'');return n;};
+export function numberKeys(text){const out=[];for(const m of String(text||'').replace(DATE_RE,' ').matchAll(/\d[\d,]*(?:\.\d+)?%?/g)){out.push(normalizeNumber(m[0]));}return out;}
 export function assessBriefQuality(item,byId,scopeReview) {
  const reasons=[], evidence=(item.evidence||[]).map((e,i)=>{const s=byId.get(e.sourceId);return {...e,evidenceId:`e${i+1}`,sourceContentHash:s?.contentHash||contentHash(s?.body),quoteCheck:s&&sourceContainsVerbatim(s.body,e.quote)?'matched':'missing',scopeCheck:'unreviewed',relation:'supports'};});
  const claims=(Array.isArray(item.claims)?item.claims:[]).filter(c=>c&&typeof c==='object').slice(0,12).map((c,i)=>({id:`c${i+1}`,text:typeof c.text==='string'?c.text.slice(0,2000):'',kind:['author_report','observation','interpretation','hypothesis'].includes(c.kind)?c.kind:'interpretation',attribution:typeof c.attribution==='string'?c.attribution.slice(0,500):'',evidenceIds:texts(c.evidenceIds,12),limitations:texts(c.limitations)}));
@@ -67,10 +74,12 @@ export function assessBriefQuality(item,byId,scopeReview) {
  for(const c of claims){if(!c.text||!c.evidenceIds.length||c.evidenceIds.some(id=>!evidence.some(e=>e.evidenceId===id)))reasons.push('主张缺少对应原文');if(c.kind==='author_report'&&!c.attribution)reasons.push('来源自述缺少归属');}
  // Numeric checks are deterministic. Semantic scope is reviewed separately and labelled as AI review.
  const quotes=evidence.map(e=>e.quote).join('\n');
- const nums=v=>(String(v||'').match(/\d+(?:\.\d+)?%?/g)||[]);
+ const nums=numberKeys;
  // 数字要能在原文里找到：短引文里，或被引用来源的全文里（2026-09-23）。编造的数字两处都没有，照样拦下。
- const sourceNums=new Set(nums(evidence.map(e=>byId.get(e.sourceId)?.body||'').join('\n')));
- if(nums([item.title,item.summary,...claims.map(c=>c.text),...(Array.isArray(item.keyFacts)?item.keyFacts:[]).map(f=>f?.text||'')].join('\n')).some(n=>!nums(quotes).includes(n)&&!sourceNums.has(n)))reasons.push('数字不在所引原文中');
+ const sourceNums=new Set(nums(evidence.map(e=>byId.get(e.sourceId)?.body||'').join('\n')));const quoteNums=new Set(nums(quotes));
+ const missing=[...new Set(nums([item.title,item.summary,...claims.map(c=>c.text),...(Array.isArray(item.keyFacts)?item.keyFacts:[]).map(f=>f?.text||'')].join('\n')).filter(n=>!quoteNums.has(n)&&!sourceNums.has(n)))];
+ // 写出是哪个数字，失败原因才能被看懂、被追查。
+ if(missing.length)reasons.push(`数字不在所引原文中：${missing.slice(0,5).join('、')}`);
  const checked=scopeReview?.verdict==='supported' && Array.isArray(scopeReview.claims) && scopeReview.claims.length===claims.length && claims.every(c=>scopeReview.claims.some(r=>r.id===c.id&&r.verdict==='supported'));
  if(!checked)reasons.push('标题、摘要和主张尚未通过范围复核');
  if(checked)evidence.forEach(e=>e.scopeCheck='ai_reviewed');

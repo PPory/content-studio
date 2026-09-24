@@ -173,22 +173,31 @@ try {
   w.db.prepare('UPDATE intel_sources SET capture_id=? WHERE id=?').run(capture, release.id);
   const sameSource = wikiPage('Anthropic 发布 Claude Opus 5.5 笔记', 'Anthropic 发布 Claude Opus 5.5，成本更低，这是从那篇报道整理的。', capture);
   const deepCard = cardWith(release.id);
+  // 读过、但模型没引用的材料里带着数字：深读时自动补成出处。
+  const seats = add('t2.wired_ai', 'Claude Opus 5.5 发布：企业版每席位 30 美元', { hours: 0.05, body: 'Claude Opus 5.5 发布：企业版每席位 30 美元，按年付费。' });
+  await update();
   const headline = intelligenceBrief(w, deepCard.id);
   assert.equal(headline.deepen.status, 'none', '打开详情不自动排队深读');
-  assert.ok(headline.deepen.wikiCandidates >= 1, '热点层提示知识库里有可能相关的内容');
+  assert.equal(headline.deepen.wikiCandidates, 3, '热点层如实报知识笔记的数量，不做字面检索');
   const srcBody = s => w.db.prepare("SELECT json_extract(data_json,'$.body') b FROM intel_sources WHERE id=?").get(s.id).b;
-  let deepInput = null, fakeNumber = true;
+  let deepInput = null, fakeSummary = true, selectFails = true, selectCalls = 0, catalog = null;
   const deepDeps = { completeJson: async (_env, input) => {
     const d = JSON.parse(input.user);
+    if (d.step === 'wiki-select') {
+      selectCalls++; catalog = d.catalog;
+      if (selectFails) throw Object.assign(new Error('模型暂时不可用'), { status: 503 });
+      return { data: { picks: [{ id: pricing, relation: 'explain', why: '按比例感知价格' }, { id: coffee, relation: 'apply', why: '凑数' }, { id: 'made-up-wiki', relation: 'apply', why: 'x' }] } };
+    }
     if (d.step === 'compose') {
       deepInput = d;
       const main = d.sources.find(x => x.id === release.id);
-      return { data: { briefs: [{ groupKey: d.groups[0].key, title: 'Anthropic 发布 Claude Opus 5.5', summary: 'Anthropic 发布 Claude Opus 5.5，成本更低。',
-        keyFacts: [{ text: fakeNumber ? '价格下降 73%' : 'Anthropic 发布了 Claude Opus 5.5', evidenceIds: ['e1'] }, { text: '越界的编号', evidenceIds: ['e9'] }],
-        body: '来源没有说明具体价格，只说成本更低。', claims: [{ text: 'Anthropic 发布 Claude Opus 5.5', kind: 'author_report', attribution: 'Anthropic', evidenceIds: ['e1'], limitations: ['只有厂商说明'] }],
+      return { data: { briefs: [{ groupKey: d.groups[0].key, title: 'Anthropic 发布 Claude Opus 5.5', summary: fakeSummary ? 'Anthropic 发布 Claude Opus 5.5，成本降低 73%。' : 'Anthropic 发布 Claude Opus 5.5，成本更低。',
+        keyFacts: [{ text: 'Anthropic 发布了 Claude Opus 5.50', evidenceIds: ['e1'] }, { text: '企业版每席位 30 美元', evidenceIds: ['e1'] }, { text: '价格下降 73%', evidenceIds: ['e1'] }, { text: '越界的编号', evidenceIds: ['e9'] }],
+        body: '来源没有说明具体价格，只说成本更低。', claims: [{ text: 'Anthropic 发布 Claude Opus 5.5', kind: 'author_report', attribution: 'Anthropic', evidenceIds: ['e1'], limitations: ['只有厂商说明'] }, { text: '据称价格下降 73%', kind: 'author_report', attribution: 'Anthropic', evidenceIds: ['e1'], limitations: [] }],
         uncertainties: ['没有第三方复测'], voices: [{ stance: 'doubt', text: '不存在的帖子', sourceId: 'not-a-member' }], useFor: '需要评估模型成本的人', notFor: '只用网页聊天的读者',
-        angle: { direction: '讲清 Opus 5.5 的成本变化该怎么算', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] },
-        wiki: [{ id: pricing, relation: 'explain', point: 'API 按 token 计费', helps: '解释成本为什么要按调用量算' }, { id: 'made-up-wiki', relation: 'apply', point: 'x', helps: 'y' }],
+        angle: { direction: '讲清「单价降了多少」和「我的账单会降多少」的差别', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'], basis: [pricing] },
+        wiki: [{ id: pricing, relation: 'explain', quote: '成本评估要看实际调用量', application: '「每 token 更便宜」只是单价口径，笔记里说成本评估要看实际调用量：读者该用自己每月的调用量算账单。' },
+          { id: coffee, relation: 'apply', quote: '这句话笔记里根本没有', application: '用咖啡烘焙的比喻解释模型发布的节奏和风味变化，完全是硬凑。' }],
         whyItMatters: '影响选型', confidence: 'reliable', kind: 'update', changeNote: d.previous ? '这次新增的是企业版定价' : '', evidence: [{ sourceId: release.id, quote: (main?.body || srcBody(release)).slice(0, 24) }] }] } };
     }
     if (d.step === 'scope-review') return { data: { reviews: d.candidates.map(c => ({ index: c.index, verdict: 'supported', claims: c.claims.map(x => ({ id: x.id, verdict: 'supported' })) })) } };
@@ -200,23 +209,30 @@ try {
     return step;
   };
   await finish(requestDeepen(w, deepCard.id).runId);
-  assert.equal(deepenState(w, deepCard.id).status, 'failed', '关键事实里编造的数字被拦下');
-  assert.match(deepenState(w, deepCard.id).error, /数字/);
-  const wikiIds = deepInput.wiki.map(x => x.id);
-  assert.ok(wikiIds.includes(pricing), '传给模型的是按事件检索的相关 Wiki');
-  assert.ok(!wikiIds.includes(coffee), '无关的不传');
-  assert.ok(!wikiIds.includes(sameSource), '从本事件来源提炼的 Wiki 被排除');
-  assert.ok(!deepInput.wiki.find(x => x.id === pricing).body.includes('咖啡豆'), '只取相关的段落');
-  fakeNumber = false;
+  assert.equal(deepenState(w, deepCard.id).status, 'failed', '摘要里编造的数字仍然拦下');
+  assert.match(deepenState(w, deepCard.id).error, /数字不在所引原文中：73/, '报错写出是哪个数字');
+  assert.equal(selectCalls, 1); assert.deepEqual(deepInput.wiki, [], '挑视角失败不阻塞深读，只是不做连接');
+  const catalogIds = catalog.map(x => x.id);
+  assert.ok(catalogIds.includes(pricing) && catalogIds.includes(coffee), '挑选看的是全部目录，不是字面检索的结果');
+  assert.ok(!catalogIds.includes(sameSource), '从本事件来源提炼的 Wiki 不进目录');
+  fakeSummary = false; selectFails = false;
   await finish(requestDeepen(w, deepCard.id, { force: true }).runId);
+  assert.equal(selectCalls, 2, '上次失败没有缓存，这次重新挑');
+  assert.ok(deepInput.wiki.find(x => x.id === pricing).body.includes('成本评估要看实际调用量'), '挑中的笔记全文交给深读');
+  assert.ok(!deepInput.wiki.some(x => x.id === 'made-up-wiki'), '编造的 id 不进深读');
   const deep = intelligenceBrief(w, deepCard.id);
   assert.equal(deep.depth, 'deep');
-  assert.deepEqual(deep.keyFacts, [{ text: 'Anthropic 发布了 Claude Opus 5.5', evidenceIds: ['e1'] }], '越界编号的关键事实被丢掉');
+  assert.ok(deep.evidence.some(e => e.sourceId === seats.id && e.quote.includes('30')), '读过但没引用的材料里的数字，自动补成出处');
+  assert.deepEqual(deep.keyFacts.map(f => f.text), ['Anthropic 发布了 Claude Opus 5.50', '企业版每席位 30 美元'], '5.50 与原文的 5.5 视为一致；编造数字和越界编号的事实被丢掉');
+  assert.deepEqual(deep.claims.map(c => c.text), ['Anthropic 发布 Claude Opus 5.5'], '带编造数字的主张被丢掉');
   assert.deepEqual(deep.voices, [], '不是本事件讨论来源的观点被丢掉');
   assert.equal(deep.useFor, '需要评估模型成本的人'); assert.equal(deep.notFor, '只用网页聊天的读者');
-  assert.deepEqual(deep.angle, { direction: '讲清 Opus 5.5 的成本变化该怎么算', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] });
-  assert.equal(deep.wiki.length, 1, '编造的 Wiki id 被丢掉');
-  assert.equal(deep.wiki[0].relation, 'explain'); assert.equal(deep.wiki[0].revision, 1); assert.equal(deep.wiki[0].updatedSince, false);
+  assert.deepEqual(deep.angle, { direction: '讲清「单价降了多少」和「我的账单会降多少」的差别', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'], basis: [pricing] });
+  assert.equal(deep.wiki.length, 1, '原话对不上笔记的连接被丢掉');
+  assert.equal(deep.wiki[0].relation, 'explain'); assert.equal(deep.wiki[0].quote, '成本评估要看实际调用量'); assert.match(deep.wiki[0].application, /每月的调用量/);
+  assert.equal(deep.wiki[0].revision, 1); assert.equal(deep.wiki[0].updatedSince, false);
+  await finish(requestDeepen(w, deepCard.id, { force: true }).runId);
+  assert.equal(selectCalls, 2, '挑选结果按事件成员和目录版本缓存，重新生成不再调用');
   w.db.prepare('UPDATE wiki_pages SET current_revision=2 WHERE id=?').run(pricing);
   assert.equal(intelligenceBrief(w, deepCard.id).wiki[0].updatedSince, true, '词条之后改过会提示');
   assert.ok(deep.event?.members?.length && deep.deepMemberCount > 0);
@@ -237,7 +253,7 @@ try {
   // 加入选题：切入方向、读者价值、待补材料和帮你形成判断的 Wiki 一起带走；不复制 Wiki 全文，不编截止日期。
   const topic = createIntelligenceTopicIntent(w, { operationId: 'deep-topic', briefIds: [deepCard.id], confirmed: true, creation: { angle: refreshed.angle.direction, window: '24h', readerValue: refreshed.angle.readerValue, needs: refreshed.angle.needs } });
   const saved = JSON.parse(w.db.prepare('SELECT data_json FROM intelligence_topic_intents WHERE operation_id=?').get('deep-topic').data_json);
-  assert.deepEqual(saved.creation, { angle: '讲清 Opus 5.5 的成本变化该怎么算', window: '24h', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] });
+  assert.deepEqual(saved.creation, { angle: '讲清「单价降了多少」和「我的账单会降多少」的差别', window: '24h', readerValue: '帮读者估算自己的调用成本', needs: ['官方价格表'] });
   assert.deepEqual(saved.wikiLinks.map(k => [k.id, k.relation, k.revision]), [[pricing, 'explain', 2]], 'Wiki 引用带着更新解读时的版本（词条前面改到了第 2 版）和连接方式');
   const research = getResearch(w, topic.research.id);
   assert.ok(w.db.prepare("SELECT 1 FROM research_references WHERE research_id=? AND kind='wiki' AND entity_id=?").get(topic.research.id, pricing), 'Wiki 挂到选题的资料里');

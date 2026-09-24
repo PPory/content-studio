@@ -64,7 +64,7 @@ function normalizeTopicCreation(input){
 /** 深读里的知识连接：只带引用和连接理由（记下当时的 Wiki 版本），不复制 Wiki 全文。 */
 function wikiLinksOf(briefs){
  const seen=new Set(),links=[];
- for(const b of briefs)for(const k of b.wiki||[]){if(!k?.id||seen.has(k.id))continue;seen.add(k.id);links.push({id:k.id,title:k.title||'',revision:k.revision??null,relation:k.relation||null,point:k.point||k.reason||''});}
+ for(const b of briefs)for(const k of b.wiki||[]){if(!k?.id||seen.has(k.id))continue;seen.add(k.id);links.push({id:k.id,title:k.title||'',revision:k.revision??null,relation:k.relation||null,point:k.point||k.reason||'',...(k.quote?{quote:k.quote}:{}),...(k.application?{application:k.application}:{})});}
  return links.slice(0,6);
 }
 export function createIntelligenceTopicIntent(w,input){

@@ -1,4 +1,4 @@
-import { sourceFromRow } from './intelligence-quality.mjs';
+import { sourceFromRow, numberKeys, normalizeNumber } from './intelligence-quality.mjs';
 import { processingFor } from '../acquisition/review.mjs';
 import { classifyAiRelevance } from '../acquisition/relevance.mjs';
 import { sourcePermission } from '../acquisition/compatibility.mjs';
@@ -30,12 +30,12 @@ const DEEPEN_SYSTEM=[
  '依据与边界：claims 覆盖 keyFacts 和 body 的核心判断。kind=observation 表示来源明确说明的事实；author_report 表示厂商自述、作者经验或社区成员说法，attribution 写清是谁说的；interpretation/hypothesis 是你基于材料的推断。「引文确实出现在原文里」只说明来源这么说过，不等于事情已被独立证实，厂商自报性能写成 author_report。uncertainties 写具体的仍缺证据（例如「只有官方说明，没有第三方复测」「只展示了单个项目」），不写「尚需进一步验证」这类空话。',
  'voices：只从 discussion=true 的来源里提炼 0–4 条有代表性的观点，stance=support（看重什么）|doubt（担心什么）|experience（实际用过的人说了什么），sourceId 用该帖子或评论的 id。只有一两个帖子时不能写成「社区普遍认为」；没有分歧材料就不编造反方，可以为空。',
  'useFor：什么情况下这条信息值得花时间、能解决什么具体问题（一两句）。notFor：谁暂时不需要关注（一句，可为空）。不要说「非常适合你」这类没有依据的个性化判断。',
- 'wiki：输入 wiki 是用户自己整理的知识笔记。只在有实质连接时引用 0–3 条，relation=explain（用已有概念解释这件事）|apply（放进已有方法或流程）|extend（为已有观点补充案例或条件）|challenge（与已有观点有张力，写清具体冲突和条件）；point 写连到笔记里的哪个观点，helps 写能帮用户做什么。Wiki 只说明用户整理过相关内容，不代表用户已经掌握或亲自验证过；它也不是外部事实的证据。没有自然连接就给空数组，缺少连接不影响这件事的价值。',
- 'angle：只给一个最有依据的切入方向 {direction:一句方向, readerValue:能帮哪类读者解决什么问题, needs:[开写前还需要补的具体材料或验证，1–3 条]}。有 wiki 连接时，说明已有知识能提供什么、这次情报增加了什么。不给标题清单，不写截止时间。',
+ 'wiki：输入 wiki 是用户自己整理的知识笔记（多是写作、说服、认知与决策的思考框架），附带挑选时的理由 why。把它们当作「看这件事的视角」：用笔记里的某个观点，能把这件事讲出新闻之外的什么。对每篇真正用得上的笔记写一条连接（0–3 条）：relation=explain（用笔记的概念解释这件事为什么发生、为什么重要）|apply（把这件事放进笔记里的方法或流程，说明能解决什么具体问题）|extend（这件事为笔记里的观点补充了案例、条件或细节）|challenge（这件事和笔记里的观点有张力，写清具体冲突和成立条件）；quote 是笔记正文里支撑这条连接的一句原话（连续逐字复制，至少 8 个字）；application 60–150 字，必须同时点到笔记的观点和这件事的具体事实，写出「用这个视角看，能讲出什么」，不能只说「与某某相关」。用不上就不要写，可以为空数组；没有连接不影响这件事的价值。笔记只说明用户整理过相关内容，不代表用户已经掌握或亲自验证过，也不是这件事的外部证据。',
+ 'angle：只给一个最有依据的切入方向 {direction:一句方向, readerValue:能帮哪类读者解决什么问题, needs:[开写前还需要补的具体材料或验证，1–3 条], basis:[用到的 wiki id]}。有 wiki 连接时，切入方向必须建立在连接上：笔记提供了什么视角 + 这次情报增加了什么事实 → 两者合起来回应什么读者问题；needs 写还缺什么（例如「实际检查工具的权限选项，不能只凭发布说明写成亲测」）。不给标题清单，不写截止时间。',
  '输入带 previous 时，这是对旧解读的更新：changeNote 写一句「这次新增的是……」，只写新材料里能看到的。',
  'evidence 每项必须使用输入 sourceId 和至少 8 字符的连续逐字原话，不能翻译改写。标题、summary、keyFacts、claims 里的数字必须能在所引来源原文里找到。readLevel=summary 的资料只是订阅摘要，只写摘要里明说的内容。',
  '另含 whyItMatters（一句）、confidence（reliable|watch）、kind（update|practice|evergreen）、reason（一句，与 whyItMatters 相同即可）。',
- '只返回 JSON {"briefs":[{"groupKey":"","title":"","summary":"","keyFacts":[{"text":"","evidenceIds":["e1"]}],"body":"","claims":[{"text":"","kind":"observation","attribution":"","evidenceIds":["e1"],"limitations":[]}],"uncertainties":[""],"voices":[{"stance":"doubt","text":"","sourceId":""}],"useFor":"","notFor":"","angle":{"direction":"","readerValue":"","needs":[""]},"wiki":[{"id":"","relation":"explain","point":"","helps":""}],"whyItMatters":"","reason":"","confidence":"reliable","kind":"update","changeNote":"","evidence":[{"sourceId":"","quote":""}]}]}'
+ '只返回 JSON {"briefs":[{"groupKey":"","title":"","summary":"","keyFacts":[{"text":"","evidenceIds":["e1"]}],"body":"","claims":[{"text":"","kind":"observation","attribution":"","evidenceIds":["e1"],"limitations":[]}],"uncertainties":[""],"voices":[{"stance":"doubt","text":"","sourceId":""}],"useFor":"","notFor":"","angle":{"direction":"","readerValue":"","needs":[""],"basis":[""]},"wiki":[{"id":"","relation":"explain","quote":"笔记原话","application":""}],"whyItMatters":"","reason":"","confidence":"reliable","kind":"update","changeNote":"","evidence":[{"sourceId":"","quote":""}]}]}'
 ].join('\n');
 
 // Daily curation is separate from proposing writing topics. Original evidence stays in the source table.
@@ -81,6 +81,10 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
  deps.assertCurrent?.();
  // 深度解读只写这一个事件：只取第一张，并钉在固定分组上。
  if(deps.fixedGroups&&Array.isArray(response.data?.briefs))response.data.briefs=response.data.briefs.slice(0,1).map(b=>({...b,groupKey:groups[0]?.key}));
+ // 数字补出处（深读，不增加调用）：模型写的数字不在已引用的来源里、但在本次读过的其它材料里时，
+ // 从那份材料截一段含该数字的原话补进 evidence——规则仍是「数字须在所引来源全文里」。
+ // 读过的材料里都没有的数字：出现在关键事实或主张里就丢掉那一条（至少留一条主张）；出现在标题摘要里照常拦下。
+ if(deps.deepen&&Array.isArray(response.data?.briefs))response.data.briefs=response.data.briefs.map(b=>b&&typeof b==='object'?groundNumbers(b,excerpts):b);
  // 深读的新结构对应到原有的必需字段：用途即读者能带走的，切入方向即建议用途（质量校验仍要求这两项）。
  if(deps.deepen&&Array.isArray(response.data?.briefs))response.data.briefs=response.data.briefs.map(b=>b&&typeof b==='object'?{...b,audienceTakeaway:b.audienceTakeaway||b.useFor,suggestedUses:Array.isArray(b.suggestedUses)&&b.suggestedUses.length?b.suggestedUses:[b.angle?.direction].filter(x=>typeof x==='string'&&x.trim()),whyItMatters:b.whyItMatters||b.useFor,reason:b.reason||b.whyItMatters||b.useFor}:b);
  const scopeReviews=await reviewBriefScopes(w,env,run,response.data?.briefs,excerpts,deps);
@@ -105,6 +109,27 @@ export async function generateDailyBriefs(w,env,run,sources,wiki,deps={}) {
   return {...result,saved:[...result.saved,...fixed.saved],unchanged:result.unchanged+fixed.unchanged,rejected:remaining.length,rejectionReasons:remaining,repaired:fixed.saved.length};
  } catch(error) {if(error.cancelled||error.leaseLost)throw error;return result;}
 
+}
+
+function groundNumbers(brief,sources){
+ const evidence=Array.isArray(brief.evidence)?[...brief.evidence]:[];
+ const bodyOf=id=>sources.find(s=>s.id===id)?.body||'';
+ const cited=()=>new Set(numberKeys(evidence.map(e=>`${bodyOf(e.sourceId)}\n${e.quote||''}`).join('\n')));
+ const read=new Set(numberKeys(sources.map(s=>s.body).join('\n')));
+ const facts=Array.isArray(brief.keyFacts)?brief.keyFacts:[],claims=Array.isArray(brief.claims)?brief.claims:[];
+ const wanted=numberKeys([brief.title,brief.summary,...facts.map(f=>f?.text),...claims.map(c=>c?.text)].join('\n'));
+ for(const n of new Set(wanted)){
+  if(cited().has(n)||!read.has(n)||evidence.length>=12)continue;
+  for(const s of sources){
+   const hit=[...String(s.body||'').matchAll(/\d[\d,]*(?:\.\d+)?%?/g)].find(m=>normalizeNumber(m[0])===n);
+   if(!hit)continue;
+   const quote=s.body.slice(Math.max(0,hit.index-24),hit.index+hit[0].length+24).trim();
+   if(quote.length>=8){evidence.push({sourceId:s.id,quote});break;}
+  }
+ }
+ const grounded=text=>numberKeys(text).every(n=>cited().has(n));
+ const keptClaims=claims.filter(c=>grounded(c?.text||''));
+ return {...brief,evidence,keyFacts:facts.filter(f=>grounded(f?.text||'')),claims:keptClaims.length?keptClaims:claims};
 }
 
 async function reviewBriefScopes(w,env,run,briefs,sources,deps) {
