@@ -7,7 +7,7 @@
 // 资料挂在这篇背后的研究记录上（`ensureProjectResearch`），起稿时 `projectCreativeContext` 会读到。
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { IconArrowUpRight, IconBooks, IconChevronLeft, IconPlus, IconX } from "./icons.jsx";
+import { IconArrowUpRight, IconChevronLeft, IconChevronRight, IconPlus, IconX } from "./icons.jsx";
 import { ErrorNote } from "./ui.jsx";
 import "./piece-library.css";
 
@@ -49,7 +49,7 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
   const count = (refs?.length || 0) + materials.length + assets.length;
 
   if (collapsed) return <aside className="piece-lib is-collapsed" aria-label="这篇的资料">
-    <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title="展开这篇的资料" aria-label={`展开资料（${count} 份）`}><IconBooks aria-hidden="true" /><b>{count}</b></button>
+    <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title={`展开这篇的资料（${count} 份）`} aria-label={`展开资料（${count} 份）`}><IconChevronRight aria-hidden="true" /></button>
   </aside>;
 
   const item = (r) => {

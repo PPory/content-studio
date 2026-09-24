@@ -38,21 +38,22 @@
 .piece-lib__results button:hover { background: var(--surface); }
 .piece-lib__results small { color: var(--text-3); font-size: var(--fs-2xs); }
 .piece-lib__link { display: flex; gap: 6px; }
-/* 收起：一条窄边，写正文时不占地方。 */
-.piece-lib.is-collapsed { width: 48px; border-right-color: transparent; background: transparent; }
-.piece-lib__rail { display: grid; justify-items: center; gap: 2px; margin: 14px auto 0; width: 36px; padding: 8px 0 6px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); cursor: pointer; }
-.piece-lib__rail b { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2xs); color: var(--text-3); }
-.piece-lib__rail:hover { color: var(--text-1); border-color: var(--border-strong); }
-.piece-lib__rail svg { width: 17px; height: 17px; }
-@media (max-width: 920px) {
-  .piece-lib { position: relative; height: auto; margin: 0; border-right: 0; border-bottom: 1px solid var(--border); }
-  .piece-lib.is-collapsed { width: auto; }
-  .piece-lib__rail { grid-auto-flow: column; justify-content: start; gap: 6px; width: auto; margin: 0; padding: 6px 12px; }
-  .piece-lib__scroll { max-height: 50vh; }
-}
 @media (prefers-reduced-motion: reduce) { .piece-lib li { transition: none; } }
 /* 原来右栏「资料」工具里的几块（选母版、种子、个人参考、素材），搬进左栏后接在研究资料下面。 */
+/* 收起时只留一个向右的小箭头（2026-09-24 用户反馈：带图标和数字的方块太抢眼）；数量在悬停提示里。 */
+.piece-lib.is-collapsed { width: 28px; border-right-color: transparent; background: transparent; }
+.piece-lib__rail { display: grid; place-items: center; width: 24px; height: 24px; margin: 18px 0 0 2px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-3); cursor: pointer; }
+.piece-lib__rail:hover { color: var(--text-1); background: var(--sunken); }
+.piece-lib__rail:focus-visible { outline: 2px solid var(--text-1); outline-offset: 2px; }
+.piece-lib__rail svg { width: 16px; height: 16px; }
 .piece-lib__more { display: grid; gap: 18px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); min-width: 0; }
 .piece-lib__more > * { min-width: 0; }
 .piece-lib__more .pmat { border: 0; border-radius: 0; padding: 0; box-shadow: none; background: none; }
 .piece-lib__more > .personal-reference { border-top: 0; padding: 0; }
+/* 窄屏：资料栏叠在正文上方，收起时箭头靠左。放在最后，覆盖上面的宽屏规则。 */
+@media (max-width: 920px) {
+  .piece-lib { position: relative; height: auto; margin: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .piece-lib.is-collapsed { width: auto; }
+  .piece-lib__rail { margin: 4px 0; }
+  .piece-lib__scroll { max-height: 50vh; }
+}
