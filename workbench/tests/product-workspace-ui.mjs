@@ -479,7 +479,12 @@ try {
   check("切到别的来源只看那一个来源", await page.locator(".topic-card", { hasText: "卡片选题" }).count() === 0);
   await sources.getByRole("tab", { name: current.replace(/\s*\d+$/, "") }).click();
   await page.locator(".topic-card", { hasText: "卡片选题 1：" }).first().waitFor();
-  check("选题一档固定是卡片，不给列表切换", await page.getByRole("button", { name: "列表视图", exact: true }).count() === 0);
+  // 选题默认卡片，也能切成列表（和「在写」同一张表），两边各记各的。
+  await page.getByRole("button", { name: "列表视图", exact: true }).click();
+  await page.locator(".topic-table .ptable__line", { hasText: "卡片选题 1：" }).first().waitFor();
+  check("选题能切成列表", await page.locator(".topic-table .ptable__line", { hasText: "卡片选题" }).count() === 12 && await page.locator(".topic-card").count() === 0);
+  await page.getByRole("button", { name: "卡片视图", exact: true }).click();
+  await page.locator(".topic-card", { hasText: "卡片选题 1：" }).first().waitFor();
   const cardTopic = page.locator(".topic-card", { hasText: "卡片选题 1：" }).first();
   await cardTopic.locator(".topic-card__open").focus(); await page.keyboard.press("Enter");
   await page.waitForURL(/#\/project\//);

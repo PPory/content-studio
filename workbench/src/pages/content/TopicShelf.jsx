@@ -7,7 +7,7 @@
 // 这个页签的右侧是「重新扫描」「自己搭一个」。原来单独的「从我的知识里找」页面不再作为入口（选题方法见 docs/工作流.md）。
 import { useState } from "react";
 import { RowDelete, ViewTabs, relTime } from "../../components/ui.jsx";
-import { IconBooks, IconBulb, IconLoader2, IconPlus, IconRadar2, IconRefresh, IconSparkles } from "../../components/icons.jsx";
+import { IconArrowRight, IconBooks, IconBulb, IconLoader2, IconPlus, IconRadar2, IconRefresh, IconSparkles } from "../../components/icons.jsx";
 
 const WINDOW = { "24h": "建议 24 小时内写", week: "建议本周内写" };
 const SECTIONS = [
@@ -62,9 +62,56 @@ function FoundCard({ found, scanning, onAdd }) {
   </article>;
 }
 
+/**
+ * 列表视图：和「在写」同一张表（`.ptable`，见 ProjectTable.jsx）。列只有三件事：走到哪一步 → 标题（来源、建议时效压在下面）→ 多久没动；
+ * 指到这一行时最后一格换成点下去要做的事。先放着 / 删掉是行的兄弟节点（行本身是 button）。
+ * AI 找到的也在表里：点这一行就是加入选题。
+ */
+function TopicTable({ list, found, scanning, onOpen, onPark, onRemove, onAdd }) {
+  const [confirming, setConfirming] = useState("");
+  const [adding, setAdding] = useState("");
+  const add = async (c) => { setAdding(c.directionId); try { await onAdd(c); } finally { setAdding(""); } };
+  return <div className="ptable topic-table" role="table" aria-label="选题" style={{ "--ptable-cols": "150px minmax(0, 1fr) 150px" }}>
+    <div className="ptable__head" role="row">
+      <div className="ptable__headgrid"><span role="columnheader">进度</span><span role="columnheader">选题</span><span role="columnheader">更新</span></div>
+      <span aria-hidden="true" className="topic-table__actcol" />
+    </div>
+    {list.map((item) => {
+      const o = item.origin || {}, stage = item.stage || { key: "new", label: "还没选角度" };
+      return <div className="ptable__line" key={item.key} data-topic={item.id} data-confirm={confirming === item.key ? "" : undefined}>
+        <button className="ptable__row" role="row" onClick={() => onOpen(item)} aria-label={`打开选题「${item.title}」`}>
+          <span role="cell"><span className={`topic-stage is-${stage.key}`}>{stage.label}</span></span>
+          <span className="ptable__title" role="cell">
+            <b title={item.title}>{item.title}</b>
+            {o.window || (o.title && o.title !== item.title) || o.kind === "legacy" ? <em className="ptable__series topic-table__sub">
+              {o.window ? <span className={o.window === "24h" ? "is-urgent" : ""}>{WINDOW[o.window]}</span> : null}
+              {o.kind === "legacy" ? <span>以前的选题</span> : null}
+              {o.title && o.title !== item.title ? <span title={o.title}>{o.title}</span> : null}
+            </em> : null}
+          </span>
+          <span className="ptable__tail" role="cell"><time>{relTime(item.updatedAt)}</time><em className="ptable__next" aria-hidden="true">{stage.key === "draft" ? "接着改" : "接着整理"}<IconArrowRight size={14} stroke={1.8} /></em></span>
+        </button>
+        <span className="ptable__acts topic-table__acts">
+          {onPark && item.kind === "project" && confirming !== item.key ? <button type="button" className="text-action" onClick={() => onPark(item)}>先放着</button> : null}
+          <RowDelete onDelete={() => onRemove(item)} label="删掉" title={`删掉选题「${item.title}」——移入回收站，可以撤销`} onOpenChange={(open) => setConfirming(open ? item.key : "")} />
+        </span>
+      </div>;
+    })}
+    {found.map((c) => <div className="ptable__line topic-table__found" key={c.directionId} aria-busy={scanning || undefined}>
+      <button className="ptable__row" role="row" disabled={scanning || adding === c.directionId} onClick={() => add(c)} aria-label={`加入选题：${c.problem?.statement || c.coreClaim}`}>
+        <span role="cell"><span className="topic-stage is-found"><IconSparkles aria-hidden="true" />AI 找到的</span></span>
+        <span className="ptable__title" role="cell"><b title={c.problem?.statement || c.coreClaim}>{c.problem?.statement || c.coreClaim}</b>
+          {c.knowledgeAnchors?.length ? <em className="ptable__series topic-table__sub"><span>知识：{c.knowledgeAnchors.map((a) => a.title).filter(Boolean).join("、")}</span></em> : null}</span>
+        <span className="ptable__tail" role="cell"><time>{adding === c.directionId ? "正在加入…" : "还没加入"}</time><em className="ptable__next" aria-hidden="true">加入选题<IconPlus size={14} stroke={1.8} /></em></span>
+      </button>
+      <span className="ptable__acts topic-table__acts" />
+    </div>)}
+  </div>;
+}
+
 const store = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} } };
 
-export function TopicShelf({ items, found = [], scanning = false, onOpen, onPark, onRemove, onAddFound, onScan, onBuild }) {
+export function TopicShelf({ items, found = [], scanning = false, layout = "card", onOpen, onPark, onRemove, onAddFound, onScan, onBuild }) {
   const lists = Object.fromEntries(SECTIONS.map(([key]) => [key, items.filter((item) => sectionOf(item) === key)]));
   // 三个来源切着看（2026-09-24 用户反馈：和情报页一样用页签）。没选过就停在第一个有东西的来源。
   const [picked, setPicked] = useState(() => store.get("topic-source"));
@@ -85,10 +132,12 @@ export function TopicShelf({ items, found = [], scanning = false, onOpen, onPark
     </div>
     <section className="topic-sec" role="tabpanel" aria-label={name}>
       {tab === "bridge" && scanning ? <p className="topic-sec__status" role="status"><IconLoader2 className="spin" aria-hidden="true" />正在读你的 Wiki 和读者问题找题，大约半分钟。找到的会出现在下面，可以先看别的。</p> : null}
-      {list.length || extra.length ? <div className="content-card-grid">
-        {list.map((item) => <TopicCard key={item.key} item={item} onOpen={onOpen} onPark={onPark} onRemove={onRemove} />)}
-        {extra.map((c) => <FoundCard key={c.directionId} found={c} scanning={scanning} onAdd={onAddFound} />)}
-      </div> : <p className="topic-sec__empty">{EMPTY[tab]}</p>}
+      {!list.length && !extra.length ? <p className="topic-sec__empty">{EMPTY[tab]}</p>
+        : layout === "list" ? <TopicTable list={list} found={extra} scanning={scanning} onOpen={onOpen} onPark={onPark} onRemove={onRemove} onAdd={onAddFound} />
+        : <div className="content-card-grid">
+          {list.map((item) => <TopicCard key={item.key} item={item} onOpen={onOpen} onPark={onPark} onRemove={onRemove} />)}
+          {extra.map((c) => <FoundCard key={c.directionId} found={c} scanning={scanning} onAdd={onAddFound} />)}
+        </div>}
     </section>
   </div>;
 }

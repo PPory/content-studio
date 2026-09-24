@@ -45,4 +45,13 @@
 .topic-card.is-found .content-card__actions { border-top-style: dashed; }
 .topic-card.is-found .content-card__actions .btn { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-2xs); }
 .topic-card.is-found .content-card__actions svg { width: 14px; height: 14px; }
+/* 选题的列表视图：沿用 .ptable，只补行尾两颗操作（先放着 + 删掉）和标题下那行小字。 */
+.topic-table .ptable__head > .topic-table__actcol { width: 96px; }
+.topic-table__acts { width: 96px; grid-auto-flow: column; justify-content: end; gap: 4px; padding-right: 4px; }
+.topic-table__acts .text-action { font-size: var(--fs-xs); white-space: nowrap; }
+.topic-table__sub { display: flex; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.topic-table__sub > span { overflow: hidden; text-overflow: ellipsis; }
+.topic-table__sub .is-urgent { color: var(--emph); font-weight: 600; flex: none; }
+.topic-table__found .ptable__row b { font-weight: 500; }
+.topic-table__found[aria-busy] { opacity: .55; }
 @media (max-width: 600px) { .topic-sec__acts { margin-left: 0; width: 100%; } }

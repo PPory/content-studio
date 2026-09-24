@@ -25,6 +25,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   // 「来自我的知识」：最近一次扫描找到、还没加入的「知识 × 读者问题」。只读缓存，重新扫描才调模型。
   const [found, setFound] = useState([]), [scanning, setScanning] = useState(false);
   const [layout, setLayout] = useLayoutMode("content", "list");
+  // 选题一档单独记：它默认是卡片（要动手的少数），切成列表也不影响「在写」那边。
+  const [topicLayout, setTopicLayout] = useLayoutMode("content-topics", "card");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
   const [filing, setFiling] = useState(null);
 
@@ -182,8 +184,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             <div className="chips chips-sm" aria-label="内容状态">
               {CONTENT_SHELVES.map((key) => <button key={key} className="chip" aria-pressed={shelf === key} onClick={() => chooseShelf(key)}>{key}{counts[key] ? ` ${counts[key]}` : ""}</button>)}
             </div>
-            {/* 选题固定是卡片：那一档是要动手的少数（判据见 design-system.md）。 */}
-            {shelf !== "选题" ? <LayoutToggle value={layout} onChange={setLayout} /> : null}
+            {/* 选题默认卡片（要动手的少数），也能切成列表；和「在写」各记各的。 */}
+            {shelf === "选题" ? <LayoutToggle value={topicLayout} onChange={setTopicLayout} /> : <LayoutToggle value={layout} onChange={setLayout} />}
           </div>
           {!projects.length && !topics.length ? (
             /* ⚠️ **首启空态要带一颗能点的**：只有一句灰字的话「下一步点哪儿」
@@ -196,7 +198,7 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             </Empty>
           ) : shelf === "选题" ? (
             topics.length || found.length
-              ? <TopicShelf items={topics} found={found} scanning={scanning} onOpen={openTopic} onPark={park} onRemove={removeTopic} onAddFound={addFound} onScan={rescan} onBuild={() => onGo("bridge", "manual")} />
+              ? <TopicShelf items={topics} found={found} scanning={scanning} layout={topicLayout} onOpen={openTopic} onPark={park} onRemove={removeTopic} onAddFound={addFound} onScan={rescan} onBuild={() => onGo("bridge", "manual")} />
               : <Empty icon={IconFileText}>还没有选题。在情报里点「加入选题」，或者新建一篇、从我的知识里找。</Empty>
           ) : shown.length ? (
             layout === "card"
