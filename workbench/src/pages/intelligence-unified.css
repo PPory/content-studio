@@ -122,7 +122,9 @@
 .unified-notice { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; background: var(--surface-2); border-left: 2px solid var(--text-1); font-size: 14px; }
 .intel-unified-full .brief-detail-toolbar { flex-wrap: wrap; gap: 12px; }
 .intel-unified-full .brief-detail-toolbar > div { flex-wrap: wrap; }
-.intel-unified-full .brief-reading { max-width: 780px; }
+/* 限宽只在旁边开着聊天时要：不开聊天时阅读栏铺满，正文靠 .brief-reading 的内边距居中成 720px。
+   两条叠在一起（内边距按整栏宽算、元素又被限成 780）正文只剩三百多像素还偏左（2026-09-24 用户反馈）。 */
+.intel-unified-full .with-chat .brief-reading { max-width: 780px; }
 .intel-unified :is(summary,button,a,input,select,textarea):focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 
 /* ── 事件详情：头部 → 发生了什么 → 创作判断 → 为什么重要 → 深度解读 → 来源与讨论（折叠） ── */
