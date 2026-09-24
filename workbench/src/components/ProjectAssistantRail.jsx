@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssistantSummonTarget } from "../lib/assistant-summoner.js";
 import { AssistantPane } from "./assistant/AssistantPane.jsx";
 import { ProjectContextPanel } from "./ProjectContextPanel.jsx";
-import { IconChevronDown, IconFileText, IconX } from "./icons.jsx";
+import { IconChevronDown, IconFileText, IconSparkles, IconX } from "./icons.jsx";
 
 // One optional companion to the document. Hidden panels stay mounted to preserve
 // unsaved notebook input and the current conversation when changing tools.
@@ -56,7 +56,10 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       onClose={(restore) => { setContextOpen(false); if (restore) contextTriggerRef.current?.focus(); }}
       onOpenMaterials={() => openTool("资料")} />
   </div>;
+  const floating = only?.length === 1 && only[0] === "协作";
   return <>
+    {/* 只有协作一个工具时：收起状态下是右下角一颗悬浮图标，点开就是协作栏（栏头有收起）。 */}
+    {floating && !active && !reviewingCandidate ? <button type="button" className="assistant-fab" onClick={focusAssistant} aria-label="打开协作" title="协作（AI 只给候选，不动正文）"><IconSparkles aria-hidden="true" /></button> : null}
     <nav className="writing-tools" aria-label="写作辅助" hidden={reviewingCandidate || only?.length === 1}>
       {(only || (notebook ? ["构思", "资料", "协作"] : ["资料", "协作"])).map((tool) => <button key={tool} type="button" className="btn btn-sm"
         ref={(element) => { triggers.current[tool] = element; }} aria-pressed={active === tool} aria-controls={`writing-panel-${tool}`}

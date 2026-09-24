@@ -19,3 +19,16 @@
   .project-workspace__grid:has(.writing-companion:not([data-collapsed="true"])) .writing-tools { position: fixed; top: 122px; right: 56px; }
   .project-assistant.writing-companion:not([data-collapsed="true"]) { position: fixed; inset: 110px 0 0 auto; width: min(100%, 440px); height: auto; max-height: none; z-index: 40; background: var(--surface); border-left: 1px solid var(--line); }
 }
+
+/* 协作的入口：协作栏收起时右下角一颗悬浮图标（2026-09-24 用户反馈，替代顶栏那颗「协作」按钮）。 */
+.assistant-fab {
+  position: fixed; right: 28px; bottom: 28px; z-index: 30;
+  display: grid; place-items: center; width: 46px; height: 46px; padding: 0;
+  border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text-1);
+  box-shadow: var(--shadow); cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+}
+.assistant-fab:hover { border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
+.assistant-fab:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
+.assistant-fab svg { width: 20px; height: 20px; }
+@media (max-width: 720px) { .assistant-fab { right: 16px; bottom: 16px; } }
+@media (prefers-reduced-motion: reduce) { .assistant-fab { transition: none; } }

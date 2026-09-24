@@ -17,7 +17,7 @@ export function DraftTrail({ projectId, body = "", reloadKey = 0, onPick }) {
     "读懂",
     angle ? <>角度：<b>{HOW[angle.how] || "自己定的"}</b></> : "选角度",
     angle ? <>补齐 <b>{done}/{gaps.length}</b></> : "补齐",
-    plan.structures?.items?.length ? <>结构：<b>{plan.structures.items[plan.chosenStructure || 0]?.name.split(/\s|→/)[0]}</b></> : "定结构",
+    plan.structures?.items?.length ? (() => { const name = plan.structures.items[plan.chosenStructure || 0]?.name || ""; return <>结构：<b className="is-long" title={name}>{name.split(/\s|→/)[0]}</b></>; })() : "定结构",
   ];
   return <nav className="topic-flow__trail draft-trail" aria-label="选题进度">
     {steps.map((label, i) => <span key={i} className="topic-flow__crumb">

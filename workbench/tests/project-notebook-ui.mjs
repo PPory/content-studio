@@ -1,7 +1,7 @@
 // 选题流程的真实浏览器验收（2026-09-24 起取代原来的「构思表单」验收：那张表单已从界面撤掉，
 // 构思的存取规则仍由 tests/project-notebook.mjs 覆盖）。
 //
-// 读懂 → 选角度（推荐标记、默认选中推荐、键盘可选）→ 补齐（每项自己的「记下实测」、让 AI 先找找、这条不写了）→
+// 读懂 → 选角度（推荐标记、默认选中推荐、键盘可选）→ 补齐（每项自己的「记下实测」、让 AI 找、我自己放、这条不写了）→
 // 定结构 → 写初稿（正文里【待补】高亮、编辑器上方进度线能回到任一步）→ 390px 无横向溢出。
 // 独立的临时 XENHO_HOME；AI 结果在测试进程里用模拟模型生成（同一个工作区），不发任何外部请求。
 import assert from "node:assert/strict";
@@ -89,10 +89,23 @@ try {
   // 「让 AI 先找找」是一个还没有答案的新问题：必须真的发给协作（原来错走了「搬运已答问答」那条路，只报错不发）。
   const asked = page.waitForRequest((r) => r.url().includes("/api/assistant/chat/stream") && r.method() === "POST");
   await page.route("**/api/assistant/chat/stream", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "测试：不调用模型" }) }));
-  await findGap.getByRole("button", { name: "让 AI 先找找" }).click();
-  check("让 AI 先找找把这一项作为新问题发给协作", JSON.parse((await asked).postData() || "{}").message?.includes("一份讲写作结构的资料"));
-  await findGap.getByRole("button", { name: "这条不写了" }).click();
-  await findGap.locator(".tf-tag", { hasText: "不写了" }).waitFor();
+  await findGap.getByRole("button", { name: "让 AI 找" }).click();
+  check("让 AI 找把这一项作为新问题发给协作，去哪找作为线索给 AI", JSON.parse((await asked).postData() || "{}").message?.includes("一份讲写作结构的资料") && JSON.parse((await asked).postData() || "{}").message?.includes("搜：长文 结构 卡住"));
+  check("去哪找不摆在界面上", await findGap.locator("code").count() === 0);
+  // 「我自己放」只是打开补资料面板（写明为哪一项补）；什么都没放就关掉，这一项不能算补上。
+  await findGap.getByRole("button", { name: "我自己放" }).click();
+  check("补资料面板写明为哪一项补", (await page.locator(".piece-lib__panel-head").innerText()).includes("一份讲写作结构的资料"));
+  await page.getByRole("group", { name: /补资料/ }).getByRole("button", { name: "关闭" }).click();
+  check("没放资料不算补上", await findGap.locator(".tf-tag.is-done").count() === 0);
+  // 真的放进来一份（贴链接），这一项才算补上。
+  await findGap.getByRole("button", { name: "我自己放" }).click();
+  await page.getByLabel("搜资料库或贴链接").fill("https://example.com/long-form-structure");
+  await page.getByRole("button", { name: /把这个链接放进来/ }).click();
+  await findGap.locator(".tf-tag.is-done").waitFor();
+  check("放进资料之后这一项才补上", true);
+  const laterGap = flow.locator(".tf-gap").filter({ hasText: "坚持一段时间后的变化" });
+  await laterGap.getByRole("button", { name: "这条不写了" }).click();
+  await laterGap.locator(".tf-tag", { hasText: "不写了" }).waitFor();
   check("这条不写了被划掉", true);
   await flow.getByRole("button", { name: "搭结构", exact: true }).click();
 

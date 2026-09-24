@@ -33,15 +33,16 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
     } catch (e) { setError(e); }
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
-  // 补齐那一步的「找到了，放进资料」从外面打开这里的添加面板。
-  useImperativeHandle(controlRef, () => ({ add: () => { toggle(false); setAdding(true); }, reload: load }), [load]);
+  // 补齐那一步的「我自己放」从外面打开这里的添加面板，并说明是为哪一项补（挂上之后那一项才算补上）。
+  useImperativeHandle(controlRef, () => ({ add: (forGap = "") => { toggle(false); setAdding(forGap || true); }, reload: load }), [load]);
 
   async function attach(item) {
     const id = researchId.current || (await api.projectResearch(projectId)).researchId;
     researchId.current = id;
     await api.researchReference(id, { kind: item.kind, id: item.id });
     setFresh(`${item.kind}:${item.id}`); setTimeout(() => setFresh(""), 2400);
-    setAdding(false); await load(); onChanged?.();
+    const forGap = typeof adding === "string" ? adding : "";
+    setAdding(false); await load(); onChanged?.({ forGap });
   }
 
   const groups = { 来源: [], 知识: [], 补充资料: [] };
@@ -74,7 +75,7 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
     <div className="piece-lib__scroll">
       {Object.entries(groups).map(([name, list]) => list.length ? <section key={name}><h3>{name}</h3><ul>{list.map(item)}</ul></section> : null)}
       {refs && !refs.length ? <p className="piece-lib__empty">这篇背后还没有资料。</p> : null}
-      {adding ? <AddPanel onPick={attach} onClose={() => setAdding(false)} attached={new Set((refs || []).map((r) => `${r.kind}:${r.id}`))} /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
+      {adding ? <AddPanel forGap={typeof adding === "string" ? adding : ""} onPick={attach} onClose={() => setAdding(false)} attached={new Set((refs || []).map((r) => `${r.kind}:${r.id}`))} /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
       {children ? <div className="piece-lib__more">{children}</div> : null}
     </div>
   </aside>;
@@ -88,7 +89,7 @@ function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, "");
  * ⚠️ 没输入时不列东西（2026-09-24 用户反馈）：原来空搜索会列出资料库最近几条，和这篇毫无关系，看着像是
  * 「这篇已经有的资料」。窄栏里也放不下第二个输入框加按钮，按钮被挤成竖排。
  */
-function AddPanel({ onPick, onClose, attached }) {
+function AddPanel({ forGap = "", onPick, onClose, attached }) {
   const [q, setQ] = useState(""), [items, setItems] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const term = q.trim(), isLink = /^https?:\/\/\S+$/i.test(term);
   useEffect(() => {
@@ -104,7 +105,7 @@ function AddPanel({ onPick, onClose, attached }) {
     catch (err) { setError(err); } finally { setBusy(false); }
   }
   return <div className="piece-lib__panel" role="group" aria-label="补资料">
-    <div className="piece-lib__panel-head"><strong>补资料</strong><button type="button" className="icon-btn" onClick={onClose} aria-label="关闭"><IconX aria-hidden="true" /></button></div>
+    <div className="piece-lib__panel-head"><strong>{forGap ? `为「${forGap}」补资料` : "补资料"}</strong><button type="button" className="icon-btn" onClick={onClose} aria-label="关闭"><IconX aria-hidden="true" /></button></div>
     <input id="piece-lib-search" aria-label="搜资料库或贴链接" placeholder="搜资料库，或贴一个链接" value={q} autoFocus
       onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && isLink && !busy) { e.preventDefault(); addLink(); } if (e.key === "Escape") onClose(); }} />
     {isLink ? <button type="button" className="piece-lib__link" disabled={busy} onClick={addLink}><IconPlus aria-hidden="true" /><span>把这个链接放进来<small>{hostOf(term)}</small></span></button>

@@ -93,9 +93,6 @@
 .tf-gap.is-done h3, .tf-gap.is-skip h3 { color: var(--text-3); font-weight: 500; }
 .tf-gap.is-skip h3 { text-decoration: line-through; }
 .tf-gap__why { font-size: var(--fs-sm); line-height: 1.75; color: var(--text-2); }
-.tf-where { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: var(--fs-xs); }
-.tf-where span { color: var(--text-3); margin-right: 2px; }
-.tf-where code { font-family: var(--font-mono); font-size: var(--fs-2xs); padding: 2px 7px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); }
 .tf-gap__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: var(--fs-sm); }
 .tf-tag { flex: none; font-size: var(--fs-2xs); color: var(--text-3); }
 .tf-tag.is-done { color: var(--brand); }
@@ -145,6 +142,12 @@
 .experience-note__acts { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* 编辑器上方：和流程同一条进度线，点哪一步回哪一步 */
-.draft-trail { margin: 0 0 16px; }
+.draft-trail { margin: 0; }
+.project-draft__label--trail { justify-content: flex-start; }
+.project-draft__label--trail .draft-trail { flex: 1; min-width: 0; margin: 0 0 0 -7px; }
+.project-draft__label--trail .draft-trail__meta { margin-right: 4px; white-space: nowrap; }
+/* 结构名常常是一整句，进度线里只露开头，悬停看全名。 */
+.draft-trail b.is-long { display: inline-block; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .draft-trail__meta { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
 .draft-trail__meta em { font-style: normal; color: var(--emph); }
+.project-draft__label--trail .draft-trail__meta em { padding: 0; background: none; color: var(--emph); }

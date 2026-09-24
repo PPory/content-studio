@@ -3,6 +3,7 @@ import "./writing-surface.css";
 import { TopicFlow } from "../components/topic-flow/TopicFlow.jsx";
 import { DraftTrail } from "../components/topic-flow/DraftTrail.jsx";
 import { PieceLibrary } from "../components/PieceLibrary.jsx";
+import { markGap } from "../components/topic-flow/gaps.js";
 import { api, downloadProjectExport } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
 import { contentShelf, projectPhase } from "../lib/content-projects.js";
@@ -24,7 +25,7 @@ import { prepareTypesetHandoff, typesetMarkdown } from "../lib/typeset-handoff.j
 import { setOpenTarget } from "../lib/open-target.js";
 import { projectReleaseDrafts, releaseChanged, releaseForm, releasePayload } from "../lib/project-release.js";
 import { clearTemporaryProject, isBlankTemporaryDraft, isTemporaryProject } from "../lib/temporary-project.js";
-import { IconSparkles, IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
+import { IconArrowLeft, IconArrowRight, IconBrandWechat, IconCheck, IconChevronDown, IconCopy, IconDownload, IconFileText, IconLoader2, IconPhoto, IconPlus, IconRefresh } from "../components/icons.jsx";
 
 /**
  * 导出格式。
@@ -264,6 +265,13 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [planReload, setPlanReload] = useState(0);
   const [flowStep, setFlowStep] = useState(0);
   const libRef = useRef(null);
+  // 补齐里点了「让 AI 找」的那一项：在协作里确认 AI 找到的资料放进这篇之后，它才算补上。
+  const aiGap = useRef("");
+  const gapFilled = async (label) => {
+    if (!label) return;
+    try { await markGap(projectId, label); } catch (e) { setError(e); }
+    setPlanReload((n) => n + 1);
+  };
 
   const acceptProject = useCallback((next, preferredId = "") => {
     const drafts = projectReleaseDrafts(next);
@@ -654,7 +662,7 @@ ${(form.body || "").slice(0, 3000)}`);
     try { localStorage.setItem(viewKey, "draft"); } catch {}
   }
   const cite = (ref) => setInsertRequest({ id: `cite-${Date.now()}`, text: ref.kind === "material" ? materialText({ content: ref.excerpt || ref.title, sourceUrl: ref.sourceUrl }) : ref.sourceUrl ? `[${ref.title}](${ref.sourceUrl})` : `《${ref.title}》`, spacing: ref.kind === "material" ? "paragraph" : "inline" });
-  const askAssistant = (prompt) => { setAssistantPrompt({ id: `plan-${Date.now()}`, text: prompt }); summonAssistant({ routeView: "project" }); };
+  const askAssistant = (prompt, gap = "") => { aiGap.current = gap; setAssistantPrompt({ id: `plan-${Date.now()}`, text: prompt }); summonAssistant({ routeView: "project" }); };
 
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
@@ -787,7 +795,7 @@ ${(form.body || "").slice(0, 3000)}`);
             * 而「写完了，去发布」是这条操作条存在的理由。低频的排前面、小一号、不上色。
             */}
           {/* 右侧协作的开关放在顶栏：原来浮在正文右上角，展开后和协作栏的标题叠在一起。 */}
-          {project.stage !== "待发布" ? <button type="button" className="btn" onClick={() => summonAssistant({ routeView: "project" })}><IconSparkles aria-hidden="true" />协作</button> : null}
+          {/* 协作的入口是右下角那颗悬浮图标（ProjectAssistantRail），顶栏不再放一颗（2026-09-24 用户反馈）。 */}
           {draft ? <div className="project-export">
             <button
               type="button"
@@ -897,7 +905,7 @@ ${(form.body || "").slice(0, 3000)}`);
         ) : <>
         {/* 左栏资料 + 中间（选题流程或正文）是一行；右侧协作仍是网格的第二列。 */}
         <div className="piece-row">
-        <PieceLibrary controlRef={libRef} projectId={projectId} materials={project.materials || []} writing={shownView === "draft"} onCite={shownView === "draft" && draftEditable ? cite : null} onGo={onGo} onChanged={() => { setPlanReload((n) => n + 1); refreshPlan(); }}>
+        <PieceLibrary controlRef={libRef} projectId={projectId} materials={project.materials || []} writing={shownView === "draft"} onCite={shownView === "draft" && draftEditable ? cite : null} onGo={onGo} onChanged={(info) => { if (info?.forGap) gapFilled(info.forGap); setPlanReload((n) => n + 1); refreshPlan(); }}>
           {/* 原来挂在右栏「资料」工具下的几块（选母版、种子、个人参考、素材）：右栏只留协作后搬进左栏。 */}
             {/**
               * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，
@@ -951,11 +959,13 @@ ${(form.body || "").slice(0, 3000)}`);
         </PieceLibrary>
         <main className="project-draft">
           {shownView === "flow" ? (
-            <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowStep} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={() => libRef.current?.add()} onGo={onGo} />
+            <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowStep} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={(gap) => libRef.current?.add(gap)} onGo={onGo} />
           ) : draft ? (
             <>
-              {briefable || project.plan?.stage?.key === "draft" ? <DraftTrail projectId={projectId} body={form.body} reloadKey={planReload} onPick={backToStep} /> : null}
-              <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>
+              {/* 从选题流程来的内容：进度线就是这一行的左半边（和标题同宽，不再单独悬在编辑区左上角），右边是字数、待补和稿件状态。 */}
+              {(briefable || project.plan?.stage?.key === "draft") && draft.id === masterDraft?.id
+                ? <div className="project-draft__label project-draft__label--trail"><DraftTrail projectId={projectId} body={form.body} reloadKey={planReload} onPick={backToStep} /><em>{draft.status}</em></div>
+                : <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>}
               <textarea
                 ref={resizeProjectTitle}
                 className="project-draft__title"
@@ -1054,7 +1064,7 @@ ${(form.body || "").slice(0, 3000)}`);
             handoffRequest={assistantHandoff}
             promptRequest={assistantPrompt}
             // 协作里确认「放进这篇的资料」之后，左栏马上看得到。
-            onActionApplied={(action) => { if (action?.result?.attachedTo) libRef.current?.reload(); }}
+            onActionApplied={(action) => { if (!action?.result?.attachedTo) return; libRef.current?.reload(); const gap = aiGap.current; aiGap.current = ""; gapFilled(gap); }}
             reviewingCandidate={candidateReviewFocused}
             recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}
             scopeId={draft?.id || projectId}
