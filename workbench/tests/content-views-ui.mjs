@@ -48,7 +48,7 @@ try {
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'content-cards-dark.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(shots,'content-cards-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'已发布',exact:true}).click();await page.getByText('发布后的作品会留在这里。',{exact:true}).waitFor();assert.equal(await page.locator('.content-card').count(),0);
- await page.getByRole('button',{name:'进行中 3',exact:true}).click();await card.waitFor();
+ await page.getByRole('button',{name:'在写 3',exact:true}).click();await card.waitFor();
  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'列表视图',exact:true}).click();await page.locator('.ptable__row').first().waitFor();
  assert.equal(await page.locator('.ptable__row').count(),3);assert.equal(await page.locator('.ptable__series').innerText(),'阅读与创作');
  await page.reload();await page.locator('.ptable__row').first().waitFor();assert.equal(await page.getByRole('button',{name:'列表视图',exact:true}).getAttribute('aria-pressed'),'true');

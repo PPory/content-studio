@@ -54,12 +54,12 @@ try {
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
   const notebook = page.getByRole("region", { name: "这篇的构思" });
-  const toggle = page.getByRole("button", { name: "构思", exact: true });
-  await toggle.waitFor(); await toggle.focus(); await page.keyboard.press("Enter");
+  // 选题和写作合并（2026-09-24）：还没开写的内容默认就在中间显示构思，写给谁等字段直接可见。
+  // 白纸新建默认进正文（「写下第一句话就可以开始」）；构思一点就到。
+  check("白纸新建默认进正文", await page.getByRole("tab", { name: "正文", exact: true }).getAttribute("aria-selected") === "true");
+  await page.getByRole("tab", { name: "构思", exact: true }).click();
   const thought = notebook.getByLabel("想讲什么", { exact: true });
-  if (!(await thought.isVisible())) await page.getByRole("button", { name: "构思", exact: true }).click();
   await thought.waitFor();
-  await notebook.getByRole("button", { name: "补充读者、疑问与依据" }).click();
   await thought.focus();
   await page.keyboard.press("Tab");
   check("键盘展开构思并顺序进入受众输入", await notebook.getByLabel("写给谁", { exact: true }).evaluate((el) => el === document.activeElement));
@@ -68,7 +68,6 @@ try {
   await notebook.getByText("构思已保存", { exact: true }).waitFor();
   check("构思自动保存进入 SQLite", true);
   await page.reload();
-  if (!(await thought.isVisible())) await page.getByRole("button", { name: "构思", exact: true }).click();
   await thought.waitFor();
   check("刷新恢复同一篇构思", (await thought.inputValue()).includes("更难开始"));
   await page.locator(".nav > .nav-group > button").count();
@@ -77,9 +76,9 @@ try {
   await page.locator(".nav").getByRole("button", { name: "首页", exact: true }).click();
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
-  if (!(await thought.isVisible())) await page.getByRole("button", { name: "构思", exact: true }).click();
   await thought.waitFor();
   check("切页恢复构思", (await thought.inputValue()).includes("更难开始"));
+  await notebook.locator("summary").filter({ hasText: "更多：" }).click();
   await notebook.locator("summary").filter({ hasText: "比较讲法" }).click();
   await notebook.getByRole("button", { name: "记下另一种讲法" }).click();
   await notebook.getByLabel("讲法 1 名称", { exact: true }).fill("从一个疑问讲起");
@@ -122,12 +121,8 @@ try {
   check('助手不再显示额外转创作入口',await page.getByRole('button',{name:'从这次研究发展成一篇'}).count()===0);
   await page.goto(`${base}/#/project/${project.id}`);
   await page.locator(`.project-workspace[data-project-id="${project.id}"]`).waitFor();
-  if (!(await thought.isVisible())) await page.getByRole("button", { name: "构思", exact: true }).click();
   await thought.waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "关闭写作辅助" }).click();
-  await page.locator(".project-assistant[data-collapsed=true]").waitFor({ state: "attached" });
-  await page.getByRole("button", { name: "构思", exact: true }).click();
   await page.screenshot({ path: screenshots.mobile, fullPage: true });
   check("小屏构思没有横向溢出", await notebook.evaluate((el) => el.scrollWidth <= el.clientWidth + 1));
   check("小屏页面没有横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));

@@ -2,7 +2,7 @@ import {addIntelligenceSource} from '../server/domain/intelligence.mjs';
 import {buildDiscoveryContext,writeDiscoveryCache,readDiscoveryCache,discoveryReadiness} from '../server/domain/content-discovery.mjs';
 import {discoverConnections} from '../server/domain/content-discovery-ai.mjs';
 import {directionKey,keepDirection,dismissDirection,savedDirections,developDirection} from '../server/domain/intelligence-directions.mjs';
-import {createResearch,getResearch} from '../server/domain/research.mjs';
+import {createResearch,getResearch,projectResearches} from '../server/domain/research.mjs';
 import {createUlid} from '../server/storage/ids.mjs';
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -34,7 +34,8 @@ try{
  const counts=()=>({research:w.db.prepare('SELECT count(*) n FROM researches').get().n,projects:w.db.prepare('SELECT count(*) n FROM projects').get().n});
  const before=counts();assert.throws(()=>keepDirection(w,'x'.repeat(64)),e=>e.status===409);
  browser=await pw.chromium.launch();page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5243/#/research');await page.getByRole('button',{name:'从已有知识探索选题',exact:true}).click();await page.locator('.opportunity-home .view-tabs').waitFor();assert.equal(await page.locator('.view-head__name').innerText().then(t=>t.split('知识选题').length-1),1,'面包屑里页名只出现一次');assert.equal(await page.locator('.opportunity-home h2').filter({hasText:'发现方向'}).count(),0,'页面不再自我介绍');assert(await page.locator('.nav').innerText().then(t=>!t.includes('内容机会')));
+ // 选题和写作合并（2026-09-24）：知识探索是写作列表顶部「从我的知识里找」。
+ await page.goto('http://127.0.0.1:5243/#/content');await page.getByRole('button',{name:'从我的知识里找',exact:true}).click();await page.locator('.opportunity-home .view-tabs').waitFor();assert.equal(await page.locator('.view-head__name').innerText().then(t=>t.split('知识选题').length-1),1,'面包屑里页名只出现一次');assert.equal(await page.locator('.opportunity-home h2').filter({hasText:'发现方向'}).count(),0,'页面不再自我介绍');assert(await page.locator('.nav').innerText().then(t=>!t.includes('内容机会')));
  assert.equal(await page.locator('.direction-overview-card').count(),3);assert.equal(await page.locator('.opportunity-brief').count(),0);
  // 卡片 / 列表双视图，选择记在 localStorage（每页一份）。
  await page.getByRole('button',{name:'列表视图',exact:true}).click();
@@ -77,7 +78,7 @@ try{
  assert.equal(await page.getByRole('button',{name:/^移除方向：/}).count(),1,'只有已保存的那张能移除');
  await page.getByRole('tab',{name:/已保存/}).click();await page.getByLabel('搜索已保存的机会').fill('不匹配的搜索');await page.getByText('没有找到匹配的机会，试试其他关键词。',{exact:true}).waitFor();await page.getByLabel('搜索已保存的机会').fill('读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'← 返回卡片总览',exact:true}).click();assert.equal(await page.getByLabel('搜索已保存的机会').inputValue(),'读懂 AI');await page.locator('.direction-overview-card').first().click();await page.getByRole('button',{name:'聊聊这个方向',exact:true}).click();await page.locator('.direction-chat textarea').waitFor();await page.getByRole('button',{name:'收起讨论',exact:true}).click();
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'带入选题',exact:true}).scrollIntoViewIfNeeded();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));const backBox=await page.getByRole('button',{name:'← 返回卡片总览',exact:true}).boundingBox();assert(backBox.y>=0&&backBox.y+backBox.height<=844);await page.screenshot({path:path.join(shots,'intelligence-directions-mobile.png'),fullPage:true});
- await page.getByRole('button',{name:'带入选题',exact:true}).click();await page.getByRole('button',{name:'确认带入',exact:true}).click();await page.waitForURL(/#\/research\//);const researchId=decodeURIComponent(page.url().split('#/research/')[1]);const research=getResearch(w,researchId);assert(research.notes.includes(candidate.evidence_gaps[0]));assert(research.references.length===1);assert(research.conversations.some(c=>c.id===cid));assert.equal(counts().projects,before.projects);assert.equal(developDirection(w,id,{confirmed:true}).id,research.id);assert.throws(()=>developDirection(w,id,{}),e=>e.status===400);
+ await page.getByRole('button',{name:'带入选题',exact:true}).click();await page.getByRole('button',{name:'确认带入',exact:true}).click();await page.waitForURL(/#\/project\//);const projectId=decodeURIComponent(page.url().split('#/project/')[1]);const research=projectResearches(w,projectId)[0];assert(research.notes.includes(candidate.evidence_gaps[0]));assert(research.references.length===1);assert(research.conversations.some(c=>c.id===cid));assert.equal(counts().projects,before.projects+1,'带入选题就是建一篇内容');assert.equal(developDirection(w,id,{confirmed:true}).id,research.id);assert.throws(()=>developDirection(w,id,{}),e=>e.status===400);
  // Existing research append and stale-cache preservation.
  const second={...connection,coreClaim:'另一条待讨论的问题'};writeDiscoveryCache(w,{...readDiscoveryCache(w),connections:[second]});const kept=keepDirection(w,directionKey(second));const target=createResearch(w,{question:'原有选题',notes:'保留已有笔记'});developDirection(w,kept.id,{confirmed:true,researchId:target.id});assert(getResearch(w,target.id).notes.startsWith('保留已有笔记'));assert.equal(errors.length,0,errors.join('\n'));
  // 移除方向：只动标记位，行还在，能恢复；而「再保存一次」本身就是恢复

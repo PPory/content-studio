@@ -126,68 +126,53 @@ try {
   await page.getByRole("button",{name:"留下这条想法",exact:true}).click();
   await page.getByRole("button",{name:/发现 .* 条 Wiki 关联/}).click();
   await page.getByRole("button",{name:"带着这个角度讨论",exact:true}).click();
-  await page.waitForURL(/#\/research\//);
-  const researchId=page.url().split("#/research/")[1],rp=`/api/workspace/researches/${researchId}`;
-  await page.getByLabel("我的笔记",{exact:true}).waitFor();
-  check("选题默认笔记与讨论并排",await page.locator(".topic-chat textarea").isVisible());
+  // 选题和写作合并（2026-09-24）：带着角度讨论 = 建一个选题，直接落到这篇内容的构思。
+  await page.waitForURL(/#\/project\//);
+  const projectId=decodeURIComponent(page.url().split("#/project/")[1]),np=`/api/workspace/projects/${projectId}/notebook`;
+  const plan=page.getByRole("region",{name:"这篇的构思"});
+  const mine=plan.getByLabel("我的判断与笔记",{exact:true});
+  await mine.waitFor();
+  check("选题打开就是构思",await page.getByRole("tab",{name:"构思",exact:true}).getAttribute("aria-selected")==="true");
+  check("想讲什么按选题预填",(await plan.getByLabel("想讲什么",{exact:true}).inputValue()).trim().length>0);
   check("不嵌套通用聊天首页",!await page.getByPlaceholder("问任何问题，或直接输入本地项目路径").count());
-  await page.getByLabel("我的笔记",{exact:true}).fill("先区分任务条件和模型能力，保留待核对的问题。");
-  await until(()=>request(rp),r=>r.research.notes.includes("待核对"),"笔记自动保存");
-  const notes=(await request(rp)).research.notes;
-  await page.route(`**/api/workspace/researches/${researchId}`,async route=>{if(route.request().method()==="PUT")await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:"模拟保存失败"})});else await route.continue();});
-  await page.getByLabel("我的笔记",{exact:true}).fill(notes+" 失败后仍保留。");
+  await mine.fill("先区分任务条件和模型能力，保留待核对的问题。");
+  await until(()=>request(np),r=>r.notebook.evidenceNotes.includes("待核对"),"笔记自动保存");
+  await page.route(`**${np}`,async route=>{if(route.request().method()==="PUT")await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:"模拟保存失败"})});else await route.continue();});
+  await mine.fill("先区分任务条件和模型能力，保留待核对的问题。失败后仍保留。");
   await page.getByText("模拟保存失败",{exact:false}).first().waitFor();
-  check("失败时输入保留",(await page.getByLabel("我的笔记",{exact:true}).inputValue()).includes("失败后"));
-  await page.unroute(`**/api/workspace/researches/${researchId}`);
-  await page.getByRole("button",{name:"保存笔记",exact:true}).click();
-  await until(()=>request(rp),r=>r.research.notes.includes("失败后"),"重试保存");
-  const chats=[];
-  for(const title of ["主要讨论","另一个角度"]){const cid=`chat-${createUlid()}`;w.repository.createEntity({id:cid,type:"ai_conversation"});w.db.prepare("INSERT INTO ai_conversations(id,title,scope_type,scope_id,record_json) VALUES(?,?,'global',?,?)").run(cid,title,`research:${researchId}`,JSON.stringify({id:cid,title,messages:[{id:`${cid}-u`,role:"user",text:"我想理解这个问题",createdAt:stamp},{id:`${cid}-a`,role:"assistant",text:`${title}的实际回答，仍需核实。`,createdAt:stamp}],actions:[],attachments:[]}));chats.push(cid);}
-  await page.reload();await page.getByLabel("我的笔记",{exact:true}).waitFor();
-  await page.getByLabel("当前讨论",{exact:true}).selectOption(chats[0]);
-  await page.getByText("主要讨论的实际回答，仍需核实。",{exact:false}).first().waitFor();
-  await page.getByRole("button",{name:"摘进我的笔记",exact:true}).first().click();
-  await page.getByRole("button",{name:"不采用",exact:true}).click();
-  check("不采用不写入笔记",!(await request(rp)).research.notes.includes("实际回答"));
-  await page.getByLabel("当前讨论",{exact:true}).selectOption(chats[1]);
-  await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().waitFor();
-  await page.getByRole("button",{name:"开始写文章",exact:true}).click();
-  await page.getByRole("button",{name:"创建文章",exact:true}).click();
-  await page.getByLabel("文章标题",{exact:true}).waitFor();
-  const research=(await request(rp)).research,projectId=research.projects[0].id;
-  check("写作仍留在同一选题",page.url().includes(researchId));
-  check("讨论持续保留",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
+  check("失败时输入保留",(await mine.inputValue()).includes("失败后"));
+  await page.unroute(`**${np}`);
+  await plan.getByRole("button",{name:"重试",exact:true}).click();
+  await until(()=>request(np),r=>r.notebook.evidenceNotes.includes("失败后"),"重试保存");
+  // 还缺什么：加一项、勾掉，自动保存进清单。
+  await plan.getByLabel("加一项待补的事",{exact:true}).fill("找一个真实的运行案例");
+  await plan.getByRole("button",{name:"加一项",exact:true}).click();
+  await plan.getByRole("checkbox",{name:"找一个真实的运行案例"}).check();
+  await until(()=>request(np),r=>r.notebook.questions.includes("- [x] 找一个真实的运行案例"),"勾选清单");
+  // 开始写：不弹方向确认框，直接进正文；构思还在，切回来输入不丢。
+  await page.getByRole("button",{name:"开始写",exact:true}).click();
+  await page.getByRole("tab",{name:"正文",exact:true,selected:true}).waitFor();
+  check("开始写不再弹方向确认",await page.getByLabel("核心观点",{exact:true}).count()===0);
   check("正文初始为空",(await request(`/api/workspace/projects/${projectId}`)).project.masterDraft.body==="");
-  const editor=page.locator(".topic-article .cm-content");await editor.fill("这是一段自己写的内容。");
+  const editor=page.locator(".project-draft .cm-content");await editor.fill("这是一段自己写的内容。");
   await until(()=>request(`/api/workspace/projects/${projectId}`),r=>r.project.masterDraft.body.includes("自己写"),"正文保存");
-  await page.getByRole("button",{name:"根据笔记起初稿",exact:true}).click();
-  check("方向从真实笔记预填",(await page.getByLabel("核心观点",{exact:true}).inputValue()).includes("待核对"));
-  await page.getByRole("button",{name:"暂不采用",exact:true}).click();
-  const download=page.waitForEvent("download");await page.getByRole("button",{name:"导出文章",exact:true}).click();check("可导出文章",(await download).suggestedFilename().endsWith(".md"));
+  await page.getByRole("tab",{name:"构思",exact:true}).click();
+  check("切回构思输入还在",(await mine.inputValue()).includes("失败后"));
+  await page.getByRole("tab",{name:"正文",exact:true}).click();
+  await page.getByRole("button",{name:"导出",exact:false}).first().click();
+  const [exported]=await Promise.all([page.waitForResponse(r=>r.url().includes("/export")),page.getByRole("menuitem",{name:/^Markdown/}).click()]);check("可导出文章",exported.ok());
   await page.screenshot({path:path.join(shotDir,"interview-writing-desktop.png"),fullPage:true});
-  await page.getByRole("tab",{name:"思考",exact:true}).click();
-  const chatBefore=await page.locator(".topic-chat textarea").boundingBox();
-  await page.getByRole("tab",{name:/^资料 \d/}).click();
-  const chatAfter=await page.locator(".topic-chat textarea").boundingBox();
-  check("资料切换不挤走讨论输入框",Math.abs(chatBefore.y-chatAfter.y)<2);
-  await page.getByRole("tab",{name:"思考",exact:true}).click();
-  check("资料切换后笔记仍在",(await page.getByLabel("我的笔记",{exact:true}).inputValue()).includes("待核对"));
-  await page.setViewportSize({width:1505,height:1045});
-  await page.screenshot({path:path.join(shotDir,"interview-topic-desktop.png"),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
   await page.locator(".nav").getByRole("button",{name:"首页",exact:true}).click();
   await page.getByRole("heading",{name:"在手上",exact:true}).waitFor();
   await page.screenshot({path:path.join(shotDir,"interview-home-desktop.png"),fullPage:true});
-  // 选题和文章在同一张表里，行首那颗阶段 pill 就是它们的区别——挑**文章**那一行，
-  // 它该把人送回同一个选题的写作位置。顺便证明这一篇真的在这张表上。
-  // ⚠️ 首页那张表只放前 8 行；全量表在创作页（「看全部」那颗去那儿）
+  // 首页那张表里，这一篇只出现一次（有对应内容的选题不再单列），点开回到同一篇内容。
   const articleRow=page.locator(".agenda-rows .row")
     .filter({has:page.locator(".pill",{hasText:"写作中"})}).first();
-  check("文章和选题在同一张表里，靠阶段 pill 区分",await articleRow.count()===1);
+  check("文章在首页表里",await articleRow.count()===1);
   await articleRow.locator(".agenda-row__open").click();
-  await page.getByLabel("文章标题",{exact:true}).waitFor();
-  check("首页文章回到同一选题的写作位置",page.url().includes(researchId));
-  check("重新打开文章仍保留讨论",await page.getByText("另一个角度的实际回答，仍需核实。",{exact:false}).first().isVisible());
+  await page.waitForURL(/#\/project\//);
+  check("首页文章回到同一篇内容",page.url().includes(projectId));
   await page.goto(`${base}/#/library/wiki:${wikiId}`);
   await page.locator(".reader-document").waitFor();
   check("阅读标题只显示一次",await page.locator(".reader-document h1").count()===1);
@@ -255,24 +240,19 @@ try {
 
   await page.setViewportSize({width:390,height:844});
   check("阅读手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.goto(`${base}/#/research/${researchId}`);await page.getByRole("tab",{name:"思考",exact:true}).click();await page.getByLabel("我的笔记",{exact:true}).waitFor();
-  await page.getByRole("button",{name:"AI 讨论",exact:true}).click();await page.locator(".topic-chat textarea").waitFor();
-  check("手机可切换对话",await page.locator(".topic-chat textarea").isVisible());
-  const composerBox=await page.locator(".topic-chat textarea").boundingBox();
-  check("手机讨论输入框在屏幕内",composerBox.y+composerBox.height<=844);
-  check("选题手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.goto(`${base}/#/project/${projectId}`);await page.getByRole("tab",{name:"构思",exact:true}).click();await mine.waitFor();
+  check("内容手机无横向溢出",await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:path.join(shotDir,"interview-topic-mobile.png"),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(`${base}/#/today`);
   await page.getByLabel("记下灵感",{exact:true}).fill("切换页面之前，也要留下这个想法");
-  await page.locator(".nav").getByRole("button",{name:"选题",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"写作",exact:true}).click();
   await page.getByRole("heading",{name:"这条想法还没有保存"}).waitFor();
   await page.getByRole("button",{name:"继续记录",exact:true}).click();
   check("取消离开保留想法",await page.getByLabel("记下灵感",{exact:true}).inputValue()==="切换页面之前，也要留下这个想法");
-  await page.locator(".nav").getByRole("button",{name:"选题",exact:true}).click();
+  await page.locator(".nav").getByRole("button",{name:"写作",exact:true}).click();
   await page.getByRole("button",{name:"保存并离开",exact:true}).click();
-  await page.locator(".research-overview").waitFor();
-  check("选题正文不重复页头标题", await page.locator(".research-overview h1").count() === 0);
+  await page.waitForURL(/#\/content/);
   check("保存后才离开首页",true);
 
   // ── 首页：一排数 + 一张图 + 承诺 + 明细表 ──
@@ -495,78 +475,50 @@ try {
   await page.screenshot({path:path.join(shotDir,'home-mobile-table.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
 
+  // ── 写作列表的「选题」一档（2026-09-24，选题和写作合并）──
   for (let i = 1; i <= 12; i++) await request("/api/workspace/researches", { question: `卡片选题 ${i}：如何把 AI 用在学习和表达中？`, notes: `第 ${i} 个问题的笔记，保留真实实践和待核对的判断。` });
-  await page.goto(`${base}/#/research`); await page.reload();
-  await page.locator(".research-card").first().waitFor();
-  check("选题总览每页最多十二张卡片", await page.locator(".research-card").count() === 12);
-  // 卡片 / 列表双视图，而且这个选择要记住（localStorage，每页一份）。
-  await page.getByRole("button", { name: "列表视图", exact: true }).click();
-  check("能切成列表，条目一条不少", await page.locator(".research-rows .row").count() === 12
-    && await page.locator(".research-card").count() === 0);
-  await page.reload();
-  await page.locator(".research-rows .row").first().waitFor();
-  check("刷新之后还是列表——视图偏好被记住了", await page.locator(".research-card").count() === 0);
-  await page.locator(".research-rows .row-title").first().click();
-  await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
-  check("列表里点标题照样打开选题", page.url().includes("#/research/"));
-  await page.goBack();
-  await page.getByRole("button", { name: "卡片视图", exact: true }).click();
-  check("切回卡片", await page.locator(".research-card").count() === 12);
-  const firstTitle = await page.locator(".research-card h2").first().innerText();
-  await page.getByRole("button", { name: "下一页", exact: true }).click();
-  check("翻页切换选题", await page.locator(".research-card h2").first().innerText() !== firstTitle);
-  await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("第 1 个问题的笔记");
-  check("可用笔记搜索全部选题", await page.locator(".research-card").count() === 1 && await page.getByRole("button", { name: "上一页", exact: true }).isDisabled());
-  await page.locator(".research-card__open").focus(); await page.keyboard.press("Enter");
-  await page.getByLabel("我的笔记", { exact: true }).waitFor();
-  check("键盘打开卡片回到选题工作区", (await page.getByLabel("我的笔记", { exact: true }).inputValue()).includes("第 1 个问题"));
-  // 详情页也有同一颗，删完把回执交接回列表页（外壳页头在这一页是藏起来的，
-  // 所以它落在页面自己那条动作栏上）。
-  await page.goto(`${base}/#/research/${researchId}`);
-  await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
+  await page.goto(`${base}/#/content`); await page.reload();
+  await page.getByRole("button", { name: /^选题/ }).first().click();
+  await page.locator(".topic-card").first().waitFor();
+  check("旧选题照常出现在「选题」一档", await page.locator(".topic-card", { hasText: "卡片选题" }).count() === 12);
+  check("选题一档固定是卡片，不给列表切换", await page.getByRole("button", { name: "列表视图", exact: true }).count() === 0);
+  const cardTopic = page.locator(".topic-card", { hasText: "卡片选题 1：" }).first();
+  await cardTopic.locator(".content-card__open").focus(); await page.keyboard.press("Enter");
+  await page.waitForURL(/#\/project\//);
+  const opened = page.getByRole("region", { name: "这篇的构思" });
+  await opened.getByLabel("我的判断与笔记", { exact: true }).waitFor();
+  check("第一次打开旧选题补建内容并带上原笔记", (await opened.getByLabel("我的判断与笔记", { exact: true }).inputValue()).includes("第 1 个问题"));
+  const openedId = decodeURIComponent(page.url().split("#/project/")[1]);
+  await page.goBack(); await page.waitForURL(/#\/content/);
+  await page.getByRole("button", { name: /^选题/ }).first().click();
+  // 已补建的那条换成了内容卡：可以先放着，一步撤销。
+  const parked = page.locator(`.topic-card[data-topic="${openedId}"]`);
+  await parked.waitFor();
+  await parked.getByRole("button", { name: "先放着", exact: true }).click();
+  await page.getByText(/先放着了/).waitFor();
+  check("先放着之后离开选题一档", await page.locator(`.topic-card[data-topic="${openedId}"]`).count() === 0);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.locator(`.topic-card[data-topic="${openedId}"]`).waitFor();
+  check("撤销让它回到选题", true);
+  // 还没打开过的旧选题可以移入回收站，也能撤销。
   {
-    const detailTitle = await page.getByLabel("选题问题", { exact: true }).inputValue();
-    await page.getByRole("button", { name: `移入回收站：${detailTitle}` }).click();
-    await page.waitForTimeout(400);
-    await page.getByRole("button", { name: "移入回收站", exact: true }).click();
-    await page.locator(".research-card").first().waitFor();
-    check("详情页删掉之后回到列表，并在那一页给出回执", (await page.getByText(`「${detailTitle}」已移入回收站`, { exact: true }).count()) === 1);
-    await page.getByRole("button", { name: "撤销", exact: true }).click();
-    await page.getByRole("tab", { name: "思考", exact: true }).waitFor();
-    check("撤销把选题拿回来并回到它自己那一页", page.url().includes(researchId));
-  }
-
-  // 选题也能移入回收站，而且能一步撤销回来（软删除，资料和讨论都留着）。
-  await page.goto(`${base}/#/research`);
-  {
-    // ⚠️ 别数卡片：这一页每页固定六张，删掉一条会有第七条补上来，数字不会变。
-    const titles = () => page.locator(".research-card h2").allInnerTexts();
-    const card = page.locator(".research-card").first();
+    const card = page.locator(".topic-card", { hasText: "卡片选题 2：" }).first();
     const title = await card.locator("h2").innerText();
-    await card.getByRole("button", { name: `移入回收站：${title}` }).click();
+    await card.getByRole("button", { name: `移入回收站：${title}（可以撤销）` }).click();
     await page.waitForTimeout(400);
     await card.getByRole("button", { name: "移入回收站", exact: true }).click();
     await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
-    check("选题可以移入回收站", (await titles()).includes(title) === false);
+    check("选题可以移入回收站", await page.locator(".topic-card h2", { hasText: title }).count() === 0);
     await page.getByRole("button", { name: "撤销", exact: true }).click();
-    await page.locator(".research-card h2").filter({ hasText: title }).first().waitFor();
-    check("撤销把选题一步拿回来", (await titles()).includes(title));
+    await page.locator(".topic-card h2").filter({ hasText: title }).first().waitFor();
+    check("撤销把选题一步拿回来", true);
   }
-  await page.goto(`${base}/#/research`);
-  await page.getByRole("textbox", { name: "搜索选题", exact: true }).fill("完全没有的选题");
-  await page.getByRole("heading", { name: "没有找到匹配的选题", exact: true }).waitFor();
-  await page.locator(".research-overview-empty").getByRole("button", { name: "清空搜索", exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: path.join(shotDir, "research-cards-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(shotDir, "research-cards-mobile.png"), fullPage: true });
   check("手机卡片无横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.getByRole("button", { name: "＋ 新建选题", exact: true }).click();
-  check("空问题不能创建选题", await page.getByRole("button", { name: "开始展开", exact: true }).isDisabled());
-  await page.getByLabel("你想弄明白什么", { exact: true }).fill("卡片视图中新建的真实测试选题");
-  await page.getByRole("button", { name: "开始展开", exact: true }).click();
-  await page.getByLabel("我的笔记", { exact: true }).waitFor();
-  check("展开新建后仍可创建并进入选题", (await request("/api/workspace/researches")).researches.some(r => r.question === "卡片视图中新建的真实测试选题"));
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   check("浏览器无页面错误",errors.length===0);
   console.log("访谈版实际产品流程验收通过");
