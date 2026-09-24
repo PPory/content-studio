@@ -513,6 +513,7 @@ try {
     await page.waitForTimeout(400);
     await card.getByRole("button", { name: "删掉", exact: true }).click();
     await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
+    await page.waitForFunction((t) => ![...document.querySelectorAll(".topic-card h2")].some((h) => h.textContent.includes(t)), title, { timeout: 5000 }).catch(() => {});
     check("选题可以移入回收站", await page.locator(".topic-card h2", { hasText: title }).count() === 0);
     await page.getByRole("button", { name: "撤销", exact: true }).click();
     await page.locator(".topic-card h2").filter({ hasText: title }).first().waitFor();
@@ -526,6 +527,8 @@ try {
     await page.waitForTimeout(400);
     await card.getByRole("button", { name: "删掉", exact: true }).click();
     await page.getByText(`「${title}」已移入回收站`, { exact: true }).waitFor();
+    // 回执先出来、列表随后才刷新：等刷新完再数（给一个明显长于刷新的时限，超时就是真的又冒出来了）。
+    await page.waitForFunction((t) => ![...document.querySelectorAll(".topic-card h2")].some((h) => h.textContent.includes(t)), title, { timeout: 5000 }).catch(() => {});
     check("删掉建成内容的选题，不会再冒出一张同名选题", await page.locator(".topic-card h2", { hasText: title }).count() === 0);
     await page.getByRole("button", { name: "撤销", exact: true }).click();
     await page.locator(`.topic-card[data-topic="${openedId}"]`).waitFor();

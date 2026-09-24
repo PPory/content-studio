@@ -258,6 +258,13 @@ export async function writeDraft(env, w, { projectId } = {}) {
 /** 那版候选初稿看过了（采纳或弃用），清掉。 */
 export function clearPendingDraft(w, projectId) { return writePlan(w, projectId, { pendingDraft: null }); }
 
+/** 结构里每一节「用：」的标签换成资料当前的标题（id 对得上才换；对不上的原样留着）。 */
+function relabel(set, ctx) {
+  if (!set?.items?.length) return set ?? null;
+  const byId = new Map(ctx.elements.map((e) => [e.id, e.label]));
+  return { ...set, items: set.items.map((it) => ({ ...it, outline: { ...it.outline, sections: (it.outline?.sections || []).map((sec) => ({ ...sec, uses: (sec.uses || []).map((u) => ({ ...u, label: byId.get(u.id) || u.label })) })) } })) };
+}
+
 /** 工作区要的全部：读懂那一步的材料、当前的 plan、资料是否更新了、走到了哪一步。 */
 export function planView(w, env, projectId) {
   const { ctx, wiki } = planContext(w, env, projectId);
@@ -282,7 +289,8 @@ export function planView(w, env, projectId) {
   return {
     read, wiki: wiki.map((p) => ({ id: p.id, title: p.title, summary: p.summary || "" })), pieceTitle, origin,
     // 选定角度之后补的资料就是为这个角度补的，不算「角度过期」；还没选时资料变了才提示可以重新想。
-    plan: { ...plan, anglesStale: Boolean(!plan.chosenAngle && plan.angles?.items?.length && plan.angles.fingerprint !== anglesFp), structuresStale: Boolean(plan.structures?.items?.length && plan.structures.fingerprint !== structFp) },
+    // 结构里「用哪份资料」按当前资料的标题重写一遍：修复前存下的结构里有「待核对知识来源」这类占位（2026-09-24）。
+    plan: { ...plan, structures: relabel(plan.structures, ctx), structuresPrev: relabel(plan.structuresPrev, ctx), anglesStale: Boolean(!plan.chosenAngle && plan.angles?.items?.length && plan.angles.fingerprint !== anglesFp), structuresStale: Boolean(plan.structures?.items?.length && plan.structures.fingerprint !== structFp) },
     checklist, experienceCount: ctx.experiences.length, hasBody: !ctx.empty,
   };
 }
