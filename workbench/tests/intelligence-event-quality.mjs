@@ -17,6 +17,8 @@ import { getResearch } from '../server/domain/research.mjs';
 
 // ── 归并边界：同型号只说明可能相关，动作对得上才是同一件事 ──
 const doc = (title, hours = 0) => { const grams = new Set(); const t = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2)); return { title, time: Date.now() - hours * 3600000, versioned: versionedEntities(title), proper: properEntities(title), grams, actions: actionKinds(title) }; };
+assert.equal(versionedEntities('I gave 5 AI models the same 3 coding assignments').size, 0, '全小写的普通英文不算型号');
+assert.ok(!properEntities('Artificial Analysis 评测 GPT-6 Sol').has('artificial'), '评测机构名不当专有名称');
 assert.ok(actionKinds('Anthropic 发布 Claude Opus 5.5').has('release'));
 assert.ok(actionKinds('Researchers jailbreak Claude Opus 5.5 in minutes').has('security'));
 assert.equal(sameEvent(doc('Anthropic 发布 Claude Opus 5.5：成本更低'), doc('Researchers jailbreak Claude Opus 5.5 in minutes')), false, '发布与越狱漏洞是两件事');
@@ -126,6 +128,33 @@ try {
   const split = cardWith(releaseEn.id);
   assert.ok(split && split.id !== target.id, '移出的来源单独成卡，模型的 mergeInto 不能合回去');
   assert.ok(!cardWith(release.id).event.members.some(m => m.sourceId === releaseEn.id), '本地归并也不会把它并回去');
+  // ── 事件纯度：综述不能当桥；以前混进来的会被清出去；模型的合并建议要过本地把关 ──
+  const roundup = add('aihot.selected', 'MiMo、Claude Opus 5.5、GPT-6 Sol 改变智能指数与成本前沿', { hours: 0.3 });
+  const sol = add('t2.the_verge_ai', 'OpenAI 发布 GPT-6 Sol，API 价格减半', { hours: 0.2 });
+  const solCn = add('aihot.selected', 'GPT-6 Sol 发布：价格较上一代低 50%', { hours: 0.15 });
+  const patreon = add('t2.techcrunch_ai', 'OpenAI 挖角 Patreon 联合创始人，成立创作者业务', { hours: 0.1 });
+  await update();
+  const opusNow = cardWith(release.id);
+  assert.ok(opusNow.event.members.some(m => m.sourceId === roundup.id), '综述可以留在提到的事件里');
+  const solCard = cardWith(sol.id);
+  assert.ok(solCard && solCard.id !== opusNow.id, '综述不能当桥：GPT-6 Sol 的报道不会被拉进 Opus 事件');
+  assert.ok(solCard.event.members.some(m => m.sourceId === solCn.id), 'GPT-6 Sol 的中英文报道仍合并');
+  const patreonCard = cardWith(patreon.id);
+  assert.ok(patreonCard && patreonCard.id !== solCard.id);
+  // 模拟以前的规则留下的混杂：把 GPT-6 Sol 的两条报道塞进 Patreon 那件事。
+  const clusterOf = id => w.db.prepare("SELECT m.cluster_id FROM intel_cluster_members m JOIN intel_clusters c ON c.id=m.cluster_id AND c.cluster_kind='event' WHERE m.source_id=?").get(id).cluster_id;
+  const patreonCluster = clusterOf(patreon.id);
+  for (const id of [sol.id, solCn.id]) { w.db.prepare('DELETE FROM intel_cluster_members WHERE source_id=?').run(id); w.db.prepare("INSERT INTO intel_cluster_members(cluster_id,source_id,role) VALUES(?,?,'supporting')").run(patreonCluster, id); }
+  // 模型还想把两件事合并：同一天、同一家公司，不够。
+  const mergeAll = { completeJson: async (env, input) => { const r = await judge.completeJson(env, input); const d = JSON.parse(input.user); const pk = d.events.find(e => e.items.some(i => i.title.includes('Patreon')))?.id; const sk = d.events.find(e => e.items.some(i => i.title.includes('GPT-6 Sol 发布')) && e.id !== pk)?.id; for (const e of r.data.events) if (e.id === pk && sk) e.mergeInto = sk; return r; } };
+  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, mergeAll);
+  const cleaned = cardWith(patreon.id);
+  assert.ok(!cleaned.event.members.some(m => [sol.id, solCn.id].includes(m.sourceId)), '以前混进来的 GPT-6 Sol 报道被清出 Patreon 这件事');
+  const solAgain = cardWith(sol.id);
+  assert.ok(solAgain && solAgain.id !== cleaned.id && solAgain.event.members.some(m => m.sourceId === solCn.id), 'GPT-6 Sol 回到自己的卡');
+  assert.equal(cardWith(patreon.id).id, patreonCard.id, 'Patreon 的卡身份不变');
+  assert.ok(!cardWith(patreon.id).event.members.some(m => m.sourceId === sol.id), '模型的合并建议没有通过本地把关');
+
   // ── 深读：同一套结构填满；Wiki 按事件检索、排除同源；关键事实过数字校验；旧解读可更新 ──
   const stamp = iso(now);
   const wikiPage = (title, body, sourceEntity = null) => {
@@ -216,7 +245,7 @@ try {
   assert.match(research.openQuestions, /没有第三方复测/, '主要的不确定项也带上');
   assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad-needs', briefIds: [deepCard.id], confirmed: true, creation: { angle: 'x', needs: 'not-a-list' } }), e => e.status === 400);
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links passed');
+  console.log('intelligence-event-quality: merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });

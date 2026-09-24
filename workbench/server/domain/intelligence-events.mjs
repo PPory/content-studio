@@ -18,8 +18,10 @@ const log2 = x => Math.log2(1 + Math.max(0, Number(x) || 0));
 
 // ── 实体与相似度 ────────────────────────────────────────────────
 // 常见词不能作为「同一件事」的依据：OpenAI、Claude 这类名字几乎每条都有。
-const COMMON = new Set('ai the and for with from into this that what why how new now its are was has have will can not you your our all one two top best more most first just big open source show ask tell launch launches launched release releases released model models agent agents api llm llms gpt chatgpt claude gemini openai anthropic google meta microsoft apple nvidia amazon deepmind xai grok github reddit hacker news week today daily update updates report reports says said study paper research data tool tools app apps using use via about after over into inside how why here there their they these those than then when where while which who whom whose'.split(' '));
+// 评测机构和发布平台（Artificial Analysis、OpenRouter、Arena）也一样：它们出现在各种不相干的事件里，当成名字会把无关报道串起来。
+const COMMON = new Set('ai the and for with from into this that what why how new now its are was has have will can not you your our all one two top best more most first just big open source show ask tell launch launches launched release releases released model models agent agents api llm llms gpt chatgpt claude gemini openai anthropic google meta microsoft apple nvidia amazon deepmind xai grok github reddit hacker news artificial analysis openrouter arena lmarena hugging face huggingface techcrunch verge wired decoder week today daily update updates report reports says said study paper research data tool tools app apps using use via about after over into inside how why here there their they these those than then when where while which who whom whose'.split(' '));
 const SUFFIX = /^(sol|luna|astra|pro|mini|flash|max|ultra|turbo|omni|lite|nano|haiku|sonnet|opus|instruct|preview|image|audio|vision|design|coder|code|thinking|reasoning)$/i;
+const BRANDS = new Set(['gpt', 'claude', 'gemini', 'grok', 'qwen', 'kimi', 'llama', 'mimo', 'deepseek', 'glm', 'mistral', 'sora', 'veo', 'flux', 'o']);
 /** 带版本号的型号：Opus 5.5、GPT-6 Sol、Qwen-Image-2.1。取数字前的那个词，避免「Claude Opus 5.5」和「Opus 5.5」对不上。 */
 export function versionedEntities(title = '') {
   const out = new Set();
@@ -27,6 +29,8 @@ export function versionedEntities(title = '') {
   for (const m of String(title).matchAll(re)) {
     const word = m[1].toLowerCase(), num = m[2];
     if (COMMON.has(word) && !['gpt', 'claude', 'gemini', 'grok'].includes(word)) continue;
+    // 型号名都是大写开头的（Opus 5.5、Sol）；全小写的「gave 5」「at 40」是普通英文，已知品牌除外（gpt-6）。
+    if (m[1] === m[1].toLowerCase() && !BRANDS.has(word)) continue;
     if (Number(num) >= 1900 && Number(num) <= 2100) continue;
     const suffix = m[3] && SUFFIX.test(m[3]) ? m[3].toLowerCase() : '';
     out.add(`${word}${num}${suffix}`);
@@ -79,8 +83,8 @@ function actionsAgree(a, b) {
  * 两份资料是不是同一件事：时间相差 48 小时内，并且
  * 共享具体型号且动作对得上；或共享专有名称且动作对得上；或共享专有名称且标题有一定相似；或标题高度相似。
  */
-export function sameEvent(a, b) {
-  if (Math.abs(a.time - b.time) > EVENT_MERGE_MS) return false;
+export function sameEvent(a, b, { ignoreTime = false } = {}) {
+  if (!ignoreTime && Math.abs(a.time - b.time) > EVENT_MERGE_MS) return false;
   if (shares(a.versioned, b.versioned)) return actionsAgree(a, b);
   // 都点名了型号但型号不同：再像也是两件事（「Opus 5.5 发布」和「Gemini 4 发布」标题骨架相同）。
   if (a.versioned.size && b.versioned.size) return false;
@@ -127,8 +131,49 @@ function loadEvents(w, since) {
   }
   return events;
 }
+/** 同一件事，不看时间（纯度检查用：事件可以持续好几天，后来的报道仍属于它）。 */
+export const sameStory = (a, b) => sameEvent(a, b, { ignoreTime: true });
 /**
- * 把新资料归到事件里并持久化。已归过的资料不再移动（事件身份稳定，收藏和选题关联不会漂）。
+ * 事件的核心成员：锚点，加上与锚点是同一件事、且没有点名锚点以外型号的报道。
+ * 新资料只和核心成员比——同时提到好几个模型的综述可以留在事件里，但不能当桥把别的模型的报道拉进来（2026-09-24）。
+ */
+function coreOf(e) {
+  const anchor = e.anchor || e.members.find(m => m.kind !== 'comment');
+  if (!anchor) return [];
+  return e.members.filter(m => m.kind !== 'comment' && (m === anchor || (sameStory(m, anchor) && [...m.versioned].every(v => anchor.versioned.has(v)))));
+}
+/**
+ * 两件事能不能合并：至少有一对报道是同一件事（型号或专有名称对得上、动作一致）。「同一天、同一家公司」不够。
+ * 例外：两边都只有一两条报道、都没点名型号时照旧信模型——中英文名字对不上（Rabbit / 兔子公司）只有模型认得出；
+ * 真正的误合并（Patreon 挖人 3 条并进 GPT-6 Sol 发布 14 条）发生在大事件之间，挡在这里。
+ */
+export function eventsCompatible(a, b) {
+  const main = e => e.members.filter(m => m.kind !== 'comment').slice(0, 20);
+  if (main(a).some(x => main(b).some(y => sameStory(x, y)))) return true;
+  const small = e => main(e).length <= 2 && main(e).every(m => !m.versioned.size);
+  return small(a) && small(b);
+}
+/**
+ * 锚点：卡片引文最多指向的那条来源（深读卡按深读引文算），所以留下的成员和卡上写的始终是同一件事；
+ * 没有卡时用建事件时的种子。
+ */
+function anchorIds(w) {
+  const out = new Map();
+  for (const c of w.db.prepare("SELECT c.id,c.primary_source_id,b.data_json FROM intel_clusters c LEFT JOIN intel_briefs b ON b.cluster_id=c.id AND b.story_key=c.cluster_key WHERE c.cluster_kind='event'").all()) {
+    let best = c.primary_source_id;
+    try {
+      const counts = new Map();
+      for (const e of JSON.parse(c.data_json || '{}').evidence || []) counts.set(e.sourceId, (counts.get(e.sourceId) || 0) + 1);
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (top) best = top[0];
+    } catch {}
+    out.set(c.id, best);
+  }
+  return out;
+}
+/**
+ * 把新资料归到事件里并持久化。每次先做一次纯度检查：和锚点判不成同一件事的成员移出、重新归并
+ * （之前的规则留下的混杂也会被清出去）；其余已归好的成员不动，事件身份稳定。
  * 返回最近 7 天内的全部事件，成员已装好。
  */
 export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
@@ -142,12 +187,26 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
   const docs = markNames(rows.map(r => describe(r, channels.get(r.channel_id))).filter(d => sourcePermission(d.source, 'ai') && !isDailyDigest(d)));
   const byId = new Map(docs.map(d => [d.id, d]));
   for (const d of docs) { const id = assigned.get(d.id); if (id && events.has(id)) events.get(id).members.push(d); }
+  // 0. 纯度检查：以锚点为准，判不成同一件事的报道移出（挂在它下面的评论一起走），下面重新归并。
+  const anchors = anchorIds(w), evicted = [];
+  for (const e of events.values()) {
+    const main = e.members.filter(m => m.kind !== 'comment');
+    e.anchor = main.find(m => m.id === anchors.get(e.id)) || main[0] || null;
+    if (main.length < 2 || !e.anchor) continue;
+    const out = new Set(main.filter(m => m !== e.anchor && !sameStory(m, e.anchor)).map(m => m.id));
+    if (!out.size) continue;
+    for (const m of e.members) if (m.kind === 'comment' && out.has(m.row.root_item_id)) out.add(m.id);
+    for (const id of out) { assigned.delete(id); evicted.push(id); }
+    e.members = e.members.filter(m => !out.has(m.id));
+  }
   const created = new Set();
   const addEvent = (key, seed) => {
     const id = createUlid(), stamp = now();
     w.db.prepare("INSERT INTO intel_clusters(id,cluster_key,title,cluster_kind,primary_source_id,first_seen_at,last_evidence_at) VALUES(?,?,?,'event',?,?,?) ON CONFLICT(cluster_key) DO NOTHING").run(id, `event:${key}`, seed.title.slice(0, 500), seed.id, stamp, new Date(seed.time || at).toISOString());
-    const row = w.db.prepare('SELECT id FROM intel_clusters WHERE cluster_key=?').get(`event:${key}`);
-    if (!events.has(row.id)) { events.set(row.id, { id: row.id, key, title: seed.title, members: [] }); created.add(row.id); }
+    const row = w.db.prepare('SELECT id,cluster_kind FROM intel_clusters WHERE cluster_key=?').get(`event:${key}`);
+    // 以前被合并掉的事件，成员因纯度检查回来了：恢复成普通事件。
+    if (row.cluster_kind !== 'event') w.db.prepare("UPDATE intel_clusters SET cluster_kind='event' WHERE id=?").run(row.id);
+    if (!events.has(row.id)) { events.set(row.id, { id: row.id, key, title: seed.title, members: [], anchor: seed }); created.add(row.id); }
     return events.get(row.id);
   };
   const join = (event, d, role) => {
@@ -156,9 +215,14 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
   };
   const fresh = d => d.time >= at - RECOMMEND_WINDOW_MS;
   w.db.transaction(() => {
+    const drop = w.db.prepare('DELETE FROM intel_cluster_members WHERE source_id=? AND cluster_id IN (SELECT id FROM intel_clusters WHERE cluster_kind=\'event\')');
+    for (const id of evicted) drop.run(id);
     // 1. AIhot 热点条目是现成的事件：同一个 story 只有一个事件。
     for (const d of docs.filter(d => !assigned.has(d.id) && isHotStory(d) && fresh(d))) {
-      join(addEvent(`aihot:${d.observation.id}`, d), d, 'primary');
+      const e = addEvent(`aihot:${d.observation.id}`, d);
+      // 这条热点当初建的事件已经被纯度检查定成了别的事（锚点是另一件事）：它不回那里，按普通报道重新归并。
+      if (e.anchor && e.anchor !== d && !sameStory(d, e.anchor)) continue;
+      join(e, d, 'primary');
     }
     // 2. 其它非评论资料按时间先后并入最像的事件，没有就自立一个。
     const pending = docs.filter(d => !assigned.has(d.id) && d.kind !== 'comment' && fresh(d)).sort((a, b) => a.time - b.time);
@@ -166,7 +230,7 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
       // 同时像好几个事件时，归到成员最多的那个（通常就是这件事的主事件）。
       let best = null;
       for (const e of events.values()) {
-        if ((!best || e.members.length > best.members.length) && e.members.slice(-24).some(m => m.kind !== 'comment' && sameEvent(d, m))) best = e;
+        if ((!best || e.members.length > best.members.length) && coreOf(e).some(m => sameEvent(d, m))) best = e;
       }
       join(best || addEvent(`src:${d.id}`, d), d, best ? 'supporting' : 'primary');
     }
@@ -174,7 +238,7 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
     for (const e of [...events.values()].filter(e => created.has(e.id) && e.members.length === 1 && isHotStory(e.members[0]))) {
       const d = e.members[0];
       let target = null;
-      for (const o of events.values()) if (o !== e && o.members.length > 1 && (!target || o.members.length > target.members.length) && o.members.some(m => m.kind !== 'comment' && sameEvent(d, m))) target = o;
+      for (const o of events.values()) if (o !== e && o.members.length > 1 && (!target || o.members.length > target.members.length) && coreOf(o).some(m => sameEvent(d, m))) target = o;
       if (!target) continue;
       w.db.prepare('DELETE FROM intel_cluster_members WHERE cluster_id=?').run(e.id);
       w.db.prepare("UPDATE intel_clusters SET cluster_kind='event_merged' WHERE id=?").run(e.id);
@@ -212,7 +276,7 @@ export function eventStats(event) {
   return { zhSources, participants: obs?.participantCount || 0, heat: Math.round(heat * 10) / 10, sourceCount: Math.max(publishers.size, obs?.sourceCount || 0), discussionCount: community.length + (obs?.signalCount || 0), latestAt: Math.max(0, ...main.map(m => m.time)), kindHint, relevant, aihot: obs ? { rank: obs.rank ?? null, sourceCount: obs.sourceCount || 0, signalCount: obs.signalCount || 0 } : null };
 }
 // 规则版本进指纹：判断字段变了，现有事件各重判一次。成员的内容版本也进指纹：同一条来源内容变了要重判。
-export const JUDGE_VERSION = 'event-v4';
+export const JUDGE_VERSION = 'event-v5';
 const memberFingerprint = e => sha256Json([JUDGE_VERSION, ...e.members.map(m => `${m.id}:${m.row?.content_hash || ''}`).sort()]);
 const memberIds = e => e.members.map(m => m.id).sort();
 
@@ -270,7 +334,9 @@ export async function judgeEvents(w, env, events, deps = {}) {
         const e = chunk.find(x => x.key === r.id);
         const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
         const previous = previousOf(e), development = previous && ['new_facts', 'more_coverage'].includes(r.development) ? r.development : null;
-        const mergeInto = typeof r.mergeInto === 'string' && r.mergeInto !== r.id && candidates.some(x => x.key === r.mergeInto) && !splits.has(`${r.id}|${r.mergeInto}`) ? r.mergeInto : null;
+        const mergeTarget = typeof r.mergeInto === 'string' && r.mergeInto !== r.id && !splits.has(`${r.id}|${r.mergeInto}`) ? candidates.find(x => x.key === r.mergeInto) : null;
+        // 模型的合并建议要过本地把关：两边至少有一对报道真是同一件事。
+        const mergeInto = mergeTarget && eventsCompatible(e, mergeTarget) ? mergeTarget.key : null;
         // 事件时间 = 最近一次实质进展：只有新事实才前移；只是更多报道时沿用上一版的时间。没有上一版可比时用最新来源的时间。
         const progressAt = previous && development !== 'new_facts' && e.cached.result.progressAt ? e.cached.result.progressAt : new Date(e.latestAt).toISOString();
         const result = { keep: r.keep === true && Boolean(text(r.title, 200)), kind: ['event', 'discussion', 'practice'].includes(r.kind) ? r.kind : e.kindHint, title: text(r.title, 200), summary: text(r.summary, 400), whyItMatters: text(r.whyItMatters, 200), mergeInto, creation: normalizeCreation(r.creation),
@@ -323,7 +389,13 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
   const relatedOf = e => { const mine = models(e); return mine.size ? kept.filter(([o, theirs]) => o !== e && shares(mine, theirs)).slice(0, 5).map(([o]) => ({ storyKey: o.key, title: o.judgement.title })) : []; };
   for (const e of live) {
     if (!e.judgement) continue;
-    const storyKey = `event:${e.key}`, old = w.db.prepare('SELECT * FROM intel_briefs WHERE story_key=?').get(storyKey);
+    const storyKey = `event:${e.key}`;
+    let old = w.db.prepare('SELECT * FROM intel_briefs WHERE story_key=?').get(storyKey);
+    // 这件事以前被合并进别的卡（这张卡已是别名）、现在又独立了：旧卡让出标识，另出一张新卡。
+    if (old && hasAliases(w) && w.db.prepare('SELECT 1 FROM intel_brief_aliases WHERE alias_id=?').get(old.id)) {
+      w.db.prepare('UPDATE intel_briefs SET story_key=? WHERE id=?').run(`${storyKey}:merged:${old.id}`, old.id);
+      old = null;
+    }
     if (!e.judgement.keep) { if (old && old.editorial_state === 'ready') { w.db.prepare("UPDATE intel_briefs SET editorial_state='withheld' WHERE id=?").run(old.id); withheld++; } continue; }
     const main = e.members.filter(m => m.kind !== 'comment').sort((a, b) => (isHotStory(b) - isHotStory(a)) || (b.time - a.time));
     const members = [...main, ...e.members.filter(m => m.kind === 'comment')].slice(0, 40).map(memberView);
@@ -357,6 +429,8 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
   calibrateWorth(w);
   return { created, updated, withheld, events: live.filter(e => e.judgement?.keep).length };
 }
+
+const hasAliases = w => Boolean(w.db.prepare("SELECT name FROM sqlite_master WHERE name='intel_brief_aliases'").get());
 
 // ── 「值得做」两条硬规则（2026-09-24，用户确认） ─────────────────────
 const modelCreation = c => { if (!c) return null; const { modelValue, demoted, ...rest } = c; return { ...rest, value: modelValue || c.value }; };
