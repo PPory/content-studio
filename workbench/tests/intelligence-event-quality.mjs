@@ -19,6 +19,8 @@ import { getResearch } from '../server/domain/research.mjs';
 const doc = (title, hours = 0) => { const grams = new Set(); const t = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2)); return { title, time: Date.now() - hours * 3600000, versioned: versionedEntities(title), proper: properEntities(title), grams, actions: actionKinds(title) }; };
 assert.equal(versionedEntities('I gave 5 AI models the same 3 coding assignments').size, 0, '全小写的普通英文不算型号');
 assert.ok(!properEntities('Artificial Analysis 评测 GPT-6 Sol').has('artificial'), '评测机构名不当专有名称');
+assert.equal(sameEvent(doc('Kyutai Releases Voice of Reason: A Speech-Native Model'), doc('ChatGPT Voice gets closer to Her with email, calendar, and Slack access')), false, '只共享一个普通大写词（Voice）不算同一件事');
+assert.equal(sameEvent(doc('ChatGPT Voice 升级为 GPT-6 Astra 驱动并可访问邮件和日历'), doc('GPT-6 Astra has gained the ability to drive a car')), false, '都看不出动作时，只共享型号不算同一件事');
 assert.ok(actionKinds('Anthropic 发布 Claude Opus 5.5').has('release'));
 assert.ok(actionKinds('Researchers jailbreak Claude Opus 5.5 in minutes').has('security'));
 assert.equal(sameEvent(doc('Anthropic 发布 Claude Opus 5.5：成本更低'), doc('Researchers jailbreak Claude Opus 5.5 in minutes')), false, '发布与越狱漏洞是两件事');
@@ -289,6 +291,22 @@ try {
   assert.match(research.openQuestions, /官方价格表/, '开写前还缺什么进入待解决问题');
   assert.match(research.openQuestions, /没有第三方复测/, '主要的不确定项也带上');
   assert.throws(() => createIntelligenceTopicIntent(w, { operationId: 'bad-needs', briefIds: [deepCard.id], confirmed: true, creation: { angle: 'x', needs: 'not-a-list' } }), e => e.status === 400);
+  // 跨批合并：新来的英文报道，模型能把它并进之前已经判断过的中文事件（existing 里给了标题）。
+  const enzymeZh = add('aihot.selected', 'Anthropic 智能体在湿实验室发现新型酶系统', { hours: 0.04 });
+  await update();
+  const enzymeCard = cardWith(enzymeZh.id);
+  const enzymeEn = add('t2.the_verge_ai', "Anthropic's biolab made a discovery it compares to CRISPR", { hours: 0.02 });
+  let sawExisting = false;
+  const crossBatch = { completeJson: async (env, input) => {
+    const d = JSON.parse(input.user), r = await judge.completeJson(env, input);
+    const target = (d.existing || []).find(x => x.title.includes('湿实验室'));
+    sawExisting ||= Boolean(target);
+    for (const e of r.data.events) if (d.events.find(x => x.id === e.id)?.items.some(i => i.title.includes('biolab'))) { e.mergeInto = target?.id || null; e.title = '中文：Anthropic 智能体在湿实验室发现新型酶系统'; }
+    return r;
+  } };
+  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, crossBatch);
+  assert.ok(sawExisting, '判断输入里带上已经判断过的近期事件标题');
+  assert.equal(cardWith(enzymeEn.id)?.id, enzymeCard.id, '英文报道并进了之前的中文事件');
   // 关注方向：没设过时不带；设了之后判断输入带上方向，并且重判一次；之后照常用缓存。
   assert.equal(lastFocus, null, '系统默认方向不注入判断');
   const beforeFocus = calls;
@@ -300,7 +318,7 @@ try {
   await update();
   assert.equal(calls, afterFocus, '方向没变就照常用缓存');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
-  console.log('intelligence-event-quality: focus directions, merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity (no person-name bridges, unjudged cards refreshed) passed');
+  console.log('intelligence-event-quality: focus directions, merge boundaries, related events, 7-day eligibility, worth-doing rules, content-version rejudge, progress time, split, structured deep read with wiki connections and stale update, topic handoff with wiki links, event purity (no person-name bridges, unjudged cards refreshed), cross-batch merges passed');
 } finally {
   w?.close?.();
   await fs.rm(root, { recursive: true, force: true });

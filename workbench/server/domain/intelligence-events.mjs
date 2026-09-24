@@ -12,7 +12,7 @@ import { completeJson } from '../lib/model-json.mjs';
 // 72 小时决定先后，7 天决定资格（2026-09-24）：7 天内首次出现的资料都能建成事件，判断时近 72 小时的优先。
 export const EVENT_WINDOW_MS = 72 * 3600000;
 export const EVENT_MERGE_MS = 48 * 3600000;
-export const JUDGE_LIMIT = 80, JUDGE_CHUNK = 40, PRACTICE_RESERVE = 10;
+export const JUDGE_LIMIT = 80, JUDGE_CHUNK = 40, PRACTICE_RESERVE = 10, EXISTING_LIMIT = 80;
 const now = () => new Date().toISOString();
 const log2 = x => Math.log2(1 + Math.max(0, Number(x) || 0));
 
@@ -49,6 +49,9 @@ function bigrams(title = '') {
   for (let i = 0; i < t.length - 1; i++) set.add(t.slice(i, i + 2));
   return set;
 }
+/** 去掉型号名之后的字对：比较「标题像不像」时，共有的型号名（gpt6astra）本身就能贡献 0.2 的相似度，要先剔掉。 */
+const MODEL_SPAN = /[A-Za-z]{2,}[- ]?\d+(?:\.\d+)*(?:[- ](?:sol|luna|astra|pro|mini|flash|max|ultra|turbo|omni|lite|nano|haiku|sonnet|opus|instruct|preview))?/gi;
+export const coreGrams = title => bigrams(String(title).replace(MODEL_SPAN, ' '));
 function jaccard(a, b) { if (!a.size || !b.size) return 0; let n = 0; for (const x of a) if (b.has(x)) n++; return n / (a.size + b.size - n); }
 const shares = (a, b) => [...a].some(x => b.has(x));
 /**
@@ -75,9 +78,11 @@ function actionsAgree(a, b) {
   const aa = a.actions || new Set(), bb = b.actions || new Set();
   // 发布、定价、评测常是同一次发布的不同报道角度，算同一类。
   if (aa.size && bb.size) return shares(aa, bb) || [...aa, ...bb].every(x => !DIVERGENT.has(x));
+  // 两边都看不出动作：只共享型号不够（「ChatGPT Voice 由 GPT-6 Astra 驱动」和「GPT-6 Astra 学会开车」是两件事），标题还要有点像。
+  if (!aa.size && !bb.size) return jaccard(a.core || coreGrams(a.title), b.core || coreGrams(b.title)) >= 0.15;
   const one = aa.size ? aa : bb;
   // 门槛 0.2：共享的型号名本身就贡献一截相似度，0.12 会让型号名单独把两条短标题撑过去。
-  return ![...one].some(x => DIVERGENT.has(x)) || jaccard(a.grams, b.grams) >= 0.2;
+  return ![...one].some(x => DIVERGENT.has(x)) || jaccard(a.core || coreGrams(a.title), b.core || coreGrams(b.title)) >= 0.2;
 }
 /**
  * 两份资料是不是同一件事：时间相差 48 小时内，并且
@@ -90,9 +95,9 @@ export function sameEvent(a, b, { ignoreTime = false } = {}) {
   if (a.versioned.size && b.versioned.size) return false;
   // 名字级实体（Jev、Muse）：整批资料里从不以小写普通词出现、又不常见的专有名称，本身就能认出同一件事。
   if (a.names && b.names && shares(a.names, b.names)) return actionsAgree(a, b);
-  const j = jaccard(a.grams, b.grams);
-  if (shares(a.proper, b.proper) && j >= 0.2) return true;
-  return j >= 0.45;
+  // 「共享一个大写词且相似度 ≥ 0.2」这条去掉了（2026-09-24）：英文标题按字母两两比较，任意两句都容易过 0.2，
+  // 于是 Kyutai「Voice of Reason」和「ChatGPT Voice」只因为都有 Voice 就成了一件事。真正的专有名称由上面的 names 管。
+  return jaccard(a.grams, b.grams) >= 0.45;
 }
 /**
  * 从这一批资料里挑出「名字」：首字母大写的词，若同一个词在别处以小写出现（launching、shows），它只是普通词；
@@ -116,7 +121,7 @@ function describe(row, channel) {
   const s = sourceFromRow(row), meta = s.metadata || {};
   const title = String(s.title || '').replace(/\s+/g, ' ').trim();
   return { id: s.id, source: s, row, channel, title, time: timeOf(s), platform: platformOf(s, channel), group: channel?.source_group || 'legacy',
-    kind: row.source_kind, versioned: versionedEntities(title), proper: properEntities(title), grams: bigrams(title), actions: actionKinds(title), observation: meta.observation || null,
+    kind: row.source_kind, versioned: versionedEntities(title), proper: properEntities(title), grams: bigrams(title), core: coreGrams(title), actions: actionKinds(title), observation: meta.observation || null,
     score: Number(meta.score || 0), comments: Number(meta.numComments || 0), likes: Number(meta.likes || 0), stream: meta.stream || '', publisher: s.publisherKey || s.author || '' };
 }
 /** AIhot 日报是多话题汇编，不能当成一个事件。 */
@@ -152,7 +157,7 @@ export function eventsCompatible(a, b) {
   if (main(a).some(x => main(b).some(y => sameStory(x, y)))) return true;
   // 本地认不出（中英文标题对不上）时，看模型给两件事写的中文标题像不像：模型真认为是同一件事时，
   // 它写的两个标题会很接近（新酶、「提速 3 倍」的中英文两张）；Patreon 挖人和 GPT-6 Sol 发布、Kyutai 和 ChatGPT Voice 就不像。
-  const ta = a.judgement?.title || '', tb = b.judgement?.title || '';
+  const ta = (a.judgement || a.cached?.result)?.title || '', tb = (b.judgement || b.cached?.result)?.title || '';
   return Boolean(ta && tb) && jaccard(bigrams(ta), bigrams(tb)) >= 0.3;
 }
 /**
@@ -283,7 +288,7 @@ export function eventStats(event) {
   return { zhSources, participants: obs?.participantCount || 0, heat: Math.round(heat * 10) / 10, sourceCount: Math.max(publishers.size, obs?.sourceCount || 0), discussionCount: community.length + (obs?.signalCount || 0), latestAt: Math.max(0, ...main.map(m => m.time)), kindHint, relevant, aihot: obs ? { rank: obs.rank ?? null, sourceCount: obs.sourceCount || 0, signalCount: obs.signalCount || 0 } : null };
 }
 // 规则版本进指纹：判断字段变了，现有事件各重判一次。成员的内容版本也进指纹：同一条来源内容变了要重判。
-export const JUDGE_VERSION = 'event-v5';
+export const JUDGE_VERSION = 'event-v6';
 // 用户的关注方向也进指纹：改了方向，下次更新重判一次。一次更新里只在判断开始时读一次。
 let focusSig = '[]';
 const memberFingerprint = e => sha256Json([JUDGE_VERSION, focusSig, ...e.members.map(m => `${m.id}:${m.row?.content_hash || ''}`).sort()]);
@@ -314,6 +319,7 @@ const JUDGE_SYSTEM = [
   'kind：event=新闻/发布/研究/行业事件；discussion=社区里被热烈讨论的问题或经验；practice=个人实践、方法与心得。',
   'title：中文陈述句，30 字左右，只写输入里能看到的事实，不夸大，不写成问句。summary：两句、100 字以内，说清发生了什么，不补充输入里没有的数字和细节。whyItMatters：一句、40 字以内，说明对 AI 从业者或创作者的具体意义，不写空话。',
   '输入带 focus 时，那是这位创作者自己写的关注方向，只作辅助参考：热点本身就值得写，热度高、信息量大的事件照常可以判 high；符合方向、又有具体可做角度的事件可以高一档；不符合方向的照常判断 keep，不因此判为无关；与 AI 无关或信息量低的事件不能因为沾上方向就判高。带 focus 时 creation 里另给 fit=true|false，表示这件事是否贴合这些方向。',
+  'existing 是最近已经判断过的事件，只给 id 和标题：输入事件如果和其中某一件是同一件事（包括中英文不同说法），mergeInto 填那件的 id。',
   '如果两个输入事件其实是同一件事，在较小的那个上填 mergeInto=另一个事件的 id。只提到同一个型号不等于同一件事：发布、被曝漏洞、有人做了实践是不同的事，不要合并。',
   '带 previous 的事件是之前判断过、这次来了新资料的：对照 previous 判断 development=new_facts（有新的事实、数字、进展）或 more_coverage（只是更多报道或转述）；new_facts 时写 developmentNote，一句「这次新增的是……」，只写输入里能看到的。',
   '对 keep=true 的事件再给 creation（创作判断），读者是这位创作者本人：value=high|medium|low（值不值得专门做一条内容；好新闻不等于值得做）。high 每批最多 5 个，只给真正值得专门做一条的；medium 给有明确可做角度的；其余一律 low。参考 sources 来源数、discussions 讨论数、zhSources 中文来源数、participants 参与数：英文圈热而中文报道少的更值得做。',
@@ -349,18 +355,21 @@ export async function judgeEvents(w, env, events, deps = {}) {
   const previousOf = e => e.cached?.result && Array.isArray(e.cached.memberIds) && JSON.stringify(e.cached.memberIds) !== JSON.stringify(memberIds(e)) ? { title: e.cached.result.title, summary: e.cached.result.summary } : null;
   let calls = 0, failures = 0;
   const pendingMerges = [];
+  // 已经判断过的近期事件（只给 id 和标题）：让模型能把这一批里的事件并进它们。否则中英文报道分到不同批次时，
+  // 模型永远看不到对方，同一件事会一直是好几张卡（新酶那件事曾拆成 5 张）。
+  const existing = events.filter(e => (e.judgement || e.cached?.result)?.keep && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => b.heat - a.heat);
   for (let i = 0; i < todo.length; i += JUDGE_CHUNK) {
     const chunk = todo.slice(i, i + JUDGE_CHUNK), ids = new Set(chunk.map(e => e.key));
     try {
       calls++;
-      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', ...(focus.length ? { focus } : {}), events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e), ...(previousOf(e) ? { previous: previousOf(e) } : {}) })) }), maxTokens: 14000 });
+      const response = await (deps.completeJson || completeJson)(env, { system: JUDGE_SYSTEM, user: JSON.stringify({ step: 'event-judge', ...(focus.length ? { focus } : {}), events: chunk.map(e => ({ id: e.key, kindHint: e.kindHint, sources: e.sourceCount, discussions: e.discussionCount, zhSources: e.zhSources, participants: e.participants, items: representatives(e), ...(previousOf(e) ? { previous: previousOf(e) } : {}) })), existing: existing.filter(x => !chunk.includes(x)).slice(0, EXISTING_LIMIT).map(x => ({ id: x.key, title: (x.judgement || x.cached.result).title })) }), maxTokens: 14000 });
       deps.assertCurrent?.();
       for (const r of Array.isArray(response.data?.events) ? response.data.events : []) {
         if (!r || !ids.has(r.id)) continue;
         const e = chunk.find(x => x.key === r.id);
         const text = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : '';
         const previous = previousOf(e), development = previous && ['new_facts', 'more_coverage'].includes(r.development) ? r.development : null;
-        const mergeTarget = typeof r.mergeInto === 'string' && r.mergeInto !== r.id && !splits.has(`${r.id}|${r.mergeInto}`) ? candidates.find(x => x.key === r.mergeInto) : null;
+        const mergeTarget = typeof r.mergeInto === 'string' && r.mergeInto !== r.id && !splits.has(`${r.id}|${r.mergeInto}`) ? (candidates.find(x => x.key === r.mergeInto) || existing.find(x => x.key === r.mergeInto)) : null;
         // 模型的合并建议要过本地把关，但要等这一批都判完再查：把关会比较两件事的中文标题，被合并的那件可能还没轮到。
         if (mergeTarget) pendingMerges.push([e, mergeTarget]);
         const mergeInto = null;
