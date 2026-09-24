@@ -44,6 +44,6 @@ try {
  // 选题和写作合并（2026-09-24）：#/research 落到写作列表的「选题」一档。
  await page.goto(base+'/#/research');await page.waitForURL(/#\/content/);await page.getByRole('button',{name:/^选题/}).first().waitFor();assert.equal(await page.getByText('围绕一个问题，读资料、记想法、讨论和写作。',{exact:true}).count(),0);
  await page.screenshot({path:path.join(shots,'research-compact-970.png'),fullPage:true});
- await page.getByRole('button',{name:'新建内容',exact:true}).first().click();await page.waitForURL(/#\/project\//);await page.getByRole('tab',{name:'正文',exact:true,selected:true}).waitFor();
+ await page.getByRole('button',{name:'新建内容',exact:true}).first().click();await page.waitForURL(/#\/project\//);await page.locator('.project-draft .cm-content').waitFor();
  assert.equal(errors.length,0,errors.join('\n'));console.log('来源：展开及批量选择父子列对齐、970/1440/800/390截图、阅读入口；选题精简与新建通过');
 }finally{await browser?.close();await server?.close();await server?.xenhoClose?.();for(const [k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}const rel=path.relative(os.tmpdir(),temp);assert(rel&&!rel.startsWith('..')&&!path.isAbsolute(rel));await fs.rm(temp,{recursive:true,force:true});}

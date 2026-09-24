@@ -25,8 +25,8 @@ try {
  const item={storyKey:'e2e-acceptance',title:'如何检查任务产物是否真正完成',summary:'隔离案例用于验证证据可追溯的工作流。',reason:'帮助创作者检查产物',body:'## 发生了什么\n\n材料说明需要检查实际产物。[引文1]',confidence:'watch',kind:'practice',whyItMatters:'把验收变成可执行步骤',audienceTakeaway:'检查实际产物',suggestedUses:['设计一份验收清单'],uncertainties:['这是隔离测试材料'],claims:[{text:'材料提出检查实际产物',kind:'author_report',attribution:'材料作者',evidenceIds:['e1']}],evidence:[{sourceId:source.id,quote}]};
  const brief=saveIntelligenceBriefs(w,run.id,[item],[],null,[{index:0,verdict:'supported',claims:[{id:'c1',verdict:'supported'}]}]).saved[0];
  w.db.prepare("UPDATE intel_runs SET status='done' WHERE id=?").run(run.id);w.close();w=null;
- let modelCalls=0;
- model=http.createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;const request=JSON.parse(body),context=JSON.parse(request.messages.at(-1).content);assert.equal(context.briefs[0].id,brief.id);modelCalls++;const candidate={workingTitle:'制作一份内容Agent验收清单',audience:'个人创作者',angle:'检查产物而非完成声明',deliverable:'可执行检查清单',whyNow:'用隔离案例验证工作流',evidenceGaps:['需要补充真实实践'],researchTasks:['设计检查并记录实际结果'],nonClaims:['不宣称所有模型都适用'],evidence:[{sourceId:source.id,quote}]};res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({candidate})}}],usage:{total_tokens:100}}));});
+ let modelCalls=0,deepenCalls=0;
+ model=http.createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;const request=JSON.parse(body);let context;try{context=JSON.parse(request.messages.at(-1).content);}catch{context={};}if(!Array.isArray(context.briefs)){deepenCalls++;res.writeHead(503,{'content-type':'application/json'});res.end('{}');return;}assert.equal(context.briefs[0].id,brief.id);modelCalls++;const candidate={workingTitle:'制作一份内容Agent验收清单',audience:'个人创作者',angle:'检查产物而非完成声明',deliverable:'可执行检查清单',whyNow:'用隔离案例验证工作流',evidenceGaps:['需要补充真实实践'],researchTasks:['设计检查并记录实际结果'],nonClaims:['不宣称所有模型都适用'],evidence:[{sourceId:source.id,quote}]};res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({candidate})}}],usage:{total_tokens:100}}));});
  await new Promise(resolve=>model.listen(0,'127.0.0.1',resolve));
  const env={XENHO_HOME:vars.XENHO_HOME,AGENT_INGEST_BASE_URL:`http://127.0.0.1:${model.address().port}/v1`,AGENT_INGEST_API_KEY:'isolated-test-key',AGENT_INGEST_MODEL:'test-only'};
  server=await createServer({root:ROOT,configFile:false,plugins:[react(),workbenchApi(env)],server:{host:'127.0.0.1',port:5264,strictPort:true,open:false},logLevel:'error'});await server.listen();
@@ -34,13 +34,13 @@ try {
  await page.goto(base+'/#/intel');await page.getByRole('tab',{name:'热点',exact:true}).click();await page.locator('.brief-card').filter({hasText:brief.title}).getByRole('button',{name:'加入选题',exact:true}).click();await page.getByRole('button',{name:'查看选题',exact:true}).waitFor();
  assert.equal(modelCalls,0,'直接选中情报无需调用模型');assert.equal((await api('intelligence/topics')).opportunities.length,0,'不产生第二套中间候选');
  // 选题和写作合并（2026-09-24）：查看选题 = 打开它对应的那篇内容，落在构思。
- await page.getByRole('button',{name:'查看选题',exact:true}).click();await page.waitForURL(/#\/project\//);await page.getByRole('region',{name:'这篇的构思'}).waitFor();
+ await page.getByRole('button',{name:'查看选题',exact:true}).click();await page.waitForURL(/#\/project\//);await page.locator('.topic-flow').waitFor();
  const projectId=decodeURIComponent(page.url().split('#/project/')[1]),research=(await api('projects/'+projectId+'/researches')).researches[0],id=research.id;
  assert.equal(research.references.length,1);assert.equal(research.intelligenceIntents.length,1);assert.deepEqual(research.intelligenceIntents[0].briefIds,[brief.id]);
- await page.reload();await page.getByRole('region',{name:'这篇的构思'}).waitFor();assert.equal(modelCalls,0);
+ await page.reload();await page.locator('.topic-flow').waitFor();assert.equal(modelCalls,0);
  assert.deepEqual((await api('intelligence/briefs/'+brief.id)).brief.researchIds,[id]);
  const shots=path.join(ROOT,'output','playwright');await fs.mkdir(shots,{recursive:true});
- await page.getByRole('button',{name:'开始写',exact:true}).click();await page.getByRole('tab',{name:'正文',exact:true,selected:true}).waitFor();await page.getByLabel('主稿标题',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'跳过，直接写',exact:true}).click();await page.locator('.project-draft .cm-content').waitFor();await page.getByLabel('主稿标题',{exact:true}).waitFor();
  assert.equal((await api('researches/'+id)).research.projects.length,1);await page.screenshot({path:path.join(shots,'intelligence-v2-e2e-research.png'),fullPage:true});
  assert.deepEqual(errors,[]);console.log('intelligence-v2-e2e: real HTTP, SQLite, direct topic intent with zero model calls, reload, provenance and article creation passed');
 }finally{w?.close();await browser?.close();await server?.close();await server?.xenhoClose?.();if(model)await new Promise(resolve=>model.close(resolve));for(const[k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v;}const rel=path.relative(os.tmpdir(),temp);assert(rel&&!rel.startsWith('..'));await fs.rm(temp,{recursive:true,force:true});}
