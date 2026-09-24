@@ -239,6 +239,8 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const [revisionRequest, setRevisionRequest] = useState(null);
   // 回答卡的「对话」：把那一问原样交给右栏助手真的跑一遍，不伪造对话历史
   const [assistantHandoff, setAssistantHandoff] = useState(null);
+  // 选题流程里交给协作的新问题（还没有答案）；handoff 是把已经答完的一轮搬进对话，两者不能混用。
+  const [assistantPrompt, setAssistantPrompt] = useState(null);
   const [candidateReviewFocused, setCandidateReviewFocused] = useState(false);
   const [activeSelection, setActiveSelection] = useState(null);
   const [temporary, setTemporary] = useState(() => isTemporaryProject(projectId));
@@ -652,7 +654,7 @@ ${(form.body || "").slice(0, 3000)}`);
     try { localStorage.setItem(viewKey, "draft"); } catch {}
   }
   const cite = (ref) => setInsertRequest({ id: `cite-${Date.now()}`, text: ref.kind === "material" ? materialText({ content: ref.excerpt || ref.title, sourceUrl: ref.sourceUrl }) : ref.sourceUrl ? `[${ref.title}](${ref.sourceUrl})` : `《${ref.title}》`, spacing: ref.kind === "material" ? "paragraph" : "inline" });
-  const askAssistant = (prompt) => { setAssistantHandoff({ id: `plan-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); };
+  const askAssistant = (prompt) => { setAssistantPrompt({ id: `plan-${Date.now()}`, text: prompt }); summonAssistant({ routeView: "project" }); };
 
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
@@ -1050,6 +1052,7 @@ ${(form.body || "").slice(0, 3000)}`);
             tools={["协作"]}
             notebook={null}
             handoffRequest={assistantHandoff}
+            promptRequest={assistantPrompt}
             reviewingCandidate={candidateReviewFocused}
             recall={<RelatedEntries text={form.body} onOpen={(id) => { window.location.hash = `#/entries/${id}`; }} />}
             scopeId={draft?.id || projectId}

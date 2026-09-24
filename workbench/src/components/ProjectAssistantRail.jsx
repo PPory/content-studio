@@ -7,7 +7,7 @@ import { IconChevronDown, IconFileText, IconX } from "./icons.jsx";
 // One optional companion to the document. Hidden panels stay mounted to preserve
 // unsaved notebook input and the current conversation when changing tools.
 // `notebook` 为空时不显示「构思」工具（工作区在构思视图时，构思就在中间）；`openRequest` 让外面点「补资料」时直接打开对应工具。
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, notebook = null, openRequest = null, tools: only = null, children }) {
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, promptRequest = null, reviewingCandidate = false, recall = null, notebook = null, openRequest = null, tools: only = null, children }) {
   const [active, setActive] = useState(null);
   const [assistantOpened, setAssistantOpened] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -26,6 +26,8 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   }, [openTool]);
   useAssistantSummonTarget("project", focusAssistant);
   useEffect(() => { if (handoffRequest?.id) focusAssistant(); }, [handoffRequest?.id, focusAssistant]);
+  // promptRequest：一个还没有答案的新问题（如补齐里的「让 AI 先找找」），打开协作后真的发出去。
+  useEffect(() => { if (promptRequest?.id) focusAssistant(); }, [promptRequest?.id, focusAssistant]);
   useEffect(() => { if (openRequest?.tool) openTool(openRequest.tool); }, [openRequest?.id]);
   useEffect(() => { if (!notebook && active === "构思") setActive(null); }, [notebook, active]);
   const close = useCallback(() => {
@@ -68,7 +70,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
       <section id="writing-panel-资料" className="writing-companion__scroll" aria-label="项目素材" hidden={active !== "资料"}>{children}{active === "资料" ? recall : null}</section>
       <section id="writing-panel-协作" className="writing-companion__chat" aria-label="协作" hidden={active !== "协作"}>
         {assistantOpened ? <AssistantPane scope="project" surface="rail" target={target} scopeId={scopeId} document={document}
-          materials={materials} profile={profile} projectContext={context} handoffRequest={handoffRequest} onCollapse={close} /> : null}
+          materials={materials} profile={profile} projectContext={context} handoffRequest={handoffRequest} promptRequest={promptRequest} onCollapse={close} /> : null}
       </section>
     </aside>
   </>;
