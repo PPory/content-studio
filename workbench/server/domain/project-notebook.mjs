@@ -1,6 +1,7 @@
 // Saving exploration does not approve claims or write article text.
 const limits = { thought: 20000, audience: 10000, intent: 10000, questions: 10000, evidenceNotes: 20000 };
-const editable = new Set([...Object.keys(limits), "alternatives", "agendaId", "discovery", "expectedVersion"]);
+// `plan`：选题流程里 AI 给的角度、结构和用户的选择（2026-09-24，见 content-plan-ai.mjs）。
+const editable = new Set([...Object.keys(limits), "alternatives", "agendaId", "discovery", "plan", "expectedVersion"]);
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
 function text(value, label, max) {
   if (typeof value !== "string" || value.length > max) throw invalid(`${label}必须是长度不超过 ${max} 的文字`);
@@ -37,7 +38,7 @@ export function getProjectNotebook(workspace, projectId) {
     LEFT JOIN content_agendas a ON a.id=o.agenda_id
     WHERE link.project_id=? AND link.role='primary'`).get(projectId);
   return {
-    projectId, thought: "", audience: "", intent: "", questions: "", evidenceNotes: "", alternatives: [], discovery: null,
+    projectId, thought: "", audience: "", intent: "", questions: "", evidenceNotes: "", alternatives: [], discovery: null, plan: null,
     ...(legacy ? { thought: legacy.core_claim || "", questions: legacy.statement || "", evidenceNotes: legacy.knowledge_explanation || "", audience: legacy.audience || "", intent: legacy.desired_judgment || "" } : {}),
     ...(row ? JSON.parse(row.notes_json) : {}),
     agendaId: row ? row.agenda_id : legacy?.agenda_id ?? null, version: row?.version ?? 0, updatedAt: row?.updated_at ?? null,
@@ -60,6 +61,7 @@ export function saveProjectNotebook(workspace, projectId, input) {
     if (new Set(patch.alternatives.map((item) => item.id)).size !== patch.alternatives.length) throw invalid("候选 ID 不能重复");
   }
   if (Object.hasOwn(input, "discovery")) patch.discovery = jsonObject(input.discovery);
+  if (Object.hasOwn(input, "plan")) patch.plan = jsonObject(input.plan);
   if (Object.hasOwn(input, "agendaId")) {
     patch.agendaId = input.agendaId === null ? null : text(input.agendaId, "创作方向 ID", 120);
     if (patch.agendaId === "") patch.agendaId = null;
@@ -73,7 +75,7 @@ export function saveProjectNotebook(workspace, projectId, input) {
       if (!agenda) throw invalid("创作方向不存在或已归档");
     }
     const next = { ...current, ...patch };
-    const notes = Object.fromEntries([...Object.keys(limits), "alternatives", "discovery"].map((key) => [key, next[key]]));
+    const notes = Object.fromEntries([...Object.keys(limits), "alternatives", "discovery", "plan"].map((key) => [key, next[key]]));
     const serialized = JSON.stringify(notes);
     if (Buffer.byteLength(serialized, "utf8") > 250000) throw invalid("构思数据不能超过 250KB");
     workspace.db.prepare(`INSERT INTO project_notebooks(project_id,version,notes_json,agenda_id,updated_at)

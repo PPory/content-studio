@@ -5,6 +5,7 @@ import { sha256Json, sourceContainsVerbatim } from './integrity.mjs';
 import { sourceFromRow } from './intelligence-quality.mjs';
 import { intelligenceBrief } from './intelligence-feed.mjs';
 import { createResearch, getResearch, saveResearch, researchReference, researchConversation, ensureResearchProject } from './research.mjs';
+import { requestDeepen } from './intelligence-deepen.mjs';
 const bad=(message,status=400)=>Object.assign(new Error(message),{status});
 const text=(value,max=20000)=>{if(typeof value!=='string'||value.length>max)throw bad('选题文字格式或长度无效');return value.trim();};
 function source(w,id){
@@ -110,6 +111,9 @@ export function createIntelligenceTopicIntent(w,input){
   w.domain.audit('intelligence.topic_intent',research.id,{operationId,briefIds:ids,sourceIds});
   // 加入选题就是建一篇内容（2026-09-24）：构思按研究预填；加入已有选题时新的待补项追加进那篇的清单。
   const {projectId}=ensureResearchProject(w,research.id,{extraItems:[...new Set(open)]});
+  // 加入选题说明已经想写了：顺手把深入解读排上队（已有深读的直接跳过），打开选题第一步就能读到完整内容（2026-09-24）。
+  // 排队失败不挡住保存——选题已经建好，深读之后还能在情报卡上手动触发。
+  for(const b of briefs){try{requestDeepen(w,b.id);}catch{}}
   return {research:getResearch(w,research.id),projectId,reused:false};
  });
 }
@@ -119,7 +123,11 @@ function briefSummary(w,id){
  try{
   const r=w.db.prepare('SELECT id,data_json FROM intel_briefs WHERE id=?').get(canonicalBriefId(w,id));if(!r)return null;
   const d=visibleDerived(w,JSON.parse(r.data_json));
-  return {id:r.id,title:d.title||'',summary:d.summary||'',whyItMatters:d.whyItMatters||'',keyFacts:(d.keyFacts||[]).map(f=>typeof f==='string'?f:f?.text).filter(Boolean).slice(0,6)};
+  // 选题第一步「读懂」和角度生成要用到深读正文、还不确定的地方和 Wiki 连接（2026-09-24）。
+  return {id:r.id,title:d.title||'',summary:d.summary||'',whyItMatters:d.whyItMatters||'',depth:d.depth||'headline',body:String(d.body||'').slice(0,6000),
+   keyFacts:(d.keyFacts||[]).map(f=>typeof f==='string'?f:f?.text).filter(Boolean).slice(0,6),useFor:d.useFor||'',notFor:d.notFor||'',uncertainties:(d.uncertainties||[]).slice(0,4),
+   wiki:(d.wiki||[]).filter(k=>k?.id).slice(0,4).map(k=>({id:k.id,title:k.title||'',quote:k.quote||'',application:k.application||k.reason||''})),
+   sources:(d.evidence||[]).map(e=>e.sourceId).filter((x,i,a)=>x&&a.indexOf(x)===i).slice(0,8)};
  }catch{return null;}
 }
 export function researchIntelligenceIntents(w,id){

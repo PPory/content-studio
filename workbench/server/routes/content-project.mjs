@@ -8,6 +8,7 @@ import { createProjectExploration, getProjectNotebook, saveProjectNotebook } fro
 import { fail, json, readJsonBody } from "../lib/http.mjs";
 import { proposeProjectDraft, proposeProjectOutline } from "../domain/content-project-ai.mjs";
 import { projectCreativeContext } from "../domain/content-project.mjs";
+import { chooseAngle, chooseStructure, planView, proposeAngles, proposeStructures, writeDraft } from "../domain/content-plan-ai.mjs";
 
 /**
  * 结构候选的存放位置。
@@ -130,4 +131,13 @@ export const contentProjectRoutes = [
       json(res, { ok: true, candidateOnly: true, ...result });
     }),
   },
+  // ── 选题到初稿（2026-09-24，content-plan-ai.mjs）：读懂 → 选角度 → 补齐 → 定结构 → 写初稿 ──
+  // 角度和结构只存进构思里的 plan（候选和选择），不碰正文；只有「写初稿」在正文为空时写入主稿——
+  // 用户点了「按这个结构写初稿」就是确认，且稿件保存留版本；正文已有字时只返回候选。
+  { method: "GET", path: "/api/workspace/projects/:id/plan", handler: guard(async ({ env, workspace, res, params }) => json(res, { ok: true, ...planView(workspace, env, params.id) })) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/angles", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); json(res, { ok: true, ...(await proposeAngles(env, workspace, { projectId: params.id, force: body.force === true })) }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/choose-angle", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); chooseAngle(workspace, params.id, { angleId: body.angleId, own: body.own }); json(res, { ok: true, ...planView(workspace, env, params.id) }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/structures", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); json(res, { ok: true, ...(await proposeStructures(env, workspace, { projectId: params.id, force: body.force === true })) }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/choose-structure", handler: guard(async ({ env, workspace, req, res, params }) => { const body = await readJsonBody(req); chooseStructure(workspace, params.id, { structure: Number(body.structure) || 0, title: Number(body.title) || 0 }); json(res, { ok: true, ...planView(workspace, env, params.id) }); }) },
+  { method: "POST", path: "/api/workspace/projects/:id/plan/draft", handler: guard(async ({ env, workspace, res, params }) => { const result = await writeDraft(env, workspace, { projectId: params.id }); json(res, { ok: true, ...result, ...planView(workspace, env, params.id) }); }) },
 ];

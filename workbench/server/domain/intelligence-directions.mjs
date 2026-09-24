@@ -1,6 +1,7 @@
 import {sha256Json} from './integrity.mjs';
 import {readDiscoveryCache} from './content-discovery.mjs';
-import {createResearch,getResearch,saveResearch,researchReference,researchConversation} from './research.mjs';
+import {createResearch,getResearch,saveResearch,researchReference,researchConversation,ensureResearchProject} from './research.mjs';
+import {getProjectNotebook,saveProjectNotebook} from './project-notebook.mjs';
 const bad=(message,status=400)=>Object.assign(new Error(message),{status});
 export const directionKey=c=>sha256Json(c);
 export function directionDetail(w,id){
@@ -67,4 +68,17 @@ export function developDirection(w,id,input={}){
  w.db.prepare('UPDATE intel_directions SET research_id=?,updated_at=? WHERE id=?').run(research.id,new Date().toISOString(),id);
  return getResearch(w,research.id);
  });
+}
+/**
+ * 「来自我的知识」一列的「加入选题」（2026-09-24）：保存方向 → 带入选题 → 建这篇内容，一步完成。
+ * 找到的「知识 × 读者问题」写进构思的 discovery.connection，选题第一步「读懂」和角度生成都用它；
+ * 构思里已经写过的不覆盖。可重复调用。
+ */
+export function directionToContent(w,id){
+ keepDirection(w,id);
+ const research=developDirection(w,id,{confirmed:true});
+ const {projectId}=ensureResearchProject(w,research.id);
+ const c=directionDetail(w,id).connection,nb=getProjectNotebook(w,projectId);
+ if(!nb.discovery?.connection)saveProjectNotebook(w,projectId,{expectedVersion:nb.version,discovery:{...(nb.discovery||{}),connection:c},...(nb.thought&&nb.thought!==research.question?{}:{thought:c.coreClaim||nb.thought})});
+ return {projectId,researchId:research.id};
 }

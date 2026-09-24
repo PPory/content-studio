@@ -30,7 +30,7 @@ function completionFor(env) {
  * 只给一串小标题的提纲没有用：那种提纲每篇文章都能套，读完仍然不知道
  * 第三节到底要拿什么把话说圆。
  */
-function normalizeOutline(data, context) {
+export function normalizeOutline(data, context) {
   if (!data || typeof data !== "object" || !Array.isArray(data.sections)) throw new Error("模型没有返回 sections 数组");
   /**
    * id 和标题都能对上。
