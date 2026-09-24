@@ -26,8 +26,8 @@ try{
   const req=route.request(),url=new URL(req.url()),body=req.method()==='GET'?{}:req.postDataJSON();
   if(url.pathname.endsWith('/feed'))return send(route,feed());
   if(url.pathname.endsWith('/digest')){const kind=url.searchParams.get('kind');const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
-   return send(route,kind==='builders'?{kind,total:1,inHot:0,hiddenOffTopic:2,days:[{day:today,items:[{id:'fb1',title:'I spend 2 hours a day building side projects',author:'nikunj',kind:'post',text:'I spend 2 hours a day building side projects with agents and it changed how I work.',zh:'每天花两小时用 Agent 做副业项目，改变了工作方式',url:'https://x.example/1',publishedAt:new Date().toISOString(),day:today,hot:null}]}]}
-    :{kind,total:2,inHot:1,hiddenOffTopic:0,days:[{day:today,items:[{id:'sel1',title:'模型更新的实际变化 2',summary:'在热点里的一条',url:'https://a.example/1',publishedAt:new Date().toISOString(),day:today,hot:{briefId:'b1',title:'模型更新的实际变化 2'}},{id:'sel2',title:'Claude Code 澄清 Cloud sessions 按订阅计费',summary:'没进热点的一条',url:'https://a.example/2',publishedAt:new Date().toISOString(),day:today,hot:null}]}]});}
+   return send(route,kind==='builders'?{kind,total:1,inHot:0,hiddenOffTopic:2,days:[{day:today,items:[{id:'fb1',title:'I spend 2 hours a day building side projects',author:'nikunj',name:'Nikunj Kothari',likes:120,replies:8,retweets:null,kind:'post',text:'I spend 2 hours a day building side projects with agents and it changed how I work.\n\n'+'Here is the long part of the thread. '.repeat(12),zh:'每天花两小时用 Agent 做副业项目，改变了工作方式',url:'https://x.example/1',publishedAt:new Date().toISOString(),day:today,hot:null},{id:'fb2',title:'When AI Improves Itself',author:'The MAD Podcast',kind:'podcast',text:'',zh:'',url:'https://pod.example/1',publishedAt:new Date().toISOString(),day:today,hot:null}]}]}
+    :{kind,total:2,inHot:1,hiddenOffTopic:0,days:[{day:today,items:[{id:'sel1',title:'模型更新的实际变化 2',summary:'在热点里的一条',url:'https://a.example/1',publishedAt:new Date().toISOString(),day:today,hot:{briefId:'b1',title:'模型更新的实际变化 2'}},{id:'sel2',title:'Claude Code 澄清 Cloud sessions 按订阅计费',summary:'没进热点的一条',source:'X：Claude Devs (@ClaudeDevs)',aihotUrl:'https://aihot.news/items/q1',url:'https://a.example/2',publishedAt:new Date().toISOString(),day:today,hot:null}]}]});}
   if(url.pathname.endsWith('/deepen')){deepenCalls++;const e=briefs.find(b=>b.event);e.deepen={status:'running',stage:'正在补全 2 篇原文'};setTimeout(()=>{Object.assign(e,{depth:'deep',deepen:{status:'done'},summary:'Anthropic 发布 Opus 5.5，价格更低。',body:'深度解读正文：官方说明与第三方评测都提到价格下降。',
    keyFacts:[{text:'官方称每 token 价格更低',evidenceIds:['e1']}],evidence:[{sourceId:'s1',quote:'每token价格更低'}],sources:[{id:'s1',title:'Opus 5.5发布：沟通更好',url:'https://example.com/opus',provider:'aihot',readLevel:'original',quotes:[{number:1,quote:'每token价格更低'}]}],
    claims:[{id:'c1',text:'价格比上一代更低',kind:'author_report',attribution:'Anthropic',evidenceIds:['e1'],limitations:['没有第三方复测']}],uncertainties:['只有官方说明'],useFor:'要评估模型成本的人',notFor:'只用网页聊天的读者',
@@ -139,10 +139,15 @@ try{
  assert.equal(await page.getByRole('button',{name:'筛选情报'}).count(),0,'速览里没有筛选');
  await page.getByLabel('只看没进热点的').check();assert.equal(await page.getByText('模型更新的实际变化 2',{exact:true}).count(),0,'只看没进热点的');await page.getByLabel('只看没进热点的').uncheck();
  await page.getByRole('button',{name:'加入选题',exact:true}).first().click();await page.getByRole('dialog',{name:'带入选题'}).waitFor();await page.getByRole('button',{name:'取消',exact:true}).click();
- await page.getByRole('button',{name:'Follow Builders',exact:true}).click();await page.getByText('每天花两小时用 Agent 做副业项目',{exact:false}).waitFor();await page.getByText('@nikunj').waitFor();
+ await page.getByRole('button',{name:'Follow Builders',exact:true}).click();await page.getByText('每天花两小时用 Agent 做副业项目',{exact:false}).waitFor();await page.getByText('@nikunj').waitFor();await page.getByText('Nikunj Kothari',{exact:true}).waitFor();await page.getByText('赞 120 · 回复 8').waitFor();
+ // 推文原文默认四行，「展开原文」看全文；播客没有摘要时用节目标题当标题。
+ const quote=page.locator('[data-digest="fb1"] .intel-digest__quote');const clamped=await quote.evaluate(el=>el.scrollHeight>el.clientHeight+2);assert(clamped,'长推文默认折起');
+ await page.getByRole('button',{name:'展开原文',exact:true}).click();assert(await quote.evaluate(el=>el.scrollHeight<=el.clientHeight+2),'展开后显示全文');await page.getByRole('button',{name:'收起原文',exact:true}).waitFor();
+ await page.locator('[data-digest="fb2"] h3',{hasText:'When AI Improves Itself'}).waitFor();await page.locator('[data-digest="fb2"]').getByRole('link',{name:'打开播客'}).waitFor();
  await page.screenshot({path:path.join(shots,'19-digest-builders.png'),fullPage:false});
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'速览 390px 无横向滚动');await page.setViewportSize({width:1440,height:960});
- await page.getByRole('button',{name:'AIhot 精选',exact:true}).click();await page.getByRole('button',{name:'在热点里 →'}).click();
+ await page.getByRole('button',{name:'AIhot 精选',exact:true}).click();await page.locator('[data-digest="sel2"]').getByRole('link',{name:'AI HOT 详情'}).waitFor();await page.locator('[data-digest="sel1"] .intel-digest__in-hot').waitFor();
+ await page.screenshot({path:path.join(shots,'20-digest-selected.png'),fullPage:false});await page.getByRole('button',{name:'打开热点卡'}).click();
  await page.locator('.brief-peek').waitFor();await page.getByRole('tab',{name:'热点',exact:true,selected:true}).waitFor();await page.locator('[data-brief="b1"].is-active').waitFor();
  await page.keyboard.press('Escape');await page.locator('.brief-peek').waitFor({state:'detached'});
  // 未授权：状态行说清楚缺口，一次确认后开始整理；工具菜单出现自动更新开关。
