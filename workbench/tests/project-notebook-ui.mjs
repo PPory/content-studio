@@ -113,6 +113,15 @@ try {
   await page.getByRole("region", { name: "补齐" }).waitFor();
   check("点【待补】回到补齐", true);
 
+  // 补资料：没输入时不列资料库里无关的东西；贴链接只给一行「把这个链接放进来」。
+  if (await page.locator(".piece-lib.is-collapsed").count()) await page.getByRole("button", { name: /^展开资料/ }).click();
+  await page.getByRole("button", { name: "补资料" }).click();
+  const add = page.getByRole("group", { name: "补资料" });
+  check("补资料没输入时不列无关资料", await add.locator(".piece-lib__results li").count() === 0 && (await add.innerText()).includes("贴一个网页链接"));
+  await add.getByLabel("搜资料库或贴链接").fill("https://example.com/a");
+  check("贴链接只给一个放进来的动作", await add.getByRole("button", { name: /把这个链接放进来/ }).count() === 1 && await add.locator("input").count() === 1);
+  await add.getByRole("button", { name: "关闭" }).click();
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: screenshots.mobile, fullPage: true });
   check("小屏页面没有横向溢出", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));

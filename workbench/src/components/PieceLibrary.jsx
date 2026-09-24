@@ -74,7 +74,7 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
     <div className="piece-lib__scroll">
       {Object.entries(groups).map(([name, list]) => list.length ? <section key={name}><h3>{name}</h3><ul>{list.map(item)}</ul></section> : null)}
       {refs && !refs.length ? <p className="piece-lib__empty">这篇背后还没有资料。</p> : null}
-      {adding ? <AddPanel onPick={attach} onClose={() => setAdding(false)} projectTitle="" /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
+      {adding ? <AddPanel onPick={attach} onClose={() => setAdding(false)} attached={new Set((refs || []).map((r) => `${r.kind}:${r.id}`))} /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
       {children ? <div className="piece-lib__more">{children}</div> : null}
     </div>
   </aside>;
@@ -82,22 +82,40 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
 
 function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } }
 
-/** 补资料：从资料库搜一条挂上，或者贴一个链接（先存成一条记一下，再挂上）。 */
-function AddPanel({ onPick, onClose }) {
-  const [q, setQ] = useState(""), [items, setItems] = useState([]), [link, setLink] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(null);
-  useEffect(() => { let alive = true; const t = setTimeout(() => api.library(q, "").then((r) => { if (alive) setItems((r.items || []).slice(0, 8)); }).catch(() => {}), 200); return () => { alive = false; clearTimeout(t); }; }, [q]);
+/**
+ * 补资料：一个输入框。打关键词就搜资料库；贴的是链接就只给「把这个链接放进来」（先存成一条记一下，再挂上）。
+ *
+ * ⚠️ 没输入时不列东西（2026-09-24 用户反馈）：原来空搜索会列出资料库最近几条，和这篇毫无关系，看着像是
+ * 「这篇已经有的资料」。窄栏里也放不下第二个输入框加按钮，按钮被挤成竖排。
+ */
+function AddPanel({ onPick, onClose, attached }) {
+  const [q, setQ] = useState(""), [items, setItems] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const term = q.trim(), isLink = /^https?:\/\/\S+$/i.test(term);
+  useEffect(() => {
+    if (!term || isLink) { setItems(null); return undefined; }
+    let alive = true;
+    const t = setTimeout(() => api.library(term, "").then((r) => { if (alive) setItems((r.items || []).slice(0, 8)); }).catch((e) => { if (alive) setError(e); }), 200);
+    return () => { alive = false; clearTimeout(t); };
+  }, [term, isLink]);
   async function pick(item) { setBusy(true); setError(null); try { await onPick(item); } catch (e) { setError(e); } finally { setBusy(false); } }
-  async function addLink(e) {
-    e.preventDefault(); if (!/^https?:\/\//i.test(link.trim())) return;
+  async function addLink() {
     setBusy(true); setError(null);
-    try { const note = await api.quickNote({ text: link.trim(), sourceUrl: link.trim() }); await onPick({ kind: "capture", id: note.item?.id || note.id }); }
+    try { const note = await api.quickNote({ text: term, sourceUrl: term }); await onPick({ kind: "capture", id: note.item?.id || note.id }); }
     catch (err) { setError(err); } finally { setBusy(false); }
   }
   return <div className="piece-lib__panel" role="group" aria-label="补资料">
     <div className="piece-lib__panel-head"><strong>补资料</strong><button type="button" className="icon-btn" onClick={onClose} aria-label="关闭"><IconX aria-hidden="true" /></button></div>
-    <input id="piece-lib-search" aria-label="搜资料库" placeholder="搜资料库：标题或正文里的词" value={q} onChange={(e) => setQ(e.target.value)} />
-    <ul className="piece-lib__results">{items.map((it) => <li key={`${it.kind}:${it.id}`}><button type="button" disabled={busy} onClick={() => pick(it)}><span>{it.title || "未命名"}</span><small>{it.nature || it.kind}</small></button></li>)}</ul>
-    <form onSubmit={addLink} className="piece-lib__link"><input id="piece-lib-link" aria-label="贴一个链接" placeholder="或者贴一个链接 https://…" value={link} onChange={(e) => setLink(e.target.value)} /><button className="btn btn-sm" disabled={busy || !/^https?:\/\//i.test(link.trim())}>放进来</button></form>
+    <input id="piece-lib-search" aria-label="搜资料库或贴链接" placeholder="搜资料库，或贴一个链接" value={q} autoFocus
+      onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && isLink && !busy) { e.preventDefault(); addLink(); } if (e.key === "Escape") onClose(); }} />
+    {isLink ? <button type="button" className="piece-lib__link" disabled={busy} onClick={addLink}><IconPlus aria-hidden="true" /><span>把这个链接放进来<small>{hostOf(term)}</small></span></button>
+      : !term ? <p className="piece-lib__hint">输入标题或正文里的词，从你的资料库、Wiki 和收藏里找；也可以直接贴一个网页链接。</p>
+      : items && !items.length ? <p className="piece-lib__hint">资料库里没有含「{term}」的资料。换个词，或者贴原文链接。</p>
+      : <ul className="piece-lib__results">{(items || []).map((it) => {
+        const have = attached.has(`${it.kind}:${it.id}`);
+        return <li key={`${it.kind}:${it.id}`}><button type="button" disabled={busy || have} onClick={() => pick(it)}>
+          <span className="piece-lib__result-title">{it.title || "未命名"}</span><small>{have ? "已在这篇" : [it.nature || it.kind, it.sourceUrl ? hostOf(it.sourceUrl) : ""].filter(Boolean).join(" · ")}</small>
+        </button></li>;
+      })}</ul>}
     <ErrorNote error={error} what="补资料" />
   </div>;
 }
