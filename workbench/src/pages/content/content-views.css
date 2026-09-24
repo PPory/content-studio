@@ -17,15 +17,12 @@
 .content-card__remove { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 @media (max-width: 600px) { .content-view-toolbar { flex-wrap: wrap; } .content-card__open { padding: 16px; } }
 
-/* 「选题」一档（2026-09-24）：三段按来源，卡片沿用上面 `.content-card`（和「在写」同一套），这里只补选题特有的几处。
+/* 「选题」一档（2026-09-24）：三个来源页签，卡片沿用上面 `.content-card`（和「在写」同一套），这里只补选题特有的几处。
    颜色：只有「建议 24 小时内」用强调橙，走到「初稿已写」用品牌绿，AI 找到的候选是虚线卡。 */
-.topic-shelf { display: grid; gap: 32px; }
+.topic-shelf { display: grid; gap: 18px; }
+.topic-shelf__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.topic-shelf__hint { color: var(--text-3); font-size: var(--fs-2xs); }
 .topic-sec { display: grid; gap: 12px; min-width: 0; }
-.topic-sec__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.topic-sec__head h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: var(--fs-sm); font-weight: 600; }
-.topic-sec__head h2 svg { width: 16px; height: 16px; color: var(--text-3); }
-.topic-sec__count { color: var(--text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
-.topic-sec__head small { color: var(--text-3); font-size: var(--fs-2xs); }
 .topic-sec__acts { display: flex; gap: 8px; margin-left: auto; align-self: center; }
 .topic-sec__acts .btn { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-2xs); }
 .topic-sec__acts svg { width: 14px; height: 14px; }

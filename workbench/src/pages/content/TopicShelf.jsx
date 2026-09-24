@@ -1,12 +1,12 @@
-// 写作列表的「选题」一档（2026-09-24）：按来源分三段——来自情报 / 来自我的知识 / 我的想法。
+// 写作列表的「选题」一档（2026-09-24）：按来源分三个页签——来自情报 / 来自我的知识 / 我的想法（和情报页同一套 ViewTabs）。
 //
 // ⚠️ **卡片和「在写」那一档是同一套**（`.content-card`，见 ProjectCards.jsx）：同一页换个页签，
 // 卡片的大小、字号、操作条位置不该变。一张卡只回答挑题时要看的三件事：走到哪一步了（左上）、
 // 多久以前（右上）、建议什么时候之前写 / 从哪条情报来（标题下）。
-// 「来自我的知识」一段还放 AI 最近一次扫描找到、还没加入的「知识 × 读者问题」（虚线卡），一键加入就建成这篇内容；
-// 段头「重新扫描」「自己搭一个」。原来单独的「从我的知识里找」页面不再作为入口（选题方法见 docs/工作流.md）。
+// 「来自我的知识」页签里还放 AI 最近一次扫描找到、还没加入的「知识 × 读者问题」（虚线卡），一键加入就建成这篇内容；
+// 这个页签的右侧是「重新扫描」「自己搭一个」。原来单独的「从我的知识里找」页面不再作为入口（选题方法见 docs/工作流.md）。
 import { useState } from "react";
-import { RowDelete, relTime } from "../../components/ui.jsx";
+import { RowDelete, ViewTabs, relTime } from "../../components/ui.jsx";
 import { IconBooks, IconBulb, IconLoader2, IconPlus, IconRadar2, IconRefresh, IconSparkles } from "../../components/icons.jsx";
 
 const WINDOW = { "24h": "建议 24 小时内写", week: "建议本周内写" };
@@ -62,26 +62,33 @@ function FoundCard({ found, scanning, onAdd }) {
   </article>;
 }
 
+const store = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} } };
+
 export function TopicShelf({ items, found = [], scanning = false, onOpen, onPark, onRemove, onAddFound, onScan, onBuild }) {
-  return <div className="topic-shelf" aria-label="选题">
-    {SECTIONS.map(([key, name, hint, Icon]) => {
-      const list = items.filter((item) => sectionOf(item) === key);
-      const extra = key === "bridge" ? found : [];
-      return <section key={key} className="topic-sec" aria-label={name}>
-        <header className="topic-sec__head">
-          <h2><Icon aria-hidden="true" />{name}{list.length ? <span className="topic-sec__count">{list.length}</span> : null}</h2>
-          <small>{hint}</small>
-          {key === "bridge" ? <span className="topic-sec__acts">
-            <button className="btn btn-sm" disabled={scanning} onClick={onScan}><IconRefresh aria-hidden="true" className={scanning ? "spinning" : ""} />{scanning ? "正在扫描" : "重新扫描"}</button>
-            <button className="btn btn-sm" onClick={onBuild}>自己搭一个</button>
-          </span> : null}
-        </header>
-        {key === "bridge" && scanning ? <p className="topic-sec__status" role="status"><IconLoader2 className="spin" aria-hidden="true" />正在读你的 Wiki 和读者问题找题，大约半分钟。找到的会出现在下面，可以先看别的。</p> : null}
-        {list.length || extra.length ? <div className="content-card-grid">
-          {list.map((item) => <TopicCard key={item.key} item={item} onOpen={onOpen} onPark={onPark} onRemove={onRemove} />)}
-          {extra.map((c) => <FoundCard key={c.directionId} found={c} scanning={scanning} onAdd={onAddFound} />)}
-        </div> : <p className="topic-sec__empty">{EMPTY[key]}</p>}
-      </section>;
-    })}
+  const lists = Object.fromEntries(SECTIONS.map(([key]) => [key, items.filter((item) => sectionOf(item) === key)]));
+  // 三个来源切着看（2026-09-24 用户反馈：和情报页一样用页签）。没选过就停在第一个有东西的来源。
+  const [picked, setPicked] = useState(() => store.get("topic-source"));
+  const firstFull = SECTIONS.find(([key]) => lists[key].length || (key === "bridge" && found.length))?.[0] || "intel";
+  const tab = SECTIONS.some(([key]) => key === picked) ? picked : firstFull;
+  const choose = (key) => { setPicked(key); store.set("topic-source", key); };
+  const [, name, hint] = SECTIONS.find(([key]) => key === tab);
+  const list = lists[tab], extra = tab === "bridge" ? found : [];
+  return <div className="topic-shelf">
+    <div className="topic-shelf__bar">
+      <ViewTabs label="选题来源" value={tab} onChange={choose}
+        items={SECTIONS.map(([key, label, tip, Icon]) => ({ key, label, icon: Icon, hint: tip, count: lists[key].length + (key === "bridge" ? found.length : 0) || null }))} />
+      <span className="topic-shelf__hint">{hint}</span>
+      {tab === "bridge" ? <span className="topic-sec__acts">
+        <button className="btn btn-sm" disabled={scanning} onClick={onScan}><IconRefresh aria-hidden="true" className={scanning ? "spinning" : ""} />{scanning ? "正在扫描" : "重新扫描"}</button>
+        <button className="btn btn-sm" onClick={onBuild}>自己搭一个</button>
+      </span> : null}
+    </div>
+    <section className="topic-sec" role="tabpanel" aria-label={name}>
+      {tab === "bridge" && scanning ? <p className="topic-sec__status" role="status"><IconLoader2 className="spin" aria-hidden="true" />正在读你的 Wiki 和读者问题找题，大约半分钟。找到的会出现在下面，可以先看别的。</p> : null}
+      {list.length || extra.length ? <div className="content-card-grid">
+        {list.map((item) => <TopicCard key={item.key} item={item} onOpen={onOpen} onPark={onPark} onRemove={onRemove} />)}
+        {extra.map((c) => <FoundCard key={c.directionId} found={c} scanning={scanning} onAdd={onAddFound} />)}
+      </div> : <p className="topic-sec__empty">{EMPTY[tab]}</p>}
+    </section>
   </div>;
 }

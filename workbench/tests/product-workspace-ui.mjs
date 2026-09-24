@@ -132,7 +132,9 @@ try {
   const projectId=decodeURIComponent(page.url().split("#/project/")[1]);
   const flow=page.locator(".topic-flow");
   await flow.getByRole("region",{name:"读懂"}).waitFor();
-  check("选题打开就是选题流程的读懂",(await flow.locator(".tf-question").innerText()).trim().length>0);
+  // 想讲的就是标题时只写一遍（标题取自这句话），读懂里不再重复。
+  const headTitle=(await flow.locator(".topic-flow__head h1").innerText()).trim();
+  check("选题打开就是选题流程的读懂，标题不重复出现",headTitle.length>0&&(await flow.locator(".tf-question").count()===0||(await flow.locator(".tf-question").innerText()).trim()!==headTitle));
   check("不嵌套通用聊天首页",!await page.getByPlaceholder("问任何问题，或直接输入本地项目路径").count());
   check("读懂这一步只有一个主按钮",await flow.locator(".btn-primary").count()===1);
   await page.getByRole("button",{name:"跳过，直接写",exact:true}).click();
@@ -468,6 +470,15 @@ try {
   await page.getByRole("button", { name: /^选题/ }).first().click();
   await page.locator(".topic-card").first().waitFor();
   check("旧选题照常出现在「选题」一档", await page.locator(".topic-card", { hasText: "卡片选题" }).count() === 12);
+  // 三个来源是页签（和情报页同一套）：切过去只看那一个来源，切回来还在。
+  const sources = page.getByRole("tablist", { name: "选题来源" });
+  check("选题按来源分三个页签", await sources.getByRole("tab").count() === 3);
+  const current = await sources.getByRole("tab", { selected: true }).innerText();
+  await sources.getByRole("tab", { name: /来自我的知识/ }).click();
+  await page.getByRole("tabpanel", { name: "来自我的知识" }).waitFor();
+  check("切到别的来源只看那一个来源", await page.locator(".topic-card", { hasText: "卡片选题" }).count() === 0);
+  await sources.getByRole("tab", { name: current.replace(/\s*\d+$/, "") }).click();
+  await page.locator(".topic-card", { hasText: "卡片选题 1：" }).first().waitFor();
   check("选题一档固定是卡片，不给列表切换", await page.getByRole("button", { name: "列表视图", exact: true }).count() === 0);
   const cardTopic = page.locator(".topic-card", { hasText: "卡片选题 1：" }).first();
   await cardTopic.locator(".topic-card__open").focus(); await page.keyboard.press("Enter");
