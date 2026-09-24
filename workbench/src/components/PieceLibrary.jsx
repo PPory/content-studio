@@ -1,6 +1,8 @@
 // 这篇的资料（2026-09-24）：工作区左栏，选题和写作共用。
 //
-// 分四组：来源（情报和网页原文）、知识（Wiki）、我的实测（挂在这一篇上的经历类个人资产）、补充资料。
+// 上面是这篇背后研究记录里的资料，分三组：来源（情报和网页原文）、知识（Wiki）、补充资料。
+// 下面是 children：原来右栏「资料」工具里的选母版、种子、个人参考（引用前确认发往哪个 AI 服务）和项目素材，
+// 右栏只留协作后原样搬到这里，确认与写入规则仍在那几个组件里，不在这里另做一套。
 // 每条只给三件事：引用（写正文时插到光标处）、详情、原文。补资料在这里一处完成：从资料库挑、或贴一个链接。
 // 资料挂在这篇背后的研究记录上（`ensureProjectResearch`），起稿时 `projectCreativeContext` 会读到。
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -12,7 +14,7 @@ import "./piece-library.css";
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const groupOf = (ref) => ref.kind === "wiki" ? "知识" : ref.sourceUrl ? "来源" : "补充资料";
 
-export function PieceLibrary({ projectId, materials = [], writing = false, onCite, onGo, onChanged, controlRef }) {
+export function PieceLibrary({ projectId, materials = [], writing = false, onCite, onGo, onChanged, controlRef, children }) {
   const key = "piece-library-collapsed";
   // 写正文时默认收起，给编辑器让出空间；手动开过就记住。
   const [collapsed, setCollapsed] = useState(() => { const v = store.get(key); return v === null ? writing : v === "1"; });
@@ -44,9 +46,7 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
 
   const groups = { 来源: [], 知识: [], 补充资料: [] };
   for (const r of refs || []) groups[groupOf(r)].push(r);
-  const extras = materials.map((m) => ({ id: m.id, kind: "material", title: m.title, nature: m.type, sourceUrl: m.sourceUrl || "", excerpt: m.content }));
-  groups.补充资料.push(...extras);
-  const count = (refs?.length || 0) + extras.length + assets.length;
+  const count = (refs?.length || 0) + materials.length + assets.length;
 
   if (collapsed) return <aside className="piece-lib is-collapsed" aria-label="这篇的资料">
     <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title="展开这篇的资料" aria-label={`展开资料（${count} 份）`}><IconBooks aria-hidden="true" /><b>{count}</b></button>
@@ -59,7 +59,7 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
       <span className="piece-lib__meta">{[r.nature, r.sourceUrl ? hostOf(r.sourceUrl) : ""].filter(Boolean).join(" · ")}</span>
       <span className="piece-lib__acts">
         {writing && onCite ? <button type="button" onClick={() => onCite(r)}>引用</button> : null}
-        <button type="button" onClick={() => r.kind === "wiki" ? onGo?.("entries", r.id) : r.kind === "material" ? onGo?.("materials", "") : onGo?.("library", id)}>详情</button>
+        <button type="button" onClick={() => r.kind === "wiki" ? onGo?.("entries", r.id) : onGo?.("library", id)}>详情</button>
         {r.sourceUrl ? <a href={r.sourceUrl} target="_blank" rel="noreferrer">原文<IconArrowUpRight aria-hidden="true" /></a> : null}
       </span>
     </li>;
@@ -73,13 +73,9 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
     <ErrorNote error={error} what="读取这篇的资料" onRetry={load} />
     <div className="piece-lib__scroll">
       {Object.entries(groups).map(([name, list]) => list.length ? <section key={name}><h3>{name}</h3><ul>{list.map(item)}</ul></section> : null)}
-      <section>
-        <h3>我的实测</h3>
-        {assets.length ? <ul>{assets.map((a) => <li key={a.id || a.assetId}><span className="piece-lib__title">{a.title}</span><span className="piece-lib__meta">个人资产 · 这篇的 AI 可以用</span></li>)}</ul>
-          : <p className="piece-lib__empty">还没有。需要亲身经历的角度，会在「补齐」里请你记下来。</p>}
-      </section>
-      {refs && !count ? <p className="piece-lib__empty">这篇还没有资料。</p> : null}
+      {refs && !refs.length ? <p className="piece-lib__empty">这篇背后还没有资料。</p> : null}
       {adding ? <AddPanel onPick={attach} onClose={() => setAdding(false)} projectTitle="" /> : <button type="button" className="piece-lib__add" onClick={() => setAdding(true)}><IconPlus aria-hidden="true" />补资料</button>}
+      {children ? <div className="piece-lib__more">{children}</div> : null}
     </div>
   </aside>;
 }

@@ -93,7 +93,9 @@ try {
  const { project } = await request("/api/workspace/projects", { kind: "draft", mode: "blank", title: "我的创作流程", platform: "公众号" });
  const original = (await request(`/api/workspace/projects/${project.id}`)).project.masterDraft.body;
  await page.goto(base + `/#/project/${project.id}`);
- await page.getByRole("button", { name: "资料", exact: true }).click();
+ // 个人参考在左侧「这篇的资料」栏（2026-09-24 右栏只留协作）；写正文时它默认收起。
+ await page.locator(".piece-lib").waitFor();
+ if (await page.locator(".piece-lib.is-collapsed").count()) await page.getByRole("button", { name: /^展开资料/ }).click();
  const refs = page.getByRole("region", { name: "个人参考", exact: true });
  await refs.locator("summary").click(); await refs.getByLabel("查找个人参考").fill("工作台");
  await refs.getByRole("button", { name: "查找", exact: true }).click();

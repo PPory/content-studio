@@ -51,3 +51,8 @@
   .piece-lib__scroll { max-height: 50vh; }
 }
 @media (prefers-reduced-motion: reduce) { .piece-lib li { transition: none; } }
+/* 原来右栏「资料」工具里的几块（选母版、种子、个人参考、素材），搬进左栏后接在研究资料下面。 */
+.piece-lib__more { display: grid; gap: 18px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); min-width: 0; }
+.piece-lib__more > * { min-width: 0; }
+.piece-lib__more .pmat { border: 0; border-radius: 0; padding: 0; box-shadow: none; background: none; }
+.piece-lib__more > .personal-reference { border-top: 0; padding: 0; }

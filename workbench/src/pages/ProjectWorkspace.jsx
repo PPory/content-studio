@@ -895,7 +895,58 @@ ${(form.body || "").slice(0, 3000)}`);
         ) : <>
         {/* 左栏资料 + 中间（选题流程或正文）是一行；右侧协作仍是网格的第二列。 */}
         <div className="piece-row">
-        <PieceLibrary controlRef={libRef} projectId={projectId} materials={project.materials || []} writing={shownView === "draft"} onCite={shownView === "draft" && draftEditable ? cite : null} onGo={onGo} onChanged={() => { setPlanReload((n) => n + 1); refreshPlan(); }} />
+        <PieceLibrary controlRef={libRef} projectId={projectId} materials={project.materials || []} writing={shownView === "draft"} onCite={shownView === "draft" && draftEditable ? cite : null} onGo={onGo} onChanged={() => { setPlanReload((n) => n + 1); refreshPlan(); }}>
+          {/* 原来挂在右栏「资料」工具下的几块（选母版、种子、个人参考、素材）：右栏只留协作后搬进左栏。 */}
+            {/**
+              * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，
+              * 剩下两项（目标读者/核心观点）已经搬到正文标题下面——你写的时候要瞟的是它们。
+              */}
+            {project.variants?.length && !project.masterDraft ? (
+              <section className="pmat" aria-label="选择母版">
+                <h2 className="section-label">这个项目有多篇稿件</h2>
+                <p className="pmat__note">先选一篇设为母版，项目阶段和后续变体都会围绕它推进。</p>
+                {project.variants.map((item) => (
+                  <button key={item.id} type="button" className="btn btn-sm btn-block" style={{ marginTop: 6 }} onClick={() => transition("set-primary", { draftId: item.id })}>
+                    {item.platform} · {item.title}
+                  </button>
+                ))}
+              </section>
+            ) : null}
+            {/**
+              * ⚠️ **种子块排在素材上面，因为它回答的是更前面那个问题。**
+              * 素材说「凭什么信我」，种子说「我要说什么」——写不下去的时候
+              * 回来读的是后者。没有种子的项目整块不画（组件里自己判）。
+              */}
+            <ProjectSeed
+              seed={project.seed}
+              fetching={srcFetch.state === "fetching"}
+              failedWhy={srcFetch.state === "failed" ? srcFetch.why : ""}
+              onRetry={() => fetchSource(project.seed, { force: true })}
+            />
+            <ProjectPersonalAssets projectId={projectId} query={projectMaterialQuery(project, form)} onGo={onGo} onChanged={() => { promoteTemporaryProject(); setNotebookVersion(v => v + 1); libRef.current?.reload(); }} />
+            <ProjectRefs
+              materials={project.materials || []}
+              canInsert={draftEditable}
+              /**
+               * 跳去素材页并把那条来源打开。走的是 `open-target.js` 那张一次性交接条——
+               * 素材页列表加载完会取一次、用掉。**不往 hash 里塞 id**：这个项目的 hash 是
+               * 两段而且状态值本身带斜杠，加一段就要重新处理分隔符规则。
+               */
+              onOpenSource={(inspirationId) => {
+                setOpenTarget("materials", `inbox:${inspirationId}`);
+                onGo("materials", "");
+              }}
+              /**
+               * 素材推荐拿什么去找：有种子先用那句话；否则读正在写的正文，
+               * 正文还没形成时才退回标题。候选不会自动挂进项目。
+               */
+              query={projectMaterialQuery(project, form)}
+              busy={materialBusy}
+              onAttach={(id) => changeMaterials({ add: [id] })}
+              onDetach={(id) => changeMaterials({ remove: [id] })}
+              onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}
+            />
+        </PieceLibrary>
         <main className="project-draft">
           {shownView === "flow" ? (
             <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowStep} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={() => libRef.current?.add()} onGo={onGo} />
@@ -1027,57 +1078,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 replaceBody: (text, meta = {}) => setInsertRequest({ id: `assistant-body-${Date.now()}`, text, scope: "document", spacing: "exact", targetKind: "whole-document", resultKind: "candidate", ai: true, kind: meta.kind || "AI 全文整理" }),
               },
             }}
-          >
-            {/**
-              * ⚠️ **右栏只剩素材。** 原来上面还有一张「简报卡」，六项里四项是重复或零信息，
-              * 剩下两项（目标读者/核心观点）已经搬到正文标题下面——你写的时候要瞟的是它们。
-              */}
-            {project.variants?.length && !project.masterDraft ? (
-              <section className="pmat" aria-label="选择母版">
-                <h2 className="section-label">这个项目有多篇稿件</h2>
-                <p className="pmat__note">先选一篇设为母版，项目阶段和后续变体都会围绕它推进。</p>
-                {project.variants.map((item) => (
-                  <button key={item.id} type="button" className="btn btn-sm btn-block" style={{ marginTop: 6 }} onClick={() => transition("set-primary", { draftId: item.id })}>
-                    {item.platform} · {item.title}
-                  </button>
-                ))}
-              </section>
-            ) : null}
-            {/**
-              * ⚠️ **种子块排在素材上面，因为它回答的是更前面那个问题。**
-              * 素材说「凭什么信我」，种子说「我要说什么」——写不下去的时候
-              * 回来读的是后者。没有种子的项目整块不画（组件里自己判）。
-              */}
-            <ProjectSeed
-              seed={project.seed}
-              fetching={srcFetch.state === "fetching"}
-              failedWhy={srcFetch.state === "failed" ? srcFetch.why : ""}
-              onRetry={() => fetchSource(project.seed, { force: true })}
-            />
-            <ProjectPersonalAssets projectId={projectId} query={projectMaterialQuery(project, form)} onGo={onGo} onChanged={() => { promoteTemporaryProject(); setNotebookVersion(v => v + 1); }} />
-            <ProjectRefs
-              materials={project.materials || []}
-              canInsert={draftEditable}
-              /**
-               * 跳去素材页并把那条来源打开。走的是 `open-target.js` 那张一次性交接条——
-               * 素材页列表加载完会取一次、用掉。**不往 hash 里塞 id**：这个项目的 hash 是
-               * 两段而且状态值本身带斜杠，加一段就要重新处理分隔符规则。
-               */
-              onOpenSource={(inspirationId) => {
-                setOpenTarget("materials", `inbox:${inspirationId}`);
-                onGo("materials", "");
-              }}
-              /**
-               * 素材推荐拿什么去找：有种子先用那句话；否则读正在写的正文，
-               * 正文还没形成时才退回标题。候选不会自动挂进项目。
-               */
-              query={projectMaterialQuery(project, form)}
-              busy={materialBusy}
-              onAttach={(id) => changeMaterials({ add: [id] })}
-              onDetach={(id) => changeMaterials({ remove: [id] })}
-              onInsert={(item) => setInsertRequest({ id: `material-${item.id}-${Date.now()}`, text: materialText(item), spacing: "paragraph" })}
-            />
-          </ProjectAssistantRail>
+          />
         )}
         </>}
       </div>
