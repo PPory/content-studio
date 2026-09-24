@@ -307,6 +307,20 @@ try {
   await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, crossBatch);
   assert.ok(sawExisting, '判断输入里带上已经判断过的近期事件标题');
   assert.equal(cardWith(enzymeEn.id)?.id, enzymeCard.id, '英文报道并进了之前的中文事件');
+  // 深读卡的事件换了内容（标题对不上）：退回普通卡、标题重写；点名同一个型号的不算换内容。
+  const kyu = add('t2.the_decoder', 'Kyutai Releases Voice of Reason speech model', { hours: 0.03 });
+  await update();
+  const kyuCard = cardWith(kyu.id);
+  w.db.prepare("UPDATE intel_briefs SET data_json=json_set(data_json,'$.depth','deep','$.title','Kyutai 发布原生语音推理模型','$.deepAt',?) WHERE id=?").run(iso(now), kyuCard.id);
+  const opusDeep = cardWith(release.id);
+  w.db.prepare("UPDATE intel_briefs SET data_json=json_set(data_json,'$.depth','deep','$.title','评测机构评估 Claude Opus 5.5 的成本','$.deepAt',?) WHERE id=?").run(iso(now), opusDeep.id);
+  const retitle = { completeJson: async (env, input) => { const r = await judge.completeJson(env, input); const d = JSON.parse(input.user); for (const e of r.data.events) { const items = d.events.find(x => x.id === e.id)?.items || []; if (items.some(i => i.title.includes('Kyutai'))) e.title = 'ChatGPT 语音版支持调用邮件与日历'; } return r; } };
+  add('t2.wired_ai', 'Kyutai Voice of Reason 发布并开源', { hours: 0.02 });
+  add('t2.techcrunch_ai', 'Anthropic 发布 Claude Opus 5.5 后更新企业文档', { hours: 0.01 });
+  await executeUnifiedBriefs(w, {}, enqueueIntelligence(w, profile.id).id, retitle);
+  const kyuAfter = feed().briefs.find(b => b.id === kyuCard.id);
+  assert.equal(kyuAfter.depth, 'headline', '标题对不上的深读退回普通卡'); assert.equal(kyuAfter.title, 'ChatGPT 语音版支持调用邮件与日历');
+  assert.equal(feed().briefs.find(b => b.id === opusDeep.id).depth, 'deep', '点名同一个型号的深读不退回');
   // 关注方向：没设过时不带；设了之后判断输入带上方向，并且重判一次；之后照常用缓存。
   assert.equal(lastFocus, null, '系统默认方向不注入判断');
   const beforeFocus = calls;

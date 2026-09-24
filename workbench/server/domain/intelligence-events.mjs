@@ -201,9 +201,9 @@ export function clusterEvents(w, { now: at = Date.now(), channels } = {}) {
     e.anchor = main.find(m => m.id === anchors.get(e.id)) || main[0] || null;
     if (main.length < 2 || !e.anchor) continue;
     // 模型认定并合并进来的报道（中英文名字对不上这类）保留，不被下一次检查拆开，否则每次更新都会来回翻。
-    // v2 之前记下的合并用的是「小事件一律放行」的旧把关（Kyutai 混进 ChatGPT Voice 就是这样），不再保留，按新标准重查。
+    // v3 之前记下的合并不再保留、按现在的标准重查：v1 用的是「小事件一律放行」的旧把关，v2 可能是照着过期标题并的。
     const mergedState = readState(w, `event-merged:${e.key}`);
-    const merged = new Set(mergedState?.v === 2 ? mergedState.sourceIds || [] : []);
+    const merged = new Set(mergedState?.v === 3 ? mergedState.sourceIds || [] : []);
     const out = new Set(main.filter(m => m !== e.anchor && !merged.has(m.id) && !sameStory(m, e.anchor)).map(m => m.id));
     if (!out.size) continue;
     for (const m of e.members) if (m.kind === 'comment' && out.has(m.row.root_item_id)) out.add(m.id);
@@ -357,7 +357,9 @@ export async function judgeEvents(w, env, events, deps = {}) {
   const pendingMerges = [];
   // 已经判断过的近期事件（只给 id 和标题）：让模型能把这一批里的事件并进它们。否则中英文报道分到不同批次时，
   // 模型永远看不到对方，同一件事会一直是好几张卡（新酶那件事曾拆成 5 张）。
-  const existing = events.filter(e => (e.judgement || e.cached?.result)?.keep && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => b.heat - a.heat);
+  // 只放标题和当前成员对得上的（缓存指纹和现在的成员一致）：成员被清理过的事件还挂着旧标题，
+  // 模型会照着旧标题把别的事件并进来（Kyutai 挂着「ChatGPT 语音版…」的旧标题，把 ChatGPT Voice 整个吸了进去）。
+  const existing = events.filter(e => e.cached?.result?.keep && e.cached.fingerprint === memberFingerprint(e) && e.anchorAt >= at - RECOMMEND_WINDOW_MS).sort((a, b) => b.heat - a.heat);
   for (let i = 0; i < todo.length; i += JUDGE_CHUNK) {
     const chunk = todo.slice(i, i + JUDGE_CHUNK), ids = new Set(chunk.map(e => e.key));
     try {
@@ -405,8 +407,8 @@ function applyMerges(w, events, mergeBriefIdentities) {
       w.db.prepare("UPDATE intel_clusters SET cluster_kind='event_merged' WHERE id=?").run(e.id);
     })();
     target.members.push(...e.members); Object.assign(target, eventStats(target));
-    const prevMerged = readState(w, `event-merged:${target.key}`), kept = prevMerged?.v === 2 ? prevMerged.sourceIds || [] : [];
-    writeState(w, `event-merged:${target.key}`, { v: 2, sourceIds: [...new Set([...kept, ...e.members.map(m => m.id)])], at: now() });
+    const prevMerged = readState(w, `event-merged:${target.key}`), kept = prevMerged?.v === 3 ? prevMerged.sourceIds || [] : [];
+    writeState(w, `event-merged:${target.key}`, { v: 3, sourceIds: [...new Set([...kept, ...e.members.map(m => m.id)])], at: now() });
     // 合并是模型自己的判断，合并后的成员不必再判一次。
     if (target.judgement) writeState(w, `event-judge:${target.key}`, { fingerprint: memberFingerprint(target), memberIds: memberIds(target), result: target.judgement, at: now() });
     const from = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${e.key}`), to = w.db.prepare('SELECT id FROM intel_briefs WHERE story_key=?').get(`event:${target.key}`);
@@ -447,7 +449,12 @@ export function upsertEventCards(w, runId, events, { mergeBriefIdentities } = {}
     const event = { kind: e.judgement.kind, creation: e.judgement.creation || null, heat: e.heat, sourceCount: e.sourceCount, discussionCount: e.discussionCount, latestAt: new Date(e.latestAt).toISOString(), progressAt: e.judgement.progressAt || new Date(e.latestAt).toISOString(), development: e.judgement.development || null, developmentNote: e.judgement.developmentNote || '', related: relatedOf(e), aihot: e.aihot, members, memberCount: e.members.length };
     const prev = old ? JSON.parse(old.data_json) : null;
     let data;
-    if (prev?.depth === 'deep') {
+    // 深读卡的标题不随成员变；如果和这件事现在的内容（模型这次写的标题）对不上，说明事件已经换了内容，
+    // 深读退回普通卡、标题概要重新生成——否则会出现「Kyutai 的标题 + ChatGPT Voice 的报道」。旧深读留在版本历史里。
+    // 两个标题点名了同一个型号或专有名称（都有 Opus 5.5）就算对得上；一个共同名字都没有、字面也不像，才算换了内容。
+    const namesOf = t => new Set([...versionedEntities(t), ...properEntities(t)]);
+    const deepMismatch = prev?.depth === 'deep' && Boolean(e.judgement.title) && !shares(namesOf(prev.title || ''), namesOf(e.judgement.title)) && jaccard(coreGrams(prev.title || ''), coreGrams(e.judgement.title)) < 0.12;
+    if (prev?.depth === 'deep' && !deepMismatch) {
       // 以生成解读时的成员数为准（事件卡每次更新都会改 event.memberCount，用它比较第二次更新后就看不出旧了）。
       const base = prev.deepMemberCount ?? prev.event?.memberCount ?? 0;
       data = { ...prev, event, deepStale: base < e.members.length, deepNewSources: Math.max(0, e.members.length - base),
