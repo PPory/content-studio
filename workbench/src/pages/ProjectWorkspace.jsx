@@ -202,7 +202,7 @@ function ProjectReleaseRail({ project, drafts, draft, form, dirty, busy, onChang
   );
 }
 
-export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNavigationGuard, onChanged }) {
+export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNavigationGuard, onChanged, onSettings }) {
   const [project, setProject] = useState(null);
   const [writingProfile, setWritingProfile] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState("");
@@ -263,7 +263,13 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const viewKey = `content-view:${projectId}`;
   const [view, setView] = useState(() => { try { return localStorage.getItem(viewKey) || ""; } catch { return ""; } });
   const [planReload, setPlanReload] = useState(0);
-  const [flowStep, setFlowStep] = useState(0);
+  // 从编辑器点回选题流程的某一步：{ step, id, focus }。id 变了才跳，之后刷新数据不再把人拉回去。
+  const [flowJump, setFlowJump] = useState(null);
+  const [flowLabel, setFlowLabel] = useState("");
+  // 「N 处待补」：每点一次让编辑器跳到下一处。
+  const [gapJump, setGapJump] = useState(null);
+  // 打开过一版存着的 AI 初稿（plan.pendingDraft）：审阅结束（采纳或弃用）时清掉它。
+  const pendingOpen = useRef(false);
   const libRef = useRef(null);
   // 补齐里点了「让 AI 找」的那一项：在协作里确认 AI 找到的资料放进这篇之后，它才算补上。
   const aiGap = useRef("");
@@ -645,19 +651,21 @@ ${(form.body || "").slice(0, 3000)}`);
   async function switchView(next) {
     if (next === shownView) return;
     if (next === "draft" && !project.masterDraft && project.stage === "策划中" && !(await transition("start-writing"))) return;
-    if (next === "draft") setFlowStep(0);
     setView(next);
     try { localStorage.setItem(viewKey, next); } catch {}
   }
   /** 从编辑器回到选题流程的某一步（进度线、【待补】）。 */
-  const backToStep = (n) => { setFlowStep(n); setView("flow"); try { localStorage.setItem(viewKey, "flow"); } catch {} };
+  const backToStep = (n, focus = "") => { setFlowJump({ step: n, id: Date.now(), focus }); setView("flow"); try { localStorage.setItem(viewKey, "flow"); } catch {} };
+  /** 打开存着的那版 AI 初稿：走编辑器的整篇对比审阅；看完（采纳或弃用）清掉。 */
+  const openPending = (candidate) => { if (!candidate?.body) return; pendingOpen.current = true; setInsertRequest({ id: `plan-draft-${Date.now()}`, text: candidate.body, scope: "document", spacing: "exact", targetKind: "whole-document", resultKind: "candidate", ai: true, kind: "AI 初稿" }); setView("draft"); };
+  const reviewModeChange = (on) => { setCandidateReviewFocused(on); if (!on && pendingOpen.current) { pendingOpen.current = false; api.planClearPending(projectId).then(() => setPlanReload((n) => n + 1)).catch(() => {}); } };
   /**
    * 选题流程写完初稿之后：正文原来是空的，服务端已经写进主稿——重新读一次项目，切到正文；
    * 正文里已经有字，服务端只给了候选——走编辑器的整篇对比审阅，由用户决定用不用。
    */
   async function handleDraft(result) {
     if (result?.written) { await load(); setNotice("初稿写好了"); }
-    else if (result?.candidate?.body) setInsertRequest({ id: `plan-draft-${Date.now()}`, text: result.candidate.body, scope: "document", spacing: "exact", targetKind: "whole-document", resultKind: "candidate", ai: true, kind: "AI 初稿" });
+    else if (result?.candidate?.body) openPending(result.candidate);
     setView("draft");
     try { localStorage.setItem(viewKey, "draft"); } catch {}
   }
@@ -774,7 +782,8 @@ ${(form.body || "").slice(0, 3000)}`);
           {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
           {/* 还没开写的就是「选题」：此时「在写 · 主稿还是空的」说的是系统状态，不是这篇走到了哪。 */}
           <StatePill state={topic ? "选题" : projectPhase(project.stage)} />
-          {project.stageReason && !topic ? <span className="project-bar__why">{project.stageReason}</span> : null}
+          {/* 选题阶段写流程走到哪了（读懂 / 选角度 / 补齐 1/2 / 定结构），不再只有一个「选题」。 */}
+          {topic && flowLabel ? <span className="project-bar__why">{flowLabel}</span> : project.stageReason && !topic ? <span className="project-bar__why">{project.stageReason}</span> : null}
         </div>
         <div className="project-bar__end">
           {solo?.previous ? <button className="btn btn-sm" onClick={() => onGo("project", solo.previous.projectId)} title={solo.previous.title}>上一篇</button> : null}
@@ -796,7 +805,8 @@ ${(form.body || "").slice(0, 3000)}`);
             */}
           {/* 右侧协作的开关放在顶栏：原来浮在正文右上角，展开后和协作栏的标题叠在一起。 */}
           {/* 协作的入口是右下角那颗悬浮图标（ProjectAssistantRail），顶栏不再放一颗（2026-09-24 用户反馈）。 */}
-          {draft ? <div className="project-export">
+          {/* 选题流程里正文还空着：导出和保存都没有东西可做，不占位置。 */}
+          {draft && (shownView !== "flow" || form.body.trim()) ? <div className="project-export">
             <button
               type="button"
               className="btn btn-sm"
@@ -816,7 +826,7 @@ ${(form.body || "").slice(0, 3000)}`);
               ))}
             </div> : null}
           </div> : null}
-          {draft && (draftEditable || releaseEditable) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
+          {draft && (draftEditable || releaseEditable) && (shownView !== "flow" || dirty) ? <button className="btn" onClick={saveDraft} disabled={busy || !dirty}>{busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}{releaseEditable ? "保存版本" : "保存"}</button> : null}
           {project.stage === "待发布" ? (
             /**
              * ⚠️ **主动作是「确认已发布」，不是「去排版」。**
@@ -850,7 +860,7 @@ ${(form.body || "").slice(0, 3000)}`);
             </>
           ) : shownView === "flow" ? (
             /* 选题流程里每一屏自己有主按钮；顶栏只留一个安静的出口，不再多一颗实心按钮。 */
-            <button className="btn" onClick={() => switchView("draft")} disabled={busy}>跳过，直接写</button>
+            <button className="btn" onClick={() => switchView("draft")} disabled={busy}>{project.masterDraft?.body?.trim() ? "回到正文" : "跳过，直接写"}</button>
           ) : mainAction ? (
             /**
              * ⚠️ **正文为空时这颗按钮必须点不动。**
@@ -959,12 +969,12 @@ ${(form.body || "").slice(0, 3000)}`);
         </PieceLibrary>
         <main className="project-draft">
           {shownView === "flow" ? (
-            <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowStep} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={(gap) => libRef.current?.add(gap)} onGo={onGo} />
+            <TopicFlow projectId={projectId} title={project.title} reloadKey={planReload} startAt={flowJump} onSettings={onSettings} onProgress={setFlowLabel} onDraft={(r) => r?.open ? switchView("draft") : handleDraft(r)} onAsk={askAssistant} onAddMaterial={(gap) => libRef.current?.add(gap)} onGo={onGo} />
           ) : draft ? (
             <>
               {/* 从选题流程来的内容：进度线就是这一行的左半边（和标题同宽，不再单独悬在编辑区左上角），右边是字数、待补和稿件状态。 */}
               {(briefable || project.plan?.stage?.key === "draft") && draft.id === masterDraft?.id
-                ? <div className="project-draft__label project-draft__label--trail"><DraftTrail projectId={projectId} body={form.body} reloadKey={planReload} onPick={backToStep} /><em>{draft.status}</em></div>
+                ? <div className="project-draft__label project-draft__label--trail"><DraftTrail projectId={projectId} body={form.body} reloadKey={planReload} onPick={(n) => backToStep(n)} onJumpGap={() => setGapJump({ id: Date.now() })} onPending={openPending} /><em>{draft.status}</em></div>
                 : <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>}
               <textarea
                 ref={resizeProjectTitle}
@@ -989,7 +999,8 @@ ${(form.body || "").slice(0, 3000)}`);
                 onChange={(value) => changeForm("body", value)}
                 ariaLabel={draft.id === masterDraft?.id ? "主稿正文" : `${draft.platform} 版本正文`}
                 insertRequest={insertRequest}
-                onGapClick={briefable ? () => backToStep(3) : undefined}
+                onGapClick={briefable ? (label) => backToStep(3, label) : undefined}
+                gapJumpRequest={gapJump}
                 onInsertHandled={(id) => setInsertRequest((current) => current?.id === id ? null : current)}
                 onCursorChange={(position) => { cursor.current = position; }}
                 onSelectionChange={(value) => { selection.current = value; setActiveSelection(value); }}
@@ -1001,7 +1012,7 @@ ${(form.body || "").slice(0, 3000)}`);
                 assistantScope="project"
                 assistantTarget={{ kind: "draft", editable: draftEditable }}
                 inlineAiContext={{ profile: writingProfile, materials: project.materials || [] }}
-                onCandidateReviewModeChange={setCandidateReviewFocused}
+                onCandidateReviewModeChange={reviewModeChange}
                 onDiscuss={(payload) => {
                   setAssistantHandoff({ id: `discuss-${payload.id}`, prompt: payload.prompt, answer: payload.answer });
                   summonAssistant({ routeView: "project" });

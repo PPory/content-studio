@@ -64,3 +64,16 @@
   .piece-lib__rail { margin: 4px 0; }
   .piece-lib__scroll { max-height: 50vh; }
 }
+/* 详情就地展开摘要（不离开这篇）；移除是两步：第一下变成红色「确认移除」，移开焦点就复原。 */
+.piece-lib__detail { display: grid; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); }
+.piece-lib__detail p { margin: 0; font-size: var(--fs-2xs); line-height: 1.7; color: var(--text-2); overflow-wrap: anywhere; }
+.piece-lib__detail .text-action { justify-self: start; font-size: var(--fs-2xs); }
+.piece-lib__acts .piece-lib__remove { margin-left: auto; color: var(--text-3); }
+.piece-lib__acts .is-danger { margin-left: auto; color: var(--danger); font-weight: 600; }
+.piece-lib__rail-label { display: none; }
+/* 窄屏：收起时是流程上方的一行「资料 N ›」，不是一个孤零零的箭头。 */
+@media (max-width: 920px) {
+  .piece-lib__rail { width: auto; height: auto; display: inline-flex; gap: 4px; padding: 6px 10px; margin: 0; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); }
+  .piece-lib__rail-label { display: inline; }
+  .piece-lib.is-collapsed { border-bottom: 0; }
+}

@@ -791,6 +791,7 @@ export function App() {
                   onForceGo={forceGo}
                   registerNavigationGuard={registerNavigationGuard}
                   onChanged={refreshStatus}
+                  onSettings={() => setSettings(true)}
                 />
               ) : route.view === "review" ? (
                 <Review onGo={go} />

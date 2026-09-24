@@ -25,10 +25,14 @@
   position: fixed; right: 28px; bottom: 28px; z-index: 30;
   display: grid; place-items: center; width: 46px; height: 46px; padding: 0;
   border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text-1);
-  box-shadow: var(--shadow); cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+  box-shadow: var(--shadow); cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease), opacity .15s var(--ease);
 }
 .assistant-fab:hover { border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
 .assistant-fab:focus-visible { outline: 2px solid var(--text-1); outline-offset: 3px; }
 .assistant-fab svg { width: 20px; height: 20px; }
+/* 不挡字：编辑区底部留出图标的高度；在正文里打字时降到 35%，鼠标靠近或键盘聚焦时恢复。 */
+body:has(.project-draft .cm-editor.cm-focused) .assistant-fab { opacity: .35; }
+.assistant-fab:hover, .assistant-fab:focus-visible { opacity: 1 !important; }
+.piece-row .project-draft { padding-bottom: 96px; }
 @media (max-width: 720px) { .assistant-fab { right: 16px; bottom: 16px; } }
 @media (prefers-reduced-motion: reduce) { .assistant-fab { transition: none; } }

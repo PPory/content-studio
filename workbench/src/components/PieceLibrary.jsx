@@ -3,7 +3,9 @@
 // 上面是这篇背后研究记录里的资料，分三组：来源（情报和网页原文）、知识（Wiki）、补充资料。
 // 下面是 children：原来右栏「资料」工具里的选母版、种子、个人参考（引用前确认发往哪个 AI 服务）和项目素材，
 // 右栏只留协作后原样搬到这里，确认与写入规则仍在那几个组件里，不在这里另做一套。
-// 每条只给三件事：引用（写正文时插到光标处）、详情、原文。补资料在这里一处完成：从资料库挑、或贴一个链接。
+// 每条给：引用（写正文时插到光标处）、详情（就地展开摘要，不离开这篇）、原文、移除（两步确认）。AI 在协作里放进来的标「AI 找到」。
+// 补资料在这里一处完成：从资料库挑、或贴一个链接。
+// 手机上（≤920px）默认收成流程上方一行「资料 N ›」，宽屏和窄屏的展开 / 收起各记各的。
 // 资料挂在这篇背后的研究记录上（`ensureProjectResearch`），起稿时 `projectCreativeContext` 会读到。
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api } from "../lib/api.js";
@@ -15,17 +17,20 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch { re
 const groupOf = (ref) => ref.kind === "wiki" ? "知识" : ref.sourceUrl ? "来源" : "补充资料";
 
 export function PieceLibrary({ projectId, materials = [], writing = false, onCite, onGo, onChanged, controlRef, children }) {
-  const key = "piece-library-collapsed";
-  // 写正文时默认收起，给编辑器让出空间；手动开过就记住。
-  const [collapsed, setCollapsed] = useState(() => { const v = store.get(key); return v === null ? writing : v === "1"; });
+  const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 920px)").matches;
+  const key = narrow ? "piece-library-collapsed-narrow" : "piece-library-collapsed";
+  // 写正文时默认收起，给编辑器让出空间；窄屏一律默认收起（资料栏排在正文前面）；手动开过就记住。
+  const [collapsed, setCollapsed] = useState(() => { const v = store.get(key); return v === null ? writing || narrow : v === "1"; });
   const [refs, setRefs] = useState(null), [assets, setAssets] = useState([]), [error, setError] = useState(null);
   const [adding, setAdding] = useState(false), [fresh, setFresh] = useState("");
+  const [open, setOpen] = useState(""), [removing, setRemoving] = useState(""), [aiAdded, setAiAdded] = useState(new Set());
   const researchId = useRef("");
   const toggle = (v) => { setCollapsed(v); store.set(key, v ? "1" : "0"); };
 
   const load = useCallback(async () => {
     try {
-      const [{ researches }, personal] = await Promise.all([api.projectResearches(projectId), api.projectPersonalAssets(projectId).catch(() => ({ references: [] }))]);
+      const [{ researches }, personal, nb] = await Promise.all([api.projectResearches(projectId), api.projectPersonalAssets(projectId).catch(() => ({ references: [] })), api.projectNotebook(projectId).catch(() => null)]);
+      setAiAdded(new Set(nb?.notebook?.plan?.aiAdded || []));
       researchId.current = researches?.[0]?.id || "";
       setRefs((researches?.[0]?.references || []).filter((r) => !r.missing));
       setAssets(personal.references || []);
@@ -45,23 +50,36 @@ export function PieceLibrary({ projectId, materials = [], writing = false, onCit
     setAdding(false); await load(); onChanged?.({ forGap });
   }
 
+  /** 移除：从这篇背后的研究记录上拿掉（资料本身还在资料库里）。第一下变成「确认移除」，第二下才拿掉。 */
+  async function remove(r) {
+    const id = `${r.kind}:${r.id}`;
+    if (removing !== id) { setRemoving(id); return; }
+    try { await api.researchReference(researchId.current, { kind: r.kind, id: r.id }, true); setRemoving(""); await load(); onChanged?.({}); } catch (e) { setError(e); }
+  }
+
   const groups = { 来源: [], 知识: [], 补充资料: [] };
   for (const r of refs || []) groups[groupOf(r)].push(r);
   const count = (refs?.length || 0) + materials.length + assets.length;
 
   if (collapsed) return <aside className="piece-lib is-collapsed" aria-label="这篇的资料">
-    <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title={`展开这篇的资料（${count} 份）`} aria-label={`展开资料（${count} 份）`}><IconChevronRight aria-hidden="true" /></button>
+    <button type="button" className="piece-lib__rail" onClick={() => toggle(false)} title={`展开这篇的资料（${count} 份）`} aria-label={`展开资料（${count} 份）`}><span className="piece-lib__rail-label" aria-hidden="true">资料 {count}</span><IconChevronRight aria-hidden="true" /></button>
   </aside>;
 
   const item = (r) => {
     const id = `${r.kind}:${r.id}`;
+    const expanded = open === id;
     return <li key={id} className={fresh === id ? "is-fresh" : ""}>
       <span className="piece-lib__title">{r.title || "未命名资料"}</span>
-      <span className="piece-lib__meta">{[r.nature, r.sourceUrl ? hostOf(r.sourceUrl) : ""].filter(Boolean).join(" · ")}</span>
+      <span className="piece-lib__meta">{[aiAdded.has(id) ? "AI 找到" : "", r.nature, r.sourceUrl ? hostOf(r.sourceUrl) : ""].filter(Boolean).join(" · ")}</span>
+      {expanded ? <div className="piece-lib__detail">
+        <p>{String(r.excerpt || "").slice(0, 600) || "这份资料没有可预览的正文。"}{String(r.excerpt || "").length > 600 ? "…" : ""}</p>
+        <button type="button" className="text-action" onClick={() => r.kind === "wiki" ? onGo?.("entries", r.id) : onGo?.("library", id)}>打开全文</button>
+      </div> : null}
       <span className="piece-lib__acts">
         {writing && onCite ? <button type="button" onClick={() => onCite(r)}>引用</button> : null}
-        <button type="button" onClick={() => r.kind === "wiki" ? onGo?.("entries", r.id) : onGo?.("library", id)}>详情</button>
+        <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? "" : id)}>{expanded ? "收起" : "详情"}</button>
         {r.sourceUrl ? <a href={r.sourceUrl} target="_blank" rel="noreferrer">原文<IconArrowUpRight aria-hidden="true" /></a> : null}
+        <button type="button" className={removing === id ? "is-danger" : "piece-lib__remove"} onClick={() => remove(r)} onBlur={() => setRemoving((cur) => cur === id ? "" : cur)}>{removing === id ? "确认移除" : "移除"}</button>
       </span>
     </li>;
   };

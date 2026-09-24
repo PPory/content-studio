@@ -94,6 +94,7 @@ export const api = {
   planStructures: (id, force = false) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/structures`, { force }),
   planChooseStructure: (id, body) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/choose-structure`, body),
   planDraft: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/draft`, {}),
+  planClearPending: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/plan/pending-draft/clear`, {}),
   directionToContent: (id) => postJson(`/api/workspace/intelligence/directions/${encodeURIComponent(id)}/content`, {}),
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
   library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
