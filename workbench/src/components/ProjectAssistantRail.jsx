@@ -6,7 +6,8 @@ import { IconChevronDown, IconFileText, IconX } from "./icons.jsx";
 
 // One optional companion to the document. Hidden panels stay mounted to preserve
 // unsaved notebook input and the current conversation when changing tools.
-export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, notebook = null, children }) {
+// `notebook` 为空时不显示「构思」工具（工作区在构思视图时，构思就在中间）；`openRequest` 让外面点「补资料」时直接打开对应工具。
+export function ProjectAssistantRail({ scopeId, document, materials = [], profile, target, handoffRequest = null, reviewingCandidate = false, recall = null, notebook = null, openRequest = null, children }) {
   const [active, setActive] = useState(null);
   const [assistantOpened, setAssistantOpened] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -25,6 +26,8 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   }, [openTool]);
   useAssistantSummonTarget("project", focusAssistant);
   useEffect(() => { if (handoffRequest?.id) focusAssistant(); }, [handoffRequest?.id, focusAssistant]);
+  useEffect(() => { if (openRequest?.tool) openTool(openRequest.tool); }, [openRequest?.id]);
+  useEffect(() => { if (!notebook && active === "构思") setActive(null); }, [notebook, active]);
   const close = useCallback(() => {
     const current = active;
     setActive(null);
@@ -53,7 +56,7 @@ export function ProjectAssistantRail({ scopeId, document, materials = [], profil
   </div>;
   return <>
     <nav className="writing-tools" aria-label="写作辅助" hidden={reviewingCandidate}>
-      {["构思", "资料", "协作"].map((tool) => <button key={tool} type="button" className="btn btn-sm"
+      {(notebook ? ["构思", "资料", "协作"] : ["资料", "协作"]).map((tool) => <button key={tool} type="button" className="btn btn-sm"
         ref={(element) => { triggers.current[tool] = element; }} aria-pressed={active === tool} aria-controls={`writing-panel-${tool}`}
         onClick={() => active === tool ? close() : openTool(tool)}>{tool}</button>)}
     </nav>

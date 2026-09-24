@@ -88,7 +88,9 @@ const SUBNAV_HOME = {
   "intel-channels": "intel",
   "intel-runs": "intel",
   "intel-inbox": "intel-resources",
-  bridge: "research",
+  // 选题和写作合并（2026-09-24）：旧的 research 路由和知识探索都归到「写作」。
+  bridge: "content",
+  research: "content",
   hot: "intel-resources",
   "intel-reports": "intel",
   project: "content",
@@ -118,8 +120,7 @@ const NAV = [
     { to: "sources", label: "来源" },
   ] },
   { key: "content", to: "content", match: (v) => CONTENT_VIEWS.has(v), children: [
-    { to: "research", label: "选题" },
-    { to: "content", label: "创作" },
+    { to: "content", label: "写作" },
     { to: "series", label: "合集" },
     { to: "typeset", label: "排版" },
   ] },

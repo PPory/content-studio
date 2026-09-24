@@ -14,6 +14,7 @@ import { useDialog } from "../lib/use-dialog.js";
 import { handOffUndo, useUndoToast } from "../lib/use-undo-toast.js";
 import { useLayoutMode } from "../lib/use-layout-mode.js";
 import { creationLine as creationText } from "../components/EventReading.jsx";
+import { openResearchContent } from "../lib/open-content.js";
 /** 最近一条带做法的情报选题意图。 */
 const creationOf = item => (item.intelligenceIntents || []).map(i => i.creation).filter(Boolean).at(-1) || null;
 const creationLine = c => creationText(c);
@@ -21,10 +22,32 @@ const creationLine = c => creationText(c);
 // 一屏放得下多少张。卡片按情报卡收紧之后 6 张会剩一大片空白。
 const PAGE_SIZE = 12;
 
+/**
+ * 选题和写作合并（2026-09-24）：`#/research` 只剩兼容跳转。
+ * 列表 → 写作列表的「选题」一档；某个选题 → 它对应的那篇内容（还没有就第一次打开时补建）。
+ * 用 `location.replace`，按「返回」不会又落回这个跳转页、再被弹走。
+ * 旧的选题页只在两种情况下还会出现：来源权限变了（显示受限提示）、补建失败时的兜底。
+ */
 export function Research({ researchId, onGo, onForceGo, registerNavigationGuard }) {
-  if(researchId?.startsWith("legacy:"))return <LegacyTopicOpen id={researchId} onGo={onGo}/>;
-  return researchId ? <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} /> : <ResearchList onGo={onGo} />;
+  const [fallback, setFallback] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setFallback(null);
+    const replace = (view, state) => window.location.replace(`#/${view}${state ? `/${encodeURIComponent(state)}` : ""}`);
+    if (!researchId) { try { sessionStorage.setItem("content-shelf", "选题"); } catch {} replace("content", ""); return; }
+    // 服务端补建要一会儿；这期间人已经去了别处，就不能再把他拽回来。
+    openResearchContent((view, state) => { if (live) replace(view, state); }, researchId).catch((error) => { if (live) setFallback(error); });
+    return () => { live = false; };
+  }, [researchId]);
+  if (!fallback) return <section className="task-page"><Loading rows={2} /></section>;
+  if (researchId?.startsWith("legacy:")) return <LegacyTopicOpen id={researchId} onGo={onGo}/>;
+  return <>
+    {fallback.status !== 403 ? <ErrorNote error={fallback} what="打开这个选题对应的内容" /> : null}
+    <ResearchDetail key={researchId} id={researchId} onGo={onGo} onForceGo={onForceGo} registerNavigationGuard={registerNavigationGuard} />
+  </>;
 }
+/** 兼容保留：旧的选题列表，已不再从导航进入（见上）。 */
+export function ResearchListLegacy({ onGo }) { return <ResearchList onGo={onGo} />; }
 function ResearchList({ onGo }) {
   const [items, setItems] = useState(null);
   const [question, setQuestion] = useState("");

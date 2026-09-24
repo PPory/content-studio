@@ -80,3 +80,24 @@ export function actionableProjects(projects = [], limit = 5) {
 export function projectOpenTarget(project = {}) {
   return project?.id ? { view: "project", id: project.id } : null;
 }
+
+/**
+ * 写作列表的四档（2026-09-24，选题和写作合并）。**判据只写这一处。**
+ *
+ * 「选题」＝还没开写：策划中，或主稿还空着（情报加入的内容一建好就有一篇空主稿，项目阶段是「写作中」，
+ * 但对人来说它还只是个选题）。已搁置单独一档「先放着」，不算失败。
+ */
+export const CONTENT_SHELVES = ["选题", "在写", "已发布", "先放着"];
+export function contentShelf(project = {}) {
+  if (project.stage === "已搁置") return "先放着";
+  if (["待复盘", "已完成"].includes(project.stage)) return "已发布";
+  if (project.stage === "策划中") return "选题";
+  if (project.stage === "写作中" && !String(project.masterDraft?.body || "").trim()) return "选题";
+  return "在写";
+}
+
+/** 选题的先后：建议时效还在的、快到的排前面；其余按最近改动。 */
+export function byTopicUrgency(a, b) {
+  const end = (item) => Date.parse(item?.plan?.origin?.windowEndsAt || "") || Infinity;
+  return (end(a) - end(b)) || String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || ""));
+}

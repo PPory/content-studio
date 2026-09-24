@@ -16,3 +16,15 @@
 .content-card__actions > .content-card__file { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); }
 .content-card__remove { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 @media (max-width: 600px) { .content-view-toolbar { flex-wrap: wrap; } .content-card__open { padding: 16px; } }
+
+/* 「选题」一档（2026-09-24）：一张卡回答从哪来、建议什么时候之前写、还缺什么。
+   只有「建议 24 小时内」上强调色，和情报卡上的「抢时效」同一个意思、同一种颜色。 */
+.topic-card h2 { min-height: 0; }
+.topic-card .content-card__open { gap: 10px; }
+.topic-card .content-card__meta time { flex: none; white-space: nowrap; }
+.topic-card__origin { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-3); font-size: var(--fs-2xs); }
+.topic-card__window { align-self: flex-start; color: var(--text-2); font-size: var(--fs-xs); }
+.topic-card__window.is-urgent { color: var(--emph); font-weight: 600; }
+.topic-card__missing, .topic-card__ready { margin: auto 0 0; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.topic-card__missing span { margin-right: 6px; color: var(--text-3); }
+.topic-card__ready { color: var(--text-3); }

@@ -16,3 +16,51 @@
 
 .project-writing-help { padding:12px 24px; border-bottom:1px solid var(--line,#ddd); }
 .project-writing-help > summary { cursor:pointer; font-size:13px; }
+
+/* ── 构思 = 选题（2026-09-24）─────────────────────────────────────
+   中间一栏时是一份从上往下读的写作简报；侧栏里（写正文时）是紧凑版。
+   只有「建议 24 小时内」上强调色，其余都是正文灰阶，不加动画。 */
+.content-plan { border-bottom: 0; padding: 0; }
+.project-draft > .view-tabs { margin-bottom: 16px; }
+.content-plan .project-notebook__body { gap: 22px; padding: 12px 0 32px; max-width: 760px; }
+.content-plan__field { color: var(--text-2); font-size: var(--fs-xs); }
+.content-plan__field--thought { color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
+.content-plan__field--thought textarea { font-size: var(--fs-lg); font-weight: 600; line-height: 1.5; }
+.content-plan__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.content-plan__block { display: grid; gap: 10px; }
+.content-plan__block > h3 { margin: 0; color: var(--text-1); font-size: var(--fs-sm); font-weight: 600; }
+.content-plan__why { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.content-plan .content-plan__why p { margin: 0; color: var(--text-2); }
+.content-plan .content-plan__why .content-plan__event { color: var(--text-1); font-weight: 600; }
+.content-plan__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: var(--fs-xs); }
+.content-plan__meta .is-urgent { color: var(--emph); font-weight: 600; }
+.content-plan__checklist { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.content-plan__checklist > li { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 4px 8px; border-radius: var(--r-ctl); color: var(--text-1); font-size: var(--fs-sm); }
+.content-plan__checklist > li:hover { background: var(--surface-2); }
+.content-plan__checklist > li > span { flex: 1; min-width: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.content-plan__checklist > li.is-done > span { color: var(--text-3); text-decoration: line-through; }
+.content-plan .content-plan__checklist input[type="checkbox"] { width: 16px; height: 16px; flex: none; padding: 0; accent-color: var(--accent); }
+.content-plan__checklist .text-action { flex: none; font-size: var(--fs-xs); }
+.content-plan__remove { color: var(--text-3); }
+.content-plan__checklist > li.content-plan__record { display: block; padding: 8px; background: var(--surface-2); }
+.content-plan__add { display: flex; gap: 8px; }
+.content-plan__add input { flex: 1; }
+.content-plan .content-plan__earlier { margin: 0; font-size: var(--fs-xs); white-space: pre-line; }
+.content-plan__earlier span, .content-plan__kind { margin-right: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
+.content-plan__facts { display: grid; gap: 6px; margin: 0; padding-left: 18px; color: var(--text-1); font-size: var(--fs-sm); line-height: 1.7; }
+.content-plan__evidence blockquote { margin: 8px 0 0; padding-left: 12px; border-left: 2px solid var(--border-strong); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.7; }
+.content-plan__evidence small { display: block; color: var(--text-3); font-size: var(--fs-2xs); }
+.content-plan__wiki, .content-plan__refs { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.content-plan__wiki q { display: block; margin: 4px 0; color: var(--text-2); line-height: 1.7; }
+.content-plan__wiki li > span:last-child { display: block; color: var(--text-2); font-size: var(--fs-xs); line-height: 1.6; }
+.content-plan__refs small { margin-left: 8px; color: var(--text-3); font-size: var(--fs-2xs); }
+.content-plan__block > .btn { justify-self: start; }
+.content-plan__more { display: grid; gap: 12px; }
+.content-plan__more > details { padding-left: 12px; }
+.content-plan__talks { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-xs); color: var(--text-3); }
+.experience-note { display: grid; gap: 10px; }
+.experience-note__acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.content-plan .experience-note__hint { margin: 0; font-size: var(--fs-xs); }
+.content-plan.is-compact .content-plan__pair { grid-template-columns: 1fr; }
+.content-plan.is-compact .project-notebook__body { padding-top: 4px; }
+@media (max-width: 650px) { .content-plan__pair { grid-template-columns: 1fr; } .content-plan__add { flex-direction: column; } }

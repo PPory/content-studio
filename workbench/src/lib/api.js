@@ -84,6 +84,9 @@ export const api = {
   restoreResearch: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/restore`, {}),
   researchProject: (id, body) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/projects`, body),
   projectResearches: (id) => req(`/api/workspace/projects/${encodeURIComponent(id)}/researches`),
+  // 一篇内容一个工作区：研究 → 内容、内容 → 研究，缺哪边补哪边（可重复调用）。
+  researchContent: (id) => postJson(`/api/workspace/researches/${encodeURIComponent(id)}/content`, {}),
+  projectResearch: (id) => postJson(`/api/workspace/projects/${encodeURIComponent(id)}/research`, {}),
   libraryItem: (kind, id) => req(`/api/workspace/library/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`),
   library: (q = "", kind = "") => req(`/api/workspace/library?${new URLSearchParams({ q, kind })}`),
   quickNotes: (q = "", tag = "") => req(`/api/workspace/quick-notes?${new URLSearchParams({ q, tag })}`),

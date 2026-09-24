@@ -308,6 +308,9 @@ export const workspaceRoutes = [
     const body = await readJsonBody(req); const project = projectDto(workspace, params.id); if (!project) throw new Error("内容项目不存在"); const stamp = now();
     if (body.action === "start-writing") { const draftId = workspace.domain.createDraft({ projectId: params.id, title: project.title, platform: project.brief?.platform || "公众号", actor, now: stamp }); workspace.domain.setPrimaryDraft(params.id, draftId, { actor, now: stamp }); }
     else if (body.action === "set-primary") workspace.domain.setPrimaryDraft(params.id, body.draftId, { actor, now: stamp });
+    // 「先放着」：整篇停下，稿子和构思原样保留（不是弃用稿子）；「接着做」原样恢复。
+    else if (body.action === "park") workspace.domain.parkProject(params.id, { actor, now: stamp });
+    else if (body.action === "resume") workspace.domain.transitionProject(params.id, "resume", { actor, now: stamp });
     else if (body.action === "abandon") project.masterDraft ? workspace.domain.transitionDraft(project.masterDraft.id, "abandon", { actor, now: stamp }) : workspace.domain.parkProject(params.id, { actor, now: stamp });
     else if (body.action === "return-writing" && project.stage === "已搁置" && !project.masterDraft) workspace.domain.transitionProject(params.id, "resume", { actor, now: stamp });
     else workspace.domain.transitionDraft(project.masterDraft?.id, body.action, { actor, now: stamp });

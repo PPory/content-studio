@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
+import { CONTENT_SHELVES, byTopicUrgency, contentShelf, projectOpenTarget, projectsFrom } from "../lib/content-projects.js";
+import { openResearchContent } from "../lib/open-content.js";
+import { TopicShelf } from "./content/TopicShelf.jsx";
 import { NewContentButton } from "../components/NewContentButton.jsx";
 import { Empty, ErrorNote, LayoutToggle, Loading, PageHeader, Toast } from "../components/ui.jsx";
 import { useUndoToast } from "../lib/use-undo-toast.js";
-import { IconFileText, IconRefresh } from "../components/icons.jsx";
+import { IconBooks, IconFileText, IconRefresh } from "../components/icons.jsx";
 import { ProjectTable } from "./content/ProjectTable.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import "./series.css";
@@ -17,7 +19,9 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useUndoToast();
-  const [stage, setStage] = useState("进行中");
+  // 没选过时：有正在写的就先看「在写」，否则看「选题」。
+  const [stage, setStage] = useState(() => { try { return sessionStorage.getItem("content-shelf") || ""; } catch { return ""; } });
+  const [researches, setResearches] = useState([]);
   const [layout, setLayout] = useLayoutMode("content", "list");
   /** 正在给哪一篇挑合集。归类要在**看得见这篇文章的地方**做，不是进合集再搜一遍。 */
   const [filing, setFiling] = useState(null);
@@ -25,6 +29,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   const load = useCallback(() => {
     if (!workerReady) return;
     setLoading(true);
+    // 还没有对应内容的旧选题也列在「选题」里；读不到不挡住写作列表。
+    api.researches().then((data) => setResearches(data.researches || [])).catch(() => setResearches([]));
     api.projects()
       .then((data) => { setResult(data); setError(null); })
       .catch(setError)
@@ -34,12 +40,47 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
   useEffect(load, [load]);
 
   const projects = useMemo(() => projectsFrom(result), [result]);
-  const grouped = useMemo(() => ({
-    "进行中": projects.filter((project) => !["待复盘", "已完成", "已搁置"].includes(project.stage)),
-    "已发布": projects.filter((project) => ["待复盘", "已完成"].includes(project.stage)),
-    "归档": projects.filter((project) => project.stage === "已搁置"),
-  }), [projects]);
-  const shown = useMemo(() => [...grouped[stage]].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))), [grouped, stage]);
+  const grouped = useMemo(() => {
+    const out = Object.fromEntries(CONTENT_SHELVES.map((key) => [key, []]));
+    for (const project of projects) out[contentShelf(project)].push(project);
+    return out;
+  }, [projects]);
+  const topics = useMemo(() => [
+    ...[...grouped["选题"]].sort(byTopicUrgency).map((project) => ({
+      key: `p:${project.id}`, kind: "project", id: project.id, updatedAt: project.updatedAt,
+      title: (project.title && project.title !== "未命名" ? project.title : project.plan?.thought?.trim()) || "未命名选题",
+      origin: project.plan?.origin || null, missing: project.plan?.missing || [],
+    })),
+    ...researches.filter((item) => !item.projectId && !item.contentRestricted).map((item) => ({
+      key: `r:${item.id}`, kind: "research", id: item.id, updatedAt: item.updatedAt, title: item.question || item.title || "未命名选题",
+      origin: item.legacyTopic ? { kind: "legacy" } : item.intelligenceIntents?.length ? { kind: "intel", title: item.intelligenceIntents.at(-1).brief?.title || "" } : { kind: "own" },
+      missing: null,
+    })),
+  ], [grouped, researches]);
+  const counts = { ...Object.fromEntries(CONTENT_SHELVES.map((key) => [key, grouped[key].length])), 选题: topics.length };
+  const shelf = CONTENT_SHELVES.includes(stage) ? stage : (counts["在写"] ? "在写" : "选题");
+  const chooseShelf = (key) => { setStage(key); try { sessionStorage.setItem("content-shelf", key); } catch {} };
+  const shown = useMemo(() => [...(grouped[shelf] || [])].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))), [grouped, shelf]);
+  const openTopic = async (item) => {
+    if (item.kind === "project") return onGo("project", item.id);
+    try { await openResearchContent(onGo, item.id); } catch (e) { setError(e); }
+  };
+  /** 先放着：整篇停下，稿子和构思都在；回执上的「撤销」就是「接着做」。 */
+  const park = async (item) => {
+    try {
+      await api.transitionProject(item.id, "park");
+      setToast({ text: `「${item.title}」先放着了`, detail: "在「先放着」里，随时可以接着做。", undo: async () => { await api.transitionProject(item.id, "resume"); setToast(null); onChanged?.(); load(); } });
+      onChanged?.(); await load();
+    } catch (e) { setError(e); }
+  };
+  const removeTopic = async (item) => {
+    if (item.kind === "project") return remove({ id: item.id, title: item.title });
+    try {
+      await api.trashResearch(item.id);
+      setToast({ text: `「${item.title}」已移入回收站`, undo: async () => { await api.restoreResearch(item.id); setToast(null); load(); } });
+      await load();
+    } catch (e) { setError(e); }
+  };
   const open = (project) => {
     const target = projectOpenTarget(project);
     if (!target) return;
@@ -84,6 +125,8 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               <IconRefresh aria-hidden="true" className={loading ? "spinning" : ""} />
             </button>
             {/* 四处共用一颗（`components/NewContentButton.jsx`），别在这儿再拼一份菜单 */}
+            {/* 新建内容的另一种起点：从自己的知识和读者问题里找题（原「从已有知识探索选题」）。 */}
+            {workerReady ? <button className="btn" onClick={() => onGo("bridge", "")}><IconBooks aria-hidden="true" />从我的知识里找</button> : null}
             {workerReady ? <NewContentButton onGo={onGo} onChanged={onChanged} /> : null}
           </>
         }
@@ -117,11 +160,12 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
               （判据同 `Series.jsx` 撤掉的那颗「全部文章 / 合集」）。 */}
           <div className="list-bar content-view-toolbar">
             <div className="chips chips-sm" aria-label="内容状态">
-              {["进行中", "已发布", "归档"].map((key) => <button key={key} className="chip" aria-pressed={stage === key} onClick={() => setStage(key)}>{key}{grouped[key].length ? ` ${grouped[key].length}` : ""}</button>)}
+              {CONTENT_SHELVES.map((key) => <button key={key} className="chip" aria-pressed={shelf === key} onClick={() => chooseShelf(key)}>{key}{counts[key] ? ` ${counts[key]}` : ""}</button>)}
             </div>
-            <LayoutToggle value={layout} onChange={setLayout} />
+            {/* 选题固定是卡片：那一档是要动手的少数（判据见 design-system.md）。 */}
+            {shelf !== "选题" ? <LayoutToggle value={layout} onChange={setLayout} /> : null}
           </div>
-          {!projects.length ? (
+          {!projects.length && !topics.length ? (
             /* ⚠️ **首启空态要带一颗能点的**：只有一句灰字的话「下一步点哪儿」
                还是留给用户猜。和下面那个「这一档空着」的筛选空态不是一回事。 */
             <Empty
@@ -130,12 +174,16 @@ export function Content({ workerReady, onGo, onChanged, onSettings }) {
             >
               写下第一句话就可以开始，不必先定选题或填写计划。
             </Empty>
+          ) : shelf === "选题" ? (
+            topics.length
+              ? <TopicShelf items={topics} onOpen={openTopic} onPark={park} onRemove={removeTopic} />
+              : <Empty icon={IconFileText}>还没有选题。在情报里点「加入选题」，或者新建一篇、从我的知识里找。</Empty>
           ) : shown.length ? (
             layout === "card"
               ? <ProjectCards projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
               : <ProjectTable projects={shown} onOpen={open} onRemove={remove} onFile={setFiling} />
           ) : (
-            <Empty icon={IconFileText}>{stage === "进行中" ? "没有正在写的内容，可以开始新的一篇。" : stage === "已发布" ? "发布后的作品会留在这里。" : "暂时搁置的内容会留在这里，随时可以继续。"}</Empty>
+            <Empty icon={IconFileText}>{shelf === "在写" ? "没有正在写的内容。从「选题」里挑一篇开写，或者新建一篇。" : shelf === "已发布" ? "发布后的作品会留在这里。" : "先放着的内容会留在这里，随时可以接着做。"}</Empty>
           )}
         </>
       ) : null}

@@ -3,7 +3,7 @@ import "./writing-surface.css";
 import { ProjectNotebook } from "../components/ProjectNotebook.jsx";
 import { api, downloadProjectExport } from "../lib/api.js";
 import { useDialog } from "../lib/use-dialog.js";
-import { projectPhase } from "../lib/content-projects.js";
+import { contentShelf, projectPhase } from "../lib/content-projects.js";
 import { MarkdownEditor } from "../components/MarkdownEditor.jsx";
 import { useDocChat } from "../lib/use-doc-chat.js";
 import { renderMarkdown } from "../lib/markdown.js";
@@ -15,7 +15,7 @@ import { RelatedEntries } from "../components/RelatedEntries.jsx";
 import { summonAssistant } from "../lib/assistant-summoner.js";
 import { PublishPanel } from "../components/PublishPanel.jsx";
 import { ProjectReviewStage } from "../components/ProjectReviewStage.jsx";
-import { ErrorNote, Loading, StatePill } from "../components/ui.jsx";
+import { ErrorNote, Loading, StatePill, ViewTabs } from "../components/ui.jsx";
 import { SeriesPicker } from "../components/SeriesPicker.jsx";
 import { ProjectPersonalAssets } from "../components/ProjectPersonalAssets.jsx";
 import { ProjectRefs } from "./project/ProjectRefs.jsx";
@@ -245,6 +245,13 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
   const cursor = useRef(null);
   const selection = useRef(null);
   const selectedDraftRef = useRef("");
+  /**
+   * 构思 | 正文（2026-09-24，选题和写作合并）。主稿空着时默认看构思，有字后默认看正文；
+   * 选过就按这篇记住（本机偏好，只存视图，不存内容）。
+   */
+  const viewKey = `content-view:${projectId}`;
+  const [view, setView] = useState(() => { try { return localStorage.getItem(viewKey) || ""; } catch { return ""; } });
+  const [railRequest, setRailRequest] = useState(null);
 
   const acceptProject = useCallback((next, preferredId = "") => {
     const drafts = projectReleaseDrafts(next);
@@ -280,6 +287,11 @@ export function ProjectWorkspace({ projectId, onGo, onForceGo = onGo, registerNa
 
   const drafts = projectReleaseDrafts(project);
   const masterDraft = project?.masterDraft;
+  const topic = project ? contentShelf(project) === "选题" : false;
+  // 有构思可看（从情报 / 知识来的、或者已经写下想讲什么）才默认停在构思；
+  // 点「新建内容」开的白纸直接进正文——那颗按钮承诺的就是「写下第一句话就可以开始」。
+  const planned = topic && ((project.plan?.origin?.kind && project.plan.origin.kind !== "own") || Boolean(project.plan?.thought?.trim()));
+  const shownView = view || (planned ? "plan" : "draft");
   const draft = drafts.find((item) => item.id === selectedDraftId) || masterDraft;
   const dirty = !!draft && releaseChanged(draft, form);
   const blankTemporary = isBlankTemporaryDraft({ temporary, title: form.title, body: form.body, materials: project?.materials });
@@ -600,6 +612,41 @@ ${(form.body || "").slice(0, 3000)}`);
     }
   }
 
+  /**
+   * 切到正文 = 开始写：还没有主稿就先建（同一个 `start-writing`，不弹框、不重问方向——
+   * 构思里写过的方向和读者，起稿时直接读）。切换前先存构思：同一时刻只挂一个构思实例。
+   */
+  /**
+   * AI 辅助写作（搭结构 / 起初稿）。写正文时在侧栏的构思里，在构思视图时就放在构思下面——
+   * 那正是「想清楚了，接下来怎么开写」的位置。在构思视图里插入候选，会先切到正文再放进去。
+   */
+  const writingHelp = (inPlan) => ["策划中", "写作中"].includes(project.stage) ? (
+    <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
+      contextVersion={notebookVersion}
+      projectId={projectId}
+      empty={!String(form.body || "").trim()}
+      needsDraft={!masterDraft}
+      busy={busy}
+      onGo={onGo}
+      onStartDraft={() => transition("start-writing")}
+      onInsert={(request) => {
+        if (inPlan) { setView("draft"); try { localStorage.setItem(viewKey, "draft"); } catch {} }
+        setInsertRequest({ id: `start-${Date.now()}`, ...request });
+      }}
+    /></details>
+  ) : null;
+  /** 只刷新「从哪来 / 还缺什么」：整页重载会把还没存的正文换回已保存的版本。 */
+  async function refreshPlan() {
+    try { const { project: next } = await api.project(projectId); setProject((current) => current && { ...current, plan: next.plan }); onChanged?.(); } catch (e) { setError(e); }
+  }
+  async function switchView(next) {
+    if (next === shownView) return;
+    if (notebookDirty && !(await notebookSave.current?.())) return;
+    if (next === "draft" && !project.masterDraft && project.stage === "策划中" && !(await transition("start-writing"))) return;
+    setView(next);
+    try { localStorage.setItem(viewKey, next); } catch {}
+  }
+
   if (loading && !project) return <div className="project-workspace-load"><Loading rows={5} /></div>;
   if (!project) {
     return (
@@ -708,8 +755,9 @@ ${(form.body || "").slice(0, 3000)}`);
             </button>
           </span>
           {/* 三档：在写 / 写完了 / 发出去了。判据只写在 `content-projects.js` 的 `projectPhase` 一处 */}
-          <StatePill state={projectPhase(project.stage)} />
-          {project.stageReason ? <span className="project-bar__why">{project.stageReason}</span> : null}
+          {/* 还没开写的就是「选题」：此时「在写 · 主稿还是空的」说的是系统状态，不是这篇走到了哪。 */}
+          <StatePill state={topic ? "选题" : projectPhase(project.stage)} />
+          {project.stageReason && !topic ? <span className="project-bar__why">{project.stageReason}</span> : null}
         </div>
         <div className="project-bar__end">
           {solo?.previous ? <button className="btn btn-sm" onClick={() => onGo("project", solo.previous.projectId)} title={solo.previous.title}>上一篇</button> : null}
@@ -781,6 +829,10 @@ ${(form.body || "").slice(0, 3000)}`);
                 />
               ) : null}
             </>
+          ) : topic && shownView === "plan" ? (
+            <button className="btn btn-primary" onClick={() => switchView("draft")} disabled={busy}>
+              {busy ? <IconLoader2 className="spin" aria-hidden="true" /> : null}开始写
+            </button>
           ) : mainAction ? (
             /**
              * ⚠️ **正文为空时这颗按钮必须点不动。**
@@ -799,7 +851,7 @@ ${(form.body || "").slice(0, 3000)}`);
           ) : null}
         </div>
       </header>
-      {blockedReason ? <p className="project-bar__blocked">{blockedReason}</p> : null}
+      {blockedReason && !topic ? <p className="project-bar__blocked">{blockedReason}</p> : null}
       {/* 缺什么就在这儿补什么，补完直接过去，而不是先报错再让人自己找输入框 */}
       {publishGateOpen && releaseMissing.length ? (
         <section className="project-publish-gate" aria-label="发布前还差的一件事">
@@ -834,7 +886,17 @@ ${(form.body || "").slice(0, 3000)}`);
           />
         ) : <>
         <main className="project-draft">
-          {draft ? (
+          {/* 同一篇内容的两面：构思和正文随时往返，不需要「转成文章」这一步。 */}
+          <ViewTabs label="这篇内容" value={shownView} onChange={switchView} items={[{ key: "plan", label: "构思" }, { key: "draft", label: "正文" }]} />
+          {shownView === "plan" ? (
+            <ProjectNotebook key={`plan:${projectId}`} projectId={projectId} plan={project.plan} onGo={onGo}
+              origin={project.plan?.origin?.kind === "bridge" ? <ContentIntentPanel projectId={projectId} onGo={onGo} onAsk={(prompt) => { setAssistantHandoff({ id: `intent-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} /> : null}
+              onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
+              onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }}
+              onPlanChanged={refreshPlan} onOpenMaterials={() => setRailRequest({ id: Date.now(), tool: "资料" })}
+              onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
+          ) : null}
+          {shownView === "plan" ? writingHelp(true) : draft ? (
             <>
               <div className="project-draft__label"><span>{draft.id === masterDraft?.id ? "主稿" : `${draft.platform} 平台版`}</span><em>{draft.id === masterDraft?.id ? draft.status : `源自主稿 · ${draft.status}`}</em></div>
               <textarea
@@ -894,8 +956,8 @@ ${(form.body || "").slice(0, 3000)}`);
              *（每个阶段主操作固定的位置），这儿只说清楚该按哪儿。
              */
             <div className="project-draft__empty">
-              <h2>简报已经建好，主稿还没开始</h2>
-              <p>点右上角的<b>「{PRIMARY_ACTION[project.stage]?.label || "建立主稿"}」</b>开始写。建好之后这个地址会一直保留；关闭再打开，仍然回到同一篇内容。</p>
+              <h2>还没开始写</h2>
+              <p>点右上角的<b>「{PRIMARY_ACTION[project.stage]?.label || "建立主稿"}」</b>建立主稿；想先理清楚，就切回「构思」。</p>
             </div>
           )}
           <ErrorNote error={error} what="更新内容项目" />
@@ -928,31 +990,16 @@ ${(form.body || "").slice(0, 3000)}`);
            * **中间是你动手的东西，两侧只有一侧放关于它的事实。**
            */
           <ProjectAssistantRail
-            notebook={<>
-      <ProjectNotebook embedded key={projectId} projectId={projectId} onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
-        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }} onGo={onGo}
+            openRequest={railRequest}
+            notebook={shownView === "plan" ? null : <>
+      <ProjectNotebook compact key={`rail:${projectId}`} projectId={projectId} plan={project.plan} onGo={onGo}
+        origin={project.plan?.origin?.kind === "bridge" ? <ContentIntentPanel projectId={projectId} onGo={onGo} onAsk={(prompt) => { setAssistantHandoff({ id: `intent-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} /> : null}
+        onDirty={setNotebookDirty} saveRef={notebookSave} onEdited={promoteTemporaryProject}
+        onSaved={(notebook) => { promoteTemporaryProject(); setNotebookVersion(notebook.version); }}
+        onPlanChanged={refreshPlan} onOpenMaterials={() => setRailRequest({ id: Date.now(), tool: "资料" })}
         onAsk={(prompt) => { setAssistantHandoff({ id: `notebook-${Date.now()}`, prompt }); summonAssistant({ routeView: "project" }); }} />
-      <ContentIntentPanel
-        projectId={projectId}
-        onGo={onGo}
-        onAsk={(prompt) => {
-          setAssistantHandoff({ id: `intent-${Date.now()}`, prompt });
-          summonAssistant({ routeView: "project" });
-        }}
-      />
 
-      {["策划中", "写作中"].includes(project.stage) ? (
-        <details className="project-writing-help"><summary>AI 辅助写作</summary><ProjectStartPanel
-          contextVersion={notebookVersion}
-          projectId={projectId}
-          empty={!String(form.body || "").trim()}
-          needsDraft={!masterDraft}
-          busy={busy}
-          onGo={onGo}
-          onStartDraft={() => transition("start-writing")}
-          onInsert={(request) => setInsertRequest({ id: `start-${Date.now()}`, ...request })}
-        /></details>
-      ) : null}
+      {writingHelp(false)}
 
 
             </>}
