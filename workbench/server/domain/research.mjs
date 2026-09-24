@@ -162,12 +162,44 @@ export function ensureResearchProject(w, id, { extraItems = [] } = {}) {
     const research = getResearch(w, id);
     if (research.contentRestricted) throw error("引用资料不可用时不能打开这个选题，请先恢复来源权限或有效资料", 403);
     const creation = (research.intelligenceIntents || []).map(i => i.creation).filter(Boolean).at(-1) || null;
-    const { projectId, notebook } = createProjectExploration(w, { requestKey: stableUuid(`research-content:${id}`), title: (research.question || "未命名").slice(0, 200), thought: research.question || "", discovery: { research: { id, scopeId: `research:${id}` } } });
+    // 关联的内容删过时（旧数据：只删了项目），同一个幂等键会回放到已删的那篇——换一个键补建新的。
+    const removed = w.db.prepare("SELECT COUNT(*) AS n FROM research_projects WHERE research_id=?").get(id).n;
+    const { projectId, notebook } = createProjectExploration(w, { requestKey: stableUuid(`research-content:${id}${removed ? `:${removed}` : ""}`), title: (research.question || "未命名").slice(0, 200), thought: research.question || "", discovery: { research: { id, scopeId: `research:${id}` } } });
     const questions = appendItems(checklistFromLines(research.openQuestions || ""), extraItems);
     saveProjectNotebook(w, projectId, { expectedVersion: notebook.version, questions, evidenceNotes: research.notes || "", intent: creation?.readerValue || "" });
     w.db.prepare("INSERT OR IGNORE INTO research_projects(research_id,project_id,selected_text,created_at) VALUES(?,?,?,?)").run(id, projectId, "", stamp());
     w.domain.audit("research.content_created", id, { projectId });
     return { projectId, created: true };
+  });
+}
+/**
+ * 删掉一篇内容 = 连同它背后那条研究记录一起进回收站（2026-09-24）。
+ *
+ * ⚠️ 两者一对一：只删项目的话，研究记录会以「还没有内容的选题」重新出现在选题列表里，
+ * 用户看到的就是「删不掉」。只带走**没有别的在用内容**的研究；同一个时间戳，恢复时据此一起回来。
+ */
+export function trashContent(w, projectId) {
+  w.domain.entity(projectId, "project");
+  const at = new Date();
+  const drafts = w.db.prepare("SELECT COUNT(*) AS count FROM drafts d JOIN entities e ON e.id=d.id AND e.deleted_at IS NULL WHERE d.project_id=?").get(projectId).count;
+  const researches = w.db.prepare(`SELECT l.research_id id FROM research_projects l JOIN entities e ON e.id=l.research_id AND e.deleted_at IS NULL
+    WHERE l.project_id=? AND NOT EXISTS (SELECT 1 FROM research_projects o JOIN entities oe ON oe.id=o.project_id AND oe.deleted_at IS NULL WHERE o.research_id=l.research_id AND o.project_id<>?)`).all(projectId, projectId).map((r) => r.id);
+  return w.repository.transaction(() => {
+    w.domain.softDeleteEntity(projectId, { actor: "user", now: at });
+    for (const id of researches) w.domain.softDeleteEntity(id, { actor: "user", now: at });
+    return { deleted: drafts, researches: researches.length, recoverable: true };
+  });
+}
+/** 撤销删除：项目回来，和它同一刻进回收站的研究记录也回来（单独删过的不动）。 */
+export function restoreContent(w, projectId) {
+  const project = w.repository.getEntity(projectId, { includeDeleted: true });
+  if (!project?.deletedAt) throw error("这篇内容不在回收站里", 404);
+  const researches = w.db.prepare("SELECT l.research_id id FROM research_projects l JOIN entities e ON e.id=l.research_id WHERE l.project_id=? AND e.deleted_at=?").all(projectId, project.deletedAt).map((r) => r.id);
+  return w.repository.transaction(() => {
+    const at = new Date();
+    w.domain.restoreEntity(projectId, { actor: "user", now: at });
+    for (const id of researches) w.domain.restoreEntity(id, { actor: "user", now: at });
+    return { researches: researches.length };
   });
 }
 /** 内容 → 研究：给一篇内容挂资料或情报时，需要它背后那条研究记录；没有就补一条（问题 = 内容标题）。 */

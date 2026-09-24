@@ -9,7 +9,7 @@ import { openWorkspace } from '../server/storage/workspace.mjs';
 import { saveIntelligenceProfile, enqueueIntelligence, addIntelligenceSource } from '../server/domain/intelligence.mjs';
 import { saveIntelligenceBriefs } from '../server/domain/intelligence-feed.mjs';
 import { createIntelligenceTopicIntent } from '../server/domain/intelligence-topic-intents.mjs';
-import { researchReference } from '../server/domain/research.mjs';
+import { researchReference, createResearch, ensureResearchProject, trashContent, restoreContent, listResearches } from '../server/domain/research.mjs';
 import { getProjectNotebook, saveProjectNotebook } from '../server/domain/project-notebook.mjs';
 import { deepenState } from '../server/domain/intelligence-deepen.mjs';
 import { planView, proposeAngles, chooseAngle, proposeStructures, chooseStructure, writeDraft } from '../server/domain/content-plan-ai.mjs';
@@ -109,7 +109,19 @@ try {
   const kv = planView(w, env, made.projectId);
   assert.equal(kv.read.kind, 'bridge'); assert.equal(kv.read.hypothesis, true); assert.equal(kv.read.core, '卡住不是没天赋');
   assert.equal(projectPlanSummary(w, made.projectId).origin.kind, 'bridge');
+  // 删掉一篇内容：背后的研究记录一起进回收站，选题列表里不会再冒出一张「还没有内容的选题」；撤销时一起回来。
+  const lone = createResearch(w, { question: '删掉的选题不该再冒出来' });
+  const { projectId: loneProject } = ensureResearchProject(w, lone.id);
+  assert.equal(trashContent(w, loneProject).researches, 1);
+  assert.ok(!listResearches(w).some((r) => r.id === lone.id), '研究记录跟着进了回收站');
+  assert.equal(restoreContent(w, loneProject).researches, 1);
+  assert.ok(listResearches(w).some((r) => r.id === lone.id), '撤销后研究记录也回来');
+  // 旧数据：只删了项目、研究还在。打开它要补建一篇新的，不能回放到已删的那篇（原来报「project不存在」）。
+  w.domain.softDeleteEntity(loneProject, { actor: 'user', now: new Date() });
+  const reopened = ensureResearchProject(w, lone.id);
+  assert.ok(reopened.created && reopened.projectId !== loneProject, '补建新的一篇');
   assert.deepEqual(w.db.pragma('foreign_key_check'), []);
+  console.log('content-plan-ai: trash content with its research, reopen after legacy delete;');
   console.log('content-plan-ai: auto deepen, read (intel/bridge), angles (verbatim wiki, experience gate, cache), choose angle, structures + titles, draft (write when empty, candidate otherwise, 待补 kept), knowledge → content passed');
 } finally {
   w?.close?.();
