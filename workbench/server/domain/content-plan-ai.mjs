@@ -49,7 +49,8 @@ const briefsOf = (ctx) => (ctx.researches || []).flatMap((r) => (r.intelligenceI
 /** 角度和结构的输入指纹：资料、Wiki、情报版本、个人经历、选定的角度有变化才算「资料更新了」。 */
 function fingerprint(ctx, wiki, extra = {}) {
   return sha256Json({
-    thought: ctx.notebook?.thought || "", connection: ctx.notebook?.discovery?.connection?.coreClaim || "",
+    // 不含「想讲什么」：选定角度会改写它，那不是「资料更新了」。
+    connection: ctx.notebook?.discovery?.connection?.coreClaim || "",
     briefs: briefsOf(ctx).map((b) => [b.id, b.depth, b.body.length]),
     wiki: wiki.map((p) => [p.id, p.revision]), elements: ctx.elements.map((e) => e.id).sort(),
     experiences: ctx.experiences.map((e) => e.id).sort(), ...extra,
@@ -91,7 +92,7 @@ function normalizeAngles(data, ctx, wiki) {
   const out = [];
   for (const raw of data.angles.slice(0, 3)) {
     const how = Object.hasOwn(HOW, raw?.how) ? raw.how : "knowledge";
-    const angle = { id: `a${out.length + 1}`, how, title: clean(raw?.title, 120), was: clean(raw?.was, 300), is: clean(raw?.is, 400), audience: clean(raw?.audience, 200), gain: clean(raw?.gain, 200), wiki: null, gaps: [] };
+    const angle = { id: `a${out.length + 1}`, how, recommended: raw?.recommended === true && !out.some((a) => a.recommended), why: clean(raw?.why, 160), title: clean(raw?.title, 120), was: clean(raw?.was, 300), is: clean(raw?.is, 400), audience: clean(raw?.audience, 200), gain: clean(raw?.gain, 200), wiki: null, gaps: [] };
     if (!angle.title || !angle.is) continue;
     // 原话必须逐字出现在那篇笔记里，否则去掉这条连接——角度本身还能用。
     const page = byId.get(clean(raw?.wiki?.id, 120));
@@ -107,6 +108,8 @@ function normalizeAngles(data, ctx, wiki) {
     out.push(angle);
   }
   if (!out.length) throw new Error("没能给出可用的角度，请重试");
+  // 模型没标推荐（或标的那个被丢掉了）：推荐缺口最少的那个，理由照实写。
+  if (!out.some((a) => a.recommended)) { const best = [...out].sort((a, b) => a.gaps.length - b.gaps.length)[0]; best.recommended = true; best.why ||= best.gaps.length ? "要补的最少" : "手上的材料够写"; }
   return out;
 }
 
@@ -121,11 +124,12 @@ export async function proposeAngles(env, w, { projectId, force = false } = {}) {
       "每个角度用一种讲法：knowledge（讲清一个知识）/ judgment（给出一个判断）/ experience（讲作者自己的经历）/ demonstration（展示一个过程或结果）。3 个角度的讲法尽量不同。",
       "好角度的写法：找到读者现在的一个默认想法（was），它解释不了这件事；这篇用一条知识或一个判断把它讲清楚（is）。was 和 is 都写成读者能懂的大白话。",
       "title 是一句标题式的切入，可以是问题或反常识的结论，不超过 30 字。",
+      "三个里挑一个最值得写的标 recommended=true，why 用一句话说明为什么推荐（结合热度与时效、手上材料够不够、读者能得到什么）；其余 recommended=false。",
       "如果作者的知识笔记里有能解释它的，填 wiki：id 用笔记方括号里的 id，quote 必须逐字照抄那篇笔记里的一句话，how 说明怎么把这个概念讲成读者听得懂的话（别直接甩术语）。没有合适的就填 null，不要硬凑。",
       "gaps 是写成这个角度还缺的东西（和已有资料对比），每项写 label、why（为什么需要）、kind（find=可以去找 / exp=只能来自作者本人的经历或实测）、where（去哪找：具体的搜索词或地方）。已经有的不要列。",
       ctx.experiences.length ? "涉及作者经历时只能用给出的那几条。" : "⚠️ 作者目前没有任何可用的个人经历记录：不得替作者编经历；讲经历的角度必须把「作者的经历」列为 exp 缺口。",
       ctx.problem?.origin === "hypothesis" ? "⚠️ 读者问题是推导出来的，不得写「很多人都在问」。" : "",
-      "只输出 JSON：" + JSON.stringify({ angles: [{ how: "knowledge", title: "", was: "", is: "", audience: "", gain: "", wiki: { id: "", quote: "", how: "" }, gaps: [{ label: "", why: "", kind: "find", where: [""] }] }] }),
+      "只输出 JSON：" + JSON.stringify({ angles: [{ how: "knowledge", recommended: true, why: "", title: "", was: "", is: "", audience: "", gain: "", wiki: { id: "", quote: "", how: "" }, gaps: [{ label: "", why: "", kind: "find", where: [""] }] }] }),
     ].filter(Boolean).join("\n"),
     user: describePlanInput(ctx, wiki),
     maxTokens: 5000,
